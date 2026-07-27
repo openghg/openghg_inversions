@@ -41,6 +41,13 @@ each canonical dimension block.  Catalogues above SciPy's Sobol dimension
 limit use independently scrambled blocks, whose combined discrepancy is an
 empirical property.  Log-density and gradient evaluation never draw and are
 exactly replayable from the serialized artifact.
+
+A version-three single-root construction traverses the same frozen Sobol
+catalogue in sample chunks and projects each allocation immediately.  It
+stores only the requested summary coordinates rather than an
+``samples x native_cells`` allocation array.  A separate fixed projection
+microbatch makes the projected numerical result independent of the chosen
+memory chunk.
 """
 
 from __future__ import annotations
@@ -74,12 +81,15 @@ __all__ = [
 
 _ARTIFACT_SCHEMA_V1 = "aggregation-conditional-allocation-mixture-v1"
 _ARTIFACT_SCHEMA_V2 = "aggregation-conditional-allocation-mixture-v2"
+_ARTIFACT_SCHEMA_V3 = "aggregation-conditional-allocation-mixture-v3"
 _PCG64_CONSTRUCTION_METHOD = "keyed_pcg64_dirichlet"
 _SOBOL_CONSTRUCTION_METHOD = "scrambled_sobol_balanced_dirichlet"
+_CHUNKED_PROJECTED_SOBOL_CONSTRUCTION_METHOD = "scrambled_sobol_balanced_dirichlet_chunked_projected"
 _SUPPORTED_CONSTRUCTION_METHODS = frozenset(
     {
         _PCG64_CONSTRUCTION_METHOD,
         _SOBOL_CONSTRUCTION_METHOD,
+        _CHUNKED_PROJECTED_SOBOL_CONSTRUCTION_METHOD,
     }
 )
 _SOBOL_BITS = 52
@@ -397,6 +407,11 @@ class ConditionalAllocationMixture:
         construction_method: Frozen allocation-bank construction contract.
         construction_scipy_version: SciPy version that constructed a Sobol
             artifact.  This is omitted from the legacy PCG64 artifact.
+        construction_sample_chunk_size: Number of Sobol rows materialized at
+            once by the chunked projected construction.  This is part of the
+            version-three numerical identity.
+        construction_projection_chunk_size: Fixed row microbatch used for
+            each native-to-summary matrix multiplication.
     """
 
     projected_unit_mass_residual_factors: FloatArray = field(init=False)
@@ -416,6 +431,8 @@ class ConditionalAllocationMixture:
     partition_sha256: str = field(init=False)
     construction_method: str = field(init=False)
     construction_scipy_version: str | None = field(init=False)
+    construction_sample_chunk_size: int | None = field(init=False)
+    construction_projection_chunk_size: int | None = field(init=False)
     sha256: str = field(init=False)
 
     def __init__(
@@ -435,6 +452,8 @@ class ConditionalAllocationMixture:
         summary_basis_sha256: str,
         construction_method: str = _PCG64_CONSTRUCTION_METHOD,
         construction_scipy_version: str | None = None,
+        construction_sample_chunk_size: int | None = None,
+        construction_projection_chunk_size: int | None = None,
     ) -> None:
         """Validate, own, and fingerprint a frozen conditional mixture."""
         residual_factors = _readonly_float(
@@ -482,7 +501,10 @@ class ConditionalAllocationMixture:
         if np.unique(owned_cell_ids).size != owned_cell_ids.size:
             raise ValueError("cell_ids must be unique.")
         normalized_method = _construction_method(construction_method)
-        if normalized_method == _SOBOL_CONSTRUCTION_METHOD:
+        if normalized_method in {
+            _SOBOL_CONSTRUCTION_METHOD,
+            _CHUNKED_PROJECTED_SOBOL_CONSTRUCTION_METHOD,
+        }:
             _require_power_of_two(sample_count, name="sample_count")
             node_count = _sobol_dimension_count(owned_labels)
             if any(
@@ -497,10 +519,55 @@ class ConditionalAllocationMixture:
                 raise ValueError("construction_scipy_version must be non-empty.")
             else:
                 normalized_scipy_version = construction_scipy_version
+            if normalized_method == _CHUNKED_PROJECTED_SOBOL_CONSTRUCTION_METHOD:
+                normalized_chunk_size = _positive_integer(
+                    construction_sample_chunk_size,  # type: ignore[arg-type]
+                    name="construction_sample_chunk_size",
+                )
+                _require_power_of_two(
+                    normalized_chunk_size,
+                    name="construction_sample_chunk_size",
+                )
+                if normalized_chunk_size > sample_count:
+                    raise ValueError("construction_sample_chunk_size cannot exceed sample_count.")
+                if region_count != 1:
+                    raise ValueError(
+                        "the chunked projected Sobol construction currently "
+                        "supports exactly one retained root region."
+                    )
+                normalized_projection_chunk_size = _positive_integer(
+                    construction_projection_chunk_size,  # type: ignore[arg-type]
+                    name="construction_projection_chunk_size",
+                )
+                _require_power_of_two(
+                    normalized_projection_chunk_size,
+                    name="construction_projection_chunk_size",
+                )
+                if normalized_projection_chunk_size > normalized_chunk_size:
+                    raise ValueError(
+                        "construction_projection_chunk_size cannot exceed construction_sample_chunk_size."
+                    )
+            else:
+                if (
+                    construction_sample_chunk_size is not None
+                    or construction_projection_chunk_size is not None
+                ):
+                    raise ValueError(
+                        "construction chunk sizes are only valid for the "
+                        "chunked projected Sobol construction."
+                    )
+                normalized_chunk_size = None
+                normalized_projection_chunk_size = None
         else:
             if construction_scipy_version is not None:
                 raise ValueError("construction_scipy_version is only valid for Sobol artifacts.")
+            if construction_sample_chunk_size is not None or construction_projection_chunk_size is not None:
+                raise ValueError(
+                    "construction chunk sizes are only valid for the chunked projected Sobol construction."
+                )
             normalized_scipy_version = None
+            normalized_chunk_size = None
+            normalized_projection_chunk_size = None
         totals = _readonly_float(alpha_totals, name="alpha_totals", ndim=1)
         if totals.shape != (region_count,) or np.any(totals <= 0.0):
             raise ValueError("alpha_totals must contain one finite positive value per region.")
@@ -569,6 +636,16 @@ class ConditionalAllocationMixture:
             "construction_scipy_version",
             normalized_scipy_version,
         )
+        object.__setattr__(
+            self,
+            "construction_sample_chunk_size",
+            normalized_chunk_size,
+        )
+        object.__setattr__(
+            self,
+            "construction_projection_chunk_size",
+            normalized_projection_chunk_size,
+        )
         object.__setattr__(self, "sha256", _sha256_text(self.to_json()))
         # Keep sample_count referenced here: it documents that the leading
         # dimension was deliberately validated before fingerprinting.
@@ -585,6 +662,8 @@ class ConditionalAllocationMixture:
         source_provenance: str,
         cell_ids: ArrayLike | None = None,
         construction_method: str = _PCG64_CONSTRUCTION_METHOD,
+        sample_chunk_size: int | None = None,
+        projection_chunk_size: int | None = None,
     ) -> ConditionalAllocationMixture:
         """Construct a replayable frozen bank from one additive native model.
 
@@ -613,6 +692,14 @@ class ConditionalAllocationMixture:
                 independently scrambled blocks only above the engine's
                 dimension limit, and stable-ID balanced-tree Dirichlet
                 inversion.
+            sample_chunk_size: Number of sample rows materialized at once by
+                ``scrambled_sobol_balanced_dirichlet_chunked_projected``.
+                It must be a power of two no greater than ``sample_count``.
+                The chunked method currently requires one root region.
+            projection_chunk_size: Fixed power-of-two row microbatch for
+                native-to-summary projection.  It cannot exceed
+                ``sample_chunk_size``.  Holding this fixed makes projected
+                floating-point values independent of the memory chunk.
 
         Returns:
             Immutable conditional-allocation mixture artifact.
@@ -629,11 +716,40 @@ class ConditionalAllocationMixture:
         )
         normalized_seed = _source_seed(source_seed)
         normalized_method = _construction_method(construction_method)
-        if normalized_method == _SOBOL_CONSTRUCTION_METHOD:
+        if normalized_method in {
+            _SOBOL_CONSTRUCTION_METHOD,
+            _CHUNKED_PROJECTED_SOBOL_CONSTRUCTION_METHOD,
+        }:
             _require_power_of_two(
                 normalized_sample_count,
                 name="sample_count",
             )
+        if normalized_method == _CHUNKED_PROJECTED_SOBOL_CONSTRUCTION_METHOD:
+            normalized_chunk_size = _positive_integer(
+                sample_chunk_size,  # type: ignore[arg-type]
+                name="sample_chunk_size",
+            )
+            _require_power_of_two(
+                normalized_chunk_size,
+                name="sample_chunk_size",
+            )
+            if normalized_chunk_size > normalized_sample_count:
+                raise ValueError("sample_chunk_size cannot exceed sample_count.")
+            normalized_projection_chunk_size = _positive_integer(
+                projection_chunk_size,  # type: ignore[arg-type]
+                name="projection_chunk_size",
+            )
+            _require_power_of_two(
+                normalized_projection_chunk_size,
+                name="projection_chunk_size",
+            )
+            if normalized_projection_chunk_size > normalized_chunk_size:
+                raise ValueError("projection_chunk_size cannot exceed sample_chunk_size.")
+        elif sample_chunk_size is not None or projection_chunk_size is not None:
+            raise ValueError("chunk sizes are only valid for the chunked projected Sobol construction.")
+        else:
+            normalized_chunk_size = None
+            normalized_projection_chunk_size = None
         if isinstance(partition, PartitionSummaryFactors):
             supplied_factors = partition
             labels = supplied_factors.labels
@@ -704,7 +820,7 @@ class ConditionalAllocationMixture:
                 region_columns = summary_design[:, sorted_indices]
                 expected = region_columns @ (region_alphas / float(np.sum(region_alphas)))
                 residual_factors[:, :, region] = shares @ region_columns.T - expected[np.newaxis, :]
-        else:
+        elif normalized_method == _SOBOL_CONSTRUCTION_METHOD:
             cls._fill_scrambled_sobol_residual_factors(
                 residual_factors=residual_factors,
                 flat_labels=flat_labels,
@@ -713,6 +829,24 @@ class ConditionalAllocationMixture:
                 summary_design=summary_design,
                 region_count=factors.region_count,
                 sample_count=normalized_sample_count,
+                source_seed=normalized_seed,
+            )
+        else:
+            if factors.region_count != 1:
+                raise ValueError(
+                    "the chunked projected Sobol construction currently "
+                    "supports exactly one retained root region."
+                )
+            assert normalized_chunk_size is not None
+            assert normalized_projection_chunk_size is not None
+            cls._fill_chunked_projected_sobol_residual_factors(
+                residual_factors=residual_factors,
+                flat_ids=flat_ids,
+                flat_alphas=flat_alphas,
+                summary_design=summary_design,
+                sample_count=normalized_sample_count,
+                sample_chunk_size=normalized_chunk_size,
+                projection_chunk_size=normalized_projection_chunk_size,
                 source_seed=normalized_seed,
             )
 
@@ -735,7 +869,158 @@ class ConditionalAllocationMixture:
             _array_sha256(noise),
             _array_sha256(basis),
             normalized_method,
+            None,
+            normalized_chunk_size,
+            normalized_projection_chunk_size,
         )
+
+    @staticmethod
+    def _fill_chunked_projected_sobol_residual_factors(
+        *,
+        residual_factors: FloatArray,
+        flat_ids: IntArray,
+        flat_alphas: FloatArray,
+        summary_design: FloatArray,
+        sample_count: int,
+        sample_chunk_size: int,
+        projection_chunk_size: int,
+        source_seed: int,
+    ) -> None:
+        """Fill one root bank without retaining sample-by-native allocations."""
+        if int(qmc.Sobol.MAXDIM) < _SOBOL_MAX_DIMENSION:
+            raise RuntimeError(
+                "installed SciPy Sobol implementation has a smaller dimension "
+                "limit than the recorded construction contract."
+            )
+        order = np.argsort(flat_ids, kind="stable")
+        sorted_indices = np.asarray(order, dtype=np.int64)
+        sorted_ids = np.asarray(flat_ids[sorted_indices], dtype=np.int64)
+        region_alphas = np.asarray(flat_alphas[sorted_indices], dtype=np.float64)
+        cell_count = int(sorted_indices.size)
+        if cell_count == 1:
+            residual_factors[:, :, 0] = 0.0
+            return
+
+        nodes: list[tuple[int, int, int, float, float]] = []
+        for lower, middle, upper in _balanced_tree_ranges(cell_count):
+            left_alpha = math.fsum(float(value) for value in region_alphas[lower:middle])
+            right_alpha = math.fsum(float(value) for value in region_alphas[middle:upper])
+            if (
+                not math.isfinite(left_alpha)
+                or not math.isfinite(right_alpha)
+                or left_alpha <= 0.0
+                or right_alpha <= 0.0
+            ):
+                raise ValueError("balanced Dirichlet node concentrations must be finite and positive.")
+            nodes.append((lower, middle, upper, left_alpha, right_alpha))
+
+        labels = np.zeros(cell_count, dtype=np.int64)
+        catalogue_sha256 = _sobol_catalogue_sha256(labels, sorted_ids)
+        node_count = len(nodes)
+        block_dimensions = _sobol_block_dimensions(node_count)
+        engines: list[qmc.Sobol] = []
+        for block_index, dimension in enumerate(block_dimensions):
+            engines.append(
+                qmc.Sobol(
+                    d=dimension,
+                    scramble=True,
+                    bits=_SOBOL_BITS,
+                    rng=_sobol_block_seed(
+                        source_seed,
+                        node_count=node_count,
+                        block_index=block_index,
+                        catalogue_sha256=catalogue_sha256,
+                    ),
+                    optimization=None,
+                )
+            )
+
+        region_columns = summary_design[:, sorted_indices]
+        # Match PartitionSummaryFactors exactly: the stored observation mean
+        # and the projected residual use one represented concentration total.
+        expected = region_columns @ (region_alphas / float(np.sum(region_alphas)))
+        for start in range(0, sample_count, sample_chunk_size):
+            stop = min(start + sample_chunk_size, sample_count)
+            chunk_count = stop - start
+            shares = np.empty((chunk_count, cell_count), dtype=np.float64)
+            active_masses: dict[tuple[int, int], FloatArray] = {
+                (0, cell_count): cast(
+                    FloatArray,
+                    np.ones(chunk_count, dtype=np.float64),
+                )
+            }
+            node_cursor = 0
+            for engine, dimension in zip(
+                engines,
+                block_dimensions,
+                strict=True,
+            ):
+                uniforms = engine.random(chunk_count)
+                if uniforms.shape != (chunk_count, dimension):
+                    raise RuntimeError("Sobol engine returned an unexpected sample shape.")
+                if not np.all(np.isfinite(uniforms)) or np.any((uniforms < 0.0) | (uniforms > 1.0)):
+                    raise ValueError("Sobol coordinates must be finite and lie in [0, 1].")
+                block_nodes = nodes[node_cursor : node_cursor + dimension]
+                left_parameters = np.asarray(
+                    [node[3] for node in block_nodes],
+                    dtype=np.float64,
+                )
+                right_parameters = np.asarray(
+                    [node[4] for node in block_nodes],
+                    dtype=np.float64,
+                )
+                fractions = special.betaincinv(
+                    left_parameters[np.newaxis, :],
+                    right_parameters[np.newaxis, :],
+                    uniforms,
+                )
+                if not np.all(np.isfinite(fractions)) or np.any((fractions < 0.0) | (fractions > 1.0)):
+                    raise ValueError("balanced Dirichlet inverse produced an invalid split fraction.")
+                for local_coordinate in range(dimension):
+                    lower, middle, upper, _, _ = block_nodes[local_coordinate]
+                    parent_mass = active_masses.pop((lower, upper))
+                    left_mass = parent_mass * fractions[:, local_coordinate]
+                    right_mass = parent_mass - left_mass
+                    if (
+                        not np.all(np.isfinite(left_mass))
+                        or not np.all(np.isfinite(right_mass))
+                        or np.any(left_mass < 0.0)
+                        or np.any(right_mass < 0.0)
+                        or np.any(left_mass > parent_mass)
+                        or np.any(right_mass > parent_mass)
+                    ):
+                        raise ValueError("balanced Dirichlet inverse produced invalid child masses.")
+                    if np.any(np.abs((left_mass + right_mass) - parent_mass) > np.spacing(parent_mass)):
+                        raise ValueError("balanced Dirichlet inverse did not conserve parent mass.")
+                    if middle - lower == 1:
+                        shares[:, lower] = left_mass
+                    else:
+                        active_masses[(lower, middle)] = cast(
+                            FloatArray,
+                            left_mass,
+                        )
+                    if upper - middle == 1:
+                        shares[:, middle] = right_mass
+                    else:
+                        active_masses[(middle, upper)] = cast(
+                            FloatArray,
+                            right_mass,
+                        )
+                node_cursor += dimension
+            if node_cursor != node_count or active_masses:
+                raise RuntimeError("balanced Dirichlet tree catalogue was not exhausted.")
+            if not np.all(np.isfinite(shares)) or np.any((shares < 0.0) | (shares > 1.0)):
+                raise ValueError("balanced Dirichlet inverse produced invalid allocation shares.")
+            for projection_start in range(0, chunk_count, projection_chunk_size):
+                projection_stop = min(
+                    projection_start + projection_chunk_size,
+                    chunk_count,
+                )
+                output_start = start + projection_start
+                output_stop = start + projection_stop
+                residual_factors[output_start:output_stop, :, 0] = (
+                    shares[projection_start:projection_stop] @ region_columns.T - expected[np.newaxis, :]
+                )
 
     @staticmethod
     def _fill_scrambled_sobol_residual_factors(
@@ -989,7 +1274,7 @@ class ConditionalAllocationMixture:
 
         del common_payload["bit_generator"]
         node_count = _sobol_dimension_count(self.labels)
-        return {
+        sobol_payload: dict[str, object] = {
             "schema": _ARTIFACT_SCHEMA_V2,
             "construction_method": _SOBOL_CONSTRUCTION_METHOD,
             "construction_scipy_version": self.construction_scipy_version,
@@ -1010,6 +1295,19 @@ class ConditionalAllocationMixture:
             "sobol_block_dimensions": _sobol_block_dimensions(node_count),
             **common_payload,
         }
+        if self.construction_method == _SOBOL_CONSTRUCTION_METHOD:
+            return sobol_payload
+        sobol_payload.update(
+            {
+                "schema": _ARTIFACT_SCHEMA_V3,
+                "construction_method": (_CHUNKED_PROJECTED_SOBOL_CONSTRUCTION_METHOD),
+                "construction_sample_chunk_size": (self.construction_sample_chunk_size),
+                "construction_projection_chunk_size": (self.construction_projection_chunk_size),
+                "sample_traversal": ("ascending-contiguous-sample-chunks/persistent-sobol-engines"),
+                "projection_rule": ("project-fixed-row-microbatches-then-discard-native-allocations"),
+            }
+        )
+        return sobol_payload
 
     def to_json(self) -> str:
         """Return the canonical artifact serialization.
@@ -1090,6 +1388,12 @@ class ConditionalAllocationMixture:
             "sobol_catalogue_sha256",
             "sobol_block_dimensions",
         }
+        version_three_fields = version_two_fields | {
+            "construction_sample_chunk_size",
+            "construction_projection_chunk_size",
+            "sample_traversal",
+            "projection_rule",
+        }
         if not isinstance(payload, dict):
             raise ValueError("serialized artifact has unexpected fields.")
         schema = payload.get("schema")
@@ -1099,6 +1403,9 @@ class ConditionalAllocationMixture:
         elif schema == _ARTIFACT_SCHEMA_V2:
             expected_fields = version_two_fields
             construction_method = _SOBOL_CONSTRUCTION_METHOD
+        elif schema == _ARTIFACT_SCHEMA_V3:
+            expected_fields = version_three_fields
+            construction_method = _CHUNKED_PROJECTED_SOBOL_CONSTRUCTION_METHOD
         else:
             raise ValueError("serialized artifact schema is unsupported.")
         if set(payload) != expected_fields:
@@ -1107,7 +1414,7 @@ class ConditionalAllocationMixture:
             if payload["bit_generator"] != "PCG64":
                 raise ValueError("serialized artifact bit generator is unsupported.")
         else:
-            if payload["construction_method"] != _SOBOL_CONSTRUCTION_METHOD:
+            if payload["construction_method"] != construction_method:
                 raise ValueError("serialized artifact construction method is unsupported.")
             if payload["quasi_random_engine"] != "scipy.stats.qmc.Sobol":
                 raise ValueError("serialized artifact quasi-random engine is unsupported.")
@@ -1127,6 +1434,15 @@ class ConditionalAllocationMixture:
                 "sha256(schema-v2,source-seed,node-count,block-index,catalogue-sha256)/little-endian-first-64"
             ):
                 raise ValueError("serialized artifact Sobol seed derivation is unsupported.")
+            if construction_method == _CHUNKED_PROJECTED_SOBOL_CONSTRUCTION_METHOD:
+                if payload["sample_traversal"] != (
+                    "ascending-contiguous-sample-chunks/persistent-sobol-engines"
+                ):
+                    raise ValueError("serialized artifact sample traversal is unsupported.")
+                if payload["projection_rule"] != (
+                    "project-fixed-row-microbatches-then-discard-native-allocations"
+                ):
+                    raise ValueError("serialized artifact projection rule is unsupported.")
         if payload["factor_axes"] != ["sample", "summary", "region"]:
             raise ValueError("serialized artifact factor axes are unsupported.")
         residual_factors = _array_from_payload(
@@ -1181,11 +1497,28 @@ class ConditionalAllocationMixture:
             construction_method,
             (
                 payload["construction_scipy_version"]
-                if construction_method == _SOBOL_CONSTRUCTION_METHOD
+                if construction_method
+                in {
+                    _SOBOL_CONSTRUCTION_METHOD,
+                    _CHUNKED_PROJECTED_SOBOL_CONSTRUCTION_METHOD,
+                }
+                else None
+            ),
+            (
+                payload["construction_sample_chunk_size"]
+                if construction_method == _CHUNKED_PROJECTED_SOBOL_CONSTRUCTION_METHOD
+                else None
+            ),
+            (
+                payload["construction_projection_chunk_size"]
+                if construction_method == _CHUNKED_PROJECTED_SOBOL_CONSTRUCTION_METHOD
                 else None
             ),
         )
-        if construction_method == _SOBOL_CONSTRUCTION_METHOD:
+        if construction_method in {
+            _SOBOL_CONSTRUCTION_METHOD,
+            _CHUNKED_PROJECTED_SOBOL_CONSTRUCTION_METHOD,
+        }:
             expected_catalogue_sha256 = _sobol_catalogue_sha256(
                 result.labels,
                 result.cell_ids,

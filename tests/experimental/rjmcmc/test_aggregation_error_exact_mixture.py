@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import math
 
 import numpy as np
@@ -9,12 +10,16 @@ import pytest
 from scipy.special import logsumexp
 from scipy.stats import multivariate_normal
 
+from openghg_inversions.experimental.rjmcmc import (
+    aggregation_error_conditional_mixture as conditional_mixture_module,
+)
 from openghg_inversions.experimental.rjmcmc.aggregation_error_conditional_mixture import (
     ConditionalAllocationMixture,
 )
 from openghg_inversions.experimental.rjmcmc.aggregation_error_exact_mixture import (
     CompressedRootMixture,
     RootResidualSpectrum,
+    build_chunked_projected_root_bank,
     compressed_root_mixture_log_likelihood,
 )
 from openghg_inversions.experimental.rjmcmc.aggregation_error_low_rank import (
@@ -104,6 +109,28 @@ def _compressed(
         random_seed=random_seed,
     )
     return source, artifact
+
+
+def _chunked_source(
+    spectrum: RootResidualSpectrum,
+    *,
+    mixture_rank: int,
+    sample_count: int = 64,
+    sample_chunk_size: int = 8,
+    projection_chunk_size: int = 4,
+) -> ConditionalAllocationMixture:
+    """Build a directly projected chunked root bank."""
+    return build_chunked_projected_root_bank(
+        _aggregation(),
+        spectrum,
+        mixture_rank=mixture_rank,
+        sample_count=sample_count,
+        sample_chunk_size=sample_chunk_size,
+        projection_chunk_size=projection_chunk_size,
+        source_seed=731,
+        source_provenance="unit-test chunked projected source",
+        cell_ids=np.array([101, 102, 201, 202], dtype=np.int64),
+    )
 
 
 def _direct_root_covariance() -> np.ndarray:
@@ -605,3 +632,404 @@ def test_rank_zero_likelihood_is_the_normalized_diagonal_gaussian() -> None:
         root_mass,
         offset=offset,
     ) == pytest.approx(expected, abs=2.0e-15)
+
+
+def test_chunked_projected_bank_matches_all_at_once_leading_coordinates() -> None:
+    """Chunking should preserve the frozen Sobol bank before compression."""
+    spectrum = _spectrum()
+    full_source = _source(spectrum, sample_count=64)
+    chunked = _chunked_source(
+        spectrum,
+        mixture_rank=2,
+        sample_count=64,
+        sample_chunk_size=8,
+    )
+    larger_memory_chunk = _chunked_source(
+        spectrum,
+        mixture_rank=2,
+        sample_count=64,
+        sample_chunk_size=16,
+    )
+
+    assert chunked.summary_rank == 2
+    assert chunked.construction_sample_chunk_size == 8
+    assert chunked.construction_projection_chunk_size == 4
+    np.testing.assert_allclose(
+        chunked.projected_unit_mass_residual_factors,
+        full_source.projected_unit_mass_residual_factors[:, :2],
+        rtol=0.0,
+        atol=2.0e-15,
+    )
+    np.testing.assert_array_equal(
+        chunked.projected_unit_mass_residual_factors,
+        larger_memory_chunk.projected_unit_mass_residual_factors,
+    )
+
+
+def test_chunked_projected_bank_replays_and_roundtrips_v3() -> None:
+    """A fixed chunk traversal should replay its values and v3 identity."""
+    spectrum = _spectrum()
+    first = _chunked_source(
+        spectrum,
+        mixture_rank=2,
+        sample_count=64,
+        sample_chunk_size=8,
+    )
+    replayed_construction = _chunked_source(
+        spectrum,
+        mixture_rank=2,
+        sample_count=64,
+        sample_chunk_size=8,
+    )
+    serialized = first.to_json()
+    replayed_artifact = ConditionalAllocationMixture.from_json(
+        serialized,
+        expected_sha256=first.sha256,
+    )
+
+    np.testing.assert_array_equal(
+        first.projected_unit_mass_residual_factors,
+        replayed_construction.projected_unit_mass_residual_factors,
+    )
+    assert first.sha256 == replayed_construction.sha256
+    assert replayed_artifact.to_json() == serialized
+    assert replayed_artifact.sha256 == first.sha256
+    assert json.loads(serialized)["schema"] == ("aggregation-conditional-allocation-mixture-v3")
+
+
+def test_chunked_projected_bank_preserves_nested_same_seed_prefix() -> None:
+    """Increasing a Sobol bank should retain every earlier projected row."""
+    spectrum = _spectrum()
+    short = _chunked_source(
+        spectrum,
+        mixture_rank=2,
+        sample_count=32,
+        sample_chunk_size=8,
+        projection_chunk_size=4,
+    )
+    long = _chunked_source(
+        spectrum,
+        mixture_rank=2,
+        sample_count=64,
+        sample_chunk_size=16,
+        projection_chunk_size=4,
+    )
+
+    np.testing.assert_array_equal(
+        short.projected_unit_mass_residual_factors,
+        long.projected_unit_mass_residual_factors[:32],
+    )
+
+
+def test_chunked_projected_bank_preserves_stable_cell_permutation() -> None:
+    """Stable IDs should make v3 independent of native storage order."""
+    alphas, design, noise_sd = _native_inputs()
+    cell_ids = np.array([101, 102, 201, 202], dtype=np.int64)
+    original_native = AdditiveDirichletAggregation(
+        alphas,
+        design,
+        noise_sd,
+        np.eye(3),
+    )
+    original_spectrum = RootResidualSpectrum.from_aggregation(original_native)
+    original = build_chunked_projected_root_bank(
+        original_native,
+        original_spectrum,
+        mixture_rank=2,
+        sample_count=64,
+        sample_chunk_size=8,
+        projection_chunk_size=4,
+        source_seed=731,
+        source_provenance="original v3 stable-ID source",
+        cell_ids=cell_ids,
+    )
+    permutation = np.array([2, 0, 3, 1])
+    permuted_native = AdditiveDirichletAggregation(
+        alphas[permutation],
+        design[:, permutation],
+        noise_sd,
+        np.eye(3),
+    )
+    permuted_spectrum = RootResidualSpectrum.from_aggregation(permuted_native)
+    permuted = build_chunked_projected_root_bank(
+        permuted_native,
+        permuted_spectrum,
+        mixture_rank=2,
+        sample_count=64,
+        sample_chunk_size=8,
+        projection_chunk_size=4,
+        source_seed=731,
+        source_provenance="permuted v3 stable-ID source",
+        cell_ids=cell_ids[permutation],
+    )
+
+    np.testing.assert_allclose(
+        original.projected_unit_mass_residual_factors,
+        permuted.projected_unit_mass_residual_factors,
+        rtol=0.0,
+        atol=5.0e-15,
+    )
+
+
+def test_projected_source_compresses_like_legacy_full_rank_source() -> None:
+    """A q-rank bank should preserve leading-q compression and likelihood."""
+    spectrum = _spectrum()
+    full_source = _source(spectrum, sample_count=64)
+    projected_source = _chunked_source(
+        spectrum,
+        mixture_rank=2,
+        sample_count=64,
+        sample_chunk_size=8,
+    )
+    legacy = CompressedRootMixture.from_source(
+        full_source,
+        spectrum,
+        mixture_rank=2,
+        component_count=1,
+        random_seed=919,
+    )
+    projected = CompressedRootMixture.from_source(
+        projected_source,
+        spectrum,
+        mixture_rank=2,
+        component_count=1,
+        random_seed=919,
+    )
+
+    np.testing.assert_allclose(projected.means, legacy.means, atol=2.0e-16)
+    np.testing.assert_allclose(
+        projected.covariances,
+        legacy.covariances,
+        rtol=0.0,
+        atol=2.0e-16,
+    )
+    assert projected.log_likelihood(
+        np.array([0.4, -0.3, 0.8]),
+        1.7,
+    ) == pytest.approx(
+        legacy.log_likelihood(np.array([0.4, -0.3, 0.8]), 1.7),
+        abs=2.0e-14,
+    )
+
+
+def test_rank_zero_chunked_source_uses_full_gaussian_complement() -> None:
+    """A zero-column bank should leave every spectrum direction in closure."""
+    spectrum = _spectrum()
+    source = _chunked_source(
+        spectrum,
+        mixture_rank=0,
+        sample_count=16,
+        sample_chunk_size=8,
+        projection_chunk_size=4,
+    )
+    artifact = CompressedRootMixture.from_source(
+        source,
+        spectrum,
+        mixture_rank=0,
+        component_count=1,
+    )
+    observation = np.array([0.4, -0.3, 0.8])
+    root_mass = 1.7
+    expected = low_rank_gaussian_log_likelihood(
+        observation,
+        root_mass * spectrum.observation_mean_design,
+        spectrum.noise_sd,
+        spectrum.basis,
+        np.diag(root_mass**2 * spectrum.eigenvalues),
+    )
+
+    assert source.projected_unit_mass_residual_factors.shape == (16, 0, 1)
+    assert artifact.log_likelihood(observation, root_mass) == pytest.approx(
+        expected,
+        abs=2.0e-14,
+    )
+
+
+def test_compression_rejects_nearly_rotated_source_basis() -> None:
+    """Mixture coordinates require an exact leading spectrum-basis identity."""
+    spectrum = _spectrum()
+    source = _source(spectrum)
+    angle = 1.0e-12
+    rotation = np.eye(source.summary_rank)
+    rotation[:2, :2] = np.array(
+        [
+            [math.cos(angle), -math.sin(angle)],
+            [math.sin(angle), math.cos(angle)],
+        ]
+    )
+    rotated_basis = source.summary_basis @ rotation
+    rotated_source = ConditionalAllocationMixture(
+        source.projected_unit_mass_residual_factors,
+        source.observation_mean_design,
+        source.noise_sd,
+        rotated_basis,
+        source.labels,
+        source.cell_ids,
+        source.alpha_totals,
+        source.source_seed,
+        "nearly rotated source",
+        source.cell_alphas_sha256,
+        source.design_sha256,
+        source.noise_sd_sha256,
+        conditional_mixture_module._array_sha256(rotated_basis),
+        source.construction_method,
+        source.construction_scipy_version,
+    )
+
+    with pytest.raises(ValueError, match="leading prefix"):
+        CompressedRootMixture.from_source(
+            rotated_source,
+            spectrum,
+            mixture_rank=2,
+            component_count=1,
+        )
+
+
+def test_chunked_projected_bank_rejects_invalid_chunk_and_native_identity() -> None:
+    """Invalid chunk geometry and mismatched spectra should fail closed."""
+    spectrum = _spectrum()
+    with pytest.raises(ValueError, match="power of two"):
+        _chunked_source(
+            spectrum,
+            mixture_rank=2,
+            sample_count=64,
+            sample_chunk_size=7,
+            projection_chunk_size=4,
+        )
+    with pytest.raises(ValueError, match="cannot exceed"):
+        _chunked_source(
+            spectrum,
+            mixture_rank=2,
+            sample_count=64,
+            sample_chunk_size=128,
+            projection_chunk_size=4,
+        )
+    incompatible = AdditiveDirichletAggregation(
+        np.array([0.8, 1.1, 1.6, 0.9]),
+        _native_inputs()[1],
+        _native_inputs()[2],
+        np.eye(3),
+    )
+    with pytest.raises(ValueError, match="native identities"):
+        build_chunked_projected_root_bank(
+            incompatible,
+            spectrum,
+            mixture_rank=2,
+            sample_count=64,
+            sample_chunk_size=8,
+            projection_chunk_size=4,
+            source_seed=731,
+            source_provenance="incompatible source",
+        )
+
+
+def test_chunked_constructor_never_requests_more_than_one_sample_chunk(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Sobol temporaries should remain bounded by the declared chunk size."""
+    from scipy.stats import qmc
+
+    observed_counts: list[int] = []
+    original = qmc.Sobol.random
+
+    def recording_random(
+        self: qmc.Sobol,
+        n: int = 1,
+        *,
+        workers: int = 1,
+    ) -> np.ndarray:
+        """Record each allocation request before delegating to SciPy."""
+        observed_counts.append(n)
+        return original(self, n=n, workers=workers)
+
+    monkeypatch.setattr(qmc.Sobol, "random", recording_random)
+    _chunked_source(
+        _spectrum(),
+        mixture_rank=2,
+        sample_count=64,
+        sample_chunk_size=8,
+        projection_chunk_size=4,
+    )
+
+    assert observed_counts
+    assert max(observed_counts) == 8
+
+
+def test_chunked_projected_bank_preserves_forced_multiblock_sequence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Chunking should preserve coordinates across Sobol dimension blocks."""
+    monkeypatch.setattr(
+        conditional_mixture_module,
+        "_SOBOL_MAX_DIMENSION",
+        2,
+    )
+    spectrum = _spectrum()
+    full_source = _source(spectrum, sample_count=64)
+    chunked = _chunked_source(
+        spectrum,
+        mixture_rank=2,
+        sample_count=64,
+        sample_chunk_size=8,
+        projection_chunk_size=4,
+    )
+
+    np.testing.assert_allclose(
+        chunked.projected_unit_mass_residual_factors,
+        full_source.projected_unit_mass_residual_factors[:, :2],
+        rtol=0.0,
+        atol=2.0e-15,
+    )
+
+
+def test_chunked_centring_matches_stored_mean_for_heterogeneous_large_alphas() -> None:
+    """Projected residuals and means should share one represented alpha total."""
+    aggregation = AdditiveDirichletAggregation(
+        np.array([1.0, 8.0e-17, 8.0e-17, 8.0e-17]),
+        np.array(
+            [
+                [0.2, 1.1e9, -0.7e9, 0.9e9],
+                [1.4, -0.3e9, 0.8e9, 0.1e9],
+            ]
+        ),
+        np.array([0.6, 0.9]),
+        np.eye(2),
+    )
+    spectrum = RootResidualSpectrum.from_aggregation(aggregation)
+    source_aggregation = AdditiveDirichletAggregation(
+        aggregation.cell_alphas,
+        aggregation.design,
+        aggregation.noise_sd,
+        spectrum.basis,
+    )
+    full_source = ConditionalAllocationMixture.from_aggregation(
+        source_aggregation,
+        np.zeros(4, dtype=np.int64),
+        sample_count=16,
+        source_seed=731,
+        source_provenance="large-alpha all-at-once source",
+        cell_ids=np.array([101, 102, 201, 202]),
+        construction_method="scrambled_sobol_balanced_dirichlet",
+    )
+    chunked = build_chunked_projected_root_bank(
+        aggregation,
+        spectrum,
+        mixture_rank=spectrum.retained_rank,
+        sample_count=16,
+        sample_chunk_size=8,
+        projection_chunk_size=4,
+        source_seed=731,
+        source_provenance="large-alpha chunked source",
+        cell_ids=np.array([101, 102, 201, 202]),
+    )
+
+    np.testing.assert_array_equal(
+        chunked.observation_mean_design,
+        full_source.observation_mean_design,
+    )
+    np.testing.assert_allclose(
+        chunked.projected_unit_mass_residual_factors,
+        full_source.projected_unit_mass_residual_factors,
+        rtol=0.0,
+        atol=2.0e-15,
+    )

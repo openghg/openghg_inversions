@@ -14,6 +14,10 @@ projection omission and finite-bank cluster compression:
 * replace every cluster by a Gaussian with the cluster's exact population
   mean and covariance.
 
+For large native grids, :func:`build_chunked_projected_root_bank` constructs
+the frozen bank directly in the leading non-Gaussian coordinates while
+retaining the complete spectrum for the analytic Gaussian complement.
+
 The resulting finite mixture preserves the source bank's normalization, mean,
 and covariance.  Measurement noise is convolved analytically.  Residual
 eigendirections retained outside the non-Gaussian mixture use a Gaussian
@@ -51,6 +55,7 @@ IntArray: TypeAlias = NDArray[np.int64]
 __all__ = [
     "CompressedRootMixture",
     "RootResidualSpectrum",
+    "build_chunked_projected_root_bank",
     "compressed_root_mixture_log_likelihood",
 ]
 
@@ -438,6 +443,81 @@ class RootResidualSpectrum:
         return 0.5 * math.sqrt(self.discarded_variance)
 
 
+def build_chunked_projected_root_bank(
+    aggregation: AdditiveDirichletAggregation,
+    spectrum: RootResidualSpectrum,
+    *,
+    mixture_rank: int,
+    sample_count: int,
+    sample_chunk_size: int,
+    projection_chunk_size: int,
+    source_seed: int,
+    source_provenance: str,
+    cell_ids: ArrayLike | None = None,
+) -> ConditionalAllocationMixture:
+    """Build a root bank directly in leading spectrum coordinates.
+
+    The complete analytic ``spectrum`` remains authoritative for directions
+    beyond ``mixture_rank``.  Native allocation shares are materialized only
+    for one sample chunk, projected immediately, and discarded.  This avoids
+    the all-at-once ``sample_count * native_cell_count`` allocation array.
+
+    Args:
+        aggregation: Common additive native Gamma--Dirichlet model.
+        spectrum: Analytic root spectrum from the same native model.
+        mixture_rank: Number of leading spectrum coordinates stored.
+        sample_count: Power-of-two scrambled-Sobol bank size.
+        sample_chunk_size: Power-of-two rows materialized at once, no greater
+            than ``sample_count``.
+        projection_chunk_size: Fixed power-of-two projection microbatch, no
+            greater than ``sample_chunk_size``.
+        source_seed: Seed for the frozen scrambled-Sobol catalogue.
+        source_provenance: Human-readable source description.
+        cell_ids: Optional unique stable scientific native-cell identifiers.
+
+    Returns:
+        Immutable one-root projected source bank.
+
+    Raises:
+        TypeError: If model, spectrum, rank, or integer controls are invalid.
+        ValueError: If native identities disagree or ranks are out of range.
+    """
+    if not isinstance(aggregation, AdditiveDirichletAggregation):
+        raise TypeError("aggregation must be an AdditiveDirichletAggregation.")
+    if not isinstance(spectrum, RootResidualSpectrum):
+        raise TypeError("spectrum must be a RootResidualSpectrum.")
+    if isinstance(mixture_rank, bool) or not isinstance(mixture_rank, Integral):
+        raise TypeError("mixture_rank must be an integer.")
+    rank = int(mixture_rank)
+    if not 0 <= rank <= spectrum.retained_rank:
+        raise ValueError("mixture_rank must lie between zero and spectrum rank.")
+    if (
+        _array_sha256(cast(FloatArray, aggregation.cell_alphas)) != spectrum.cell_alphas_sha256
+        or _array_sha256(cast(FloatArray, aggregation.design)) != spectrum.design_sha256
+        or _array_sha256(cast(FloatArray, aggregation.noise_sd)) != spectrum.noise_sd_sha256
+    ):
+        raise ValueError("aggregation native identities do not match spectrum.")
+
+    projected_aggregation = AdditiveDirichletAggregation(
+        aggregation.cell_alphas,
+        aggregation.design,
+        aggregation.noise_sd,
+        spectrum.basis[:, :rank],
+    )
+    labels = np.zeros(aggregation.cell_shape, dtype=np.int64)
+    return ConditionalAllocationMixture.from_aggregation(
+        projected_aggregation,
+        labels,
+        sample_count=sample_count,
+        source_seed=source_seed,
+        source_provenance=source_provenance,
+        cell_ids=cell_ids,
+        construction_method=("scrambled_sobol_balanced_dirichlet_chunked_projected"),
+        sample_chunk_size=sample_chunk_size,
+        projection_chunk_size=projection_chunk_size,
+    )
+
+
 def _cluster_moments(
     locations: FloatArray,
     labels: IntArray,
@@ -724,7 +804,10 @@ class CompressedRootMixture:
         """Compress one equal-weight root allocation bank.
 
         Args:
-            source: Direct allocation bank expressed in ``spectrum.basis``.
+            source: Direct allocation bank expressed in a leading prefix of
+                ``spectrum.basis``.  Its rank must cover ``mixture_rank``;
+                later spectrum directions use the analytic Gaussian
+                complement and need not be stored in the source.
             spectrum: Analytic root spectrum used by the source.
             mixture_rank: Number of leading spectrum directions represented by
                 the non-Gaussian mixture.
@@ -749,20 +832,29 @@ class CompressedRootMixture:
             raise TypeError("spectrum must be a RootResidualSpectrum.")
         if source.region_count != 1:
             raise ValueError("compressed root mixtures require one region.")
-        if source.summary_rank != spectrum.retained_rank:
-            raise ValueError("source summary rank must equal spectrum retained rank.")
+        if isinstance(mixture_rank, bool) or not isinstance(
+            mixture_rank,
+            Integral,
+        ):
+            raise TypeError("mixture_rank must be an integer.")
+        rank = int(mixture_rank)
+        if not 0 <= rank <= spectrum.retained_rank:
+            raise ValueError("mixture_rank must lie between zero and spectrum rank.")
+        if not rank <= source.summary_rank <= spectrum.retained_rank:
+            raise ValueError("source summary rank must lie between mixture_rank and spectrum retained rank.")
         identity_tolerance = float(
             512.0 * np.finfo(np.float64).eps * max(1, source.observation_count, spectrum.retained_rank)
         )
         if not np.array_equal(source.noise_sd, spectrum.noise_sd):
             raise ValueError("source noise scales do not match spectrum.")
-        if not np.allclose(
-            source.summary_basis,
-            spectrum.basis,
-            rtol=0.0,
-            atol=identity_tolerance,
-        ):
-            raise ValueError("source summary basis does not match spectrum.")
+        expected_source_basis_sha256 = _array_sha256(
+            cast(
+                FloatArray,
+                spectrum.basis[:, : source.summary_rank],
+            )
+        )
+        if source.summary_basis_sha256 != expected_source_basis_sha256:
+            raise ValueError("source summary basis is not a leading prefix of spectrum.")
         if not np.allclose(
             source.observation_mean_design[:, 0],
             spectrum.observation_mean_design,
@@ -776,14 +868,6 @@ class CompressedRootMixture:
             or source.noise_sd_sha256 != spectrum.noise_sd_sha256
         ):
             raise ValueError("source native identities do not match spectrum.")
-        if isinstance(mixture_rank, bool) or not isinstance(
-            mixture_rank,
-            Integral,
-        ):
-            raise TypeError("mixture_rank must be an integer.")
-        rank = int(mixture_rank)
-        if not 0 <= rank <= spectrum.retained_rank:
-            raise ValueError("mixture_rank must lie between zero and spectrum rank.")
         components = _positive_integer(
             component_count,
             name="component_count",
