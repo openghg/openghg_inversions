@@ -82,7 +82,7 @@ echo "driver_sha256=${NSF_DRIVER_SHA256}"
 echo "protocol_sha256=${NSF_PROTOCOL_SHA256}"
 /user/work/bm13805/.pixi/bin/pixi --version
 "${nsf_bin}/python" -c \
-  'import platform,numpy,scipy,torch,sbi,nflows; print(f"python={platform.python_version()}"); print(f"numpy={numpy.__version__}"); print(f"scipy={scipy.__version__}"); print(f"torch={torch.__version__}"); print(f"torch_cuda={torch.cuda.is_available()}"); print(f"sbi={sbi.__version__}"); import importlib.metadata as m; print(f"nflows={m.version('"'"'"'"'"'"'"'"'nflows'"'"'"'"'"'"'"'"')}")'
+  'import importlib.metadata as m,platform,numpy,scipy,torch,sbi; print(f"python={platform.python_version()}"); print(f"numpy={numpy.__version__}"); print(f"scipy={scipy.__version__}"); print(f"torch={torch.__version__}"); print(f"torch_cuda={torch.cuda.is_available()}"); print(f"sbi={sbi.__version__}"); print("nflows="+m.version("nflows"))'
 observed_protocol="$(
   "${nsf_bin}/python" -c \
     'from examples.rjmcmc import conditional_residual_image_sbi_nsf_tiny_screen as m; m._configure_torch(); print(m._protocol_sha256())'
