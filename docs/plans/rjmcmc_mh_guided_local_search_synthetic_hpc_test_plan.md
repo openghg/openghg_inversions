@@ -400,6 +400,38 @@ truth, noise, or move witness after inspecting results.
 Run only if every S0 operational/reference, oracle-learnability, and utility
 gate passes, including aligned non-degradation.
 
+The immutable BP1 implementation is
+`examples/rjmcmc/hpc/mh_local_search_s1`. Its materialization gate must
+reproduce these exact identities before any sampling job starts:
+
+- definition payload
+  `24099340c5e192bbd258e32270e61247bbad33769da277c39d143f15702f819d`;
+- canonical definition envelope
+  `d90c89431d2b19d83084bb51ddd556f3457cf4f53498dd4772b5de9dc6755d60`;
+- training and held-out operators
+  `382df6a86723ae6988c336ef6825a6b9476d3ad3817e30c425a20932fa58cada`
+  and
+  `3a789ca21a2d6aea0b541dd344ec97c2e1cd163ec21367bf23902ce25d5a4c56`;
+- deterministic balanced \(P_0\)
+  `e38df6bdef46ea93b77debfa3b2c4c4efa44cbc816128c8f4376fd5facdd23a1`;
+- first-catalogue edge and relocation \(P_\star\) topologies
+  `2a12c303c176e120f8937910800128f1465cf4414b9cf29c2b4102745c8b51c2`
+  and
+  `203177d3a2a8ec6e0b8f6bb749a0fef98e96323bf2c16ddf1d246906c96fdce2`.
+  Both witnesses use exact catalogue path index zero.
+
+Before staging an S1 run, the launcher replays the passing S0 result in place
+and records a machine-readable prerequisite certificate. It pins S0 source
+`e9e422fe3ab973898cffbd38df00b689efe212b8`, harness
+`2d9dc06812ab0802a3723c4cb7ef6e66612106d791a924b5558b3f49570f7106`,
+root completion
+`cdeda8440bfd71119f0509529620ebc5be48a06d37b3d18665357103185491f8`,
+aggregate completion
+`c8af93d7cc3159810822db0ecd849a3ef3f2efaec9d40e018081aff0eae30a35`,
+and passing decision
+`2cef819c704f0d062cdb38dc09111fa08e230cf2d21ff4b9ba1dd059df1803ef`.
+No S0 scientific artifact is copied into or promoted as S1 evidence.
+
 Use an \(8\times8\) grid at \(K=8\):
 
 - 96 training Gaussian-footprint rows;
@@ -424,9 +456,58 @@ Use an \(8\times8\) grid at \(K=8\):
 - allocation-pair refreshes per cycle: five;
 - scenarios: `aligned`, `edge-one`, `relocation-one`.
 
+The fixed and oracle cycles each contain one root slice followed by five
+allocation-pair refreshes. The mobile cycle preserves those same six
+continuous opportunities and prepends two structural slots. Each structural
+slot independently selects edge flip or resolution relocation with
+probability `0.5`; it is not one guaranteed attempt of each type per cycle.
+The operational gate instead requires at least one valid proposal of each
+type over every retained mobile replicate.
+
+The primary practical pair job receives only its training artifact and
+finishes before either the persisted full definition or the evaluation
+directory containing truth, held-out operator, held-out observations, or
+\(P_\star\) is materialized. The training publisher uses a private temporary
+definition only while building the audited training artifacts and removes it
+before its completion barrier. Oracle
+sampling and post-sampling analysis run only after a separate dependent
+evaluation-publication job. All three arms are forked from their corresponding
+fixed-topology training-only conditioned state. The practical fixed and
+mobile arms share \(P_0\), conditioned coordinates and data; the oracle arm
+is conditioned independently on sealed \(P_\star\).
+
+For an evidence-authorized factor-four replay, evaluation artifacts already
+exist in the immutable primary run. The guarantee there is audited non-use,
+not Unix access control: the practical CLI still has no evaluation argument;
+its job command and manifest contain no evaluation path, scenario, truth,
+witness, \(P_\star\), or held-out data; and aggregate replay reopens the raw
+practical traces independently. Source determinism and a shared Unix account
+make a claim of literal secrecy inappropriate.
+
 There is no pair-refresh pilot and no scientific tuning after artifacts are
 generated. Apply the same five continuous pair-refresh opportunities to both
 arms.
+
+Run five replicate-zero conditional references: aligned \(P_0\), edge
+\(P_0/P_\star\), and relocation \(P_0/P_\star\). NUTS uses four chains with
+1,000 warmup and 1,000 retained draws, sampler seed `74100`, and starts at
+the prior mean plus prior draws `74101..74103`. A failure of a declared NUTS
+diagnostic may authorize exactly one sparse retry with 2,000 warmup and
+2,000 retained draws. Fixed-topology local references use seeds
+`74201..74204`, the same 10,000/50,000 cycle budget, and thinning interval
+one. Only a passed NUTS result plus a first failure of the local MCSE,
+half-run, or local-versus-NUTS tolerance gate may authorize one homogeneous
+factor-four branch matrix (40,000 conditioning and 200,000 production
+cycles). Utility results never authorize a retry. Any NUTS retry and local
+factor-four extension are independent axes; there is no further grid.
+
+Every run uses a fresh detached full-SHA source worktree and a new
+full-SHA/harness-SHA run root. The harness, maps, launchers, resource
+declarations and gates are copied read-only into that root and content
+addressed before submission. `complete.json` is written last only after the
+aggregate is rerun independently and all indexed completions are rehashed.
+Failed or incomplete roots remain immutable evidence and are never promoted
+across source revisions.
 
 S1 gates are the S0 gates with these changes:
 
@@ -438,6 +519,12 @@ S1 gates are the S0 gates with these changes:
 - each one-move scenario: median primary held-out RMSE ratio at most `0.95`,
   at least three of four paired ratios below one, median native-field RMSE
   ratio at most `0.98`, and no paired held-out ratio above `1.20`.
+
+The aligned gate is exactly the median `1.10` criterion: S0's per-replicate
+`1.25` cap does not carry into S1. Equal-wall-time mobile/fixed held-out
+ratios must be computed and reported for every replicate and summarized by
+scenario, but they are a mandatory descriptive sensitivity rather than a
+decision threshold.
 
 If S1 passes, the permitted claim is limited to finite-budget improvement for
 the planted local scenarios. Do not call the finite-run average a converged

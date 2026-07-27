@@ -1,7 +1,7 @@
 """NumPyro NUTS reference helpers for the bounded synthetic local-search screen.
 
-This module deliberately supports only the five representative S0
-fixed-topology cells predeclared in the synthetic experiment plan.  It reuses
+This module deliberately supports only the five representative fixed-topology
+cells predeclared for each synthetic experiment stage.  It reuses
 the existing :mod:`fixed_basis_nuts` model and sampler without changing their
 public APIs.
 """
@@ -62,8 +62,14 @@ PROJECTION_NAMES = (
     "bottom_left",
     "bottom_right",
 )
-START_SEEDS = (None, 64101, 64102, 64103)
-SAMPLER_SEED = 64100
+_START_SEEDS = {
+    "s0": (None, 64101, 64102, 64103),
+    "s1": (None, 74101, 74102, 74103),
+}
+_SAMPLER_SEEDS = {"s0": 64100, "s1": 74100}
+# Backwards-compatible S0 constants used by archived S0 validation.
+START_SEEDS = _START_SEEDS["s0"]
+SAMPLER_SEED = _SAMPLER_SEEDS["s0"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,8 +112,9 @@ class NUTSReferenceStart:
 
 @dataclass(frozen=True, slots=True)
 class S0NUTSReferenceSetup:
-    """Complete backend-independent description of one supported S0 cell."""
+    """Complete backend-independent description of one supported reference cell."""
 
+    stage: str
     cell_name: str
     topology_role: TopologyRole
     problem: FullTilingProblem
@@ -125,21 +132,29 @@ def reference_profile(name: ProfileName) -> NUTSReferenceProfile:
     raise ValueError("profile must be 'primary' or 'retry1'")
 
 
+def reference_seeds(stage: str) -> tuple[tuple[int | None, ...], int]:
+    """Return the frozen dispersed-start and sampler seeds for one stage."""
+    try:
+        return _START_SEEDS[stage], _SAMPLER_SEEDS[stage]
+    except KeyError as error:
+        raise ValueError("stage must be 's0' or 's1'") from error
+
+
 def _cell_name(
     training: SyntheticTrainingArtifact,
     evaluation: SyntheticEvaluationArtifact,
     topology_role: TopologyRole,
 ) -> str:
     validate_artifact_pair(training, evaluation)
-    if training.stage != "s0" or training.replicate != 0:
-        raise ValueError("the NUTS reference supports only S0 replicate zero")
+    if training.stage not in ("s0", "s1") or training.replicate != 0:
+        raise ValueError("the NUTS reference supports only replicate zero in S0 or S1")
     if topology_role not in ("p0", "pstar"):
         raise ValueError("topology_role must be 'p0' or 'pstar'")
     if evaluation.scenario == "aligned" and topology_role != "p0":
         raise ValueError("aligned/Pstar duplicates aligned/P0 and is not a reference cell")
     name = f"{evaluation.scenario}-{topology_role}"
     if name not in REFERENCE_CELLS:
-        raise ValueError("unsupported S0 NUTS reference cell")
+        raise ValueError("unsupported NUTS reference cell")
     return name
 
 
@@ -176,8 +191,9 @@ def prepare_s0_nuts_reference(
     *,
     topology_role: TopologyRole,
 ) -> S0NUTSReferenceSetup:
-    """Prepare one supported S0 target and its four frozen constrained starts."""
+    """Prepare one supported target and its four frozen constrained starts."""
     cell_name = _cell_name(training, evaluation, topology_role)
+    start_seeds, _ = reference_seeds(training.stage)
     bounds = training.p0_bounds if topology_role == "p0" else evaluation.pstar_bounds
     problem, prior_mean_state, data = prepare_fixed_basis_reference(
         training,
@@ -193,7 +209,7 @@ def prepare_s0_nuts_reference(
                 prior_mean_state,
                 seed=seed,
             )
-            for seed in START_SEEDS[1:]
+            for seed in start_seeds[1:]
             if seed is not None
         ),
     )
@@ -211,9 +227,10 @@ def prepare_s0_nuts_reference(
                 ),
             },
         )
-        for seed, state in zip(START_SEEDS, states, strict=True)
+        for seed, state in zip(start_seeds, states, strict=True)
     )
     return S0NUTSReferenceSetup(
+        stage=training.stage,
         cell_name=cell_name,
         topology_role=topology_role,
         problem=problem,
@@ -638,6 +655,7 @@ __all__ = [
     "preflight_s0_nuts_reference",
     "prepare_s0_nuts_reference",
     "reference_profile",
+    "reference_seeds",
     "summarize_reference_trace",
     "validate_reference_trace",
 ]

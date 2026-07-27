@@ -439,6 +439,29 @@ def command_materialize(args: argparse.Namespace) -> None:
     write_envelope(args.evaluation_output, EVALUATION_SCHEMA, evaluation.payload())
 
 
+def command_materialize_training(args: argparse.Namespace) -> None:
+    definition = read_envelope(args.definition, schema=DEFINITION_SCHEMA)
+    training, _ = materialize_replicate(
+        definition,
+        scenario=cast(Any, args.scenario),
+        replicate=args.replicate,
+    )
+    write_envelope(args.training_output, TRAINING_SCHEMA, training.payload())
+
+
+def command_materialize_evaluation(args: argparse.Namespace) -> None:
+    definition = read_envelope(args.definition, schema=DEFINITION_SCHEMA)
+    expected_training, evaluation = materialize_replicate(
+        definition,
+        scenario=cast(Any, args.scenario),
+        replicate=args.replicate,
+    )
+    published_training = load_training_artifact(args.training)
+    if canonical_json(published_training.payload()) != canonical_json(expected_training.payload()):
+        raise ValueError("published training artifact differs from frozen materialization")
+    write_envelope(args.evaluation_output, EVALUATION_SCHEMA, evaluation.payload())
+
+
 def _current_clean_revision() -> str:
     revision = subprocess.run(
         ("git", "-C", str(_REPOSITORY_ROOT), "rev-parse", "HEAD"),
@@ -480,6 +503,7 @@ def _retry_authorization_for_profile(
     token_path: Path | None,
     source_revision: str,
     definition_sha256: str,
+    stage: str,
 ) -> str | None:
     if profile == "factor4":
         if token_path is None:
@@ -488,6 +512,7 @@ def _retry_authorization_for_profile(
             token_path,
             source_revision=source_revision,
             definition_sha256=definition_sha256,
+            stage=stage,
         )
     if token_path is not None:
         raise ValueError("retry authorization cannot be supplied to a primary run")
@@ -638,6 +663,7 @@ def command_run_pair(args: argparse.Namespace) -> None:
         token_path=getattr(args, "retry_authorization_token", None),
         source_revision=revision,
         definition_sha256=training.definition_sha256,
+        stage=training.stage,
     )
     _run_pair(
         training_path=args.training,
@@ -845,6 +871,7 @@ def command_run_oracle(args: argparse.Namespace) -> None:
         token_path=getattr(args, "retry_authorization_token", None),
         source_revision=revision,
         definition_sha256=training.definition_sha256,
+        stage=training.stage,
     )
     _run_oracle(
         training_path=args.training,
@@ -1785,6 +1812,7 @@ def command_run_local_reference(args: argparse.Namespace) -> None:
         token_path=getattr(args, "retry_authorization_token", None),
         source_revision=revision,
         definition_sha256=training.definition_sha256,
+        stage=training.stage,
     )
     _run_local_reference(
         training_path=args.training,
@@ -2030,6 +2058,53 @@ def _score_raw_trace(
     return score
 
 
+def _rebuild_equal_wall(
+    *,
+    fixed_trace: Mapping[str, NDArray[Any]],
+    mobile_trace: Mapping[str, NDArray[Any]],
+    training: Any,
+    evaluation: Any,
+) -> dict[str, object]:
+    score_args = {
+        "nominal_weight": training.nominal_weight,
+        "truth": evaluation.truth,
+        "heldout_operator": evaluation.heldout_operator,
+        "heldout_noiseless": evaluation.heldout_noiseless,
+        "heldout_observations": evaluation.heldout_observations,
+        "heldout_sd": evaluation.heldout_sd,
+        "p0_bounds": training.p0_bounds,
+        "pstar_bounds": evaluation.pstar_bounds,
+    }
+    _, fixed_arrays = _score_trace(fixed_trace, **score_args)
+    _, mobile_arrays = _score_trace(mobile_trace, **score_args)
+    fixed_chunk = np.cumsum(fixed_trace["chunk_sampler_seconds"])
+    mobile_chunk = np.cumsum(mobile_trace["chunk_sampler_seconds"])
+    budget = float(min(fixed_chunk[-1], mobile_chunk[-1]))
+    fixed_prefix = int(np.searchsorted(fixed_chunk, budget, side="right"))
+    mobile_prefix = int(np.searchsorted(mobile_chunk, budget, side="right"))
+    fixed_cycles = int(fixed_trace["chunk_end_cycle"][fixed_prefix - 1]) if fixed_prefix else 0
+    mobile_cycles = int(mobile_trace["chunk_end_cycle"][mobile_prefix - 1]) if mobile_prefix else 0
+    fixed_rmse: float | None = None
+    mobile_rmse: float | None = None
+    ratio: float | None = None
+    if fixed_cycles and mobile_cycles:
+        fixed_field = np.mean(fixed_arrays["native_field"][:fixed_cycles], axis=0)
+        mobile_field = np.mean(mobile_arrays["native_field"][:mobile_cycles], axis=0)
+        heldout = evaluation.heldout_operator
+        truth = evaluation.heldout_noiseless
+        fixed_rmse = float(np.sqrt(np.mean((heldout @ fixed_field.ravel() - truth) ** 2)))
+        mobile_rmse = float(np.sqrt(np.mean((heldout @ mobile_field.ravel() - truth) ** 2)))
+        ratio = mobile_rmse / fixed_rmse
+    return {
+        "sampler_seconds": budget,
+        "fixed_cycles": fixed_cycles,
+        "mobile_cycles": mobile_cycles,
+        "fixed_heldout_rmse": fixed_rmse,
+        "mobile_heldout_rmse": mobile_rmse,
+        "mobile_over_fixed_rmse": ratio,
+    }
+
+
 def _gate(
     gates: list[dict[str, object]],
     *,
@@ -2040,6 +2115,33 @@ def _gate(
     gates.append({"name": name, "pass": passed, "details": dict(details)})
 
 
+def _stage_oracle_learnability_passes(
+    stage: str,
+    values: Mapping[str, object],
+) -> bool:
+    return int(cast(Any, values["oracle_below_one_count"])) >= 3 and float(
+        cast(Any, values["median_oracle_over_fixed_heldout"])
+    ) <= (0.80 if stage == "s0" else 0.90)
+
+
+def _stage_utility_passes(
+    stage: str,
+    scenario: str,
+    values: Mapping[str, object],
+) -> bool:
+    heldout = cast(Sequence[float], values["mobile_over_fixed_heldout"])
+    if scenario == "aligned":
+        return float(cast(Any, values["median_mobile_over_fixed_heldout"])) <= 1.10 and (
+            stage != "s0" or max(heldout) <= 1.25
+        )
+    return (
+        float(cast(Any, values["median_mobile_over_fixed_heldout"])) <= (0.90 if stage == "s0" else 0.95)
+        and int(cast(Any, values["mobile_heldout_below_one_count"])) >= 3
+        and float(cast(Any, values["median_mobile_over_fixed_native"])) <= (0.95 if stage == "s0" else 0.98)
+        and (stage != "s1" or max(heldout) <= 1.20)
+    )
+
+
 def _validate_s0_retry_promotion(
     *,
     selected_budget_profile: str,
@@ -2048,8 +2150,11 @@ def _validate_s0_retry_promotion(
     selected_retry_token_digest: str | None,
     reference_inputs: Mapping[str, tuple[Path, Path]],
     candidate_revision: str,
+    stage: str = "s0",
 ) -> None:
     """Reissue the sealed retry before an aggregate may promote factor4."""
+    if stage not in ("s0", "s1"):
+        raise ValueError("retry-promotion stage is incompatible")
     if selected_budget_profile != "factor4":
         if (
             retry_paths is not None
@@ -2090,11 +2195,12 @@ def _aggregate_s0(
     output_directory: Path,
     enforce_frozen_budgets: bool,
     enforce_current_revision: bool,
+    expected_stage: str = "s0",
 ) -> None:
     index = _read_strict_json(index_path)
     if (
         frozenset(index) not in (_S0_INDEX_KEYS, _S0_RETRY_INDEX_KEYS)
-        or index["schema"] != "openghg_inversions.mh_local_search_s0_index.v1"
+        or index["schema"] != f"openghg_inversions.mh_local_search_{expected_stage}_index.v1"
     ):
         raise ValueError("S0 aggregate index schema is incompatible")
     candidate_revision = index["candidate_revision"]
@@ -2113,8 +2219,8 @@ def _aggregate_s0(
     ):
         raise ValueError("definition file checksum mismatch")
     definition = validate_stage_definition(read_envelope(definition_path, schema=DEFINITION_SCHEMA))
-    if definition["stage"] != "s0":
-        raise ValueError("aggregate-s0 requires the frozen S0 definition")
+    if definition["stage"] != expected_stage:
+        raise ValueError(f"aggregate requires the frozen {expected_stage.upper()} definition")
     definition_digest = json_sha256(definition)
     retry_paths: dict[str, Path] | None = None
     indexed_retry_token_digest: str | None = None
@@ -2145,6 +2251,7 @@ def _aggregate_s0(
             retry_paths["authorization"].parent / "token.json",
             source_revision=candidate_revision,
             definition_sha256=definition_digest,
+            stage=expected_stage,
         )
     artifacts_raw = index["reference_artifacts"]
     if not isinstance(artifacts_raw, list) or len(artifacts_raw) != 10:
@@ -2205,7 +2312,9 @@ def _aggregate_s0(
         evaluation = load_evaluation_artifact(evaluation_path)
         validate_artifact_pair(training, evaluation)
         if (
-            evaluation.scenario != scenario
+            training.stage != expected_stage
+            or evaluation.stage != expected_stage
+            or evaluation.scenario != scenario
             or training.replicate != replicate
             or training.definition_sha256 != definition_digest
         ):
@@ -2375,6 +2484,14 @@ def _aggregate_s0(
             training=training,
             evaluation=evaluation,
         )
+        equal_wall = _rebuild_equal_wall(
+            fixed_trace=fixed_trace,
+            mobile_trace=mobile_trace,
+            training=training,
+            evaluation=evaluation,
+        )
+        if canonical_json(practical_analysis_json["equal_wall"]) != canonical_json(equal_wall):
+            raise ValueError("equal-wall analysis does not rebuild from raw traces")
         cell_results[(cast(str, scenario), cast(int, replicate))] = {
             "cell_id": training.cell_id,
             "p0_sha256": topology_sha256(tiling_from_bounds(training.shape, training.p0_bounds)),
@@ -2382,6 +2499,7 @@ def _aggregate_s0(
             "fixed": fixed_score,
             "mobile": mobile_score,
             "oracle": oracle_score,
+            "equal_wall": equal_wall,
         }
         if replicate == 0:
             reference_inputs[training.cell_id] = (training_path, evaluation_path)
@@ -2412,6 +2530,7 @@ def _aggregate_s0(
         selected_retry_token_digest=selected_retry_token_digest,
         reference_inputs=reference_inputs,
         candidate_revision=candidate_revision,
+        stage=expected_stage,
     )
     references_raw = index["conditional_references"]
     if not isinstance(references_raw, list) or len(references_raw) != 5:
@@ -2535,12 +2654,13 @@ def _aggregate_s0(
         )
         for scenario in ("edge-one", "relocation-one")
     }
-    _gate(
-        gates,
-        name="one_move_pstar_visits",
-        passed=all(count >= 3 for count in hit_counts.values()),
-        details=hit_counts,
-    )
+    if expected_stage == "s0":
+        _gate(
+            gates,
+            name="one_move_pstar_visits",
+            passed=all(count >= 3 for count in hit_counts.values()),
+            details=hit_counts,
+        )
     _gate(
         gates,
         name="conditional_references",
@@ -2552,6 +2672,7 @@ def _aggregate_s0(
         heldout_ratios: list[float] = []
         native_ratios: list[float] = []
         oracle_ratios: list[float] = []
+        equal_wall_ratios: list[float] = []
         for replicate in range(4):
             result = cell_results[(scenario, replicate)]
             fixed = cast(Mapping[str, object], result["fixed"])
@@ -2569,13 +2690,27 @@ def _aggregate_s0(
                 float(cast(Any, oracle["all_cycle_heldout_rmse"]))
                 / float(cast(Any, fixed["all_cycle_heldout_rmse"]))
             )
+            equal_wall = cast(Mapping[str, object], result["equal_wall"])
+            equal_wall_ratio = equal_wall["mobile_over_fixed_rmse"]
+            if (
+                expected_stage == "s1"
+                and enforce_frozen_budgets
+                and (not isinstance(equal_wall_ratio, (int, float)) or isinstance(equal_wall_ratio, bool))
+            ):
+                raise ValueError("equal-wall comparison is incomplete")
+            if isinstance(equal_wall_ratio, (int, float)) and not isinstance(equal_wall_ratio, bool):
+                equal_wall_ratios.append(float(equal_wall_ratio))
         scenario_results[scenario] = {
             "mobile_over_fixed_heldout": heldout_ratios,
             "mobile_over_fixed_native": native_ratios,
             "oracle_over_fixed_heldout": oracle_ratios,
+            "mobile_over_fixed_equal_wall_heldout": equal_wall_ratios,
             "median_mobile_over_fixed_heldout": float(np.median(heldout_ratios)),
             "median_mobile_over_fixed_native": float(np.median(native_ratios)),
             "median_oracle_over_fixed_heldout": float(np.median(oracle_ratios)),
+            "median_mobile_over_fixed_equal_wall_heldout": (
+                float(np.median(equal_wall_ratios)) if equal_wall_ratios else None
+            ),
             "mobile_heldout_below_one_count": sum(value < 1.0 for value in heldout_ratios),
             "oracle_below_one_count": sum(value < 1.0 for value in oracle_ratios),
         }
@@ -2584,20 +2719,14 @@ def _aggregate_s0(
         _gate(
             gates,
             name=f"oracle_learnability_{scenario}",
-            passed=(
-                int(cast(Any, values["oracle_below_one_count"])) >= 3
-                and float(cast(Any, values["median_oracle_over_fixed_heldout"])) <= 0.80
-            ),
+            passed=_stage_oracle_learnability_passes(expected_stage, values),
             details=values,
         )
     aligned = cast(Mapping[str, object], scenario_results["aligned"])
     _gate(
         gates,
         name="utility_aligned",
-        passed=(
-            float(cast(Any, aligned["median_mobile_over_fixed_heldout"])) <= 1.10
-            and max(cast(Any, aligned["mobile_over_fixed_heldout"])) <= 1.25
-        ),
+        passed=_stage_utility_passes(expected_stage, "aligned", aligned),
         details=aligned,
     )
     for scenario in ("edge-one", "relocation-one"):
@@ -2605,11 +2734,7 @@ def _aggregate_s0(
         _gate(
             gates,
             name=f"utility_{scenario}",
-            passed=(
-                float(cast(Any, values["median_mobile_over_fixed_heldout"])) <= 0.90
-                and int(cast(Any, values["mobile_heldout_below_one_count"])) >= 3
-                and float(cast(Any, values["median_mobile_over_fixed_native"])) <= 0.95
-            ),
+            passed=_stage_utility_passes(expected_stage, scenario, values),
             details=values,
         )
     gates_by_name = {cast(str, gate["name"]): bool(gate["pass"]) for gate in gates}
@@ -2630,7 +2755,11 @@ def _aggregate_s0(
                         "misaligned_accepts_structural_move",
                         not any(cell.startswith(scenario_cell_prefix) for cell in invalid_acceptance),
                     ),
-                    ("one_move_pstar_visits", hit_counts[scenario] >= 3),
+                    *(
+                        (("one_move_pstar_visits", hit_counts[scenario] >= 3),)
+                        if expected_stage == "s0"
+                        else ()
+                    ),
                 )
             )
         scenario_gate_results.append(
@@ -2700,7 +2829,7 @@ def _aggregate_s0(
         ),
     }
     report: dict[str, object] = {
-        "schema": "openghg_inversions.mh_local_search_s0_decision.v1",
+        "schema": f"openghg_inversions.mh_local_search_{expected_stage}_decision.v1",
         "candidate_revision": candidate_revision,
         "definition_sha256": definition_digest,
         "pass": first_failed is None,
@@ -2720,7 +2849,7 @@ def _aggregate_s0(
     output_directory.mkdir(parents=True, exist_ok=False)
     _create_json(output_directory / "decision.json", report)
     lines = [
-        "# S0 MH-guided local-search decision",
+        f"# {expected_stage.upper()} MH-guided local-search decision",
         "",
         f"- Candidate: `{candidate_revision}`",
         f"- Decision: `{'PASS' if first_failed is None else 'FAIL'}`",
@@ -2740,6 +2869,16 @@ def command_aggregate_s0(args: argparse.Namespace) -> None:
         output_directory=args.output_directory,
         enforce_frozen_budgets=True,
         enforce_current_revision=True,
+    )
+
+
+def command_aggregate_s1(args: argparse.Namespace) -> None:
+    _aggregate_s0(
+        index_path=args.index,
+        output_directory=args.output_directory,
+        enforce_frozen_budgets=True,
+        enforce_current_revision=True,
+        expected_stage="s1",
     )
 
 
@@ -2776,6 +2915,29 @@ def parser() -> argparse.ArgumentParser:
     materialize.add_argument("--training-output", type=Path, required=True)
     materialize.add_argument("--evaluation-output", type=Path, required=True)
     materialize.set_defaults(function=command_materialize)
+
+    materialize_training = commands.add_parser("materialize-training")
+    materialize_training.add_argument("--definition", type=Path, required=True)
+    materialize_training.add_argument(
+        "--scenario",
+        choices=("aligned", "edge-one", "relocation-one"),
+        required=True,
+    )
+    materialize_training.add_argument("--replicate", type=int, choices=range(4), required=True)
+    materialize_training.add_argument("--training-output", type=Path, required=True)
+    materialize_training.set_defaults(function=command_materialize_training)
+
+    materialize_evaluation = commands.add_parser("materialize-evaluation")
+    materialize_evaluation.add_argument("--definition", type=Path, required=True)
+    materialize_evaluation.add_argument("--training", type=Path, required=True)
+    materialize_evaluation.add_argument(
+        "--scenario",
+        choices=("aligned", "edge-one", "relocation-one"),
+        required=True,
+    )
+    materialize_evaluation.add_argument("--replicate", type=int, choices=range(4), required=True)
+    materialize_evaluation.add_argument("--evaluation-output", type=Path, required=True)
+    materialize_evaluation.set_defaults(function=command_materialize_evaluation)
 
     run = commands.add_parser("run-pair")
     run.add_argument("--training", type=Path, required=True)
@@ -2842,6 +3004,11 @@ def parser() -> argparse.ArgumentParser:
     aggregate.add_argument("--index", type=Path, required=True)
     aggregate.add_argument("--output-directory", type=Path, required=True)
     aggregate.set_defaults(function=command_aggregate_s0)
+
+    aggregate_s1 = commands.add_parser("aggregate-s1")
+    aggregate_s1.add_argument("--index", type=Path, required=True)
+    aggregate_s1.add_argument("--output-directory", type=Path, required=True)
+    aggregate_s1.set_defaults(function=command_aggregate_s1)
     return result
 
 

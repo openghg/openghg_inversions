@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run one of the five frozen S0 fixed-topology NumPyro NUTS references."""
+"""Run one frozen fixed-topology NumPyro NUTS reference."""
 
 from __future__ import annotations
 
@@ -20,10 +20,10 @@ from openghg_inversions.experimental.rjmcmc.fixed_basis_nuts import (
     sample_fixed_basis_nuts,
 )
 from openghg_inversions.experimental.rjmcmc.mh_local_search_nuts_reference import (
-    SAMPLER_SEED,
     preflight_s0_nuts_reference,
     prepare_s0_nuts_reference,
     reference_profile,
+    reference_seeds,
     summarize_reference_trace,
     validate_reference_trace,
 )
@@ -218,6 +218,7 @@ def _manifest(
     backend: Mapping[str, object],
     preflight: Sequence[Mapping[str, object]],
     retry_failure: PrimaryNUTSFailure | None,
+    sampler_seed: int,
 ) -> dict[str, object]:
     result: dict[str, object] = {
         "schema": "openghg_inversions.mh_local_search_nuts_manifest.v1",
@@ -246,7 +247,7 @@ def _manifest(
             "target_accept": profile.target_accept,
             "max_tree_depth": profile.max_tree_depth,
             "dense_mass": profile.dense_mass,
-            "sampler_seed": SAMPLER_SEED,
+            "sampler_seed": sampler_seed,
             "jitter": False,
             "starts": [
                 {
@@ -309,6 +310,7 @@ def run(
         evaluation,
         topology_role=cast(Any, arguments.topology),
     )
+    _, sampler_seed = reference_seeds(training.stage)
     primary_nuts_directory = getattr(arguments, "primary_nuts_directory", None)
     retry_failure: PrimaryNUTSFailure | None = None
     if profile.name == "primary":
@@ -333,6 +335,7 @@ def run(
         backend=backend,
         preflight=preflight,
         retry_failure=retry_failure,
+        sampler_seed=sampler_seed,
     )
     if arguments.dry_run:
         return {
@@ -352,7 +355,7 @@ def run(
         setup.data,
         draws=profile.draws,
         tune=profile.tune,
-        seed=SAMPLER_SEED,
+        seed=sampler_seed,
         target_accept=profile.target_accept,
         chains=4,
         cores=1,

@@ -174,7 +174,7 @@ def issue_factor4_retry_authorization(
         "schema": "openghg_inversions.mh_local_search_retry_authorization_token.v1",
         "source_revision": source_revision,
         "definition_sha256": training.definition_sha256,
-        "scope": "s0-homogeneous-factor4-branch-matrix-v1",
+        "scope": f"{training.stage}-homogeneous-factor4-branch-matrix-v1",
         "authorized_branch_profile": "factor4",
         "primary_conditional_reference_completion_sha256": completion_digest,
         "primary_nuts_completion_sha256": nuts_completion_digest,
@@ -200,6 +200,7 @@ def validate_retry_authorization_token(
     *,
     source_revision: str,
     definition_sha256: str,
+    stage: str | None = None,
 ) -> str:
     """Validate the sealed truth-free token and return its content address."""
     token = _strict_json(path)
@@ -208,7 +209,15 @@ def validate_retry_authorization_token(
         or token["schema"] != "openghg_inversions.mh_local_search_retry_authorization_token.v1"
         or token["source_revision"] != source_revision
         or token["definition_sha256"] != definition_sha256
-        or token["scope"] != "s0-homogeneous-factor4-branch-matrix-v1"
+        or (stage is not None and token["scope"] != f"{stage}-homogeneous-factor4-branch-matrix-v1")
+        or (
+            stage is None
+            and token["scope"]
+            not in (
+                "s0-homogeneous-factor4-branch-matrix-v1",
+                "s1-homogeneous-factor4-branch-matrix-v1",
+            )
+        )
         or token["authorized_branch_profile"] != "factor4"
     ):
         raise ValueError("retry-authorization token identity is incompatible")
@@ -235,6 +244,7 @@ def validate_retry_authorization_bundle(
     source_revision: str,
 ) -> str:
     """Reissue from archived evidence and require an exact sealed bundle."""
+    training = load_training_artifact(training_path)
     completion = _strict_json(directory / "complete.json")
     if (
         frozenset(completion) != {"schema", "status", "token_sha256", "files"}
@@ -274,6 +284,7 @@ def validate_retry_authorization_bundle(
         directory / "token.json",
         source_revision=source_revision,
         definition_sha256=cast(str, token["definition_sha256"]),
+        stage=training.stage,
     )
     if validated_digest != token_digest:
         raise ValueError("retry-authorization token content address is inconsistent")

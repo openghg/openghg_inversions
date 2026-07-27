@@ -26,10 +26,9 @@ from .full_tiling_io import (
 )
 from .mh_local_search_nuts_reference import (
     PROJECTION_NAMES,
-    SAMPLER_SEED,
-    START_SEEDS,
     prepare_s0_nuts_reference,
     reference_profile,
+    reference_seeds,
     summarize_reference_trace,
     validate_reference_trace,
 )
@@ -343,6 +342,7 @@ def _validated_nuts(
         evaluation,
         topology_role=cast(Any, topology_role),
     )
+    start_seeds, sampler_seed = reference_seeds(training.stage)
     topology_digest = topology_sha256(setup.data.tiling)
     identity = {
         "cell_id": training.cell_id,
@@ -389,7 +389,7 @@ def _validated_nuts(
         "target_accept": profile.target_accept,
         "max_tree_depth": profile.max_tree_depth,
         "dense_mass": profile.dense_mass,
-        "sampler_seed": SAMPLER_SEED,
+        "sampler_seed": sampler_seed,
         "jitter": False,
     }
     for name, expected in expected_sampler.items():
@@ -401,7 +401,7 @@ def _validated_nuts(
     for recorded, expected_start, seed in zip(
         starts,
         setup.starts,
-        START_SEEDS,
+        start_seeds,
         strict=True,
     ):
         expected = {
@@ -546,8 +546,8 @@ def _validated_nuts(
         "manifest_sha256": files["manifest.json"],
         "summary_sha256": files["summary.json"],
         "checksums_sha256": files["checksums.json"],
-        "sampler_seed": SAMPLER_SEED,
-        "start_seeds": list(START_SEEDS),
+        "sampler_seed": sampler_seed,
+        "start_seeds": list(start_seeds),
         "draws_per_chain": profile.draws,
         "warmup_per_chain": profile.tune,
         "target_accept": profile.target_accept,
@@ -593,7 +593,7 @@ def _validated_local(
         raise ValueError("local-reference manifest schema is incompatible")
     if frozenset(manifest) != expected_manifest_keys:
         raise ValueError("local-reference manifest schema is incompatible")
-    conditioning_cycles, base_production_cycles, pair_slots = frozen_stage_budgets("s0")
+    conditioning_cycles, base_production_cycles, pair_slots = frozen_stage_budgets(training.stage)
     local_profile = manifest["profile"]
     if local_profile == "primary":
         factor = 1
@@ -629,11 +629,11 @@ def _validated_local(
             name="local-reference retry authorization token",
         )
     expected_conditioning_seed = (
-        training.conditioning_seed if topology_role == "p0" else frozen_oracle_settings("s0", 0)[2]
+        training.conditioning_seed if topology_role == "p0" else frozen_oracle_settings(training.stage, 0)[2]
     )
-    seeds = frozen_local_reference_seeds("s0")
+    seeds = frozen_local_reference_seeds(training.stage)
     expected_identity = {
-        "stage": "s0",
+        "stage": training.stage,
         "scenario": evaluation.scenario,
         "replicate": 0,
         "definition_sha256": training.definition_sha256,
@@ -931,8 +931,8 @@ def certify_conditional_reference(
     training = load_training_artifact(training_path)
     evaluation = load_evaluation_artifact(evaluation_path)
     validate_artifact_pair(training, evaluation)
-    if training.stage != "s0" or training.replicate != 0:
-        raise ValueError("minimum conditional-reference integration supports S0 replicate zero")
+    if training.stage not in ("s0", "s1") or training.replicate != 0:
+        raise ValueError("conditional-reference integration supports replicate zero in S0 or S1")
     nuts, nuts_audit, topology_digest, topology_role = _validated_nuts(
         directory=nuts_directory,
         training_path=training_path,
