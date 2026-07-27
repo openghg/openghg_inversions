@@ -140,8 +140,8 @@ Model Construction
 ------------------
 
 The concrete PyMC graph, its variable names, an equivalent construction from
-public model components, and a draft custom-likelihood extension are described
-in :doc:`concrete_rhime_model`.
+public model components, and links to tracked extension work are described in
+:doc:`concrete_rhime_model`.
 
 Config Files
 ------------

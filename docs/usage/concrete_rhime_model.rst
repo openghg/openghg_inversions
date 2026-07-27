@@ -8,13 +8,11 @@ Concrete RHIME Model
    is private implementation machinery, not a public model-definition API.
 
 This page makes the model graph behind :func:`run_rhime` and
-:func:`run_rhime_multisector` explicit. It has three purposes:
+:func:`run_rhime_multisector` explicit. It has two purposes:
 
 * show the concrete statistical model and its PyMC names;
 * show how the standard model can be reconstructed from public component
-  helpers; and
-* pressure-test how a future likelihood or complete model extension could fit
-  without turning compiler internals into a researcher-facing API.
+  helpers.
 
 The current builders
 --------------------
@@ -262,116 +260,28 @@ offset, error, and likelihood components; there is not yet one allocator for
 the complete model namespace.
 
 Knowledge of the ``_latent`` suffix is also duplicated between the compiler
-and ``parse_prior``. A future pure prior-description helper should report all
-generated names before graph construction, leaving ``parse_prior`` responsible
-for creating them.
+and ``parse_prior``. Generated-name reporting, whole-model allocation, and
+component namespaces are not implemented. They are tracked in
+`issue #532 <https://github.com/openghg/openghg_inversions/issues/532>`_.
 
-Component-local namespacing is another possible way to guarantee uniqueness.
-An earlier model-configuration prototype used nested PyMC models to prefix
-internal variables by component. That made collisions difficult but also made
-the final trace names and graph construction less transparent. A future
-component namespace should therefore be explicit:
-
-* each component has a stable semantic ID;
-* local roles such as ``state``, ``design``, and ``contribution`` are unique
-  within that component;
-* one name allocator renders those identities into stable backend names; and
-* every generated companion name is reserved at the same time.
-
-This preserves the useful uniqueness guarantee without requiring nested PyMC
-models or making PyMC prefixes part of scientific model identity.
-
-Alternative likelihood thought experiment
------------------------------------------
+Alternative models and likelihoods
+----------------------------------
 
 There is currently no likelihood option on ``RhimeModelSpec``. The private flux
 compiler stops at ``mu``, and the shared assembler always installs
-``add_inferpymc_likelihood_component``.
+``add_inferpymc_likelihood_component``. Likewise, the prepared-input runner
+selects one of the built-in standard or multisector model builders.
 
-A plausible first extension is an injected ``likelihood_builder`` on the
-direct Python model builder. It would replace the whole current observation
-component, including error construction and the observed distribution, rather
-than only replacing ``pm.Normal``:
+Public contracts for alternative likelihood builders, complete model builders,
+output roles, and possible later plugin discovery are not implemented. That
+design and its pressure tests are tracked in
+`issue #533 <https://github.com/openghg/openghg_inversions/issues/533>`_.
+The more general semantic model and observation-channel representation is
+tracked in
+`issue #528 <https://github.com/openghg/openghg_inversions/issues/528>`_.
 
-.. code-block:: python
-
-   from dataclasses import dataclass
-   from collections.abc import Mapping
-   from typing import Protocol
-
-   import pymc as pm
-   import xarray as xr
-   from pytensor.tensor.variable import TensorVariable
-
-   from openghg_inversions.sigma import SigmaAlignment
-
-
-   @dataclass(frozen=True)
-   class LikelihoodContext:
-       data: xr.Dataset
-       mu: TensorVariable
-       mu_bc: TensorVariable | None
-       offset: TensorVariable | None
-       sigma_alignment: SigmaAlignment
-       sigma_prior: Mapping[str, object]
-       power: Mapping[str, object] | float
-       pollution_events_from_obs: bool
-       no_model_error: bool
-       output_dim: str
-
-
-   @dataclass(frozen=True)
-   class LikelihoodResult:
-       observed: TensorVariable
-       prediction: TensorVariable
-       error_scale: TensorVariable | None
-
-
-   class LikelihoodBuilder(Protocol):
-       def __call__(self, context: LikelihoodContext) -> LikelihoodResult:
-           ...
-
-
-   def build_model(
-       inv_inputs: xr.Dataset,
-       *,
-       likelihood_builder: LikelihoodBuilder = build_default_rhime_likelihood,
-   ) -> pm.Model:
-       ...
-
-This is a design sketch, not current API. Passing a context object avoids a
-growing callback signature as observation models evolve. Returning explicit
-roles avoids requiring sampling and postprocessing to infer meaning from names
-such as ``y`` or ``epsilon``.
-
-Replacing the complete observation component is the cleanest initial contract
-because the current helper combines error construction and the observed
-distribution. If real alternatives differ only in distribution family, error
-construction could later be extracted as a smaller reusable component before
-introducing a second callback boundary.
-
-There are two useful levels of extension:
-
-``likelihood_builder``
-   Reuses the built-in flux, boundary, and offset assembly but replaces the
-   observation/error component. This is appropriate for a Student-t likelihood,
-   a different model-error policy, or another single-channel observation model.
-
-``model_builder``
-   Consumes canonical prepared inputs and returns a complete PyMC model plus a
-   serializable variable-role manifest. This is the broader boundary needed for
-   linked tracers, several observation channels, or models distributed by an
-   extension package.
-
-The direct Python API should establish these contracts before config or plugin
-discovery is added. ``RhimeModelSpec`` should remain serializable; arbitrary
-Python callables should not be embedded in it. If external model packages later
-need CLI or config selection, a plugin entry point can resolve a stable builder
-name to a complete model factory and record the package and builder identity in
-output provenance.
-
-Customization stability
------------------------
+Customization boundaries
+------------------------
 
 The current customization levels are:
 
@@ -387,7 +297,3 @@ Private implementation
    ``_FluxPlan``, ``_StatePlan``, ``_ForwardTermPlan``, and
    ``_compile_loop_sum`` may change while the semantic model representation is
    developed. They should not be imported by research scripts.
-
-Future extension API
-   Likelihood and complete model builders should be introduced only with
-   explicit input, naming, sampling, and output-role contracts.
