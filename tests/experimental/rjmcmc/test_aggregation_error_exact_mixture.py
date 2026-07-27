@@ -169,7 +169,7 @@ def _manual_compressed_log_likelihood(
                     cov=covariance,
                 )
             )
-        logp += float(logsumexp(component_logp))
+        logp += float(logsumexp(component_logp))  # pyright: ignore[reportArgumentType]
     for index in range(q, r):
         variance = 1.0 + root_mass**2 * float(spectrum.eigenvalues[index])
         logp -= 0.5 * (math.log(2.0 * math.pi * variance) + float(coordinates[index]) ** 2 / variance)
@@ -313,6 +313,14 @@ def test_compression_replays_and_preserves_source_bank_moments() -> None:
     assert np.array_equal(original.weights, replay.weights)
     assert np.array_equal(original.means, replay.means)
     assert np.array_equal(original.covariances, replay.covariances)
+    assert np.array_equal(
+        original.covariance_eigenvalues,
+        replay.covariance_eigenvalues,
+    )
+    assert np.array_equal(
+        original.covariance_eigenvectors,
+        replay.covariance_eigenvectors,
+    )
     assert np.array_equal(original.cluster_counts, replay.cluster_counts)
     assert original.selected_restart == replay.selected_restart
     assert np.array_equal(original.restart_inertias, replay.restart_inertias)
@@ -330,9 +338,24 @@ def test_compression_replays_and_preserves_source_bank_moments() -> None:
             original.weights,
             original.means,
             original.covariances,
+            original.covariance_eigenvalues,
+            original.covariance_eigenvectors,
             original.cluster_counts,
             original.restart_inertias,
         )
+    )
+    reconstructed_covariances = np.einsum(
+        "mij,mj,mkj->mik",
+        original.covariance_eigenvectors,
+        original.covariance_eigenvalues,
+        original.covariance_eigenvectors,
+        optimize=False,
+    )
+    np.testing.assert_allclose(
+        reconstructed_covariances,
+        original.covariances,
+        rtol=2.0e-15,
+        atol=2.0e-15,
     )
 
     source_locations = source.projected_unit_mass_residual_factors[
@@ -525,7 +548,10 @@ def test_no_compression_matches_the_direct_finite_source_mixture() -> None:
                 cov=np.diag(np.square(spectrum.noise_sd)),  # pyright: ignore[reportArgumentType]
             )
         )
-    expected = float(logsumexp(component_logp) - math.log(source.sample_count))
+    expected = float(
+        logsumexp(component_logp)  # pyright: ignore[reportOperatorIssue]
+        - math.log(source.sample_count)
+    )
 
     assert artifact.log_likelihood(
         observation,

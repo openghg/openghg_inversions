@@ -757,7 +757,13 @@ not implicit behavior of this implementation.
   ladder was extended without consulting confirmation seeds. All six cases
   then passed the common suffix \(M=256,512,1024\). Focused core, driver,
   certifier, and source-bank tests pass locally; the full-SHA BP1 G0/G1/G2
-  protocol remains to run.
+  protocol at `d23e9d9b5b7d8c4e669ee940ab544fa8dc5148ea`
+  reproduced both locks. The original compressed evaluator was slower than
+  the direct source bank on some tiny cases because it looped over components
+  and refactorized every covariance. A follow-up caches component covariance
+  eigendecompositions and evaluates the mixture in one NumPy batch; focused
+  parity tests pass and a bounded local benchmark measured a 16.7-fold
+  speedup over the direct bank.
 - Added the operational BP1 handover at
   [`rjmcmc_bp1_handover.md`](rjmcmc_bp1_handover.md).
 

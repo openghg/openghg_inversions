@@ -35,8 +35,9 @@ BP1 launch assets are implemented on
 `codex/rjmcmc-exact-mixture-compression`.  The first complete local
 development matrix passed with a common source size \(S=65{,}536\) and a
 stable all-case compression suffix \(M=256,512,1024\).  This is local
-development evidence only; the pushed full-SHA BP1 G0/G1/G2 run remains the
-next gate, followed by untouched confirmation scrambles.
+development result was reproduced by the full-SHA BP1 G0/G1/G2 run at
+`d23e9d9b5b7d8c4e669ee940ab544fa8dc5148ea`.  The next gate is the untouched
+confirmation scrambles.
 
 ## Related durable background
 
@@ -481,3 +482,4 @@ scale with compressed component count and retained rank, not source-bank size.
 | 2026-07-27 | Keep the first experiment root-only. | The residual eigenvectors are state invariant only because root covariance scales as \(T^2S_0\). |
 | 2026-07-27 | Defer recursive Gamma--Beta integration. | It is promising but introduces mixture-growth and computational-tree approximation questions absent from the simpler direct bank. |
 | 2026-07-27 | Extend the pre-BP1 compression ladder through 512 and 1,024 components. | The first local development matrix selected \(S=65{,}536\); only the boundary-heavy four-cell case was non-monotone, passing at 64 and 256 components while 128 narrowly missed the 0.02 posterior-SD threshold at 0.02194. The larger points test for a stable suffix before the protocol is frozen; no confirmation seed was used. |
+| 2026-07-27 | Cache component covariance eigendecompositions and evaluate components in one NumPy batch. | The BP1 scientific screen passed, but the original per-component Cholesky loop made \(M=256\) slower than the vectorized \(S=65{,}536\) source bank on several tiny cases. The cached batched evaluator retains the same density and gives a 16.7-fold speedup over a direct \(S=16{,}384\) bank in a bounded rank-three local benchmark. |

@@ -505,6 +505,10 @@ class CompressedRootMixture:
         means: Unit-root component means in leading whitened coordinates.
         covariances: Positive-semidefinite unit-root within-cluster
             covariances.
+        covariance_eigenvalues: Non-negative component covariance eigenvalues
+            cached for batched likelihood evaluation.
+        covariance_eigenvectors: Corresponding orthonormal component
+            eigenvectors, stored column-wise.
         cluster_counts: Number of equal-weight source locations in each
             component.
         source_sha256: Authenticated source-bank identity.
@@ -523,6 +527,8 @@ class CompressedRootMixture:
     weights: FloatArray = field(init=False)
     means: FloatArray = field(init=False)
     covariances: FloatArray = field(init=False)
+    covariance_eigenvalues: FloatArray = field(init=False)
+    covariance_eigenvectors: FloatArray = field(init=False)
     cluster_counts: IntArray = field(init=False)
     source_sha256: str = field(init=False)
     source_seed: int = field(init=False)
@@ -656,10 +662,41 @@ class CompressedRootMixture:
         bound = float(kl_upper_bound)
         if not math.isfinite(bound) or bound < 0.0:
             raise ValueError("kl_upper_bound must be finite and non-negative.")
+        covariance_eigenvalues, covariance_eigenvectors = np.linalg.eigh(
+            owned_covariances,
+        )
+        covariance_eigenvalues = np.maximum(
+            covariance_eigenvalues,
+            0.0,
+        )
+        for component in range(component_count):
+            covariance_eigenvectors[component] = _canonicalize_eigenvector_signs(
+                covariance_eigenvectors[component],
+            )
+        owned_covariance_eigenvalues = _readonly_float(
+            covariance_eigenvalues,
+            name="covariance_eigenvalues",
+            ndim=2,
+        )
+        owned_covariance_eigenvectors = _readonly_float(
+            covariance_eigenvectors,
+            name="covariance_eigenvectors",
+            ndim=3,
+        )
         object.__setattr__(self, "spectrum", spectrum)
         object.__setattr__(self, "weights", owned_weights)
         object.__setattr__(self, "means", owned_means)
         object.__setattr__(self, "covariances", owned_covariances)
+        object.__setattr__(
+            self,
+            "covariance_eigenvalues",
+            owned_covariance_eigenvalues,
+        )
+        object.__setattr__(
+            self,
+            "covariance_eigenvectors",
+            owned_covariance_eigenvectors,
+        )
         object.__setattr__(self, "cluster_counts", owned_counts)
         object.__setattr__(self, "source_sha256", str(source_sha256))
         object.__setattr__(self, "source_seed", normalized_seed)
@@ -916,6 +953,8 @@ class CompressedRootMixture:
             + self.weights.nbytes
             + self.means.nbytes
             + self.covariances.nbytes
+            + self.covariance_eigenvalues.nbytes
+            + self.covariance_eigenvectors.nbytes
             + self.cluster_counts.nbytes
             + self.restart_inertias.nbytes
         )
@@ -995,31 +1034,23 @@ class CompressedRootMixture:
             )
 
         if mixture_rank:
-            component_terms = np.empty(
-                self.component_count,
-                dtype=np.float64,
+            displacement = coordinates[np.newaxis, :mixture_rank] - mass * self.means
+            rotated = np.einsum(
+                "mji,mj->mi",
+                self.covariance_eigenvectors,
+                displacement,
+                optimize=False,
             )
-            identity = np.eye(mixture_rank, dtype=np.float64)
-            for component in range(self.component_count):
-                covariance = identity + mass * mass * self.covariances[component]
-                factor = linalg.cholesky(
-                    covariance,
-                    lower=True,
-                    check_finite=False,
+            component_variances = 1.0 + mass * mass * self.covariance_eigenvalues
+            component_terms = np.log(self.weights) - 0.5 * (
+                mixture_rank * _LOG_TWO_PI
+                + np.sum(np.log(component_variances), axis=1)
+                + np.sum(
+                    rotated * rotated / component_variances,
+                    axis=1,
                 )
-                displacement = coordinates[:mixture_rank] - mass * self.means[component]
-                solved = linalg.solve_triangular(
-                    factor,
-                    displacement,
-                    lower=True,
-                    check_finite=False,
-                )
-                component_terms[component] = math.log(float(self.weights[component])) - 0.5 * (
-                    mixture_rank * _LOG_TWO_PI
-                    + 2.0 * float(np.sum(np.log(np.diag(factor))))
-                    + float(solved @ solved)
-                )
-            result += float(logsumexp(component_terms))
+            )
+            result += float(cast(Real, logsumexp(component_terms)))
         if not math.isfinite(result):
             raise ValueError("compressed root mixture likelihood is non-finite.")
         return result
