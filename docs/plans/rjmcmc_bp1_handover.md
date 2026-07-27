@@ -206,11 +206,18 @@ This track is independent of an H2d calibration outcome:
    plan from a fresh full-SHA worktree. That run subsequently passed at
    `d23e9d9b5b7d8c4e669ee940ab544fa8dc5148ea`. Continue with the separate
    all-18-shard confirmation protocol; its inputs bind the d23 decision
-   digests, so it does not retune or rewrite development.
-5. Create and hash run-root analysis harnesses for the remaining
-   moderate/PARIS conditional diagnostics. Reusable implementation belongs on
-   the separate branch/worktree and must be reviewed, committed, and pushed
-   before a new full-SHA run.
+   digests, so it does not retune or rewrite development. That confirmation
+   passed using sampler candidate `9878040` and reporting-only corrected
+   certifier `3792ed0`; all 18 case/seed shards passed and the maximum
+   independent-bank compressed evidence spread was \(2.44\times10^{-4}\)
+   nat against a 0.05-nat limit. See the
+   [confirmation report](rjmcmc_exact_mixture_confirmation_bp1_report.md).
+5. Run the committed
+   [PARIS root-spectrum resource probe](rjmcmc_exact_mixture_paris_probe_hpc_test_plan.md)
+   before constructing any real-input Sobol bank. It authenticates the frozen
+   input, uses the existing physical-mass adapter and SciPy spectrum, and
+   measures historical concentrations 100 and 500 without treating them as
+   cross-\(K\) priors.
 6. Benchmark the cached fixed-partition factor builder. Its storage is
    \(O(n_{\rm obs}K+Kq^2)\); public PSD validation is \(O(Kq^3)\). Start with
    \(q=32\) and \(q=64\).

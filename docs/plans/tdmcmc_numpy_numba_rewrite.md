@@ -764,6 +764,21 @@ not implicit behavior of this implementation.
   eigendecompositions and evaluates the mixture in one NumPy batch; focused
   parity tests pass and a bounded local benchmark measured a 16.7-fold
   speedup over the direct bank.
+- Completed the frozen 18-shard independent-scramble confirmation. All six
+  tiny exact-quadrature oracle cases passed at source seeds 1,877, 4,099, and
+  8,317 with \(S=65{,}536\), \(M=256\), and fixed cluster seed 731. The
+  largest compressed log-evidence error was \(7.62\times10^{-4}\) nat and the
+  largest independent-bank evidence spread was \(2.44\times10^{-4}\) nat
+  against a 0.05-nat gate. A reporting-only cross-seed certifier defect was
+  corrected without regenerating sampler artifacts; the recovery records
+  both the artifact and certifier revisions.
+- Added a source-pinned PARIS root-spectrum/resource probe that reuses the
+  validated physical-mass adapter, globally additive alpha bridge,
+  `RootResidualSpectrum`, and SciPy eigensolver. It measures rank, omission
+  coefficients, persistent storage, and the current Sobol builder's
+  temporary-memory floor before any real-input allocation bank is authorized.
+  Historical concentrations 100 and 500 are scaling diagnostics, not
+  representation-invariant structural priors.
 - Added the operational BP1 handover at
   [`rjmcmc_bp1_handover.md`](rjmcmc_bp1_handover.md).
 
