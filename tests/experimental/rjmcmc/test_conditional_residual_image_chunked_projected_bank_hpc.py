@@ -128,7 +128,9 @@ def test_parity_record_reports_absolute_and_ulp_differences() -> None:
 
     assert record["passed"] is True
     assert record["maximum_ulp_difference"] == 1
-    assert record["maximum_absolute_difference"] > 0.0
+    maximum_absolute_difference = record["maximum_absolute_difference"]
+    assert isinstance(maximum_absolute_difference, float)
+    assert maximum_absolute_difference > 0.0
 
 
 def test_locked_p_requires_an_identical_output_g1_manifest(tmp_path: Path) -> None:
