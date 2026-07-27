@@ -1,0 +1,4 @@
+stage,slurm_id,state,exit_code,elapsed,max_rss,notes
+G1 development array,18188441,COMPLETED,0:0,00:18:04,1080664K maximum observed,24 of 24 shards completed
+G1 merger first attempt,18188466,FAILED,2:0,00:00:02,1932K,compute-node git absent before artifact inspection
+G1 merger authenticated rerun,18188535,COMPLETED,0:0,00:00:39,514000K,all 24 artifacts authenticated; no lock published
