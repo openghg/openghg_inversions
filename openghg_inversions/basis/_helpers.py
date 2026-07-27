@@ -199,10 +199,27 @@ def _legacy_multisource_h_if_needed(
     source_dim = "source"
     region_in_source_dim = "region_in_source"
     if source_dim in sensitivity.dims:
+        if "region" in sensitivity.dims and "source_region_count" not in sensitivity.coords:
+            sensitivity = sensitivity.assign_coords(
+                source_region_count=(
+                    source_dim,
+                    [sensitivity.sizes["region"]] * sensitivity.sizes[source_dim],
+                )
+            )
         return sensitivity
     if state_dim not in sensitivity.dims or source_dim not in sensitivity.coords:
         return sensitivity
 
+    source_labels = [str(source) for source in sensitivity.coords[source_dim].values]
+    available_sources = list(dict.fromkeys(source_labels))
+    missing_sources = [source for source in flux_sources if source not in available_sources]
+    extra_sources = [source for source in available_sources if source not in flux_sources]
+    if missing_sources or extra_sources:
+        raise ValueError(
+            "Multi-source sensitivity does not match requested flux sources; "
+            f"missing source(s): {missing_sources!r}; extra source(s): {extra_sources!r}."
+        )
+    region_counts = {source: source_labels.count(source) for source in set(source_labels)}
     legacy_h = sensitivity.unstack(state_dim).fillna(0)
     if region_in_source_dim in legacy_h.dims:
         legacy_h = legacy_h.rename({region_in_source_dim: "region"})
@@ -210,6 +227,12 @@ def _legacy_multisource_h_if_needed(
         return sensitivity
 
     legacy_h = legacy_h.reindex({source_dim: flux_sources}).fillna(0)
+    legacy_h = legacy_h.assign_coords(
+        source_region_count=(
+            source_dim,
+            [region_counts.get(source, 0) for source in flux_sources],
+        )
+    )
     dim_order = ["region"]
     if "time" in legacy_h.dims:
         dim_order.append("time")

@@ -357,14 +357,32 @@ def _resolve_sector_definitions(
     """
     if "source" not in inv_inputs["H"].dims:
         raise ValueError("Multi-sector RHIME requires inv_inputs['H'] to include a 'source' dimension.")
+    if "source" not in inv_inputs["H"].coords:
+        raise ValueError(
+            "Multi-sector RHIME requires inv_inputs['H'].source to contain OpenGHG source labels."
+        )
 
     available = [str(value) for value in inv_inputs["H"].coords["source"].values]
+    duplicate_available = [source for source in available if available.count(source) > 1]
+    if duplicate_available:
+        duplicate = next(iter(dict.fromkeys(duplicate_available)))
+        raise ValueError(
+            "Multi-sector RHIME requires unique inv_inputs['H'].source labels; "
+            f"duplicate source {duplicate!r}."
+        )
     if sectors is None:
         sectors = list(sector_sources) if sector_sources is not None else available
     sector_names = [str(sector) for sector in sectors]
 
     if len(sector_names) < 2:
         raise ValueError("Multi-sector RHIME requires at least two sectors.")
+    duplicate_sectors = [sector for sector in sector_names if sector_names.count(sector) > 1]
+    if duplicate_sectors:
+        duplicate = next(iter(dict.fromkeys(duplicate_sectors)))
+        raise ValueError(f"Multi-sector RHIME requires unique sector names; duplicate sector {duplicate!r}.")
+    empty_sectors = [sector for sector in sector_names if not sector.strip()]
+    if empty_sectors:
+        raise ValueError("Multi-sector RHIME requires non-empty sector names.")
 
     source_by_sector = (
         {str(sector): str(source) for sector, source in sector_sources.items()}
@@ -377,16 +395,47 @@ def _resolve_sector_definitions(
         else {}
     )
 
+    unused_mappings = [sector for sector in source_by_sector if sector not in sector_names]
+    if unused_mappings:
+        raise ValueError(f"`sector_sources` contains unused sector key(s): {unused_mappings!r}.")
     missing_mapping = [sector for sector in sector_names if sector not in source_by_sector]
     if missing_mapping:
         raise ValueError(f"Sector(s) {missing_mapping!r} are missing from `sector_sources`.")
 
+    source_sectors: dict[str, list[str]] = {}
+    for sector in sector_names:
+        source_sectors.setdefault(source_by_sector[sector], []).append(sector)
+    duplicate_sources = {
+        source: mapped_sectors
+        for source, mapped_sectors in source_sectors.items()
+        if len(mapped_sectors) > 1
+    }
+    if duplicate_sources:
+        details = ", ".join(
+            f"source {source!r} is mapped by sectors {mapped_sectors!r}"
+            for source, mapped_sectors in duplicate_sources.items()
+        )
+        raise ValueError(
+            "Multi-sector RHIME requires a distinct source for each current sector; " + details + "."
+        )
+
     missing = [
-        source_by_sector[sector] for sector in sector_names if source_by_sector[sector] not in available
+        (sector, source_by_sector[sector])
+        for sector in sector_names
+        if source_by_sector[sector] not in available
     ]
     if missing:
-        raise ValueError(f"Source value(s) {missing!r} are not present in inv_inputs['H'].source.")
+        details = ", ".join(f"sector {sector!r} -> source {source!r}" for sector, source in missing)
+        raise ValueError(
+            f"Source data required by {details} is not present in inv_inputs['H'].source; "
+            f"available source(s): {available!r}."
+        )
 
+    unused_suffixes = [sector for sector in suffix_by_sector if sector not in sector_names]
+    if unused_suffixes:
+        raise ValueError(
+            f"`sector_variable_suffixes` contains unused sector key(s): {unused_suffixes!r}."
+        )
     definitions = [
         (sector, source_by_sector[sector], suffix_by_sector.get(sector, safe_pymc_name(sector)))
         for sector in sector_names
@@ -413,6 +462,32 @@ def _sector_prior(
     return dict(DEFAULT_X_PRIOR if x_prior is None else x_prior)
 
 
+def _validate_sector_design(
+    design: xr.DataArray,
+    *,
+    sector: str,
+    source: str,
+    observation_dim: str = "nmeasure",
+) -> None:
+    """Reject source layouts that would create latent variables for padding."""
+    state_dims = [str(dim) for dim in design.dims if dim != observation_dim]
+    if design.ndim != 2 or observation_dim not in design.dims or len(state_dims) != 1:
+        return
+
+    state_dim = state_dims[0]
+    source_region_count = design.coords.get("source_region_count")
+    if source_region_count is not None:
+        declared_regions = int(source_region_count.item())
+        prepared_regions = design.sizes[state_dim]
+        if declared_regions == prepared_regions:
+            return
+        raise ValueError(
+            f"Sector {sector!r} -> source {source!r} declares {declared_regions} "
+            f"{state_dim} elements but prepared H has {prepared_regions}. Ragged "
+            "source-specific state blocks are not supported by this builder."
+        )
+
+
 def _normalize_multisector_flux_plan(
     inv_inputs: xr.Dataset,
     sector_definitions: Sequence[tuple[str, str, str]],
@@ -426,14 +501,28 @@ def _normalize_multisector_flux_plan(
         inv_inputs: Canonical inversion inputs containing source-resolved ``H``.
         sector_definitions: Ordered ``(sector, source, variable_suffix)`` values.
         sector_priors: Optional priors keyed by semantic sector ID.
-        x_prior: Optional shared fallback prior.
+        x_prior: Optional shared prior used when ``sector_priors`` is absent.
 
     Returns:
         Backend-neutral multisector flux plan with selected 2-D designs.
     """
+    sector_names = [sector for sector, _, _ in sector_definitions]
+    if sector_priors is not None:
+        missing_priors = [sector for sector in sector_names if sector not in sector_priors]
+        unused_priors = [sector for sector in sector_priors if sector not in sector_names]
+        if missing_priors or unused_priors:
+            raise ValueError(
+                "`sector_priors` must define exactly one prior for every sector when supplied; "
+                f"missing sector prior(s): {missing_priors!r}; "
+                f"unused sector prior key(s): {unused_priors!r}."
+            )
+
     states: list[_StatePlan] = []
     terms: list[_ForwardTermPlan] = []
     for sector, source, variable_suffix in sector_definitions:
+        design = inv_inputs["H"].sel(source=source).drop_vars("source", errors="ignore")
+        _validate_sector_design(design, sector=sector, source=source)
+        design = design.drop_vars("source_region_count", errors="ignore")
         states.append(
             _StatePlan(
                 state_id=sector,
@@ -445,7 +534,6 @@ def _normalize_multisector_flux_plan(
                 ),
             )
         )
-        design = inv_inputs["H"].sel(source=source).drop_vars("source", errors="ignore")
         terms.append(
             _ForwardTermPlan(
                 term_id=sector,
@@ -497,7 +585,9 @@ def build_rhime_multisector_model(
         sector_variable_suffixes: Optional mapping from sector label to
             PyMC-safe suffix used in ``x_<suffix>`` and ``mu_<suffix>`` names.
         sector_priors: Optional per-sector flux-scaling priors.
-        x_prior: Shared fallback flux-scaling prior.
+            When supplied, the mapping must contain exactly one entry for every
+            sector.
+        x_prior: Shared flux-scaling prior used when ``sector_priors`` is absent.
         bc_prior: Prior specification for boundary-condition scaling factors.
         sigma_prior: Prior specification for model-error terms.
         offset_prior: Prior specification for optional offsets.

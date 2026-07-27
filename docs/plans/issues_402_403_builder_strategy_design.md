@@ -144,16 +144,16 @@ Important limitations and one correction:
   `ModelScenario` ability to combine several sources into one total prior flux.
 - Each `SectorSpec` contains exactly one `flux_source`. One optimized component
   cannot be backed by several sources.
-- `sector_sources` is not a strict one-to-one mapping. Multiple sectors may
-  point to the same source because validation compares sets of source values.
-  That can create separate, potentially non-identifiable states over the same
-  sensitivity. The actual invariant is "one source reference per sector", not
-  a bijection.
+- The narrow #403 implementation now treats `sector_sources` as one-to-one.
+  Duplicate source values are rejected because separate states over the same
+  sensitivity are generally non-identifiable. Broader cardinalities belong in
+  explicit component/state/term relations rather than this renaming adapter.
 - The canonical prepared coordinate is `source`, not `sector`. Renaming that
   coordinate to `sector` merely to satisfy the issue wording would make the
   architecture less clear.
-- Unknown or unused sector-prior keys should be treated deliberately rather
-  than silently becoming configuration debris.
+- `sector_priors`, when supplied, must contain exactly one prior for every
+  sector. Omitting it applies the shared `x_prior`; partial maps are rejected
+  rather than silently falling back after a typo.
 
 The original #403 acceptance criteria can be closed narrowly around the current
 one-source-per-sector case once its prepared-data contract and validation are

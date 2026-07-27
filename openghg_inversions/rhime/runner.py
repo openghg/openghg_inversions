@@ -145,6 +145,65 @@ def _run_spec_with_prepared_inputs(
     )
 
 
+def _validate_multisector_basis_layout(
+    basis_functions: BasisFunctions,
+    model_spec: RhimeModelSpec,
+    inv_inputs: xr.Dataset,
+) -> None:
+    """Reject padded ragged bases unsupported by the current sector builder."""
+    operator = basis_functions.operator
+    design = inv_inputs["H"]
+    if "region" not in design.dims or "region" not in design.coords:
+        return
+    prepared_index = design.get_index("region")
+    operator_for_source = getattr(operator, "operator_for_source", None)
+    if not callable(operator_for_source):
+        state_dim = operator.meta.state_dim
+        basis_index = operator.basis_matrix.get_index(state_dim)
+        if not basis_index.equals(prepared_index):
+            sector_sources = [
+                (sector.name, sector.flux_source) for sector in model_spec.sectors
+            ]
+            raise ValueError(
+                "Retained shared basis state coordinates do not match prepared H.region for "
+                f"sector/source mapping(s) {sector_sources!r}: basis has {len(basis_index)} "
+                f"elements, prepared H has {len(prepared_index)}."
+            )
+        return
+
+    region_layouts: list[tuple[str, str, int, bool]] = []
+    for sector in model_spec.sectors:
+        try:
+            source_operator: Any = operator_for_source(sector.flux_source)
+        except ValueError as exc:
+            raise ValueError(
+                f"Sector {sector.name!r} requires source {sector.flux_source!r}, "
+                "but the retained basis has no matching source-specific basis."
+            ) from exc
+        state_dim = source_operator.meta.state_dim
+        basis_index = source_operator.basis_matrix.get_index(state_dim)
+        region_layouts.append(
+            (
+                sector.name,
+                sector.flux_source,
+                len(basis_index),
+                basis_index.equals(prepared_index),
+            )
+        )
+
+    if any(not coordinates_match for _, _, _, coordinates_match in region_layouts):
+        details = ", ".join(
+            f"sector {sector!r} -> source {source!r}: {count} regions"
+            + ("" if coordinates_match else " with coordinates differing from H.region")
+            for sector, source, count, coordinates_match in region_layouts
+        )
+        raise ValueError(
+            "Multi-sector RHIME currently requires compatible basis dimensions across sectors; "
+            f"prepared H has {len(prepared_index)} regions; {details}. Ragged or inconsistent "
+            "source-specific state blocks are not supported by this builder."
+        )
+
+
 def _execute_prepared_rhime(
     *,
     prepared: RhimePreparedInputs,
@@ -158,6 +217,11 @@ def _execute_prepared_rhime(
     build_and_sample_start = timer_start()
     timing_start = timer_start()
     if multisector:
+        _validate_multisector_basis_layout(
+            prepared.basis_functions,
+            run_spec.model,
+            prepared.inv_inputs,
+        )
         model = build_rhime_multisector_model_from_spec(prepared.inv_inputs, run_spec.model)
     else:
         model = build_rhime_model_from_spec(prepared.inv_inputs, run_spec.model)
@@ -356,11 +420,12 @@ def run_rhime_multisector(
             override values read from this file.
         **kwargs: RHIME run parameters using snake-case names. Multi-sector
             runs require at least two ``flux_sources`` and may include
-            ``sector_priors`` keyed by sector name. When model sector labels
-            differ from OpenGHG source values, pass ``sector_sources`` as a
-            mapping from sector name to one value in ``flux_sources``. Legacy
-            ``emissions_name`` is accepted only as a compatibility alias when
-            ``flux_sources`` is absent.
+            a complete ``sector_priors`` mapping keyed by sector name. When
+            model sector labels differ from OpenGHG source values, pass
+            ``sector_sources`` as a one-to-one mapping from sector name to one
+            unique value in ``flux_sources``. Legacy ``emissions_name`` is
+            accepted only as a compatibility alias when ``flux_sources`` is
+            absent.
 
     Returns:
         Modern RHIME result containing canonical inputs, InferenceData, specs,

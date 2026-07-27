@@ -214,8 +214,9 @@ RHIME terminology:
 - `species`: primary gas or tracer name used for object-store lookup and output naming.
 - `source`: OpenGHG metadata key used to retrieve flux data.
 - `flux_sources`: RHIME field containing requested OpenGHG flux `source` values.
-- `sector_sources`: optional mapping from RHIME sector names to OpenGHG flux `source` values.
-- `sector`: model component optimized separately, usually backed by one flux `source`.
+- `sector_sources`: optional one-to-one mapping from RHIME sector names to unique OpenGHG flux `source` values.
+- `sector_priors`: optional complete mapping from RHIME sector names to flux-scaling priors; omit it to use a shared `x_prior`.
+- `sector`: model component optimized separately, currently backed by one unique flux `source`.
 - `tracer`: additional species used to constrain the primary species through linked forward models.
 - `emissions_name`: legacy compatibility spelling only; use `flux_sources` in new RHIME configs.
 
