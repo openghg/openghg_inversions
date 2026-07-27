@@ -52,6 +52,9 @@ dev = [
   "pyright",
   "mypy",
 ]
+nle = [
+  "flowjax==17.2.1",
+]
 
 [dependency-groups]
 # UV only dependency groups; just mirror some extras
@@ -101,6 +104,7 @@ openghg_inversions = { path = ".", editable = true }
 [tool.pixi.environments]
 default = { features = [], solve-group = "default" }
 dev = { features = ["dev", "jupyter"], solve-group = "default" }
+nle-dev = { features = ["dev", "jupyter", "nle"], solve-group = "default" }
 
 [tool.pixi.feature.dev.tasks]
 test = "pytest"
@@ -113,6 +117,9 @@ tox = "tox -p"
 [tool.pixi.feature.dev.pypi-dependencies]
 tox = ">=4.24"
 tox-uv = "*"
+
+[tool.pixi.feature.nle.pypi-dependencies]
+flowjax = "==17.2.1"
 
 [tool.setuptools.packages.find]
 where = ["."]
