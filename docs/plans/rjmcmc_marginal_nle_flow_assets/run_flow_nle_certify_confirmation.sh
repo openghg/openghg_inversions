@@ -9,6 +9,8 @@ set -o noclobber
 : "${NLE_DRIVER_SHA256:?Set NLE_DRIVER_SHA256 to the committed driver digest.}"
 : "${NLE_PROTOCOL_SHA256:?Set NLE_PROTOCOL_SHA256 to the frozen protocol digest.}"
 
+module load git/2.45.1-pqk5
+
 confirmation="${NLE_RUN_ROOT}/confirmation"
 lock="${NLE_RUN_ROOT}/lock/common-lock.json"
 certificate_directory="${NLE_RUN_ROOT}/confirmation-certificate"
