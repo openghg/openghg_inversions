@@ -208,6 +208,16 @@ TRACE_RETAINED_FIELDS = (
     "log_target",
     "state_transition",
 )
+CANONICAL_RETAINED_TARGET_FIELDS = (
+    "root_total",
+    "log_gaussian_likelihood",
+    "log_likelihood",
+    "log_root_prior",
+    "log_allocation_prior",
+    "log_structural_prior",
+    "log_fixed_coefficient_prior",
+    "log_target",
+)
 TRACE_ATTEMPT_FIELDS = (
     "global_transition",
     "slot",
@@ -306,6 +316,37 @@ def _canonicalize_conditioned_branch(problem: Any, branch: Any) -> Any:
     return canonical
 
 
+def _canonicalize_retained_target_outputs(
+    problem: Any,
+    arrays: Mapping[str, NDArray[Any]],
+) -> dict[str, NDArray[Any]]:
+    """Rebuild output-only retained target fields from scientific coordinates."""
+    canonical_values: dict[str, list[float]] = {name: [] for name in CANONICAL_RETAINED_TARGET_FIELDS}
+    bounds = arrays["rectangle_bounds"]
+    masses = arrays["leaf_masses"]
+    fixed = arrays["fixed_coefficients"]
+    for draw in range(masses.shape[0]):
+        state = build_full_tiling_posterior_state(
+            problem,
+            allocation=TilingState(
+                tiling_from_bounds(problem.shape, bounds[draw]),
+                masses[draw],
+            ),
+            fixed_coefficients=fixed[draw],
+        )
+        canonical_values["root_total"].append(state.root_total)
+        canonical_values["log_gaussian_likelihood"].append(state.log_gaussian_likelihood)
+        canonical_values["log_likelihood"].append(state.log_likelihood)
+        canonical_values["log_root_prior"].append(state.log_root_prior)
+        canonical_values["log_allocation_prior"].append(state.log_allocation_prior)
+        canonical_values["log_structural_prior"].append(0.0)
+        canonical_values["log_fixed_coefficient_prior"].append(state.log_fixed_coefficient_prior)
+        canonical_values["log_target"].append(state.log_target)
+    result = dict(arrays)
+    result.update({name: np.asarray(values, dtype=np.float64) for name, values in canonical_values.items()})
+    return result
+
+
 def _conditioned_state_on_tiling(
     training: Any,
     *,
@@ -349,6 +390,7 @@ def _run_arm(
     pair_slots: int,
     output_directory: Path,
     manifest: Mapping[str, object],
+    canonicalize_retained_targets: bool = False,
 ) -> dict[str, object]:
     cycle_length = 1 + pair_slots + (2 if mode == "mobile" else 0)
     retained: dict[str, list[NDArray[Any]]] = {name: [] for name in TRACE_RETAINED_FIELDS}
@@ -415,6 +457,8 @@ def _run_arm(
         raise RuntimeError("structure schedule did not produce the declared opportunities")
     if mode == "fixed_basis" and np.any(arrays["rectangle_bounds"] != arrays["rectangle_bounds"][0]):
         raise RuntimeError("fixed-basis production changed topology")
+    if canonicalize_retained_targets:
+        arrays = _canonicalize_retained_target_outputs(problem, arrays)
 
     output_directory.mkdir(parents=False, exist_ok=False)
     _create_npz(output_directory / "trace.npz", arrays)
@@ -1707,6 +1751,7 @@ def _run_local_reference(
             pair_slots=5,
             output_directory=output_directory / chain_name,
             manifest=manifest,
+            canonicalize_retained_targets=True,
         )
         trace = validate_local_reference_trace(
             output_directory / chain_name / "trace.npz",
@@ -1795,6 +1840,7 @@ def _run_local_reference_short_for_test(
     branch_run_directory: Path,
     output_directory: Path,
     production_cycles: int = 100,
+    conditioning_cycles: int = 1,
 ) -> None:
     training = load_training_artifact(training_path)
     seeds = frozen_local_reference_seeds(training.stage)
@@ -1814,7 +1860,7 @@ def _run_local_reference_short_for_test(
         seeds=seeds,
         source_revision=revision,
         profile="test-short",
-        expected_conditioning_cycles=1,
+        expected_conditioning_cycles=conditioning_cycles,
         expected_branch_production_cycles=production_cycles,
         retry_authorization_token_sha256=None,
     )

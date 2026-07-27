@@ -377,7 +377,7 @@ def test_s1_conditioning_canonicalizes_persistence_and_common_arm_start(
         production_cycles=100,
     )
     manifest = json.loads((run_directory / "manifest.json").read_text())
-    _, persisted, persisted_fingerprint, _ = driver._load_persisted_branch(
+    persisted_problem, persisted, persisted_fingerprint, _ = driver._load_persisted_branch(
         training=training,
         evaluation=evaluation,
         topology="p0",
@@ -396,6 +396,63 @@ def test_s1_conditioning_canonicalizes_persistence_and_common_arm_start(
     for arm in ("fixed", "mobile"):
         summary = json.loads((run_directory / arm / "summary.json").read_text())
         assert summary["branch_state_fingerprint"] == persisted_fingerprint
+
+    local_reference_directory = tmp_path / "local-reference"
+    driver._run_local_reference_short_for_test(
+        training_path=training_path,
+        evaluation_path=evaluation_path,
+        topology="p0",
+        branch_run_directory=run_directory,
+        output_directory=local_reference_directory,
+        conditioning_cycles=2,
+    )
+    driver._validate_standalone_completion(local_reference_directory / "complete.json")
+    local_manifest = json.loads((local_reference_directory / "manifest.json").read_text())
+    raw_directory = tmp_path / "raw-local-arm"
+    driver._run_arm(
+        problem=persisted_problem,
+        branch_state=persisted,
+        mode="fixed_basis",
+        seed=local_manifest["seeds"][0],
+        cycles=100,
+        chunk_cycles=100,
+        pair_slots=5,
+        output_directory=raw_directory,
+        manifest=local_manifest,
+    )
+    with (
+        np.load(
+            local_reference_directory / "chain-0" / "trace.npz",
+            allow_pickle=False,
+        ) as canonical_trace,
+        np.load(raw_directory / "trace.npz", allow_pickle=False) as raw_trace,
+    ):
+        assert set(canonical_trace.files) == set(raw_trace.files)
+        untouched_fields = (
+            set(raw_trace.files)
+            - set(driver.CANONICAL_RETAINED_TARGET_FIELDS)
+            - {
+                "chunk_sampler_seconds",
+                "movement_proposal_elapsed_ns",
+                "movement_diagnostic_elapsed_ns",
+            }
+        )
+        for name in untouched_fields:
+            np.testing.assert_array_equal(canonical_trace[name], raw_trace[name])
+        assert any(
+            not np.array_equal(canonical_trace[name], raw_trace[name])
+            for name in driver.CANONICAL_RETAINED_TARGET_FIELDS
+        )
+    with (
+        np.load(
+            local_reference_directory / "chain-0" / "checkpoint.npz",
+            allow_pickle=False,
+        ) as canonical_checkpoint,
+        np.load(raw_directory / "checkpoint.npz", allow_pickle=False) as raw_checkpoint,
+    ):
+        assert set(canonical_checkpoint.files) == set(raw_checkpoint.files)
+        for name in raw_checkpoint.files:
+            np.testing.assert_array_equal(canonical_checkpoint[name], raw_checkpoint[name])
 
 
 @pytest.mark.parametrize(("mode", "cycle_length"), (("fixed_basis", 6), ("mobile", 8)))

@@ -188,6 +188,7 @@ def _local_bundle(
     training_path: Path,
     evaluation_path: Path,
     topology_role: TopologyRole,
+    conditioning_cycles: int = 1,
 ) -> Path:
     driver = _load_driver("mh_local_search_synthetic")
     branch = directory.parent / "branch"
@@ -195,7 +196,7 @@ def _local_bundle(
         driver._run_short_pair_for_test(
             training_path=training_path,
             output_directory=branch,
-            conditioning_cycles=1,
+            conditioning_cycles=conditioning_cycles,
             production_cycles=100,
         )
     else:
@@ -203,7 +204,7 @@ def _local_bundle(
             training_path=training_path,
             evaluation_path=evaluation_path,
             output_directory=branch,
-            conditioning_cycles=1,
+            conditioning_cycles=conditioning_cycles,
             production_cycles=100,
         )
     driver._run_local_reference_short_for_test(
@@ -213,6 +214,7 @@ def _local_bundle(
         branch_run_directory=branch,
         output_directory=directory,
         production_cycles=100,
+        conditioning_cycles=conditioning_cycles,
     )
     return directory
 
@@ -385,6 +387,60 @@ def test_recomputes_exact_certificate_from_real_local_producer_for_all_five_cell
         _test_short_budget=(1, 100),
     )
     assert replayed.record == certificate.record
+
+
+def test_s1_canonical_trace_certifies_against_incremental_checkpoint(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Certification rebuilds final targets without changing checkpoint lineage."""
+    training, evaluation = materialize_replicate(
+        build_stage_definition("s1"),
+        scenario="aligned",
+        replicate=0,
+    )
+    training_path = tmp_path / "training.json"
+    evaluation_path = tmp_path / "evaluation.json"
+    write_envelope(training_path, TRAINING_SCHEMA, training.payload())
+    write_envelope(evaluation_path, EVALUATION_SCHEMA, evaluation.payload())
+    nuts = _nuts_bundle(
+        directory=tmp_path / "nuts",
+        training_path=training_path,
+        evaluation_path=evaluation_path,
+        training=training,
+        evaluation=evaluation,
+        topology_role="p0",
+        monkeypatch=monkeypatch,
+    )
+    local = _local_bundle(
+        directory=tmp_path / "local",
+        training_path=training_path,
+        evaluation_path=evaluation_path,
+        topology_role="p0",
+        conditioning_cycles=2,
+    )
+    manifest = json.loads((local / "manifest.json").read_text(encoding="utf-8"))
+    checkpoint = conditional.load_full_tiling_checkpoint(
+        local / "chain-0" / "checkpoint.npz",
+        conditional.problem_from_training(training),
+        expected_run_manifest={
+            **manifest,
+            "arm": "fixed_basis",
+            "cycle_length": 6,
+        },
+    )
+    with np.load(local / "chain-0" / "trace.npz", allow_pickle=False) as trace:
+        assert checkpoint.state.log_target != trace["log_target"][-1].item()
+
+    certificate = certify_conditional_reference(
+        training_path=training_path,
+        evaluation_path=evaluation_path,
+        nuts_directory=nuts,
+        local_directory=local,
+        _test_short_budget=(2, 100),
+    )
+    assert frozenset(certificate.record) == CONDITIONAL_REFERENCE_KEYS
+    assert cast(Mapping[str, object], certificate.audit["local"])["profile"] == "test-short"
 
 
 def test_corrupt_derived_local_diagnostics_rejected_despite_refreshed_hash(

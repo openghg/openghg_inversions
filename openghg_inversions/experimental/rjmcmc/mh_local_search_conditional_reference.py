@@ -19,11 +19,13 @@ from typing import Any, Mapping, TypeAlias, cast
 import numpy as np
 from numpy.typing import NDArray
 
+from .full_tiling import TilingState
 from .full_tiling_compound_sampling import FIXED_BASIS_COMPOUND_SCHEDULE_ID
 from .full_tiling_io import (
     full_tiling_state_fingerprint,
     load_full_tiling_checkpoint,
 )
+from .full_tiling_posterior import build_full_tiling_posterior_state
 from .mh_local_search_nuts_reference import (
     PROJECTION_NAMES,
     prepare_s0_nuts_reference,
@@ -742,15 +744,23 @@ def _validated_local(
             not np.array_equal(trace[name][-1], expected) for name, expected in exact_final_arrays.items()
         ):
             raise ValueError("local-reference final trace and checkpoint coordinates disagree")
+        rebuilt_state = build_full_tiling_posterior_state(
+            problem,
+            allocation=TilingState(
+                state.allocation.tiling,
+                state.leaf_masses,
+            ),
+            fixed_coefficients=state.fixed_coefficients,
+        )
         exact_final_scalars = {
-            "root_total": state.root_total,
-            "log_gaussian_likelihood": state.log_gaussian_likelihood,
-            "log_likelihood": state.log_likelihood,
-            "log_root_prior": state.log_root_prior,
-            "log_allocation_prior": state.log_allocation_prior,
+            "root_total": rebuilt_state.root_total,
+            "log_gaussian_likelihood": rebuilt_state.log_gaussian_likelihood,
+            "log_likelihood": rebuilt_state.log_likelihood,
+            "log_root_prior": rebuilt_state.log_root_prior,
+            "log_allocation_prior": rebuilt_state.log_allocation_prior,
             "log_structural_prior": 0.0,
-            "log_fixed_coefficient_prior": state.log_fixed_coefficient_prior,
-            "log_target": state.log_target,
+            "log_fixed_coefficient_prior": rebuilt_state.log_fixed_coefficient_prior,
+            "log_target": rebuilt_state.log_target,
         }
         if any(trace[name][-1].item() != expected for name, expected in exact_final_scalars.items()):
             raise ValueError("local-reference final trace and checkpoint targets disagree")
