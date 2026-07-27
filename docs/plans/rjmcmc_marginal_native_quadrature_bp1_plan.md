@@ -146,9 +146,9 @@ The artifact is canonical non-pickle data containing:
 
 Replay requires exact field, dtype, shape, context, and whole-file
 authentication.  Completion markers are published last.  Cross-node replay
-compares canonical artifact bytes exactly and likelihood/gradient values to
-the predeclared binary64 portability tolerance.  A non-canonical residual
-basis or context mismatch is a G0 hard stop.
+requires the canonical artifact plus the binary64 likelihood, gradient,
+component draws, and simulator draws to reproduce exactly.  A non-canonical
+residual basis or context mismatch is a G0 hard stop.
 
 ## Gates
 
@@ -207,20 +207,26 @@ Only a valid G1 lock permits 18 confirmation shards: six cases times seeds
 `1877`, `4099`, and `8317`, all at the single locked order.
 
 Each shard replays the identical deterministic density artifact and draws
-131,072 complete observations from its weighted-mixture simulator.  It must:
+131,072 complete observations at the source-pinned root-prior mean mass from
+its weighted-mixture simulator.  It must:
 
 - reproduce the artifact's analytic observation mean within five independent
   Monte Carlo standard errors per coordinate;
 - reproduce its analytic covariance with maximum standardized entry error at
   most five Monte Carlo standard errors;
-- produce finite likelihoods for every simulated observation;
+- produce finite likelihoods for 256 deterministic index-stratified simulated
+  observations;
 - pass a source-pinned component-frequency chi-square aggregate with expected
-  bins merged before testing so every expected count is at least 20;
+  bins formed in canonical component order, targeting probability `1/256`
+  and merging the final remainder backward so every expected count is at
+  least 20; its survival probability must be at least `1e-6`;
 - repeat every unchanged scientific gate; and
 - preserve seed-independent density, evidence, and gradient values exactly.
 
 The G2 merger also applies the source-pinned between-seed evidence-range gate
 and may publish a holdout-eligible certificate only if all 18 shards pass.
+Mean and covariance Monte Carlo standard errors are estimated from 128
+contiguous 1,024-draw batches; the batch covariance uses `ddof=1`.
 
 ### G3: protected holdout
 
