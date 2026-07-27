@@ -11,6 +11,7 @@ remain in:
 - [`rjmcmc_aggregation_error_low_rank_hpc_test_plan.md`](rjmcmc_aggregation_error_low_rank_hpc_test_plan.md);
 - [`rjmcmc_exact_mixture_compression.md`](rjmcmc_exact_mixture_compression.md);
 - [`rjmcmc_exact_mixture_compression_hpc_test_plan.md`](rjmcmc_exact_mixture_compression_hpc_test_plan.md);
+- [`rjmcmc_exact_mixture_confirmation_hpc_test_plan.md`](rjmcmc_exact_mixture_confirmation_hpc_test_plan.md);
 - [`rjmcmc_conditional_residual_gmm_bp1_handoff.md`](rjmcmc_conditional_residual_gmm_bp1_handoff.md);
 - [`rjmcmc_full_tiling_compound_hmc.md`](rjmcmc_full_tiling_compound_hmc.md); and
 - [`rjmcmc_partition_mixing_and_full_tiling_design.md`](rjmcmc_partition_mixing_and_full_tiling_design.md).
@@ -202,7 +203,10 @@ This track is independent of an H2d calibration outcome:
    \(S=65{,}536\) and a common stable compression suffix beginning at
    \(M=256\); \(M=256,512,1024\) all passed every case. This is local
    development evidence, not a BP1 certificate. Run the committed G0/G1/G2
-   plan from a fresh full-SHA worktree. Confirmation seeds remain untouched.
+   plan from a fresh full-SHA worktree. That run subsequently passed at
+   `d23e9d9b5b7d8c4e669ee940ab544fa8dc5148ea`. Continue with the separate
+   all-18-shard confirmation protocol; its inputs bind the d23 decision
+   digests, so it does not retune or rewrite development.
 5. Create and hash run-root analysis harnesses for the remaining
    moderate/PARIS conditional diagnostics. Reusable implementation belongs on
    the separate branch/worktree and must be reviewed, committed, and pushed

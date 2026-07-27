@@ -37,7 +37,8 @@ development matrix passed with a common source size \(S=65{,}536\) and a
 stable all-case compression suffix \(M=256,512,1024\).  This is local
 development result was reproduced by the full-SHA BP1 G0/G1/G2 run at
 `d23e9d9b5b7d8c4e669ee940ab544fa8dc5148ea`.  The next gate is the untouched
-confirmation scrambles.
+confirmation scrambles under
+`docs/plans/rjmcmc_exact_mixture_confirmation_hpc_test_plan.md`.
 
 ## Related durable background
 
