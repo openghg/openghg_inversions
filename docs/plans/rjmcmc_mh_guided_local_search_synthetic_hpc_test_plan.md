@@ -20,6 +20,33 @@ See
 for the readable result, sampling counts, exact diagnostics, and claim
 boundary. S1 and S2 were not attempted by this bounded run.
 
+## 2026-07-27 S1 execution outcome
+
+S1 ran after the complete S0 prerequisite replay and reached its predeclared
+scientific hard stop on source revision
+`4848316d62502ef26abefa1aa175005af9cdacfa`. The immutable completed run root
+is:
+
+```text
+/group/chem/acrg/brendan_for_codex/rjmcmc_mh_guided_local_search_s1/4848316d62502ef26abefa1aa175005af9cdacfa/harness-c5b6180cace94b2d7c301c1b3a38c12e6baeab17db7067d06c74ba9486d020f8
+```
+
+All operational, structural-mobility, and conditional-reference gates passed.
+The first failed gate was `oracle_learnability_edge-one`; relocation
+oracle-learnability and all three mobile utility gates also failed. The
+decision SHA-256 is
+`2aa4fd0aee5f1a7d76eced07df8e51f3270d576c0287c40325ff56b0e7a7201f`;
+aggregate/replay completion SHA-256 is
+`1687084aab679dff613e07fbffb3db7495be98f3179f8de14e8eff92192f15c2`;
+root-completion SHA-256 is
+`058c37579ddb5fef9e47d1df0e6da3cbf3ecdcf1420525ea1112847050ca80bb`.
+
+No factor-four replay was authorized because all five conditional references
+passed. S2 and the proposed real-footprint synthetic experiment were withheld.
+See
+[`../reports/rjmcmc_mh_guided_local_search_s1_results.md`](../reports/rjmcmc_mh_guided_local_search_s1_results.md)
+for sampling counts, results, preserved failures, and the claim boundary.
+
 ## Purpose
 
 This plan tests a finite-budget algorithm, not convergence of a partition

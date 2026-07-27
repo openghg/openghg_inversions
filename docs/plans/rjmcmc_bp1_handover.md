@@ -30,8 +30,9 @@ This update supersedes the pending-work language later in this document.
 | `a004e526033432df4e893e63119cc9aa4928c95c` | `codex/rjmcmc-fixed-basis-aggregation-nuts` | aggregation-aware fixed-basis NUTS implementation; retained sampling withheld |
 | `6ff3afe56416e701ac1fc4ae45676d08ea28229b` | `codex/rjmcmc-aggregation-transported-mixture` | normalized transported-mixture NumPy foundation; T2 development hard stop and held-out evaluation withheld |
 | `e9e422fe3ab973898cffbd38df00b689efe212b8` | `codex/rjmcmc-mh-local-search-auth-parent-fix` | MH-guided local partition-search S0 passed at the factor-four budget |
+| `4848316d62502ef26abefa1aa175005af9cdacfa` | `codex/rjmcmc-mh-local-search-s1` | atmospheric-like S1 passed operations/references but failed oracle-learnability and every mobile utility gate |
 
-All five revisions were clean and synchronized with
+All six revisions were clean and synchronized with
 `https://github.com/openghg/openghg_inversions.git` when audited. The common
 Pixi lock SHA-256 is
 `4ed1244c33ffb7ef929bad73d8bd9944e49ed9b36b51fa05163b59b2a5b2f564`.
@@ -238,14 +239,56 @@ its primary artifacts into the passing run.
 
 The readable result is
 [`../reports/rjmcmc_mh_guided_local_search_s0_results.md`](../reports/rjmcmc_mh_guided_local_search_s0_results.md).
-S1 and S2 were not attempted. No real-data or partition-marginalization claim
-is licensed. The next useful experiment is an atmospheric-like synthetic
-screen starting from a reasonable deterministic basis and keeping planted
-truths within a small witnessed local-move radius.
+That bounded S0 run did not attempt S1 or S2. The later S1 result is recorded
+below.
 
 Agent-tracker was unavailable on BP1 because its configured database path was
 not available. Coordination used native subagents plus direct Slurm
 monitoring; this did not affect the immutable run provenance.
+
+### MH-guided local-search S1 disposition
+
+The atmospheric-like \(8\times8,\ K=8\) S1 experiment completed at:
+
+```text
+/group/chem/acrg/brendan_for_codex/rjmcmc_mh_guided_local_search_s1/4848316d62502ef26abefa1aa175005af9cdacfa/harness-c5b6180cace94b2d7c301c1b3a38c12e6baeab17db7067d06c74ba9486d020f8
+```
+
+Each of the aligned, one-edge, and one-relocation scenarios had four paired
+replicates, 10,000 excluded conditioning cycles, and 50,000 retained
+production cycles with thinning one. All five fixed-topology
+local-versus-NUTS references passed without retry. Their extrema were
+\(\hat R=1.002178\), bulk ESS \(=1873.82\), tail ESS \(=1574.48\), and
+local-versus-NUTS tolerance use \(=0.71004\).
+
+S1 nevertheless failed. The first failed gate was
+`oracle_learnability_edge-one`; the relocation oracle gate and aligned,
+edge-one, and relocation-one mobile utility gates also failed. Median
+mobile/fixed held-out RMSE ratios were 1.45448 aligned, 1.12378 edge-one, and
+1.04680 relocation-one. Oracle/fixed medians were 0.99797, 0.99203, and
+0.94702 respectively. The mobile kernels were not immobile: 1.2 million
+structural slots produced 19,223 acceptances and 56--224 unique topologies per
+chain.
+
+The final decision SHA-256 is
+`2aa4fd0aee5f1a7d76eced07df8e51f3270d576c0287c40325ff56b0e7a7201f`;
+aggregate/replay completion SHA-256 is
+`1687084aab679dff613e07fbffb3db7495be98f3179f8de14e8eff92192f15c2`;
+root-completion SHA-256 is
+`058c37579ddb5fef9e47d1df0e6da3cbf3ecdcf1420525ea1112847050ca80bb`.
+
+Preserve the failed or incomplete S1 roots at revisions `83361b8c` and
+`1450ab94`; neither supplied promoted scientific results. Preserve failed
+premature aggregate job `18188981` in the completed root. Jobs `18188876`,
+`18188984`, and `18188988` were recovered without source or command changes
+only after read-only Slurm checks proved their local parents terminal and
+successful.
+
+No factor-four retry was authorized. S2 and the proposed real-CH4-footprint
+synthetic experiment were not attempted because S1 reached the frozen hard
+stop. The readable result is
+[`../reports/rjmcmc_mh_guided_local_search_s1_results.md`](../reports/rjmcmc_mh_guided_local_search_s1_results.md).
+No partition-posterior, marginalization, or real-footprint claim is licensed.
 
 ## State at handover
 
