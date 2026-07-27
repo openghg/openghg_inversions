@@ -283,6 +283,29 @@ def _conditioned_state(
     )
 
 
+def _canonicalize_conditioned_branch(problem: Any, branch: Any) -> Any:
+    """Rebuild a conditioned branch from its authoritative coordinates."""
+    canonical = build_full_tiling_posterior_state(
+        problem,
+        allocation=TilingState(
+            branch.allocation.tiling,
+            np.array(branch.leaf_masses, dtype=np.float64, copy=True),
+        ),
+        fixed_coefficients=np.array(
+            branch.fixed_coefficients,
+            dtype=np.float64,
+            copy=True,
+        ),
+    )
+    if (
+        topology_bounds(canonical.allocation.tiling) != topology_bounds(branch.allocation.tiling)
+        or not np.array_equal(canonical.leaf_masses, branch.leaf_masses)
+        or not np.array_equal(canonical.fixed_coefficients, branch.fixed_coefficients)
+    ):
+        raise RuntimeError("canonical conditioning rebuild changed authoritative coordinates")
+    return canonical
+
+
 def _conditioned_state_on_tiling(
     training: Any,
     *,
@@ -308,9 +331,10 @@ def _conditioned_state_on_tiling(
     elapsed = perf_counter() - started
     if result.checkpoint.schedule_id != FIXED_BASIS_COMPOUND_SCHEDULE_ID:
         raise RuntimeError("conditioning did not use the frozen fixed-basis schedule")
-    branch = result.final_state
-    if topology_bounds(branch.allocation.tiling) != topology_bounds(expected_tiling):
+    conditioned_branch = result.final_state
+    if topology_bounds(conditioned_branch.allocation.tiling) != topology_bounds(expected_tiling):
         raise RuntimeError("conditioning changed the fixed basis")
+    branch = _canonicalize_conditioned_branch(problem, conditioned_branch)
     return problem, branch, full_tiling_state_fingerprint(problem, branch), elapsed
 
 

@@ -22,8 +22,12 @@ from openghg_inversions.experimental.rjmcmc.full_tiling_compound_sampling import
     continue_full_tiling_compound,
     sample_full_tiling_compound,
 )
+from openghg_inversions.experimental.rjmcmc.full_tiling import TilingState
 from openghg_inversions.experimental.rjmcmc.full_tiling_io import (
     full_tiling_state_fingerprint,
+)
+from openghg_inversions.experimental.rjmcmc.full_tiling_posterior import (
+    build_full_tiling_posterior_state,
 )
 from openghg_inversions.experimental.rjmcmc.mh_local_search_synthetic import (
     DEFINITION_SCHEMA,
@@ -72,6 +76,16 @@ def s0_pair() -> tuple[Any, Any]:
     return materialize_replicate(
         build_stage_definition("s0"),
         scenario="edge-one",
+        replicate=0,
+    )
+
+
+@pytest.fixture(scope="module")
+def s1_pair() -> tuple[Any, Any]:
+    """Return one frozen S1 training/evaluation pair."""
+    return materialize_replicate(
+        build_stage_definition("s1"),
+        scenario="aligned",
         replicate=0,
     )
 
@@ -281,6 +295,107 @@ def test_common_conditioned_state_can_fork_fixed_and_mobile(
         mobile.trace.rectangle_bounds[0],
     )
     np.testing.assert_array_equal(fixed.trace.leaf_masses[0], mobile.trace.leaf_masses[0])
+
+
+def test_s1_conditioning_canonicalizes_persistence_and_common_arm_start(
+    tmp_path: Path,
+    driver: ModuleType,
+    s1_pair: tuple[Any, Any],
+) -> None:
+    """The 96-row branch rebuilds exactly and supplies one physical arm start."""
+    training, evaluation = s1_pair
+    problem = problem_from_training(training)
+    tiling = tiling_from_bounds(training.shape, training.p0_bounds)
+    initial = state_on_tiling(problem, tiling)
+    raw = sample_full_tiling_compound(
+        problem,
+        initial,
+        FullTilingCompoundConfig(
+            iterations=2 * 6,
+            seed=training.conditioning_seed,
+            pair_allocation_refresh_slots=5,
+            structure_mode="fixed_basis",
+        ),
+    ).final_state
+    raw_rebuild = build_full_tiling_posterior_state(
+        problem,
+        allocation=TilingState(
+            raw.allocation.tiling,
+            np.array(raw.leaf_masses, dtype=np.float64, copy=True),
+        ),
+        fixed_coefficients=np.array(raw.fixed_coefficients, dtype=np.float64, copy=True),
+    )
+    assert not np.array_equal(raw.dynamic_prediction, raw_rebuild.dynamic_prediction)
+    assert raw.log_target != raw_rebuild.log_target
+
+    canonical = driver._canonicalize_conditioned_branch(problem, raw)
+    np.testing.assert_array_equal(canonical.leaf_masses, raw.leaf_masses)
+    np.testing.assert_array_equal(canonical.fixed_coefficients, raw.fixed_coefficients)
+    np.testing.assert_array_equal(canonical.dynamic_prediction, raw_rebuild.dynamic_prediction)
+    np.testing.assert_array_equal(canonical.prediction, raw_rebuild.prediction)
+    np.testing.assert_array_equal(canonical.residual, raw_rebuild.residual)
+    assert canonical.log_target == raw_rebuild.log_target
+
+    fixed = sample_full_tiling_compound(
+        problem,
+        canonical,
+        FullTilingCompoundConfig(
+            iterations=6,
+            seed=training.fixed_seed,
+            pair_allocation_refresh_slots=5,
+            structure_mode="fixed_basis",
+        ),
+    )
+    mobile = sample_full_tiling_compound(
+        problem,
+        canonical,
+        FullTilingCompoundConfig(
+            iterations=8,
+            seed=training.mobile_seed,
+            pair_allocation_refresh_slots=5,
+            structure_mode="mobile",
+        ),
+    )
+    for sampled in (fixed, mobile):
+        np.testing.assert_array_equal(sampled.trace.rectangle_bounds[0], training.p0_bounds)
+        np.testing.assert_array_equal(sampled.trace.leaf_masses[0], canonical.leaf_masses)
+        np.testing.assert_array_equal(
+            sampled.trace.fixed_coefficients[0],
+            canonical.fixed_coefficients,
+        )
+        assert sampled.trace.log_target[0] == canonical.log_target
+
+    training_path = tmp_path / "training.json"
+    evaluation_path = tmp_path / "evaluation.json"
+    write_envelope(training_path, TRAINING_SCHEMA, training.payload())
+    write_envelope(evaluation_path, EVALUATION_SCHEMA, evaluation.payload())
+    run_directory = tmp_path / "run"
+    driver._run_short_pair_for_test(
+        training_path=training_path,
+        output_directory=run_directory,
+        conditioning_cycles=2,
+        production_cycles=100,
+    )
+    manifest = json.loads((run_directory / "manifest.json").read_text())
+    _, persisted, persisted_fingerprint, _ = driver._load_persisted_branch(
+        training=training,
+        evaluation=evaluation,
+        topology="p0",
+        branch_run_directory=run_directory,
+        training_sha256=driver.file_sha256(training_path),
+        evaluation_sha256=driver.file_sha256(evaluation_path),
+        source_revision=manifest["source_revision"],
+        expected_budget_profile="test-short",
+        expected_conditioning_cycles=2,
+        expected_production_cycles=100,
+        expected_retry_authorization_token_sha256=None,
+    )
+    assert persisted_fingerprint == manifest["branch_state_fingerprint"]
+    with np.load(run_directory / "branch_state.npz", allow_pickle=False) as branch_archive:
+        assert float(branch_archive["log_target"]) == persisted.log_target
+    for arm in ("fixed", "mobile"):
+        summary = json.loads((run_directory / arm / "summary.json").read_text())
+        assert summary["branch_state_fingerprint"] == persisted_fingerprint
 
 
 @pytest.mark.parametrize(("mode", "cycle_length"), (("fixed_basis", 6), ("mobile", 8)))
