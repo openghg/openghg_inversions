@@ -15,18 +15,20 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-import re
 from typing import Any
 
 import pymc as pm
 import xarray as xr
 
 from openghg_inversions.inversion_inputs import DatetimeLike
-from openghg_inversions.models._rhime_compiler import (
-    _FluxPlan,
-    _ForwardTermPlan,
-    _StatePlan,
-    _compile_loop_sum,
+from openghg_inversions.models._rhime_compiler import _compile_loop_sum, _FluxPlan
+from openghg_inversions.models._rhime_flux import (
+    _normalize_multisector_flux_plan,
+    _normalize_standard_flux_plan,
+    _resolve_sector_bindings,
+)
+from openghg_inversions.models._rhime_flux import (
+    safe_pymc_name as _safe_pymc_name,
 )
 from openghg_inversions.models.components import (
     add_inferpymc_likelihood_component,
@@ -41,6 +43,18 @@ DEFAULT_X_PRIOR: PriorArgs = {"pdf": "lognormal", "mean": 1.0, "stdev": 1.0, "re
 DEFAULT_BC_PRIOR: PriorArgs = {"pdf": "truncatednormal", "mu": 1.0, "sigma": 0.05, "lower": 0.0}
 DEFAULT_SIGMA_PRIOR: PriorArgs = {"pdf": "uniform", "lower": 0.1, "upper": 3.0}
 DEFAULT_OFFSET_PRIOR: PriorArgs = {"pdf": "normal", "mu": 0, "sigma": 1}
+
+
+def safe_pymc_name(value: str) -> str:
+    """Return a stable PyMC-safe suffix for a user-facing sector/source name.
+
+    Args:
+        value: User-facing sector or source name.
+
+    Returns:
+        Lowercase snake-case suffix safe to use in PyMC variable names.
+    """
+    return _safe_pymc_name(value)
 
 
 @dataclass(frozen=True)
@@ -104,19 +118,6 @@ class RhimeModelSpec:
     offset_args: dict[str, Any] | None = None
 
 
-def safe_pymc_name(value: str) -> str:
-    """Return a stable PyMC-safe suffix for a user-facing sector/source name.
-
-    Args:
-        value: User-facing sector or source name.
-
-    Returns:
-        Lowercase snake-case suffix safe to use in PyMC variable names.
-    """
-    name = re.sub(r"\W+", "_", str(value).strip().lower()).strip("_")
-    return name or "sector"
-
-
 def _prepare_builder_priors(
     *,
     x_prior: dict | None,
@@ -130,38 +131,6 @@ def _prepare_builder_priors(
     prepared_sigma_prior = DEFAULT_SIGMA_PRIOR.copy() if sigma_prior is None else sigma_prior.copy()
     prepared_offset_prior = DEFAULT_OFFSET_PRIOR.copy() if offset_prior is None else offset_prior.copy()
     return prepared_x_prior, prepared_bc_prior, prepared_sigma_prior, prepared_offset_prior
-
-
-def _normalize_standard_flux_plan(inv_inputs: xr.Dataset, x_prior: dict) -> _FluxPlan:
-    """Normalize the standard flux component into a one-state linear plan.
-
-    Args:
-        inv_inputs: Canonical inversion inputs containing ``H``.
-        x_prior: Prepared flux-scaling prior metadata.
-
-    Returns:
-        Backend-neutral standard flux plan.
-    """
-    state_id = "flux"
-    return _FluxPlan(
-        states=(
-            _StatePlan(
-                state_id=state_id,
-                variable_name="x",
-                prior_args=x_prior,
-            ),
-        ),
-        terms=(
-            _ForwardTermPlan(
-                term_id=state_id,
-                state_id=state_id,
-                design=inv_inputs["H"],
-                data_name="hx",
-                deterministic_name="mu",
-                coefficient=1.0,
-            ),
-        ),
-    )
 
 
 def _assemble_rhime_model(
@@ -342,123 +311,6 @@ def build_rhime_model_from_spec(inv_inputs: xr.Dataset, model_spec: RhimeModelSp
     )
 
 
-def _resolve_sector_definitions(
-    inv_inputs: xr.Dataset,
-    sectors: Sequence[str] | None,
-    *,
-    sector_sources: Mapping[str, str] | None,
-    sector_variable_suffixes: Mapping[str, str] | None,
-) -> list[tuple[str, str, str]]:
-    """Resolve model sectors against the flux ``source`` coordinate.
-
-    The input ``source`` coordinate records OpenGHG flux source metadata. The
-    returned sector definitions keep separately optimized sector labels,
-    OpenGHG source values, and PyMC variable suffixes together.
-    """
-    if "source" not in inv_inputs["H"].dims:
-        raise ValueError("Multi-sector RHIME requires inv_inputs['H'] to include a 'source' dimension.")
-
-    available = [str(value) for value in inv_inputs["H"].coords["source"].values]
-    if sectors is None:
-        sectors = list(sector_sources) if sector_sources is not None else available
-    sector_names = [str(sector) for sector in sectors]
-
-    if len(sector_names) < 2:
-        raise ValueError("Multi-sector RHIME requires at least two sectors.")
-
-    source_by_sector = (
-        {str(sector): str(source) for sector, source in sector_sources.items()}
-        if sector_sources is not None
-        else {sector: sector for sector in sector_names}
-    )
-    suffix_by_sector = (
-        {str(sector): str(suffix) for sector, suffix in sector_variable_suffixes.items()}
-        if sector_variable_suffixes is not None
-        else {}
-    )
-
-    missing_mapping = [sector for sector in sector_names if sector not in source_by_sector]
-    if missing_mapping:
-        raise ValueError(f"Sector(s) {missing_mapping!r} are missing from `sector_sources`.")
-
-    missing = [
-        source_by_sector[sector] for sector in sector_names if source_by_sector[sector] not in available
-    ]
-    if missing:
-        raise ValueError(f"Source value(s) {missing!r} are not present in inv_inputs['H'].source.")
-
-    definitions = [
-        (sector, source_by_sector[sector], suffix_by_sector.get(sector, safe_pymc_name(sector)))
-        for sector in sector_names
-    ]
-    suffixes = [suffix for _, _, suffix in definitions]
-    if len(suffixes) != len(set(suffixes)):
-        duplicate = next(suffix for suffix in suffixes if suffixes.count(suffix) > 1)
-        raise ValueError(
-            "Sector names must be unique after PyMC name sanitisation; "
-            f"duplicate sanitized name {duplicate!r}."
-        )
-    return definitions
-
-
-def _sector_prior(
-    sector: str,
-    *,
-    sector_priors: Mapping[str, dict] | None,
-    x_prior: dict | None,
-) -> dict:
-    """Resolve a sector prior, falling back to the shared flux-scaling prior."""
-    if sector_priors is not None and sector in sector_priors:
-        return dict(sector_priors[sector])
-    return dict(DEFAULT_X_PRIOR if x_prior is None else x_prior)
-
-
-def _normalize_multisector_flux_plan(
-    inv_inputs: xr.Dataset,
-    sector_definitions: Sequence[tuple[str, str, str]],
-    *,
-    sector_priors: Mapping[str, dict] | None,
-    x_prior: dict | None,
-) -> _FluxPlan:
-    """Normalize selected sector designs into separate semantic state plans.
-
-    Args:
-        inv_inputs: Canonical inversion inputs containing source-resolved ``H``.
-        sector_definitions: Ordered ``(sector, source, variable_suffix)`` values.
-        sector_priors: Optional priors keyed by semantic sector ID.
-        x_prior: Optional shared fallback prior.
-
-    Returns:
-        Backend-neutral multisector flux plan with selected 2-D designs.
-    """
-    states: list[_StatePlan] = []
-    terms: list[_ForwardTermPlan] = []
-    for sector, source, variable_suffix in sector_definitions:
-        states.append(
-            _StatePlan(
-                state_id=sector,
-                variable_name=f"x_{variable_suffix}",
-                prior_args=_sector_prior(
-                    sector,
-                    sector_priors=sector_priors,
-                    x_prior=x_prior,
-                ),
-            )
-        )
-        design = inv_inputs["H"].sel(source=source).drop_vars("source", errors="ignore")
-        terms.append(
-            _ForwardTermPlan(
-                term_id=sector,
-                state_id=sector,
-                design=design,
-                data_name=f"hx_{variable_suffix}",
-                deterministic_name=f"mu_{variable_suffix}",
-                coefficient=1.0,
-            )
-        )
-    return _FluxPlan(states=tuple(states), terms=tuple(terms))
-
-
 def build_rhime_multisector_model(
     inv_inputs: xr.Dataset,
     *,
@@ -485,8 +337,10 @@ def build_rhime_multisector_model(
     contributions and is passed to the standard RHIME likelihood.
 
     Args:
-        inv_inputs: Canonical inversion-input dataset with
-            ``H(region, nmeasure, source)``.
+        inv_inputs: Canonical inversion-input dataset. Shared-basis inputs use
+            ``H(region, nmeasure, source)``. Source-specific bases use
+            ``H(state, nmeasure)`` with ``state`` gathered over
+            ``(source, region_in_source)``.
         sigma_alignment: Backend-neutral site and period alignment for sigma.
         sectors: Ordered model sector labels to optimize. Defaults to
             ``sector_sources`` keys when supplied, otherwise all
@@ -497,7 +351,9 @@ def build_rhime_multisector_model(
         sector_variable_suffixes: Optional mapping from sector label to
             PyMC-safe suffix used in ``x_<suffix>`` and ``mu_<suffix>`` names.
         sector_priors: Optional per-sector flux-scaling priors.
-        x_prior: Shared fallback flux-scaling prior.
+            When supplied, the mapping must contain exactly one entry for every
+            sector.
+        x_prior: Shared flux-scaling prior used when ``sector_priors`` is absent.
         bc_prior: Prior specification for boundary-condition scaling factors.
         sigma_prior: Prior specification for model-error terms.
         offset_prior: Prior specification for optional offsets.
@@ -512,7 +368,7 @@ def build_rhime_multisector_model(
     Returns:
         Built PyMC model.
     """
-    sector_definitions = _resolve_sector_definitions(
+    sector_bindings = _resolve_sector_bindings(
         inv_inputs,
         sectors,
         sector_sources=sector_sources,
@@ -520,9 +376,10 @@ def build_rhime_multisector_model(
     )
     flux_plan = _normalize_multisector_flux_plan(
         inv_inputs,
-        sector_definitions,
+        sector_bindings,
         sector_priors=sector_priors,
         x_prior=x_prior,
+        default_x_prior=DEFAULT_X_PRIOR,
     )
     bc_prior = dict(DEFAULT_BC_PRIOR if bc_prior is None else bc_prior)
     sigma_prior = dict(DEFAULT_SIGMA_PRIOR if sigma_prior is None else sigma_prior)
@@ -550,8 +407,8 @@ def build_rhime_multisector_model_from_spec(
     """Build the shared-basis multi-sector RHIME model from a model spec.
 
     Args:
-        inv_inputs: Canonical inversion-input dataset with
-            ``H(region, nmeasure, source)``.
+        inv_inputs: Canonical inversion-input dataset using either rectangular
+            shared-basis or gathered source-specific sensitivity.
         model_spec: Normalized RHIME model specification.
 
     Returns:

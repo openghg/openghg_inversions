@@ -41,14 +41,14 @@ an xarray issue, which now is written in terms of ``force_align``.
 
 from __future__ import annotations
 
-from collections.abc import Hashable, Iterable, Mapping, Sequence
-from typing import Any, Literal, overload, TypeVar
 import warnings
+from collections.abc import Hashable, Iterable, Mapping, Sequence
+from typing import Any, Literal, TypeVar, overload
 
-from dask.array.core import Array as DaskArray
 import numpy as np
 import pandas as pd
 import xarray as xr
+from dask.array.core import Array as DaskArray
 from sparse import COO, SparseArray
 from xarray.core.common import DataWithCoords, is_chunked_array  # type: ignore
 
@@ -297,20 +297,24 @@ def concat_gather_data_arrays(
     stack_dim: str | None = None,
     **concat_kwargs,
 ) -> xr.DataArray:
-    """Concatenate DataArrays by gathering along ragged coordinate.
+    """Concatenate DataArrays by gathering along a ragged coordinate.
 
     For example, if the keys are site codes and the ragged dimension is time,
-    then the "stacked dimension" will be the usual `nmeasure` coordinate.
+    then the stacked dimension is the usual ``nmeasure`` coordinate with
+    ``(site, time)`` levels. The same operation can gather source-specific
+    state blocks into ``(source, region_in_source)`` without rectangular
+    padding. Any alignment policy for dimensions other than ``ragged_dim``
+    should be passed explicitly through ``concat_kwargs``.
 
     Args:
-        da_dict: dictionary of DataArrays
-        key_dim: dimension name for the keys of the dictionary
-        ragged_dim: name of the ragged dimension
-        stack_dim: name for the "stacked" multi-index dimension
-        **concat_kwargs: arguments to pass to xr.concat
+        da_dict: DataArrays keyed by the values to record in ``key_dim``.
+        key_dim: Dimension name for the mapping keys.
+        ragged_dim: Name of the ragged dimension.
+        stack_dim: Name for the gathered MultiIndex dimension.
+        **concat_kwargs: Arguments passed to :func:`xarray.concat`.
 
     Returns:
-        Combined DataArray with new stacked dimension.
+        Combined DataArray with a new gathered dimension.
 
     """
     stack_dim = stack_dim or (key_dim + "_" + ragged_dim)
@@ -344,6 +348,52 @@ def concat_gather_data_arrays(
     da = da.assign_coords(xr_multiindex)
 
     return da
+
+
+def select_gathered_data_array(
+    da: xr.DataArray,
+    *,
+    key: Any,
+    key_dim: str,
+    ragged_dim: str,
+    stack_dim: str,
+) -> xr.DataArray:
+    """Select one key from a gathered DataArray and restore its ragged index.
+
+    This is the labelled inverse of one branch of
+    :func:`concat_gather_data_arrays`. The gathered dimension remains named
+    ``stack_dim``, but its ``(key_dim, ragged_dim)`` MultiIndex is reduced to
+    the selected ``ragged_dim`` labels.
+
+    Args:
+        da: DataArray containing a gathered MultiIndex dimension.
+        key: Key value to select from the gathered index.
+        key_dim: Name of the key level in the gathered MultiIndex.
+        ragged_dim: Name of the ragged level in the gathered MultiIndex.
+        stack_dim: Name of the gathered dimension.
+
+    Returns:
+        Selected DataArray indexed by the original ragged labels.
+
+    Raises:
+        TypeError: If the gathered dimension does not use a pandas MultiIndex.
+        ValueError: If the gathered levels or requested key are invalid.
+    """
+    index = da.indexes.get(stack_dim)
+    if not isinstance(index, pd.MultiIndex):
+        raise TypeError(f"Dimension {stack_dim!r} must have a pandas MultiIndex.")
+    if list(index.names) != [key_dim, ragged_dim]:
+        raise ValueError(
+            f"Dimension {stack_dim!r} must gather ({key_dim!r}, {ragged_dim!r}); "
+            f"found levels {list(index.names)!r}."
+        )
+    if key not in index.get_level_values(key_dim):
+        raise ValueError(f"Gathered dimension {stack_dim!r} does not contain {key_dim} value {key!r}.")
+
+    positions = np.flatnonzero(index.get_level_values(key_dim) == key)
+    selected = da.isel({stack_dim: positions}).reset_index(stack_dim)
+    selected = selected.drop_vars(key_dim)
+    return selected.set_index({stack_dim: ragged_dim})
 
 
 def concat_gather_datasets(

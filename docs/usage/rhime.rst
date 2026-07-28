@@ -21,12 +21,19 @@ Terminology
 
 ``sector``
    Model component optimized separately in a multi-sector RHIME run. A sector
-   is usually backed by one flux ``source``.
+   is currently backed by one unique flux ``source``.
 
 ``sector_sources``
    Optional mapping from sector names to OpenGHG ``source`` values. Use this
    when sector labels such as ``FF`` or ``ocean`` differ from the source names
-   used to retrieve flux data.
+   used to retrieve flux data. The current multi-sector model requires a
+   one-to-one mapping: two independently optimized sectors cannot select the
+   same source.
+
+``sector_priors``
+   Optional mapping containing one flux-scaling prior for every sector. When
+   omitted, all sectors use the shared ``x_prior``. When supplied, missing and
+   unused sector keys are errors.
 
 ``tracer``
    Additional species used to constrain the primary species, normally with
@@ -79,6 +86,22 @@ Python API
        },
    )
 
+Shared-basis preparation uses ``H(region, nmeasure, source)``. When sources
+have different basis indexes, preparation instead keeps one gathered state
+dimension whose MultiIndex levels are ``(source, region_in_source)``. This is
+the same concat-gather representation used for ``nmeasure`` with
+``(site, time)`` levels: ragged values are concatenated rather than padded.
+Modern preparation preserves the state-dimension name supplied by the basis
+operator; it does not rename arbitrary state axes to ``region``.
+
+``source`` remains the OpenGHG retrieval identity; sector names and priors live
+in the model specification and select ``H`` by source label. Source-coordinate
+order therefore does not determine sector routing. The current builder
+supports one distinct source and one independent state vector per sector.
+Rectangular legacy inputs may carry ``source_region_count(source)`` so padded
+layouts can be rejected; modern preparation does not create that compatibility
+metadata.
+
 Running Prepared Inputs
 -----------------------
 
@@ -129,12 +152,15 @@ model, output, and sampler specifications:
 
 The prepared object is trusted canonical input: it must already contain the
 observation, error, sensitivity, and optional boundary-condition variables
-required by the selected model. A multisector run requires a ``source``
-dimension on ``prepared.inv_inputs["H"]`` and
-``run_spec.split_by_sectors=True``; a single-sector run requires neither. The
-sector count, prepared ``H`` layout, layout flag, and output settings are
-validated before model construction or sampling. Output side effects are still
-controlled by ``RhimeOutputSpec``.
+required by the selected model. A multisector run requires
+``run_spec.split_by_sectors=True`` and a source-resolved layout on
+``prepared.inv_inputs["H"]``. Shared-basis inputs may use a rectangular
+``source`` dimension. Source-specific, ragged state blocks use one gathered
+state dimension with a ``(source, region_in_source)`` MultiIndex. A scalar
+``source`` coordinate is provenance for a single-sector input, not a
+multisector layout. The sector count, prepared ``H`` layout, layout flag, and
+output settings are validated before model construction or sampling. Output
+side effects are still controlled by ``RhimeOutputSpec``.
 
 Model Construction
 ------------------
@@ -166,7 +192,10 @@ New RHIME config files should use ``flux_sources``:
    output_name = "example"
 
 For multi-sector RHIME, use ``sector_sources`` when the optimized sector names
-are not the same strings as the OpenGHG source values.
+are not the same strings as the OpenGHG source values. Its values must match
+``flux_sources`` exactly and must be unique. If ``sector_priors`` is supplied,
+it must contain exactly the same sector keys as ``sector_sources``; otherwise
+omit it and use one shared ``x_prior``.
 
 .. code-block:: ini
 

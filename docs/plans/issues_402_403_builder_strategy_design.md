@@ -109,21 +109,24 @@ The current code already has most of the mathematical behavior:
 - Generic and PARIS postprocessing reconstruct sector fluxes and calculate
   physical totals from reconstructed fluxes rather than summed scale factors.
 
-The central acceptance item is still missing:
+The central acceptance item is now implemented, with some binary orchestration
+still visible at the runner boundary:
 
-- The loop implementation is hard-coded in
-  `build_rhime_multisector_model(...)`.
+- Standard and multisector declarations normalize into the same private
+  `_FluxPlan` representation before PyMC compilation.
 - Standard and multisector runners still select different builders and output
   paths through a `multisector` boolean.
 - `run_rhime_from_prepared_inputs(...)` is the correct new execution boundary,
   but it still requires model sector count, `split_by_sectors`, and the
   presence of `H.source` to encode the same binary mode.
-- The current builder consumes padded `H(region, nmeasure, source)` even though
-  the basis layer can represent ragged state spaces without padding.
+- Shared-basis sensitivity can remain `H(region, nmeasure, source)`;
+  source-specific bases remain gathered over
+  `(source, region_in_source)` and are selected into separate term designs
+  without padding.
 
-The conclusion is stronger than in the first note: #402 should remain open
-until a real internal compilation seam exists. A public strategy option is not
-required, but a private normalized linear-term boundary is.
+The private normalized linear-term boundary now exists. Remaining builder
+selection in the runner is orchestration around that common compiler, not a
+second mathematical implementation.
 
 ### Issue 403
 
@@ -144,16 +147,16 @@ Important limitations and one correction:
   `ModelScenario` ability to combine several sources into one total prior flux.
 - Each `SectorSpec` contains exactly one `flux_source`. One optimized component
   cannot be backed by several sources.
-- `sector_sources` is not a strict one-to-one mapping. Multiple sectors may
-  point to the same source because validation compares sets of source values.
-  That can create separate, potentially non-identifiable states over the same
-  sensitivity. The actual invariant is "one source reference per sector", not
-  a bijection.
+- The narrow #403 implementation now treats `sector_sources` as one-to-one.
+  Duplicate source values are rejected because separate states over the same
+  sensitivity are generally non-identifiable. Broader cardinalities belong in
+  explicit component/state/term relations rather than this renaming adapter.
 - The canonical prepared coordinate is `source`, not `sector`. Renaming that
   coordinate to `sector` merely to satisfy the issue wording would make the
   architecture less clear.
-- Unknown or unused sector-prior keys should be treated deliberately rather
-  than silently becoming configuration debris.
+- `sector_priors`, when supplied, must contain exactly one prior for every
+  sector. Omitting it applies the shared `x_prior`; partial maps are rejected
+  rather than silently falling back after a typo.
 
 The original #403 acceptance criteria can be closed narrowly around the current
 one-source-per-sector case once its prepared-data contract and validation are

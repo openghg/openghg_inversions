@@ -34,6 +34,7 @@ from pathlib import Path
 from typing import Any
 
 import arviz as az
+import pandas as pd
 import pymc as pm
 import xarray as xr
 
@@ -64,6 +65,7 @@ from openghg_inversions.models import (
     build_rhime_model_from_spec,
     build_rhime_multisector_model_from_spec,
 )
+from openghg_inversions.models._rhime_flux import _select_sector_design
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 
 __all__ = [
@@ -145,6 +147,63 @@ def _run_spec_with_prepared_inputs(
     )
 
 
+def _validate_multisector_basis_layout(
+    basis_functions: BasisFunctions,
+    model_spec: RhimeModelSpec,
+    inv_inputs: xr.Dataset,
+) -> None:
+    """Require retained basis indexes to match each prepared sector design."""
+    design = inv_inputs["H"]
+
+    region_layouts: list[tuple[str, str, int, int, bool]] = []
+    for sector in model_spec.sectors:
+        try:
+            source_basis = basis_functions.for_source(sector.flux_source)
+        except (KeyError, ValueError) as exc:
+            raise ValueError(
+                f"Sector {sector.name!r} requires source {sector.flux_source!r}, "
+                "but the retained basis has no matching source-specific basis."
+            ) from exc
+        source_operator = source_basis.operator
+        state_dim = source_operator.meta.state_dim
+        basis_index = source_operator.basis_matrix.get_index(state_dim)
+        sector_design = _select_sector_design(
+            design,
+            sector=sector.name,
+            source=sector.flux_source,
+            variable_suffix=sector.variable_suffix,
+        )
+        prepared_state_dims = [str(dim) for dim in sector_design.dims if dim != "nmeasure"]
+        if len(prepared_state_dims) != 1:
+            raise ValueError(
+                f"Sector {sector.name!r} -> source {sector.flux_source!r} must have exactly "
+                f"one prepared state dimension; found {prepared_state_dims!r}."
+            )
+        prepared_index = sector_design.get_index(prepared_state_dims[0])
+        region_layouts.append(
+            (
+                sector.name,
+                sector.flux_source,
+                len(basis_index),
+                len(prepared_index),
+                basis_index.equals(prepared_index),
+            )
+        )
+
+    if any(not coordinates_match for _, _, _, _, coordinates_match in region_layouts):
+        details = ", ".join(
+            f"sector {sector!r} -> source {source!r}: basis has {basis_count} regions, "
+            f"prepared H has {prepared_count}"
+            + ("" if coordinates_match else " with different coordinates")
+            for sector, source, basis_count, prepared_count, coordinates_match in region_layouts
+        )
+        raise ValueError(
+            "Retained source-specific basis state coordinates do not match prepared H; "
+            + details
+            + "."
+        )
+
+
 def _execute_prepared_rhime(
     *,
     prepared: RhimePreparedInputs,
@@ -158,6 +217,11 @@ def _execute_prepared_rhime(
     build_and_sample_start = timer_start()
     timing_start = timer_start()
     if multisector:
+        _validate_multisector_basis_layout(
+            prepared.basis_functions,
+            run_spec.model,
+            prepared.inv_inputs,
+        )
         model = build_rhime_multisector_model_from_spec(prepared.inv_inputs, run_spec.model)
     else:
         model = build_rhime_model_from_spec(prepared.inv_inputs, run_spec.model)
@@ -282,12 +346,19 @@ def run_rhime_from_prepared_inputs(
     if sector_count < 1:
         raise ValueError(f"`run_spec.model.sectors` must contain at least one sector; found {sector_count}.")
     multisector = sector_count > 1
-    prepared_is_multisector = "source" in prepared_inputs.inv_inputs["H"].dims
+    sensitivity = prepared_inputs.inv_inputs["H"]
+    source_coord = sensitivity.coords.get("source")
+    state_dims = [str(dim) for dim in sensitivity.dims if dim != "nmeasure"]
+    gathered_source = False
+    if source_coord is not None and len(state_dims) == 1 and source_coord.dims == (state_dims[0],):
+        source_index = sensitivity.indexes.get(state_dims[0])
+        gathered_source = isinstance(source_index, pd.MultiIndex) and "source" in source_index.names
+    prepared_is_multisector = "source" in sensitivity.dims or gathered_source
     if run_spec.split_by_sectors is not prepared_is_multisector:
         raise ValueError(
             "`run_spec.split_by_sectors` must agree with the prepared `H` layout: "
             f"split_by_sectors={run_spec.split_by_sectors}, "
-            f"source dimension present={prepared_is_multisector}."
+            f"multisector source layout present={prepared_is_multisector}."
         )
     if run_spec.split_by_sectors is not multisector:
         raise ValueError(
@@ -356,11 +427,12 @@ def run_rhime_multisector(
             override values read from this file.
         **kwargs: RHIME run parameters using snake-case names. Multi-sector
             runs require at least two ``flux_sources`` and may include
-            ``sector_priors`` keyed by sector name. When model sector labels
-            differ from OpenGHG source values, pass ``sector_sources`` as a
-            mapping from sector name to one value in ``flux_sources``. Legacy
-            ``emissions_name`` is accepted only as a compatibility alias when
-            ``flux_sources`` is absent.
+            a complete ``sector_priors`` mapping keyed by sector name. When
+            model sector labels differ from OpenGHG source values, pass
+            ``sector_sources`` as a one-to-one mapping from sector name to one
+            unique value in ``flux_sources``. Legacy ``emissions_name`` is
+            accepted only as a compatibility alias when ``flux_sources`` is
+            absent.
 
     Returns:
         Modern RHIME result containing canonical inputs, InferenceData, specs,
