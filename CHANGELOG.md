@@ -4,6 +4,11 @@
 
 ## Code changes
 
+- Added a tox PyTensor compiler preflight that automatically loads
+  `gcc/12.3.0-sknc` on Rocky Linux or recognized Blue Pebble hosts when the
+  compiler setting is empty, supports configurable module/compiler overrides,
+  and fails before pytest when `pytensor.config.cxx` remains empty instead of
+  allowing extremely slow C++-free PyMC test runs.
 - Added a shared RHIME flux-plan/compiler seam for standard and multisector
   builders, and routed explicit sector-to-source mappings plus complete
   per-sector priors through multisector preparation and model specifications.

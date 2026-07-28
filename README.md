@@ -428,6 +428,44 @@ tox -p --parallel-no-spinner
 This is the required local check before pushing a draft pull request. GitHub
 Actions runs current, previous, and devel OpenGHG test jobs independently.
 
+Before pytest starts, each tox test environment checks the effective
+`pytensor.config.cxx` value. If it is empty on Rocky Linux or Blue Pebble, the
+test launcher tries to load the `gcc/12.3.0-sknc` environment module in the
+same shell that starts pytest, then checks PyTensor again. The launcher exits
+quickly with setup guidance if PyTensor still has no configured compiler,
+avoiding extremely slow C++-free PyMC test runs.
+
+Override the compiler module or module initialization script when a cluster
+uses different names. The defaults are `gcc/12.3.0-sknc` and
+`/etc/profile.d/modules.sh`, respectively:
+
+```bash
+PYTENSOR_COMPILER_MODULE=gcc/13.2.0 tox -e py310-openghgCur
+PYTENSOR_MODULE_INIT=/path/to/modules/init/bash tox -e py310-openghgCur
+```
+
+`PYTENSOR_COMPILER_BOOTSTRAP=auto` is the default: it attempts module loading
+on Rocky Linux or recognized Blue Pebble hostnames. Set it to `always` to try
+module loading on another host, or to `never` to disable automatic module
+loading while retaining the compiler preflight. A compiler can also be selected
+directly, for example:
+
+```bash
+PYTENSOR_FLAGS='cxx=/path/to/g++' tox -e py310-openghgCur
+```
+
+On a cluster compute node, a writable node-local PyTensor compilation cache
+also avoids shared-filesystem contention. Preserve any existing
+comma-separated `PYTENSOR_FLAGS` entries when adding it:
+
+```bash
+PYTENSOR_FLAGS="${PYTENSOR_FLAGS:+${PYTENSOR_FLAGS},}base_compiledir=${TMPDIR:-/tmp}/pytensor-${USER}" \
+  tox -e py310-openghgCur
+```
+
+If `PYTENSOR_FLAGS` already defines `base_compiledir`, update that entry
+instead of adding the same key twice.
+
 For final review or release-sensitive dependency changes, run the full
 compatibility matrix:
 
