@@ -45,7 +45,7 @@
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="openghg_inversions" href="../reference/modules.html" />
+    <link rel="next" title="Concrete RHIME Model" href="concrete_rhime_model.html" />
     <link rel="prev" title="Getting started with OpenGHG Inversions" href="getting_started.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
@@ -284,6 +284,7 @@
 <li class="toctree-l1"><a class="reference internal" href="installation.html">Installation and Setup</a></li>
 <li class="toctree-l1"><a class="reference internal" href="getting_started.html">Getting started with OpenGHG Inversions</a></li>
 <li class="toctree-l1 current active"><a class="current reference internal" href="#">RHIME Terminology And Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="concrete_rhime_model.html">Concrete RHIME Model</a></li>
 </ul>
 </div>
 </nav></div>
@@ -361,11 +362,17 @@ data.</p>
 values.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">sector</span></code></dt><dd><p>Model component optimized separately in a multi-sector RHIME run. A sector
-is usually backed by one flux <code class="docutils literal notranslate"><span class="pre">source</span></code>.</p>
+is currently backed by one unique flux <code class="docutils literal notranslate"><span class="pre">source</span></code>.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">sector_sources</span></code></dt><dd><p>Optional mapping from sector names to OpenGHG <code class="docutils literal notranslate"><span class="pre">source</span></code> values. Use this
 when sector labels such as <code class="docutils literal notranslate"><span class="pre">FF</span></code> or <code class="docutils literal notranslate"><span class="pre">ocean</span></code> differ from the source names
-used to retrieve flux data.</p>
+used to retrieve flux data. The current multi-sector model requires a
+one-to-one mapping: two independently optimized sectors cannot select the
+same source.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">sector_priors</span></code></dt><dd><p>Optional mapping containing one flux-scaling prior for every sector. When
+omitted, all sectors use the shared <code class="docutils literal notranslate"><span class="pre">x_prior</span></code>. When supplied, missing and
+unused sector keys are errors.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">tracer</span></code></dt><dd><p>Additional species used to constrain the primary species, normally with
 linked forward models. The current RHIME preparation path does not support
@@ -416,6 +423,20 @@ tracer inversions.</p>
 <span class="p">)</span>
 </pre></div>
 </div>
+<p>Shared-basis preparation uses <code class="docutils literal notranslate"><span class="pre">H(region,</span> <span class="pre">nmeasure,</span> <span class="pre">source)</span></code>. When sources
+have different basis indexes, preparation instead keeps one gathered state
+dimension whose MultiIndex levels are <code class="docutils literal notranslate"><span class="pre">(source,</span> <span class="pre">region_in_source)</span></code>. This is
+the same concat-gather representation used for <code class="docutils literal notranslate"><span class="pre">nmeasure</span></code> with
+<code class="docutils literal notranslate"><span class="pre">(site,</span> <span class="pre">time)</span></code> levels: ragged values are concatenated rather than padded.
+Modern preparation preserves the state-dimension name supplied by the basis
+operator; it does not rename arbitrary state axes to <code class="docutils literal notranslate"><span class="pre">region</span></code>.</p>
+<p><code class="docutils literal notranslate"><span class="pre">source</span></code> remains the OpenGHG retrieval identity; sector names and priors live
+in the model specification and select <code class="docutils literal notranslate"><span class="pre">H</span></code> by source label. Source-coordinate
+order therefore does not determine sector routing. The current builder
+supports one distinct source and one independent state vector per sector.
+Rectangular legacy inputs may carry <code class="docutils literal notranslate"><span class="pre">source_region_count(source)</span></code> so padded
+layouts can be rejected; modern preparation does not create that compatibility
+metadata.</p>
 </section>
 <section id="running-prepared-inputs">
 <h2>Running Prepared Inputs<a class="headerlink" href="#running-prepared-inputs" title="Link to this heading">#</a></h2>
@@ -464,12 +485,21 @@ model, output, and sampler specifications:</p>
 </div>
 <p>The prepared object is trusted canonical input: it must already contain the
 observation, error, sensitivity, and optional boundary-condition variables
-required by the selected model. A multisector run requires a <code class="docutils literal notranslate"><span class="pre">source</span></code>
-dimension on <code class="docutils literal notranslate"><span class="pre">prepared.inv_inputs[&quot;H&quot;]</span></code> and
-<code class="docutils literal notranslate"><span class="pre">run_spec.split_by_sectors=True</span></code>; a single-sector run requires neither. The
-sector count, prepared <code class="docutils literal notranslate"><span class="pre">H</span></code> layout, layout flag, and output settings are
-validated before model construction or sampling. Output side effects are still
-controlled by <code class="docutils literal notranslate"><span class="pre">RhimeOutputSpec</span></code>.</p>
+required by the selected model. A multisector run requires
+<code class="docutils literal notranslate"><span class="pre">run_spec.split_by_sectors=True</span></code> and a source-resolved layout on
+<code class="docutils literal notranslate"><span class="pre">prepared.inv_inputs[&quot;H&quot;]</span></code>. Shared-basis inputs may use a rectangular
+<code class="docutils literal notranslate"><span class="pre">source</span></code> dimension. Source-specific, ragged state blocks use one gathered
+state dimension with a <code class="docutils literal notranslate"><span class="pre">(source,</span> <span class="pre">region_in_source)</span></code> MultiIndex. A scalar
+<code class="docutils literal notranslate"><span class="pre">source</span></code> coordinate is provenance for a single-sector input, not a
+multisector layout. The sector count, prepared <code class="docutils literal notranslate"><span class="pre">H</span></code> layout, layout flag, and
+output settings are validated before model construction or sampling. Output
+side effects are still controlled by <code class="docutils literal notranslate"><span class="pre">RhimeOutputSpec</span></code>.</p>
+</section>
+<section id="model-construction">
+<h2>Model Construction<a class="headerlink" href="#model-construction" title="Link to this heading">#</a></h2>
+<p>The concrete PyMC graph, its variable names, an equivalent construction from
+public model components, and links to tracked extension work are described in
+<a class="reference internal" href="concrete_rhime_model.html"><span class="doc">Concrete RHIME Model</span></a>.</p>
 </section>
 <section id="config-files">
 <h2>Config Files<a class="headerlink" href="#config-files" title="Link to this heading">#</a></h2>
@@ -491,7 +521,10 @@ controlled by <code class="docutils literal notranslate"><span class="pre">Rhime
 </pre></div>
 </div>
 <p>For multi-sector RHIME, use <code class="docutils literal notranslate"><span class="pre">sector_sources</span></code> when the optimized sector names
-are not the same strings as the OpenGHG source values.</p>
+are not the same strings as the OpenGHG source values. Its values must match
+<code class="docutils literal notranslate"><span class="pre">flux_sources</span></code> exactly and must be unique. If <code class="docutils literal notranslate"><span class="pre">sector_priors</span></code> is supplied,
+it must contain exactly the same sector keys as <code class="docutils literal notranslate"><span class="pre">sector_sources</span></code>; otherwise
+omit it and use one shared <code class="docutils literal notranslate"><span class="pre">x_prior</span></code>.</p>
 <div class="highlight-ini notranslate"><div class="highlight"><pre><span></span><span class="k">[INPUT.PRIORS]</span>
 <span class="na">domain</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;EUROPE&quot;</span>
 <span class="na">flux_sources</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">[&quot;ff-inventory&quot;, &quot;gpp-inventory&quot;, &quot;ter-inventory&quot;, &quot;ocean-inventory&quot;]</span>
@@ -581,11 +614,11 @@ wrapper around <code class="docutils literal notranslate"><span class="pre">run_
       </div>
     </a>
     <a class="right-next"
-       href="../reference/modules.html"
+       href="concrete_rhime_model.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">openghg_inversions</p>
+        <p class="prev-next-title">Concrete RHIME Model</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -611,6 +644,7 @@ wrapper around <code class="docutils literal notranslate"><span class="pre">run_
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#terminology">Terminology</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#python-api">Python API</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#running-prepared-inputs">Running Prepared Inputs</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#model-construction">Model Construction</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#config-files">Config Files</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#generated-basis-functions">Generated Basis Functions</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#output-formats">Output Formats</a></li>

@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>openghg_inversions.config &#8212; openghg_inversions  documentation</title>
+    <title>openghg_inversions.postprocessing.sigma &#8212; openghg_inversions  documentation</title>
   
   
   
@@ -41,12 +41,12 @@
     <script src="../_static/documentation_options.js?v=5929fcd5"></script>
     <script src="../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
-    <script>DOCUMENTATION_OPTIONS.pagename = 'reference/openghg_inversions.config';</script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'reference/openghg_inversions.postprocessing.sigma';</script>
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="openghg_inversions.config.config" href="openghg_inversions.config.config.html" />
-    <link rel="prev" title="openghg_inversions.basis.operators" href="openghg_inversions.basis.operators.html" />
+    <link rel="next" title="openghg_inversions.postprocessing.stats" href="openghg_inversions.postprocessing.stats.html" />
+    <link rel="prev" title="openghg_inversions.postprocessing.make_paris_outputs" href="openghg_inversions.postprocessing.make_paris_outputs.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="" />
@@ -288,7 +288,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.operators.html">openghg_inversions.basis.operators</a></li>
 </ul>
 </details></li>
-<li class="toctree-l2 current active has-children"><a class="current reference internal" href="#">openghg_inversions.config</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.config.html">openghg_inversions.config</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.config.config.html">openghg_inversions.config.config</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.config.paths.html">openghg_inversions.config.paths</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.config.version.html">openghg_inversions.config.version</a></li>
@@ -320,14 +320,14 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.rhime.html">openghg_inversions.models.rhime</a></li>
 </ul>
 </details></li>
-<li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.postprocessing.html">openghg_inversions.postprocessing</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 current active has-children"><a class="reference internal" href="openghg_inversions.postprocessing.html">openghg_inversions.postprocessing</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.countries.html">openghg_inversions.postprocessing.countries</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.diagnostics.html">openghg_inversions.postprocessing.diagnostics</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.inversion_output.html">openghg_inversions.postprocessing.inversion_output</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.legacy_outputs.html">openghg_inversions.postprocessing.legacy_outputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.make_outputs.html">openghg_inversions.postprocessing.make_outputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.make_paris_outputs.html">openghg_inversions.postprocessing.make_paris_outputs</a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.sigma.html">openghg_inversions.postprocessing.sigma</a></li>
+<li class="toctree-l3 current active"><a class="current reference internal" href="#">openghg_inversions.postprocessing.sigma</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.stats.html">openghg_inversions.postprocessing.stats</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.utils.html">openghg_inversions.postprocessing.utils</a></li>
 </ul>
@@ -397,7 +397,10 @@
     
     <li class="breadcrumb-item"><a href="openghg_inversions.html" class="nav-link">openghg_inversions</a></li>
     
-    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">openghg_inversions.config</span></li>
+    
+    <li class="breadcrumb-item"><a href="openghg_inversions.postprocessing.html" class="nav-link">openghg_inversions.postprocessing</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">openghg_inversions.postprocessing.sigma</span></li>
   </ul>
 </nav>
 </div>
@@ -414,38 +417,34 @@
 <div id="searchbox"></div>
                 <article class="bd-article">
                   
-  <section id="module-openghg_inversions.config">
-<span id="openghg-inversions-config"></span><h1>openghg_inversions.config<a class="headerlink" href="#module-openghg_inversions.config" title="Link to this heading">#</a></h1>
-<div class="toctree-wrapper compound">
-<ul>
-<li class="toctree-l1"><a class="reference internal" href="openghg_inversions.config.config.html">openghg_inversions.config.config</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.config.config.html#openghg_inversions.config.config.all_param"><code class="docutils literal notranslate"><span class="pre">all_param()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.config.config.html#openghg_inversions.config.config.all_parameters_in_param_type"><code class="docutils literal notranslate"><span class="pre">all_parameters_in_param_type()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.config.config.html#openghg_inversions.config.config.convert"><code class="docutils literal notranslate"><span class="pre">convert()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.config.config.html#openghg_inversions.config.config.eval_check"><code class="docutils literal notranslate"><span class="pre">eval_check()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.config.config.html#openghg_inversions.config.config.extract_params"><code class="docutils literal notranslate"><span class="pre">extract_params()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.config.config.html#openghg_inversions.config.config.find_param_key"><code class="docutils literal notranslate"><span class="pre">find_param_key()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.config.config.html#openghg_inversions.config.config.generate_from_template"><code class="docutils literal notranslate"><span class="pre">generate_from_template()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.config.config.html#openghg_inversions.config.config.generate_param_dict"><code class="docutils literal notranslate"><span class="pre">generate_param_dict()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.config.config.html#openghg_inversions.config.config.get_value"><code class="docutils literal notranslate"><span class="pre">get_value()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.config.config.html#openghg_inversions.config.config.list_check"><code class="docutils literal notranslate"><span class="pre">list_check()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.config.config.html#openghg_inversions.config.config.open_config"><code class="docutils literal notranslate"><span class="pre">open_config()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.config.config.html#openghg_inversions.config.config.str_check"><code class="docutils literal notranslate"><span class="pre">str_check()</span></code></a></li>
+  <section id="module-openghg_inversions.postprocessing.sigma">
+<span id="openghg-inversions-postprocessing-sigma"></span><h1>openghg_inversions.postprocessing.sigma<a class="headerlink" href="#module-openghg_inversions.postprocessing.sigma" title="Link to this heading">#</a></h1>
+<p>Reconstruct observation-aligned sigma values from inversion output.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.postprocessing.sigma.reconstruct_sigma_aligned">
+<span class="sig-prename descclassname"><span class="pre">openghg_inversions.postprocessing.sigma.</span></span><span class="sig-name descname"><span class="pre">reconstruct_sigma_aligned</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">trace</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">InferenceData</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">model_data</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></span><a class="headerlink" href="#openghg_inversions.postprocessing.sigma.reconstruct_sigma_aligned" title="Link to this definition">#</a></dt>
+<dd><p>Reconstruct posterior sigma values on the observation dimension.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>trace</strong> – Inference data containing posterior <code class="docutils literal notranslate"><span class="pre">sigma</span></code> and, unless
+<code class="docutils literal notranslate"><span class="pre">model_data</span></code> is supplied, registered constant model data.</p></li>
+<li><p><strong>model_data</strong> – Optional canonical sigma alignment data.</p></li>
 </ul>
-</li>
-<li class="toctree-l1"><a class="reference internal" href="openghg_inversions.config.paths.html">openghg_inversions.config.paths</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.config.paths.html#openghg_inversions.config.paths.Paths"><code class="docutils literal notranslate"><span class="pre">Paths</span></code></a><ul>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.config.paths.html#openghg_inversions.config.paths.Paths.openghginv"><code class="docutils literal notranslate"><span class="pre">Paths.openghginv</span></code></a></li>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Posterior sigma values indexed onto <code class="docutils literal notranslate"><span class="pre">nmeasure</span></code>.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#AttributeError" title="(in Python v3.14)"><strong>AttributeError</strong></a> – If required inference-data groups are absent.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#KeyError" title="(in Python v3.14)"><strong>KeyError</strong></a> – If posterior sigma or registered alignment data are absent.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If registered alignment data are invalid.</p></li>
 </ul>
-</li>
-</ul>
-</li>
-<li class="toctree-l1"><a class="reference internal" href="openghg_inversions.config.version.html">openghg_inversions.config.version</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.config.version.html#openghg_inversions.config.version.code_version"><code class="docutils literal notranslate"><span class="pre">code_version()</span></code></a></li>
-</ul>
-</li>
-</ul>
-</div>
+</dd>
+</dl>
+</dd></dl>
+
 </section>
 
 
@@ -459,20 +458,20 @@
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="openghg_inversions.basis.operators.html"
+       href="openghg_inversions.postprocessing.make_paris_outputs.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">openghg_inversions.basis.operators</p>
+        <p class="prev-next-title">openghg_inversions.postprocessing.make_paris_outputs</p>
       </div>
     </a>
     <a class="right-next"
-       href="openghg_inversions.config.config.html"
+       href="openghg_inversions.postprocessing.stats.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">openghg_inversions.config.config</p>
+        <p class="prev-next-title">openghg_inversions.postprocessing.stats</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -488,9 +487,21 @@
 
 
   <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.postprocessing.sigma.reconstruct_sigma_aligned"><code class="docutils literal notranslate"><span class="pre">reconstruct_sigma_aligned()</span></code></a></li>
+</ul>
+  </nav></div>
+
+  <div class="sidebar-secondary-item">
 
   <div class="tocsection sourcelink">
-    <a href="../_sources/reference/openghg_inversions.config.rst.txt">
+    <a href="../_sources/reference/openghg_inversions.postprocessing.sigma.rst.txt">
       <i class="fa-solid fa-file-lines"></i> Show Source
     </a>
   </div>

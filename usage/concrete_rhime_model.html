@@ -1,0 +1,768 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Concrete RHIME Model &#8212; openghg_inversions  documentation</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../_static/styles/theme.css?digest=90905a2f556bf617f1a9" rel="stylesheet" />
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=90905a2f556bf617f1a9" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
+  
+  <!-- So that users can add custom icons -->
+  <script defer src="../_static/scripts/fontawesome.js?digest=90905a2f556bf617f1a9"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=90905a2f556bf617f1a9" />
+<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=90905a2f556bf617f1a9" />
+
+    <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script defer="defer" src="https://cdn.jsdelivr.net/npm/mathjax@4/tex-mml-chtml.js"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'usage/concrete_rhime_model';</script>
+    <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="openghg_inversions" href="../reference/modules.html" />
+    <link rel="prev" title="RHIME Terminology And Quickstart" href="rhime.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="" />
+  
+    
+    <script src="../_static/searchtools.js"></script>
+    <script src="../_static/language_data.js"></script>
+    <script src="../searchindex.js"></script>
+  
+  </head>
+  <body data-default-mode="">
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+  
+  
+  
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header id="pst-header" class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../index.html">
+  
+  
+  
+  
+  
+  
+    <p class="title logo__title">openghg_inversions  documentation</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    <div class="me-auto navbar-header-items__center">
+      
+        <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="usage.html">
+    Using OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../reference/modules.html">
+    openghg_inversions
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+      
+    </div>
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+    <button class="pst-navbar-icon sidebar-toggle secondary-toggle" aria-label="On this page">
+      <span class="fa-solid fa-outdent"></span>
+    </button>
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+      <div class="sidebar-header-items__center">
+        
+          
+          
+            <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="usage.html">
+    Using OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../reference/modules.html">
+    openghg_inversions
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+          
+        
+      </div>
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item pst-sidebar-collapse"><button id="pst-collapse-sidebar-button" aria-expanded="true" aria-controls="pst-primary-sidebar">
+  <svg class="pst-icon" role="img" aria-hidden="true" focusable="false" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+    <path fill="currentColor" d="M3 15.5C2.36232 15.5 1.74874 15.2564 1.28478 14.8189C0.820828 14.3815 0.541576 13.7832 0.504167 13.1467L0.5 13L0.5 3C0.499965 2.36232 0.743605 1.74874 1.18107 1.28478C1.61854 0.820828 2.21676 0.541576 2.85333 0.504167L3 0.5L13 0.5C13.6377 0.499965 14.2513 0.743605 14.7152 1.18107C15.1792 1.61854 15.4584 2.21676 15.4958 2.85333L15.5 3L15.5 13C15.5 13.6377 15.2564 14.2513 14.8189 14.7152C14.3815 15.1792 13.7832 15.4584 13.1467 15.4958L13 15.5L3 15.5ZM3 13.8333L10.5 13.8333L10.5 2.16667L3 2.16667C2.79589 2.16669 2.59889 2.24163 2.44636 2.37726C2.29383 2.5129 2.19638 2.69979 2.1725 2.9025L2.16667 3L2.16667 13C2.16669 13.2041 2.24163 13.4011 2.37726 13.5536C2.5129 13.7062 2.69979 13.8036 2.9025 13.8275L3 13.8333ZM6.65583 10.325L6.5775 10.2558L4.91083 8.58917C4.76735 8.44567 4.68116 8.25476 4.66843 8.05223C4.65569 7.84971 4.71729 7.6495 4.84167 7.48917L4.91083 7.41083L6.5775 5.74417C6.72747 5.59471 6.9287 5.50794 7.14032 5.50148C7.35194 5.49502 7.55809 5.56935 7.7169 5.70937C7.8757 5.8494 7.97525 6.04463 7.99533 6.25539C8.01541 6.46616 7.95451 6.67667 7.825 6.84417L7.75583 6.9225L6.67917 8L7.75583 9.0775C7.89931 9.22099 7.98551 9.41191 7.99824 9.61443C8.01097 9.81695 7.94938 10.0172 7.825 10.1775L7.75583 10.2558C7.61234 10.3993 7.42142 10.4855 7.2189 10.4982C7.01638 10.511 6.81617 10.4494 6.65583 10.325Z"/>
+  </svg>
+  <span class="pst-collapse-sidebar-label">Collapse Sidebar</span>
+  <span class="pst-expand-sidebar-label">Expand Sidebar</span>
+</button></div>
+        <div class="sidebar-primary-item">
+
+<nav class="bd-docs-nav bd-links"
+     aria-label="Section Navigation">
+  <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
+  <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation and Setup</a></li>
+<li class="toctree-l1"><a class="reference internal" href="getting_started.html">Getting started with OpenGHG Inversions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="rhime.html">RHIME Terminology And Quickstart</a></li>
+<li class="toctree-l1 current active"><a class="current reference internal" href="#">Concrete RHIME Model</a></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+      <div class="sidebar-primary-item">
+<div id="ethical-ad-placement"
+      class="flat"
+      data-ea-publisher="readthedocs"
+      data-ea-type="readthedocs-sidebar"
+      data-ea-manual="true">
+</div></div>
+  </div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="usage.html" class="nav-link">Using OpenGHG Inversions</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Concrete RHIME Model</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="concrete-rhime-model">
+<h1>Concrete RHIME Model<a class="headerlink" href="#concrete-rhime-model" title="Link to this heading">#</a></h1>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>This is a draft description of the current RHIME PyMC model and its
+customization boundary. Code under <code class="docutils literal notranslate"><span class="pre">openghg_inversions.models._rhime_compiler</span></code>
+is private implementation machinery, not a public model-definition API.</p>
+</div>
+<p>This page makes the model graph behind <code class="xref py py-func docutils literal notranslate"><span class="pre">run_rhime()</span></code> and
+<code class="xref py py-func docutils literal notranslate"><span class="pre">run_rhime_multisector()</span></code> explicit. It has two purposes:</p>
+<ul class="simple">
+<li><p>show the concrete statistical model and its PyMC names;</p></li>
+<li><p>show how the standard model can be reconstructed from public component
+helpers.</p></li>
+</ul>
+<section id="the-current-builders">
+<h2>The current builders<a class="headerlink" href="#the-current-builders" title="Link to this heading">#</a></h2>
+<p>Both public builders use the same construction stages:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>RhimeModelSpec + canonical inversion inputs
+-&gt; private flux compilation plan
+-&gt; flux states and forward terms
+-&gt; total flux contribution, mu
+-&gt; boundary, offset, error, and likelihood components
+-&gt; PyMC model
+</pre></div>
+</div>
+<p>The private compiler currently covers only the linear flux part of one
+observation channel. Boundary conditions, optional offsets, the RHIME error
+model, and the observed distribution are added afterwards by the shared model
+assembler.</p>
+</section>
+<section id="standard-single-flux-model">
+<h2>Standard single-flux model<a class="headerlink" href="#standard-single-flux-model" title="Link to this heading">#</a></h2>
+<p>Let <code class="docutils literal notranslate"><span class="pre">H</span></code> be the flux sensitivity matrix with dimensions
+<code class="docutils literal notranslate"><span class="pre">(region,</span> <span class="pre">nmeasure)</span></code> in canonical inversion inputs. The builder transposes it
+to observation-first order before registering it as PyMC data. The flux model
+is</p>
+<div class="math notranslate nohighlight">
+\[\begin{split}x &amp;\sim p_x, \\
+\mu &amp;= Hx.\end{split}\]</div>
+<p>With the default prior, <code class="docutils literal notranslate"><span class="pre">x</span></code> is the physical deterministic transform of a
+standard-normal <code class="docutils literal notranslate"><span class="pre">x_latent</span></code>:</p>
+<div class="math notranslate nohighlight">
+\[\begin{split}x_{\mathrm{latent}} &amp;\sim \mathcal{N}(0, 1), \\
+x &amp;= \exp(\mu_x + \sigma_x x_{\mathrm{latent}}).\end{split}\]</div>
+<p>When boundary-condition scaling is enabled,</p>
+<div class="math notranslate nohighlight">
+\[\begin{split}bc &amp;\sim p_{bc}, \\
+\mu_{bc} &amp;= H_{bc}bc.\end{split}\]</div>
+<p>An optional site or site-by-period offset contributes <code class="docutils literal notranslate"><span class="pre">offset</span></code>. The mean of
+the observed distribution is therefore</p>
+<div class="math notranslate nohighlight">
+\[\mu_{\mathrm{obs}} = \mu + \mu_{bc} + \mathrm{offset},\]</div>
+<p>where omitted components are left out of the sum.</p>
+<p>The default RHIME error model uses observation error, a minimum error, and an
+observation-aligned model-error scale <code class="docutils literal notranslate"><span class="pre">sigma</span></code>. Unless
+<code class="docutils literal notranslate"><span class="pre">pollution_events_from_obs</span></code> is selected,</p>
+<div class="math notranslate nohighlight">
+\[\epsilon =
+\max\left(
+  \sqrt{
+    \mathrm{error}^2 +
+    \left(\left|\mu\right|\sigma\right)^{\mathrm{power}}
+  },
+  \mathrm{min\_error}
+\right).\]</div>
+<p>The current observed distribution is</p>
+<div class="math notranslate nohighlight">
+\[y \sim \mathcal{N}(\mu_{\mathrm{obs}}, \epsilon).\]</div>
+<p>The default priors are:</p>
+<div class="pst-scrollable-table-container"><table class="table">
+<colgroup>
+<col style="width: 20.0%" />
+<col style="width: 42.0%" />
+<col style="width: 38.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Quantity</p></th>
+<th class="head"><p>Prior</p></th>
+<th class="head"><p>PyMC variables</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Flux scaling</p></td>
+<td><p>Lognormal with mean 1 and standard deviation 1, reparameterized</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">x_latent</span></code> and <code class="docutils literal notranslate"><span class="pre">x</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p>Boundary scaling</p></td>
+<td><p>Truncated normal with mean 1, standard deviation 0.05, and lower bound 0</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">bc</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p>Model error</p></td>
+<td><p>Uniform from 0.1 to 3</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">sigma</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p>Optional offset</p></td>
+<td><p>Normal with mean 0 and standard deviation 1</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">offset_latent</span></code> and <code class="docutils literal notranslate"><span class="pre">offset</span></code></p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>This table describes the Python builder default used when <code class="docutils literal notranslate"><span class="pre">x_prior</span></code> is
+omitted. The shipped RHIME config template instead supplies an explicit
+<code class="docutils literal notranslate"><span class="pre">x_prior</span></code> without <code class="docutils literal notranslate"><span class="pre">reparameterise=True</span></code>. That config therefore creates
+<code class="docutils literal notranslate"><span class="pre">x</span></code> directly, without <code class="docutils literal notranslate"><span class="pre">x_latent</span></code>. Add <code class="docutils literal notranslate"><span class="pre">&quot;reparameterise&quot;:</span> <span class="pre">True</span></code> to the
+config prior to request the API-default parameterization shown here.</p>
+<p>The important default model-data and deterministic names are:</p>
+<div class="pst-scrollable-table-container"><table class="table">
+<colgroup>
+<col style="width: 24.0%" />
+<col style="width: 30.0%" />
+<col style="width: 46.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Name</p></th>
+<th class="head"><p>Role</p></th>
+<th class="head"><p>Canonical input</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">hx</span></code></p></td>
+<td><p>Flux design data</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">H</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">mu</span></code></p></td>
+<td><p>Flux contribution</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">hx</span> <span class="pre">&#64;</span> <span class="pre">x</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">hbc</span></code></p></td>
+<td><p>Boundary design data</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">H_bc</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">mu_bc</span></code></p></td>
+<td><p>Boundary contribution</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">hbc</span> <span class="pre">&#64;</span> <span class="pre">bc</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Y</span></code></p></td>
+<td><p>Observed mole fraction data</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">mf</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">error</span></code></p></td>
+<td><p>Observation error data</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">mf_error</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">min_error</span></code></p></td>
+<td><p>Minimum error data</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">min_error</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">epsilon</span></code></p></td>
+<td><p>Observation-aligned error scale</p></td>
+<td><p>RHIME error model</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">y</span></code></p></td>
+<td><p>Observed random variable</p></td>
+<td><p>Normal likelihood</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="equivalent-construction-from-public-helpers">
+<h2>Equivalent construction from public helpers<a class="headerlink" href="#equivalent-construction-from-public-helpers" title="Link to this heading">#</a></h2>
+<p>The production builder routes the flux component through the private compiler
+so standard and multisector RHIME share one implementation. A researcher does
+not need to construct a private plan to write the equivalent concrete
+single-flux model. The following uses public component helpers:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">pymc</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pm</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.models</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">CoordRegistry</span><span class="p">,</span>
+    <span class="n">add_inferpymc_likelihood_component</span><span class="p">,</span>
+    <span class="n">add_linear_component</span><span class="p">,</span>
+    <span class="n">attach_coord_registry</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.sigma</span><span class="w"> </span><span class="kn">import</span> <span class="n">SigmaAlignment</span>
+
+<span class="n">x_prior</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;pdf&quot;</span><span class="p">:</span> <span class="s2">&quot;lognormal&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;mean&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span>
+    <span class="s2">&quot;stdev&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span>
+    <span class="s2">&quot;reparameterise&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+<span class="p">}</span>
+<span class="n">bc_prior</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;pdf&quot;</span><span class="p">:</span> <span class="s2">&quot;truncatednormal&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;mu&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span>
+    <span class="s2">&quot;sigma&quot;</span><span class="p">:</span> <span class="mf">0.05</span><span class="p">,</span>
+    <span class="s2">&quot;lower&quot;</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">,</span>
+<span class="p">}</span>
+<span class="n">sigma_prior</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;pdf&quot;</span><span class="p">:</span> <span class="s2">&quot;uniform&quot;</span><span class="p">,</span> <span class="s2">&quot;lower&quot;</span><span class="p">:</span> <span class="mf">0.1</span><span class="p">,</span> <span class="s2">&quot;upper&quot;</span><span class="p">:</span> <span class="mf">3.0</span><span class="p">}</span>
+
+<span class="n">sigma_alignment</span> <span class="o">=</span> <span class="n">SigmaAlignment</span><span class="o">.</span><span class="n">from_frequency</span><span class="p">(</span>
+    <span class="n">inv_inputs</span><span class="p">[</span><span class="s2">&quot;site_indicator&quot;</span><span class="p">],</span>
+    <span class="n">frequency</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+    <span class="n">per_site</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="k">with</span> <span class="n">pm</span><span class="o">.</span><span class="n">Model</span><span class="p">()</span> <span class="k">as</span> <span class="n">model</span><span class="p">:</span>
+    <span class="n">attach_coord_registry</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">CoordRegistry</span><span class="p">())</span>
+
+    <span class="n">flux</span> <span class="o">=</span> <span class="n">add_linear_component</span><span class="p">(</span>
+        <span class="n">inv_inputs</span><span class="p">[</span><span class="s2">&quot;H&quot;</span><span class="p">],</span>
+        <span class="n">data_name</span><span class="o">=</span><span class="s2">&quot;hx&quot;</span><span class="p">,</span>
+        <span class="n">prior_args</span><span class="o">=</span><span class="n">x_prior</span><span class="p">,</span>
+        <span class="n">var_name</span><span class="o">=</span><span class="s2">&quot;x&quot;</span><span class="p">,</span>
+        <span class="n">output_name</span><span class="o">=</span><span class="s2">&quot;mu&quot;</span><span class="p">,</span>
+        <span class="n">output_dim</span><span class="o">=</span><span class="s2">&quot;nmeasure&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">boundary</span> <span class="o">=</span> <span class="n">add_linear_component</span><span class="p">(</span>
+        <span class="n">inv_inputs</span><span class="p">[</span><span class="s2">&quot;H_bc&quot;</span><span class="p">],</span>
+        <span class="n">data_name</span><span class="o">=</span><span class="s2">&quot;hbc&quot;</span><span class="p">,</span>
+        <span class="n">prior_args</span><span class="o">=</span><span class="n">bc_prior</span><span class="p">,</span>
+        <span class="n">var_name</span><span class="o">=</span><span class="s2">&quot;bc&quot;</span><span class="p">,</span>
+        <span class="n">output_name</span><span class="o">=</span><span class="s2">&quot;mu_bc&quot;</span><span class="p">,</span>
+        <span class="n">output_dim</span><span class="o">=</span><span class="s2">&quot;nmeasure&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">add_inferpymc_likelihood_component</span><span class="p">(</span>
+        <span class="n">inv_inputs</span><span class="p">,</span>
+        <span class="n">mu</span><span class="o">=</span><span class="n">flux</span><span class="o">.</span><span class="n">output</span><span class="p">,</span>
+        <span class="n">mu_bc</span><span class="o">=</span><span class="n">boundary</span><span class="o">.</span><span class="n">output</span><span class="p">,</span>
+        <span class="n">sigprior</span><span class="o">=</span><span class="n">sigma_prior</span><span class="p">,</span>
+        <span class="n">sigma_alignment</span><span class="o">=</span><span class="n">sigma_alignment</span><span class="p">,</span>
+        <span class="n">output_dim</span><span class="o">=</span><span class="s2">&quot;nmeasure&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+</pre></div>
+</div>
+<p>This example is deliberately concrete and editable. It is suitable when a
+model developer needs to change graph construction directly. It does not
+automatically participate in the complete <code class="docutils literal notranslate"><span class="pre">run_rhime</span></code> output pipeline; that
+pipeline still selects one of the built-in model builders.</p>
+</section>
+<section id="multisector-model">
+<h2>Multisector model<a class="headerlink" href="#multisector-model" title="Link to this heading">#</a></h2>
+<p>For the current shared-basis multisector model, each sector has an independent
+state and forward contribution:</p>
+<div class="math notranslate nohighlight">
+\[\begin{split}x_s &amp;\sim p_s, \\
+\mu_s &amp;= H_s x_s, \\
+\mu &amp;= \sum_s \mu_s.\end{split}\]</div>
+<p>If the normalized PyMC suffix for sector <code class="docutils literal notranslate"><span class="pre">s</span></code> is <code class="docutils literal notranslate"><span class="pre">ff</span></code>, its variables are
+<code class="docutils literal notranslate"><span class="pre">x_ff</span></code> and <code class="docutils literal notranslate"><span class="pre">mu_ff</span></code> and its design data is <code class="docutils literal notranslate"><span class="pre">hx_ff</span></code>. Source values select
+the corresponding <code class="docutils literal notranslate"><span class="pre">H</span></code> slices; sector names provide model identities. They
+are not required to be the same strings.</p>
+<p>Every sector state and every reparameterization-generated latent must have a
+unique backend name. The compiler also checks that all sector contributions
+share an identical observation layout before summing them.</p>
+</section>
+<section id="names-and-generated-names">
+<h2>Names and generated names<a class="headerlink" href="#names-and-generated-names" title="Link to this heading">#</a></h2>
+<p>PyMC model variables currently share one flat effective namespace. A prior can
+create more names than the requested base name. In particular, a
+reparameterized lognormal requested as <code class="docutils literal notranslate"><span class="pre">x_ff</span></code> creates both <code class="docutils literal notranslate"><span class="pre">x_ff</span></code> and
+<code class="docutils literal notranslate"><span class="pre">x_ff_latent</span></code>.</p>
+<p>Both names should be treated as reserved for that prior. No data variable,
+other state, forward-term deterministic, or total should use either name. The
+current compiler enforces this rule within the flux compilation plan. The
+shared assembler still relies on conventional names for later boundary,
+offset, error, and likelihood components; there is not yet one allocator for
+the complete model namespace.</p>
+<p>Knowledge of the <code class="docutils literal notranslate"><span class="pre">_latent</span></code> suffix is also duplicated between the compiler
+and <code class="docutils literal notranslate"><span class="pre">parse_prior</span></code>. Generated-name reporting, whole-model allocation, and
+component namespaces are not implemented. They are tracked in
+<a class="reference external" href="https://github.com/openghg/openghg_inversions/issues/532">issue #532</a>.</p>
+</section>
+<section id="alternative-models-and-likelihoods">
+<h2>Alternative models and likelihoods<a class="headerlink" href="#alternative-models-and-likelihoods" title="Link to this heading">#</a></h2>
+<p>There is currently no likelihood option on <code class="docutils literal notranslate"><span class="pre">RhimeModelSpec</span></code>. The private flux
+compiler stops at <code class="docutils literal notranslate"><span class="pre">mu</span></code>, and the shared assembler always installs
+<code class="docutils literal notranslate"><span class="pre">add_inferpymc_likelihood_component</span></code>. Likewise, the prepared-input runner
+selects one of the built-in standard or multisector model builders.</p>
+<p>Public contracts for alternative likelihood builders, complete model builders,
+output roles, and possible later plugin discovery are not implemented. That
+design and its pressure tests are tracked in
+<a class="reference external" href="https://github.com/openghg/openghg_inversions/issues/533">issue #533</a>.
+The more general semantic model and observation-channel representation is
+tracked in
+<a class="reference external" href="https://github.com/openghg/openghg_inversions/issues/528">issue #528</a>.</p>
+</section>
+<section id="customization-boundaries">
+<h2>Customization boundaries<a class="headerlink" href="#customization-boundaries" title="Link to this heading">#</a></h2>
+<p>The current customization levels are:</p>
+<dl class="simple">
+<dt>Supported high-level options</dt><dd><p>Priors, boundary conditions, offsets, sigma alignment, and existing error
+options supplied through the public RHIME builders and model spec.</p>
+</dd>
+<dt>Supported low-level components</dt><dd><p>Public functions in <code class="docutils literal notranslate"><span class="pre">openghg_inversions.models</span></code> can be composed inside a
+user-owned <code class="docutils literal notranslate"><span class="pre">pm.Model</span></code> as shown above.</p>
+</dd>
+<dt>Private implementation</dt><dd><p><code class="docutils literal notranslate"><span class="pre">_FluxPlan</span></code>, <code class="docutils literal notranslate"><span class="pre">_StatePlan</span></code>, <code class="docutils literal notranslate"><span class="pre">_ForwardTermPlan</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">_compile_loop_sum</span></code> may change while the semantic model representation is
+developed. They should not be imported by research scripts.</p>
+</dd>
+</dl>
+</section>
+</section>
+
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="rhime.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">RHIME Terminology And Quickstart</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="../reference/modules.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">openghg_inversions</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+                <dialog id="pst-secondary-sidebar-modal"></dialog>
+                <div id="pst-secondary-sidebar" class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#the-current-builders">The current builders</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#standard-single-flux-model">Standard single-flux model</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#equivalent-construction-from-public-helpers">Equivalent construction from public helpers</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#multisector-model">Multisector model</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#names-and-generated-names">Names and generated names</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#alternative-models-and-likelihoods">Alternative models and likelihoods</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#customization-boundaries">Customization boundaries</a></li>
+</ul>
+  </nav></div>
+
+  <div class="sidebar-secondary-item">
+
+  <div class="tocsection sourcelink">
+    <a href="../_sources/usage/concrete_rhime_model.rst.txt">
+      <i class="fa-solid fa-file-lines"></i> Show Source
+    </a>
+  </div>
+</div>
+
+</div></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../_static/scripts/bootstrap.js?digest=90905a2f556bf617f1a9"></script>
+<script defer src="../_static/scripts/pydata-sphinx-theme.js?digest=90905a2f556bf617f1a9"></script>
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+
+  <p class="copyright">
+    
+      © Copyright 2025, Eric Saboya and Brendan Murphy.
+      <br/>
+    
+  </p>
+</div>
+      
+        <div class="footer-item">
+
+  <p class="sphinx-version">
+    Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 9.0.4.
+    <br/>
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+    <div class="footer-items__end">
+      
+        <div class="footer-item">
+<p class="theme-version">
+  <!-- # L10n: Setting the PST URL as an argument as this does not need to be localized -->
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.20.0.
+</p></div>
+      
+    </div>
+  
+</div>
+
+  </footer>
+  </body>
+</html>
