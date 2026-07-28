@@ -1,10 +1,15 @@
 """Algorithms for computing basis functions."""
 
+from ._consolidation import (
+    ContrastProximityComponentConsolidation,
+    InactiveComponentPolicy,
+)
 from ._constrained import (
     AllocationMode,
     AllSplitAcceptancePolicies,
     AxisAlignedWeightedSplitStrategy,
     AxisParallelSplitStep,
+    ComponentConsolidationPolicy,
     ConnectedComponentPartitionStep,
     ConnectedComponentSplitStrategy,
     GreedyAxisParallelSplitStrategy,
@@ -38,10 +43,13 @@ __all__ = [
     "AllocationMode",
     "AxisAlignedWeightedSplitStrategy",
     "AxisParallelSplitStep",
+    "ComponentConsolidationPolicy",
     "ConnectedComponentPartitionStep",
     "ConnectedComponentSplitStrategy",
+    "ContrastProximityComponentConsolidation",
     "ContrastScoreSplitAcceptance",
     "GreedyAxisParallelSplitStrategy",
+    "InactiveComponentPolicy",
     "InertialSplitStep",
     "LatLonGridGeometry",
     "MaxChildPCAEccentricity",
