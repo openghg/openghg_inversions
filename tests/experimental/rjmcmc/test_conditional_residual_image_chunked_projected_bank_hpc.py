@@ -207,6 +207,22 @@ def test_json_reader_rejects_noncanonical_text(tmp_path: Path) -> None:
         hpc._read_json(path)
 
 
+def test_json_writer_roundtrips_stringified_control_keys(tmp_path: Path) -> None:
+    """Published control maps must retain their canonical key ordering."""
+    payload = {
+        "cross_candidate_parity": {
+            "64": {"passed": True},
+            "128": {"passed": True},
+            "256": {"passed": True},
+        }
+    }
+    path = tmp_path / "manifest.json"
+
+    hpc._atomic_write_json(path, payload)
+
+    assert hpc._read_json(path) == payload
+
+
 def test_g3_certifier_selects_lowest_passing_median(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

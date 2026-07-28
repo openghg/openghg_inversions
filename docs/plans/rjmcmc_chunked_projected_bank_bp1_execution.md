@@ -47,6 +47,17 @@ The earlier job `18192814` never started because it inherited Slurm account
 now name the established BP1 account `chem007981` explicitly.  Both failures
 and their logs remain preserved under their original run root.
 
+The first G3a attempt on source
+`ddad33bf886fc94981e328806456ecab305b663b`, Slurm job `18195041`, stopped
+before constructing either projected bank or publishing a G3a report.  G3a
+authenticated and loaded the frozen PARIS input and authoritative spectrum,
+then the strict reader rejected the otherwise valid G1 report: its
+projection-size parity map had been emitted from integer Python keys, whose
+ordering changes after the mandatory JSON conversion to strings.  The repair
+emits those control keys as strings before canonical serialization.  It
+changes no numerical path, threshold, scientific input, or stage decision.
+The failed job and its logs remain preserved under their original run root.
+
 ## Numerical controls
 
 The G1 projection-microbatch ladder is

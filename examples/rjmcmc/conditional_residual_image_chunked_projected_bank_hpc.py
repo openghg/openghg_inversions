@@ -619,7 +619,7 @@ def run_g1(output: Path, *, source_revision: str) -> dict[str, object]:
         )
     first_output = benchmark_outputs[P_LADDER[0]]
     benchmark_parity = {
-        projection_chunk: _parity_record(
+        str(projection_chunk): _parity_record(
             first_output,
             benchmark_outputs[projection_chunk],
             native_cells=benchmark.cell_alphas.size,
