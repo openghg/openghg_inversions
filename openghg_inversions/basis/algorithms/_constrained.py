@@ -84,6 +84,18 @@ class SplitStrategy(Protocol):
         ...
 
 
+class ComponentConsolidationPolicy(Protocol):
+    """Policy protocol for optional post-construction region consolidation."""
+
+    def __call__(
+        self,
+        labels: xr.DataArray,
+        region_classes: xr.DataArray,
+    ) -> xr.DataArray:
+        """Return labels after optional class-safe region consolidation."""
+        ...
+
+
 class PartitionStep(Protocol):
     """Strategy protocol for splitting one partition into child partitions."""
 
@@ -637,10 +649,7 @@ def _connected_node_components(
         mask,
         structure=ndimage.generate_binary_structure(2, connectivity),
     )
-    return [
-        list(zip(*np.where(labels == component), strict=True))
-        for component in range(1, int(count) + 1)
-    ]
+    return [list(zip(*np.where(labels == component), strict=True)) for component in range(1, int(count) + 1)]
 
 
 @dataclass(frozen=True)
@@ -916,6 +925,7 @@ def region_constrained_basis(
     allocation: AllocationMode = "weight",
     min_regions_per_class: int = 1,
     split_strategy: SplitStrategy | None = None,
+    component_consolidation: ComponentConsolidationPolicy | None = None,
     unmapped_values: Iterable[Hashable] = (),
 ) -> xr.DataArray:
     """Generate basis labels independently inside each mask/region class.
@@ -937,6 +947,10 @@ def region_constrained_basis(
             requires, a ``ValueError`` is raised.
         split_strategy: Class-local splitting strategy. Defaults to
             :class:`GreedyAxisParallelSplitStrategy`.
+        component_consolidation: Optional policy applied to the globally
+            relabelled basis after class-local construction. Policies that
+            deliberately combine disconnected components must preserve class
+            boundaries and report that strict connectivity no longer holds.
         unmapped_values: Additional class values to leave as output label ``0``.
 
     Returns:
@@ -979,7 +993,10 @@ def region_constrained_basis(
             labels[(local_labels == local_label) & class_mask] = next_label
             next_label += 1
 
-    return _labels_dataarray(labels, weights)
+    result = _labels_dataarray(labels, weights)
+    if component_consolidation is not None:
+        result = component_consolidation(result, region_classes)
+    return result
 
 
 def intersect_region_class_layers(
@@ -2009,6 +2026,7 @@ __all__ = [
     "AllocationMode",
     "AxisAlignedWeightedSplitStrategy",
     "AxisParallelSplitStep",
+    "ComponentConsolidationPolicy",
     "ConnectedComponentPartitionStep",
     "ConnectedComponentSplitStrategy",
     "GreedyAxisParallelSplitStrategy",
