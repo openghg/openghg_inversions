@@ -4,6 +4,12 @@
 
 ## Code changes
 
+- Added a tox PyTensor compiler preflight that automatically loads
+  `gcc/12.3.0-sknc` on Rocky Linux or recognized Blue Pebble hosts when the
+  compiler setting is empty, supports configurable module/compiler overrides,
+  and fails before pytest when `pytensor.config.cxx` remains empty instead of
+  allowing extremely slow C++-free PyMC test runs.
+
 - Reset retained posterior draw labels after burn-in before attaching predictive
   groups in both modern RHIME and fixed-basis sampling, and preserve the
   discarded burn count through trace and `InversionOutput` round trips.
