@@ -13,6 +13,7 @@ from examples.rjmcmc import (
 )
 from openghg_inversions.experimental.rjmcmc.aggregation_error_exact_mixture import (
     RootResidualSpectrum,
+    build_chunked_projected_root_bank,
 )
 
 REVISION = "9" * 40
@@ -133,13 +134,46 @@ def test_parity_record_reports_absolute_and_ulp_differences() -> None:
     assert maximum_absolute_difference > 0.0
 
 
-def test_locked_p_requires_an_identical_output_g1_manifest(tmp_path: Path) -> None:
-    """A malformed or failed throughput lock must not reach G3."""
+def test_projection_microbatches_replay_and_meet_frozen_parity() -> None:
+    """Each fixed P should replay exactly while different BLAS shapes meet parity."""
+    aggregation = hpc._synthetic_aggregation(
+        cells=129,
+        observations=4,
+        alpha_mode="heterogeneous",
+    )
+    spectrum = RootResidualSpectrum.from_aggregation(aggregation)
+
+    def build(projection_chunk_size: int) -> np.ndarray:
+        bank = build_chunked_projected_root_bank(
+            aggregation,
+            spectrum,
+            mixture_rank=3,
+            sample_count=256,
+            sample_chunk_size=256,
+            projection_chunk_size=projection_chunk_size,
+            source_seed=731,
+            source_provenance="focused P-parity test",
+        )
+        return np.asarray(bank.projected_unit_mass_residual_factors[:, :, 0])
+
+    reference = build(64)
+    np.testing.assert_array_equal(reference, build(64))
+    candidate = build(128)
+    record = hpc._parity_record(
+        reference,
+        candidate,
+        native_cells=aggregation.cell_alphas.size,
+    )
+    assert record["passed"] is True
+
+
+def test_locked_p_requires_a_frozen_parity_g1_manifest(tmp_path: Path) -> None:
+    """A malformed or failed parity/throughput lock must not reach G3."""
     manifest = {
         "schema": hpc.SCHEMA,
         "stage": "G1",
         "projection_microbatch_selection": {
-            "all_projected_arrays_bitwise_identical": True,
+            "all_candidate_outputs_within_frozen_parity_tolerance": True,
             "locked_projection_chunk_size": 128,
         },
     }
@@ -147,9 +181,11 @@ def test_locked_p_requires_an_identical_output_g1_manifest(tmp_path: Path) -> No
     path.write_text(hpc._canonical_json(manifest) + "\n", encoding="ascii")
     assert hpc._locked_p(path) == 128
 
-    manifest["projection_microbatch_selection"]["all_projected_arrays_bitwise_identical"] = False
+    manifest["projection_microbatch_selection"]["all_candidate_outputs_within_frozen_parity_tolerance"] = (
+        False
+    )
     path.write_text(hpc._canonical_json(manifest) + "\n", encoding="ascii")
-    with pytest.raises(ValueError, match="no valid identical-output"):
+    with pytest.raises(ValueError, match="no valid frozen-parity"):
         hpc._locked_p(path)
 
 

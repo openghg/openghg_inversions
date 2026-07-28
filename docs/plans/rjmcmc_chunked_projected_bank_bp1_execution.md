@@ -29,6 +29,24 @@ and is not atmospheric mole-fraction concentration.
 It is not a scientific concentration lock.  G4 remains barred until a
 scientific common native \(\eta\) is supplied independently of results.
 
+## Software-only execution repairs
+
+The first G1 attempt on source
+`9fd067885c8c14e62970613fa0f8b99009ba43f0`, Slurm job `18194997`, failed
+before publishing a G1 report because this addendum initially imposed
+bitwise equality across different \(P\) values.  That overconstraint
+contradicted the already-committed background contract: fixing \(P\) makes
+the result invariant while varying \(C\), but changing \(P\) changes the BLAS
+row shape and can change final rounding.  The repair below requires exact
+replay at each fixed \(P\) and applies the already-frozen float64 parity
+tolerance across \(P\).  No new numerical threshold was chosen, and no PARIS
+input or realized residual had been accessed by G1.
+
+The earlier job `18192814` never started because it inherited Slurm account
+`default`, which the `compute` partition denies.  The committed batch scripts
+now name the established BP1 account `chem007981` explicitly.  Both failures
+and their logs remain preserved under their original run root.
+
 ## Numerical controls
 
 The G1 projection-microbatch ladder is
@@ -38,11 +56,15 @@ P = 64, 128, 256
 ```
 
 Each candidate is run three times on the same moderate synthetic operator.
-Projected arrays must be bitwise identical across candidates.  The locked
-value is the lowest median elapsed time, with smaller \(P\) as the exact-tie
-break.  For deliberately tiny G1 cases with \(S<P\), the effective
-microbatch is \(\min(P,S)\), held fixed across allocation chunks for that
-case.
+Every candidate must replay bitwise at its fixed \(P\).  Across different
+\(P\) values, projected arrays must meet the frozen v2/v3 float64 parity
+tolerance below; different BLAS row shapes are not required to be bitwise
+identical.  This matches the background contract, which guarantees bitwise
+invariance when \(P\) is held fixed while \(C\) varies.  The locked value is
+the lowest median elapsed time among parity-passing candidates, with smaller
+\(P\) as the exact-tie break.  For deliberately tiny G1 cases with \(S<P\),
+the effective microbatch is \(\min(P,S)\), held fixed across allocation
+chunks for that case.
 
 The v2/v3 parity tolerance is frozen as
 

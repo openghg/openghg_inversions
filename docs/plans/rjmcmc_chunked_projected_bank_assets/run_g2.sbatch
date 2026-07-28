@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+#SBATCH --account=chem007981
 #SBATCH --job-name=chunk-bank-g2
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=16G

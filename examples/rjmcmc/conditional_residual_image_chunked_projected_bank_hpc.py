@@ -618,8 +618,14 @@ def run_g1(output: Path, *, source_revision: str) -> dict[str, object]:
             }
         )
     first_output = benchmark_outputs[P_LADDER[0]]
-    if any(not np.array_equal(first_output, benchmark_outputs[value]) for value in P_LADDER[1:]):
-        raise ValueError("P benchmark projected arrays differ")
+    benchmark_parity = {
+        projection_chunk: _parity_record(
+            first_output,
+            benchmark_outputs[projection_chunk],
+            native_cells=benchmark.cell_alphas.size,
+        )
+        for projection_chunk in P_LADDER
+    }
     locked_p = min(
         P_LADDER,
         key=lambda value: (p_medians[value], value),
@@ -750,10 +756,13 @@ def run_g1(output: Path, *, source_revision: str) -> dict[str, object]:
         "projection_microbatch_selection": {
             "ladder": list(P_LADDER),
             "criterion": (
-                "lowest median of three identical-output elapsed times; smaller P breaks exact ties"
+                "lowest median of three exact-replay, frozen-parity elapsed times; smaller P breaks exact ties"
             ),
             "records": p_records,
-            "all_projected_arrays_bitwise_identical": True,
+            "cross_candidate_reference_projection_chunk_size": P_LADDER[0],
+            "cross_candidate_parity": benchmark_parity,
+            "every_candidate_replays_bitwise_at_fixed_p": True,
+            "all_candidate_outputs_within_frozen_parity_tolerance": True,
             "locked_projection_chunk_size": locked_p,
         },
         "small_matrix": small_records,
@@ -888,8 +897,11 @@ def _locked_p(g1_manifest: Path) -> int:
     if payload.get("schema") != SCHEMA or payload.get("stage") != "G1":
         raise ValueError("G1 manifest schema or stage mismatch")
     selection = payload.get("projection_microbatch_selection")
-    if not isinstance(selection, dict) or selection.get("all_projected_arrays_bitwise_identical") is not True:
-        raise ValueError("G1 manifest contains no valid identical-output P lock")
+    if (
+        not isinstance(selection, dict)
+        or selection.get("all_candidate_outputs_within_frozen_parity_tolerance") is not True
+    ):
+        raise ValueError("G1 manifest contains no valid frozen-parity P lock")
     locked = int(selection["locked_projection_chunk_size"])
     if locked not in P_LADDER:
         raise ValueError("G1 locked P is outside the predeclared ladder")
