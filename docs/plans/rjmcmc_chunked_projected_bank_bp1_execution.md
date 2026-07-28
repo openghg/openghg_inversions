@@ -143,3 +143,16 @@ common native \(\eta\) has not been supplied.  A successful G3 is therefore
 the terminal engineering result for this run.  No extra rank, sample, chunk,
 component, mixture, flow, NLE, or posterior screen may be selected from these
 results.
+
+## Execution result
+
+G0--G3 passed on scientific source revision
+`8b21d92195529332a65fbdd78f6b45f7cb95e56a`.  The frozen rules selected
+\(P=256\) and \(C=4096\).  G4 remains barred by the stop rule above.  Exact
+run roots, Slurm jobs, gate values, failure preservation, and artifact
+checksums are recorded in
+[`rjmcmc_chunked_projected_bank_bp1_report.md`](rjmcmc_chunked_projected_bank_bp1_report.md).
+
+Updated operational guidance requires one Slurm array for homogeneous
+repeated work.  The completed G3 evidence remains unchanged, but any future
+resource matrix must use an array rather than an `sbatch` loop.
