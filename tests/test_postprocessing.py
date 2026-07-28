@@ -25,6 +25,7 @@ from openghg_inversions.postprocessing.make_paris_outputs import (
     _flux_interval_midpoints,
     infer_flux_frequency,
     make_paris_outputs,
+    paris_concentration_outputs,
     paris_flux_output,
     paris_template_files,
 )
@@ -821,6 +822,60 @@ def test_paris_flux_output_uses_january_annual_period_for_june_run(inv_out, euro
     assert flux_outs.sizes["time"] == 1
     actual = pd.Timestamp("1970-01-01") + pd.Timedelta(days=float(flux_outs.time.values[0]))
     assert actual == pd.Timestamp("2019-06-16")
+
+
+def test_latest_paris_flux_output_reports_clipped_annual_midpoint_and_bounds(inv_out, europe_country_file):
+    """Latest PARIS flux reports the exact midpoint and bounds of a clipped annual prior."""
+    inv_out.run_metadata["start_date"] = "2019-06-01"
+    inv_out.run_metadata["end_date"] = "2019-07-01"
+
+    flux_outs = paris_flux_output(
+        inv_out,
+        country_file=europe_country_file,
+        inversion_grid=False,
+        flux_frequency=infer_flux_frequency(inv_out.flux),
+        template_version="latest",
+    )
+
+    epoch = pd.Timestamp("1970-01-01")
+    actual = epoch + pd.Timedelta(days=float(flux_outs.time.values[0]))
+    bounds = epoch + pd.to_timedelta(flux_outs.time_bnds.values[0], unit="D")
+
+    assert flux_outs.sizes["time"] == 1
+    assert actual == pd.Timestamp("2019-06-16")
+    assert list(bounds) == [pd.Timestamp("2019-06-01"), pd.Timestamp("2019-07-01")]
+
+
+def test_legacy_paris_concentration_shifts_hourly_observations_to_midpoints(inv_out):
+    """Legacy PARIS concentration shifts hourly observation starts by 30 minutes."""
+    observation_starts = pd.DatetimeIndex(observation_inputs_for_outputs(inv_out).time.values).unique()
+    expected = (observation_starts + pd.Timedelta(minutes=30) - pd.Timestamp("1970-01-01")) / pd.Timedelta(
+        days=1
+    )
+
+    result = paris_concentration_outputs(inv_out, obs_avg_period="1h")
+
+    assert result.time.dims == ("time",)
+    np.testing.assert_array_equal(result.time.values, expected.to_numpy())
+
+
+def test_latest_paris_concentration_reports_hourly_midpoints_and_bounds(inv_out):
+    """Latest PARIS concentration reports hourly midpoints and exact start/end bounds."""
+    epoch = pd.Timestamp("1970-01-01")
+    starts = pd.DatetimeIndex(observation_inputs_for_outputs(inv_out).time.values)
+    expected_starts = (starts - epoch) / pd.Timedelta(days=1)
+    expected_ends = (starts + pd.Timedelta(hours=1) - epoch) / pd.Timedelta(days=1)
+    expected_midpoints = (starts + pd.Timedelta(minutes=30) - epoch) / pd.Timedelta(days=1)
+
+    result = paris_concentration_outputs(inv_out, obs_avg_period="1h", template_version="latest")
+
+    assert result.time.dims == ("index",)
+    assert result.time_bnds.dims == ("index", "nbnds")
+    np.testing.assert_array_equal(result.time.values, expected_midpoints.to_numpy())
+    np.testing.assert_array_equal(
+        result.time_bnds.values,
+        np.column_stack([expected_starts.to_numpy(), expected_ends.to_numpy()]),
+    )
 
 
 def test_basic_outputs(inv_out, europe_country_file):
