@@ -12,6 +12,7 @@ import pytest
 import xarray as xr
 
 import openghg_inversions.models as models
+import openghg_inversions.models._rhime_compiler as rhime_compiler_module
 import openghg_inversions.models.rhime as rhime_models_module
 import openghg_inversions.hbmcmc.inversion_pymc as legacy_mcmc
 import openghg_inversions.postprocessing.inversion_output as inversion_output_module
@@ -36,6 +37,12 @@ from openghg_inversions.flux_sanitization import (
 from openghg_inversions.inversion_data import RhimePreparedInputs, prepare_rhime_inputs
 from openghg_inversions.inversion_inputs import make_inv_inputs
 from openghg_inversions.basis.operators import BasisMeta, BasisOperator, BucketBasisOperator
+from openghg_inversions.models._rhime_compiler import (
+    _FluxPlan,
+    _ForwardTermPlan,
+    _StatePlan,
+    _compile_loop_sum,
+)
 from openghg_inversions.models import (
     build_rhime_model,
     build_rhime_model_from_spec,
@@ -43,6 +50,7 @@ from openghg_inversions.models import (
     build_rhime_multisector_model_from_spec,
     safe_pymc_name,
 )
+from openghg_inversions.models.coords import CoordRegistry, attach_coord_registry
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.postprocessing._basis_products import (
     BASIS_ARTIFACT_PATH_OUTPUT_ATTR,
@@ -507,6 +515,240 @@ class _DynamicSectorSpyBasisFunctions(_SpyBasisFunctions):
         )
 
 
+def test_compile_loop_sum_reuses_state_and_sums_named_terms() -> None:
+    """One shared state feeds named coefficient-scaled terms and their total."""
+    coords = {"region": ["r0", "r1"], "nmeasure": ["obs0", "obs1", "obs2"]}
+    design_a = xr.DataArray(
+        [[1.0, 2.0, 3.0], [0.5, 1.0, 1.5]],
+        dims=("region", "nmeasure"),
+        coords=coords,
+    )
+    design_b = xr.DataArray(
+        [[4.0, 3.0, 2.0], [1.0, 2.0, 3.0]],
+        dims=("region", "nmeasure"),
+        coords=coords,
+    )
+    plan = _FluxPlan(
+        states=(
+            _StatePlan(
+                state_id="shared",
+                variable_name="x_shared",
+                prior_args={"pdf": "uniform", "lower": 1.0, "upper": 2.0},
+            ),
+        ),
+        terms=(
+            _ForwardTermPlan(
+                term_id="term_a",
+                state_id="shared",
+                design=design_a,
+                data_name="h_a",
+                deterministic_name="mu_a",
+            ),
+            _ForwardTermPlan(
+                term_id="term_b",
+                state_id="shared",
+                design=design_b,
+                data_name="h_b",
+                deterministic_name="mu_b",
+                coefficient=-0.25,
+            ),
+        ),
+    )
+
+    with pm.Model() as model:
+        attach_coord_registry(model, CoordRegistry())
+        compiled = _compile_loop_sum(plan)
+        trace = pm.sample_prior_predictive(
+            draws=3,
+            var_names=["x_shared", "mu_a", "mu_b", "mu"],
+            random_seed=402,
+        )
+
+    assert [rv.name for rv in model.free_RVs].count("x_shared") == 1
+    assert compiled.states["shared"] is model["x_shared"]
+    assert compiled.latents["shared"] is model["x_shared"]
+    assert compiled.terms["term_a"] is model["mu_a"]
+    assert compiled.terms["term_b"] is model["mu_b"]
+    prior = cast(Any, trace).prior
+    assert set(prior.data_vars) == {"x_shared", "mu_a", "mu_b", "mu"}
+    trace_coords = {"region": prior["region"], "nmeasure": prior["nmeasure"]}
+    expected_a = xr.dot(
+        prior["x_shared"],
+        design_a.assign_coords(trace_coords),
+        dim="region",
+    )
+    expected_b = -0.25 * xr.dot(
+        prior["x_shared"],
+        design_b.assign_coords(trace_coords),
+        dim="region",
+    )
+    xr.testing.assert_allclose(
+        prior["mu_a"],
+        expected_a.transpose(*prior["mu_a"].dims).rename("mu_a"),
+    )
+    xr.testing.assert_allclose(
+        prior["mu_b"],
+        expected_b.transpose(*prior["mu_b"].dims).rename("mu_b"),
+    )
+    xr.testing.assert_allclose(
+        prior["mu"],
+        (prior["mu_a"] + prior["mu_b"]).rename("mu"),
+    )
+
+
+def test_compile_loop_sum_separates_user_state_from_reparameterized_latent() -> None:
+    """Compiled state metadata distinguishes the physical state from its latent."""
+    design = xr.DataArray(
+        [[1.0]],
+        dims=("region", "nmeasure"),
+        coords={"region": [0], "nmeasure": [0]},
+    )
+    plan = _FluxPlan(
+        states=(
+            _StatePlan(
+                state_id="flux",
+                variable_name="x_flux",
+                prior_args={
+                    "pdf": "lognormal",
+                    "mean": 1.0,
+                    "stdev": 0.2,
+                    "reparameterise": True,
+                },
+            ),
+        ),
+        terms=(
+            _ForwardTermPlan(
+                term_id="flux",
+                state_id="flux",
+                design=design,
+                data_name="h_flux",
+                deterministic_name="mu",
+            ),
+        ),
+    )
+
+    with pm.Model() as model:
+        attach_coord_registry(model, CoordRegistry())
+        compiled = _compile_loop_sum(plan)
+
+    assert compiled.states["flux"] is model["x_flux"]
+    assert compiled.latents["flux"] is model["x_flux_latent"]
+
+
+@pytest.mark.parametrize(
+    ("state_id", "coefficient", "prior_args", "error"),
+    [
+        ("missing", 1.0, {"pdf": "normal", "mu": 1.0, "sigma": 0.2}, "unknown state IDs"),
+        ("shared", np.inf, {"pdf": "normal", "mu": 1.0, "sigma": 0.2}, "finite scalar"),
+        ("shared", 1.0, {"pdf": "not-a-distribution"}, "prior.*invalid"),
+    ],
+)
+def test_compile_loop_sum_rejects_invalid_plan_before_graph_mutation(
+    state_id: str,
+    coefficient: float,
+    prior_args: dict[str, Any],
+    error: str,
+) -> None:
+    """Invalid references, coefficients, and priors do not mutate the active graph."""
+    design = xr.DataArray(
+        [[1.0]],
+        dims=("region", "nmeasure"),
+        coords={"region": [0], "nmeasure": [0]},
+    )
+    plan = _FluxPlan(
+        states=(
+            _StatePlan(
+                state_id="shared",
+                variable_name="x_shared",
+                prior_args=prior_args,
+            ),
+        ),
+        terms=(
+            _ForwardTermPlan(
+                term_id="term",
+                state_id=state_id,
+                design=design,
+                data_name="h_term",
+                deterministic_name="mu_term",
+                coefficient=coefficient,
+            ),
+        ),
+    )
+
+    with pm.Model() as model, pytest.raises(ValueError, match=error):
+        _compile_loop_sum(plan)
+
+    assert model.named_vars == {}
+
+
+def test_compile_loop_sum_rejects_global_coordinate_conflicts_before_mutation() -> None:
+    """Repeated backend dimensions must carry one globally consistent coordinate."""
+    obs = ["obs0", "obs1"]
+    plan = _FluxPlan(
+        states=(
+            _StatePlan("a", "x_a", {"pdf": "normal", "mu": 1.0, "sigma": 0.2}),
+            _StatePlan("b", "x_b", {"pdf": "normal", "mu": 1.0, "sigma": 0.2}),
+        ),
+        terms=(
+            _ForwardTermPlan(
+                "a",
+                "a",
+                xr.DataArray(
+                    np.ones((2, 2)),
+                    dims=("region", "nmeasure"),
+                    coords={"region": ["a0", "a1"], "nmeasure": obs},
+                ),
+                "h_a",
+                "mu_a",
+            ),
+            _ForwardTermPlan(
+                "b",
+                "b",
+                xr.DataArray(
+                    np.ones((2, 2)),
+                    dims=("region", "nmeasure"),
+                    coords={"region": ["b0", "b1"], "nmeasure": obs},
+                ),
+                "h_b",
+                "mu_b",
+            ),
+        ),
+    )
+
+    with (
+        pm.Model() as model,
+        pytest.raises(ValueError, match="incompatible global coordinates"),
+    ):
+        _compile_loop_sum(plan)
+
+    assert model.named_vars == {}
+
+
+def test_compile_loop_sum_preserves_term_order_independent_of_state_order() -> None:
+    """The strategy follows term order while reusing independently declared states."""
+    design = xr.DataArray(
+        [[1.0]],
+        dims=("region", "nmeasure"),
+        coords={"region": [0], "nmeasure": [0]},
+    )
+    plan = _FluxPlan(
+        states=(
+            _StatePlan("b", "x_b", {"pdf": "normal", "mu": 1.0, "sigma": 0.2}),
+            _StatePlan("a", "x_a", {"pdf": "normal", "mu": 1.0, "sigma": 0.2}),
+        ),
+        terms=(
+            _ForwardTermPlan("a1", "a", design, "h_a1", "mu_a1"),
+            _ForwardTermPlan("b1", "b", design, "h_b1", "mu_b1"),
+            _ForwardTermPlan("a2", "a", design, "h_a2", "mu_a2"),
+        ),
+    )
+
+    with pm.Model():
+        compiled = _compile_loop_sum(plan)
+
+    assert list(compiled.terms) == ["a1", "b1", "a2"]
+
+
 def test_build_rhime_model_contains_expected_variables(
     rhime_inv_inputs: xr.Dataset, builder_args: dict
 ) -> None:
@@ -552,29 +794,361 @@ def test_build_rhime_multisector_model_contains_expected_variables(
 def test_build_rhime_multisector_model_uses_sector_names_for_variables(
     multisector_inv_inputs: xr.Dataset, builder_args: dict
 ) -> None:
-    """Sector labels can differ from OpenGHG source values used for data selection."""
+    """Distinct sector priors retain named states and additive mu deterministics."""
+    sector_priors = {
+        "FF": {"pdf": "uniform", "lower": 1.0, "upper": 2.0},
+        "ocean": {"pdf": "uniform", "lower": 10.0, "upper": 11.0},
+    }
     model = build_rhime_multisector_model(
         multisector_inv_inputs,
         sectors=["FF", "ocean"],
         sector_sources={"FF": "total-ukghg-edgar7", "ocean": "sector-2"},
         sector_variable_suffixes={"FF": "ff", "ocean": "ocean"},
-        sector_priors={"FF": {"pdf": "normal", "mu": 1.0, "sigma": 0.2}},
+        sector_priors=sector_priors,
         **builder_args,
     )
 
-    expected = {
+    expected_trace_names = {
         "x_ff",
         "mu_ff",
         "x_ocean",
         "mu_ocean",
         "mu",
+    }
+    expected_model_names = expected_trace_names | {
         "bc",
         "mu_bc",
         "sigma",
         "epsilon",
         "y",
     }
-    assert expected.issubset(model.named_vars)
+    assert expected_model_names.issubset(model.named_vars)
+    free_rv_names = [rv.name for rv in model.free_RVs]
+    assert free_rv_names.count("x_ff") == 1
+    assert free_rv_names.count("x_ocean") == 1
+
+    with model:
+        trace = pm.sample_prior_predictive(
+            draws=4,
+            var_names=sorted(expected_trace_names),
+            random_seed=412,
+        )
+
+    prior = cast(Any, trace).prior
+    assert set(prior.data_vars) == expected_trace_names
+    assert np.all((prior["x_ff"] >= 1.0) & (prior["x_ff"] <= 2.0))
+    assert np.all((prior["x_ocean"] >= 10.0) & (prior["x_ocean"] <= 11.0))
+    np.testing.assert_allclose(prior["mu"], prior["mu_ff"] + prior["mu_ocean"])
+
+
+def test_build_rhime_multisector_model_selects_sources_by_label(
+    multisector_inv_inputs: xr.Dataset,
+    builder_args: dict,
+) -> None:
+    """Sector routing is independent of the prepared source-coordinate order."""
+    reversed_inputs = multisector_inv_inputs.sel(source=["sector-2", "total-ukghg-edgar7"])
+
+    model = build_rhime_multisector_model(
+        reversed_inputs,
+        sectors=["FF", "ocean"],
+        sector_sources={"FF": "total-ukghg-edgar7", "ocean": "sector-2"},
+        sector_priors={
+            "FF": {"pdf": "normal", "mu": 1.0, "sigma": 0.2},
+            "ocean": {"pdf": "normal", "mu": 1.0, "sigma": 0.3},
+        },
+        **builder_args,
+    )
+
+    expected_ff = reversed_inputs["H"].sel(source="total-ukghg-edgar7").transpose("nmeasure", "region")
+    expected_ocean = reversed_inputs["H"].sel(source="sector-2").transpose("nmeasure", "region")
+    np.testing.assert_allclose(model["hx_ff"].get_value(), expected_ff.values)
+    np.testing.assert_allclose(model["hx_ocean"].get_value(), expected_ocean.values)
+
+
+def test_build_rhime_multisector_model_accepts_gathered_ragged_states(
+    multisector_inv_inputs: xr.Dataset,
+    builder_args: dict,
+) -> None:
+    """Source-specific state blocks remain gathered until model normalization."""
+    state_index = pd.MultiIndex.from_tuples(
+        [
+            ("ff-inventory", 0),
+            ("ff-inventory", 1),
+            ("ocean-inventory", 0),
+            ("ocean-inventory", 1),
+            ("ocean-inventory", 2),
+        ],
+        names=["source", "region_in_source"],
+    )
+    nmeasure = multisector_inv_inputs.sizes["nmeasure"]
+    values = np.arange(len(state_index) * nmeasure, dtype=float).reshape(len(state_index), nmeasure)
+    inv_inputs = multisector_inv_inputs.drop_vars("H")
+    inv_inputs = inv_inputs.drop_dims([dim for dim in ("region", "source") if dim in inv_inputs.dims])
+    inv_inputs["H"] = xr.DataArray(
+        values,
+        dims=("state", "nmeasure"),
+        coords={
+            **xr.Coordinates.from_pandas_multiindex(state_index, "state"),
+            "nmeasure": multisector_inv_inputs.coords["nmeasure"],
+        },
+    )
+
+    model = build_rhime_multisector_model(
+        inv_inputs,
+        sectors=["FF", "ocean"],
+        sector_sources={"FF": "ff-inventory", "ocean": "ocean-inventory"},
+        sector_priors={
+            "FF": {"pdf": "normal", "mu": 1.0, "sigma": 0.2},
+            "ocean": {"pdf": "normal", "mu": 1.0, "sigma": 0.3},
+        },
+        **builder_args,
+    )
+
+    np.testing.assert_allclose(model["hx_ff"].get_value(), values[:2].T)
+    np.testing.assert_allclose(model["hx_ocean"].get_value(), values[2:].T)
+    assert model.named_vars_to_dims["x_ff"] == ("state_ff",)
+    assert model.named_vars_to_dims["x_ocean"] == ("state_ocean",)
+
+
+def test_build_rhime_multisector_model_rejects_ungathered_source_state(
+    multisector_inv_inputs: xr.Dataset,
+    builder_args: dict,
+) -> None:
+    """Source labels on a state axis require the canonical gathered MultiIndex."""
+    nmeasure = multisector_inv_inputs.sizes["nmeasure"]
+    inv_inputs = multisector_inv_inputs.drop_vars("H")
+    inv_inputs = inv_inputs.drop_dims([dim for dim in ("region", "source") if dim in inv_inputs.dims])
+    inv_inputs["H"] = xr.DataArray(
+        np.ones((2, nmeasure)),
+        dims=("state", "nmeasure"),
+        coords={
+            "state": [0, 1],
+            "source": ("state", ["ff-inventory", "ocean-inventory"]),
+            "nmeasure": multisector_inv_inputs.coords["nmeasure"],
+        },
+    )
+
+    with pytest.raises(ValueError, match="MultiIndex containing a 'source' level"):
+        build_rhime_multisector_model(
+            inv_inputs,
+            sectors=["FF", "ocean"],
+            sector_sources={"FF": "ff-inventory", "ocean": "ocean-inventory"},
+            **builder_args,
+        )
+
+
+def test_build_rhime_multisector_model_rejects_duplicate_gathered_states(
+    multisector_inv_inputs: xr.Dataset,
+    builder_args: dict,
+) -> None:
+    """Gathered scientific state coordinates must identify unique coefficients."""
+    state_index = pd.MultiIndex.from_tuples(
+        [
+            ("ff-inventory", 0),
+            ("ff-inventory", 0),
+            ("ocean-inventory", 0),
+        ],
+        names=["source", "region_in_source"],
+    )
+    nmeasure = multisector_inv_inputs.sizes["nmeasure"]
+    inv_inputs = multisector_inv_inputs.drop_vars("H")
+    inv_inputs = inv_inputs.drop_dims([dim for dim in ("region", "source") if dim in inv_inputs.dims])
+    inv_inputs["H"] = xr.DataArray(
+        np.ones((len(state_index), nmeasure)),
+        dims=("state", "nmeasure"),
+        coords={
+            **xr.Coordinates.from_pandas_multiindex(state_index, "state"),
+            "nmeasure": multisector_inv_inputs.coords["nmeasure"],
+        },
+    )
+
+    with pytest.raises(ValueError, match="unique state labels.*duplicate state.*ff-inventory"):
+        build_rhime_multisector_model(
+            inv_inputs,
+            sectors=["FF", "ocean"],
+            sector_sources={"FF": "ff-inventory", "ocean": "ocean-inventory"},
+            **builder_args,
+        )
+
+
+def test_build_rhime_multisector_model_rejects_duplicate_prepared_sources(
+    multisector_inv_inputs: xr.Dataset,
+    builder_args: dict,
+) -> None:
+    """Duplicate source coordinates fail before label selection becomes ambiguous."""
+    duplicate_sources = multisector_inv_inputs.sel(
+        source=["total-ukghg-edgar7", "total-ukghg-edgar7"]
+    )
+
+    with pytest.raises(ValueError, match="duplicate source 'total-ukghg-edgar7'"):
+        build_rhime_multisector_model(duplicate_sources, **builder_args)
+
+
+def test_build_rhime_multisector_model_rejects_padded_source_regions(
+    multisector_inv_inputs: xr.Dataset,
+    builder_args: dict,
+) -> None:
+    """Direct builders reject latent state elements introduced only by padding."""
+    region_count = multisector_inv_inputs.sizes["region"]
+    padded_inputs = multisector_inv_inputs.assign_coords(
+        source_region_count=(
+            "source",
+            [region_count - 1, region_count],
+        )
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            f"Sector 'FF' -> source 'total-ukghg-edgar7' declares {region_count - 1} "
+            f"region elements.*prepared H has {region_count}"
+        ),
+    ):
+        build_rhime_multisector_model(
+            padded_inputs,
+            sectors=["FF", "ocean"],
+            sector_sources={"FF": "total-ukghg-edgar7", "ocean": "sector-2"},
+            **builder_args,
+        )
+
+
+def test_build_rhime_multisector_model_allows_prior_only_regions(
+    multisector_inv_inputs: xr.Dataset,
+    builder_args: dict,
+) -> None:
+    """Zero sensitivity is not mistaken for padding when layout metadata matches."""
+    region_count = multisector_inv_inputs.sizes["region"]
+    inv_inputs = multisector_inv_inputs.assign_coords(
+        source_region_count=("source", [region_count, region_count])
+    ).copy(deep=True)
+    inv_inputs["H"].loc[{"source": "total-ukghg-edgar7", "region": 0}] = 0
+
+    model = build_rhime_multisector_model(
+        inv_inputs,
+        sectors=["FF", "ocean"],
+        sector_sources={"FF": "total-ukghg-edgar7", "ocean": "sector-2"},
+        **builder_args,
+    )
+
+    assert "x_ff" in model.named_vars
+
+
+def test_build_rhime_multisector_model_rejects_duplicate_sector_source_mappings(
+    multisector_inv_inputs: xr.Dataset,
+    builder_args: dict,
+) -> None:
+    """Independent sector states cannot select the same source sensitivity."""
+    with pytest.raises(ValueError, match="source 'total-ukghg-edgar7'.*\\['FF', 'other'\\]"):
+        build_rhime_multisector_model(
+            multisector_inv_inputs,
+            sectors=["FF", "other"],
+            sector_sources={"FF": "total-ukghg-edgar7", "other": "total-ukghg-edgar7"},
+            **builder_args,
+        )
+
+
+def test_build_rhime_multisector_model_names_sector_and_missing_source(
+    multisector_inv_inputs: xr.Dataset,
+    builder_args: dict,
+) -> None:
+    """Missing prepared data errors retain semantic sector and source identities."""
+    with pytest.raises(ValueError, match="sector 'FF' -> source 'missing-inventory'"):
+        build_rhime_multisector_model(
+            multisector_inv_inputs,
+            sectors=["FF", "ocean"],
+            sector_sources={"FF": "missing-inventory", "ocean": "sector-2"},
+            **builder_args,
+        )
+
+
+@pytest.mark.parametrize(
+    ("sector_priors", "error_fragment"),
+    [
+        (
+            {"FF": {"pdf": "normal", "mu": 1.0, "sigma": 0.2}},
+            "missing sector prior\\(s\\): \\['ocean'\\]",
+        ),
+        (
+            {
+                "FF": {"pdf": "normal", "mu": 1.0, "sigma": 0.2},
+                "ocean": {"pdf": "normal", "mu": 1.0, "sigma": 0.3},
+                "typo": {"pdf": "normal", "mu": 1.0, "sigma": 0.4},
+            },
+            "unused sector prior key\\(s\\): \\['typo'\\]",
+        ),
+    ],
+)
+def test_build_rhime_multisector_model_requires_exact_sector_prior_keys(
+    multisector_inv_inputs: xr.Dataset,
+    builder_args: dict,
+    sector_priors: dict[str, dict[str, Any]],
+    error_fragment: str,
+) -> None:
+    """Explicit per-sector priors must be complete and contain no unused keys."""
+    with pytest.raises(ValueError, match=error_fragment):
+        build_rhime_multisector_model(
+            multisector_inv_inputs,
+            sectors=["FF", "ocean"],
+            sector_sources={"FF": "total-ukghg-edgar7", "ocean": "sector-2"},
+            sector_priors=sector_priors,
+            **builder_args,
+        )
+
+
+def test_build_rhime_multisector_model_rejects_reparameterized_name_collisions(
+    multisector_inv_inputs: xr.Dataset,
+    builder_args: dict,
+) -> None:
+    """Generated latent names participate in pre-compilation name validation."""
+    reparameterized_prior = {
+        "pdf": "lognormal",
+        "mean": 1.0,
+        "stdev": 0.2,
+        "reparameterise": True,
+    }
+
+    with pytest.raises(ValueError, match="backend names"):
+        build_rhime_multisector_model(
+            multisector_inv_inputs,
+            sectors=["FF", "other"],
+            sector_sources={"FF": "total-ukghg-edgar7", "other": "sector-2"},
+            sector_variable_suffixes={"FF": "ff", "other": "ff_latent"},
+            sector_priors={"FF": reparameterized_prior, "other": reparameterized_prior},
+            **builder_args,
+        )
+
+
+def test_standard_and_multisector_builders_share_loop_sum_compiler(
+    monkeypatch: pytest.MonkeyPatch,
+    rhime_inv_inputs: xr.Dataset,
+    multisector_inv_inputs: xr.Dataset,
+    builder_args: dict,
+) -> None:
+    """Both public builders normalize fluxes through the same private compiler."""
+    captured_plans: list[_FluxPlan] = []
+
+    def compile_spy(plan: _FluxPlan) -> Any:
+        captured_plans.append(plan)
+        return rhime_compiler_module._compile_loop_sum(plan)
+
+    monkeypatch.setattr(rhime_models_module, "_compile_loop_sum", compile_spy)
+
+    build_rhime_model(rhime_inv_inputs, **builder_args)
+    build_rhime_multisector_model(
+        multisector_inv_inputs,
+        sectors=["FF", "ocean"],
+        sector_sources={"FF": "total-ukghg-edgar7", "ocean": "sector-2"},
+        sector_variable_suffixes={"FF": "ff", "ocean": "ocean"},
+        **builder_args,
+    )
+
+    assert len(captured_plans) == 2
+    standard_plan, multisector_plan = captured_plans
+    assert [state.variable_name for state in standard_plan.states] == ["x"]
+    assert [term.deterministic_name for term in standard_plan.terms] == ["mu"]
+    assert [state.variable_name for state in multisector_plan.states] == ["x_ff", "x_ocean"]
+    assert [term.deterministic_name for term in multisector_plan.terms] == ["mu_ff", "mu_ocean"]
+    assert all("strategy" not in parameter for parameter in inspect.signature(RhimeModelSpec).parameters)
 
 
 def test_build_rhime_multisector_model_requires_multiple_sectors(
@@ -691,7 +1265,9 @@ def test_run_rhime_from_prepared_inputs_routes_without_preparation(
         split_by_sectors=sector_count > 1,
     )
     inv_inputs = _minimal_output_inv_inputs()
-    if sector_count == 2:
+    if sector_count == 1:
+        inv_inputs["H"] = inv_inputs["H"].assign_coords(source=sectors[0].flux_source)
+    else:
         inv_inputs["H"] = xr.concat(
             [inv_inputs["H"].expand_dims(source=[sector.flux_source]) for sector in model_spec.sectors],
             dim="source",
@@ -1068,8 +1644,10 @@ def test_rhime_runner_setup_builds_specs_before_preparation(tmp_path: Path) -> N
         "output_format": "none",
         "x_prior": {"pdf": "normal", "mu": 1.0, "sigma": 0.5},
         "sector_priors": {
+            "FF": {"pdf": "normal", "mu": 1.0, "sigma": 0.5},
             "GPP": {"pdf": "normal", "mu": 0.7, "sigma": 0.2},
             "TER": {"pdf": "normal", "mu": 1.3, "sigma": 0.3},
+            "ocean": {"pdf": "normal", "mu": 1.0, "sigma": 0.5},
         },
         "sigma_freq": "8D",
         "draws": "7",
@@ -1747,6 +2325,76 @@ def test_run_rhime_multisector_rejects_duplicate_sanitized_sector_names() -> Non
         )
 
 
+def test_resolve_flux_sources_rejects_duplicates() -> None:
+    """Repeated retrieval identities are rejected before OpenGHG access."""
+    with pytest.raises(ValueError, match="duplicate source.*ff-inventory"):
+        resolve_flux_sources(flux_sources=["ff-inventory", "ff-inventory"])
+
+
+def test_run_rhime_multisector_rejects_duplicate_sector_source_mappings() -> None:
+    """Current independent sector states require distinct source sensitivities."""
+    with pytest.raises(ValueError, match="source 'ff-inventory'.*\\['FF', 'other'\\]"):
+        rhime_module._make_rhime_runner_setup(
+            params={
+                "species": "ch4",
+                "sites": ["TAC"],
+                "averaging_period": ["1h"],
+                "domain": "EUROPE",
+                "start_date": "2019-01-01",
+                "end_date": "2019-01-02",
+                "output_name": "test",
+                "output_format": "none",
+                "flux_sources": ["ff-inventory"],
+                "sector_sources": {
+                    "FF": "ff-inventory",
+                    "other": "ff-inventory",
+                },
+            },
+            multisector=True,
+        )
+
+
+@pytest.mark.parametrize(
+    ("sector_priors", "error_fragment"),
+    [
+        (
+            {"FF": {"pdf": "normal", "mu": 1.0, "sigma": 0.2}},
+            "missing sector prior\\(s\\): \\['ocean'\\]",
+        ),
+        (
+            {
+                "FF": {"pdf": "normal", "mu": 1.0, "sigma": 0.2},
+                "ocean": {"pdf": "normal", "mu": 1.0, "sigma": 0.3},
+                "oecam": {"pdf": "normal", "mu": 1.0, "sigma": 0.4},
+            },
+            "unused sector prior key\\(s\\): \\['oecam'\\]",
+        ),
+    ],
+)
+def test_run_rhime_multisector_rejects_inexact_sector_prior_keys(
+    sector_priors: dict[str, dict[str, Any]],
+    error_fragment: str,
+) -> None:
+    """Missing and unused sector prior keys fail before data preparation."""
+    with pytest.raises(ValueError, match=error_fragment):
+        rhime_module._make_rhime_runner_setup(
+            params={
+                "species": "ch4",
+                "sites": ["TAC"],
+                "averaging_period": ["1h"],
+                "domain": "EUROPE",
+                "start_date": "2019-01-01",
+                "end_date": "2019-01-02",
+                "output_name": "test",
+                "output_format": "none",
+                "flux_sources": ["ff-inventory", "ocean-inventory"],
+                "sector_sources": {"FF": "ff-inventory", "ocean": "ocean-inventory"},
+                "sector_priors": sector_priors,
+            },
+            multisector=True,
+        )
+
+
 def test_new_rhime_docs_use_flux_sources_for_examples() -> None:
     """New RHIME docs keep legacy names out of config/API examples."""
     rhime_doc = Path("docs/usage/rhime.rst").read_text(encoding="utf-8")
@@ -1825,6 +2473,137 @@ def test_rhime_prepared_inputs_contract_exposes_only_modern_fields() -> None:
         assert not hasattr(prepared, legacy_attr)
 
 
+def test_prepared_multisector_runner_accepts_gathered_source_specific_basis_layout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Prepared-input validation accepts exact ragged source/state coordinates."""
+    basis_ff = xr.DataArray(
+        [[0, 0], [1, 1]],
+        dims=("lat", "lon"),
+        coords={"lat": [0.0, 1.0], "lon": [0.0, 1.0]},
+    )
+    basis_ocean = xr.DataArray(
+        [[0, 1], [2, 2]],
+        dims=("lat", "lon"),
+        coords={"lat": [0.0, 1.0], "lon": [0.0, 1.0]},
+    )
+    flux = xr.DataArray(
+        np.ones((2, 2, 2)),
+        dims=("source", "lat", "lon"),
+        coords={
+            "source": ["ff-inventory", "ocean-inventory"],
+            "lat": [0.0, 1.0],
+            "lon": [0.0, 1.0],
+        },
+    )
+    basis_functions = BasisFunctions.from_multi_source_flat_basis(
+        basis_flat={"ff-inventory": basis_ff, "ocean-inventory": basis_ocean},
+        flux=flux,
+        operator_kwargs={"state_dim": "region"},
+    )
+    model_spec = RhimeModelSpec(
+        species="ch4",
+        domain="EUROPE",
+        use_bc=False,
+        sectors=(
+            SectorSpec("FF", "ff-inventory", {"pdf": "normal", "mu": 1.0, "sigma": 0.2}, "ff"),
+            SectorSpec(
+                "ocean",
+                "ocean-inventory",
+                {"pdf": "normal", "mu": 1.0, "sigma": 0.3},
+                "ocean",
+            ),
+        ),
+    )
+    fp_x_flux = xr.DataArray(
+        np.ones((2, 2, 2, 1)),
+        dims=("source", "lat", "lon", "time"),
+        coords={
+            "source": ["ff-inventory", "ocean-inventory"],
+            "lat": [0.0, 1.0],
+            "lon": [0.0, 1.0],
+            "time": [0],
+        },
+    )
+    inv_inputs = _minimal_output_inv_inputs().drop_dims("region")
+    inv_inputs["min_error"] = xr.zeros_like(inv_inputs["mf"])
+    inv_inputs["H"] = basis_functions.sensitivity(fp_x_flux).rename(time="nmeasure").assign_coords(
+        nmeasure=inv_inputs.coords["nmeasure"]
+    )
+
+    prepared = RhimePreparedInputs(
+        inv_inputs=inv_inputs,
+        basis_functions=basis_functions,
+        sites=("TAC",),
+        averaging_period=("1H",),
+        basis_artifact_source="generated",
+    )
+    run_spec = RhimeRunSpec(
+        start_date="2019-01-01",
+        end_date="2019-01-02",
+        sites=("TAC",),
+        averaging_period=("1H",),
+        model=model_spec,
+        output=RhimeOutputSpec(output_format="none"),
+        split_by_sectors=True,
+    )
+    monkeypatch.setattr(
+        RhimeSampler,
+        "sample",
+        lambda self, model: _minimal_output_idata(),
+    )
+    monkeypatch.setattr(
+        rhime_module,
+        "make_multisector_output_bundle",
+        lambda **kwargs: rhime_outputs.RhimeOutputBundle(),
+    )
+
+    result = run_rhime_from_prepared_inputs(prepared_inputs=prepared, run_spec=run_spec)
+
+    assert result.model.named_vars_to_dims["x_ff"] == ("region_ff",)
+    assert result.model.named_vars_to_dims["x_ocean"] == ("region_ocean",)
+
+
+def test_multisector_runner_rejects_shared_basis_h_layout_mismatch() -> None:
+    """Retained shared-basis coordinates must match the prepared design state."""
+    model_spec = RhimeModelSpec(
+        species="ch4",
+        domain="EUROPE",
+        sectors=(
+            SectorSpec("FF", "ff-inventory", {"pdf": "normal", "mu": 1.0, "sigma": 0.2}, "ff"),
+            SectorSpec(
+                "ocean",
+                "ocean-inventory",
+                {"pdf": "normal", "mu": 1.0, "sigma": 0.3},
+                "ocean",
+            ),
+        ),
+    )
+    inv_inputs = xr.Dataset(
+        {
+            "H": (
+                ("region", "nmeasure", "source"),
+                np.ones((2, 1, 2)),
+            )
+        },
+        coords={
+            "region": [0, 1],
+            "nmeasure": [0],
+            "source": ["ff-inventory", "ocean-inventory"],
+        },
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="Retained source-specific basis.*basis has 1 regions.*prepared H has 2",
+    ):
+        rhime_module._validate_multisector_basis_layout(
+            _fake_basis_functions(),
+            model_spec,
+            inv_inputs,
+        )
+
+
 def test_prepare_rhime_inputs_single_sector_reloads_merged_data(
     tac_ch4_data_args, merged_data_dir, merged_data_file_name, default_bc_basis_directory
 ) -> None:
@@ -1864,7 +2643,113 @@ def test_prepare_rhime_inputs_multisector_keeps_source_dimension(
     assert prepared.basis_artifact_source == "generated"
     assert isinstance(prepared.basis_functions, BasisFunctions)
     assert "source" in prepared.inv_inputs["H"].dims
-    assert set(prepared.inv_inputs["H"].coords["source"].values) == set(flux_sources)
+    assert list(prepared.inv_inputs["H"].coords["source"].values) == flux_sources
+    assert "source_region_count" not in prepared.inv_inputs["H"].coords
+
+
+def test_multisector_sensitivity_sources_fail_before_site_gathering() -> None:
+    """Gathered sensitivity is validated before missing sources can be synthesized."""
+    time = pd.date_range("2019-01-01", periods=2, freq="h")
+    state_index = pd.MultiIndex.from_tuples(
+        [("ff-inventory", 0)],
+        names=["source", "region_in_source"],
+    )
+    sensitivity = xr.DataArray(
+        np.ones((1, 2)),
+        dims=("state", "time"),
+        coords={
+            **xr.Coordinates.from_pandas_multiindex(state_index, "state"),
+            "time": time,
+        },
+    )
+    fp_x_flux = xr.DataArray(
+        np.ones((2, 2)),
+        dims=("time", "source"),
+        coords={
+            "time": time,
+            "source": ["ff-inventory", "ocean-inventory"],
+        },
+        name="fp_x_flux_sectoral",
+    )
+
+    class MissingSourceBasis:
+        def sensitivity(self, _: xr.DataArray) -> xr.DataArray:
+            return sensitivity
+
+    merged = prep_module._MergedInversionData(
+        fp_all={"TAC": xr.Dataset({"fp_x_flux_sectoral": fp_x_flux})},
+        sites=["TAC"],
+        averaging_period=["1H"],
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="Site 'TAC'.*missing source\\(s\\): \\['ocean-inventory'\\]",
+    ):
+        prep_module._rhime_site_data_from_basis_functions(
+            merged=merged,
+            basis_functions=cast(BasisFunctions, MissingSourceBasis()),
+            domain="EUROPE",
+            split_by_sectors=True,
+            flux_sources=["ff-inventory", "ocean-inventory"],
+            use_bc=False,
+            bc_basis_case="NESW",
+            bc_basis_directory=None,
+        )
+
+
+def test_multisector_site_preparation_keeps_gathered_source_state() -> None:
+    """Modern preparation must not rectangularize ragged source-specific state."""
+    time = pd.date_range("2019-01-01", periods=2, freq="h")
+    state_index = pd.MultiIndex.from_tuples(
+        [("ff-inventory", 0), ("ff-inventory", 1), ("ocean-inventory", 0)],
+        names=["source", "region_in_source"],
+    )
+    sensitivity = xr.DataArray(
+        np.ones((3, 2)),
+        dims=("state", "time"),
+        coords={
+            **xr.Coordinates.from_pandas_multiindex(state_index, "state"),
+            "time": time,
+        },
+    )
+    fp_x_flux = xr.DataArray(
+        np.ones((2, 2)),
+        dims=("source", "time"),
+        coords={
+            "source": ["ff-inventory", "ocean-inventory"],
+            "time": time,
+        },
+        name="fp_x_flux_sectoral",
+    )
+
+    class GatheredBasis:
+        def sensitivity(self, _: xr.DataArray) -> xr.DataArray:
+            return sensitivity
+
+    merged = prep_module._MergedInversionData(
+        fp_all={"TAC": xr.Dataset({"fp_x_flux_sectoral": fp_x_flux})},
+        sites=["TAC"],
+        averaging_period=["1H"],
+    )
+
+    prepared = prep_module._rhime_site_data_from_basis_functions(
+        merged=merged,
+        basis_functions=cast(BasisFunctions, GatheredBasis()),
+        domain="EUROPE",
+        split_by_sectors=True,
+        flux_sources=["ff-inventory", "ocean-inventory"],
+        use_bc=False,
+        bc_basis_case="NESW",
+        bc_basis_directory=None,
+    )
+
+    xr.testing.assert_identical(prepared["TAC"]["H"], sensitivity.rename("H"))
+    assert "source" not in prepared["TAC"]["H"].dims
+    assert list(prepared["TAC"]["H"].indexes["state"].names) == [
+        "source",
+        "region_in_source",
+    ]
 
 
 def test_fixedbasis_preparation_adds_anchored_legacy_sigma_index(
@@ -1928,7 +2813,7 @@ def test_prepare_rhime_inputs_uses_basis_sensitivity_without_legacy_side_channel
         coords={"state": [0], "time": site_data.time},
         name="H",
     )
-    expected_sensitivity = sensitivity.rename({"state": "region"})
+    expected_sensitivity = sensitivity
     basis_functions = _SpyBasisFunctions(sensitivity)
     captured_fp_data_keys: set[str] = set()
 
@@ -4081,7 +4966,10 @@ def test_run_rhime_multisector_api_smoke(
             "chains": 1,
             "reload_merged_data": False,
             "output_format": "none",
-            "x_prior": {"pdf": "normal", "mu": 1.0, "sigma": 1.0},
+            "sector_priors": {
+                "FF": {"pdf": "uniform", "lower": 0.8, "upper": 1.0},
+                "ocean": {"pdf": "uniform", "lower": 1.1, "upper": 1.3},
+            },
             "bc_prior": {"pdf": "normal", "mu": 1.0, "sigma": 1.0},
             "sigma_prior": {"pdf": "uniform", "lower": 0.1, "upper": 10.0},
             "sample_kwargs": {"random_seed": 123, "compute_convergence_checks": False},
@@ -4096,6 +4984,16 @@ def test_run_rhime_multisector_api_smoke(
     assert not hasattr(result, "basis_objects")
     assert result.run_spec.split_by_sectors is True
     assert [sector.name for sector in result.model_spec.sectors] == ["FF", "ocean"]
+    assert result.model_spec.sectors[0].x_prior == {
+        "pdf": "uniform",
+        "lower": 0.8,
+        "upper": 1.0,
+    }
+    assert result.model_spec.sectors[1].x_prior == {
+        "pdf": "uniform",
+        "lower": 1.1,
+        "upper": 1.3,
+    }
     posterior = cast(Any, result.idata).posterior
     assert "x_ff" in posterior
     assert "x_ocean" in posterior

@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Callable, cast
 
+import arviz as az
 import numpy as np
 import pytest
 import xarray as xr
@@ -93,6 +94,59 @@ def test_multisector_flux_outputs_support_source_specific_basis(
     assert "flux_total_posterior_mode" in outputs
     assert float(outputs["flux_total_posterior_mean"].item()) == 2.0
     assert _flux_nonfinite_metadata(outputs).policy == NONFINITE_POLICY_ZERO_FILL
+
+
+def test_multisector_mode_kde_scale_factors_use_each_sector_state_dimension(
+    multisector_postprocessing_inv_out: Callable[..., InversionOutput],
+) -> None:
+    """Ragged sector scale-factor modes chunk each sector along its own state dimension."""
+    ff_basis = xr.DataArray(
+        [[1, 2]],
+        dims=("lat", "lon"),
+        coords={"lat": [0.0], "lon": [0.0, 1.0]},
+    )
+    ocean_basis = xr.DataArray(
+        [[1, 1]],
+        dims=("lat", "lon"),
+        coords={"lat": [0.0], "lon": [0.0, 1.0]},
+    )
+    flux = xr.DataArray(
+        np.ones((2, 1, 2)),
+        dims=("source", "lat", "lon"),
+        coords={
+            "source": ["ff-inventory", "ocean-inventory"],
+            "lat": [0.0],
+            "lon": [0.0, 1.0],
+        },
+        attrs={"units": "mol/m2/s"},
+    )
+    basis_functions = BasisFunctions.from_multi_source_flat_basis(
+        basis_flat={
+            "ff-inventory": ff_basis,
+            "ocean-inventory": ocean_basis,
+        },
+        flux=flux,
+        operator_kwargs={"state_dim": "state"},
+    )
+    inv_out = multisector_postprocessing_inv_out(basis_functions)
+    inv_out.trace = az.from_dict(
+        posterior={
+            "x_ff": np.array([[[1.0, 2.0], [1.5, 2.5], [2.0, 3.0], [2.5, 3.5]]]),
+            "x_ocean": np.array([[[0.5], [1.0], [1.5], [2.0]]]),
+        },
+        coords={"state_ff": [0, 1], "state_ocean": [0]},
+        dims={"x_ff": ["state_ff"], "x_ocean": ["state_ocean"]},
+    )
+
+    outputs = make_flux_outputs(
+        inv_out,
+        stats=["mode_kde"],
+        include_scale_factors=True,
+        report_flux_on_inversion_grid=False,
+    )
+
+    assert "scaling_ff_posterior_mode" in outputs
+    assert "scaling_ocean_posterior_mode" in outputs
 
 
 def test_multisector_flux_trace_materialization_is_optional(

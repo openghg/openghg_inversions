@@ -240,6 +240,9 @@ def _state_chunk_dim(trace: xr.Dataset, inv_out: InversionOutput) -> str:
         return "region"
     if "nx" in trace.dims:
         return "nx"
+    non_sample_dims = [str(dim) for dim in trace.dims if dim not in {"chain", "draw"}]
+    if len(non_sample_dims) == 1:
+        return non_sample_dims[0]
     raise ValueError(f"Could not find basis state dimension in trace dims {tuple(trace.dims)}.")
 
 
@@ -294,12 +297,19 @@ def _sector_flux_trace_dataset(
 def _sector_scale_factor_stats(
     inv_out: InversionOutput,
     sector: OutputSector,
-    stats_args: dict,
+    *,
+    stats: list[str] | None,
+    stats_args: dict | None,
 ) -> xr.Dataset:
     """Return one sector's gridded scale-factor statistics."""
     trace = _sector_scale_trace(inv_out, sector)
     basis_functions = _sector_basis_functions(inv_out, sector, trace)
-    scale_stats = calculate_stats(trace, **stats_args)
+    sector_stats_args = _stats_args_with_defaults(
+        stats,
+        stats_args,
+        chunk_dim=_state_chunk_dim(trace, inv_out),
+    )
+    scale_stats = calculate_stats(trace, **sector_stats_args)
     result = reconstruct_scale_factor_stats(basis_functions, scale_stats)
     for data_var in result.data_vars:
         if data_var in scale_stats.data_vars:
@@ -506,19 +516,20 @@ def make_sector_flux_outputs(
         inv_out,
         report_flux_on_inversion_grid=report_flux_on_inversion_grid,
     )
-    sample_trace = _sector_scale_trace(inv_out, sectors[0])
-    scale_stats_args = _stats_args_with_defaults(
-        stats,
-        stats_args,
-        chunk_dim=_state_chunk_dim(sample_trace, inv_out),
-    )
     flux_stats_args = _stats_args_with_defaults(stats, stats_args)
 
     outputs = [calculate_stats(total_flux_trace, **flux_stats_args)]
     for sector, flux_trace in zip(sectors, sector_flux_traces, strict=True):
         outputs.append(calculate_stats(flux_trace, **flux_stats_args))
         if include_scale_factors:
-            outputs.append(_sector_scale_factor_stats(inv_out, sector, scale_stats_args))
+            outputs.append(
+                _sector_scale_factor_stats(
+                    inv_out,
+                    sector,
+                    stats=stats,
+                    stats_args=stats_args,
+                )
+            )
 
     result = _set_multisector_flux_attrs(xr.merge(outputs), inv_out, sectors).as_numpy()
     result = _copy_first_flux_nonfinite_metadata(result, [total_flux_trace, *sector_flux_traces])
