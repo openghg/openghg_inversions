@@ -33,6 +33,27 @@ contains `MaxRSS`.
 The failed decision, logs, candidate manifests, arrays, resource records, and
 markers must not be changed, deleted, linked, copied, or relabelled.
 
+## First recovery preflight failure
+
+The first recovery implementation was pushed at
+`4a02a742079aefeff087cec45ae26fcb86ffcd83` and executed from its own
+detached worktree into the fresh create-only run root
+
+```text
+/group/chem/acrg/brendan_for_codex/rjmcmc_chunked_projected_bank/
+4a02a742079aefeff087cec45ae26fcb86ffcd83
+```
+
+G0 passed all 91 focused tests and then stopped at the Ruff format gate
+because the newly added exclusive-launcher regression required mechanical
+formatting.  The preserved `g0/preflight.log` has SHA-256
+`8aa182638dbbc5ef996b2983196759445574a692794c01f33cc50888357fda39`.
+No `G0_COMPLETE.txt` marker was published and no Slurm job was submitted.
+The run root and its failed preflight log are preserved without modification
+or artifact reuse.  The formatting-only repair and this provenance record
+require another pushed full SHA, detached worktree, and fresh SHA-keyed run
+root.
+
 ## Predeclared recovery
 
 The reporting repair is committed and pushed before execution.  Its exact

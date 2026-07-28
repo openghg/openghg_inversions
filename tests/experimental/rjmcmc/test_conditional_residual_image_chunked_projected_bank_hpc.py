@@ -312,13 +312,7 @@ def test_sacct_records_preserve_logical_array_task_ids(
 @pytest.mark.parametrize("launcher", ("run_g1.sbatch", "run_g3_bank.sbatch"))
 def test_timing_selected_launchers_request_exclusive_nodes(launcher: str) -> None:
     """Unrelated node workloads must not determine computational timing locks."""
-    path = (
-        REPOSITORY_ROOT
-        / "docs"
-        / "plans"
-        / "rjmcmc_chunked_projected_bank_assets"
-        / launcher
-    )
+    path = REPOSITORY_ROOT / "docs" / "plans" / "rjmcmc_chunked_projected_bank_assets" / launcher
 
     assert "#SBATCH --exclusive" in path.read_text(encoding="utf-8").splitlines()
 
