@@ -25,7 +25,7 @@ import xarray as xr
 
 from openghg_inversions._timing import log_timing, timed, timer_seconds, timer_start
 from openghg_inversions.basis import basis_functions_wrapper, make_basis_functions
-from openghg_inversions.basis._helpers import _legacy_multisource_h_if_needed, bc_sensitivity
+from openghg_inversions.basis._helpers import bc_sensitivity
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.filters import filtering
 from openghg_inversions.flux_sanitization import FluxNonFiniteCheck, sanitize_flux_nonfinite
@@ -443,6 +443,39 @@ def _bc_basis_directory_arg(bc_basis_directory: str | Path | None) -> str | None
     return str(bc_basis_directory) if isinstance(bc_basis_directory, Path) else bc_basis_directory
 
 
+def _validate_multisector_sensitivity_sources(
+    sensitivity: xr.DataArray,
+    *,
+    site: str,
+    flux_sources: list[str],
+) -> xr.DataArray:
+    """Validate and order one site's source-resolved sensitivity."""
+    if "source" not in sensitivity.coords:
+        raise ValueError(
+            f"Site {site!r} sensitivity is missing the 'source' coordinate required for "
+            f"flux source(s) {flux_sources!r}."
+        )
+
+    source_labels = [str(source) for source in sensitivity.coords["source"].values]
+    available_sources = list(dict.fromkeys(source_labels))
+    duplicate_sources = (
+        [source for source in available_sources if source_labels.count(source) > 1]
+        if "source" in sensitivity.dims
+        else []
+    )
+    missing_sources = [source for source in flux_sources if source not in available_sources]
+    extra_sources = [source for source in available_sources if source not in flux_sources]
+    if duplicate_sources or missing_sources or extra_sources:
+        raise ValueError(
+            f"Site {site!r} sensitivity source layout does not match requested flux sources; "
+            f"missing source(s): {missing_sources!r}; extra source(s): {extra_sources!r}; "
+            f"duplicate source(s): {duplicate_sources!r}."
+        )
+    if "source" in sensitivity.dims:
+        return sensitivity.sel(source=flux_sources)
+    return sensitivity
+
+
 def _rhime_site_data_from_basis_functions(
     *,
     merged: _MergedInversionData,
@@ -474,22 +507,29 @@ def _rhime_site_data_from_basis_functions(
                 "Could not identify the RHIME sensitivity state dimension from "
                 f"sensitivity dims {sensitivity.dims!r} and fp_x_flux dims {fp_x_flux.dims!r}."
             )
-        if state_dim != "region" and state_dim in sensitivity.dims:
-            sensitivity = sensitivity.rename({state_dim: "region"})
-            state_dim = "region"
         if split_by_sectors:
-            sensitivity = _legacy_multisource_h_if_needed(
+            sensitivity = _validate_multisector_sensitivity_sources(
                 sensitivity,
-                state_dim=state_dim,
+                site=site,
                 flux_sources=flux_sources,
             )
+        if "source" in sensitivity.coords and "source" not in sensitivity.dims:
+            fp_data[site] = fp_data[site].drop_vars(fp_x_flux_name)
+            orphan_dims = [
+                dim
+                for dim in fp_x_flux.dims
+                if dim in fp_data[site].dims
+                and all(dim not in variable.dims for variable in fp_data[site].data_vars.values())
+            ]
+            if orphan_dims:
+                fp_data[site] = fp_data[site].drop_dims(orphan_dims)
         fp_data[site]["H"] = sensitivity
         log_timing(
             "rhime.prepare_inputs.footprint_sensitivity",
             timer_seconds(timing_start),
             site=site,
             nmeasure=fp_data[site].sizes.get("time"),
-            regions=sensitivity.sizes.get("region"),
+            state_size=sensitivity.sizes.get(state_dim),
             sources=sensitivity.sizes.get("source"),
         )
 
@@ -781,7 +821,8 @@ def prepare_rhime_inputs(
         output_name: Base output name used for data and basis artifacts.
         flux_sources: OpenGHG flux ``source`` values requested for the run.
         split_by_sectors: Whether to keep sector-resolved sensitivity inputs
-            with a ``source`` coordinate.
+            with a ``source`` provenance coordinate. Semantic sector names are
+            applied later by the model specification.
         use_tracer: Unsupported placeholder for tracer inversions, where an
             additional species constrains the primary species through linked
             forward models.
