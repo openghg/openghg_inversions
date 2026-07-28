@@ -8,21 +8,20 @@
 
 import json
 import pickle
+import warnings
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, cast, Literal
-import warnings
+from typing import Any, Literal, cast
 
-from numcodecs import Blosc
 import numpy as np
 import xarray as xr
 import zarr
-
+from numcodecs import Blosc
 from openghg.dataobjects import BoundaryConditionsData, FluxData
 from openghg.dataobjects._basedata import _BaseData
 from openghg.util import timestamp_now
-from openghg_inversions.utils import datatree_ncdf_encoding
 
+from openghg_inversions.utils import _flux_period_is_missing, datatree_ncdf_encoding
 
 OutputFormat = Literal["pickle", "netcdf", "zarr", "zarr.zip"]  # for internal type hints
 
@@ -289,11 +288,18 @@ def combine_scenario_attrs(attrs_list: list[dict[str, Any]], context) -> dict[st
 def make_combined_scenario(fp_all: dict) -> xr.Dataset:
     """Combine scenarios and merge in fluxes and boundary conditions.
 
-    If fluxes and boundary conditions only have one coordinate for their
-    "time" dimension, then "time" will be dropped.
+    Flux time coordinates are stored on a separate ``flux_time`` dimension,
+    with explicit per-source timestamp presence, so that source periods
+    beginning before the observations and all-NaN slices are preserved.
+    Singleton boundary-condition time dimensions are still dropped.
 
-    Otherwise, it is assumed that the time axis for fluxes and boundary conditions
-    have the same length as the time axis for the model scenarios.
+    Args:
+        fp_all: Inversion data keyed by site, with flux sources under
+            ``".flux"`` and optional boundary conditions under ``".bc"``.
+
+    Returns:
+        A combined dataset containing site scenarios, source-specific flux
+        periods, and optional boundary conditions.
 
     """
     # combine scenarios by site
@@ -309,12 +315,34 @@ def make_combined_scenario(fp_all: dict) -> xr.Dataset:
     # make dtype of 'site' coordinate "<U3" (little-endian Unicode string of length 3)
     combined_scenario = combined_scenario.assign_coords(site=combined_scenario.site.astype(np.dtype("<U3")))
 
-    # concat fluxes over source before merging into combined scenario
-    fluxes = [v.data.expand_dims({"source": [k]}) for k, v in fp_all[".flux"].items()]
-    combined_fluxes = xr.concat(fluxes, dim="source")
+    # Record which timestamps belong to each source before concat introduces
+    # outer-join padding. Flux values cannot serve as this mask because a
+    # legitimate flux slice may itself contain only NaNs.
+    fluxes = []
+    for source, flux_data in fp_all[".flux"].items():
+        source_flux = flux_data.data
+        if "time" in source_flux.dims:
+            source_flux = source_flux.assign(
+                flux_time_present=("time", np.ones(source_flux.sizes["time"], dtype=np.int8))
+            )
+        fluxes.append(source_flux.expand_dims({"source": [source]}))
 
-    if "time" in combined_fluxes.dims and combined_fluxes.sizes["time"] == 1:
-        combined_fluxes = combined_fluxes.squeeze("time")
+    # concat fluxes over source before merging into combined scenario
+    combined_fluxes = xr.concat(fluxes, dim="source")
+    if "flux_time_present" in combined_fluxes:
+        combined_fluxes["flux_time_present"] = combined_fluxes["flux_time_present"].fillna(0).astype(np.int8)
+        combined_fluxes["flux_time_present"].attrs["long_name"] = "flux source includes this timestamp"
+    flux_time_periods = []
+    for flux_data in fp_all[".flux"].values():
+        variable_period = flux_data.data["flux"].attrs.get("time_period")
+        dataset_period = flux_data.data.attrs.get("time_period")
+        source_period = dataset_period if _flux_period_is_missing(variable_period) else variable_period
+        flux_time_periods.append("" if _flux_period_is_missing(source_period) else str(source_period))
+    combined_fluxes["flux_time_period"] = ("source", np.asarray(flux_time_periods, dtype=str))
+    combined_fluxes["flux"].attrs.pop("time_period", None)
+
+    if "time" in combined_fluxes.dims:
+        combined_fluxes = combined_fluxes.rename(time="flux_time")
 
     # merge with override in case coordinates slightly off
     # (data should already be aligned by `ModelScenario`)
@@ -337,7 +365,10 @@ def fp_all_from_dataset(ds: xr.Dataset) -> dict:
     """Recover "fp_all" dictionary from "combined scenario" dataset.
 
     This is the inverse of `make_combined_scenario`, except that the attributes of the
-    scenarios, fluxes, and boundary conditions may be different.
+    scenarios, fluxes, and boundary conditions may be different. New datasets
+    retain source timestamps on ``flux_time`` with explicit source presence;
+    older datasets without that metadata use value-based padding removal or
+    fall back to the first observation time for compatibility.
 
     Args:
         ds: dataset created by `make_combined_scenario`
@@ -355,7 +386,9 @@ def fp_all_from_dataset(ds: xr.Dataset) -> dict:
 
     for i, site in enumerate(ds.site.values):
         scenario = (
-            ds.sel(site=site, drop=True).drop_vars(["flux", *bc_vars], errors="ignore").drop_dims("source")
+            ds.sel(site=site, drop=True)
+            .drop_vars(["flux", "flux_time_period", "flux_time_present", *bc_vars], errors="ignore")
+            .drop_dims(["source", "flux_time"], errors="ignore")
         )
 
         # extract attributes that were gathered into a list
@@ -376,12 +409,31 @@ def fp_all_from_dataset(ds: xr.Dataset) -> dict:
     fp_all[".flux"] = {}
 
     for i, source in enumerate(ds.source.values):
-        flux_ds = (
-            ds[["flux"]]  # double brackets to get dataset
-            .sel(source=source, drop=True)
-            .expand_dims({"time": [ds.time.min().values]})
-            .transpose(..., "time")
-        )
+        flux_time_present = None
+        if "flux_time_present" in ds:
+            flux_time_present = ds["flux_time_present"].sel(source=source, drop=True)
+
+        flux_ds = ds[["flux"]].sel(source=source, drop=True)
+        if "flux_time" in flux_ds.dims:
+            flux_ds = flux_ds.rename(flux_time="time")
+            if flux_time_present is not None:
+                flux_time_present = flux_time_present.rename(flux_time="time")
+        elif "time" not in flux_ds.dims:
+            # Backward compatibility for old combined datasets that squeezed a
+            # singleton flux time coordinate during serialization.
+            flux_ds = flux_ds.expand_dims({"time": [ds.time.min().values]})
+
+        if flux_time_present is not None:
+            flux_ds = flux_ds.isel(time=flux_time_present.load().values.astype(bool))
+        else:
+            # Older stores did not record timestamp presence, so retain their
+            # best-effort value-based padding removal.
+            flux_ds = flux_ds.dropna("time", how="all", subset=["flux"])
+        flux_ds = flux_ds.transpose(..., "time")
+        if "flux_time_period" in ds:
+            time_period = str(ds["flux_time_period"].sel(source=source).load().item())
+            if time_period:
+                flux_ds["flux"].attrs["time_period"] = time_period
 
         # extract attributes that were gathered into a list
         for k in list_keys:

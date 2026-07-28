@@ -4,6 +4,11 @@
 
 ## Code changes
 
+- Preserve retrieved flux periods instead of inferring them from inversion
+  duration, including annual priors used by mid-year monthly inversions.
+  Calendar-aware PARIS postprocessing and legacy merged-data round trips now
+  retain the original flux timestamps and per-source period metadata.
+  [#539](https://github.com/openghg/openghg_inversions/issues/539)
 - Added a tox PyTensor compiler preflight that automatically loads
   `gcc/12.3.0-sknc` on Rocky Linux or recognized Blue Pebble hosts when the
   compiler setting is empty, supports configurable module/compiler overrides,
