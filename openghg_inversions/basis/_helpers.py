@@ -194,10 +194,10 @@ def _legacy_multisource_h_if_needed(
     """Legacy adapter for gathered multi-source H.
 
     ``MultiSourceBucketBasisOperator.sensitivity`` returns a gathered MultiIndex
-    state dimension. Current multisector model builders and legacy output code
-    still expect separate ``region`` and ``source`` dimensions, so this converts
-    to legacy ``(region, time, source)`` shape at the wrapper boundary until
-    downstream code accepts gathered H.
+    state dimension. ``fixedbasisMCMC`` and its legacy output path still expect
+    separate ``region`` and ``source`` dimensions, so this converts to legacy
+    ``(region, time, source)`` shape only at that wrapper boundary. Modern RHIME
+    preparation must not call this adapter.
     """
     source_dim = "source"
     region_in_source_dim = "region_in_source"
