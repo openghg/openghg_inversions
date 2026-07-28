@@ -19,6 +19,46 @@ from openghg_inversions.experimental.rjmcmc.aggregation_error_exact_mixture impo
 REVISION = "9" * 40
 
 
+def test_two_aggregate_calibration_reproduces_both_target_cvs() -> None:
+    """The analytic calibration should satisfy both user-specified totals."""
+    root_variance, concentration = hpc._solve_two_aggregate_calibration(
+        broad_factor=8.874250601269965,
+        local_factor=117.60829531564202,
+        broad_target_cv=hpc.MODELED_EUROPEAN_DOMAIN_TARGET_CV,
+        local_target_cv=hpc.GBR_TARGET_CV,
+    )
+
+    assert root_variance == pytest.approx(hpc.SCIENTIFIC_ROOT_VARIANCE, abs=1e-15)
+    assert concentration == pytest.approx(hpc.SCIENTIFIC_CONCENTRATION, abs=1e-11)
+    for factor, target in (
+        (8.874250601269965, hpc.MODELED_EUROPEAN_DOMAIN_TARGET_CV),
+        (117.60829531564202, hpc.GBR_TARGET_CV),
+    ):
+        achieved = np.sqrt(root_variance + (1.0 + root_variance) * factor / (concentration + 1.0))
+        assert achieved == pytest.approx(target, abs=1e-15)
+
+
+def test_aggregate_variance_factor_uses_physical_total_weights() -> None:
+    """The Dirichlet factor must be based on the modeled physical aggregate."""
+    nominal = np.array([0.5, 0.25, 0.25], dtype=np.float64)
+    physical = np.array([2.0, 1.0, 1.0], dtype=np.float64)
+
+    factor, total = hpc._aggregate_variance_factor(nominal, physical)
+
+    assert total == 4.0
+    assert factor == pytest.approx(0.0, abs=1e-15)
+
+
+def test_paris_builder_rejects_an_unlocked_concentration(tmp_path: Path) -> None:
+    """Historical engineering concentrations must not reach the science stages."""
+    with pytest.raises(ValueError, match="scientific lock"):
+        hpc._build_paris_aggregation(
+            tmp_path / "unused.nc",
+            expected_input_sha256="a" * 64,
+            concentration=100.0,
+        )
+
+
 def test_tiny_v3_json_and_binary_roundtrip(tmp_path: Path) -> None:
     """The G0 helper should publish replayable create-only artifacts."""
     report = hpc.run_tiny(tmp_path, source_revision=REVISION)
@@ -45,7 +85,7 @@ def test_spectrum_bundle_roundtrips_exactly(tmp_path: Path) -> None:
         source_revision=REVISION,
         input_path=tmp_path / "frozen.nc",
         input_sha256="a" * 64,
-        concentration=hpc.ENGINEERING_CONCENTRATION,
+        concentration=hpc.SCIENTIFIC_CONCENTRATION,
         elapsed_seconds=1.25,
     )
 
@@ -72,7 +112,7 @@ def test_spectrum_bundle_rejects_binary_mutation(tmp_path: Path) -> None:
         source_revision=REVISION,
         input_path=tmp_path / "frozen.nc",
         input_sha256="b" * 64,
-        concentration=hpc.ENGINEERING_CONCENTRATION,
+        concentration=hpc.SCIENTIFIC_CONCENTRATION,
         elapsed_seconds=1.0,
     )
     basis_path = tmp_path / "basis.npy"
@@ -103,7 +143,7 @@ def test_second_spectrum_is_a_covariance_audit_only(tmp_path: Path) -> None:
             source_revision=REVISION,
             input_path=tmp_path / "frozen.nc",
             input_sha256="c" * 64,
-            concentration=hpc.ENGINEERING_CONCENTRATION,
+            concentration=hpc.SCIENTIFIC_CONCENTRATION,
             elapsed_seconds=1.0,
         )
 
@@ -232,12 +272,21 @@ def test_g3_certifier_selects_lowest_passing_median(
     prefix = {
         "schema": hpc.SCHEMA,
         "stage": "G3a",
+        "source_revision": REVISION,
+        "input_sha256": "a" * 64,
+        "spectrum_manifest_sha256": "b" * 64,
+        "native_concentration": hpc.SCIENTIFIC_CONCENTRATION,
+        "root_variance": hpc.SCIENTIFIC_ROOT_VARIANCE,
+        "science_calibration_schema": hpc.SCIENCE_CALIBRATION_SCHEMA,
+        "records": [{"projection_chunk_size": 256}],
         "passed": True,
     }
     prefix_path.write_text(hpc._canonical_json(prefix) + "\n", encoding="ascii")
     candidates: list[Path] = []
     job_records: dict[str, hpc.SlurmRecord] = {}
     job_number = 10_000
+    array_job_id = "9000"
+    array_task_id = 0
     for chunk_index, chunk in enumerate(hpc.RESOURCE_C_LADDER):
         for repeat in (0, 1, 2):
             directory = tmp_path / f"C{chunk}" / f"repeat{repeat}"
@@ -249,9 +298,18 @@ def test_g3_certifier_selects_lowest_passing_median(
                 "schema": hpc.SCHEMA,
                 "stage": "G3b-candidate",
                 "source_revision": REVISION,
+                "input_sha256": "a" * 64,
+                "spectrum_manifest_sha256": "b" * 64,
+                "g1_manifest_sha256": "c" * 64,
+                "native_concentration": hpc.SCIENTIFIC_CONCENTRATION,
+                "root_variance": hpc.SCIENTIFIC_ROOT_VARIANCE,
+                "science_calibration_schema": hpc.SCIENCE_CALIBRATION_SCHEMA,
                 "sample_chunk_size": chunk,
+                "projection_chunk_size": 256,
                 "repeat": repeat,
                 "slurm_job_id": job_id,
+                "slurm_array_job_id": array_job_id,
+                "slurm_array_task_id": str(array_task_id),
                 "constructor_seconds": elapsed,
                 "passed_internal_checks": True,
                 "projected_array": {
@@ -269,11 +327,12 @@ def test_g3_certifier_selects_lowest_passing_median(
                 encoding="utf-8",
             )
             candidates.append(manifest)
-            job_records[job_id] = {
+            job_records[f"{array_job_id}_{array_task_id}"] = {
                 "state": "COMPLETED",
                 "elapsed_seconds": int(elapsed),
                 "max_rss_bytes": 2 * (1 << 30),
             }
+            array_task_id += 1
     monkeypatch.setattr(hpc, "_sacct_records", lambda job_ids: job_records)
 
     report = hpc.run_g3_certify(
@@ -286,4 +345,5 @@ def test_g3_certifier_selects_lowest_passing_median(
 
     assert report["passed"] is True
     assert report["selected_sample_chunk_size"] == 1_024
+    assert report["selected_projection_microbatch"] == 256
     assert (tmp_path / "G3_COMPLETE.txt").is_file()

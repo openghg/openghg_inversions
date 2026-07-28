@@ -55,11 +55,14 @@ Sobol bits: 52
 Sobol block rule: [21201, 2222] on the frozen root
 ```
 
-Before G2, record one common native additive concentration independently of
-partition and \(K\).  If that scientific choice is not yet available, use
-one explicitly labelled engineering concentration for G0--G3 only and stop
-before source/science locking.  Do not choose between 100 and 500 using
-results; they were historical scaling diagnostics.
+The scientific calibration is now frozen in
+[`rjmcmc_chunked_projected_bank_g4_threshold_supplement.md`](rjmcmc_chunked_projected_bank_g4_threshold_supplement.md).
+It sets the modeled European-domain physical-total CV to 0.20 and the frozen
+GBR physical-total CV to 0.50.  The resulting common native concentration is
+\(\eta=528.618161317525\), with root variance
+\(0.022861001527515423\).  These values are independent of partition and
+\(K\); the driver must recompute them from authenticated prior fields and
+fail closed if they do not replay.
 
 ## G0: preflight
 
@@ -153,11 +156,13 @@ and a modest \(q\):
 
 ### G3b: full source resource matrix
 
-Build \(S=65536,q_{\max}=128\), seed 731, with a predeclared \(C\) ladder,
-initially 1024, 2048, 4096, and 8192.  Run sequentially after one warm-up so
-concurrent jobs do not confound timing.  Larger chunks reduce repeated
-tree-propagation overhead but increase shares, uniform, and inverse-Beta
-fraction arrays; do not add another candidate after inspecting the matrix.
+Build \(S=65536,q_{\max}=128\), seed 731, with the predeclared \(C\) ladder
+1024, 2048, 4096, and 8192.  Run the twelve homogeneous
+\((C,\text{repeat})\) tasks as one Slurm array `0-11%1` after one excluded
+warm-up; the concurrency cap preserves sequential timing while retaining one
+auditable array identity.  Larger chunks reduce repeated tree-propagation
+overhead but increase shares, uniform, and inverse-Beta fraction arrays; do
+not add another candidate after inspecting the matrix.
 
 Request one CPU, 16 GiB, and no more than 60 minutes per candidate.  Suggested
 hard resource gates:
@@ -180,9 +185,11 @@ fingerprinting, binary output, and checksum publication in full-process RSS.
 
 ## G4: source-bank and science lock
 
-G4 is barred until a separate threshold supplement has been committed and
-pushed without inspecting any G4 result.  That supplement must give exact
-formulas and numerical pass values for:
+The separate observation-blind threshold supplement is
+[`rjmcmc_chunked_projected_bank_g4_threshold_supplement.md`](rjmcmc_chunked_projected_bank_g4_threshold_supplement.md).
+It must be committed and pushed in the same full-SHA source used for G0--G4
+before inspecting any G4 result.  It gives exact formulas and numerical pass
+values for:
 
 - normalized mean error in analytic spectrum coordinates;
 - relative covariance error and its treatment of tiny analytic eigenvalues;

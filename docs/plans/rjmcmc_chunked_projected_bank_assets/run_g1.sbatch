@@ -2,8 +2,8 @@
 #SBATCH --account=chem007981
 #SBATCH --job-name=chunk-bank-g1
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=16G
-#SBATCH --time=04:00:00
+#SBATCH --mem=4G
+#SBATCH --time=00:30:00
 
 set -euo pipefail
 set -o noclobber
@@ -37,7 +37,8 @@ cd "${BANK_SOURCE}"
 pixi run --frozen --no-install -e dev pytest -q \
   tests/experimental/rjmcmc/test_aggregation_error_exact_mixture.py \
   tests/experimental/rjmcmc/test_aggregation_error_conditional_mixture.py \
-  tests/experimental/rjmcmc/test_conditional_residual_image_chunked_projected_bank_hpc.py
+  tests/experimental/rjmcmc/test_conditional_residual_image_chunked_projected_bank_hpc.py \
+  tests/experimental/rjmcmc/test_conditional_residual_image_chunked_projected_bank_g4.py
 
 /usr/bin/time -v -o "${time_report}" \
   pixi run --frozen --no-install -e dev python \

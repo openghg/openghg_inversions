@@ -2,8 +2,8 @@
 #SBATCH --account=chem007981
 #SBATCH --job-name=chunk-bank-g2-audit
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=16G
-#SBATCH --time=02:00:00
+#SBATCH --mem=4G
+#SBATCH --time=00:30:00
 
 set -euo pipefail
 set -o noclobber
@@ -44,7 +44,7 @@ cd "${BANK_SOURCE}"
   --input "${FROZEN_INPUT}" \
   --expected-input-sha256 "${FROZEN_INPUT_SHA}" \
   --source-revision "${BANK_REVISION}" \
-  --concentration 100 \
+  --concentration 528.618161317525 \
   --output-dir "${stage}"
 
 pixi run --frozen --no-install -e dev python \

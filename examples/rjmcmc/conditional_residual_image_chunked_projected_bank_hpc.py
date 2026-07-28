@@ -21,7 +21,7 @@ from collections.abc import Mapping, Sequence
 import hashlib
 import json
 import math
-from numbers import Integral
+from numbers import Integral, Real
 import os
 from pathlib import Path
 import platform
@@ -79,7 +79,11 @@ PARIS_OBSERVATION_COUNT = 1_382
 PARIS_GRID_SHAPE = (183, 128)
 PARIS_OUTER_LABELS = tuple(f"intem_label_{index}" for index in range(6))
 PARIS_INPUT_SHA256 = "24da69cab978051608313901b1c958200e0ad885a0a349bfa4fa1f9a0aaad044"
-ENGINEERING_CONCENTRATION = 100.0
+SCIENCE_CALIBRATION_SCHEMA = "rjmcmc-modeled-european-domain-gbr-cv-calibration-v1"
+MODELED_EUROPEAN_DOMAIN_TARGET_CV = 0.2
+GBR_TARGET_CV = 0.5
+SCIENTIFIC_ROOT_VARIANCE = 0.022861001527515423
+SCIENTIFIC_CONCENTRATION = 528.618161317525
 SOURCE_SEEDS = (731, 1_877, 4_099, 8_317)
 SOURCE_SAMPLE_COUNT = 65_536
 SOURCE_RANK = 128
@@ -275,6 +279,197 @@ def _maximum_ulp_difference(first: FloatArray, second: FloatArray) -> int:
     return int(np.max(difference, initial=np.uint64(0)))
 
 
+def _aggregate_variance_factor(
+    nominal_weight: FloatArray,
+    physical_weight: FloatArray,
+) -> tuple[float, float]:
+    """Return the Dirichlet variance factor and physical aggregate total."""
+    if (
+        nominal_weight.shape != physical_weight.shape
+        or not np.all(np.isfinite(nominal_weight))
+        or not np.all(nominal_weight > 0.0)
+        or not np.all(np.isfinite(physical_weight))
+        or np.any(physical_weight < 0.0)
+    ):
+        raise ValueError("aggregate calibration weights are invalid")
+    total = float(np.sum(physical_weight))
+    if not math.isfinite(total) or total <= 0.0:
+        raise ValueError("physical aggregate total must be finite and positive")
+    factor = float(
+        np.sum(
+            np.square(physical_weight) / (nominal_weight * total * total),
+        )
+        - 1.0
+    )
+    if not math.isfinite(factor) or factor < 0.0:
+        raise ValueError("aggregate Dirichlet variance factor is invalid")
+    return factor, total
+
+
+def _solve_two_aggregate_calibration(
+    *,
+    broad_factor: float,
+    local_factor: float,
+    broad_target_cv: float,
+    local_target_cv: float,
+) -> tuple[float, float]:
+    """Solve root variance and common concentration from two aggregate CVs."""
+    if not (
+        math.isfinite(broad_factor)
+        and math.isfinite(local_factor)
+        and 0.0 <= broad_factor < local_factor
+        and math.isfinite(broad_target_cv)
+        and math.isfinite(local_target_cv)
+        and 0.0 < broad_target_cv < local_target_cv
+    ):
+        raise ValueError("two-aggregate calibration inputs are invalid")
+    broad_variance = broad_target_cv * broad_target_cv
+    local_variance = local_target_cv * local_target_cv
+    root_variance = broad_variance - (
+        broad_factor * (local_variance - broad_variance) / (local_factor - broad_factor)
+    )
+    if not 0.0 <= root_variance < broad_variance:
+        raise ValueError("two-aggregate targets imply no non-negative finite root variance")
+    concentration = (1.0 + root_variance) * broad_factor / (broad_variance - root_variance) - 1.0
+    if not math.isfinite(concentration) or concentration <= 0.0:
+        raise ValueError("two-aggregate targets imply no finite positive concentration")
+    return root_variance, concentration
+
+
+def _scientific_calibration(dataset: xr.Dataset) -> dict[str, object]:
+    """Authenticate the observation-blind modeled-domain/GBR prior calibration."""
+    required_dims = {
+        "nominal_weight": ("lat", "lon"),
+        "prior_flux": ("lat", "lon"),
+        "grid_cell_area": ("lat", "lon"),
+        "country_fraction": ("country", "lat", "lon"),
+    }
+    for name, dims in required_dims.items():
+        if name not in dataset or dataset[name].dims != dims:
+            raise ValueError(f"frozen calibration variable {name!r} has wrong dimensions")
+    try:
+        nominal_data, flux_data, area_data, gbr_data = xr.align(
+            dataset["nominal_weight"],
+            dataset["prior_flux"],
+            dataset["grid_cell_area"],
+            dataset["country_fraction"].sel(country="GBR"),
+            join="exact",
+            copy=False,
+        )
+    except (KeyError, ValueError) as error:
+        raise ValueError("frozen input has no exactly aligned GBR calibration fields") from error
+    nominal_weight = np.asarray(nominal_data.values, dtype=np.float64)
+    prior_flux = np.asarray(flux_data.values, dtype=np.float64)
+    grid_cell_area = np.asarray(area_data.values, dtype=np.float64)
+    gbr_fraction = np.asarray(gbr_data.values, dtype=np.float64)
+    if not np.all(np.isfinite(gbr_fraction)) or np.any(gbr_fraction < 0.0) or np.any(gbr_fraction > 1.0):
+        raise ValueError("frozen GBR country fractions are invalid")
+    if not math.isclose(
+        float(np.sum(nominal_weight)),
+        1.0,
+        rel_tol=0.0,
+        abs_tol=128.0 * np.finfo(np.float64).eps * nominal_weight.size,
+    ):
+        raise ValueError("frozen nominal weights are not normalized")
+    domain_weight = prior_flux * grid_cell_area
+    gbr_weight = domain_weight * gbr_fraction
+    domain_factor, domain_total = _aggregate_variance_factor(
+        nominal_weight,
+        domain_weight,
+    )
+    gbr_factor, gbr_total = _aggregate_variance_factor(
+        nominal_weight,
+        gbr_weight,
+    )
+    root_variance, concentration = _solve_two_aggregate_calibration(
+        broad_factor=domain_factor,
+        local_factor=gbr_factor,
+        broad_target_cv=MODELED_EUROPEAN_DOMAIN_TARGET_CV,
+        local_target_cv=GBR_TARGET_CV,
+    )
+    tolerance = 64.0 * np.finfo(np.float64).eps
+    if not math.isclose(
+        root_variance,
+        SCIENTIFIC_ROOT_VARIANCE,
+        rel_tol=tolerance,
+        abs_tol=tolerance,
+    ):
+        raise ValueError("frozen input no longer reproduces the scientific root variance")
+    if not math.isclose(
+        concentration,
+        SCIENTIFIC_CONCENTRATION,
+        rel_tol=tolerance,
+        abs_tol=tolerance,
+    ):
+        raise ValueError("frozen input no longer reproduces the scientific concentration")
+
+    def achieved_cv(factor: float) -> float:
+        return math.sqrt(root_variance + (1.0 + root_variance) * factor / (concentration + 1.0))
+
+    return {
+        "schema": SCIENCE_CALIBRATION_SCHEMA,
+        "aggregate_definition": (
+            "sum(prior_flux*grid_cell_area*country_fraction*simulated_scaling); "
+            "country_fraction=1 for the complete modeled European inner domain"
+        ),
+        "modeled_european_domain": {
+            "target_cv": MODELED_EUROPEAN_DOMAIN_TARGET_CV,
+            "achieved_cv": achieved_cv(domain_factor),
+            "dirichlet_variance_factor": domain_factor,
+            "prior_total_mol_s": domain_total,
+            "physical_weight_sha256": _array_sha256(domain_weight),
+        },
+        "GBR": {
+            "target_cv": GBR_TARGET_CV,
+            "achieved_cv": achieved_cv(gbr_factor),
+            "dirichlet_variance_factor": gbr_factor,
+            "prior_total_mol_s": gbr_total,
+            "physical_weight_sha256": _array_sha256(gbr_weight),
+            "country_fraction_sha256": _array_sha256(gbr_fraction),
+        },
+        "nominal_weight_sha256": _array_sha256(nominal_weight),
+        "prior_flux_sha256": _array_sha256(prior_flux),
+        "grid_cell_area_sha256": _array_sha256(grid_cell_area),
+        "country_labels_sha256": hashlib.sha256(
+            _canonical_json([str(value) for value in dataset["country"].values]).encode("ascii")
+        ).hexdigest(),
+        "root_variance": root_variance,
+        "root_cv": math.sqrt(root_variance),
+        "root_gamma_shape": 1.0 / root_variance,
+        "root_gamma_rate": 1.0 / root_variance,
+        "common_native_concentration": concentration,
+        "observed_mole_fraction_used": False,
+        "modeled_domain_not_political_eu_membership": True,
+    }
+
+
+def _load_scientific_calibration_fields(
+    input_path: Path,
+    *,
+    expected_input_sha256: str,
+) -> xr.Dataset:
+    """Load only the authenticated prior fields used by the CV calibration."""
+    if input_path.is_symlink() or not input_path.is_file():
+        raise FileNotFoundError("input must be a real regular file")
+    before = _sha256_file(input_path)
+    if before != expected_input_sha256:
+        raise ValueError("frozen input SHA-256 mismatch")
+    names = (
+        "nominal_weight",
+        "prior_flux",
+        "grid_cell_area",
+        "country_fraction",
+    )
+    with xr.open_dataset(input_path) as opened:
+        missing = sorted(set(names).difference(opened.data_vars))
+        if missing:
+            raise ValueError(f"frozen input is missing calibration variables: {missing}")
+        dataset = opened[list(names)].load()
+    if _sha256_file(input_path) != before:
+        raise ValueError("frozen input changed while calibration fields were read")
+    return dataset
+
+
 def _build_paris_aggregation(
     input_path: Path,
     *,
@@ -282,6 +477,13 @@ def _build_paris_aggregation(
     concentration: float,
 ) -> tuple[xr.Dataset, AdditiveDirichletAggregation]:
     """Authenticate the frozen input and build the one-root physical model."""
+    if not math.isclose(
+        concentration,
+        SCIENTIFIC_CONCENTRATION,
+        rel_tol=0.0,
+        abs_tol=64.0 * np.finfo(np.float64).eps,
+    ):
+        raise ValueError("PARIS aggregation concentration must match the scientific lock")
     if input_path.is_symlink() or not input_path.is_file():
         raise FileNotFoundError("input must be a real regular file")
     before = _sha256_file(input_path)
@@ -302,7 +504,7 @@ def _build_paris_aggregation(
         k_min=1,
         k_max=1,
         concentration=concentration,
-        root_variance=0.25,
+        root_variance=SCIENTIFIC_ROOT_VARIANCE,
         normalize_weights=True,
         likelihood_power=0.0,
         sensitivity_name="fp_x_flux",
@@ -322,6 +524,35 @@ def _build_paris_aggregation(
         np.empty((PARIS_OBSERVATION_COUNT, 0), dtype=np.float64),
     )
     return dataset, aggregation
+
+
+def run_scientific_calibration(
+    output: Path,
+    *,
+    input_path: Path,
+    expected_input_sha256: str,
+    source_revision: str,
+) -> dict[str, object]:
+    """Recalculate and publish the observation-blind two-aggregate prior lock."""
+    calibration = _scientific_calibration(
+        _load_scientific_calibration_fields(
+            input_path,
+            expected_input_sha256=expected_input_sha256,
+        )
+    )
+    report: dict[str, object] = {
+        "schema": SCHEMA,
+        "stage": "scientific-calibration",
+        "source_revision": source_revision,
+        "input_sha256": expected_input_sha256,
+        "calibration": calibration,
+        "realized_mf_used": False,
+        "protected_catalogue_accessed": False,
+        "production_output_written": False,
+        "passed": True,
+    }
+    _atomic_write_json(output, report)
+    return report
 
 
 def _spectrum_scalars(spectrum: RootResidualSpectrum) -> dict[str, object]:
@@ -349,6 +580,7 @@ def _write_spectrum_bundle(
     input_sha256: str,
     concentration: float,
     elapsed_seconds: float,
+    scientific_calibration: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     """Publish the authoritative spectrum arrays followed by its manifest."""
     if output_dir.is_symlink() or not output_dir.is_dir():
@@ -382,8 +614,14 @@ def _write_spectrum_bundle(
         },
         "model": {
             "retained_roots": 1,
-            "engineering_concentration": concentration,
-            "concentration_status": "engineering-only-not-a-G4-science-lock",
+            "native_concentration": concentration,
+            "root_variance": SCIENTIFIC_ROOT_VARIANCE,
+            "concentration_status": (
+                "scientific-modeled-domain-and-GBR-aggregate-CV-lock"
+                if scientific_calibration is not None
+                else "synthetic-test-or-unlocked"
+            ),
+            "scientific_calibration": scientific_calibration,
             "observed_residual_used": False,
             "partition_or_k_used": False,
         },
@@ -442,6 +680,52 @@ def _load_spectrum_bundle(manifest_path: Path) -> RootResidualSpectrum:
     if _spectrum_scalars(spectrum) != scalars:
         raise ValueError("replayed spectrum scalars do not match manifest")
     return spectrum
+
+
+def _authenticate_scientific_spectrum_manifest(
+    manifest_path: Path,
+    *,
+    source_revision: str,
+    input_sha256: str,
+    concentration: float,
+) -> dict[str, Any]:
+    """Require a spectrum built from the exact committed scientific calibration."""
+    manifest = _read_json(manifest_path)
+    model = manifest.get("model")
+    input_record = manifest.get("input")
+    if (
+        manifest.get("schema") != SCHEMA
+        or manifest.get("stage") != "G2"
+        or manifest.get("source_revision") != source_revision
+        or not isinstance(model, dict)
+        or not isinstance(input_record, dict)
+        or input_record.get("sha256") != input_sha256
+        or model.get("concentration_status") != "scientific-modeled-domain-and-GBR-aggregate-CV-lock"
+        or model.get("root_variance") != SCIENTIFIC_ROOT_VARIANCE
+        or model.get("native_concentration") != concentration
+    ):
+        raise ValueError("spectrum manifest does not match the scientific model lock")
+    calibration = model.get("scientific_calibration")
+    if (
+        not isinstance(calibration, dict)
+        or calibration.get("schema") != SCIENCE_CALIBRATION_SCHEMA
+        or not isinstance(calibration.get("root_variance"), Real)
+        or not math.isclose(
+            float(calibration["root_variance"]),
+            SCIENTIFIC_ROOT_VARIANCE,
+            rel_tol=64.0 * np.finfo(np.float64).eps,
+            abs_tol=64.0 * np.finfo(np.float64).eps,
+        )
+        or not isinstance(calibration.get("common_native_concentration"), Real)
+        or not math.isclose(
+            float(calibration["common_native_concentration"]),
+            SCIENTIFIC_CONCENTRATION,
+            rel_tol=64.0 * np.finfo(np.float64).eps,
+            abs_tol=64.0 * np.finfo(np.float64).eps,
+        )
+    ):
+        raise ValueError("spectrum manifest scientific calibration is missing or invalid")
+    return manifest
 
 
 def _all_at_once_source(
@@ -792,6 +1076,22 @@ def run_g2(
         expected_input_sha256=expected_input_sha256,
         concentration=concentration,
     )
+    calibration = _scientific_calibration(
+        _load_scientific_calibration_fields(
+            input_path,
+            expected_input_sha256=expected_input_sha256,
+        )
+    )
+    calibrated_concentration = calibration["common_native_concentration"]
+    if not isinstance(calibrated_concentration, Real):
+        raise TypeError("scientific calibration concentration is not numeric")
+    if not math.isclose(
+        concentration,
+        float(calibrated_concentration),
+        rel_tol=0.0,
+        abs_tol=64.0 * np.finfo(np.float64).eps,
+    ):
+        raise ValueError("G2 concentration does not match the scientific calibration")
     spectrum = RootResidualSpectrum.from_aggregation(aggregation, retained_variance_fraction=1.0)
     if spectrum.retained_rank != PARIS_OBSERVATION_COUNT - 1:
         raise ValueError("unexpected PARIS root spectrum rank")
@@ -803,6 +1103,7 @@ def run_g2(
         input_sha256=expected_input_sha256,
         concentration=concentration,
         elapsed_seconds=time.perf_counter() - started,
+        scientific_calibration=calibration,
     )
 
 
@@ -925,6 +1226,12 @@ def run_g3_prefix(
         expected_input_sha256=expected_input_sha256,
         concentration=concentration,
     )
+    _authenticate_scientific_spectrum_manifest(
+        spectrum_manifest,
+        source_revision=source_revision,
+        input_sha256=expected_input_sha256,
+        concentration=concentration,
+    )
     spectrum = _load_spectrum_bundle(spectrum_manifest)
     locked_p = _locked_p(g1_manifest)
     reference = _all_at_once_source(
@@ -980,7 +1287,9 @@ def run_g3_prefix(
         "source_revision": source_revision,
         "input_sha256": expected_input_sha256,
         "spectrum_manifest_sha256": _sha256_file(spectrum_manifest),
-        "engineering_concentration": concentration,
+        "native_concentration": concentration,
+        "root_variance": SCIENTIFIC_ROOT_VARIANCE,
+        "science_calibration_schema": SCIENCE_CALIBRATION_SCHEMA,
         "sample_count": PREFIX_SAMPLE_COUNT,
         "mixture_rank": PREFIX_RANK,
         "source_seed": SOURCE_SEEDS[0],
@@ -1021,6 +1330,12 @@ def run_g3_bank(
         expected_input_sha256=expected_input_sha256,
         concentration=concentration,
     )
+    _authenticate_scientific_spectrum_manifest(
+        spectrum_manifest,
+        source_revision=source_revision,
+        input_sha256=expected_input_sha256,
+        concentration=concentration,
+    )
     spectrum = _load_spectrum_bundle(spectrum_manifest)
     locked_p = _locked_p(g1_manifest)
     constructor_started = time.perf_counter()
@@ -1050,7 +1365,9 @@ def run_g3_bank(
         "input_sha256": expected_input_sha256,
         "spectrum_manifest_sha256": _sha256_file(spectrum_manifest),
         "g1_manifest_sha256": _sha256_file(g1_manifest),
-        "engineering_concentration": concentration,
+        "native_concentration": concentration,
+        "root_variance": SCIENTIFIC_ROOT_VARIANCE,
+        "science_calibration_schema": SCIENCE_CALIBRATION_SCHEMA,
         "sample_count": SOURCE_SAMPLE_COUNT,
         "mixture_rank": SOURCE_RANK,
         "source_seed": SOURCE_SEEDS[0],
@@ -1058,6 +1375,8 @@ def run_g3_bank(
         "projection_chunk_size": locked_p,
         "repeat": repeat,
         "slurm_job_id": os.environ.get("SLURM_JOB_ID"),
+        "slurm_array_job_id": os.environ.get("SLURM_ARRAY_JOB_ID"),
+        "slurm_array_task_id": os.environ.get("SLURM_ARRAY_TASK_ID"),
         "bank_sha256": bank.sha256,
         "sobol_catalogue_sha256": sobol["sobol_catalogue_sha256"],
         "sobol_block_dimensions": sobol["sobol_block_dimensions"],
@@ -1099,6 +1418,12 @@ def run_g3_warmup(
     _, aggregation = _build_paris_aggregation(
         input_path,
         expected_input_sha256=expected_input_sha256,
+        concentration=concentration,
+    )
+    _authenticate_scientific_spectrum_manifest(
+        spectrum_manifest,
+        source_revision=source_revision,
+        input_sha256=expected_input_sha256,
         concentration=concentration,
     )
     spectrum = _load_spectrum_bundle(spectrum_manifest)
@@ -1150,8 +1475,13 @@ def _slurm_bytes(value: str) -> int:
 
 def _sacct_records(job_ids: Sequence[str]) -> dict[str, SlurmRecord]:
     """Query terminal Slurm state and maximum step RSS for candidate jobs."""
-    if not job_ids or any(not job_id.isdigit() for job_id in job_ids):
-        raise ValueError("candidate Slurm job IDs must be non-empty decimal strings")
+    if not job_ids or any(
+        not (
+            job_id.isdigit() or (job_id.count("_") == 1 and all(part.isdigit() for part in job_id.split("_")))
+        )
+        for job_id in job_ids
+    ):
+        raise ValueError("candidate Slurm IDs must be decimal jobs or array_job_task IDs")
     command = [
         "sacct",
         "-n",
@@ -1174,7 +1504,7 @@ def _sacct_records(job_ids: Sequence[str]) -> dict[str, SlurmRecord]:
         if len(fields) < 4:
             continue
         raw_id, state, elapsed, max_rss = fields[:4]
-        base = raw_id.split(".", maxsplit=1)[0].split("_", maxsplit=1)[0]
+        base = raw_id.split(".", maxsplit=1)[0]
         if base not in records:
             continue
         if raw_id == base:
@@ -1212,14 +1542,24 @@ def run_g3_certify(
 ) -> dict[str, object]:
     """Merge prefix/resource evidence and apply the predeclared G3 hard gates."""
     prefix = _read_json(prefix_manifest)
-    if prefix.get("schema") != SCHEMA or prefix.get("stage") != "G3a" or prefix.get("passed") is not True:
+    if (
+        prefix.get("schema") != SCHEMA
+        or prefix.get("stage") != "G3a"
+        or prefix.get("source_revision") != source_revision
+        or prefix.get("native_concentration") != SCIENTIFIC_CONCENTRATION
+        or prefix.get("root_variance") != SCIENTIFIC_ROOT_VARIANCE
+        or prefix.get("science_calibration_schema") != SCIENCE_CALIBRATION_SCHEMA
+        or prefix.get("passed") is not True
+    ):
         raise ValueError("G3a prefix manifest is not a passing artifact")
     expected_count = len(RESOURCE_C_LADDER) * 3
     if len(candidate_manifests) != expected_count:
         raise ValueError(f"G3b requires exactly {expected_count} candidate manifests")
     candidates: list[dict[str, Any]] = []
     seen: set[tuple[int, int]] = set()
-    job_ids: list[str] = []
+    accounting_ids: list[str] = []
+    array_job_ids: set[str] = set()
+    array_task_ids: set[int] = set()
     for path in candidate_manifests:
         payload = _read_json(path)
         if (
@@ -1237,15 +1577,64 @@ def run_g3_certify(
         job_id = payload.get("slurm_job_id")
         if not isinstance(job_id, str) or not job_id.isdigit():
             raise ValueError(f"candidate has no valid Slurm job ID: {path}")
-        job_ids.append(job_id)
+        array_job_id = payload.get("slurm_array_job_id")
+        array_task_id = payload.get("slurm_array_task_id")
+        if (
+            not isinstance(array_job_id, str)
+            or not array_job_id.isdigit()
+            or not isinstance(array_task_id, str)
+            or not array_task_id.isdigit()
+            or int(array_task_id) != RESOURCE_C_LADDER.index(chunk) * 3 + repeat
+        ):
+            raise ValueError(f"candidate has invalid Slurm array identity: {path}")
+        array_job_ids.add(array_job_id)
+        array_task_ids.add(int(array_task_id))
+        accounting_id = f"{array_job_id}_{array_task_id}"
+        accounting_ids.append(accounting_id)
+        payload["_accounting_id"] = accounting_id
+        if (
+            payload.get("native_concentration") != SCIENTIFIC_CONCENTRATION
+            or payload.get("root_variance") != SCIENTIFIC_ROOT_VARIANCE
+            or payload.get("science_calibration_schema") != SCIENCE_CALIBRATION_SCHEMA
+        ):
+            raise ValueError(f"candidate scientific model identity mismatch: {path}")
         payload["_manifest_path"] = str(path)
         payload["_manifest_sha256"] = _sha256_file(path)
         candidates.append(payload)
     expected_keys = {(chunk, repeat) for chunk in RESOURCE_C_LADDER for repeat in (0, 1, 2)}
     if seen != expected_keys:
         raise ValueError("candidate matrix is incomplete")
+    if len(array_job_ids) != 1 or array_task_ids != set(range(expected_count)):
+        raise ValueError("candidate matrix is not one complete Slurm array")
+    for field in (
+        "input_sha256",
+        "spectrum_manifest_sha256",
+        "g1_manifest_sha256",
+    ):
+        values = {str(candidate[field]) for candidate in candidates}
+        if len(values) != 1:
+            raise ValueError(f"candidate matrix disagrees on {field}")
+    if any(
+        candidate["input_sha256"] != prefix["input_sha256"]
+        or candidate["spectrum_manifest_sha256"] != prefix["spectrum_manifest_sha256"]
+        for candidate in candidates
+    ):
+        raise ValueError("G3a and G3b scientific inputs disagree")
+    projection_microbatches = {int(candidate["projection_chunk_size"]) for candidate in candidates}
+    prefix_projection_microbatches = {
+        int(record["projection_chunk_size"])
+        for record in prefix.get("records", [])
+        if isinstance(record, dict) and "projection_chunk_size" in record
+    }
+    if (
+        len(projection_microbatches) != 1
+        or projection_microbatches != prefix_projection_microbatches
+        or next(iter(projection_microbatches)) not in P_LADDER
+    ):
+        raise ValueError("G3a and G3b projection-microbatch locks disagree")
+    selected_projection_microbatch = next(iter(projection_microbatches))
 
-    accounting = _sacct_records(job_ids)
+    accounting = _sacct_records(accounting_ids)
     array_digests = {str(candidate["projected_array"]["array_sha256"]) for candidate in candidates}
     file_digests = {str(candidate["projected_array"]["file_sha256"]) for candidate in candidates}
     identical = len(array_digests) == 1 and len(file_digests) == 1
@@ -1264,7 +1653,7 @@ def run_g3_certify(
         ]
         median_elapsed = float(np.median(elapsed))
         medians[chunk] = median_elapsed
-        job_records = [accounting[str(candidate["slurm_job_id"])] for candidate in chunk_candidates]
+        job_records = [accounting[str(candidate["_accounting_id"])] for candidate in chunk_candidates]
         max_rss = max(int(record["max_rss_bytes"]) for record in job_records)
         states = [record["state"] for record in job_records]
         internal = all(candidate.get("passed_internal_checks") is True for candidate in chunk_candidates)
@@ -1299,6 +1688,9 @@ def run_g3_certify(
         "schema": SCHEMA,
         "stage": "G3",
         "source_revision": source_revision,
+        "native_concentration": SCIENTIFIC_CONCENTRATION,
+        "root_variance": SCIENTIFIC_ROOT_VARIANCE,
+        "science_calibration_schema": SCIENCE_CALIBRATION_SCHEMA,
         "prefix_manifest": {
             "path": str(prefix_manifest),
             "sha256": _sha256_file(prefix_manifest),
@@ -1313,6 +1705,7 @@ def run_g3_certify(
             "required_terminal_state": "COMPLETED",
             "all_candidate_projected_array_digests_identical": identical,
             "records": resource_records,
+            "slurm_array_job_id": next(iter(array_job_ids)),
         },
         "projected_array_sha256": next(iter(array_digests)) if identical else None,
         "binary_file_sha256": next(iter(file_digests)) if identical else None,
@@ -1320,9 +1713,10 @@ def run_g3_certify(
             "lowest median of three constructor times among resource-passing chunks; smaller C breaks exact ties"
         ),
         "selected_sample_chunk_size": selected_chunk,
+        "selected_projection_microbatch": selected_projection_microbatch,
         "passed": passed,
         "next_gate": (
-            "G4-barred-pending-scientific-eta-and-observation-blind-threshold-supplement"
+            "G4-scientific-source-validation-predeclared"
             if passed
             else "terminal-G3-resource-or-parity-hard-stop"
         ),
@@ -1349,6 +1743,12 @@ def _parser() -> argparse.ArgumentParser:
     g1.add_argument("--output", type=Path, required=True)
     g1.add_argument("--source-revision", required=True)
 
+    calibration = subparsers.add_parser("scientific-calibration")
+    calibration.add_argument("--input", type=Path, required=True)
+    calibration.add_argument("--expected-input-sha256", default=PARIS_INPUT_SHA256)
+    calibration.add_argument("--output", type=Path, required=True)
+    calibration.add_argument("--source-revision", required=True)
+
     for command in ("g2", "g3-prefix", "g3-bank", "g3-warmup"):
         stage = subparsers.add_parser(command)
         stage.add_argument("--input", type=Path, required=True)
@@ -1357,7 +1757,7 @@ def _parser() -> argparse.ArgumentParser:
         stage.add_argument(
             "--concentration",
             type=float,
-            default=ENGINEERING_CONCENTRATION,
+            default=SCIENTIFIC_CONCENTRATION,
         )
         if command == "g2":
             stage.add_argument("--output-dir", type=Path, required=True)
@@ -1399,6 +1799,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         run_tiny(arguments.output_dir, source_revision=source_revision)
     elif arguments.command == "g1":
         run_g1(arguments.output, source_revision=source_revision)
+    elif arguments.command == "scientific-calibration":
+        run_scientific_calibration(
+            arguments.output,
+            input_path=arguments.input,
+            expected_input_sha256=arguments.expected_input_sha256,
+            source_revision=source_revision,
+        )
     elif arguments.command == "g2":
         run_g2(
             arguments.output_dir,

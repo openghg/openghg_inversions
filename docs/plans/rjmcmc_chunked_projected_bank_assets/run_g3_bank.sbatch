@@ -13,9 +13,19 @@ set -o noclobber
 : "${BANK_REVISION:?}"
 : "${FROZEN_INPUT:?}"
 : "${FROZEN_INPUT_SHA:?}"
-: "${BANK_SAMPLE_CHUNK:?}"
-: "${BANK_REPEAT:?}"
-: "${BANK_CANDIDATE_DIR:?}"
+if [[ -z "${SLURM_ARRAY_JOB_ID:-}" || -z "${SLURM_ARRAY_TASK_ID:-}" ]]; then
+  echo "G3b candidates must run as one Slurm array." >&2
+  exit 2
+fi
+if (( SLURM_ARRAY_TASK_ID < 0 || SLURM_ARRAY_TASK_ID > 11 )); then
+  echo "G3b array task must lie in 0..11." >&2
+  exit 2
+fi
+chunks=(1024 2048 4096 8192)
+BANK_SAMPLE_CHUNK="${chunks[SLURM_ARRAY_TASK_ID / 3]}"
+BANK_REPEAT="$((SLURM_ARRAY_TASK_ID % 3))"
+BANK_CANDIDATE_DIR="${BANK_RUN_ROOT}/g3/resource/C${BANK_SAMPLE_CHUNK}/repeat${BANK_REPEAT}"
+mkdir -p "${BANK_CANDIDATE_DIR}"
 
 stage="${BANK_CANDIDATE_DIR}"
 complete="${stage}/CANDIDATE_COMPLETE.txt"
@@ -46,12 +56,13 @@ cd "${BANK_SOURCE}"
   --input "${FROZEN_INPUT}" \
   --expected-input-sha256 "${FROZEN_INPUT_SHA}" \
   --source-revision "${BANK_REVISION}" \
-  --concentration 100 \
+  --concentration 528.618161317525 \
   --spectrum-manifest "${BANK_RUN_ROOT}/g2/authoritative/spectrum_manifest.json" \
   --g1-manifest "${BANK_RUN_ROOT}/g1/g1_report.json" \
   --sample-chunk-size "${BANK_SAMPLE_CHUNK}" \
   --repeat "${BANK_REPEAT}" \
   --output-dir "${stage}"
 
-printf 'G3b C=%s repeat=%s complete in Slurm job %s\n' \
-  "${BANK_SAMPLE_CHUNK}" "${BANK_REPEAT}" "${SLURM_JOB_ID}" >"${complete}"
+printf 'G3b C=%s repeat=%s complete in Slurm array %s task %s job %s\n' \
+  "${BANK_SAMPLE_CHUNK}" "${BANK_REPEAT}" "${SLURM_ARRAY_JOB_ID}" \
+  "${SLURM_ARRAY_TASK_ID}" "${SLURM_JOB_ID}" >"${complete}"

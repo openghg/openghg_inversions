@@ -27,7 +27,8 @@ if [[ ! -f "${FROZEN_INPUT}" || -L "${FROZEN_INPUT}" ]]; then
   exit 2
 fi
 for path in "${log}" "${complete}" \
-  "${preflight}/tiny_bank.npy" "${preflight}/tiny_report.json"; do
+  "${preflight}/tiny_bank.npy" "${preflight}/tiny_report.json" \
+  "${preflight}/scientific_calibration.json"; do
   if [[ -e "${path}" || -L "${path}" ]]; then
     echo "Refusing to replace G0 evidence: ${path}" >&2
     exit 2
@@ -78,22 +79,33 @@ pixi run --frozen --no-install -e dev pytest -q \
   tests/experimental/rjmcmc/test_aggregation_error_conditional_mixture.py \
   tests/experimental/rjmcmc/test_conditional_residual_image_compressed_mixture.py \
   tests/experimental/rjmcmc/test_conditional_residual_image_exact_mixture_paris_probe.py \
-  tests/experimental/rjmcmc/test_conditional_residual_image_chunked_projected_bank_hpc.py
+  tests/experimental/rjmcmc/test_conditional_residual_image_chunked_projected_bank_hpc.py \
+  tests/experimental/rjmcmc/test_conditional_residual_image_chunked_projected_bank_g4.py
 
 focused=(
   openghg_inversions/experimental/rjmcmc/aggregation_error_conditional_mixture.py
   openghg_inversions/experimental/rjmcmc/aggregation_error_exact_mixture.py
   examples/rjmcmc/conditional_residual_image_exact_mixture_paris_probe.py
   examples/rjmcmc/conditional_residual_image_chunked_projected_bank_hpc.py
+  examples/rjmcmc/conditional_residual_image_chunked_projected_bank_g4.py
   tests/experimental/rjmcmc/test_aggregation_error_exact_mixture.py
   tests/experimental/rjmcmc/test_aggregation_error_conditional_mixture.py
   tests/experimental/rjmcmc/test_conditional_residual_image_compressed_mixture.py
   tests/experimental/rjmcmc/test_conditional_residual_image_exact_mixture_paris_probe.py
   tests/experimental/rjmcmc/test_conditional_residual_image_chunked_projected_bank_hpc.py
+  tests/experimental/rjmcmc/test_conditional_residual_image_chunked_projected_bank_g4.py
 )
 pixi run --frozen --no-install -e dev ruff format --check "${focused[@]}"
 pixi run --frozen --no-install -e dev ruff check "${focused[@]}"
 pixi run --frozen --no-install -e dev pyright "${focused[@]}"
+
+pixi run --frozen --no-install -e dev python \
+  examples/rjmcmc/conditional_residual_image_chunked_projected_bank_hpc.py \
+  scientific-calibration \
+  --input "${FROZEN_INPUT}" \
+  --expected-input-sha256 "${FROZEN_INPUT_SHA}" \
+  --output "${preflight}/scientific_calibration.json" \
+  --source-revision "${BANK_REVISION}"
 
 pixi run --frozen --no-install -e dev python \
   examples/rjmcmc/conditional_residual_image_chunked_projected_bank_hpc.py \

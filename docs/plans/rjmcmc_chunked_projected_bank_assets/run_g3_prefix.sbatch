@@ -2,8 +2,8 @@
 #SBATCH --account=chem007981
 #SBATCH --job-name=chunk-bank-g3a
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=16G
-#SBATCH --time=01:00:00
+#SBATCH --mem=4G
+#SBATCH --time=00:30:00
 
 set -euo pipefail
 set -o noclobber
@@ -43,7 +43,7 @@ cd "${BANK_SOURCE}"
   --input "${FROZEN_INPUT}" \
   --expected-input-sha256 "${FROZEN_INPUT_SHA}" \
   --source-revision "${BANK_REVISION}" \
-  --concentration 100 \
+  --concentration 528.618161317525 \
   --spectrum-manifest "${BANK_RUN_ROOT}/g2/authoritative/spectrum_manifest.json" \
   --g1-manifest "${BANK_RUN_ROOT}/g1/g1_report.json" \
   --output "${report}"
