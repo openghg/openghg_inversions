@@ -4,6 +4,17 @@
 
 ## Code changes
 
+- Added a shared RHIME flux-plan/compiler seam for standard and multisector
+  builders, and routed explicit sector-to-source mappings plus complete
+  per-sector priors through multisector preparation and model specifications.
+  Source-specific ragged state blocks remain gathered over
+  `(source, region_in_source)`, scalar source provenance remains single-sector,
+  and rectangular multisource adaptation is confined to the legacy
+  `fixedbasisMCMC` boundary.
+  [#402](https://github.com/openghg/openghg_inversions/issues/402),
+  [#403](https://github.com/openghg/openghg_inversions/issues/403),
+  [PR #529](https://github.com/openghg/openghg_inversions/pull/529)
+
 - Reset retained posterior draw labels after burn-in before attaching predictive
   groups in both modern RHIME and fixed-basis sampling, and preserve the
   discarded burn count through trace and `InversionOutput` round trips.
