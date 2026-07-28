@@ -42,7 +42,11 @@ from openghg_inversions.basis.operators import (
     BucketBasisOperator,
     MultiSourceBucketBasisOperator,
 )
-from openghg_inversions.basis._helpers import apply_fp_basis_functions, fp_sensitivity
+from openghg_inversions.basis._helpers import (
+    _legacy_multisource_h_if_needed,
+    apply_fp_basis_functions,
+    fp_sensitivity,
+)
 from openghg_inversions.flux_sanitization import (
     FluxNonFiniteMetadata,
     NONFINITE_CHECKED_COMPUTED,
@@ -1414,6 +1418,32 @@ def test_basisfunctions_interpolate_trace_with_chain_dim():
 # --------------------------------------------------------------------------------------
 # Multi-source equivalence: gathered MultiIndex vs legacy padded H conversion
 # --------------------------------------------------------------------------------------
+def test_legacy_multisource_adapter_only_zero_fills_structural_padding() -> None:
+    """Legacy rectangularization must preserve NaNs in represented state cells."""
+    state_index = pd.MultiIndex.from_tuples(
+        [("ff", 0), ("ff", 1), ("ocean", 0)],
+        names=["source", "region_in_source"],
+    )
+    sensitivity = xr.DataArray(
+        [[1.0, 2.0], [np.nan, 4.0], [5.0, 6.0]],
+        dims=("state", "time"),
+        coords={
+            **xr.Coordinates.from_pandas_multiindex(state_index, "state"),
+            "time": [0, 1],
+        },
+    )
+
+    result = _legacy_multisource_h_if_needed(
+        sensitivity,
+        state_dim="state",
+        flux_sources=["ff", "ocean"],
+    )
+
+    assert np.isnan(result.sel(source="ff", region=1, time=0))
+    assert result.sel(source="ocean", region=1, time=0).item() == 0.0
+    assert result.coords["source_region_count"].to_dict()["data"] == [2, 1]
+
+
 def test_multisource_sensitivity_matches_legacy_padded_conversion_smoke():
     """Smoke test: gathered multi-source sensitivity matches legacy padded->gathered conversion.
 

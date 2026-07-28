@@ -64,6 +64,7 @@ from openghg_inversions.models import (
     build_rhime_model_from_spec,
     build_rhime_multisector_model_from_spec,
 )
+from openghg_inversions.models._rhime_flux import _select_sector_design
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 
 __all__ = [
@@ -150,57 +151,55 @@ def _validate_multisector_basis_layout(
     model_spec: RhimeModelSpec,
     inv_inputs: xr.Dataset,
 ) -> None:
-    """Reject padded ragged bases unsupported by the current sector builder."""
-    operator = basis_functions.operator
+    """Require retained basis indexes to match each prepared sector design."""
     design = inv_inputs["H"]
-    if "region" not in design.dims or "region" not in design.coords:
-        return
-    prepared_index = design.get_index("region")
-    operator_for_source = getattr(operator, "operator_for_source", None)
-    if not callable(operator_for_source):
-        state_dim = operator.meta.state_dim
-        basis_index = operator.basis_matrix.get_index(state_dim)
-        if not basis_index.equals(prepared_index):
-            sector_sources = [
-                (sector.name, sector.flux_source) for sector in model_spec.sectors
-            ]
-            raise ValueError(
-                "Retained shared basis state coordinates do not match prepared H.region for "
-                f"sector/source mapping(s) {sector_sources!r}: basis has {len(basis_index)} "
-                f"elements, prepared H has {len(prepared_index)}."
-            )
-        return
 
-    region_layouts: list[tuple[str, str, int, bool]] = []
+    region_layouts: list[tuple[str, str, int, int, bool]] = []
     for sector in model_spec.sectors:
         try:
-            source_operator: Any = operator_for_source(sector.flux_source)
-        except ValueError as exc:
+            source_basis = basis_functions.for_source(sector.flux_source)
+        except (KeyError, ValueError) as exc:
             raise ValueError(
                 f"Sector {sector.name!r} requires source {sector.flux_source!r}, "
                 "but the retained basis has no matching source-specific basis."
             ) from exc
+        source_operator = source_basis.operator
         state_dim = source_operator.meta.state_dim
         basis_index = source_operator.basis_matrix.get_index(state_dim)
+        sector_design = _select_sector_design(
+            design,
+            sector=sector.name,
+            source=sector.flux_source,
+            variable_suffix=sector.variable_suffix,
+        )
+        prepared_state_dims = [str(dim) for dim in sector_design.dims if dim != "nmeasure"]
+        if len(prepared_state_dims) != 1:
+            raise ValueError(
+                f"Sector {sector.name!r} -> source {sector.flux_source!r} must have exactly "
+                f"one prepared state dimension; found {prepared_state_dims!r}."
+            )
+        prepared_index = sector_design.get_index(prepared_state_dims[0])
         region_layouts.append(
             (
                 sector.name,
                 sector.flux_source,
                 len(basis_index),
+                len(prepared_index),
                 basis_index.equals(prepared_index),
             )
         )
 
-    if any(not coordinates_match for _, _, _, coordinates_match in region_layouts):
+    if any(not coordinates_match for _, _, _, _, coordinates_match in region_layouts):
         details = ", ".join(
-            f"sector {sector!r} -> source {source!r}: {count} regions"
-            + ("" if coordinates_match else " with coordinates differing from H.region")
-            for sector, source, count, coordinates_match in region_layouts
+            f"sector {sector!r} -> source {source!r}: basis has {basis_count} regions, "
+            f"prepared H has {prepared_count}"
+            + ("" if coordinates_match else " with different coordinates")
+            for sector, source, basis_count, prepared_count, coordinates_match in region_layouts
         )
         raise ValueError(
-            "Multi-sector RHIME currently requires compatible basis dimensions across sectors; "
-            f"prepared H has {len(prepared_index)} regions; {details}. Ragged or inconsistent "
-            "source-specific state blocks are not supported by this builder."
+            "Retained source-specific basis state coordinates do not match prepared H; "
+            + details
+            + "."
         )
 
 
@@ -346,12 +345,12 @@ def run_rhime_from_prepared_inputs(
     if sector_count < 1:
         raise ValueError(f"`run_spec.model.sectors` must contain at least one sector; found {sector_count}.")
     multisector = sector_count > 1
-    prepared_is_multisector = "source" in prepared_inputs.inv_inputs["H"].dims
+    prepared_is_multisector = "source" in prepared_inputs.inv_inputs["H"].coords
     if run_spec.split_by_sectors is not prepared_is_multisector:
         raise ValueError(
             "`run_spec.split_by_sectors` must agree with the prepared `H` layout: "
             f"split_by_sectors={run_spec.split_by_sectors}, "
-            f"source dimension present={prepared_is_multisector}."
+            f"source coordinate present={prepared_is_multisector}."
         )
     if run_spec.split_by_sectors is not multisector:
         raise ValueError(

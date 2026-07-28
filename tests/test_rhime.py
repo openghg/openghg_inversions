@@ -865,6 +865,112 @@ def test_build_rhime_multisector_model_selects_sources_by_label(
     np.testing.assert_allclose(model["hx_ocean"].get_value(), expected_ocean.values)
 
 
+def test_build_rhime_multisector_model_accepts_gathered_ragged_states(
+    multisector_inv_inputs: xr.Dataset,
+    builder_args: dict,
+) -> None:
+    """Source-specific state blocks remain gathered until model normalization."""
+    state_index = pd.MultiIndex.from_tuples(
+        [
+            ("ff-inventory", 0),
+            ("ff-inventory", 1),
+            ("ocean-inventory", 0),
+            ("ocean-inventory", 1),
+            ("ocean-inventory", 2),
+        ],
+        names=["source", "region_in_source"],
+    )
+    nmeasure = multisector_inv_inputs.sizes["nmeasure"]
+    values = np.arange(len(state_index) * nmeasure, dtype=float).reshape(len(state_index), nmeasure)
+    inv_inputs = multisector_inv_inputs.drop_vars("H")
+    inv_inputs = inv_inputs.drop_dims([dim for dim in ("region", "source") if dim in inv_inputs.dims])
+    inv_inputs["H"] = xr.DataArray(
+        values,
+        dims=("state", "nmeasure"),
+        coords={
+            **xr.Coordinates.from_pandas_multiindex(state_index, "state"),
+            "nmeasure": multisector_inv_inputs.coords["nmeasure"],
+        },
+    )
+
+    model = build_rhime_multisector_model(
+        inv_inputs,
+        sectors=["FF", "ocean"],
+        sector_sources={"FF": "ff-inventory", "ocean": "ocean-inventory"},
+        sector_priors={
+            "FF": {"pdf": "normal", "mu": 1.0, "sigma": 0.2},
+            "ocean": {"pdf": "normal", "mu": 1.0, "sigma": 0.3},
+        },
+        **builder_args,
+    )
+
+    np.testing.assert_allclose(model["hx_ff"].get_value(), values[:2].T)
+    np.testing.assert_allclose(model["hx_ocean"].get_value(), values[2:].T)
+    assert model.named_vars_to_dims["x_ff"] == ("state_ff",)
+    assert model.named_vars_to_dims["x_ocean"] == ("state_ocean",)
+
+
+def test_build_rhime_multisector_model_rejects_ungathered_source_state(
+    multisector_inv_inputs: xr.Dataset,
+    builder_args: dict,
+) -> None:
+    """Source labels on a state axis require the canonical gathered MultiIndex."""
+    nmeasure = multisector_inv_inputs.sizes["nmeasure"]
+    inv_inputs = multisector_inv_inputs.drop_vars("H")
+    inv_inputs = inv_inputs.drop_dims([dim for dim in ("region", "source") if dim in inv_inputs.dims])
+    inv_inputs["H"] = xr.DataArray(
+        np.ones((2, nmeasure)),
+        dims=("state", "nmeasure"),
+        coords={
+            "state": [0, 1],
+            "source": ("state", ["ff-inventory", "ocean-inventory"]),
+            "nmeasure": multisector_inv_inputs.coords["nmeasure"],
+        },
+    )
+
+    with pytest.raises(ValueError, match="MultiIndex containing a 'source' level"):
+        build_rhime_multisector_model(
+            inv_inputs,
+            sectors=["FF", "ocean"],
+            sector_sources={"FF": "ff-inventory", "ocean": "ocean-inventory"},
+            **builder_args,
+        )
+
+
+def test_build_rhime_multisector_model_rejects_duplicate_gathered_states(
+    multisector_inv_inputs: xr.Dataset,
+    builder_args: dict,
+) -> None:
+    """Gathered scientific state coordinates must identify unique coefficients."""
+    state_index = pd.MultiIndex.from_tuples(
+        [
+            ("ff-inventory", 0),
+            ("ff-inventory", 0),
+            ("ocean-inventory", 0),
+        ],
+        names=["source", "region_in_source"],
+    )
+    nmeasure = multisector_inv_inputs.sizes["nmeasure"]
+    inv_inputs = multisector_inv_inputs.drop_vars("H")
+    inv_inputs = inv_inputs.drop_dims([dim for dim in ("region", "source") if dim in inv_inputs.dims])
+    inv_inputs["H"] = xr.DataArray(
+        np.ones((len(state_index), nmeasure)),
+        dims=("state", "nmeasure"),
+        coords={
+            **xr.Coordinates.from_pandas_multiindex(state_index, "state"),
+            "nmeasure": multisector_inv_inputs.coords["nmeasure"],
+        },
+    )
+
+    with pytest.raises(ValueError, match="unique state labels.*duplicate state.*ff-inventory"):
+        build_rhime_multisector_model(
+            inv_inputs,
+            sectors=["FF", "ocean"],
+            sector_sources={"FF": "ff-inventory", "ocean": "ocean-inventory"},
+            **builder_args,
+        )
+
+
 def test_build_rhime_multisector_model_rejects_duplicate_prepared_sources(
     multisector_inv_inputs: xr.Dataset,
     builder_args: dict,
@@ -2365,8 +2471,10 @@ def test_rhime_prepared_inputs_contract_exposes_only_modern_fields() -> None:
         assert not hasattr(prepared, legacy_attr)
 
 
-def test_prepared_multisector_runner_rejects_ragged_source_specific_basis_layout() -> None:
-    """Prepared-input execution rejects padded state layouts before model construction."""
+def test_prepared_multisector_runner_accepts_gathered_source_specific_basis_layout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Prepared-input validation accepts exact ragged source/state coordinates."""
     basis_ff = xr.DataArray(
         [[0, 0], [1, 1]],
         dims=("lat", "lon"),
@@ -2394,6 +2502,7 @@ def test_prepared_multisector_runner_rejects_ragged_source_specific_basis_layout
     model_spec = RhimeModelSpec(
         species="ch4",
         domain="EUROPE",
+        use_bc=False,
         sectors=(
             SectorSpec("FF", "ff-inventory", {"pdf": "normal", "mu": 1.0, "sigma": 0.2}, "ff"),
             SectorSpec(
@@ -2404,16 +2513,22 @@ def test_prepared_multisector_runner_rejects_ragged_source_specific_basis_layout
             ),
         ),
     )
-    inv_inputs = _minimal_output_inv_inputs().drop_dims("region")
-    inv_inputs["H"] = xr.DataArray(
-        np.ones((3, 1, 2)),
-        dims=("region", "nmeasure", "source"),
+    fp_x_flux = xr.DataArray(
+        np.ones((2, 2, 2, 1)),
+        dims=("source", "lat", "lon", "time"),
         coords={
-            "region": [0, 1, 2],
-            "nmeasure": inv_inputs.coords["nmeasure"],
             "source": ["ff-inventory", "ocean-inventory"],
+            "lat": [0.0, 1.0],
+            "lon": [0.0, 1.0],
+            "time": [0],
         },
     )
+    inv_inputs = _minimal_output_inv_inputs().drop_dims("region")
+    inv_inputs["min_error"] = xr.zeros_like(inv_inputs["mf"])
+    inv_inputs["H"] = basis_functions.sensitivity(fp_x_flux).rename(time="nmeasure").assign_coords(
+        nmeasure=inv_inputs.coords["nmeasure"]
+    )
+
     prepared = RhimePreparedInputs(
         inv_inputs=inv_inputs,
         basis_functions=basis_functions,
@@ -2430,13 +2545,21 @@ def test_prepared_multisector_runner_rejects_ragged_source_specific_basis_layout
         output=RhimeOutputSpec(output_format="none"),
         split_by_sectors=True,
     )
+    monkeypatch.setattr(
+        RhimeSampler,
+        "sample",
+        lambda self, model: _minimal_output_idata(),
+    )
+    monkeypatch.setattr(
+        rhime_module,
+        "make_multisector_output_bundle",
+        lambda **kwargs: rhime_outputs.RhimeOutputBundle(),
+    )
 
-    with pytest.raises(
-        ValueError,
-        match="prepared H has 3 regions.*sector 'FF' -> source 'ff-inventory': 2 regions.*"
-        "sector 'ocean' -> source 'ocean-inventory': 3 regions",
-    ):
-        run_rhime_from_prepared_inputs(prepared_inputs=prepared, run_spec=run_spec)
+    result = run_rhime_from_prepared_inputs(prepared_inputs=prepared, run_spec=run_spec)
+
+    assert result.model.named_vars_to_dims["x_ff"] == ("region_ff",)
+    assert result.model.named_vars_to_dims["x_ocean"] == ("region_ocean",)
 
 
 def test_multisector_runner_rejects_shared_basis_h_layout_mismatch() -> None:
@@ -2468,7 +2591,10 @@ def test_multisector_runner_rejects_shared_basis_h_layout_mismatch() -> None:
         },
     )
 
-    with pytest.raises(ValueError, match="Retained shared basis.*basis has 1 elements.*H has 2"):
+    with pytest.raises(
+        ValueError,
+        match="Retained source-specific basis.*basis has 1 regions.*prepared H has 2",
+    ):
         rhime_module._validate_multisector_basis_layout(
             _fake_basis_functions(),
             model_spec,
@@ -2516,10 +2642,7 @@ def test_prepare_rhime_inputs_multisector_keeps_source_dimension(
     assert isinstance(prepared.basis_functions, BasisFunctions)
     assert "source" in prepared.inv_inputs["H"].dims
     assert list(prepared.inv_inputs["H"].coords["source"].values) == flux_sources
-    assert list(prepared.inv_inputs["H"].coords["source_region_count"].values) == [
-        prepared.inv_inputs.sizes["region"],
-        prepared.inv_inputs.sizes["region"],
-    ]
+    assert "source_region_count" not in prepared.inv_inputs["H"].coords
 
 
 def test_multisector_sensitivity_sources_fail_before_site_gathering() -> None:
@@ -2571,6 +2694,60 @@ def test_multisector_sensitivity_sources_fail_before_site_gathering() -> None:
             bc_basis_case="NESW",
             bc_basis_directory=None,
         )
+
+
+def test_multisector_site_preparation_keeps_gathered_source_state() -> None:
+    """Modern preparation must not rectangularize ragged source-specific state."""
+    time = pd.date_range("2019-01-01", periods=2, freq="h")
+    state_index = pd.MultiIndex.from_tuples(
+        [("ff-inventory", 0), ("ff-inventory", 1), ("ocean-inventory", 0)],
+        names=["source", "region_in_source"],
+    )
+    sensitivity = xr.DataArray(
+        np.ones((3, 2)),
+        dims=("state", "time"),
+        coords={
+            **xr.Coordinates.from_pandas_multiindex(state_index, "state"),
+            "time": time,
+        },
+    )
+    fp_x_flux = xr.DataArray(
+        np.ones((2, 2)),
+        dims=("source", "time"),
+        coords={
+            "source": ["ff-inventory", "ocean-inventory"],
+            "time": time,
+        },
+        name="fp_x_flux_sectoral",
+    )
+
+    class GatheredBasis:
+        def sensitivity(self, _: xr.DataArray) -> xr.DataArray:
+            return sensitivity
+
+    merged = prep_module._MergedInversionData(
+        fp_all={"TAC": xr.Dataset({"fp_x_flux_sectoral": fp_x_flux})},
+        sites=["TAC"],
+        averaging_period=["1H"],
+    )
+
+    prepared = prep_module._rhime_site_data_from_basis_functions(
+        merged=merged,
+        basis_functions=cast(BasisFunctions, GatheredBasis()),
+        domain="EUROPE",
+        split_by_sectors=True,
+        flux_sources=["ff-inventory", "ocean-inventory"],
+        use_bc=False,
+        bc_basis_case="NESW",
+        bc_basis_directory=None,
+    )
+
+    xr.testing.assert_identical(prepared["TAC"]["H"], sensitivity.rename("H"))
+    assert "source" not in prepared["TAC"]["H"].dims
+    assert list(prepared["TAC"]["H"].indexes["state"].names) == [
+        "source",
+        "region_in_source",
+    ]
 
 
 def test_fixedbasis_preparation_adds_anchored_legacy_sigma_index(
@@ -2634,7 +2811,7 @@ def test_prepare_rhime_inputs_uses_basis_sensitivity_without_legacy_side_channel
         coords={"state": [0], "time": site_data.time},
         name="H",
     )
-    expected_sensitivity = sensitivity.rename({"state": "region"})
+    expected_sensitivity = sensitivity
     basis_functions = _SpyBasisFunctions(sensitivity)
     captured_fp_data_keys: set[str] = set()
 

@@ -293,6 +293,55 @@ def test_make_inv_inputs_drops_non_shared_data_vars():
     assert "sigma_freq_index" not in result
 
 
+def test_make_inv_inputs_rejects_mismatched_gathered_state_indexes() -> None:
+    """Site gathering must not outer-align different source/region state layouts."""
+    fp_data = {
+        "AAA": _make_minimal_fp_site(mf_base=10.0, include_inlet_height=False),
+        "BBB": _make_minimal_fp_site(mf_base=20.0, include_inlet_height=False),
+    }
+    state_indexes = {
+        "AAA": pd.MultiIndex.from_tuples(
+            [("ff", 0), ("ff", 1), ("ocean", 0)],
+            names=["source", "region_in_source"],
+        ),
+        "BBB": pd.MultiIndex.from_tuples(
+            [("ff", 0), ("ocean", 0)],
+            names=["source", "region_in_source"],
+        ),
+    }
+    for site, state_index in state_indexes.items():
+        time = fp_data[site].coords["time"]
+        fp_data[site]["H"] = xr.DataArray(
+            np.ones((len(state_index), time.size)),
+            dims=("state", "time"),
+            coords={
+                **xr.Coordinates.from_pandas_multiindex(state_index, "state"),
+                "time": time,
+            },
+        )
+
+    with pytest.raises(ValueError, match="identical indexes on every non-time dimension"):
+        make_inv_inputs(fp_data=fp_data, sites=["AAA", "BBB"], min_error=0.0)
+
+
+def test_make_inv_inputs_rejects_mismatched_state_dimension_names() -> None:
+    """Site gathering must not broadcast differently named state dimensions."""
+    fp_data = {
+        "AAA": _make_minimal_fp_site(mf_base=10.0, include_inlet_height=False),
+        "BBB": _make_minimal_fp_site(mf_base=20.0, include_inlet_height=False),
+    }
+    for site, state_dim in (("AAA", "state"), ("BBB", "region")):
+        time = fp_data[site].coords["time"]
+        fp_data[site]["H"] = xr.DataArray(
+            np.ones((2, time.size)),
+            dims=(state_dim, "time"),
+            coords={state_dim: [0, 1], "time": time},
+        )
+
+    with pytest.raises(ValueError, match="variable 'H'.*same non-time dimensions"):
+        make_inv_inputs(fp_data=fp_data, sites=["AAA", "BBB"], min_error=0.0)
+
+
 def test_make_inv_inputs_raises_if_required_var_would_be_dropped():
     """`make_inv_inputs` should still fail clearly if a required var is not shared."""
     fp_data = {

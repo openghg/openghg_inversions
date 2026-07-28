@@ -25,7 +25,7 @@ import xarray as xr
 
 from openghg_inversions._timing import log_timing, timed, timer_seconds, timer_start
 from openghg_inversions.basis import basis_functions_wrapper, make_basis_functions
-from openghg_inversions.basis._helpers import _legacy_multisource_h_if_needed, bc_sensitivity
+from openghg_inversions.basis._helpers import bc_sensitivity
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.filters import filtering
 from openghg_inversions.flux_sanitization import FluxNonFiniteCheck, sanitize_flux_nonfinite
@@ -507,27 +507,29 @@ def _rhime_site_data_from_basis_functions(
                 "Could not identify the RHIME sensitivity state dimension from "
                 f"sensitivity dims {sensitivity.dims!r} and fp_x_flux dims {fp_x_flux.dims!r}."
             )
-        if state_dim != "region" and state_dim in sensitivity.dims:
-            sensitivity = sensitivity.rename({state_dim: "region"})
-            state_dim = "region"
         if split_by_sectors:
             sensitivity = _validate_multisector_sensitivity_sources(
                 sensitivity,
                 site=site,
                 flux_sources=flux_sources,
             )
-            sensitivity = _legacy_multisource_h_if_needed(
-                sensitivity,
-                state_dim=state_dim,
-                flux_sources=flux_sources,
-            )
+        if "source" in sensitivity.coords and "source" not in sensitivity.dims:
+            fp_data[site] = fp_data[site].drop_vars(fp_x_flux_name)
+            orphan_dims = [
+                dim
+                for dim in fp_x_flux.dims
+                if dim in fp_data[site].dims
+                and all(dim not in variable.dims for variable in fp_data[site].data_vars.values())
+            ]
+            if orphan_dims:
+                fp_data[site] = fp_data[site].drop_dims(orphan_dims)
         fp_data[site]["H"] = sensitivity
         log_timing(
             "rhime.prepare_inputs.footprint_sensitivity",
             timer_seconds(timing_start),
             site=site,
             nmeasure=fp_data[site].sizes.get("time"),
-            regions=sensitivity.sizes.get("region"),
+            state_size=sensitivity.sizes.get(state_dim),
             sources=sensitivity.sizes.get("source"),
         )
 

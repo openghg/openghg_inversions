@@ -86,17 +86,21 @@ Python API
        },
    )
 
-The canonical prepared sensitivity is ``H(region, nmeasure, source)``.
+Shared-basis preparation uses ``H(region, nmeasure, source)``. When sources
+have different basis indexes, preparation instead keeps one gathered state
+dimension whose MultiIndex levels are ``(source, region_in_source)``. This is
+the same concat-gather representation used for ``nmeasure`` with
+``(site, time)`` levels: ragged values are concatenated rather than padded.
+Modern preparation preserves the state-dimension name supplied by the basis
+operator; it does not rename arbitrary state axes to ``region``.
+
 ``source`` remains the OpenGHG retrieval identity; sector names and priors live
 in the model specification and select ``H`` by source label. Source-coordinate
-order therefore does not determine sector routing. Prepared source-resolved
-sensitivities also carry ``source_region_count(source)`` so the current builder
-can reject padded source-specific state layouts explicitly.
-
-The current builder supports one distinct source and one independent state
-vector per sector. Source-specific bases must have compatible region counts.
-Ragged source-specific state blocks are rejected instead of being padded with
-unconstrained latent elements.
+order therefore does not determine sector routing. The current builder
+supports one distinct source and one independent state vector per sector.
+Rectangular legacy inputs may carry ``source_region_count(source)`` so padded
+layouts can be rejected; modern preparation does not create that compatibility
+metadata.
 
 Running Prepared Inputs
 -----------------------

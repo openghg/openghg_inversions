@@ -240,6 +240,9 @@ def _state_chunk_dim(trace: xr.Dataset, inv_out: InversionOutput) -> str:
         return "region"
     if "nx" in trace.dims:
         return "nx"
+    non_sample_dims = [str(dim) for dim in trace.dims if dim not in {"chain", "draw"}]
+    if len(non_sample_dims) == 1:
+        return non_sample_dims[0]
     raise ValueError(f"Could not find basis state dimension in trace dims {tuple(trace.dims)}.")
 
 

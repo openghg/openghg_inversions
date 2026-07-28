@@ -1,9 +1,12 @@
 """Functions to create fit basis functiosn and apply to data."""
 
+import numpy as np
+import pandas as pd
 import xarray as xr
 
 from openghg_inversions.array_ops import get_xr_dummies, sparse_xr_dot, to_dense
 from openghg_inversions.basis.basis_functions import BasisFunctions
+
 from ._functions import basis_boundary_conditions
 
 
@@ -199,13 +202,6 @@ def _legacy_multisource_h_if_needed(
     source_dim = "source"
     region_in_source_dim = "region_in_source"
     if source_dim in sensitivity.dims:
-        if "region" in sensitivity.dims and "source_region_count" not in sensitivity.coords:
-            sensitivity = sensitivity.assign_coords(
-                source_region_count=(
-                    source_dim,
-                    [sensitivity.sizes["region"]] * sensitivity.sizes[source_dim],
-                )
-            )
         return sensitivity
     if state_dim not in sensitivity.dims or source_dim not in sensitivity.coords:
         return sensitivity
@@ -220,13 +216,28 @@ def _legacy_multisource_h_if_needed(
             f"missing source(s): {missing_sources!r}; extra source(s): {extra_sources!r}."
         )
     region_counts = {source: source_labels.count(source) for source in set(source_labels)}
-    legacy_h = sensitivity.unstack(state_dim).fillna(0)
+    state_index = sensitivity.indexes.get(state_dim)
+    if not isinstance(state_index, pd.MultiIndex):
+        source_coord = sensitivity.coords[source_dim]
+        region_coord = sensitivity.coords.get(region_in_source_dim)
+        if source_coord.dims != (state_dim,) or region_coord is None or region_coord.dims != (state_dim,):
+            return sensitivity
+        state_index = pd.MultiIndex.from_arrays(
+            [source_coord.values, region_coord.values],
+            names=[source_dim, region_in_source_dim],
+        )
+    occupied = xr.DataArray(
+        np.ones(sensitivity.sizes[state_dim], dtype=bool),
+        dims=state_dim,
+        coords=xr.Coordinates.from_pandas_multiindex(state_index, state_dim),
+    ).unstack(state_dim).notnull()
+    legacy_h = sensitivity.unstack(state_dim).where(occupied, 0.0)
     if region_in_source_dim in legacy_h.dims:
         legacy_h = legacy_h.rename({region_in_source_dim: "region"})
     if source_dim not in legacy_h.dims or "region" not in legacy_h.dims:
         return sensitivity
 
-    legacy_h = legacy_h.reindex({source_dim: flux_sources}).fillna(0)
+    legacy_h = legacy_h.sel({source_dim: flux_sources})
     legacy_h = legacy_h.assign_coords(
         source_region_count=(
             source_dim,
