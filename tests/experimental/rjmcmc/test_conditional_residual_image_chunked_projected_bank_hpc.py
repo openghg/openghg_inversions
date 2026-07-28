@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 
 import numpy as np
@@ -17,6 +18,7 @@ from openghg_inversions.experimental.rjmcmc.aggregation_error_exact_mixture impo
 )
 
 REVISION = "9" * 40
+REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 
 
 def test_two_aggregate_calibration_reproduces_both_target_cvs() -> None:
@@ -261,6 +263,64 @@ def test_json_writer_roundtrips_stringified_control_keys(tmp_path: Path) -> None
     hpc._atomic_write_json(path, payload)
 
     assert hpc._read_json(path) == payload
+
+
+def test_sacct_records_preserve_logical_array_task_ids(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Array accounting must join on JobID, not physical JobIDRaw values."""
+    stdout = "\n".join(
+        (
+            "9000_0|COMPLETED|17|",
+            "9000_0.batch|COMPLETED|17|2048K",
+            "9000_0.extern|COMPLETED|17|",
+            "9000_10|COMPLETED|19|",
+            "9000_10.batch|COMPLETED|19|3G",
+            "9000_10.extern|COMPLETED|19|",
+        )
+    )
+
+    def fake_run(
+        command: list[str],
+        *,
+        check: bool,
+        capture_output: bool,
+        text: bool,
+    ) -> subprocess.CompletedProcess[str]:
+        assert check is True
+        assert capture_output is True
+        assert text is True
+        assert "--format=JobID,State,ElapsedRaw,MaxRSS" in command
+        return subprocess.CompletedProcess(command, 0, stdout=stdout, stderr="")
+
+    monkeypatch.setattr(hpc.subprocess, "run", fake_run)
+
+    assert hpc._sacct_records(["9000_0", "9000_10"]) == {
+        "9000_0": {
+            "state": "COMPLETED",
+            "elapsed_seconds": 17,
+            "max_rss_bytes": 2 * (1 << 20),
+        },
+        "9000_10": {
+            "state": "COMPLETED",
+            "elapsed_seconds": 19,
+            "max_rss_bytes": 3 * (1 << 30),
+        },
+    }
+
+
+@pytest.mark.parametrize("launcher", ("run_g1.sbatch", "run_g3_bank.sbatch"))
+def test_timing_selected_launchers_request_exclusive_nodes(launcher: str) -> None:
+    """Unrelated node workloads must not determine computational timing locks."""
+    path = (
+        REPOSITORY_ROOT
+        / "docs"
+        / "plans"
+        / "rjmcmc_chunked_projected_bank_assets"
+        / launcher
+    )
+
+    assert "#SBATCH --exclusive" in path.read_text(encoding="utf-8").splitlines()
 
 
 def test_g3_certifier_selects_lowest_passing_median(

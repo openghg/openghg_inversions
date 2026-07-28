@@ -114,7 +114,8 @@ Required gates:
 
 Predeclare a modest \(P\) ladder, for example 64, 128, and 256.  Select one
 common \(P\) using only identical-output throughput on moderate synthetic
-operators, then lock it.  The selected \(P\) is not retuned in G3.
+operators on an exclusive node, then lock it.  The selected \(P\) is not
+retuned in G3.
 
 Do not use `Sobol.fast_forward`.  Sequential engines restart from row zero
 after interruption.
@@ -173,6 +174,12 @@ no swap, OOM, or filesystem quota failure
 one binary bank plus small metadata (no inode explosion)
 complete constructor and fingerprint wall time <= 45 minutes
 ```
+
+Each timing candidate requests an exclusive node.  The array remains
+`0-11%1`, so candidates neither share nodes with unrelated jobs nor compete
+with one another.  The recovery rationale and preserved non-exclusive
+failure are recorded in
+[`rjmcmc_chunked_projected_bank_g3_certifier_recovery.md`](rjmcmc_chunked_projected_bank_g3_certifier_recovery.md).
 
 All candidates must produce the same projected-array digest because \(P\) is
 fixed.  Select \(C\) by lowest median elapsed time among candidates passing

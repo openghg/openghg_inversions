@@ -1488,7 +1488,10 @@ def _sacct_records(job_ids: Sequence[str]) -> dict[str, SlurmRecord]:
         "-P",
         "-j",
         ",".join(job_ids),
-        "--format=JobIDRaw,State,ElapsedRaw,MaxRSS",
+        # JobID preserves the logical array_job_task identity requested above.
+        # JobIDRaw is the physical per-task allocation ID on BP1 and therefore
+        # cannot be joined back to candidate manifests keyed by array_job_task.
+        "--format=JobID,State,ElapsedRaw,MaxRSS",
     ]
     completed = subprocess.run(
         command,

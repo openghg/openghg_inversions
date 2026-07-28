@@ -47,14 +47,16 @@ The driver recomputes the calibration from exactly aligned
 ## Ordered hard gates
 
 1. Run G0 on a quiet login node with `run_preflight.sh`.
-2. Submit G1 with `run_g1.sbatch`.
+2. Submit G1 with `run_g1.sbatch` on an exclusive node so its timing-only
+   \(P\) selection is not confounded by unrelated workloads.
 3. Submit the authoritative G2 spectrum with `run_g2.sbatch`.
 4. Submit `run_g2_audit.sbatch` on a node distinct from the authoritative G2
    node.
 5. Submit G3a with `run_g3_prefix.sbatch`.
 6. Submit the excluded warm-up with `run_g3_warmup.sbatch`.
 7. Prepare directories with `prepare_g3_array.sh`, then submit one sequential
-   resource array, `--array=0-11%1`, with `run_g3_bank.sbatch`.
+   exclusive-node resource array, `--array=0-11%1`, with
+   `run_g3_bank.sbatch`.
 8. Submit `run_g3_certify.sbatch`.  Stop if it produces no passing G3
    certificate.
 9. Create the G4 prior-predictive grid with `run_g4_grid.sbatch`.
@@ -76,21 +78,24 @@ diagnosed.
 
 ## Resource declarations
 
-| Stage | CPUs | Memory | Time |
-|---|---:|---:|---:|
-| G1 | 1 | 4 GiB | 30 min |
-| G2 authoritative/audit | 1 | 4 GiB | 30 min |
-| G3a/warm-up | 1 | 4 GiB | 30 min |
-| G3 resource array element | 1 | 16 GiB | 1 h |
-| G3 certifier | 1 | 2 GiB | 30 min |
-| G4 grid | 1 | 4 GiB | 30 min |
-| G4 source-seed array element | 1 | 16 GiB | 2 h |
-| G4 certifiers | 1 | 4 GiB | 30 min |
+| Stage | CPUs | Memory | Time | Isolation |
+|---|---:|---:|---:|---|
+| G1 | 1 | 4 GiB | 30 min | exclusive node |
+| G2 authoritative/audit | 1 | 4 GiB | 30 min | allocated cores |
+| G3a/warm-up | 1 | 4 GiB | 30 min | allocated cores |
+| G3 resource array element | 1 | 16 GiB | 1 h | exclusive node |
+| G3 certifier | 1 | 2 GiB | 30 min | allocated cores |
+| G4 grid | 1 | 4 GiB | 30 min | allocated cores |
+| G4 source-seed array element | 1 | 16 GiB | 2 h | allocated cores |
+| G4 certifiers | 1 | 4 GiB | 30 min | allocated cores |
 
 G3 chooses \(C\) only from the frozen resource ladder and requires identical
 projected outputs.  G4 consumes that selected \(C\) and the G1-selected
 projection microbatch \(P\); neither changes the mathematical source
 catalogue.
+
+The isolated timing recovery is specified in
+[`rjmcmc_chunked_projected_bank_g3_certifier_recovery.md`](rjmcmc_chunked_projected_bank_g3_certifier_recovery.md).
 
 ## Interpretation and stop rule
 

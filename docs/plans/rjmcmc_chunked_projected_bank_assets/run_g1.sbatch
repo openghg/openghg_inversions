@@ -4,6 +4,7 @@
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=4G
 #SBATCH --time=00:30:00
+#SBATCH --exclusive
 
 set -euo pipefail
 set -o noclobber
