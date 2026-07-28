@@ -1418,17 +1418,27 @@ def test_basisfunctions_interpolate_trace_with_chain_dim():
 # --------------------------------------------------------------------------------------
 # Multi-source equivalence: gathered MultiIndex vs legacy padded H conversion
 # --------------------------------------------------------------------------------------
-def test_legacy_multisource_adapter_only_zero_fills_structural_padding() -> None:
+@pytest.mark.parametrize("use_multiindex", [True, False], ids=["multiindex", "auxiliary-coordinates"])
+def test_legacy_multisource_adapter_only_zero_fills_structural_padding(use_multiindex: bool) -> None:
     """Legacy rectangularization must preserve NaNs in represented state cells."""
     state_index = pd.MultiIndex.from_tuples(
         [("ff", 0), ("ff", 1), ("ocean", 0)],
         names=["source", "region_in_source"],
     )
+    state_coords: dict = (
+        dict(xr.Coordinates.from_pandas_multiindex(state_index, "state"))
+        if use_multiindex
+        else {
+            "state": [0, 1, 2],
+            "source": ("state", ["ff", "ff", "ocean"]),
+            "region_in_source": ("state", [0, 1, 0]),
+        }
+    )
     sensitivity = xr.DataArray(
         [[1.0, 2.0], [np.nan, 4.0], [5.0, 6.0]],
         dims=("state", "time"),
         coords={
-            **xr.Coordinates.from_pandas_multiindex(state_index, "state"),
+            **state_coords,
             "time": [0, 1],
         },
     )

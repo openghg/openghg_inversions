@@ -34,6 +34,7 @@ from pathlib import Path
 from typing import Any
 
 import arviz as az
+import pandas as pd
 import pymc as pm
 import xarray as xr
 
@@ -345,12 +346,19 @@ def run_rhime_from_prepared_inputs(
     if sector_count < 1:
         raise ValueError(f"`run_spec.model.sectors` must contain at least one sector; found {sector_count}.")
     multisector = sector_count > 1
-    prepared_is_multisector = "source" in prepared_inputs.inv_inputs["H"].coords
+    sensitivity = prepared_inputs.inv_inputs["H"]
+    source_coord = sensitivity.coords.get("source")
+    state_dims = [str(dim) for dim in sensitivity.dims if dim != "nmeasure"]
+    gathered_source = False
+    if source_coord is not None and len(state_dims) == 1 and source_coord.dims == (state_dims[0],):
+        source_index = sensitivity.indexes.get(state_dims[0])
+        gathered_source = isinstance(source_index, pd.MultiIndex) and "source" in source_index.names
+    prepared_is_multisector = "source" in sensitivity.dims or gathered_source
     if run_spec.split_by_sectors is not prepared_is_multisector:
         raise ValueError(
             "`run_spec.split_by_sectors` must agree with the prepared `H` layout: "
             f"split_by_sectors={run_spec.split_by_sectors}, "
-            f"source coordinate present={prepared_is_multisector}."
+            f"multisector source layout present={prepared_is_multisector}."
         )
     if run_spec.split_by_sectors is not multisector:
         raise ValueError(

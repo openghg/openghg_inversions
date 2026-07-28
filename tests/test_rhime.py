@@ -1265,7 +1265,9 @@ def test_run_rhime_from_prepared_inputs_routes_without_preparation(
         split_by_sectors=sector_count > 1,
     )
     inv_inputs = _minimal_output_inv_inputs()
-    if sector_count == 2:
+    if sector_count == 1:
+        inv_inputs["H"] = inv_inputs["H"].assign_coords(source=sectors[0].flux_source)
+    else:
         inv_inputs["H"] = xr.concat(
             [inv_inputs["H"].expand_dims(source=[sector.flux_source]) for sector in model_spec.sectors],
             dim="source",

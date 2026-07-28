@@ -113,6 +113,12 @@ The default priors are:
      - Normal with mean 0 and standard deviation 1
      - ``offset_latent`` and ``offset``
 
+This table describes the Python builder default used when ``x_prior`` is
+omitted. The shipped RHIME config template instead supplies an explicit
+``x_prior`` without ``reparameterise=True``. That config therefore creates
+``x`` directly, without ``x_latent``. Add ``"reparameterise": True`` to the
+config prior to request the API-default parameterization shown here.
+
 The important default model-data and deterministic names are:
 
 .. list-table::

@@ -152,12 +152,15 @@ model, output, and sampler specifications:
 
 The prepared object is trusted canonical input: it must already contain the
 observation, error, sensitivity, and optional boundary-condition variables
-required by the selected model. A multisector run requires a ``source``
-dimension on ``prepared.inv_inputs["H"]`` and
-``run_spec.split_by_sectors=True``; a single-sector run requires neither. The
-sector count, prepared ``H`` layout, layout flag, and output settings are
-validated before model construction or sampling. Output side effects are still
-controlled by ``RhimeOutputSpec``.
+required by the selected model. A multisector run requires
+``run_spec.split_by_sectors=True`` and a source-resolved layout on
+``prepared.inv_inputs["H"]``. Shared-basis inputs may use a rectangular
+``source`` dimension. Source-specific, ragged state blocks use one gathered
+state dimension with a ``(source, region_in_source)`` MultiIndex. A scalar
+``source`` coordinate is provenance for a single-sector input, not a
+multisector layout. The sector count, prepared ``H`` layout, layout flag, and
+output settings are validated before model construction or sampling. Output
+side effects are still controlled by ``RhimeOutputSpec``.
 
 Model Construction
 ------------------

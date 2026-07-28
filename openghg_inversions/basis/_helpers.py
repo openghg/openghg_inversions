@@ -226,6 +226,9 @@ def _legacy_multisource_h_if_needed(
             [source_coord.values, region_coord.values],
             names=[source_dim, region_in_source_dim],
         )
+        sensitivity = sensitivity.assign_coords(
+            xr.Coordinates.from_pandas_multiindex(state_index, state_dim)
+        )
     occupied = xr.DataArray(
         np.ones(sensitivity.sizes[state_dim], dtype=bool),
         dims=state_dim,
