@@ -49,3 +49,6 @@ cd "${BANK_SOURCE}"
     "${BANK_RUN_ROOT}/g2/authoritative/spectrum_manifest.json" \
   --source-revision "${BANK_REVISION}" \
   --output-dir "${stage}"
+
+printf 'G4 observation-blind grid complete for %s in Slurm job %s\n' \
+  "${BANK_REVISION}" "${SLURM_JOB_ID}" >"${stage}/G4_GRID_COMPLETE.txt"

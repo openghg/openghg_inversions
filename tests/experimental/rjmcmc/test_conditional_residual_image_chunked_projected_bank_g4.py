@@ -233,16 +233,6 @@ def test_all_seed_certifier_requires_every_seed_and_pairwise_gate(
     development = tmp_path / "development.json"
     spectrum_manifest = tmp_path / "spectrum.json"
     grid_manifest = tmp_path / "grid.json"
-    _canonical(
-        development,
-        {
-            "schema": g4.SCHEMA,
-            "stage": "G4-development",
-            "source_revision": REVISION,
-            "passed": True,
-            "passing_suffix": [64, 128],
-        },
-    )
     spectrum_manifest.write_bytes(b"spectrum")
     grid_manifest.write_bytes(b"grid")
     paths = []
@@ -256,8 +246,33 @@ def test_all_seed_certifier_requires_every_seed_and_pairwise_gate(
         reports[path] = {
             "source_seed": seed,
             "g3_decision": {"sha256": "a" * 64},
-            "rank_decisions": {str(rank): {"within_seed_passed": True} for rank in g4.Q_LADDER},
+            "rank_decisions": {
+                str(rank): {
+                    "development_passed": rank in (64, 128),
+                    "within_seed_passed": True,
+                }
+                for rank in g4.Q_LADDER
+            },
         }
+    development_seed = paths[0]
+    rank_passes = {str(rank): rank in (64, 128) for rank in g4.Q_LADDER}
+    _canonical(
+        development,
+        {
+            "schema": g4.SCHEMA,
+            "stage": "G4-development",
+            "source_revision": REVISION,
+            "seed_report": {
+                "path": str(development_seed),
+                "sha256": g4.hpc._sha256_file(development_seed),
+                "source_seed": 731,
+            },
+            "rank_passes": rank_passes,
+            "passing_suffix": [64, 128],
+            "selected_rank": 64,
+            "passed": True,
+        },
+    )
 
     monkeypatch.setattr(
         g4,

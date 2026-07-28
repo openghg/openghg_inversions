@@ -63,3 +63,7 @@ cd "${BANK_SOURCE}"
   --source-revision "${BANK_REVISION}" \
   --source-seed "${source_seed}" \
   --output-dir "${stage}"
+
+printf 'G4 seed %s complete for %s in Slurm array %s task %s job %s\n' \
+  "${source_seed}" "${BANK_REVISION}" "${SLURM_ARRAY_JOB_ID}" \
+  "${SLURM_ARRAY_TASK_ID}" "${SLURM_JOB_ID}" >"${stage}/G4_SEED_COMPLETE.txt"

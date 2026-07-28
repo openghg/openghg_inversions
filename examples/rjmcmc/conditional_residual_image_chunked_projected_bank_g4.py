@@ -376,10 +376,6 @@ def run_grid(
         "passed": True,
     }
     hpc._atomic_write_json(output_dir / "grid_manifest.json", report)
-    hpc._atomic_write_text(
-        output_dir / "G4_GRID_COMPLETE.txt",
-        f"G4 observation-blind grid complete for {source_revision}\n",
-    )
     return report
 
 
@@ -1196,10 +1192,6 @@ def run_seed(
         "passed_internal_checks": True,
     }
     hpc._atomic_write_json(output_dir / "seed_report.json", report)
-    hpc._atomic_write_text(
-        output_dir / "G4_SEED_COMPLETE.txt",
-        f"G4 seed {source_seed} complete for {source_revision}\n",
-    )
     return report
 
 
@@ -1377,6 +1369,34 @@ def run_all_seed_certify(
         }
     if set(reports) != set(SOURCE_SEEDS):
         raise ValueError("G4 seed report set is incomplete")
+    development_seed_record = development.get("seed_report")
+    development_decisions = reports[SOURCE_SEEDS[0]].get("rank_decisions")
+    if not isinstance(development_seed_record, dict) or not isinstance(
+        development_decisions,
+        dict,
+    ):
+        raise ValueError("G4 development certificate has no authenticated seed decisions")
+    recomputed_passes = {
+        rank: bool(
+            development_decisions.get(_rank_key(rank), {}).get(
+                "development_passed",
+            )
+        )
+        for rank in Q_LADDER
+    }
+    recomputed_suffix = _common_suffix(recomputed_passes)
+    expected_development_identity = report_identities[str(SOURCE_SEEDS[0])]
+    if not isinstance(expected_development_identity, dict):
+        raise TypeError("internal G4 development identity record is invalid")
+    if (
+        development_seed_record.get("path") != expected_development_identity["path"]
+        or development_seed_record.get("sha256") != expected_development_identity["sha256"]
+        or development_seed_record.get("source_seed") != SOURCE_SEEDS[0]
+        or development.get("rank_passes") != {_rank_key(rank): recomputed_passes[rank] for rank in Q_LADDER}
+        or suffix != recomputed_suffix
+        or development.get("selected_rank") != (recomputed_suffix[0] if recomputed_suffix else None)
+    ):
+        raise ValueError("G4 development certificate does not replay from seed 731")
     g3_digests = {str(reports[seed]["g3_decision"]["sha256"]) for seed in SOURCE_SEEDS}
     if len(g3_digests) != 1:
         raise ValueError("G4 seed reports do not share one G3 decision identity")

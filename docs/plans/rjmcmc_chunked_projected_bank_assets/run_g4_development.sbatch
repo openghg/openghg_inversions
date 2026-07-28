@@ -57,3 +57,6 @@ cd "${BANK_SOURCE}"
   --source-seed 731 \
   --development-reference-manifest "${BANK_G3_REFERENCE}" \
   --output-dir "${stage}"
+
+printf 'G4 seed 731 complete for %s in Slurm job %s\n' \
+  "${BANK_REVISION}" "${SLURM_JOB_ID}" >"${stage}/G4_SEED_COMPLETE.txt"
