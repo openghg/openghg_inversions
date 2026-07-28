@@ -1,10 +1,13 @@
 import numpy as np
 import pytest
 import xarray as xr
+from scipy import ndimage
 
 from openghg_inversions.basis.algorithms import (
     AllSplitAcceptancePolicies,
     AxisParallelSplitStep,
+    ConnectedComponentPartitionStep,
+    ConnectedComponentSplitStrategy,
     ContrastScoreSplitAcceptance,
     GreedyAxisParallelSplitStrategy,
     InertialSplitStep,
@@ -282,6 +285,103 @@ def test_greedy_axis_parallel_strategy_hits_target_region_count():
     labels = GreedyAxisParallelSplitStrategy()(weights, class_mask, target_regions=5)
 
     assert set(np.unique(labels)) == {1, 2, 3, 4, 5}
+
+
+class CheckerboardSplitStep:
+    """Split nodes into parity groups that are disconnected by edges."""
+
+    def __call__(
+        self,
+        nodes: list[tuple[int, int]],
+        _weights: np.ndarray,
+    ) -> list[list[tuple[int, int]]]:
+        even = [node for node in nodes if sum(node) % 2 == 0]
+        odd = [node for node in nodes if sum(node) % 2 == 1]
+        return [even, odd]
+
+
+def test_connected_component_partition_step_splits_disconnected_children():
+    """Partition-step children are decomposed into deterministic components."""
+    nodes = [(0, 0), (0, 1), (1, 0), (1, 1)]
+    step = ConnectedComponentPartitionStep(
+        CheckerboardSplitStep(),
+        connectivity=1,
+    )
+
+    children = step(nodes, np.ones((2, 2), dtype=float))
+
+    assert children == [[(0, 0)], [(1, 1)], [(0, 1)], [(1, 0)]]
+
+
+def test_connected_strategy_raises_target_to_disconnected_class_minimum():
+    """Disconnected class pieces receive distinct labels below the minimum target."""
+    weights = np.asarray(
+        [
+            [1.0, 0.0, 0.0],
+            [1.0, 0.0, 2.0],
+            [0.0, 0.0, 2.0],
+        ]
+    )
+    class_mask = weights > 0
+    strategy = ConnectedComponentSplitStrategy(
+        GreedyAxisParallelSplitStrategy(),
+        connectivity=1,
+    )
+
+    labels = strategy(weights, class_mask, target_regions=1)
+
+    np.testing.assert_array_equal(labels > 0, class_mask)
+    assert set(np.unique(labels)) == {0, 1, 2}
+    assert strategy.diagnostics == [
+        {
+            "requested_target": 1,
+            "connected_component_minimum": 2,
+            "effective_target": 2,
+            "actual_regions": 2,
+        }
+    ]
+
+
+def test_connected_strategy_four_and_eight_neighbour_diagonal_adjacency():
+    """Connectivity controls whether diagonally adjacent cells share a label."""
+    weights = np.eye(2, dtype=float)
+    class_mask = weights > 0
+    four_neighbour = ConnectedComponentSplitStrategy(
+        GreedyAxisParallelSplitStrategy(),
+        connectivity=1,
+    )
+    eight_neighbour = ConnectedComponentSplitStrategy(
+        GreedyAxisParallelSplitStrategy(),
+        connectivity=2,
+    )
+
+    four_labels = four_neighbour(weights, class_mask, target_regions=1)
+    eight_labels = eight_neighbour(weights, class_mask, target_regions=1)
+
+    assert int(four_labels.max()) == 2
+    assert int(eight_labels.max()) == 1
+
+
+def test_connected_strategy_zero_weight_components_use_area_fallback():
+    """All-zero component weights still receive the requested allocation."""
+    weights = np.zeros((2, 4), dtype=float)
+    class_mask = np.asarray(
+        [
+            [True, True, False, True],
+            [True, True, False, True],
+        ]
+    )
+    strategy = ConnectedComponentSplitStrategy(
+        GreedyAxisParallelSplitStrategy(),
+        connectivity=1,
+    )
+
+    labels = strategy(weights, class_mask, target_regions=3)
+
+    np.testing.assert_array_equal(labels > 0, class_mask)
+    assert np.array_equal(np.unique(labels), np.asarray([0, 1, 2, 3]))
+    for region in (1, 2, 3):
+        assert ndimage.label(labels == region)[1] == 1
 
 
 def test_axis_parallel_split_uses_lat_lon_geometry_for_axis_choice():

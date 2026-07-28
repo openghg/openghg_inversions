@@ -1,16 +1,12 @@
 """Algorithms for computing basis functions."""
 
-from ._contrast import (
-    ContrastScoreSplitAcceptance,
-    SplitContrastScore,
-    contrast_tau_from_multiplier_cv,
-    split_contrast_score,
-)
 from ._constrained import (
     AllocationMode,
     AllSplitAcceptancePolicies,
-    AxisParallelSplitStep,
     AxisAlignedWeightedSplitStrategy,
+    AxisParallelSplitStep,
+    ConnectedComponentPartitionStep,
+    ConnectedComponentSplitStrategy,
     GreedyAxisParallelSplitStrategy,
     InertialSplitStep,
     LatLonGridGeometry,
@@ -28,14 +24,22 @@ from ._constrained import (
     intersect_region_class_layers,
     region_constrained_basis,
 )
+from ._contrast import (
+    ContrastScoreSplitAcceptance,
+    SplitContrastScore,
+    contrast_tau_from_multiplier_cv,
+    split_contrast_score,
+)
 from ._quadtree import get_quadtree_basis as quadtree_algorithm
 from ._weighted import nregion_landsea_basis as weighted_algorithm
 
 __all__ = [
-    "AllocationMode",
     "AllSplitAcceptancePolicies",
-    "AxisParallelSplitStep",
+    "AllocationMode",
     "AxisAlignedWeightedSplitStrategy",
+    "AxisParallelSplitStep",
+    "ConnectedComponentPartitionStep",
+    "ConnectedComponentSplitStrategy",
     "ContrastScoreSplitAcceptance",
     "GreedyAxisParallelSplitStrategy",
     "InertialSplitStep",
@@ -44,11 +48,12 @@ __all__ = [
     "MinChildTargetWeightShare",
     "MinChildWeightShare",
     "NbasisAllocation",
-    "SplitAcceptance",
-    "SplitStrategy",
     "PartitionStep",
+    "SplitAcceptance",
     "SplitAcceptancePolicy",
+    "SplitContrastScore",
     "SplitGeometry",
+    "SplitStrategy",
     "TargetSplitAcceptancePolicy",
     "allocate_nbasis_by_class",
     "contrast_tau_from_multiplier_cv",
@@ -56,6 +61,5 @@ __all__ = [
     "quadtree_algorithm",
     "region_constrained_basis",
     "split_contrast_score",
-    "SplitContrastScore",
     "weighted_algorithm",
 ]
