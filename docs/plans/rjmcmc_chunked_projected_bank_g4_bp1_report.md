@@ -200,6 +200,12 @@ Therefore:
    observation-blind, predeclared architecture rather than an extension of
    this failed source-bank lock.
 
+The independently predeclared continuation is
+[`rjmcmc_score_regularized_nle_bp1_plan.md`](rjmcmc_score_regularized_nle_bp1_plan.md).
+It adds exact simulator-derived retained-mass-score supervision to a
+normalized conditional flow, directly addressing the universal gradient
+failure of the two earlier NLL-only NLEs.
+
 The exact scientific limit remains invariant to computational partition and
 \(K\).  Approximation differences remain leakage diagnostics and must not
 become data-dependent basis weights.
