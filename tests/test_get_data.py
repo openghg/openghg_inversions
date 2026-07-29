@@ -10,7 +10,7 @@ from openghg.dataobjects import ObsData
 from openghg.retrieve import get_obs_surface
 from openghg.types import SearchError
 
-import openghg_inversions.inversion_data.get_data
+import openghg_inversions.inversion_data.get_data as get_data_module
 import openghg_inversions.inversion_data.getters as getters_module
 from openghg_inversions.flux_sanitization import FluxNonFiniteMetadata, NonFiniteFluxWarning
 from openghg_inversions.inversion_data.serialise import (
@@ -19,6 +19,7 @@ from openghg_inversions.inversion_data.serialise import (
     load_merged_data,
 )
 from openghg_inversions.inversion_data.get_data import (
+    convert_to_list,
     data_processing_surface_notracer,
     add_obs_error,
 )
@@ -34,6 +35,7 @@ def test_data_processing_surface_notracer(tac_ch4_data_args, merged_data_file_na
 
     # check number of items returned
     assert len(result) == 6
+    assert result[1:] == (["TAC"], ["185m"], ["185m"], ["picarro"], ["1h"])
 
     # check keys of "fp_all"
     assert list(result[0].keys()) == [
@@ -68,7 +70,9 @@ def test_load_merged_data(merged_data_dir, merged_data_file_name):
 def test_load_merged_data_missing_data_error(merged_data_dir, merged_data_file_name):
     """This should pass by finding the merged data with .zarr suffix."""
     with pytest.raises(ValueError):
-        load_merged_data(merged_data_dir, merged_data_name=merged_data_file_name + "abc123", output_format="netcdf")
+        load_merged_data(
+            merged_data_dir, merged_data_name=merged_data_file_name + "abc123", output_format="netcdf"
+        )
 
 
 def test_save_load_merged_data(tac_ch4_data_args, merged_data_dir):
@@ -104,6 +108,103 @@ def test_missing_data_at_one_site(tac_ch4_data_args):
 
     assert "TAC" in fp_all
     assert "MHD" not in fp_all
+
+
+def test_mixed_platforms_keep_surface_calibration_scale_per_site(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Mixed surface and satellite data use each site's platform for scales."""
+    observed_platforms: list[tuple[str, str | None, int | None]] = []
+    scenario_platforms: list[str | None] = []
+
+    def fake_get_obs_data(**kwargs: object) -> object:
+        """Record each observation request's aligned platform and level."""
+        observed_platforms.append(
+            (
+                str(kwargs["site"]),
+                kwargs["platform"] if isinstance(kwargs["platform"], str) else None,
+                kwargs["max_level"] if isinstance(kwargs["max_level"], int) else None,
+            )
+        )
+        return object()
+
+    def fake_merged_scenario_data(*args: object, **kwargs: object) -> SimpleNamespace:
+        """Return a minimal scenario with a platform-specific scale."""
+        platform = kwargs["platform"] if isinstance(kwargs["platform"], str) else None
+        scenario_platforms.append(platform)
+        scale = "surface-scale" if platform == "surface" else "satellite-scale"
+        mf = xr.DataArray([1.0], dims="time", attrs={"units": "1e-9"})
+        return SimpleNamespace(mf=mf, scale=scale)
+
+    monkeypatch.setattr(get_data_module, "get_flux_data", lambda **kwargs: {})
+    monkeypatch.setattr(get_data_module, "get_obs_data", fake_get_obs_data)
+    monkeypatch.setattr(get_data_module, "get_footprint_data", lambda **kwargs: object())
+    monkeypatch.setattr(get_data_module, "merged_scenario_data", fake_merged_scenario_data)
+    monkeypatch.setattr(get_data_module, "add_obs_error", lambda *args, **kwargs: None)
+
+    result = data_processing_surface_notracer(
+        species="ch4",
+        sites=["TAC", "GOSAT-BRAZIL"],
+        domain="EUROPE",
+        averaging_period=["1h", "1h"],
+        start_date="2019-01-01",
+        end_date="2019-01-02",
+        platform=["surface", "satellite"],
+        max_level=[None, 17],
+        emissions_name=["inventory"],
+        use_bc=False,
+    )
+
+    assert observed_platforms == [
+        ("TAC", "surface", None),
+        ("GOSAT-BRAZIL", "satellite", 17),
+    ]
+    assert scenario_platforms == ["surface", "satellite"]
+    assert result[0][".scales"] == {"TAC": "surface-scale"}
+    assert result[0][".units"] == pytest.approx(1e-9)
+    assert len(result) == 6
+
+
+def test_convert_to_list_accepts_numpy_integer_scalar() -> None:
+    """NumPy integral scalars are broadcast as built-in integers."""
+    result = convert_to_list(np.int64(17), length=2, name="max_level")
+
+    assert result == [17, 17]
+    assert all(type(value) is int for value in result)
+
+
+def test_data_processing_rejects_incompatible_observation_units(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Sites with different observation scales are not silently concatenated."""
+
+    def fake_scenario(*args: object, **kwargs: object) -> SimpleNamespace:
+        """Return a minimal scenario with site-dependent units."""
+        platform = kwargs["platform"]
+        units = "1e-9 mol/mol" if platform == "surface" else "1e-6 mol/mol"
+        return SimpleNamespace(
+            mf=xr.DataArray([1.0], dims="time", attrs={"units": units}),
+            scale="test-scale",
+        )
+
+    monkeypatch.setattr(get_data_module, "get_flux_data", lambda **kwargs: {})
+    monkeypatch.setattr(get_data_module, "get_obs_data", lambda **kwargs: object())
+    monkeypatch.setattr(get_data_module, "get_footprint_data", lambda **kwargs: object())
+    monkeypatch.setattr(get_data_module, "merged_scenario_data", fake_scenario)
+    monkeypatch.setattr(get_data_module, "add_obs_error", lambda *args, **kwargs: None)
+
+    with pytest.raises(ValueError, match="incompatible units"):
+        data_processing_surface_notracer(
+            species="ch4",
+            sites=["TAC", "GOSAT-BRAZIL"],
+            domain="EUROPE",
+            averaging_period="1h",
+            start_date="2019-01-01",
+            end_date="2019-01-02",
+            platform=["surface", "satellite"],
+            emissions_name=["inventory"],
+            use_bc=False,
+        )
 
 
 def test_missing_data_at_all_sites(openghg_test_store):
@@ -172,7 +273,7 @@ def test_add_averaging_error(tac_ch4_data_args):
     real_obs_data["mf_repeatability"] = xr.ones_like(real_obs_data["mf_variability"])
     patched_obs = ObsData(data=real_obs_data, metadata=real_obs_metadata)
 
-    with mock.patch.object(openghg_inversions.inversion_data.getters, "get_obs_surface") as mock_obs:
+    with mock.patch.object(getters_module, "get_obs_surface") as mock_obs:
         mock_obs.return_value = patched_obs
 
         # set up two scenarios, one with averaging, one without

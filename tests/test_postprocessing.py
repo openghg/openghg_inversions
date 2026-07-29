@@ -740,7 +740,8 @@ def test_country_outputs_lognormal_reparam_conflict(mcmc_args, europe_country_fi
     mcmc_args["reparameterise_log_normal"] = True
     mcmc_args["xprior"] = {"pdf": "lognormal", "mu": 1.0, "sigma": 1.0}
 
-    inv_out = fixedbasisMCMC(**mcmc_args)
+    with pytest.warns(FutureWarning, match="reparameterise_log_normal"):
+        inv_out = fixedbasisMCMC(**mcmc_args)
     assert isinstance(inv_out, InversionOutput)
     trace_ds = inv_out.trace_dataset(var_roles="flux_scale")
     assert "x_prior" in trace_ds
@@ -786,6 +787,85 @@ def test_resolve_output_format_rejects_column_legacy_output():
     """Legacy HBMCMC formatting remains unsupported for column observations."""
     with pytest.raises(ValueError, match="column observations"):
         _resolve_output_format("hbmcmc", paris_postprocessing=False, is_column=True)
+
+
+def test_fixedbasis_mcmc_detects_scalar_column_inlet(mcmc_args):
+    """A scalar column inlet rejects legacy output before data preparation."""
+    mcmc_args["inlet"] = "column"
+    mcmc_args["output_format"] = "hbmcmc"
+
+    with pytest.raises(ValueError, match="column observations"):
+        fixedbasisMCMC(**mcmc_args)
+
+
+def test_fixedbasis_mcmc_detects_platform_only_satellite(
+    mcmc_args,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A scalar satellite platform rejects legacy output before retrieval."""
+
+    def fail_preparation(**kwargs: object) -> None:
+        """Fail if an unambiguous satellite request reaches retrieval."""
+        raise AssertionError("Satellite legacy output should fail before preparation.")
+
+    monkeypatch.setattr(
+        hbmcmc_module,
+        "prepare_fixedbasis_inversion_data",
+        fail_preparation,
+    )
+    mcmc_args["inlet"] = None
+    mcmc_args["platform"] = "satellite"
+    mcmc_args["output_format"] = "legacy"
+
+    with pytest.raises(ValueError, match="column observations"):
+        fixedbasisMCMC(**mcmc_args)
+
+
+def test_fixedbasis_mcmc_uses_retained_column_status_after_mixed_site_drop(
+    mcmc_args,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A dropped column site does not block legacy output for retained surface data."""
+
+    monkeypatch.setattr(
+        hbmcmc_module,
+        "prepare_fixedbasis_inversion_data",
+        lambda **kwargs: _minimal_fixedbasis_prepared_data(is_column=False),
+    )
+
+    def stop_at_sampling(**kwargs: object) -> None:
+        """Prove output validation passed without running a sampler."""
+        raise RuntimeError("sampling reached")
+
+    monkeypatch.setattr(hbmcmc_module.mcmc, "inferpymc", stop_at_sampling)
+    mcmc_args["sites"] = ["TAC", "GOSAT-BRAZIL"]
+    mcmc_args["averaging_period"] = ["1H", "1H"]
+    mcmc_args["inlet"] = ["100m", "column"]
+    mcmc_args["platform"] = ["surface", "satellite"]
+    mcmc_args["output_format"] = "legacy"
+
+    with pytest.raises(RuntimeError, match="sampling reached"):
+        fixedbasisMCMC(**mcmc_args)
+
+
+def test_fixedbasis_mcmc_rejects_retained_column_from_mixed_request(
+    mcmc_args,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Post-preparation validation rejects a retained mixed column site."""
+    monkeypatch.setattr(
+        hbmcmc_module,
+        "prepare_fixedbasis_inversion_data",
+        lambda **kwargs: _minimal_fixedbasis_prepared_data(is_column=True),
+    )
+    mcmc_args["sites"] = ["TAC", "GOSAT-BRAZIL"]
+    mcmc_args["averaging_period"] = ["1H", "1H"]
+    mcmc_args["inlet"] = ["100m", None]
+    mcmc_args["platform"] = ["surface", "satellite"]
+    mcmc_args["output_format"] = "legacy"
+
+    with pytest.raises(ValueError, match="column observations"):
+        fixedbasisMCMC(**mcmc_args)
 
 
 def test_paris_postprocessing_compatibility_matches_paris_output_format(mcmc_args):

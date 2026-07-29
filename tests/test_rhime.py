@@ -304,6 +304,32 @@ def _minimal_inv_inputs() -> xr.Dataset:
     )
 
 
+def _site_options(
+    sites: list[str],
+    *,
+    averaging_period: list[str | None] | str | None = None,
+    inlet: list[str | None] | str | None = None,
+    fp_height: list[str | None] | str | None = None,
+    instrument: list[str | None] | str | None = None,
+    platform: list[str | None] | str | None = None,
+    obs_data_level: list[str | None] | str | None = None,
+    met_model: list[str | None] | str | None = None,
+    max_level: list[int | None] | int | None = None,
+) -> prep_module._SiteOptions:
+    """Build normalized site-aligned options for private preparation tests."""
+    return prep_module._SiteOptions.from_inputs(
+        sites=sites,
+        averaging_period=averaging_period,
+        inlet=inlet,
+        fp_height=fp_height,
+        instrument=instrument,
+        platform=platform,
+        obs_data_level=obs_data_level,
+        met_model=met_model,
+        max_level=max_level,
+    )
+
+
 def _minimal_output_inv_inputs() -> xr.Dataset:
     """Build minimal inversion inputs for output adapter tests."""
     inv_inputs = xr.Dataset(
@@ -2528,10 +2554,19 @@ def test_run_rhime_rejects_string_prior_before_data_preparation(
         )
 
 
+@pytest.mark.parametrize(
+    "min_error_options",
+    [
+        pytest.param("bad", id="not-a-mapping"),
+        pytest.param({"unsupported": True}, id="unsupported-key"),
+        pytest.param({"by_site": 1}, id="non-boolean-by-site"),
+    ],
+)
 def test_run_rhime_rejects_malformed_min_error_options_before_data_preparation(
     monkeypatch: pytest.MonkeyPatch,
+    min_error_options: object,
 ) -> None:
-    """Invalid min-error option mappings fail before RHIME data preparation."""
+    """Invalid min-error options fail before RHIME data preparation."""
 
     def fail_prepare(**kwargs):
         raise AssertionError("prepare_rhime_inputs should not be called")
@@ -2549,7 +2584,7 @@ def test_run_rhime_rejects_malformed_min_error_options_before_data_preparation(
             output_name="test",
             output_format="none",
             flux_sources=["total-ukghg-edgar7"],
-            min_error_options="bad",
+            min_error_options=cast(Any, min_error_options),
         )
 
 
@@ -3034,8 +3069,7 @@ def test_multisector_sensitivity_sources_fail_before_site_gathering() -> None:
 
     merged = prep_module._MergedInversionData(
         fp_all={"TAC": xr.Dataset({"fp_x_flux_sectoral": fp_x_flux})},
-        sites=["TAC"],
-        averaging_period=["1H"],
+        site_options=_site_options(["TAC"], averaging_period=["1H"]),
     )
 
     with pytest.raises(
@@ -3085,8 +3119,7 @@ def test_multisector_site_preparation_keeps_gathered_source_state() -> None:
 
     merged = prep_module._MergedInversionData(
         fp_all={"TAC": xr.Dataset({"fp_x_flux_sectoral": fp_x_flux})},
-        sites=["TAC"],
-        averaging_period=["1H"],
+        site_options=_site_options(["TAC"], averaging_period=["1H"]),
     )
 
     prepared = prep_module._rhime_site_data_from_basis_functions(
@@ -3123,8 +3156,7 @@ def test_fixedbasis_preparation_adds_anchored_legacy_sigma_index(
     fp_data = {"TAC": _site_dataset([2.0, 3.0, 4.0])}
     merged = prep_module._MergedInversionData(
         fp_all=fp_data,
-        sites=["TAC"],
-        averaging_period=["1H"],
+        site_options=_site_options(["TAC"], averaging_period=["1H"]),
     )
     basis_functions = _fake_basis_functions()
 
@@ -3137,7 +3169,7 @@ def test_fixedbasis_preparation_adds_anchored_legacy_sigma_index(
     monkeypatch.setattr(
         prep_module,
         "_apply_filters_and_drop_empty_sites",
-        lambda **kwargs: (fp_data, ["TAC"], ["1H"]),
+        lambda **kwargs: (fp_data, _site_options(["TAC"], averaging_period=["1H"])),
     )
     monkeypatch.setattr(prep_module, "_set_domain_attrs", lambda *args, **kwargs: None)
     monkeypatch.setattr(prep_module, "_make_inv_inputs", lambda **kwargs: inv_inputs.copy())
@@ -3193,6 +3225,7 @@ def test_prepare_rhime_inputs_uses_basis_sensitivity_without_legacy_side_channel
         return basis_functions
 
     def fake_make_inv_inputs(fp_data: dict, sites: list[str], **kwargs: object) -> xr.Dataset:
+        """Capture direct-sensitivity inputs without constructing a model."""
         nonlocal captured_fp_data_keys
         captured_fp_data_keys = set(fp_data)
         assert sites == ["TAC"]
@@ -3301,6 +3334,7 @@ def test_prepare_rhime_inputs_prunes_reloaded_merged_data_to_requested_sites(
             "MHD": _site_dataset([3.0]),
             ".flux": object(),
             ".species": "CH4",
+            ".scales": {"TAC": "tac-scale", "MHD": "mhd-scale"},
         }
 
     def fake_make_basis_functions(**kwargs: object) -> BasisFunctions:
@@ -3311,6 +3345,7 @@ def test_prepare_rhime_inputs_prunes_reloaded_merged_data_to_requested_sites(
         return _fake_basis_functions()
 
     def fake_make_inv_inputs(fp_data: dict, sites: list[str], **kwargs: object) -> xr.Dataset:
+        """Return minimal inputs after checking retained reload sites."""
         assert sites == ["TAC"]
         return _minimal_inv_inputs()
 
@@ -3337,8 +3372,275 @@ def test_prepare_rhime_inputs_prunes_reloaded_merged_data_to_requested_sites(
     assert {key for key in captured_fp_all_keys if key.startswith(".")} == {
         ".flux",
         ".species",
+        ".scales",
         ".split_by_sectors",
     }
+
+
+def test_prepare_merged_data_reload_keeps_all_options_aligned(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Reloading a subset retains the complete option record for each kept site."""
+    monkeypatch.setattr(
+        prep_module,
+        "load_merged_data",
+        lambda *args, **kwargs: {"MHD": _site_dataset([3.0]), ".species": "CH4"},
+    )
+
+    merged = prep_module._prepare_merged_data(
+        species="ch4",
+        sites=["TAC", "MHD", "RGL"],
+        domain="EUROPE",
+        averaging_period=["1H", "2H", "3H"],
+        start_date="2019-01-01",
+        end_date="2019-02-01",
+        output_name="reload_alignment",
+        flux_sources=["total-ukghg-edgar7"],
+        inlet=["100m", "200m", "300m"],
+        fp_height=["110m", "210m", "310m"],
+        instrument=["inst-tac", "inst-mhd", "inst-rgl"],
+        platform=["surface", "flask", "site-column"],
+        obs_data_level=["level-tac", "level-mhd", "level-rgl"],
+        met_model=["met-tac", "met-mhd", "met-rgl"],
+        max_level=[10, 20, 30],
+        reload_merged_data=True,
+        merged_data_dir=str(tmp_path),
+        use_bc=False,
+    )
+
+    assert merged.site_options == _site_options(
+        ["MHD"],
+        averaging_period=["2H"],
+        inlet=["200m"],
+        fp_height=["210m"],
+        instrument=["inst-mhd"],
+        platform=["flask"],
+        obs_data_level=["level-mhd"],
+        met_model=["met-mhd"],
+        max_level=[20],
+    )
+    assert set(merged.fp_all) == {"MHD", ".species", ".split_by_sectors"}
+
+
+def test_site_options_direct_construction_enforces_immutable_alignment() -> None:
+    """The tuple-backed record rejects direct construction with drifted fields."""
+    with pytest.raises(ValueError, match="same length"):
+        prep_module._SiteOptions(
+            sites=("TAC", "MHD"),
+            averaging_period=("1H",),
+            inlet=(None, None),
+            fp_height=(None, None),
+            instrument=(None, None),
+            platform=(None, None),
+            obs_data_level=(None, None),
+            met_model=(None, None),
+            max_level=(None, None),
+        )
+
+    options = _site_options(["TAC"], averaging_period=["1H"])
+    assert isinstance(options.sites, tuple)
+    with pytest.raises(AttributeError):
+        options.sites.append("MHD")  # type: ignore[attr-defined]
+
+
+def test_prepare_merged_data_retrieval_keeps_requested_metadata_authoritative(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A middle retrieval failure retains every option from the requested record."""
+
+    def fake_data_processing(
+        **kwargs: object,
+    ) -> tuple[dict, list[str], list[str], list[str], list[str], list[str]]:
+        """Return the first and third requested sites using the legacy tuple."""
+        return (
+            {
+                "TAC": _site_dataset([2.0]),
+                "RGL": _site_dataset([4.0]),
+                ".species": "CH4",
+            },
+            ["TAC", "RGL"],
+            ["100m", "300m"],
+            ["110m", "310m"],
+            ["inst-tac", "inst-rgl"],
+            ["1H", "3H"],
+        )
+
+    monkeypatch.setattr(
+        prep_module,
+        "data_processing_surface_notracer",
+        fake_data_processing,
+    )
+
+    merged = prep_module._prepare_merged_data(
+        species="ch4",
+        sites=["TAC", "MHD", "RGL"],
+        domain="EUROPE",
+        averaging_period=["1H", "2H", "3H"],
+        start_date="2019-01-01",
+        end_date="2019-02-01",
+        output_name="retrieval_alignment",
+        flux_sources=["inventory"],
+        inlet=["100m", "200m", "300m"],
+        fp_height=["110m", "210m", "310m"],
+        instrument=["inst-tac", "inst-mhd", "inst-rgl"],
+        platform=["surface", "flask", "site-column"],
+        obs_data_level=["level-tac", "level-mhd", "level-rgl"],
+        met_model=["met-tac", "met-mhd", "met-rgl"],
+        max_level=[10, 20, 30],
+        use_bc=False,
+    )
+
+    assert merged.site_options == _site_options(
+        ["TAC", "RGL"],
+        averaging_period=["1H", "3H"],
+        inlet=["100m", "300m"],
+        fp_height=["110m", "310m"],
+        instrument=["inst-tac", "inst-rgl"],
+        platform=["surface", "site-column"],
+        obs_data_level=["level-tac", "level-rgl"],
+        met_model=["met-tac", "met-rgl"],
+        max_level=[10, 30],
+    )
+
+
+def test_prepare_merged_data_ignores_redundant_retrieval_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Length-correct legacy metadata cannot replace requested site pairings."""
+    monkeypatch.setattr(
+        prep_module,
+        "data_processing_surface_notracer",
+        lambda **kwargs: (
+            {"TAC": _site_dataset([2.0]), ".species": "CH4"},
+            ["TAC"],
+            ["wrong-inlet"],
+            ["110m"],
+            ["inst-tac"],
+            ["1H"],
+        ),
+    )
+
+    merged = prep_module._prepare_merged_data(
+        species="ch4",
+        sites=["TAC"],
+        domain="EUROPE",
+        averaging_period=["1H"],
+        start_date="2019-01-01",
+        end_date="2019-02-01",
+        output_name="retrieval_disagreement",
+        flux_sources=["inventory"],
+        inlet=["100m"],
+        fp_height=["110m"],
+        instrument=["inst-tac"],
+        use_bc=False,
+    )
+
+    assert merged.site_options.inlet == ("100m",)
+
+
+def test_site_options_accept_numpy_integer_max_levels() -> None:
+    """NumPy integral levels normalize to immutable Python integers."""
+    scalar = _site_options(["TAC"], max_level=np.int64(17))
+    aligned = _site_options(["TAC", "MHD"], max_level=[None, np.int32(21)])
+
+    assert scalar.max_level == (17,)
+    assert aligned.max_level == (None, 21)
+    assert type(aligned.max_level[1]) is int
+
+
+def test_prepare_rhime_inputs_reload_all_sites_missing_fails_before_basis(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Reloading with no requested sites fails before basis construction."""
+    monkeypatch.setattr(
+        prep_module,
+        "load_merged_data",
+        lambda *args, **kwargs: {"RGL": _site_dataset([4.0]), ".species": "CH4"},
+    )
+
+    def fail_make_basis_functions(**kwargs: object) -> BasisFunctions:
+        """Fail if basis construction starts without a requested site."""
+        raise AssertionError("Basis generation should not run without a requested site.")
+
+    monkeypatch.setattr(prep_module, "make_basis_functions", fail_make_basis_functions)
+
+    with pytest.raises(ValueError, match="does not include any requested sites"):
+        prepare_rhime_inputs(
+            species="ch4",
+            sites=["TAC", "MHD"],
+            domain="EUROPE",
+            averaging_period=["1H", "2H"],
+            start_date="2019-01-01",
+            end_date="2019-02-01",
+            output_name="reload_all_missing",
+            flux_sources=["total-ukghg-edgar7"],
+            reload_merged_data=True,
+            merged_data_dir=str(tmp_path),
+            use_bc=False,
+        )
+
+
+def test_apply_filters_drops_complete_site_option_record() -> None:
+    """Dropping an empty site removes every option aligned to that site."""
+    site_options = _site_options(
+        ["TAC", "MHD", "RGL"],
+        averaging_period=["1H", "2H", "3H"],
+        inlet=["100m", "200m", "300m"],
+        fp_height=["110m", "210m", "310m"],
+        instrument=["inst-tac", "inst-mhd", "inst-rgl"],
+        platform=["surface", "flask", "site-column"],
+        obs_data_level=["level-tac", "level-mhd", "level-rgl"],
+        met_model=["met-tac", "met-mhd", "met-rgl"],
+        max_level=[10, 20, 30],
+    )
+    fp_data = {
+        "TAC": _site_dataset([2.0]),
+        "MHD": _site_dataset([]),
+        "RGL": _site_dataset([4.0]),
+    }
+
+    filtered, retained = prep_module._apply_filters_and_drop_empty_sites(
+        fp_data=fp_data,
+        site_options=site_options,
+        filters=None,
+    )
+
+    assert set(filtered) == {"TAC", "RGL"}
+    assert retained == site_options.select_indices([0, 2])
+
+
+def test_filtering_synchronizes_scales_and_units_with_retained_sites() -> None:
+    """Filtering prunes calibration provenance and recomputes survivor units."""
+    tac = _site_dataset([])
+    mhd = _site_dataset([3.0])
+    tac["mf"].attrs["units"] = "1e-9 mol/mol"
+    mhd["mf"].attrs["units"] = "1e-6 mol/mol"
+    merged = prep_module._MergedInversionData(
+        fp_all={
+            "TAC": tac,
+            "MHD": mhd,
+            ".scales": {"TAC": "tac-scale", "MHD": "mhd-scale"},
+            ".units": 1e-9,
+        },
+        site_options=_site_options(["TAC", "MHD"], averaging_period=["1H", "1H"]),
+    )
+
+    filtered = prep_module._filter_merged_inversion_data(merged=merged, filters=None)
+
+    assert filtered.sites == ("MHD",)
+    assert filtered.fp_all[".scales"] == {"MHD": "mhd-scale"}
+    assert filtered.fp_all[".units"] == pytest.approx(1e-6)
+
+
+def test_retained_sites_reject_incompatible_observation_units() -> None:
+    """Retaining differently scaled observations fails before concatenation."""
+    tac = _site_dataset([2.0])
+    mhd = _site_dataset([3.0])
+    tac["mf"].attrs["units"] = "1e-9 mol/mol"
+    mhd["mf"].attrs["units"] = "1e-6 mol/mol"
+
+    with pytest.raises(ValueError, match="incompatible units"):
+        prep_module._select_fp_all_sites({"TAC": tac, "MHD": mhd}, ["TAC", "MHD"])
 
 
 @pytest.mark.parametrize(
@@ -3376,6 +3678,7 @@ def test_prepare_rhime_inputs_normalises_averaging_period_to_site_count(
         return _DynamicSpyBasisFunctions()
 
     def fake_make_inv_inputs(fp_data: dict, sites: list[str], **kwargs: object) -> xr.Dataset:
+        """Return minimal gathered inputs for averaging-period normalization."""
         assert sites == ["TAC", "MHD"]
         return xr.Dataset(
             {"H": (("region", "nmeasure"), [[1.0, 1.0]])},
@@ -3491,6 +3794,7 @@ def test_prepare_rhime_inputs_treats_min_error_none_as_default(
         return _DynamicSpyBasisFunctions()
 
     def fake_make_inv_inputs(fp_data: dict, sites: list[str], **kwargs: object) -> xr.Dataset:
+        """Capture the normalized minimum-error value."""
         nonlocal captured_min_error
         captured_min_error = kwargs["min_error"]
         return _minimal_inv_inputs()
@@ -3517,6 +3821,63 @@ def test_prepare_rhime_inputs_treats_min_error_none_as_default(
     )
 
     assert captured_min_error == 0.0
+
+
+def test_make_inv_inputs_boundary_propagates_valid_by_site_option(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Preparation passes a valid per-site minimum-error choice to assembly."""
+    captured_by_site: bool | None = None
+
+    def fake_make_inv_inputs(*args: object, **kwargs: object) -> xr.Dataset:
+        """Capture the canonical per-site minimum-error flag."""
+        nonlocal captured_by_site
+        captured_by_site = cast(bool, kwargs["min_error_per_site"])
+        return _minimal_inv_inputs()
+
+    monkeypatch.setattr(prep_module, "make_inv_inputs", fake_make_inv_inputs)
+
+    prep_module._make_inv_inputs(
+        fp_data={"TAC": _site_dataset([2.0])},
+        sites=["TAC"],
+        start_date="2019-01-01",
+        bc_freq=None,
+        min_error="residual",
+        calculate_min_error=None,
+        min_error_per_site=True,
+    )
+
+    assert captured_by_site is True
+
+
+def test_prepare_rhime_inputs_rejects_min_error_options_before_retrieval(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Direct preparation validates minimum-error options before data access."""
+
+    def fail_data_processing(**kwargs: object) -> None:
+        """Fail if invalid options reach the retrieval boundary."""
+        raise AssertionError("Data retrieval should not run for invalid min-error options.")
+
+    monkeypatch.setattr(
+        prep_module,
+        "data_processing_surface_notracer",
+        fail_data_processing,
+    )
+
+    with pytest.raises(ValueError, match="unsupported option"):
+        prepare_rhime_inputs(
+            species="ch4",
+            sites=["TAC"],
+            domain="EUROPE",
+            averaging_period=["1H"],
+            start_date="2019-01-01",
+            end_date="2019-02-01",
+            output_name="invalid_min_error_options",
+            flux_sources=["total-ukghg-edgar7"],
+            min_error_options={"robust": False},
+            use_bc=False,
+        )
 
 
 def test_prepare_rhime_inputs_filters_sites_before_basis_generation(
@@ -3568,6 +3929,7 @@ def test_prepare_rhime_inputs_filters_sites_before_basis_generation(
         return fp_data
 
     def fake_make_inv_inputs(fp_data: dict, sites: list[str], **kwargs: object) -> xr.Dataset:
+        """Validate filtering occurred before inversion-input assembly."""
         assert sites == ["TAC"]
         assert tuple(fp_data["TAC"].time.values) == retained_times
         assert tuple(fp_data["TAC"]["H"].time.values) == retained_times
@@ -3643,6 +4005,7 @@ def test_prepare_rhime_inputs_applies_daily_median_before_sensitivity(
         return BasisFunctions.from_flat_basis(basis_flat=basis, flux=xr.ones_like(basis))
 
     def fake_make_inv_inputs(fp_data: dict, sites: list[str], **kwargs: object) -> xr.Dataset:
+        """Capture sensitivity after daily-median filtering."""
         nonlocal final_sensitivity
         final_sensitivity = fp_data["TAC"]["H"].copy()
         return _minimal_inv_inputs()
@@ -3725,6 +4088,7 @@ def test_prepare_rhime_inputs_filters_multisector_sites_before_basis_generation(
         return basis_functions
 
     def fake_make_inv_inputs(fp_data: dict, sites: list[str], **kwargs: object) -> xr.Dataset:
+        """Validate multisector filtering before input assembly."""
         assert sites == ["TAC"]
         assert tuple(fp_data["TAC"].time.values) == retained_times
         assert tuple(fp_data["TAC"]["H"].time.values) == retained_times
@@ -3800,6 +4164,7 @@ def test_prepare_rhime_inputs_filters_loaded_basis_before_sensitivity(
         return {"TAC": fp_data["TAC"].isel(time=[1])}
 
     def fake_make_inv_inputs(fp_data: dict, sites: list[str], **kwargs: object) -> xr.Dataset:
+        """Validate loaded-basis filtering before input assembly."""
         assert sites == ["TAC"]
         assert tuple(fp_data["TAC"].time.values) == retained_times
         assert tuple(fp_data["TAC"]["H"].time.values) == retained_times
@@ -3861,6 +4226,7 @@ def test_prepare_rhime_inputs_aligns_averaging_period_after_empty_site_drop(
         return _fake_basis_functions()
 
     def fake_make_inv_inputs(fp_data: dict, sites: list[str], **kwargs: object) -> xr.Dataset:
+        """Return minimal inputs after an empty site is removed."""
         assert sites == ["TAC"]
         return _minimal_inv_inputs()
 

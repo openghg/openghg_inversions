@@ -25,6 +25,7 @@ the users OpenGHG config file (default location: ~/.openghg/openghg.conf).
 """
 
 import logging
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 import time
@@ -267,6 +268,35 @@ def _resolve_output_format(
         )
 
     return resolved_output_format
+
+
+def _all_requested_sites_are_column(
+    *,
+    sites: Sequence[str],
+    inlet: Sequence[str | slice | None] | str | None,
+    platform: Sequence[str | None] | str | None,
+) -> bool:
+    """Return whether every requested site is unambiguously column based."""
+
+    def expand(value: Sequence[Any] | str | slice | None) -> tuple[Any, ...] | None:
+        if value is None or isinstance(value, str | slice):
+            return (value,) * len(sites)
+        values = tuple(value)
+        return values if len(values) == len(sites) else None
+
+    inlet_values = expand(inlet)
+    platform_values = expand(platform)
+    if not sites or inlet_values is None or platform_values is None:
+        return False
+
+    return all(
+        (isinstance(site_inlet, str) and site_inlet.lower() == "column")
+        or (
+            isinstance(site_platform, str)
+            and site_platform.lower() in {"satellite", "site-column"}
+        )
+        for site_inlet, site_platform in zip(inlet_values, platform_values, strict=True)
+    )
 
 
 def _resolve_trace_path(
@@ -596,7 +626,7 @@ def fixedbasisMCMC(
     species: str,
     sites: list[str],
     domain: str,
-    averaging_period: list[str | None],
+    averaging_period: Sequence[str | None] | str | None,
     start_date: str,
     end_date: str,
     outputpath: str,
@@ -605,17 +635,17 @@ def fixedbasisMCMC(
     obs_store: str = "user",
     footprint_store: str = "user",
     emissions_store: str = "user",
-    met_model: list | None = None,
+    met_model: Sequence[str | None] | str | None = None,
     fp_model: str | None = None,  # Changed to none. When "NAME" specified FPs are not found
-    fp_height: list[str] | None = None,
+    fp_height: Sequence[str | None] | str | None = None,
     fp_species: str | None = None,
     emissions_name: list[str] | None = None,
-    inlet: list[str] | None = None,
-    instrument: list[str] | None = None,
-    max_level: int | None = None,
+    inlet: Sequence[str | slice | None] | str | None = None,
+    instrument: Sequence[str | None] | str | None = None,
+    max_level: Sequence[int | None] | int | None = None,
     calibration_scale: str | None = None,
-    obs_data_level: list | None = None,
-    platform: list[str | None] | str | None = None,
+    obs_data_level: Sequence[str | None] | str | None = None,
+    platform: Sequence[str | None] | str | None = None,
     use_tracer: bool = False,
     use_bc: bool = True,
     fp_basis_case: str | None = None,
@@ -654,7 +684,7 @@ def fixedbasisMCMC(
     save_inversion_output: str | Path | bool = False,
     min_error: Literal["percentile", "residual"] | dict[str, float] | None | float = 0.0,
     calculate_min_error: Literal["percentile", "residual"] | None = None,
-    min_error_options: dict | None = None,
+    min_error_options: Mapping[str, Any] | None = None,
     output_format: Literal[
         "hbmcmc",
         "hbmcmc_postprocessing",
@@ -681,7 +711,8 @@ def fixedbasisMCMC(
         species: Atmospheric trace gas species of interest (e.g. 'co2').
         sites: List of measurement site names.
         domain: Model domain. (NB. Does not necessarily correspond to the inversion domain)
-        averaging_period: Averaging period of observations (must match number of sites).
+        averaging_period: Averaging period of observations. A scalar is
+            broadcast to all sites; a sequence must match ``sites``.
         start_date: Start time of inversion: "YYYY-mm-dd".
         end_date: End time of inversion: "YYYY-mm-dd".
         outputname: Unique identifier for output/run name.
@@ -690,16 +721,25 @@ def fixedbasisMCMC(
         obs_store: Name of object store containing measurements files.
         footprint_store: Name of object store containing footprints files.
         emissions_store: Name of object store containing emissions/flux files.
-        met_model: Meteorological model used in the LPDM (e.g. 'ukv').
+        met_model: Meteorological model used in the LPDM (e.g. 'ukv'), either
+            scalar or aligned to ``sites``.
         fp_model: LPDM used for generating footprints (e.g. 'NAME').
-        fp_height: Inlet height modelled for sites in LPDM (must match number of sites).
+        fp_height: Inlet height modelled for sites in the LPDM, either scalar
+            or aligned to ``sites``.
         fp_species: Species name associated with footprints in the object store.
         emissions_name: List of keyword "source" args used for retrieving emissions files
             from 'emissions_store'.
-        inlet: Specific inlet height for the site (must match number of sites).
-        instrument: Specific instrument for the site (must match number of sites).
+        inlet: Observation inlet selector, either scalar or aligned to
+            ``sites``. Entries may be strings, legacy ``slice`` selectors, or
+            ``None``.
+        instrument: Observation instrument, either scalar or aligned to
+            ``sites``.
+        max_level: Maximum column level, either scalar or aligned to ``sites``.
+            Entries must be integers or ``None``; booleans are rejected.
         calibration_scale: Calibration scale to use for measurements data.
-        obs_data_level: Data quality level for measurements data. (must match number of sites)
+        obs_data_level: Measurement data-quality level, either scalar or
+            aligned to ``sites``.
+        platform: Observation platform, either scalar or aligned to ``sites``.
         use_tracer: Option to use inverse model that uses tracers of species
             (e.g. d13C, CO, C2H4).
         use_bc: When True, use and infer boundary conditions.
@@ -783,8 +823,9 @@ def fixedbasisMCMC(
             details.) Combines the functionality of the previous min_error and calculate_min_error parameters.
             None only an option to accomodate old ini files.
         calculate_min_error: Is deprecated and will be removed in a future update.
-        min_error_options: Dictionary of additional arguments to pass the the function used to calculate min. model
-            error (as specified by `min_error`).
+        min_error_options: Options for calculated minimum error. The only
+            supported key is boolean ``by_site``; with residual minimum error,
+            true calculates a separate value for each retained site.
         output_format: Select what is returned/saved by inversion.
             - "legacy": (default) return old HBMCMC-compatible output formatting, computed from modern
               `InversionOutput`, and save result as netCDF. Deprecated aliases: "hbmcmc" and
@@ -814,12 +855,6 @@ def fixedbasisMCMC(
         kwargs.pop("flux_non_finite_check", "lazy"),
     )
 
-    # Check if any observations are column based.
-    if inlet is not None:
-        is_column = any(i == "column" for i in inlet)
-    else:
-        is_column = False
-
     output_format = cast(
         Literal[
             "legacy",
@@ -833,7 +868,11 @@ def fixedbasisMCMC(
         _resolve_output_format(
             output_format,
             paris_postprocessing=paris_postprocessing,
-            is_column=is_column,
+            is_column=_all_requested_sites_are_column(
+                sites=sites,
+                inlet=inlet,
+                platform=platform,
+            ),
         ),
     )
     needs_modern_inv_out = output_format not in {"merged_data", "mcmc_args"} or bool(save_inversion_output)
@@ -894,6 +933,21 @@ def fixedbasisMCMC(
     if output_format == "merged_data":
         return prepared.fp_all  # type: ignore
 
+    output_format = cast(
+        Literal[
+            "legacy",
+            "paris",
+            "basic",
+            "inv_out",
+            "mcmc_args",
+            "mcmc_results",
+        ],
+        _resolve_output_format(
+            output_format,
+            paris_postprocessing=False,
+            is_column=prepared.is_column,
+        ),
+    )
     inv_inputs = _require_fixedbasis_inv_inputs(prepared)
     sites = prepared.sites
     averaging_period = prepared.averaging_period

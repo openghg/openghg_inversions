@@ -232,6 +232,71 @@ def test_inversion_input_hbmcmc_matches_frozen(raw_data_path, inv_inputs_args):
     _compare_with_frozen(result_post, frozen_post)
 
 
+def test_make_inv_inputs_preserves_requested_order_and_column_factors() -> None:
+    """Mixed inputs retain requested site order and column-only factors."""
+
+    def site_dataset(
+        site: str,
+        value: float,
+        *,
+        prior_factor: float | None = None,
+        upper_factor: float | None = None,
+    ) -> xr.Dataset:
+        """Build one observation-aligned site dataset for gathering."""
+        time = pd.date_range("2019-01-01", periods=1, freq="h")
+        dataset = xr.Dataset(
+            {
+                "H": (("region", "time"), [[value]]),
+                "mf": ("time", [value]),
+                "mf_error": ("time", [0.1]),
+                "mf_repeatability": ("time", [0.1]),
+                "mf_variability": ("time", [0.0]),
+            },
+            coords={"region": [0], "time": time},
+            attrs={"site": site},
+        )
+        if prior_factor is not None:
+            dataset["mf_prior_factor"] = xr.DataArray(
+                [prior_factor],
+                dims="time",
+                attrs={"long_name": "column prior factor"},
+            )
+        if upper_factor is not None:
+            dataset["mf_prior_upper_level_factor"] = xr.DataArray(
+                [upper_factor],
+                dims="time",
+                attrs={"long_name": "upper-level prior factor"},
+            )
+        return dataset
+
+    fp_data = {
+        "SURFACE": site_dataset("SURFACE", 1.0),
+        "SATELLITE": site_dataset(
+            "SATELLITE",
+            2.0,
+            prior_factor=0.2,
+            upper_factor=0.3,
+        ),
+    }
+
+    result = make_inv_inputs(
+        fp_data,
+        sites=["SATELLITE", "SURFACE"],
+        min_error=0.0,
+    )
+
+    assert result["site_names"].values.tolist() == ["SATELLITE", "SURFACE"]
+    assert result["site"].values.tolist() == ["SATELLITE", "SURFACE"]
+    np.testing.assert_allclose(result["mf"].values, [2.0, 1.0])
+    np.testing.assert_allclose(result["mf_prior_factor"].values, [0.2, 0.0])
+    np.testing.assert_allclose(result["mf_prior_upper_level_factor"].values, [0.3, 0.0])
+    assert result["mf_prior_factor"].attrs["long_name"] == "column prior factor"
+    assert (
+        result["mf_prior_upper_level_factor"].attrs["long_name"]
+        == "upper-level prior factor"
+    )
+
+
 # ----------------------------------------
 # Tests for helper functions
 # ----------------------------------------
@@ -291,6 +356,35 @@ def test_make_inv_inputs_drops_non_shared_data_vars():
     assert "inlet_height" not in result
     assert {"H", "mf", "mf_error", "site_indicator", "site_names", "min_error"} <= set(result.data_vars)
     assert "sigma_freq_index" not in result
+
+
+def test_make_inv_inputs_rejects_explicit_empty_sites() -> None:
+    """An explicit empty site selection must not silently expand to all sites."""
+    fp_data = {"AAA": _make_minimal_fp_site(mf_base=10.0, include_inlet_height=False)}
+
+    with pytest.raises(ValueError, match="sites.*at least one site"):
+        make_inv_inputs(fp_data=fp_data, sites=[], min_error=0.0)
+
+
+def test_make_inv_inputs_infers_sites_only_when_sites_is_none() -> None:
+    """A None site selection still infers every non-metadata site."""
+    fp_data = {
+        ".species": "CH4",
+        "AAA": _make_minimal_fp_site(mf_base=10.0, include_inlet_height=False),
+        "BBB": _make_minimal_fp_site(mf_base=20.0, include_inlet_height=False),
+    }
+
+    result = make_inv_inputs(fp_data=fp_data, sites=None, min_error=0.0)
+
+    assert list(result["site_names"].values) == ["AAA", "BBB"]
+
+
+def test_make_inv_inputs_rejects_missing_requested_site() -> None:
+    """A missing requested site raises a clear error before dataset gathering."""
+    fp_data = {"AAA": _make_minimal_fp_site(mf_base=10.0, include_inlet_height=False)}
+
+    with pytest.raises(ValueError, match=r"missing requested site\(s\).*BBB"):
+        make_inv_inputs(fp_data=fp_data, sites=["AAA", "BBB"], min_error=0.0)
 
 
 def test_make_inv_inputs_rejects_mismatched_gathered_state_indexes() -> None:

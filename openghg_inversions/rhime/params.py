@@ -16,6 +16,7 @@ from typing import Any, cast
 import warnings
 
 from openghg_inversions.config import config
+from openghg_inversions.inversion_inputs import normalise_min_error_options
 from openghg_inversions.models import (
     DEFAULT_X_PRIOR,
     RhimeBuilderStrategy,
@@ -266,6 +267,9 @@ def validate_rhime_param_types(params: Mapping[str, Any]) -> None:
 
     for mapping_name in _MAPPING_OPTIONS:
         _validate_mapping_option(params, mapping_name)
+
+    if "min_error_options" in params:
+        normalise_min_error_options(params["min_error_options"])
 
     if "power" in params and params["power"] is not None:
         power = params["power"]

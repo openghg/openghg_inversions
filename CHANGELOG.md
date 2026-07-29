@@ -4,6 +4,15 @@
 
 ## Code changes
 
+- Kept all site-aligned retrieval options paired with retained sites across
+  merged-data reloads, retrieval failures, and observation filtering. Explicit
+  empty site selections now fail instead of expanding to every loaded site,
+  calculated minimum-error options have a validated ``{"by_site": bool}``
+  schema, and legacy migration warnings remain visible under default warning
+  filters. Retained calibration scales and observation units now follow site
+  pruning, explicit site order is preserved during input assembly, and mixed
+  surface/column inputs retain their column correction factors.
+  [#427](https://github.com/openghg/openghg_inversions/issues/427)
 - Made direct composition of concrete standard and multisector RHIME models
   the default builder strategy. The semantic flux-plan compiler remains
   available as an explicit `builder_strategy="compiled"` opt-in on

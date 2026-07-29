@@ -405,8 +405,8 @@ The following file, ``my_hbmcmc_inputs.ini`` can be used to run an
    [MCMC.OPTIONS]
    ; averaging_error (bool): Add variability in averaging period to the measurement error (Note: currently this
    ;                         doesn't work correctly)
-   ; min_error (float): value specifying a lower bound for the model-measurement mismatch error (i.e. the error on
-   ;                    (y - y_mod)). Ignored if compute_min_error = True.
+   ; min_error: numeric lower bound for model-measurement mismatch, or "residual"/"percentile"
+   ;            to calculate the bound from the prepared observations.
    ; fix_basis_outer_regions (bool): If True, the "outer regions" of the domain use basis regions specified by a
    ;                                 file provided by the Met Office (from their "InTem" model), and the "inner
    ;                                 region", which includes the UK, is fit using our basis algorithms.
@@ -418,23 +418,22 @@ The following file, ``my_hbmcmc_inputs.ini`` can be used to run an
    ; save_trace (bool): If True, the arviz InferenceData output from sampling will be saved to the output path of
    ;                    the inversion, with a file name of the form f"{outputname}{start_data}_trace.nc.
    ;                    Alternatively, you can pass a path (including filename), and that path will be used.
-   ; calculate_min_error: computes min_error on the fly using the "residual error method" or a method based on percentiles.
-   ;                      values can be: "residual", "percentile", None. If value is None, then value passed to `min_error`
-   ;                      is used.
+   ; calculate_min_error: deprecated legacy spelling. The run_hbmcmc compatibility shim translates
+   ;                      "residual" or "percentile" to `min_error`; prefer `min_error` directly.
    ; pollution_events_from_obs (bool): Determines whether the model error is calculated as a fraction of:
    ;                                   - the measured enhancement above the modelled baseline (if True)
    ;                                   - the prior modelled enhancement (if False)
-   ; reparameterise_log_normal (bool): If True, rewrite log normal prior samples as a function of standard normal samples.
-   ;                                   This may reduce divergences when sampling.
+   ; reparameterise_log_normal (bool): Deprecated compatibility flag. Set reparameterise=True in
+   ;                                   the relevant lognormal prior mapping instead.
    ; sampler_kwargs (dict): Kwargs to pass to the sampler (e.g. sampler_kwargs = {'target_accept': 0.99})
 
    averaging_error = True
-   min_error = 0.0
+   min_error = "residual"
    fix_basis_outer_regions = False
    use_bc = True
    nuts_sampler = "numpyro"
    save_trace = True
-   min_error_options = {"by_site": True}  ; options to pass to function used to compute min error
+   min_error_options = {"by_site": True}  ; mapping; only supported key is boolean by_site (residual only)
    pollution_events_from_obs = True
    no_model_error = False
    reparameterise_log_normal = False
