@@ -253,15 +253,41 @@ density-prioritized map:  invert=true
 parameter dtype:          float64
 ```
 
-The \(q=1\) tiny-oracle specialization uses a conditional one-dimensional
-rational-quadratic spline with the same knot interval, conditioner, and
-initialization rules; a coupling split is undefined in one dimension.
+The \(q=1\) tiny-oracle specialization uses FlowJAX's conditional
+one-dimensional masked-autoregressive rational-quadratic-spline flow with
+the same knot interval, conditioner-network width/depth/activation, layer
+count, inversion control, and initialization rule; a coupling split is
+undefined in one dimension.
 
 Coupling masks and permutations are deterministic functions of the full
 initialization seed.  Two initialization seeds are fitted per task; the
 independent model-selection domain chooses the lower composite validation
 loss.  Architecture, rank, sample size, or objective weights are never chosen
 from realized `mf`, evidence, or posterior results.
+
+Condition standardization is analytic and cannot be fitted from a simulation
+catalogue.  For a task whose native root total is
+\(T\sim\operatorname{Gamma}(a_T,b_T)\), use
+
+\[
+c_T=\mathbb E(\log T)=\psi(a_T)-\log b_T,
+\qquad
+d_T=\{\operatorname{Var}(\log T)\}^{1/2}
+=\{\psi_1(a_T)\}^{1/2},
+\]
+
+and pass \((\log T-c_T)/d_T\) to the conditioner.  Tiny cases use
+\(a_T=\sum_i\alpha_i\) and their frozen common native rate \(b_T\).
+The calibrated PARIS root uses \(a_T=b_T=43.742615510366136\), giving
+
+```text
+condition center c_T = -0.011474050604083352
+condition scale  d_T =  0.15206677909671867
+```
+
+This rule is shared by every sample size, initialization, and source seed;
+nested-\(S\) artifacts may not standardize the condition from their realized
+training samples.
 
 ## Frozen training objective
 
@@ -364,6 +390,51 @@ Each task has separate training, internal-validation,
 model-selection-validation, and development-test domains.  The two
 initializations share data within a task but not initialization or optimizer
 keys.
+
+Within each tiny task, root masses are a scrambled one-dimensional Sobol
+catalogue transformed through the exact
+\(\operatorname{Gamma}(\sum_i\alpha_i,b_T)\) inverse CDF.  Allocation and
+measurement-noise catalogues use separate domain-keyed scrambled Sobol
+streams.  Larger training sizes are exact prefixes of the same task/source
+catalogue.
+
+Freeze the remaining tiny-domain controls as:
+
+```text
+development base seed:                 731
+confirmation base seeds:               1877, 4099, 8317
+model-selection validation draws:      65536
+development reporting-test draws:      131072
+public domains:                        training
+                                       model-selection-validation
+                                       development-reporting-test
+initialization streams:                flow-initialization-0
+                                       flow-initialization-1
+optimizer streams:                     optimizer-0
+                                       optimizer-1
+allocation stream:                     balanced-dirichlet-allocation
+root-mass stream:                      gamma-root-total
+measurement-noise stream:              projected-standard-normal
+```
+
+Every stream seed is the little-endian unsigned integer encoded by the first
+four bytes of
+
+```text
+SHA256(
+  "score-regularized-projected-root-nle-v1"
+  || uint64_le(base_seed)
+  || ascii(case_id)
+  || ascii(public_domain)
+  || ascii(stream_name)
+)
+```
+
+Unknown or protected domain names are rejected before deriving a seed.  The
+two initializations share the task's simulated arrays but have distinct
+initialization and optimizer streams.  Independent model-selection loss
+chooses the lower composite loss, with initialization index as the exact-tie
+breaker.
 
 ### PARIS programme
 
