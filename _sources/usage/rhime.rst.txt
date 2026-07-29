@@ -169,6 +169,17 @@ The concrete PyMC graph, its variable names, an equivalent construction from
 public model components, and links to tracked extension work are described in
 :doc:`concrete_rhime_model`.
 
+RHIME uses direct composition of the concrete standard or multisector model by
+default. The private semantic-plan compiler remains available for development
+and parity testing by setting ``builder_strategy="compiled"`` on
+``RhimeModelSpec`` or in ``[RHIME.OPTIONS]``. There is no automatic fallback:
+an error in the selected strategy stops the run. The concrete model is the
+readable reference implementation; the compiled strategy is the opt-in
+extension path and must preserve the externally meaningful graph contract for
+components it does not intentionally change. See
+:ref:`the concrete model stability contract <rhime-builder-stability>` for the
+full contract.
+
 Config Files
 ------------
 
@@ -186,6 +197,9 @@ New RHIME config files should use ``flux_sources``:
    [INPUT.PRIORS]
    domain = "EUROPE"
    flux_sources = ["total-ukghg-edgar7"]
+
+   [RHIME.OPTIONS]
+   builder_strategy = "concrete"
 
    [RHIME.OUTPUT]
    output_path = "outputs"

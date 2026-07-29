@@ -363,19 +363,53 @@ helpers.</p></li>
 </ul>
 <section id="the-current-builders">
 <h2>The current builders<a class="headerlink" href="#the-current-builders" title="Link to this heading">#</a></h2>
-<p>Both public builders use the same construction stages:</p>
+<p><a class="reference internal" href="../reference/openghg_inversions.models.rhime.html#openghg_inversions.models.rhime.RhimeBuilderStrategy" title="openghg_inversions.models.rhime.RhimeBuilderStrategy"><code class="xref py py-data docutils literal notranslate"><span class="pre">RhimeBuilderStrategy</span></code></a> defines the two
+public strategy values used by <code class="docutils literal notranslate"><span class="pre">RhimeModelSpec</span></code>. Direct composition is the
+default:</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>RhimeModelSpec + canonical inversion inputs
--&gt; private flux compilation plan
--&gt; flux states and forward terms
+-&gt; concrete standard or multisector builder
+-&gt; public linear-component helpers
 -&gt; total flux contribution, mu
 -&gt; boundary, offset, error, and likelihood components
 -&gt; PyMC model
 </pre></div>
 </div>
-<p>The private compiler currently covers only the linear flux part of one
-observation channel. Boundary conditions, optional offsets, the RHIME error
-model, and the observed distribution are added afterwards by the shared model
-assembler.</p>
+<p>Set <code class="docutils literal notranslate"><span class="pre">builder_strategy=&quot;compiled&quot;</span></code> on the spec to opt into the alternative
+path:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>RhimeModelSpec + canonical inversion inputs
+-&gt; private flux compilation plan
+-&gt; flux states and forward terms
+-&gt; total flux contribution, mu
+-&gt; the same boundary, offset, error, and likelihood components
+-&gt; PyMC model
+</pre></div>
+</div>
+<p>The compiler is retained as experimental machinery for developing a more
+general semantic representation. It currently covers only the linear flux part
+of one observation channel. Both paths use the same source/sector resolution,
+gathered ragged-state handling, and prior selection before constructing the
+PyMC graph. They preserve the same public variable names and dimensions.</p>
+</section>
+<section id="stability-contract">
+<span id="rhime-builder-stability"></span><h2>Stability contract<a class="headerlink" href="#stability-contract" title="Link to this heading">#</a></h2>
+<p>The concrete builders are the readable reference implementations. Their
+explicit PyMC code is the primary model definition for scientific review,
+auditing, and user confidence. <code class="docutils literal notranslate"><span class="pre">builder_strategy=&quot;concrete&quot;</span></code> therefore
+remains the default.</p>
+<p>The compiled strategy is a public opt-in extension and regression-checking
+path. Its plan and compiler objects remain private and may evolve, but
+<code class="docutils literal notranslate"><span class="pre">builder_strategy=&quot;compiled&quot;</span></code> and the externally meaningful graph contract
+for unchanged components are stable. That contract includes named variables,
+dimensions and scientific coordinates, registered model data, deterministic
+contributions, and seeded prior-predictive behaviour.</p>
+<p>There is no automatic fallback between strategies. A failure in the selected
+strategy stops model construction. If a future compiler feature intentionally
+changes part of the graph, that divergence should be explicit, narrowly scoped,
+and covered by a focused test; components outside that feature should continue
+to match the concrete reference implementation.</p>
+<p>Source/design resolution and the boundary, offset, error, and likelihood
+components remain shared. This keeps parity meaningful and avoids independent
+copies silently drifting while compiler extensions are developed.</p>
 </section>
 <section id="standard-single-flux-model">
 <h2>Standard single-flux model<a class="headerlink" href="#standard-single-flux-model" title="Link to this heading">#</a></h2>
@@ -509,10 +543,10 @@ config prior to request the API-default parameterization shown here.</p>
 </section>
 <section id="equivalent-construction-from-public-helpers">
 <h2>Equivalent construction from public helpers<a class="headerlink" href="#equivalent-construction-from-public-helpers" title="Link to this heading">#</a></h2>
-<p>The production builder routes the flux component through the private compiler
-so standard and multisector RHIME share one implementation. A researcher does
-not need to construct a private plan to write the equivalent concrete
-single-flux model. The following uses public component helpers:</p>
+<p>The default production builder constructs the graph in the same direct style
+shown below. A researcher does not need to construct a private plan to write an
+equivalent concrete single-flux model. The following uses public component
+helpers:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">pymc</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pm</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.models</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
@@ -590,8 +624,9 @@ state and forward contribution:</p>
 the corresponding <code class="docutils literal notranslate"><span class="pre">H</span></code> slices; sector names provide model identities. They
 are not required to be the same strings.</p>
 <p>Every sector state and every reparameterization-generated latent must have a
-unique backend name. The compiler also checks that all sector contributions
-share an identical observation layout before summing them.</p>
+unique backend name. Concrete composition relies on PyMC to reject duplicate
+generated names. The opt-in compiler performs whole-plan name and observation
+layout checks before mutating the active model.</p>
 </section>
 <section id="names-and-generated-names">
 <h2>Names and generated names<a class="headerlink" href="#names-and-generated-names" title="Link to this heading">#</a></h2>
@@ -600,11 +635,11 @@ create more names than the requested base name. In particular, a
 reparameterized lognormal requested as <code class="docutils literal notranslate"><span class="pre">x_ff</span></code> creates both <code class="docutils literal notranslate"><span class="pre">x_ff</span></code> and
 <code class="docutils literal notranslate"><span class="pre">x_ff_latent</span></code>.</p>
 <p>Both names should be treated as reserved for that prior. No data variable,
-other state, forward-term deterministic, or total should use either name. The
-current compiler enforces this rule within the flux compilation plan. The
-shared assembler still relies on conventional names for later boundary,
-offset, error, and likelihood components; there is not yet one allocator for
-the complete model namespace.</p>
+other state, forward-term deterministic, or total should use either name. PyMC
+enforces this during concrete composition; the opt-in compiler detects it
+during flux-plan preflight. The shared observation-component helper still
+relies on conventional names for boundary, offset, error, and likelihood
+components; there is not yet one allocator for the complete model namespace.</p>
 <p>Knowledge of the <code class="docutils literal notranslate"><span class="pre">_latent</span></code> suffix is also duplicated between the compiler
 and <code class="docutils literal notranslate"><span class="pre">parse_prior</span></code>. Generated-name reporting, whole-model allocation, and
 component namespaces are not implemented. They are tracked in
@@ -636,7 +671,8 @@ user-owned <code class="docutils literal notranslate"><span class="pre">pm.Model
 </dd>
 <dt>Private implementation</dt><dd><p><code class="docutils literal notranslate"><span class="pre">_FluxPlan</span></code>, <code class="docutils literal notranslate"><span class="pre">_StatePlan</span></code>, <code class="docutils literal notranslate"><span class="pre">_ForwardTermPlan</span></code>, and
 <code class="docutils literal notranslate"><span class="pre">_compile_loop_sum</span></code> may change while the semantic model representation is
-developed. They should not be imported by research scripts.</p>
+developed. Set <code class="docutils literal notranslate"><span class="pre">RhimeModelSpec(builder_strategy=&quot;compiled&quot;)</span></code> to exercise
+that path without importing private compiler objects.</p>
 </dd>
 </dl>
 </section>
@@ -690,6 +726,7 @@ developed. They should not be imported by research scripts.</p>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#the-current-builders">The current builders</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#stability-contract">Stability contract</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#standard-single-flux-model">Standard single-flux model</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#equivalent-construction-from-public-helpers">Equivalent construction from public helpers</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#multisector-model">Multisector model</a></li>

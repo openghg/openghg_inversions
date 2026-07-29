@@ -500,6 +500,16 @@ side effects are still controlled by <code class="docutils literal notranslate">
 <p>The concrete PyMC graph, its variable names, an equivalent construction from
 public model components, and links to tracked extension work are described in
 <a class="reference internal" href="concrete_rhime_model.html"><span class="doc">Concrete RHIME Model</span></a>.</p>
+<p>RHIME uses direct composition of the concrete standard or multisector model by
+default. The private semantic-plan compiler remains available for development
+and parity testing by setting <code class="docutils literal notranslate"><span class="pre">builder_strategy=&quot;compiled&quot;</span></code> on
+<code class="docutils literal notranslate"><span class="pre">RhimeModelSpec</span></code> or in <code class="docutils literal notranslate"><span class="pre">[RHIME.OPTIONS]</span></code>. There is no automatic fallback:
+an error in the selected strategy stops the run. The concrete model is the
+readable reference implementation; the compiled strategy is the opt-in
+extension path and must preserve the externally meaningful graph contract for
+components it does not intentionally change. See
+<a class="reference internal" href="concrete_rhime_model.html#rhime-builder-stability"><span class="std std-ref">the concrete model stability contract</span></a> for the
+full contract.</p>
 </section>
 <section id="config-files">
 <h2>Config Files<a class="headerlink" href="#config-files" title="Link to this heading">#</a></h2>
@@ -514,6 +524,9 @@ public model components, and links to tracked extension work are described in
 <span class="k">[INPUT.PRIORS]</span>
 <span class="na">domain</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;EUROPE&quot;</span>
 <span class="na">flux_sources</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">[&quot;total-ukghg-edgar7&quot;]</span>
+
+<span class="k">[RHIME.OPTIONS]</span>
+<span class="na">builder_strategy</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;concrete&quot;</span>
 
 <span class="k">[RHIME.OUTPUT]</span>
 <span class="na">output_path</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;outputs&quot;</span>
