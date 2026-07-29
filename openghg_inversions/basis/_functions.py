@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Literal, cast
 
 import pandas as pd
+import numpy as np
 import xarray as xr
 import logging
 
@@ -241,11 +242,17 @@ def paired_abs_response_weights(
     Raises:
         ValueError: If no footprints are supplied, required ``time`` dimensions
             are absent, or a retained footprint time cannot be paired with a
-            flux time. Also raised when paired arrays or masks do not share
-            exact coordinates.
+            flux time. Also raised when paired arrays do not have exactly two
+            matching spatial dimensions and coordinates, or when a mask is not
+            Boolean and defined on those spatial dimensions.
     """
     if "time" not in flux.dims:
         raise ValueError("flux must have a time dimension for paired response weights.")
+    spatial_dims = tuple(dim for dim in flux.dims if dim != "time")
+    if len(spatial_dims) != 2:
+        raise ValueError("flux must have exactly two spatial dimensions for paired response weights.")
+    if any(dim not in flux.indexes for dim in spatial_dims):
+        raise ValueError("flux spatial dimensions must have coordinates for paired response weights.")
     if not footprints:
         raise ValueError("at least one retained footprint is required for paired response weights.")
 
@@ -256,6 +263,16 @@ def paired_abs_response_weights(
     for footprint in footprints:
         if "time" not in footprint.dims:
             raise ValueError("footprints must have a time dimension for paired response weights.")
+        if set(footprint.dims) != set(flux.dims):
+            raise ValueError(
+                "footprints and flux must have the same time and spatial dimensions "
+                "for paired response weights."
+            )
+        if any(dim not in footprint.indexes for dim in spatial_dims):
+            raise ValueError(
+                "footprint spatial dimensions must have coordinates for paired response weights."
+            )
+        footprint = footprint.transpose(*flux.dims)
         missing_times = footprint.get_index("time").difference(flux_times)
         if not missing_times.empty:
             raise ValueError(
@@ -284,10 +301,17 @@ def paired_abs_response_weights(
     weights = cast(xr.DataArray, sum(response_sums)) / n_measure
 
     if mask is not None:
+        if set(mask.dims) != set(spatial_dims):
+            raise ValueError("mask must have the same spatial dimensions as paired response weights.")
+        if mask.dtype.kind != "b":
+            raise ValueError("mask must be Boolean for paired response weights.")
+        mask = mask.transpose(*spatial_dims)
         try:
             weights, mask = xr.align(weights, mask, join="exact")
         except xr.AlignmentError as exc:
-            raise ValueError("mask must share exact spatial coordinates with paired response weights.") from exc
+            raise ValueError(
+                "mask must share exact spatial coordinates with paired response weights."
+            ) from exc
         return weights.where(mask, drop=True)
 
     return weights
@@ -323,12 +347,43 @@ def basis_weights_from_fp_all(
     return _mean_fp_times_mean_flux(flux, footprints, abs_flux=abs_flux, mask=mask).as_numpy()
 
 
+def _sanitize_generated_basis_weights(
+    weights: xr.DataArray,
+    *,
+    algorithm: str,
+    require_nonzero: bool = False,
+) -> xr.DataArray:
+    """Replace non-finite generated-basis weights and reject empty weight fields."""
+    weights = weights.as_numpy()
+    finite = xr.apply_ufunc(np.isfinite, weights)
+    if not bool(finite.any().item()):
+        raise ValueError(f"{algorithm} generated-basis weights contain no finite values.")
+
+    sanitized = weights.where(finite, 0.0)
+
+    if require_nonzero and not bool((sanitized != 0.0).any().item()):
+        raise ValueError(
+            f"{algorithm} generated-basis weights contain no non-zero finite values "
+            "after replacing non-finite values with zero."
+        )
+
+    return sanitized
+
+
 def _normalise_weights_by_max(weights: xr.DataArray) -> xr.DataArray:
     """Return weights scaled by their maximum when the maximum is positive."""
     max_weight = float(weights.max())
     if max_weight > 0:
         return weights / max_weight
     return weights
+
+
+def _normalise_weights_by_nonzero_max(weights: xr.DataArray) -> xr.DataArray:
+    """Return weights scaled by their finite non-zero maximum."""
+    max_weight = float(weights.max())
+    if not np.isfinite(max_weight) or max_weight == 0.0:
+        raise ValueError("generated-basis weights have no finite non-zero maximum.")
+    return weights / max_weight
 
 
 def _finalise_generated_basis(
@@ -367,8 +422,9 @@ def quadtree_basis_from_weights(
         Basis field with ``lat``/``lon`` dimensions, a singleton ``time``
         dimension, and integer region labels.
     """
+    weights = _sanitize_generated_basis_weights(weights, algorithm="quadtree", require_nonzero=True)
     func = partial(quadtree_algorithm, nbasis=nbasis, seed=seed)
-    quad_basis = xr.apply_ufunc(func, weights.as_numpy())
+    quad_basis = xr.apply_ufunc(func, weights)
     return _finalise_generated_basis(quad_basis, start_date=start_date, domain=domain)
 
 
@@ -397,8 +453,8 @@ def bucket_basis_from_weights(
         Basis field with ``lat``/``lon`` dimensions, a singleton ``time``
         dimension, and integer region labels.
     """
-    weights = weights.as_numpy()
-    weights = weights / weights.max()
+    weights = _sanitize_generated_basis_weights(weights, algorithm="weighted bucket", require_nonzero=True)
+    weights = _normalise_weights_by_nonzero_max(weights)
     func = partial(
         weighted_algorithm,
         nregion=nbasis,
@@ -467,7 +523,7 @@ def region_constrained_basis_from_weights(
         Basis field with globally unique integer labels that do not cross
         ``region_classes`` values.
     """
-    raw_weights = weights.as_numpy()
+    raw_weights = _sanitize_generated_basis_weights(weights, algorithm="region-constrained")
     weights = _normalise_weights_by_max(raw_weights)
     region_classes = region_classes.transpose(*weights.dims)
     region_classes = region_classes.sel({dim: weights.coords[dim] for dim in weights.dims})

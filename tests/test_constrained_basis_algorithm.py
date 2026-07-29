@@ -1,10 +1,16 @@
+import json
+
 import numpy as np
 import pytest
 import xarray as xr
+from scipy import ndimage
 
 from openghg_inversions.basis.algorithms import (
     AllSplitAcceptancePolicies,
     AxisParallelSplitStep,
+    ConnectedComponentPartitionStep,
+    ConnectedComponentSplitStrategy,
+    ContrastProximityComponentConsolidation,
     ContrastScoreSplitAcceptance,
     GreedyAxisParallelSplitStrategy,
     InertialSplitStep,
@@ -282,6 +288,359 @@ def test_greedy_axis_parallel_strategy_hits_target_region_count():
     labels = GreedyAxisParallelSplitStrategy()(weights, class_mask, target_regions=5)
 
     assert set(np.unique(labels)) == {1, 2, 3, 4, 5}
+
+
+class CheckerboardSplitStep:
+    """Split nodes into parity groups that are disconnected by edges."""
+
+    def __call__(
+        self,
+        nodes: list[tuple[int, int]],
+        _weights: np.ndarray,
+    ) -> list[list[tuple[int, int]]]:
+        even = [node for node in nodes if sum(node) % 2 == 0]
+        odd = [node for node in nodes if sum(node) % 2 == 1]
+        return [even, odd]
+
+
+def test_connected_component_partition_step_splits_disconnected_children():
+    """Partition-step children are decomposed into deterministic components."""
+    nodes = [(0, 0), (0, 1), (1, 0), (1, 1)]
+    step = ConnectedComponentPartitionStep(
+        CheckerboardSplitStep(),
+        connectivity=1,
+    )
+
+    children = step(nodes, np.ones((2, 2), dtype=float))
+
+    assert children == [[(0, 0)], [(1, 1)], [(0, 1)], [(1, 0)]]
+
+
+def test_connected_strategy_raises_target_to_disconnected_class_minimum():
+    """Disconnected class pieces receive distinct labels below the minimum target."""
+    weights = np.asarray(
+        [
+            [1.0, 0.0, 0.0],
+            [1.0, 0.0, 2.0],
+            [0.0, 0.0, 2.0],
+        ]
+    )
+    class_mask = weights > 0
+    strategy = ConnectedComponentSplitStrategy(
+        GreedyAxisParallelSplitStrategy(),
+        connectivity=1,
+    )
+
+    labels = strategy(weights, class_mask, target_regions=1)
+
+    np.testing.assert_array_equal(labels > 0, class_mask)
+    assert set(np.unique(labels)) == {0, 1, 2}
+    assert strategy.diagnostics == [
+        {
+            "requested_target": 1,
+            "connected_component_minimum": 2,
+            "effective_target": 2,
+            "actual_regions": 2,
+        }
+    ]
+
+
+def test_connected_strategy_four_and_eight_neighbour_diagonal_adjacency():
+    """Connectivity controls whether diagonally adjacent cells share a label."""
+    weights = np.eye(2, dtype=float)
+    class_mask = weights > 0
+    four_neighbour = ConnectedComponentSplitStrategy(
+        GreedyAxisParallelSplitStrategy(),
+        connectivity=1,
+    )
+    eight_neighbour = ConnectedComponentSplitStrategy(
+        GreedyAxisParallelSplitStrategy(),
+        connectivity=2,
+    )
+
+    four_labels = four_neighbour(weights, class_mask, target_regions=1)
+    eight_labels = eight_neighbour(weights, class_mask, target_regions=1)
+
+    assert int(four_labels.max()) == 2
+    assert int(eight_labels.max()) == 1
+
+
+def test_connected_strategy_zero_weight_components_use_area_fallback():
+    """All-zero component weights still receive the requested allocation."""
+    weights = np.zeros((2, 4), dtype=float)
+    class_mask = np.asarray(
+        [
+            [True, True, False, True],
+            [True, True, False, True],
+        ]
+    )
+    strategy = ConnectedComponentSplitStrategy(
+        GreedyAxisParallelSplitStrategy(),
+        connectivity=1,
+    )
+
+    labels = strategy(weights, class_mask, target_regions=3)
+
+    np.testing.assert_array_equal(labels > 0, class_mask)
+    assert np.array_equal(np.unique(labels), np.asarray([0, 1, 2, 3]))
+    for region in (1, 2, 3):
+        assert ndimage.label(labels == region)[1] == 1
+
+
+def _component_consolidation_policy(
+    labels: xr.DataArray,
+    *,
+    contribution: np.ndarray,
+    cell_weight: np.ndarray | None = None,
+    source_classes: xr.DataArray | None = None,
+    max_merge_distance_km: float = 100.0,
+    max_merge_lambda: float = 0.0,
+    inactive_component_policy: str = "keep",
+    min_regions: int | None = None,
+) -> ContrastProximityComponentConsolidation:
+    """Return a consolidation policy aligned to a small test grid."""
+    return ContrastProximityComponentConsolidation(
+        contribution=contribution,
+        cell_weight=np.ones(labels.shape) if cell_weight is None else cell_weight,
+        geometry=LatLonGridGeometry.from_dataarray(labels),
+        max_merge_distance_km=max_merge_distance_km,
+        max_merge_lambda=max_merge_lambda,
+        source_classes=source_classes,
+        inactive_component_policy=inactive_component_policy,
+        min_regions=min_regions,
+    )
+
+
+def test_component_consolidation_merges_whole_secondary_not_refined_singleton():
+    """A refined one-cell region in the primary component is not a forced island."""
+    labels = xr.DataArray(
+        np.array([[1, 2, 2, 0, 3]]),
+        dims=("lat", "lon"),
+        coords={"lat": [50.0], "lon": [0.0, 0.1, 0.2, 0.3, 0.4]},
+    )
+    classes = xr.full_like(labels, "land", dtype=object)
+    contribution = np.array([[[10.0, 1.0, 1.0, 0.0, 1.0]]])
+    policy = _component_consolidation_policy(
+        labels,
+        contribution=contribution,
+        max_merge_distance_km=30.0,
+    )
+
+    consolidated = policy(labels, classes)
+
+    np.testing.assert_array_equal(
+        consolidated.values,
+        np.array([[1, 2, 2, 0, 2]]),
+    )
+    diagnostics = policy.diagnostics[-1]
+    assert diagnostics["component_forced_original_labels"] == [3]
+    assert diagnostics["resulting_regions"] == 2
+    assert diagnostics["strict_connected_input"] is True
+    assert diagnostics["strict_connected_output"] is False
+    assert diagnostics["deliberately_disconnected_regions"] == [
+        {
+            "label": 2,
+            "original_labels": [2, 3],
+            "component_count": 2,
+        }
+    ]
+    assert json.loads(consolidated.attrs["component_consolidation_diagnostics"]) == diagnostics
+
+
+def test_component_consolidation_rejects_high_contrast_nearby_component():
+    """Proximity alone cannot merge a component with a strong reverse-split score."""
+    labels = xr.DataArray(
+        np.array([[1, 1, 0, 2]]),
+        dims=("lat", "lon"),
+        coords={"lat": [50.0], "lon": [0.0, 0.1, 0.2, 0.3]},
+    )
+    classes = xr.full_like(labels, "land", dtype=object)
+    policy = _component_consolidation_policy(
+        labels,
+        contribution=np.array([[[0.0, 0.0, 0.0, 10.0]]]),
+    )
+
+    consolidated = policy(labels, classes)
+
+    np.testing.assert_array_equal(consolidated.values, labels.values)
+    assert policy.diagnostics[-1]["merges"] == []
+    assert policy.diagnostics[-1]["unmerged_component_forced_original_labels"] == [2]
+    [evaluation] = policy.diagnostics[-1]["initial_candidate_evaluations"]
+    assert evaluation["first_original_label"] == 1
+    assert evaluation["second_original_label"] == 2
+    assert evaluation["source_class"] == "'__all_sources__'"
+    assert evaluation["region_class"] == "'land'"
+    assert evaluation["distance_km"] == pytest.approx(14.29496)
+    assert evaluation["first_mass"] == 2.0
+    assert evaluation["second_mass"] == 1.0
+    assert evaluation["lambda"] == pytest.approx(400.0 / 9.0)
+    assert evaluation["delta_dfs"] == pytest.approx((400.0 / 9.0) / (1.0 + 400.0 / 9.0))
+    assert evaluation["delta_eig"] == pytest.approx(0.5 * np.log1p(400.0 / 9.0))
+    assert evaluation["accepted"] is False
+    assert evaluation["reason"] == "contrast_threshold"
+
+
+@pytest.mark.parametrize("boundary", ["class", "source"])
+def test_component_consolidation_never_crosses_class_or_source_boundary(boundary: str):
+    """A closer region in another class or source is never a candidate target."""
+    labels = xr.DataArray(
+        np.array([[1, 0, 0, 2, 3]]),
+        dims=("lat", "lon"),
+        coords={"lat": [50.0], "lon": [0.0, 0.1, 0.2, 0.3, 0.4]},
+    )
+    classes = xr.DataArray(
+        np.array([["a", "a", "a", "b", "a"]], dtype=object),
+        dims=labels.dims,
+        coords=labels.coords,
+    )
+    sources = None
+    if boundary == "source":
+        classes = xr.full_like(labels, "a", dtype=object)
+        sources = xr.DataArray(
+            np.array([["one", "one", "one", "two", "one"]], dtype=object),
+            dims=labels.dims,
+            coords=labels.coords,
+        )
+    policy = _component_consolidation_policy(
+        labels,
+        contribution=np.zeros((1, *labels.shape)),
+        source_classes=sources,
+        max_merge_distance_km=20.0,
+    )
+
+    consolidated = policy(labels, classes)
+
+    np.testing.assert_array_equal(consolidated.values, labels.values)
+    assert policy.diagnostics[-1]["candidate_edges"] == 0
+
+
+def test_component_consolidation_zero_mass_policy_is_explicit():
+    """Inactive components are either retained or proximity-merged by policy."""
+    labels = xr.DataArray(
+        np.array([[1, 1, 0, 2]]),
+        dims=("lat", "lon"),
+        coords={"lat": [50.0], "lon": [0.0, 0.1, 0.2, 0.3]},
+    )
+    classes = xr.full_like(labels, "land", dtype=object)
+    cell_weight = np.array([[1.0, 1.0, 0.0, 0.0]])
+    contribution = np.zeros((1, *labels.shape))
+    keep = _component_consolidation_policy(
+        labels,
+        contribution=contribution,
+        cell_weight=cell_weight,
+        inactive_component_policy="keep",
+    )
+    merge = _component_consolidation_policy(
+        labels,
+        contribution=contribution,
+        cell_weight=cell_weight,
+        inactive_component_policy="merge_nearest",
+    )
+
+    kept = keep(labels, classes)
+    merged = merge(labels, classes)
+
+    assert int(kept.max()) == 2
+    assert int(merged.max()) == 1
+    assert keep.diagnostics[-1]["unmerged_component_forced_original_labels"] == [2]
+    assert keep.diagnostics[-1]["initial_candidate_evaluations"][0]["reason"] == "inactive_kept"
+    assert keep.diagnostics[-1]["initial_candidate_evaluations"][0]["accepted"] is False
+    assert merge.diagnostics[-1]["merges"][0]["reason"] == "inactive_nearest"
+
+
+def test_component_consolidation_is_deterministic():
+    """Tied candidate scores and distances produce repeatable labels and provenance."""
+    labels = xr.DataArray(
+        np.array([[1, 0, 2, 0, 3]]),
+        dims=("lat", "lon"),
+        coords={"lat": [50.0], "lon": [0.0, 0.1, 0.2, 0.3, 0.4]},
+    )
+    classes = xr.full_like(labels, "land", dtype=object)
+
+    first_policy = _component_consolidation_policy(
+        labels,
+        contribution=np.zeros((1, *labels.shape)),
+    )
+    second_policy = _component_consolidation_policy(
+        labels,
+        contribution=np.zeros((1, *labels.shape)),
+    )
+
+    first = first_policy(labels, classes)
+    second = second_policy(labels, classes)
+
+    xr.testing.assert_identical(first, second)
+    assert first_policy.diagnostics == second_policy.diagnostics
+
+
+def test_component_consolidation_respects_region_floor():
+    """A configured region floor limits otherwise acceptable merges."""
+    labels = xr.DataArray(
+        np.array([[1, 0, 2, 0, 3]]),
+        dims=("lat", "lon"),
+        coords={"lat": [50.0], "lon": [0.0, 0.1, 0.2, 0.3, 0.4]},
+    )
+    classes = xr.full_like(labels, "land", dtype=object)
+    policy = _component_consolidation_policy(
+        labels,
+        contribution=np.zeros((1, *labels.shape)),
+        min_regions=2,
+    )
+
+    consolidated = policy(labels, classes)
+
+    assert len(set(np.unique(consolidated.values)) - {0}) == 2
+    assert len(policy.diagnostics[-1]["merges"]) == 1
+
+
+def test_component_consolidation_requires_connected_input_labels():
+    """The policy cannot silently reinterpret an already disconnected label."""
+    labels = xr.DataArray(
+        np.array([[1, 0, 1]]),
+        dims=("lat", "lon"),
+        coords={"lat": [50.0], "lon": [0.0, 0.1, 0.2]},
+    )
+    classes = xr.full_like(labels, "land", dtype=object)
+    policy = _component_consolidation_policy(
+        labels,
+        contribution=np.zeros((1, *labels.shape)),
+    )
+
+    with pytest.raises(ValueError, match="requires strictly connected input labels"):
+        policy(labels, classes)
+
+
+def test_region_constrained_basis_applies_component_consolidation_policy():
+    """The low-level basis API can opt into post-construction consolidation."""
+    weights = xr.DataArray(
+        np.ones((1, 5)),
+        dims=("lat", "lon"),
+        coords={"lat": [50.0], "lon": [0.0, 0.1, 0.2, 0.3, 0.4]},
+    )
+    classes = xr.DataArray(
+        np.array([["land", "land", "land", np.nan, "land"]], dtype=object),
+        dims=weights.dims,
+        coords=weights.coords,
+    )
+    policy = _component_consolidation_policy(
+        weights,
+        contribution=np.ones((1, *weights.shape)),
+        max_merge_distance_km=30.0,
+    )
+
+    consolidated = region_constrained_basis(
+        weights,
+        classes,
+        nbasis=1,
+        split_strategy=ConnectedComponentSplitStrategy(
+            GreedyAxisParallelSplitStrategy(),
+        ),
+        component_consolidation=policy,
+    )
+
+    assert int(consolidated.max()) == 1
+    assert policy.diagnostics[-1]["original_regions"] == 2
+    assert policy.diagnostics[-1]["resulting_regions"] == 1
 
 
 def test_axis_parallel_split_uses_lat_lon_geometry_for_axis_choice():

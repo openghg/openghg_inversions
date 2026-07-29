@@ -3,7 +3,7 @@ import getpass
 import json
 import math
 import re
-from collections.abc import Hashable
+from collections.abc import Hashable, Iterable, Mapping
 import warnings
 from typing import Any, Literal, NamedTuple, cast
 
@@ -12,16 +12,18 @@ import pandas as pd
 import xarray as xr
 
 from openghg.util import timestamp_now  # pyright: ignore[reportPrivateImportUsage]
-from openghg_inversions import convert
-from openghg_inversions.array_ops import align_sparse_lat_lon, sparse_xr_dot
+from openghg_inversions.array_ops import align_sparse_lat_lon
 from openghg_inversions.config.version import code_version
+from openghg_inversions.flux_sanitization import copy_flux_nonfinite_attrs
 from openghg_inversions.postprocessing._basis_products import add_basis_reconstruction_metadata
 from openghg_inversions.postprocessing.countries import Countries
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.postprocessing.make_outputs import (
+    OutputSector,
     make_concentration_outputs,
     make_flux_outputs,
     make_country_outputs,
+    make_multisector_country_trace_outputs,
     make_multisector_flux_trace_outputs,
     observation_and_error_outputs,
 )
@@ -100,6 +102,7 @@ def paris_template_files(template_version: ParisTemplateVersion) -> ParisTemplat
 var_pat = re.compile(r"\s*[a-z]+ ([a-zA-Z_]+)\(.*\)")
 var_type_pat = re.compile(r"\s*([a-z]+) ([a-zA-Z_]+)\(.*\)")
 attr_pat = re.compile(r"\s+([a-zA-Z_]+):([a-zA-Z_]+)\s*=\s*([^;]+)")
+sector_name_pat = re.compile(r"[^a-z0-9]+")
 NETCDF_TO_NUMPY_DTYPE = {
     "byte": "int8",
     "short": "int16",
@@ -164,6 +167,81 @@ def get_data_var_dtypes(template_file: str | Path) -> dict[str, str]:
                 dtype_dict[var_name] = NETCDF_TO_NUMPY_DTYPE[netcdf_type]
 
     return dtype_dict
+
+
+def _replace_sector_placeholder(value: Any, sector_name: str) -> Any:
+    """Replace PARIS sector placeholders in string template values."""
+    if not isinstance(value, str):
+        return value
+    return value.replace("<sector_name>", sector_name).replace("sector_name", sector_name)
+
+
+def _expand_sector_template_mapping(
+    mapping: Mapping[str, Any],
+    sector_names: Iterable[str],
+) -> dict[str, Any]:
+    """Expand CDL ``sector_name`` placeholders for concrete sector variable names."""
+    expanded = dict(mapping)
+    for template_name, template_value in mapping.items():
+        if "sector_name" not in template_name:
+            continue
+        for sector_name in sector_names:
+            output_name = template_name.replace("sector_name", sector_name)
+            if isinstance(template_value, Mapping):
+                expanded[output_name] = {
+                    key: _replace_sector_placeholder(value, sector_name)
+                    for key, value in template_value.items()
+                }
+            else:
+                expanded[output_name] = _replace_sector_placeholder(template_value, sector_name)
+    return expanded
+
+
+def _paris_output_sectors(inv_out: InversionOutput) -> list[OutputSector]:
+    """Return multisector metadata in the local output-sector shape."""
+    raw_sectors = inv_out.model_metadata.get("sectors")
+    if not raw_sectors:
+        raise ValueError("Multisector PARIS output requires model_metadata['sectors'].")
+
+    sectors: list[OutputSector] = []
+    for raw_sector in raw_sectors:
+        if isinstance(raw_sector, Mapping):
+            name = raw_sector.get("name")
+            flux_source = raw_sector.get("flux_source")
+            variable_suffix = raw_sector.get("variable_suffix")
+        else:
+            name = getattr(raw_sector, "name", None)
+            flux_source = getattr(raw_sector, "flux_source", None)
+            variable_suffix = getattr(raw_sector, "variable_suffix", None)
+        if name is None or flux_source is None or variable_suffix is None:
+            raise ValueError("Sector metadata must include 'name', 'flux_source', and 'variable_suffix'.")
+        sectors.append(OutputSector(str(name), str(flux_source), str(variable_suffix)))
+
+    return sectors
+
+
+def _paris_sector_name_by_suffix(inv_out: InversionOutput) -> dict[str, str]:
+    """Return PARIS sector variable names keyed by RHIME variable suffix."""
+    if not inv_out.is_multisector:
+        return {}
+
+    sector_name_by_suffix = {}
+    used_names = set()
+    for sector in _paris_output_sectors(inv_out):
+        sector_name = sector_name_pat.sub("", sector.variable_suffix.lower())
+        if not sector_name:
+            raise ValueError(f"Could not derive a PARIS sector name from {sector.variable_suffix!r}.")
+        if sector_name == "total":
+            raise ValueError("PARIS sector name 'total' is reserved for summed flux variables.")
+        if sector_name in used_names:
+            raise ValueError(
+                "PARIS sector names must be unique after removing separator characters; "
+                f"duplicate sector name {sector_name!r}."
+            )
+        used_names.add(sector_name)
+        sector_name_by_suffix[sector.variable_suffix] = sector_name
+
+    return sector_name_by_suffix
 
 
 def _site_info_for_site(site: str) -> dict[str, Any]:
@@ -415,10 +493,19 @@ def _astype_data_array(da: xr.DataArray, dtype: str) -> xr.DataArray:
     return da.copy(data=da.data.astype(dtype))
 
 
-def _cast_data_vars_to_template_dtypes(ds: xr.Dataset, template_file: str | Path) -> xr.Dataset:
+def _cast_data_vars_to_template_dtypes(
+    ds: xr.Dataset,
+    template_file: str | Path,
+    *,
+    sector_names: Iterable[str] = (),
+) -> xr.Dataset:
     """Cast PARIS data variables to numeric dtypes declared by a CDL template."""
     updates: dict[Hashable, xr.DataArray] = {}
-    for name, dtype in get_data_var_dtypes(template_file).items():
+    dtype_mapping = cast(
+        dict[str, str],
+        _expand_sector_template_mapping(get_data_var_dtypes(template_file), sector_names),
+    )
+    for name, dtype in dtype_mapping.items():
         if name in ds.data_vars and ds[name].dtype != np.dtype(dtype):
             updates[name] = _astype_data_array(ds[name], dtype)
 
@@ -767,75 +854,202 @@ def _convert_flux_time_and_bounds_to_epoch_days(ds: xr.Dataset) -> xr.Dataset:
     return result
 
 
-def _latest_paris_countries(country_file: str | Path | None, domain: str) -> Countries:
-    """Return country metadata for the latest PARIS CDL country list."""
+def _latest_paris_countries(
+    country_file: str | Path | None,
+    domain: str,
+    country_selections: Iterable[str] | None,
+) -> Countries:
+    """Return country metadata for a latest-template PARIS output.
+
+    Args:
+        country_file: Optional country-definition file for the inversion domain.
+        domain: Inversion domain used to resolve a default country file.
+        country_selections: Optional country names or codes to include. ``None``
+            preserves all countries and their order from the selected country
+            file, allowing the PARIS format to be used outside Europe.
+
+    Returns:
+        Country masks and area grid using alpha-3 labels. Explicit selections
+        are ordered as requested.
+    """
     countries = Countries.from_file(
         country_file=country_file,
         country_code="alpha3",
-        country_selections=list(PARIS_LATEST_COUNTRIES),
         domain=domain,
     )
-    countries.matrix = countries.matrix.reindex(country=list(PARIS_LATEST_COUNTRIES))
+    if country_selections is not None:
+        selections = countries.country_labels.select_by_country_info(country_selections)
+        countries.matrix = countries.matrix.sel(country=list(selections))
+        countries.country_selections = selections
     return countries
 
 
-def _multisector_country_trace_kg(inv_out: InversionOutput, countries: Countries, species: str) -> xr.Dataset:
-    """Return multisector total country flux traces in kg/yr from reconstructed total flux."""
-    total_flux_trace = make_multisector_flux_trace_outputs(
-        inv_out,
-        report_flux_on_inversion_grid=False,
-    )[["flux_total_prior", "flux_total_posterior"]].rename(
-        {
-            "flux_total_prior": "country_prior",
-            "flux_total_posterior": "country_posterior",
-        }
-    )
-    country_weights = countries.matrix.as_numpy() * countries.area_grid.as_numpy()
-    country_weights = align_sparse_lat_lon(country_weights, total_flux_trace["country_posterior"])
-    country_trace = sparse_xr_dot(country_weights, total_flux_trace, dim=["lat", "lon"])
-    country_trace = country_trace * 365 * 24 * 3600 * convert.molar_mass(species) * 1e-3
-    return country_trace.reindex(country=list(PARIS_LATEST_COUNTRIES))
+def _multisector_country_trace_kg(
+    inv_out: InversionOutput,
+    countries: Countries,
+    sector_name_by_suffix: Mapping[str, str],
+) -> xr.Dataset:
+    """Return PARIS-labelled multisector country traces in kilograms per year.
+
+    Args:
+        inv_out: Multisector inversion output containing retained sector basis
+            functions and scaling traces.
+        countries: Country masks and cell areas used to project basis regions
+            directly to country totals.
+        sector_name_by_suffix: Mapping from each RHIME trace-variable suffix to
+            its normalized PARIS sector name. For example, ``{"total_ff":
+            "totalff"}`` maps ``country_total_ff_posterior`` to
+            ``country_totalff_posterior`` without confusing it with the summed
+            total variable.
+
+    Returns:
+        Lazy or sparse-compatible total and per-sector country traces with
+        dimensions ``(country, flux_time, draw)`` and units of kg yr-1. Summed
+        variables use ``country_prior`` and ``country_posterior``; sector
+        variables use ``country_<sector>_<when>``.
+
+    Raises:
+        ValueError: If required multisector metadata is missing or retained
+            basis, flux, and country grids cannot be aligned.
+    """
+    projected_trace = make_multisector_country_trace_outputs(inv_out, countries)
+    rename = {}
+    for variable_suffix, sector_name in sector_name_by_suffix.items():
+        for when in ("prior", "posterior"):
+            source_name = f"country_{variable_suffix}_{when}"
+            if source_name in projected_trace:
+                rename[source_name] = f"country_{sector_name}_{when}"
+
+    # Float32 aggregation can incur significant round-off error in high-magnitude
+    # country totals and uncertainty statistics, so promote the projected country
+    # samples before calculating them. Keeping the promotion at country level lets
+    # these calculations share one aligned float64 sector intermediate while the
+    # much larger spatial draw arrays retain their original dtype.
+    sector_trace = projected_trace[list(rename)].rename(rename).astype(np.float64) * 1e-3
+    result = sector_trace.copy(deep=False)
+    for when in ("prior", "posterior"):
+        sector_variables = [
+            f"country_{sector_name}_{when}"
+            for sector_name in sector_name_by_suffix.values()
+            if f"country_{sector_name}_{when}" in sector_trace
+        ]
+        result[f"country_{when}"] = xr.concat(
+            [sector_trace[name] for name in sector_variables],
+            dim="sector",
+        ).sum("sector", min_count=len(sector_name_by_suffix))
+
+    result = result[["country_prior", "country_posterior", *sector_trace.data_vars]]
+    result.attrs = dict(projected_trace.attrs)
+    for name in result.data_vars:
+        result[name].attrs["units"] = "kg/yr"
+    return result
+
+
+def _single_sector_country_trace_kg(
+    inv_out: InversionOutput,
+    countries: Countries,
+) -> xr.Dataset:
+    """Return a float64 single-sector country trace in kilograms per year.
+
+    Args:
+        inv_out: Single-sector inversion output.
+        countries: Country masks and cell areas used for country projection.
+
+    Returns:
+        Projected prior and posterior country traces promoted to float64 before
+        conversion from grams to kilograms per year. Dimensions, coordinates,
+        and dataset attributes are preserved, and every output variable has
+        ``units="kg/yr"``; variables typically have dimensions
+        ``(flux_time, country, draw)``.
+    """
+    projected_trace = countries.get_country_trace(inv_out=inv_out)
+    result = projected_trace.astype(np.float64) * 1e-3
+    result.attrs = dict(projected_trace.attrs)
+    for name in result.data_vars:
+        result[name].attrs["units"] = "kg/yr"
+    return result
 
 
 def _latest_country_outputs(
     inv_out: InversionOutput,
     countries: Countries,
-    species: str,
     stats: list[str],
     stats_args: dict[str, Any],
-    country_file: str | Path | None,
+    sector_name_by_suffix: Mapping[str, str] | None = None,
+    multisector_country_trace: xr.Dataset | None = None,
 ) -> xr.Dataset:
-    """Return latest PARIS country statistics for single- or multisector outputs."""
-    if inv_out.is_multisector:
-        country_trace = _multisector_country_trace_kg(inv_out, countries, species)
-        country_stats_args = dict(stats_args)
-        country_stats_args["stats"] = stats
-        return calculate_stats(country_trace, **country_stats_args)
+    """Return latest PARIS country statistics for single- or multisector outputs.
 
-    country_outs = make_country_outputs(
-        inv_out,
-        country_file=country_file,
-        country_selections=list(PARIS_LATEST_COUNTRIES),
-        stats=stats,
-        stats_args=stats_args,
-        country_code="alpha3",
-    )
-    return (country_outs * 1e-3).reindex(country=list(PARIS_LATEST_COUNTRIES))
+    Args:
+        inv_out: Single- or multisector inversion output.
+        countries: Country masks and cell areas used for country projection.
+        stats: Statistics to calculate from the country traces.
+        stats_args: Additional arguments passed to ``calculate_stats``.
+        sector_name_by_suffix: Optional mapping from RHIME sector suffixes to
+            normalized PARIS sector names.
+        multisector_country_trace: Optional precomputed single- or multisector
+            country trace in kilograms per year. The historical parameter name
+            is retained for compatibility.
+
+    Returns:
+        Country statistics in kilograms per year, with ``country`` and
+        ``flux_time`` dimensions and total plus per-sector variables where
+        applicable.
+    """
+    country_trace = multisector_country_trace
+    if country_trace is None:
+        country_trace = (
+            _multisector_country_trace_kg(
+                inv_out,
+                countries,
+                sector_name_by_suffix or _paris_sector_name_by_suffix(inv_out),
+            )
+            if inv_out.is_multisector
+            else _single_sector_country_trace_kg(inv_out, countries)
+        )
+    country_stats_args = dict(stats_args)
+    country_stats_args["stats"] = stats
+    return calculate_stats(country_trace, **country_stats_args)
 
 
 def _country_posterior_covariance_kg(
     inv_out: InversionOutput,
     countries: Countries,
-    species: str,
     flux_frequency: Literal["monthly", "yearly"] | str,
+    multisector_country_trace: xr.Dataset | None = None,
 ) -> np.ndarray:
-    """Return posterior country-total covariance in kg2 yr-2."""
-    if inv_out.is_multisector:
-        country_trace = _multisector_country_trace_kg(inv_out, countries, species)
-        posterior = country_trace["country_posterior"]
-    else:
-        country_trace = countries.get_country_trace(inv_out=inv_out)
-        posterior = country_trace["country_posterior"] * 1e-3
+    """Calculate total posterior covariance between countries.
+
+    This calculation applies to both single-sector and multisector outputs. In
+    the single-sector case, country totals are mapped directly from basis-region
+    scaling traces by ``Countries.get_country_trace``. Multisector callers can
+    supply the already projected and summed country trace to avoid repeating
+    that work.
+
+    Args:
+        inv_out: Single- or multisector inversion output.
+        countries: Country masks and cell areas used for the country projection.
+        flux_frequency: Frequency used to select output flux intervals.
+        multisector_country_trace: Optional precomputed single- or multisector
+            country trace in kilograms per year. The historical parameter name
+            is retained for compatibility.
+
+    Returns:
+        Population covariance for each flux interval with dimensions ordered as
+        time, first country, and second country, in kg2 yr-2.
+    """
+    country_trace = multisector_country_trace
+    if country_trace is None:
+        country_trace = (
+            _multisector_country_trace_kg(
+                inv_out,
+                countries,
+                _paris_sector_name_by_suffix(inv_out),
+            )
+            if inv_out.is_multisector
+            else _single_sector_country_trace_kg(inv_out, countries)
+        )
+    posterior = country_trace["country_posterior"]
     flux_period = _flux_frequency_to_offset(flux_frequency)
     flux_times = list(pd.to_datetime(posterior.flux_time.values))
     _, _, valid_indices = _flux_interval_midpoints_and_bounds(
@@ -845,12 +1059,107 @@ def _country_posterior_covariance_kg(
         inv_out.end_time,
     )
 
-    values = posterior.isel(flux_time=valid_indices).transpose("flux_time", "country", "draw").values
-    if values.shape[2] < 2:
-        return np.full((values.shape[0], values.shape[1], values.shape[1]), np.nan, dtype="float32")
+    posterior = posterior.isel(flux_time=valid_indices).dropna("draw", how="all")
+    values = np.asarray(
+        posterior.transpose("flux_time", "country", "draw").values,
+        dtype=np.float64,
+    )
+    if values.shape[2] == 0:
+        return np.full((values.shape[0], values.shape[1], values.shape[1]), np.nan, dtype=np.float64)
 
     centered = values - values.mean(axis=2, keepdims=True)
-    return np.einsum("tcd,ted->tce", centered, centered) / (values.shape[2] - 1)
+    return np.einsum("tcd,ted->tce", centered, centered) / values.shape[2]
+
+
+def _sector_country_posterior_covariances_kg(
+    inv_out: InversionOutput,
+    countries: Countries,
+    flux_frequency: Literal["monthly", "yearly"] | str,
+    sector_name_by_suffix: Mapping[str, str],
+    multisector_country_trace: xr.Dataset | None = None,
+) -> tuple[dict[str, np.ndarray], np.ndarray | None]:
+    """Calculate within-sector and between-sector country covariances.
+
+    Args:
+        inv_out: Multisector inversion output.
+        countries: Country masks and cell areas used for country projection.
+        flux_frequency: Frequency used to select output flux intervals.
+        sector_name_by_suffix: Mapping from RHIME trace suffixes to normalized
+            PARIS sector names.
+        multisector_country_trace: Optional precomputed total and sector country
+            traces in kilograms per year.
+
+    Returns:
+        A mapping of sector name to population covariance arrays with shape
+        ``(flux_time, country, country)`` and an array of covariance between
+        sectors within each country with shape
+        ``(flux_time, country, sector, sector)``. Both are in kg2 yr-2. The
+        second result is ``None`` when no sectors are supplied.
+    """
+    if not sector_name_by_suffix:
+        return {}, None
+
+    sector_trace = multisector_country_trace
+    if sector_trace is None:
+        sector_trace = _multisector_country_trace_kg(
+            inv_out,
+            countries,
+            sector_name_by_suffix,
+        )
+    sector_names = list(sector_name_by_suffix.values())
+    first_posterior = sector_trace[f"country_{sector_names[0]}_posterior"]
+    flux_period = _flux_frequency_to_offset(flux_frequency)
+    flux_times = list(pd.to_datetime(first_posterior.flux_time.values))
+    _, _, valid_indices = _flux_interval_midpoints_and_bounds(
+        flux_times,
+        flux_period,
+        inv_out.start_time,
+        inv_out.end_time,
+    )
+
+    sector_posteriors = [
+        sector_trace[f"country_{sector_name}_posterior"]
+        .isel(flux_time=valid_indices)
+        .dropna("draw", how="all")
+        .transpose("flux_time", "country", "draw")
+        for sector_name in sector_names
+    ]
+    sector_covariances = {}
+    for sector_name, posterior in zip(sector_names, sector_posteriors, strict=True):
+        values = np.asarray(posterior.values, dtype=np.float64)
+        if values.shape[2] == 0:
+            covariance = np.full(
+                (values.shape[0], values.shape[1], values.shape[1]),
+                np.nan,
+                dtype=np.float64,
+            )
+        else:
+            centered = values - values.mean(axis=2, keepdims=True)
+            covariance = np.einsum("tcd,ted->tce", centered, centered) / values.shape[2]
+        sector_covariances[sector_name] = covariance
+
+    posterior_by_sector = xr.concat(
+        [
+            posterior.expand_dims(sector=[sector_name])
+            for sector_name, posterior in zip(sector_names, sector_posteriors, strict=True)
+        ],
+        dim="sector",
+    )
+    values = np.asarray(
+        posterior_by_sector.transpose("flux_time", "country", "sector", "draw").values,
+        dtype=np.float64,
+    )
+    if values.shape[3] == 0:
+        sector_cross_covariance = np.full(
+            (values.shape[0], values.shape[1], values.shape[2], values.shape[2]),
+            np.nan,
+            dtype=np.float64,
+        )
+    else:
+        centered = values - values.mean(axis=3, keepdims=True)
+        sector_cross_covariance = np.einsum("tcsd,tced->tcse", centered, centered) / values.shape[3]
+
+    return sector_covariances, sector_cross_covariance
 
 
 def _add_country_covariance(result: xr.Dataset, covariance: np.ndarray, attrs: dict[str, Any]) -> xr.Dataset:
@@ -865,6 +1174,35 @@ def _add_country_covariance(result: xr.Dataset, covariance: np.ndarray, attrs: d
     return result
 
 
+def _add_sector_country_covariances(
+    result: xr.Dataset,
+    sector_covariances: Mapping[str, np.ndarray],
+    sector_cross_covariance: np.ndarray | None,
+    attrs: Mapping[str, dict[str, Any]],
+) -> xr.Dataset:
+    """Add latest PARIS sector covariance variables with template-required duplicate dimensions."""
+    for sector_name, covariance in sector_covariances.items():
+        variable_name = f"covariance_flux_{sector_name}_posterior_country"
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            result[variable_name] = (("time", "country", "country"), covariance)
+        result[variable_name].attrs = attrs.get(variable_name, {})
+
+    if sector_cross_covariance is not None:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            result["covariance_flux_sectors_posterior_country"] = (
+                ("time", "country", "sector", "sector"),
+                sector_cross_covariance,
+            )
+        result["covariance_flux_sectors_posterior_country"].attrs = attrs.get(
+            "covariance_flux_sectors_posterior_country",
+            {},
+        )
+
+    return result
+
+
 def paris_flux_output(
     inv_out: InversionOutput,
     country_file: str | Path | None = None,
@@ -873,11 +1211,38 @@ def paris_flux_output(
     inversion_grid: bool = True,
     flux_frequency: Literal["monthly", "yearly"] | str = "yearly",
     template_version: ParisTemplateVersion = DEFAULT_PARIS_TEMPLATE_VERSION,
+    country_selections: Iterable[str] | None = PARIS_LATEST_COUNTRIES,
 ) -> xr.Dataset:
+    """Create a flux product using a selected PARIS template version.
+
+    Args:
+        inv_out: Inversion output with retained basis functions and flux traces.
+        country_file: Optional country-definition NetCDF file.
+        time_point: Flux timestamp convention.
+        report_mode: If true, report KDE modes instead of means as central
+            estimates.
+        inversion_grid: If true, include reduced inversion-grid variables.
+        flux_frequency: Frequency used to construct output flux intervals.
+        template_version: PARIS template version to emit. The default preserves
+            the legacy output contract; ``"latest"`` selects flux v03.
+        country_selections: Optional country names or codes for the latest
+            template. The default emits the canonical 22-country EUROPE v03
+            schema; pass ``None`` to include all countries from another domain
+            file. The legacy template ignores this option.
+
+    Returns:
+        PARIS flux dataset using the selected template's variable names,
+        dimensions, dtypes, units, and attributes.
+
+    Raises:
+        ValueError: If required inversion metadata is missing or a latest-only
+            time or frequency option is invalid.
+    """
     if template_version == "latest":
         return paris_flux_output_latest(
             inv_out,
             country_file=country_file,
+            country_selections=country_selections,
             time_point=time_point,
             report_mode=report_mode,
             inversion_grid=inversion_grid,
@@ -991,6 +1356,7 @@ def paris_flux_output(
 
     result.attrs = make_global_attrs("flux")
     result.attrs["paris_flux_template_version"] = template_files.flux_version
+    result = copy_flux_nonfinite_attrs(result, flux_outs)
 
     result = _cast_float_data_vars_to_float32(result).as_numpy()
     return add_basis_reconstruction_metadata(result, inv_out.basis_functions)
@@ -1003,47 +1369,126 @@ def paris_flux_output_latest(
     report_mode: bool = False,
     inversion_grid: bool = True,
     flux_frequency: Literal["monthly", "yearly"] | str = "yearly",
+    country_selections: Iterable[str] | None = PARIS_LATEST_COUNTRIES,
 ) -> xr.Dataset:
-    """Create single-sector PARIS flux outputs for the latest CDL template."""
+    """Create single- or multisector flux output using the latest PARIS template.
+
+    Multisector output contains total and per-sector spatial and country
+    statistics. Sector fluxes are reconstructed with their own prior fluxes,
+    while total flux is calculated by summing those reconstructed traces.
+    Country covariance variables use the repeated country and sector dimensions
+    required verbatim by the supplied CDL schema.
+
+    Args:
+        inv_out: Inversion output with retained basis functions and flux traces.
+        country_file: Optional country-definition NetCDF file. If omitted, the
+            country helper resolves its configured default for the inversion
+            domain.
+        time_point: Flux timestamp convention. The latest template supports only
+            ``"midpoint"`` because it also reports interval bounds.
+        report_mode: If true, report KDE modes instead of means as central flux
+            estimates.
+        inversion_grid: If true, include the optional reduced inversion-grid
+            variables.
+        flux_frequency: Frequency used to construct output intervals. Supported
+            values are ``"monthly"`` and ``"yearly"``.
+        country_selections: Optional country names or codes to include. The
+            default emits the canonical 22-country EUROPE v03 product; pass
+            ``None`` to include every country from another domain file.
+
+    Returns:
+        Latest-template PARIS flux dataset with template dtypes and attributes.
+
+    Raises:
+        ValueError: If midpoint times are not requested, required inversion or
+            sector metadata is missing or invalid, the flux frequency is not
+            supported, or no valid flux interval falls within the inversion.
+    """
     if time_point != "midpoint":
         raise ValueError("Latest PARIS flux output requires midpoint time coordinates and time bounds.")
 
     species, domain = _require_paris_metadata(inv_out, allow_multisector=True)
     stats = ["kde_mode", "stdev", "quantiles"] if report_mode else ["mean", "stdev", "quantiles"]
     stats_args = {"quantiles__quantiles": [0.159, 0.841]}
+    sector_name_by_suffix = _paris_sector_name_by_suffix(inv_out)
+    sector_names = list(sector_name_by_suffix.values())
 
-    flux_outs = make_flux_outputs(
-        inv_out,
-        stats=stats,
-        stats_args=stats_args,
-        report_flux_on_inversion_grid=False,
-        include_scale_factors=False,
+    spatial_flux_trace = (
+        make_multisector_flux_trace_outputs(
+            inv_out,
+            report_flux_on_inversion_grid=False,
+            materialize=False,
+        )
+        if inv_out.is_multisector
+        else None
     )
-    countries = _latest_paris_countries(country_file=country_file, domain=domain)
-    if inv_out.is_multisector:
-        flux_outs = flux_outs[
-            [data_var for data_var in flux_outs.data_vars if str(data_var).startswith("flux_total_")]
-        ]
+    flux_outs = (
+        calculate_stats(spatial_flux_trace, stats=stats, **stats_args)
+        if spatial_flux_trace is not None
+        else make_flux_outputs(
+            inv_out,
+            stats=stats,
+            stats_args=stats_args,
+            report_flux_on_inversion_grid=False,
+            include_scale_factors=False,
+        )
+    )
+    countries = _latest_paris_countries(
+        country_file=country_file,
+        domain=domain,
+        country_selections=country_selections,
+    )
+    country_trace = (
+        _multisector_country_trace_kg(
+            inv_out,
+            countries,
+            sector_name_by_suffix,
+        )
+        if inv_out.is_multisector
+        else _single_sector_country_trace_kg(inv_out, countries)
+    )
     country_outs = _latest_country_outputs(
         inv_out,
         countries=countries,
-        species=species,
         stats=stats,
         stats_args=stats_args,
-        country_file=country_file,
+        sector_name_by_suffix=sector_name_by_suffix,
+        multisector_country_trace=country_trace,
     )
     country_fraction = countries.matrix.as_numpy().rename("country_fraction")
     cell_area = countries.area_grid.as_numpy().rename("cell_area")
     country_covariance = _country_posterior_covariance_kg(
         inv_out,
         countries=countries,
-        species=species,
         flux_frequency=flux_frequency,
+        multisector_country_trace=country_trace,
+    )
+    sector_covariances, sector_cross_covariance = (
+        _sector_country_posterior_covariances_kg(
+            inv_out,
+            countries=countries,
+            flux_frequency=flux_frequency,
+            sector_name_by_suffix=sector_name_by_suffix,
+            multisector_country_trace=country_trace,
+        )
+        if inv_out.is_multisector
+        else ({}, None)
     )
 
     def flux_renamer(name: str) -> str:
-        if not name.startswith("flux_total_"):
-            name = name.replace("flux_", "flux_total_", 1)
+        for variable_suffix, sector_name in sorted(
+            sector_name_by_suffix.items(),
+            key=lambda item: len(item[0]),
+            reverse=True,
+        ):
+            sector_prefix = f"flux_{variable_suffix}_"
+            remainder = name.removeprefix(sector_prefix)
+            if remainder != name and remainder.startswith(("prior_", "posterior_")):
+                name = f"flux_{sector_name}_{remainder}"
+                break
+        else:
+            if name.startswith("flux_") and not name.startswith("flux_total_"):
+                name = name.replace("flux_", "flux_total_", 1)
         if "quantile" in name:
             name = "percentile_" + name.replace("_quantile", "")
         elif name.endswith("_stdev"):
@@ -1055,16 +1500,25 @@ def paris_flux_output_latest(
 
     def country_renamer(name: str) -> str:
         suffix = name.removeprefix("country_")
+        flux_label = "total"
+        for sector_name in sorted(sector_names, key=len, reverse=True):
+            sector_prefix = f"{sector_name}_"
+            remainder = suffix.removeprefix(sector_prefix)
+            if remainder != suffix and remainder.startswith(("prior_", "posterior_")):
+                flux_label = sector_name
+                suffix = remainder
+                break
+
         if "quantile" in suffix:
             suffix = suffix.replace("_quantile", "")
-            return f"percentile_flux_total_{suffix}_country"
+            return f"percentile_flux_{flux_label}_{suffix}_country"
         if suffix.endswith("_stdev"):
             suffix = suffix.removesuffix("_stdev")
-            return f"stdev_flux_total_{suffix}_country"
+            return f"stdev_flux_{flux_label}_{suffix}_country"
         for stats_func_name in stats_functions:
             if suffix.endswith(f"_{stats_func_name}"):
                 suffix = suffix.removesuffix(f"_{stats_func_name}")
-        return f"flux_total_{suffix}_country"
+        return f"flux_{flux_label}_{suffix}_country"
 
     flux_rename_dict = {str(dv): flux_renamer(str(dv)) for dv in flux_outs.data_vars}
     country_rename_dict = {str(dv): country_renamer(str(dv)) for dv in country_outs.data_vars}
@@ -1076,7 +1530,10 @@ def paris_flux_output_latest(
         dim_rename_dict["lon"] = "longitude"
 
     template_files = paris_template_files("latest")
-    emissions_attrs = get_data_var_attrs(template_files.flux, species)
+    emissions_attrs = cast(
+        dict[str, dict[str, Any]],
+        _expand_sector_template_mapping(get_data_var_attrs(template_files.flux, species), sector_names),
+    )
 
     result = (
         xr.merge(
@@ -1092,8 +1549,10 @@ def paris_flux_output_latest(
         .pipe(_assign_flux_time_bounds, flux_frequency, inv_out.start_time, inv_out.end_time)
         .pipe(_convert_flux_time_and_bounds_to_epoch_days)
         .rename({**flux_rename_dict, **country_rename_dict})
-        .pipe(add_variable_attrs, emissions_attrs)
     )
+    if sector_names:
+        result = result.assign_coords(sector=("sector", np.asarray(sector_names, dtype=object)))
+    result = result.pipe(add_variable_attrs, emissions_attrs)
 
     if inversion_grid:
         inversion_grid_flux_rename_dict = {v: f"{v}_inversion_grid" for v in flux_rename_dict.values()}
@@ -1104,34 +1563,45 @@ def paris_flux_output_latest(
             report_flux_on_inversion_grid=True,
             include_scale_factors=False,
         )
-        if inv_out.is_multisector:
-            inversion_grid_flux_outs_raw = inversion_grid_flux_outs_raw[
-                [
-                    data_var
-                    for data_var in inversion_grid_flux_outs_raw.data_vars
-                    if str(data_var).startswith("flux_total_")
-                ]
-            ]
         inversion_grid_flux_outs = (
             inversion_grid_flux_outs_raw.rename(dim_rename_dict)
             .pipe(_assign_flux_time_bounds, flux_frequency, inv_out.start_time, inv_out.end_time)
             .pipe(_convert_flux_time_and_bounds_to_epoch_days)
             .rename(flux_rename_dict)
-            .pipe(add_variable_attrs, emissions_attrs)
             .rename(inversion_grid_flux_rename_dict)
+            .pipe(add_variable_attrs, emissions_attrs)
         )
         result = result.merge(inversion_grid_flux_outs)
 
-    result = result.transpose("time", "percentile", "country", "latitude", "longitude", "nbnds").as_numpy()
+    result = result.transpose(
+        "time",
+        "percentile",
+        "country",
+        "sector",
+        "latitude",
+        "longitude",
+        "nbnds",
+        missing_dims="ignore",
+    ).as_numpy()
     result = _add_country_covariance(
         result,
         country_covariance,
         emissions_attrs.get("covariance_flux_total_posterior_country", {}),
     )
+    result = _add_sector_country_covariances(
+        result,
+        sector_covariances,
+        sector_cross_covariance,
+        emissions_attrs,
+    )
     result.attrs = make_global_attrs("flux", species=species, domain=domain)
     result.attrs["paris_flux_template_version"] = template_files.flux_version
+    result = copy_flux_nonfinite_attrs(
+        result,
+        spatial_flux_trace if spatial_flux_trace is not None else flux_outs,
+    )
 
-    result = _cast_data_vars_to_template_dtypes(result, template_files.flux)
+    result = _cast_data_vars_to_template_dtypes(result, template_files.flux, sector_names=sector_names)
     return add_basis_reconstruction_metadata(result, inv_out.basis_functions)
 
 
@@ -1205,7 +1675,34 @@ def make_paris_outputs(
     obs_avg_period: str = "4h",
     domain: str | None = None,
     template_version: ParisTemplateVersion = DEFAULT_PARIS_TEMPLATE_VERSION,
+    country_selections: Iterable[str] | None = PARIS_LATEST_COUNTRIES,
 ) -> tuple[xr.Dataset, xr.Dataset]:
+    """Create matching PARIS flux and concentration products.
+
+    Args:
+        inv_out: Inversion output containing observations, model traces,
+            retained basis functions, and prior fluxes.
+        country_file: Optional country-definition NetCDF file.
+        time_point: Flux timestamp convention.
+        report_mode: If true, report KDE modes instead of means as central
+            estimates.
+        inversion_grid: If true, include reduced inversion-grid flux variables.
+        obs_avg_period: Averaging period recorded in concentration metadata.
+        domain: Optional domain override for concentration metadata.
+        template_version: PARIS template version to emit. ``"latest"`` selects
+            concentration v04 and flux v03.
+        country_selections: Optional latest-template country names or codes.
+            The default emits the canonical 22-country EUROPE v03 schema; pass
+            ``None`` to include all countries from another domain file.
+
+    Returns:
+        A tuple containing the flux dataset followed by the concentration
+        dataset.
+
+    Raises:
+        ValueError: If required inversion metadata is missing or template
+            constraints are not satisfied.
+    """
     # infer flux frequency
     flux_frequency = infer_flux_frequency(inv_out.flux)
     conc_outs = paris_concentration_outputs(
@@ -1218,6 +1715,7 @@ def make_paris_outputs(
         inv_out,
         report_mode=report_mode,
         country_file=country_file,
+        country_selections=country_selections,
         inversion_grid=inversion_grid,
         time_point=time_point,
         flux_frequency=flux_frequency,

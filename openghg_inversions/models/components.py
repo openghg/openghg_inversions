@@ -34,6 +34,7 @@ from pytensor.tensor.variable import TensorVariable
 from openghg_inversions.inversion_inputs import make_freq_indicator
 from openghg_inversions.models.coords import add_coords
 from openghg_inversions.models.priors import parse_prior
+from openghg_inversions.sigma import SigmaAlignment
 
 
 @dataclass
@@ -132,9 +133,6 @@ def _resolve_freq_indicator(
             f"Cannot derive frequency indicator for {fallback_name!r}: no time coordinate found."
         )
 
-    # TODO: thread sigma_freq/sigma_per_site explicitly through inferpymc model
-    # building so sigma components can derive their own indicator, then remove
-    # sigma_freq_index from make_inv_inputs(...).
     return make_freq_indicator(time_coord, freq).rename(fallback_name)
 
 
@@ -203,73 +201,36 @@ def add_linear_component(
 
 
 def add_sigma_component(
-    site_indicator: xr.DataArray,
+    alignment: SigmaAlignment,
     /,
     prior_args: dict,
-    sigma_freq_index: xr.DataArray | None = None,
-    sigma_freq: str | None = None,
-    var_name: str = "sigma",
-    output_name: str | None = None,
-    per_site: bool = True,
-    output_dim: str = "nmeasure",
     compute_deterministic: bool = False,
 ) -> TensorVariable:
-    """Add inferpymc-compatible sigma terms and align them to observations.
+    """Register a latent sigma component and align it to observations.
 
     Args:
-        site_indicator: Observation-aligned site indicator.
+        alignment: Backend-neutral site and period alignment for the component.
         prior_args: Prior specification for the sigma random variable.
-        sigma_freq_index: Optional explicit observation-aligned frequency
-            indicator.
-        sigma_freq: Optional frequency string used to derive an indicator when
-            ``sigma_freq_index`` is not provided.
-        var_name: Name for the latent sigma random variable.
-        output_name: Optional name for an observation-aligned deterministic
-            output.
-        per_site: Whether sigma varies by site.
-        output_dim: Observation/output dimension name.
         compute_deterministic: Whether to register the aligned sigma term as a
             deterministic variable.
 
     Returns:
         The observation-aligned sigma tensor or deterministic variable.
-
-    Raises:
-        ValueError: If no frequency information is available.
     """
-    output_dim = str(output_dim)
-    site_indicator = site_indicator.rename("site_indicator").transpose(output_dim)
-    freq_index = _resolve_freq_indicator(
-        explicit_indicator=sigma_freq_index,
-        freq=sigma_freq,
-        data=site_indicator,
-        output_dim=output_dim,
-        fallback_name="sigma_freq_index" if var_name == "sigma" else f"{var_name}_freq_indicator",
-    )
-    if freq_index is None:
-        raise ValueError(
-            "Sigma frequency information must be provided via `sigma_freq_index` or `sigma_freq`."
-        )
+    site_data_var = add_model_data(alignment.site_index)
+    period_data_var = add_model_data(alignment.period_index)
 
-    site_data = site_indicator if per_site else xr.zeros_like(site_indicator)
-    site_data_name = "site_indicator" if per_site else f"{var_name}_site_indicator"
-    site_data_var = add_model_data(site_data.rename(site_data_name), site_data_name)
-    freq_data = add_model_data(freq_index.transpose(output_dim), str(freq_index.name))
-
-    nsigma_site = int(site_data.max().item()) + 1 if per_site else 1
-    nsigma_time = int(freq_index.max().item()) + 1 if freq_index.size else 0
     add_coords(
         {
-            "nsigma_site": np.arange(nsigma_site),
-            "nsigma_time": np.arange(nsigma_time),
+            "nsigma_site": np.arange(alignment.nsite),
+            "nsigma_time": np.arange(alignment.nperiod),
         }
     )
 
-    sigma = parse_prior(var_name, prior_args, dims=("nsigma_site", "nsigma_time"))
-    aligned = sigma[site_data_var, freq_data]
+    sigma = parse_prior("sigma", prior_args, dims=("nsigma_site", "nsigma_time"))
+    aligned = sigma[site_data_var, period_data_var]
     if compute_deterministic:
-        deterministic_name = output_name or f"{var_name}_aligned"
-        return pm.Deterministic(deterministic_name, aligned, dims=output_dim)
+        return pm.Deterministic("sigma_aligned", aligned, dims="nmeasure")
     return aligned
 
 
@@ -349,11 +310,11 @@ def add_inferpymc_likelihood_component(
     mu: TensorVariable,
     mu_bc: TensorVariable | None,
     sigprior: dict,
+    sigma_alignment: SigmaAlignment,
     offset: TensorVariable | None = None,
     power: dict | float = 1.99,
     pollution_events_from_obs: bool = False,
     no_model_error: bool = False,
-    sigma_per_site: bool = True,
     output_dim: str = "nmeasure",
 ) -> TensorVariable:
     """Add the inferpymc observation model.
@@ -366,13 +327,13 @@ def add_inferpymc_likelihood_component(
         mu: Non-baseline forward-model contribution.
         mu_bc: Baseline contribution, if present.
         sigprior: Prior specification for sigma.
+        sigma_alignment: Backend-neutral site and period alignment for sigma.
         offset: Optional aligned offset term.
         power: Scalar or prior specification controlling pollution-event
             scaling.
         pollution_events_from_obs: Whether to derive pollution events from the
             observations instead of ``mu``.
         no_model_error: Whether to bypass the model-error term.
-        sigma_per_site: Whether sigma varies by site.
         output_dim: Observation/output dimension name.
 
     Returns:
@@ -382,16 +343,9 @@ def add_inferpymc_likelihood_component(
     error_data = add_model_data(data["mf_error"].transpose(output_dim), "error")
     min_error_data = add_model_data(data["min_error"].transpose(output_dim), "min_error")
 
-    # TODO: once inferpymc threads sigma configuration explicitly, let
-    # add_sigma_component(...) derive sigma_freq_index locally and remove this
-    # canonical input dependency from make_inv_inputs(...).
     sigma = add_sigma_component(
-        data["site_indicator"].transpose(output_dim),
+        sigma_alignment,
         prior_args=sigprior,
-        sigma_freq_index=data["sigma_freq_index"].transpose(output_dim),
-        var_name="sigma",
-        per_site=sigma_per_site,
-        output_dim=output_dim,
     )
 
     if pollution_events_from_obs is True:

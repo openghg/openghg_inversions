@@ -255,3 +255,29 @@ def test_run_hbmcmc_main_validates_rhime_params_before_copying_config(
                 '{"unknown_rhime_option": true}',
             ]
         )
+
+
+def test_run_hbmcmc_main_checks_country_file_before_copying_or_running(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A configured missing country file fails before output side effects."""
+    config_file = tmp_path / "hbmcmc.ini"
+    missing_country_file = tmp_path / "missing_country_file.nc"
+    _fixedbasis_config(config_file)
+    config_file.write_text(
+        config_file.read_text(encoding="utf-8")
+        + f'\n[INPUT.BASIS_CASE]\ncountry_file = "{missing_country_file}"\n',
+        encoding="utf-8",
+    )
+
+    def fail_copy_config_file(*args: Any, **kwargs: Any) -> None:
+        raise AssertionError("Config copy should happen only after country-file validation.")
+
+    def fail_run_rhime(**kwargs: Any) -> None:
+        raise AssertionError("RHIME should run only after country-file validation.")
+
+    monkeypatch.setattr(run_hbmcmc.output, "copy_config_file", fail_copy_config_file)
+    monkeypatch.setattr(run_hbmcmc, "run_rhime", fail_run_rhime)
+
+    with pytest.raises(FileNotFoundError, match="country_file"):
+        run_hbmcmc.main(["-c", str(config_file)])

@@ -1,17 +1,40 @@
-"""Functions for creating the inputs needed by PyMC."""
+"""Create backend-neutral observations and sensitivities for inversions."""
 
 import datetime as dt
 import numbers
-from typing import Any, Iterable, Literal
+from collections.abc import Iterable
+from typing import Any, Literal
 
 import numpy as np
 import pandas as pd
 import xarray as xr
 
-from openghg_inversions.array_ops import get_xr_dummies, concat_gather_datasets
+from openghg_inversions.array_ops import concat_gather_datasets, get_xr_dummies
 from openghg_inversions.model_error import percentile_error_method, residual_error_method, xr_setup_min_error
 
 DatetimeLike = str | dt.datetime | np.datetime64 | pd.Timestamp
+
+
+def _validate_per_site_dimension_names(
+    site_data: dict[str, xr.Dataset],
+    *,
+    ragged_dim: str,
+) -> None:
+    """Reject shared variables whose structural dimension names differ by site."""
+    if len(site_data) < 2:
+        return
+
+    shared_vars = set.intersection(*(set(dataset.data_vars) for dataset in site_data.values()))
+    for name in sorted(shared_vars):
+        layouts = {
+            site: frozenset(str(dim) for dim in dataset[name].dims if dim != ragged_dim)
+            for site, dataset in site_data.items()
+        }
+        if len(set(layouts.values())) > 1:
+            raise ValueError(
+                f"Per-site variable {name!r} must use the same non-{ragged_dim} dimensions "
+                f"before gathering; found {layouts!r}."
+            )
 
 
 def _compact_integer_index(values: np.ndarray) -> np.ndarray:
@@ -175,6 +198,7 @@ def add_min_error(
     else:
         min_error_data = min_error_data.rename("min_error")
 
+    assert isinstance(min_error_data, xr.DataArray)
     ds["min_error"] = xr.DataArray(min_error_data.data, dims=("nmeasure",), name="min_error")
     return ds
 
@@ -303,20 +327,51 @@ def make_inv_inputs(
     fp_data: dict[str, Any],
     sites: list[str] | None = None,
     bc_freq: Literal["monthly"] | str | None = None,
-    sigma_freq: Literal["monthly"] | str | None = None,
     min_error: str | dict[str, float] | int | float = 0.0,
     min_error_per_site: bool = True,
     start_date: DatetimeLike | None = None,
 ) -> xr.Dataset:
-    sites = sites or [k for k in fp_data if not k.startswith(".")]
+    """Create backend-neutral observation-aligned inversion inputs.
 
-    ds = concat_gather_datasets(
-        {k: v for k, v in fp_data.items() if k in sites},
-        key_dim="site",
-        ragged_dim="time",
-        stack_dim="nmeasure",
-        missing_data_vars="drop",
-    )
+    The returned dataset contains shared observations, sensitivities, error
+    terms, and site alignment metadata. Model-component-specific arrays are
+    constructed by their owning components.
+
+    Args:
+        fp_data: Per-site merged observations and sensitivity data.
+        sites: Sites to retain. Defaults to all non-metadata entries.
+        bc_freq: Optional frequency used to transform boundary-condition
+            sensitivities.
+        min_error: Minimum-error value or calculation configuration.
+        min_error_per_site: Whether a calculated minimum error varies by site.
+        start_date: Optional anchor for fixed-duration boundary-condition
+            frequencies.
+
+    Returns:
+        Canonical inversion inputs aligned along ``nmeasure``.
+
+    Raises:
+        ValueError: If required input variables are missing or minimum-error
+            configuration is invalid.
+    """
+    sites = sites or [k for k in fp_data if not k.startswith(".")]
+    site_data = {k: v for k, v in fp_data.items() if k in sites}
+    _validate_per_site_dimension_names(site_data, ragged_dim="time")
+
+    try:
+        ds = concat_gather_datasets(
+            site_data,
+            key_dim="site",
+            ragged_dim="time",
+            stack_dim="nmeasure",
+            missing_data_vars="drop",
+            join="exact",
+        )
+    except xr.AlignmentError as exc:
+        raise ValueError(
+            "Per-site inversion inputs must have identical indexes on every non-time dimension "
+            "before gathering into nmeasure."
+        ) from exc
 
     # Check that we have variables for standard RHIME inversion (`inferpymc`).
     # Note that mf_prior_factor and mf_prior_upper_level_factor are only needed
@@ -332,13 +387,6 @@ def make_inv_inputs(
         ds = transform_bc(ds, freq=bc_freq, anchor_time=start_date)
 
     ds = add_site_indicator(ds)
-    sigma_freq_index = make_sigma_freq(ds.time, freq=sigma_freq, anchor_time=start_date)
-    ds["sigma_freq_index"] = xr.DataArray(
-        sigma_freq_index.data,
-        dims=("nmeasure",),
-        name="sigma_freq_index",
-    )
-
     ds = add_min_error(ds, fp_data=fp_data, min_error=min_error, min_error_per_site=min_error_per_site)
 
     ds = _drop_nan_and_compute(ds)

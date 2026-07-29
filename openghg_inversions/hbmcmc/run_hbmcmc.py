@@ -364,6 +364,13 @@ def main(argv: list[str] | None = None) -> None:
     with timed("run_hbmcmc.validation"):
         validate_rhime_params(rhime_params)
 
+    country_file = rhime_params.get("country_file")
+    if country_file is not None and str(country_file).strip():
+        country_file_path = Path(country_file)
+        if not country_file_path.exists():
+            raise FileNotFoundError(f"Configured country_file does not exist: {country_file_path}")
+
+    # TODO(#423): Validate BC and saved fp-basis files, including glob matches and readability.
     with timed("run_hbmcmc.config_copy"):
         output.copy_config_file(str(config_file), param=param, **command_line_args)
 

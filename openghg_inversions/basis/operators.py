@@ -645,6 +645,7 @@ class MultiSourceBucketBasisOperator(BasisOperator):
             key_dim=self.source_dim,
             ragged_dim=self.region_in_source_dim,
             stack_dim=self.meta.state_dim,
+            join="exact",
         )
 
         # chunking

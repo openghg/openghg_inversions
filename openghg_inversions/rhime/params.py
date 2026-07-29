@@ -64,6 +64,17 @@ def as_list(value: str | Sequence[str] | None) -> list[str] | None:
     return [str(item) for item in value]
 
 
+def _duplicate_names(values: Sequence[str]) -> list[str]:
+    """Return duplicate names once each, preserving their first repeated order."""
+    seen: set[str] = set()
+    duplicates: list[str] = []
+    for value in values:
+        if value in seen and value not in duplicates:
+            duplicates.append(value)
+        seen.add(value)
+    return duplicates
+
+
 def resolve_flux_sources(
     *,
     flux_sources: str | Sequence[str] | None = None,
@@ -88,6 +99,12 @@ def resolve_flux_sources(
         resolved = as_list(emissions_name)
     if not resolved or any(source in {"", "None", "none"} for source in resolved):
         raise ValueError("At least one flux source must be supplied via `flux_sources`.")
+    duplicates = _duplicate_names(resolved)
+    if duplicates:
+        raise ValueError(
+            "`flux_sources` must contain unique OpenGHG source values; "
+            f"duplicate source(s): {duplicates!r}."
+        )
     return resolved
 
 
@@ -282,7 +299,18 @@ def normalise_sector_sources(
     """Copy optional sector-to-source mappings with string names."""
     if sector_sources is None:
         return None
-    return {str(sector): str(source) for sector, source in sector_sources.items()}
+    normalized = {str(sector): str(source) for sector, source in sector_sources.items()}
+    invalid = [
+        (sector, source)
+        for sector, source in normalized.items()
+        if not sector.strip() or not source.strip() or source in {"None", "none"}
+    ]
+    if invalid:
+        raise ValueError(
+            "`sector_sources` must map non-empty sector names to non-empty OpenGHG source values; "
+            f"invalid mapping(s): {invalid!r}."
+        )
+    return normalized
 
 
 def required_run_params() -> set[str]:
@@ -350,6 +378,7 @@ def validate_supported_params(params: Mapping[str, Any], *, data_params: set[str
         "country_file",
         "add_offset",
         "sigma_per_site",
+        "sigma_freq",
     }
     supported = data_params | runner_params | required_run_params()
     unsupported = sorted(set(params) - supported)
@@ -368,6 +397,38 @@ def _tuple_from_optional_sequence(value: Any) -> tuple[str | None, ...]:
     return (str(value),)
 
 
+def _validate_sector_source_mapping(
+    flux_sources: Sequence[str],
+    sector_sources: Mapping[str, str],
+) -> list[str]:
+    """Validate the current one-to-one sector/source routing contract."""
+    source_sectors: dict[str, list[str]] = {}
+    for sector, source in sector_sources.items():
+        source_sectors.setdefault(source, []).append(sector)
+    duplicate_sources = {
+        source: sector_names for source, sector_names in source_sectors.items() if len(sector_names) > 1
+    }
+    if duplicate_sources:
+        details = ", ".join(
+            f"source {source!r} is mapped by sectors {sector_names!r}"
+            for source, sector_names in duplicate_sources.items()
+        )
+        raise ValueError(
+            "`sector_sources` must map each current sector to a distinct OpenGHG source; " + details + "."
+        )
+
+    mapped_sources = list(sector_sources.values())
+    missing_sources = [source for source in flux_sources if source not in mapped_sources]
+    unrequested_sources = [source for source in mapped_sources if source not in flux_sources]
+    if missing_sources or unrequested_sources:
+        raise ValueError(
+            "`sector_sources` values must match `flux_sources`; "
+            f"missing source mapping(s): {missing_sources!r}; "
+            f"unrequested source value(s): {unrequested_sources!r}."
+        )
+    return mapped_sources
+
+
 def _make_model_spec(
     *,
     species: str,
@@ -381,6 +442,8 @@ def _make_model_spec(
     offset_prior: dict[str, Any] | None,
     use_bc: bool,
     sigma_per_site: bool,
+    sigma_freq: str | None,
+    sigma_freq_anchor: str | None,
     add_offset: bool,
     pollution_events_from_obs: bool,
     no_model_error: bool,
@@ -392,15 +455,21 @@ def _make_model_spec(
     sectors = []
     used_suffixes: set[str] = set()
     if sector_sources is not None:
-        mapped_sources = list(dict.fromkeys(sector_sources.values()))
-        if set(mapped_sources) != set(flux_sources):
-            raise ValueError(
-                "`sector_sources` values must match `flux_sources` so RHIME can retrieve the "
-                "OpenGHG data used by each sector."
-            )
+        _validate_sector_source_mapping(flux_sources, sector_sources)
         sector_items = list(sector_sources.items())
     else:
         sector_items = [(source, source) for source in flux_sources]
+
+    sector_names = [name for name, _ in sector_items]
+    if sector_priors is not None:
+        missing_priors = [name for name in sector_names if name not in sector_priors]
+        unused_priors = [name for name in sector_priors if name not in sector_names]
+        if missing_priors or unused_priors:
+            raise ValueError(
+                "`sector_priors` must define exactly one prior for every sector when supplied; "
+                f"missing sector prior(s): {missing_priors!r}; "
+                f"unused sector prior key(s): {unused_priors!r}."
+            )
 
     for name, source in sector_items:
         suffix = safe_pymc_name(name)
@@ -410,9 +479,7 @@ def _make_model_spec(
                 f"duplicate sanitized name {suffix!r}."
             )
         used_suffixes.add(suffix)
-        prior = (
-            sector_priors[name] if sector_priors is not None and name in sector_priors else default_x_prior
-        )
+        prior = sector_priors[name] if sector_priors is not None else default_x_prior
         sectors.append(
             SectorSpec(
                 name=name,
@@ -427,6 +494,8 @@ def _make_model_spec(
         sectors=tuple(sectors),
         use_bc=use_bc,
         sigma_per_site=sigma_per_site,
+        sigma_freq=sigma_freq,
+        sigma_freq_anchor=sigma_freq_anchor,
         add_offset=add_offset,
         pollution_events_from_obs=pollution_events_from_obs,
         no_model_error=no_model_error,
@@ -455,13 +524,10 @@ def make_rhime_runner_setup(
     if not multisector and sector_sources is not None:
         raise ValueError("`sector_sources` is only supported by `run_rhime_multisector`.")
     data_flux_sources = (
-        list(dict.fromkeys(sector_sources.values())) if sector_sources is not None else flux_sources
+        _validate_sector_source_mapping(flux_sources, sector_sources)
+        if sector_sources is not None
+        else flux_sources
     )
-    if sector_sources is not None and set(data_flux_sources) != set(flux_sources):
-        raise ValueError(
-            "`sector_sources` values must match `flux_sources` so RHIME can retrieve the "
-            "OpenGHG data used by each sector."
-        )
     if multisector and len(data_flux_sources) < 2:
         raise ValueError("`run_rhime_multisector` requires at least two flux sources.")
     if not multisector and len(flux_sources) != 1:
@@ -487,6 +553,7 @@ def make_rhime_runner_setup(
 
     use_bc = remaining.get("use_bc", True)
     sigma_per_site = remaining.get("sigma_per_site", True)
+    sigma_freq = remaining.pop("sigma_freq", None)
     add_offset = remaining.get("add_offset", False)
     pollution_events_from_obs = remaining.pop("pollution_events_from_obs", False)
     no_model_error = remaining.pop("no_model_error", False)
@@ -531,6 +598,8 @@ def make_rhime_runner_setup(
         offset_prior=offset_prior,
         use_bc=use_bc,
         sigma_per_site=sigma_per_site,
+        sigma_freq=sigma_freq,
+        sigma_freq_anchor=start_date,
         add_offset=add_offset,
         pollution_events_from_obs=pollution_events_from_obs,
         no_model_error=no_model_error,

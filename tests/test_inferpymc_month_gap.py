@@ -10,6 +10,7 @@ from openghg_inversions.hbmcmc.inversion_pymc import (
     _weighted_apriori_flux_for_months,
     inferpymc,
 )
+from openghg_inversions.sigma import SigmaAlignment
 
 
 def _synthetic_fp_data_one_site_with_missing_month() -> dict[str, xr.Dataset]:
@@ -51,21 +52,25 @@ def _synthetic_fp_data_one_site_with_missing_month() -> dict[str, xr.Dataset]:
     return {"AAA": ds}
 
 
-def test_make_inv_inputs_month_gap_monthly_indices_are_contiguous():
-    """Monthly sigma indices stay contiguous when a month is missing entirely."""
+def test_sigma_alignment_month_gap_monthly_indices_are_contiguous():
+    """Frequency-derived sigma indices stay contiguous when a month is missing."""
     fp_data = _synthetic_fp_data_one_site_with_missing_month()
 
     inv_inputs = make_inv_inputs(
         fp_data,
         sites=["AAA"],
         bc_freq="monthly",
-        sigma_freq="monthly",
         min_error=0.0,
         min_error_per_site=False,
         start_date="2019-01-01",
     )
+    alignment = SigmaAlignment.from_frequency(
+        inv_inputs["site_indicator"],
+        frequency="monthly",
+        anchor_time="2019-01-01",
+    )
 
-    uniq = np.unique(inv_inputs["sigma_freq_index"].values)
+    uniq = np.unique(alignment.period_index.values)
     np.testing.assert_array_equal(uniq, np.array([0, 1]))
 
 
@@ -77,10 +82,17 @@ def test_inferpymc_smoke_runs_for_month_gap():
         fp_data,
         sites=["AAA"],
         bc_freq="monthly",
-        sigma_freq="monthly",
         min_error=0.0,
         min_error_per_site=False,
         start_date="2019-01-01",
+    )
+    alignment = SigmaAlignment.from_frequency(
+        inv_inputs["site_indicator"],
+        frequency="monthly",
+        anchor_time="2019-01-01",
+    )
+    inv_inputs = inv_inputs.assign(
+        sigma_freq_index=alignment.period_index.rename("sigma_freq_index")
     )
 
     result = inferpymc(

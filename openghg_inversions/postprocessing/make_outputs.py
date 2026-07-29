@@ -7,9 +7,11 @@ import pandas as pd
 import xarray as xr
 
 from openghg_inversions.basis.basis_functions import BasisFunctions
+from openghg_inversions.flux_sanitization import copy_flux_nonfinite_attrs
 from openghg_inversions.postprocessing.countries import Countries, paris_regions_dict
 from openghg_inversions.postprocessing._basis_products import (
     add_basis_reconstruction_metadata,
+    make_x_to_country_matrix,
     reconstruct_flux_stats,
     reconstruct_scale_factor_stats,
 )
@@ -238,6 +240,9 @@ def _state_chunk_dim(trace: xr.Dataset, inv_out: InversionOutput) -> str:
         return "region"
     if "nx" in trace.dims:
         return "nx"
+    non_sample_dims = [str(dim) for dim in trace.dims if dim not in {"chain", "draw"}]
+    if len(non_sample_dims) == 1:
+        return non_sample_dims[0]
     raise ValueError(f"Could not find basis state dimension in trace dims {tuple(trace.dims)}.")
 
 
@@ -292,12 +297,19 @@ def _sector_flux_trace_dataset(
 def _sector_scale_factor_stats(
     inv_out: InversionOutput,
     sector: OutputSector,
-    stats_args: dict,
+    *,
+    stats: list[str] | None,
+    stats_args: dict | None,
 ) -> xr.Dataset:
     """Return one sector's gridded scale-factor statistics."""
     trace = _sector_scale_trace(inv_out, sector)
     basis_functions = _sector_basis_functions(inv_out, sector, trace)
-    scale_stats = calculate_stats(trace, **stats_args)
+    sector_stats_args = _stats_args_with_defaults(
+        stats,
+        stats_args,
+        chunk_dim=_state_chunk_dim(trace, inv_out),
+    )
+    scale_stats = calculate_stats(trace, **sector_stats_args)
     result = reconstruct_scale_factor_stats(basis_functions, scale_stats)
     for data_var in result.data_vars:
         if data_var in scale_stats.data_vars:
@@ -338,6 +350,15 @@ def _set_multisector_flux_attrs(
     return ds
 
 
+def _copy_first_flux_nonfinite_metadata(ds: xr.Dataset, sources: list[xr.Dataset]) -> xr.Dataset:
+    """Copy the first available non-finite flux metadata from source datasets."""
+    for source in sources:
+        result = copy_flux_nonfinite_attrs(ds, source)
+        if result is not ds:
+            return result
+    return ds
+
+
 def _multisector_flux_trace_parts(
     inv_out: InversionOutput,
     report_flux_on_inversion_grid: bool = True,
@@ -366,21 +387,120 @@ def _multisector_flux_trace_parts(
             for sector, dataset in zip(sectors, sector_flux_traces, strict=True)
         ],
         dim="sector",
-    ).sum("sector")
-
+    ).sum("sector", min_count=len(sectors))
     return sectors, sector_flux_traces, total_flux_trace
 
 
 def make_multisector_flux_trace_outputs(
     inv_out: InversionOutput,
     report_flux_on_inversion_grid: bool = True,
+    *,
+    materialize: bool = True,
 ) -> xr.Dataset:
-    """Return per-draw reconstructed sector and total flux traces for multisector outputs."""
+    """Return per-draw reconstructed sector and total multisector flux traces.
+
+    Args:
+        inv_out: Inversion output containing multisector MCMC traces and retained
+            basis functions.
+        report_flux_on_inversion_grid: If true, reconstruct values on the reduced
+            inversion grid; otherwise include the sector prior flux on the
+            latitude/longitude grid.
+        materialize: If true, convert the completed trace to NumPy-backed arrays.
+            Set this to false when a downstream labelled reduction can preserve
+            lazy or sparse arrays. The default preserves the historical return
+            boundary.
+
+    Returns:
+        Per-draw total and sector flux traces with reconstruction metadata.
+
+    Raises:
+        ValueError: If ``inv_out`` is not multisector or lacks required sector
+            metadata or trace variables.
+    """
     _, sector_flux_traces, total_flux_trace = _multisector_flux_trace_parts(
         inv_out,
         report_flux_on_inversion_grid=report_flux_on_inversion_grid,
     )
-    result = xr.merge([total_flux_trace, *sector_flux_traces]).as_numpy()
+    result = xr.merge([total_flux_trace, *sector_flux_traces])
+    if materialize:
+        result = result.as_numpy()
+    result = _copy_first_flux_nonfinite_metadata(result, [total_flux_trace, *sector_flux_traces])
+    return add_basis_reconstruction_metadata(result, inv_out.basis_functions)
+
+
+def make_multisector_country_trace_outputs(
+    inv_out: InversionOutput,
+    countries: Countries,
+) -> xr.Dataset:
+    """Map multisector scaling traces directly from basis regions to countries.
+
+    The country projection is formed independently for each sector using that
+    sector's retained basis operator and prior flux. Applying the projection to
+    the scaling traces avoids reconstructing draw-wise latitude/longitude flux
+    fields solely to calculate country totals.
+
+    Args:
+        inv_out: Multisector inversion output containing sector scaling traces,
+            retained basis functions, prior fluxes, and species metadata.
+        countries: Country masks and grid-cell areas aligned with the retained
+            flux grid.
+
+    Returns:
+        Lazy or sparse-compatible prior and posterior country traces in grams
+        per year. Variables are named ``country_<sector>_<when>`` plus summed
+        ``country_total_<when>`` variables.
+
+    Raises:
+        ValueError: If the inversion is not multisector or required sector or
+            species metadata is missing.
+    """
+    if not inv_out.is_multisector:
+        raise ValueError("Multisector country postprocessing requires a multisector inversion output.")
+
+    species = _require_output_metadata(inv_out, "species", "Country postprocessing")
+    sectors = _multisector_output_sectors(inv_out)
+    sector_country_traces = []
+    for sector in sectors:
+        scale_trace = _sector_scale_trace(inv_out, sector)
+        basis_functions = _sector_basis_functions(inv_out, sector, scale_trace)
+        x_to_country = make_x_to_country_matrix(
+            basis_functions,
+            _sector_flux(inv_out, sector),
+            scale_trace,
+            country_matrix=countries.matrix,
+            area_grid=countries.area_grid,
+            sparse=True,
+        )
+        country_trace = Countries._get_country_trace(species, scale_trace, x_to_country)
+        country_trace = country_trace.rename(
+            {
+                name: str(name).replace("x_", f"country_{sector.variable_suffix}_", 1)
+                for name in country_trace.data_vars
+            }
+        )
+        sector_country_traces.append(copy_flux_nonfinite_attrs(country_trace, x_to_country))
+
+    total_country_trace = xr.concat(
+        [
+            trace.rename(
+                {
+                    name: str(name).replace(
+                        f"country_{sector.variable_suffix}_",
+                        "country_total_",
+                        1,
+                    )
+                    for name in trace.data_vars
+                }
+            )
+            for sector, trace in zip(sectors, sector_country_traces, strict=True)
+        ],
+        dim="sector",
+    ).sum("sector", min_count=len(sectors))
+    result = xr.merge([total_country_trace, *sector_country_traces])
+    for name in result.data_vars:
+        result[name].attrs["units"] = "g/yr"
+
+    result = _copy_first_flux_nonfinite_metadata(result, [total_country_trace, *sector_country_traces])
     return add_basis_reconstruction_metadata(result, inv_out.basis_functions)
 
 
@@ -396,21 +516,23 @@ def make_sector_flux_outputs(
         inv_out,
         report_flux_on_inversion_grid=report_flux_on_inversion_grid,
     )
-    sample_trace = _sector_scale_trace(inv_out, sectors[0])
-    scale_stats_args = _stats_args_with_defaults(
-        stats,
-        stats_args,
-        chunk_dim=_state_chunk_dim(sample_trace, inv_out),
-    )
     flux_stats_args = _stats_args_with_defaults(stats, stats_args)
 
     outputs = [calculate_stats(total_flux_trace, **flux_stats_args)]
     for sector, flux_trace in zip(sectors, sector_flux_traces, strict=True):
         outputs.append(calculate_stats(flux_trace, **flux_stats_args))
         if include_scale_factors:
-            outputs.append(_sector_scale_factor_stats(inv_out, sector, scale_stats_args))
+            outputs.append(
+                _sector_scale_factor_stats(
+                    inv_out,
+                    sector,
+                    stats=stats,
+                    stats_args=stats_args,
+                )
+            )
 
     result = _set_multisector_flux_attrs(xr.merge(outputs), inv_out, sectors).as_numpy()
+    result = _copy_first_flux_nonfinite_metadata(result, [total_flux_trace, *sector_flux_traces])
     return add_basis_reconstruction_metadata(result, inv_out.basis_functions)
 
 

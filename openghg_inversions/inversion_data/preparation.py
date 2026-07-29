@@ -1,19 +1,20 @@
-"""Shared runner-level inversion data preparation.
+"""Prepare inversion data for modern RHIME and legacy fixedbasis runners.
 
-This module separates legacy fixedbasis preparation from the modern RHIME
-prepared-input contract. New RHIME callers use ``flux_sources`` to name OpenGHG
-flux ``source`` metadata values, while lower-level compatibility helpers still
-pass those values through older ``emissions_name`` parameters internally.
+``prepare_rhime_inputs`` returns backend-neutral observations, sensitivities,
+basis metadata, and site metadata; component-specific model arrays are
+intentionally absent. ``prepare_fixedbasis_inversion_data`` is a compatibility
+adapter that retains the input variables required by ``fixedbasisMCMC``,
+including its sigma-period index.
 
-``species`` is the primary gas or tracer name used for object-store lookup and
-output naming. ``use_tracer`` is retained as an explicit unsupported option for
-the current RHIME preparation path because tracer inversions require linked
-forward models that are not represented here.
+Preparation can read OpenGHG object stores or local merged-data artifacts,
+write merged-data and basis artifacts, emit warnings and progress messages,
+and record timing information. Neither public entry point constructs a PyMC
+model.
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, cast
@@ -24,12 +25,14 @@ import xarray as xr
 
 from openghg_inversions._timing import log_timing, timed, timer_seconds, timer_start
 from openghg_inversions.basis import basis_functions_wrapper, make_basis_functions
-from openghg_inversions.basis._helpers import _legacy_multisource_h_if_needed, bc_sensitivity
+from openghg_inversions.basis._helpers import bc_sensitivity
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.filters import filtering
+from openghg_inversions.flux_sanitization import FluxNonFiniteCheck, sanitize_flux_nonfinite
 from openghg_inversions.inversion_data.get_data import convert_to_list, data_processing_surface_notracer
 from openghg_inversions.inversion_data.serialise import load_merged_data
 from openghg_inversions.inversion_inputs import make_inv_inputs
+from openghg_inversions.sigma import SigmaAlignment
 
 MinErrorConfig = Literal["percentile", "residual"] | dict[str, float] | None | int | float
 
@@ -196,12 +199,28 @@ def _make_inv_inputs(
     sites: list[str],
     start_date: str,
     bc_freq: str | None,
-    sigma_freq: str | None,
     min_error: MinErrorConfig,
     calculate_min_error: Literal["percentile", "residual"] | None,
     min_error_options: dict | None,
 ) -> xr.Dataset:
-    """Create canonical inversion inputs with legacy min-error compatibility."""
+    """Create backend-neutral inversion inputs with min-error compatibility.
+
+    Args:
+        fp_data: Filtered per-site observations and sensitivity data.
+        sites: Retained sites in observation order.
+        start_date: Anchor for fixed-duration boundary-condition periods.
+        bc_freq: Optional boundary-condition period frequency.
+        min_error: Minimum-error value or calculation method.
+        calculate_min_error: Deprecated minimum-error calculation argument.
+        min_error_options: Options for calculated minimum error.
+
+    Returns:
+        Canonical observation-aligned inputs without component-specific model
+        data.
+
+    Warns:
+        FutureWarning: If ``calculate_min_error`` is supplied.
+    """
     if calculate_min_error is not None:
         warnings.warn(
             "`calculate_min_error` is deprecated. Please use `min_error` to pass the calculation method instead.",
@@ -227,7 +246,6 @@ def _make_inv_inputs(
         fp_data,
         sites=sites,
         bc_freq=bc_freq,
-        sigma_freq=sigma_freq,
         min_error=min_error,
         min_error_per_site=min_error_options.get("by_site", False),
         start_date=start_date,
@@ -275,6 +293,7 @@ def _prepare_merged_data(
     save_merged_data: bool = False,
     merged_data_dir: str | None = None,
     merged_data_name: str | None = None,
+    flux_non_finite_check: FluxNonFiniteCheck = "lazy",
 ) -> _MergedInversionData:
     """Gather or reload merged data and align site metadata.
 
@@ -352,12 +371,26 @@ def _prepare_merged_data(
             merged_data_name=merged_data_name,
             merged_data_dir=merged_data_dir,
             output_name=output_name,
+            flux_non_finite_check=flux_non_finite_check,
         )
 
     if fp_all is None:
         raise RuntimeError("Data preparation did not create or load merged data.")
     if not sites:
         raise ValueError("No sites remain after data gathering.")
+
+    flux_entries = fp_all.get(".flux")
+    if isinstance(flux_entries, Mapping):
+        for source, flux_data in flux_entries.items():
+            data = getattr(flux_data, "data", None)
+            if isinstance(data, xr.Dataset) and "flux" in data:
+                data["flux"] = sanitize_flux_nonfinite(
+                    data["flux"],
+                    context="merged inversion data preparation",
+                    source=str(source),
+                    check=flux_non_finite_check,
+                    warn=flux_non_finite_check == "count",
+                )
 
     return _MergedInversionData(
         fp_all=fp_all,
@@ -410,11 +443,43 @@ def _bc_basis_directory_arg(bc_basis_directory: str | Path | None) -> str | None
     return str(bc_basis_directory) if isinstance(bc_basis_directory, Path) else bc_basis_directory
 
 
+def _validate_multisector_sensitivity_sources(
+    sensitivity: xr.DataArray,
+    *,
+    site: str,
+    flux_sources: list[str],
+) -> xr.DataArray:
+    """Validate and order one site's source-resolved sensitivity."""
+    if "source" not in sensitivity.coords:
+        raise ValueError(
+            f"Site {site!r} sensitivity is missing the 'source' coordinate required for "
+            f"flux source(s) {flux_sources!r}."
+        )
+
+    source_labels = [str(source) for source in sensitivity.coords["source"].values]
+    available_sources = list(dict.fromkeys(source_labels))
+    duplicate_sources = (
+        [source for source in available_sources if source_labels.count(source) > 1]
+        if "source" in sensitivity.dims
+        else []
+    )
+    missing_sources = [source for source in flux_sources if source not in available_sources]
+    extra_sources = [source for source in available_sources if source not in flux_sources]
+    if duplicate_sources or missing_sources or extra_sources:
+        raise ValueError(
+            f"Site {site!r} sensitivity source layout does not match requested flux sources; "
+            f"missing source(s): {missing_sources!r}; extra source(s): {extra_sources!r}; "
+            f"duplicate source(s): {duplicate_sources!r}."
+        )
+    if "source" in sensitivity.dims:
+        return sensitivity.sel(source=flux_sources)
+    return sensitivity
+
+
 def _rhime_site_data_from_basis_functions(
     *,
-    fp_all: dict,
+    merged: _MergedInversionData,
     basis_functions: BasisFunctions,
-    sites: list[str],
     domain: str,
     split_by_sectors: bool,
     flux_sources: list[str],
@@ -422,11 +487,11 @@ def _rhime_site_data_from_basis_functions(
     bc_basis_case: str,
     bc_basis_directory: str | None,
 ) -> dict:
-    """Build RHIME site datasets using retained basis functions only."""
-    fp_data = {site: fp_all[site].copy() for site in sites}
+    """Apply retained basis functions to one prepared merged-data stage."""
+    fp_data = {site: merged.fp_all[site].copy() for site in merged.sites}
     fp_x_flux_name = "fp_x_flux_sectoral" if split_by_sectors else "fp_x_flux"
 
-    for site in sites:
+    for site in merged.sites:
         if fp_data[site].sizes.get("time", 0) == 0:
             continue
         fp_x_flux = fp_data[site][fp_x_flux_name]
@@ -442,27 +507,34 @@ def _rhime_site_data_from_basis_functions(
                 "Could not identify the RHIME sensitivity state dimension from "
                 f"sensitivity dims {sensitivity.dims!r} and fp_x_flux dims {fp_x_flux.dims!r}."
             )
-        if state_dim != "region" and state_dim in sensitivity.dims:
-            sensitivity = sensitivity.rename({state_dim: "region"})
-            state_dim = "region"
         if split_by_sectors:
-            sensitivity = _legacy_multisource_h_if_needed(
+            sensitivity = _validate_multisector_sensitivity_sources(
                 sensitivity,
-                state_dim=state_dim,
+                site=site,
                 flux_sources=flux_sources,
             )
+        if "source" in sensitivity.coords and "source" not in sensitivity.dims:
+            fp_data[site] = fp_data[site].drop_vars(fp_x_flux_name)
+            orphan_dims = [
+                dim
+                for dim in fp_x_flux.dims
+                if dim in fp_data[site].dims
+                and all(dim not in variable.dims for variable in fp_data[site].data_vars.values())
+            ]
+            if orphan_dims:
+                fp_data[site] = fp_data[site].drop_dims(orphan_dims)
         fp_data[site]["H"] = sensitivity
         log_timing(
             "rhime.prepare_inputs.footprint_sensitivity",
             timer_seconds(timing_start),
             site=site,
             nmeasure=fp_data[site].sizes.get("time"),
-            regions=sensitivity.sizes.get("region"),
+            state_size=sensitivity.sizes.get(state_dim),
             sources=sensitivity.sizes.get("source"),
         )
 
     if use_bc:
-        with timed("rhime.prepare_inputs.bc_sensitivity", sites=len(sites)):
+        with timed("rhime.prepare_inputs.bc_sensitivity", sites=len(merged.sites)):
             fp_data = bc_sensitivity(
                 fp_data,
                 domain=domain,
@@ -471,6 +543,42 @@ def _rhime_site_data_from_basis_functions(
             )
 
     return fp_data
+
+
+def _filter_merged_inversion_data(
+    *,
+    merged: _MergedInversionData,
+    filters: Any,
+) -> _MergedInversionData:
+    """Filter merged RHIME data as a separate pre-basis preparation stage.
+
+    Args:
+        merged: Merged site data and site-aligned metadata from data gathering
+            or reload.
+        filters: Filter configuration accepted by
+            :func:`openghg_inversions.filters.filtering`.
+
+    Returns:
+        Merged data containing filtered site datasets, with empty sites and
+        their aligned averaging periods removed. If no filters are configured
+        and all sites contain data, the original merged data are returned.
+
+    Raises:
+        ValueError: If every requested site is removed by filtering.
+    """
+    if filters is None and all(merged.fp_all[site].time.values.shape[0] > 0 for site in merged.sites):
+        return merged
+
+    fp_data = {site: merged.fp_all[site].copy() for site in merged.sites}
+    fp_data, sites, averaging_period = _apply_filters_and_drop_empty_sites(
+        fp_data=fp_data,
+        sites=merged.sites,
+        averaging_period=merged.averaging_period,
+        filters=filters,
+    )
+    fp_all = {key: value for key, value in merged.fp_all.items() if key.startswith(".")}
+    fp_all.update(fp_data)
+    return _MergedInversionData(fp_all=fp_all, sites=sites, averaging_period=averaging_period)
 
 
 def prepare_fixedbasis_inversion_data(
@@ -523,8 +631,24 @@ def prepare_fixedbasis_inversion_data(
     min_error_options: dict | None = None,
     return_basis_objects: bool = False,
     merged_data_only: bool = False,
+    flux_non_finite_check: FluxNonFiniteCheck = "lazy",
 ) -> FixedBasisPreparedData:
-    """Prepare data for legacy fixedbasisMCMC and its output adapters."""
+    """Prepare data for legacy ``fixedbasisMCMC`` and its output adapters.
+
+    This adapter preserves the fixed-basis inversion-input contract. Unless
+    ``merged_data_only`` is true, the returned ``inv_inputs`` includes
+    ``sigma_freq_index(nmeasure)`` derived from ``sigma_freq`` and anchored to
+    ``start_date``. Modern RHIME preparation intentionally omits this
+    component-specific variable.
+
+    Returns:
+        Prepared legacy data, including forward-model inputs and optional basis
+        objects. When ``merged_data_only`` is true, only merged data and
+        retained site metadata are populated.
+
+    Warns:
+        FutureWarning: If deprecated ``calculate_min_error`` is supplied.
+    """
     merged = _prepare_merged_data(
         species=species,
         sites=sites,
@@ -557,6 +681,7 @@ def prepare_fixedbasis_inversion_data(
         save_merged_data=save_merged_data,
         merged_data_dir=merged_data_dir,
         merged_data_name=merged_data_name,
+        flux_non_finite_check=flux_non_finite_check,
     )
 
     if merged_data_only:
@@ -606,11 +731,16 @@ def prepare_fixedbasis_inversion_data(
         sites=prepared_sites,
         start_date=start_date,
         bc_freq=bc_freq,
-        sigma_freq=sigma_freq,
         min_error=min_error,
         calculate_min_error=calculate_min_error,
         min_error_options=min_error_options,
     )
+    sigma_alignment = SigmaAlignment.from_frequency(
+        inv_inputs["site_indicator"],
+        frequency=sigma_freq,
+        anchor_time=start_date,
+    )
+    inv_inputs["sigma_freq_index"] = sigma_alignment.period_index.rename("sigma_freq_index")
     _warn_for_nan_inputs(inv_inputs, use_bc=use_bc)
 
     return FixedBasisPreparedData(
@@ -664,7 +794,6 @@ def prepare_rhime_inputs(
     fix_basis_outer_regions: bool = False,
     averaging_error: bool = True,
     bc_freq: str | None = None,
-    sigma_freq: str | None = None,
     reload_merged_data: bool = False,
     save_merged_data: bool = False,
     merged_data_dir: str | None = None,
@@ -672,8 +801,13 @@ def prepare_rhime_inputs(
     basis_output_path: str | None = None,
     min_error: MinErrorConfig = 0.0,
     min_error_options: dict | None = None,
+    flux_non_finite_check: FluxNonFiniteCheck = "lazy",
 ) -> RhimePreparedInputs:
     """Prepare modern RHIME inputs without exposing legacy fixedbasis containers.
+
+    Observation filters are applied once to merged data before basis loading or
+    generation. The same filtered site datasets and aligned metadata are then
+    used for sensitivity construction.
 
     Args:
         species: Primary gas or tracer name used for object-store lookup and
@@ -687,10 +821,14 @@ def prepare_rhime_inputs(
         output_name: Base output name used for data and basis artifacts.
         flux_sources: OpenGHG flux ``source`` values requested for the run.
         split_by_sectors: Whether to keep sector-resolved sensitivity inputs
-            with a ``source`` coordinate.
+            with a ``source`` provenance coordinate. Semantic sector names are
+            applied later by the model specification.
         use_tracer: Unsupported placeholder for tracer inversions, where an
             additional species constrains the primary species through linked
             forward models.
+        flux_non_finite_check: Non-finite flux handling mode. ``"lazy"``
+            applies zero-fill lazily and records attrs; ``"count"`` computes
+            count metadata once and warns if non-finite values are present.
 
     Returns:
         Modern RHIME prepared inputs containing canonical ``inv_inputs`` and a
@@ -729,7 +867,11 @@ def prepare_rhime_inputs(
             save_merged_data=save_merged_data,
             merged_data_dir=merged_data_dir,
             merged_data_name=merged_data_name,
+            flux_non_finite_check=flux_non_finite_check,
         )
+
+    with timed("rhime.prepare_inputs.obs_filtering", sites=len(merged.sites), filters=filters is not None):
+        filtered_merged = _filter_merged_inversion_data(merged=merged, filters=filters)
 
     with timed(
         "rhime.prepare_inputs.basis_build",
@@ -743,7 +885,7 @@ def prepare_rhime_inputs(
             fp_basis_case=fp_basis_case,
             basis_directory=basis_directory,
             country_directory=country_directory,
-            fp_all=merged.fp_all,
+            fp_all=filtered_merged.fp_all,
             species=species,
             domain=domain,
             start_date=start_date,
@@ -752,14 +894,11 @@ def prepare_rhime_inputs(
             outputname=output_name,
             output_path=basis_output_path,
         )
-    basis_source = basis_functions.basis_artifact_source or "generated"
-    basis_path = getattr(basis_functions, "basis_artifact_path", None)
 
-    with timed("rhime.prepare_inputs.footprint_sensitivity_total", sites=len(merged.sites)):
+    with timed("rhime.prepare_inputs.footprint_sensitivity_total", sites=len(filtered_merged.sites)):
         fp_data = _rhime_site_data_from_basis_functions(
-            fp_all=merged.fp_all,
+            merged=filtered_merged,
             basis_functions=basis_functions,
-            sites=merged.sites,
             domain=domain,
             split_by_sectors=split_by_sectors,
             flux_sources=flux_sources,
@@ -767,33 +906,27 @@ def prepare_rhime_inputs(
             bc_basis_case=bc_basis_case,
             bc_basis_directory=_bc_basis_directory_arg(bc_basis_directory),
         )
-    with timed("rhime.prepare_inputs.obs_filtering", sites=len(merged.sites), filters=filters is not None):
-        fp_data, prepared_sites, prepared_averaging_period = _apply_filters_and_drop_empty_sites(
-            fp_data=fp_data,
-            sites=merged.sites,
-            averaging_period=merged.averaging_period,
-            filters=filters,
-        )
-    _set_domain_attrs(fp_data, prepared_sites, domain)
+    basis_source = basis_functions.basis_artifact_source or "generated"
+    basis_path = getattr(basis_functions, "basis_artifact_path", None)
+    _set_domain_attrs(fp_data, filtered_merged.sites, domain)
 
-    with timed("rhime.prepare_inputs.make_inv_inputs", sites=len(prepared_sites)):
+    with timed("rhime.prepare_inputs.make_inv_inputs", sites=len(filtered_merged.sites)):
         inv_inputs = _make_inv_inputs(
             fp_data=fp_data,
-            sites=prepared_sites,
+            sites=filtered_merged.sites,
             start_date=start_date,
             bc_freq=bc_freq,
-            sigma_freq=sigma_freq,
             min_error=min_error,
             calculate_min_error=None,
             min_error_options=min_error_options,
         )
     _warn_for_nan_inputs(inv_inputs, use_bc=use_bc)
-    site_lats, site_lons = _site_release_coordinates(fp_data, prepared_sites)
+    site_lats, site_lons = _site_release_coordinates(fp_data, filtered_merged.sites)
     log_timing(
         "rhime.prepare_inputs.prepared_dims",
         0.0,
         nmeasure=inv_inputs.sizes.get("nmeasure"),
-        sites=len(prepared_sites),
+        sites=len(filtered_merged.sites),
         regions=inv_inputs.sizes.get("region"),
         sources=inv_inputs.sizes.get("source"),
         basis_source=basis_source,
@@ -804,8 +937,8 @@ def prepare_rhime_inputs(
         basis_functions=basis_functions,
         basis_artifact_source=basis_source,
         basis_artifact_path=basis_path,
-        sites=tuple(prepared_sites),
-        averaging_period=tuple(prepared_averaging_period),
+        sites=tuple(filtered_merged.sites),
+        averaging_period=tuple(filtered_merged.averaging_period),
         site_lats=site_lats,
         site_lons=site_lons,
     )

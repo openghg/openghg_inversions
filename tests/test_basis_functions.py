@@ -37,12 +37,23 @@ from openghg_inversions.basis.basis_functions import (
     BASIS_ARTIFACT_SOURCE_ATTR,
     BasisFunctions,
     basis_functions_from_fp_all_flat_basis,
+    flux_from_fp_all,
 )
 from openghg_inversions.basis.operators import (
     BucketBasisOperator,
     MultiSourceBucketBasisOperator,
 )
-from openghg_inversions.basis._helpers import apply_fp_basis_functions, fp_sensitivity
+from openghg_inversions.basis._helpers import (
+    _legacy_multisource_h_if_needed,
+    apply_fp_basis_functions,
+    fp_sensitivity,
+)
+from openghg_inversions.flux_sanitization import (
+    FluxNonFiniteMetadata,
+    NONFINITE_CHECKED_COMPUTED,
+    NONFINITE_POLICY_ZERO_FILL,
+    sanitize_flux_nonfinite,
+)
 from openghg_inversions.inversion_data import data_processing_surface_notracer
 
 from helpers import basis_function, footprint
@@ -113,6 +124,13 @@ def _simple_fp_all_for_basis_weights() -> dict:
         ".flux": {"test-source": SimpleNamespace(data=xr.Dataset({"flux": flux}))},
         "TAC": xr.Dataset({"fp": footprint}),
     }
+
+
+def _flux_nonfinite_metadata(data: xr.DataArray | xr.Dataset) -> FluxNonFiniteMetadata:
+    """Return parsed non-finite flux metadata from an xarray object."""
+    metadata = FluxNonFiniteMetadata.from_attrs(data.attrs)
+    assert metadata is not None
+    return metadata
 
 
 def test_basis_weights_from_fp_all_matches_current_weight_definition():
@@ -249,6 +267,344 @@ def test_paired_abs_response_weights_rejects_reordered_mask_coordinates():
 
     with pytest.raises(ValueError, match="mask must share exact spatial coordinates"):
         paired_abs_response_weights(flux, [footprint], mask=mask)
+
+
+def test_paired_abs_response_weights_rejects_mismatched_spatial_dimensions():
+    """Paired responses reject arrays that would broadcast across renamed dimensions."""
+    fp_all = _simple_fp_all_for_basis_weights()
+    flux = fp_all[".flux"]["test-source"].data.flux
+    footprint = fp_all["TAC"].fp.rename(lat="latitude", lon="longitude")
+
+    with pytest.raises(ValueError, match="same time and spatial dimensions"):
+        paired_abs_response_weights(flux, [footprint])
+
+
+def test_paired_abs_response_weights_rejects_extra_flux_dimensions():
+    """Paired responses remain two-dimensional when callers pass source-stacked flux."""
+    fp_all = _simple_fp_all_for_basis_weights()
+    flux = fp_all[".flux"]["test-source"].data.flux.expand_dims(source=["test-source"])
+    footprint = fp_all["TAC"].fp
+
+    with pytest.raises(ValueError, match="exactly two spatial dimensions"):
+        paired_abs_response_weights(flux, [footprint])
+
+
+def test_paired_abs_response_weights_rejects_non_boolean_mask():
+    """Paired response masks reject numeric values with ambiguous truth semantics."""
+    fp_all = _simple_fp_all_for_basis_weights()
+    flux = fp_all[".flux"]["test-source"].data.flux
+    footprint = fp_all["TAC"].fp
+    mask = xr.ones_like(flux.isel(time=0), dtype=float)
+
+    with pytest.raises(ValueError, match="mask must be Boolean"):
+        paired_abs_response_weights(flux, [footprint], mask=mask)
+
+
+def test_flux_from_fp_all_sanitizes_nonfinite_single_source():
+    """Retained single-source flux replaces non-finite cells with zero."""
+    fp_all = _simple_fp_all_for_basis_weights()
+    flux = fp_all[".flux"]["test-source"].data.flux.copy()
+    flux.values[0, 0, 0] = np.nan
+    flux.values[1, 1, 1] = np.inf
+    fp_all[".flux"]["test-source"] = SimpleNamespace(data=xr.Dataset({"flux": flux}))
+
+    retained_flux = flux_from_fp_all(fp_all)
+
+    assert np.isfinite(retained_flux.values).all()
+    assert retained_flux.values[0, 0, 0] == 0.0
+    assert retained_flux.values[1, 1, 1] == 0.0
+    assert _flux_nonfinite_metadata(retained_flux).policy == NONFINITE_POLICY_ZERO_FILL
+
+
+def test_flux_from_fp_all_sanitizes_nonfinite_multisource():
+    """Retained multisource flux replaces non-finite cells after source stacking."""
+    fp_all = _simple_fp_all_for_basis_weights()
+    base_flux = fp_all[".flux"]["test-source"].data.flux
+    flux_a = base_flux.copy()
+    flux_b = (2.0 * base_flux).copy()
+    flux_a.values[0, 0, 0] = np.nan
+    flux_b.values[1, 1, 1] = -np.inf
+    fp_all[".flux"] = {
+        "a": SimpleNamespace(data=xr.Dataset({"flux": flux_a})),
+        "b": SimpleNamespace(data=xr.Dataset({"flux": flux_b})),
+    }
+    fp_all[".split_by_sectors"] = True
+
+    retained_flux = flux_from_fp_all(fp_all)
+
+    assert retained_flux.dims[0] == "source"
+    assert np.isfinite(retained_flux.values).all()
+    assert float(retained_flux.sel(source="a").isel(time=0, lat=0, lon=0)) == 0.0
+    assert float(retained_flux.sel(source="b").isel(time=1, lat=1, lon=1)) == 0.0
+    metadata = _flux_nonfinite_metadata(retained_flux)
+    assert metadata.policy == NONFINITE_POLICY_ZERO_FILL
+    assert metadata.context == "retained basis flux from fp_all"
+    assert metadata.source is None
+
+
+def test_flux_from_fp_all_refreshes_source_stacked_metadata() -> None:
+    """Source-stacked flux gets aggregate metadata instead of first-source attrs."""
+    fp_all = _simple_fp_all_for_basis_weights()
+    base_flux = fp_all[".flux"]["test-source"].data.flux
+    flux_a = sanitize_flux_nonfinite(base_flux.copy(), context="source a", source="a")
+    flux_b = sanitize_flux_nonfinite((2.0 * base_flux).copy(), context="source b", source="b")
+    fp_all[".flux"] = {
+        "a": SimpleNamespace(data=xr.Dataset({"flux": flux_a})),
+        "b": SimpleNamespace(data=xr.Dataset({"flux": flux_b})),
+    }
+    fp_all[".split_by_sectors"] = True
+
+    retained_flux = flux_from_fp_all(fp_all)
+    metadata = _flux_nonfinite_metadata(retained_flux)
+
+    assert metadata.policy == NONFINITE_POLICY_ZERO_FILL
+    assert metadata.context == "retained basis flux from fp_all"
+    assert metadata.source is None
+
+
+def test_flux_from_fp_all_preserves_single_source_count_metadata() -> None:
+    """A retained single source keeps an exact audit performed at ingestion."""
+    fp_all = _simple_fp_all_for_basis_weights()
+    flux = fp_all[".flux"]["test-source"].data.flux.copy()
+    flux.values[0, 0, 0] = np.nan
+    sanitized = sanitize_flux_nonfinite(
+        flux,
+        context="OpenGHG flux retrieval",
+        source="test-source",
+        check="count",
+    )
+    fp_all[".flux"]["test-source"] = SimpleNamespace(data=xr.Dataset({"flux": sanitized}))
+
+    retained_flux = flux_from_fp_all(fp_all)
+    metadata = _flux_nonfinite_metadata(retained_flux)
+
+    assert metadata.checked == NONFINITE_CHECKED_COMPUTED
+    assert metadata.count == 1
+    assert metadata.context == "OpenGHG flux retrieval"
+
+
+def test_basis_constructor_does_not_resanitize_retained_flux() -> None:
+    """Constructing a basis from sanitized flux preserves its graph and history."""
+    fp_all = _simple_fp_all_for_basis_weights()
+    retained_flux = flux_from_fp_all(fp_all)
+    basis_flat = xr.ones_like(retained_flux.isel(time=0), dtype=int)
+
+    basis_functions = BasisFunctions.from_flat_basis(basis_flat=basis_flat, flux=retained_flux)
+
+    assert basis_functions.flux is retained_flux
+    assert basis_functions.flux.attrs["history"] == retained_flux.attrs["history"]
+
+
+def _basis_weights_with_nonfinite_cells() -> xr.DataArray:
+    """Build generated-basis weights with NaN and infinite cells."""
+    return xr.DataArray(
+        np.array([[np.nan, np.inf], [-np.inf, 4.0]]),
+        dims=("lat", "lon"),
+        coords={"lat": [10.0, 20.0], "lon": [1.0, 2.0]},
+        name="basis_weight",
+    )
+
+
+def test_quadtree_basis_from_weights_sanitizes_nonfinite_before_dispatch(monkeypatch):
+    """Quadtree adapter sends finite weights to the lower-level algorithm."""
+    weights = _basis_weights_with_nonfinite_cells()
+
+    def fake_quadtree_algorithm(grid: np.ndarray, nbasis: int, seed: int | None = None) -> np.ndarray:
+        """Assert non-finite cells were replaced with zero before dispatch."""
+        assert nbasis == 3
+        assert seed == 7
+        np.testing.assert_allclose(grid, np.array([[0.0, 0.0], [0.0, 4.0]]))
+        return np.arange(1, grid.size + 1).reshape(grid.shape)
+
+    monkeypatch.setattr(basis_module, "quadtree_algorithm", fake_quadtree_algorithm)
+
+    basis_func = quadtree_basis_from_weights(weights, "2019-01-01", "TEST", nbasis=3, seed=7)
+
+    assert basis_func.dims == ("lat", "lon", "time")
+    xr.testing.assert_equal(basis_func.lat, weights.lat)
+    xr.testing.assert_equal(basis_func.lon, weights.lon)
+    assert basis_func.attrs["domain"] == "TEST"
+
+
+def test_bucket_basis_from_weights_sanitizes_nonfinite_before_dispatch(monkeypatch):
+    """Weighted bucket adapter normalizes finite sanitized weights."""
+    weights = _basis_weights_with_nonfinite_cells()
+
+    def fake_weighted_algorithm(
+        grid: np.ndarray,
+        nregion: int,
+        bucket: float,
+        domain: str,
+        country_directory: str | None = None,
+    ) -> np.ndarray:
+        """Assert non-finite cells were replaced and normalized before dispatch."""
+        assert nregion == 4
+        assert bucket == 1
+        assert domain == "TEST"
+        assert country_directory == "/tmp/countries"
+        np.testing.assert_allclose(grid, np.array([[0.0, 0.0], [0.0, 1.0]]))
+        return np.arange(1, grid.size + 1).reshape(grid.shape)
+
+    monkeypatch.setattr(basis_module, "weighted_algorithm", fake_weighted_algorithm)
+
+    basis_func = bucket_basis_from_weights(
+        weights,
+        "2019-01-01",
+        "TEST",
+        nbasis=4,
+        country_directory="/tmp/countries",
+    )
+
+    assert basis_func.dims == ("lat", "lon", "time")
+    xr.testing.assert_equal(basis_func.lat, weights.lat)
+    xr.testing.assert_equal(basis_func.lon, weights.lon)
+    assert basis_func.attrs["domain"] == "TEST"
+
+
+def test_bucket_basis_from_weights_preserves_all_negative_normalization(monkeypatch):
+    """Weighted bucket adapter keeps legacy normalization by a negative maximum."""
+    weights = xr.DataArray(
+        np.array([[-4.0, -2.0], [-1.0, -3.0]]),
+        dims=("lat", "lon"),
+        coords={"lat": [10.0, 20.0], "lon": [1.0, 2.0]},
+    )
+
+    def fake_weighted_algorithm(
+        grid: np.ndarray,
+        nregion: int,
+        bucket: float,
+        domain: str,
+        country_directory: str | None = None,
+    ) -> np.ndarray:
+        """Assert all-negative weights are still divided by their maximum."""
+        del nregion, bucket, domain, country_directory
+        np.testing.assert_allclose(grid, np.array([[4.0, 2.0], [1.0, 3.0]]))
+        return np.arange(1, grid.size + 1).reshape(grid.shape)
+
+    monkeypatch.setattr(basis_module, "weighted_algorithm", fake_weighted_algorithm)
+
+    basis_func = bucket_basis_from_weights(weights, "2019-01-01", "TEST")
+
+    assert basis_func.dims == ("lat", "lon", "time")
+    assert basis_func.attrs["domain"] == "TEST"
+
+
+def test_region_constrained_basis_from_weights_sanitizes_nonfinite_before_dispatch(monkeypatch):
+    """Region-constrained adapter sends finite normalized weights to the algorithm."""
+    weights = _basis_weights_with_nonfinite_cells()
+    region_classes = xr.DataArray(
+        np.array([["west", "west"], ["east", "east"]], dtype=object),
+        dims=weights.dims,
+        coords=weights.coords,
+        name="region_class",
+    )
+
+    def fake_region_constrained_basis(
+        weights_arg: xr.DataArray,
+        region_classes_arg: xr.DataArray,
+        nbasis: int,
+        **kwargs,
+    ) -> xr.DataArray:
+        """Assert non-finite cells were replaced and normalized before dispatch."""
+        del kwargs
+        assert nbasis == 2
+        np.testing.assert_allclose(weights_arg.values, np.array([[0.0, 0.0], [0.0, 1.0]]))
+        xr.testing.assert_equal(region_classes_arg, region_classes)
+        return xr.ones_like(weights_arg, dtype=int)
+
+    monkeypatch.setattr(basis_module, "region_constrained_basis", fake_region_constrained_basis)
+
+    basis_func = region_constrained_basis_from_weights(
+        weights,
+        "2019-01-01",
+        "TEST",
+        region_classes=region_classes,
+        nbasis=2,
+    )
+
+    assert basis_func.dims == ("lat", "lon", "time")
+    xr.testing.assert_equal(basis_func.lat, weights.lat)
+    xr.testing.assert_equal(basis_func.lon, weights.lon)
+    assert basis_func.attrs["domain"] == "TEST"
+
+
+@pytest.mark.parametrize(
+    "factory",
+    [
+        quadtree_basis_from_weights,
+        bucket_basis_from_weights,
+    ],
+)
+@pytest.mark.parametrize(
+    ("values", "message"),
+    [
+        (np.zeros((2, 2)), "no non-zero finite values"),
+        (np.full((2, 2), np.nan), "no finite values"),
+    ],
+)
+def test_quadtree_and_bucket_basis_from_weights_reject_empty_sanitized_weights(factory, values, message):
+    """Quadtree and weighted bucket adapters reject empty sanitized weights."""
+    weights = xr.DataArray(
+        values,
+        dims=("lat", "lon"),
+        coords={"lat": [10.0, 20.0], "lon": [1.0, 2.0]},
+    )
+
+    with pytest.raises(ValueError, match=message):
+        factory(weights, "2019-01-01", "TEST")
+
+
+def test_region_constrained_basis_from_weights_all_zero_falls_back_to_area():
+    """Region-constrained all-zero finite weights keep the existing area fallback."""
+    _fp_all, region_classes = _tiny_region_constrained_fp_all()
+    weights = xr.zeros_like(region_classes, dtype=float)
+
+    basis_func = region_constrained_basis_from_weights(
+        weights,
+        "2020-01-01",
+        "TEST",
+        region_classes=region_classes,
+        nbasis=4,
+    )
+
+    assert basis_func.dims == ("lat", "lon", "time")
+    xr.testing.assert_equal(basis_func.lat, weights.lat)
+    xr.testing.assert_equal(basis_func.lon, weights.lon)
+    assert np.isfinite(basis_func.values).all()
+    labels = basis_func.squeeze("time", drop=True)
+    assert set(np.unique(labels.values)) == {1, 2, 3, 4}
+    _assert_basis_labels_do_not_cross_classes(labels, region_classes)
+
+
+@pytest.mark.parametrize(
+    ("values", "message"),
+    [
+        (np.full((2, 2), np.nan), "no finite values"),
+        (np.full((2, 2), np.inf), "no finite values"),
+        (np.empty((0, 2)), "no finite values"),
+    ],
+)
+def test_region_constrained_basis_from_weights_rejects_no_finite_cells(values, message):
+    """Region-constrained rejects all-invalid weights instead of area-fallback labels."""
+    weights = xr.DataArray(
+        values,
+        dims=("lat", "lon"),
+        coords={"lat": np.arange(values.shape[0], dtype=float), "lon": [1.0, 2.0]},
+    )
+    region_classes = xr.DataArray(
+        np.full(values.shape, "class", dtype=object),
+        dims=weights.dims,
+        coords=weights.coords,
+    )
+
+    with pytest.raises(ValueError, match=message):
+        region_constrained_basis_from_weights(
+            weights,
+            "2020-01-01",
+            "TEST",
+            region_classes=region_classes,
+            nbasis=2,
+        )
 
 
 def test_quadtree_basis_from_weights_matches_fp_all_adapter(monkeypatch):
@@ -1054,6 +1410,7 @@ def test_basisfunctions_roundtrip_datatree_single_source():
 
     assert isinstance(bf2.operator, BucketBasisOperator)
     assert bf2.basis_artifact_source == "generated"
+    assert _flux_nonfinite_metadata(bf2.flux).policy == NONFINITE_POLICY_ZERO_FILL
     xr.testing.assert_identical(bf2.flux, bf.flux)
     xr.testing.assert_identical(bf2.operator.basis_flat, bf.operator.basis_flat)
     xr.testing.assert_identical(bf2.operator.basis_matrix, bf.operator.basis_matrix)
@@ -1202,6 +1559,42 @@ def test_basisfunctions_interpolate_trace_with_chain_dim():
 # --------------------------------------------------------------------------------------
 # Multi-source equivalence: gathered MultiIndex vs legacy padded H conversion
 # --------------------------------------------------------------------------------------
+@pytest.mark.parametrize("use_multiindex", [True, False], ids=["multiindex", "auxiliary-coordinates"])
+def test_legacy_multisource_adapter_only_zero_fills_structural_padding(use_multiindex: bool) -> None:
+    """Legacy rectangularization must preserve NaNs in represented state cells."""
+    state_index = pd.MultiIndex.from_tuples(
+        [("ff", 0), ("ff", 1), ("ocean", 0)],
+        names=["source", "region_in_source"],
+    )
+    state_coords: dict = (
+        dict(xr.Coordinates.from_pandas_multiindex(state_index, "state"))
+        if use_multiindex
+        else {
+            "state": [0, 1, 2],
+            "source": ("state", ["ff", "ff", "ocean"]),
+            "region_in_source": ("state", [0, 1, 0]),
+        }
+    )
+    sensitivity = xr.DataArray(
+        [[1.0, 2.0], [np.nan, 4.0], [5.0, 6.0]],
+        dims=("state", "time"),
+        coords={
+            **state_coords,
+            "time": [0, 1],
+        },
+    )
+
+    result = _legacy_multisource_h_if_needed(
+        sensitivity,
+        state_dim="state",
+        flux_sources=["ff", "ocean"],
+    )
+
+    assert np.isnan(result.sel(source="ff", region=1, time=0))
+    assert result.sel(source="ocean", region=1, time=0).item() == 0.0
+    assert result.coords["source_region_count"].to_dict()["data"] == [2, 1]
+
+
 def test_multisource_sensitivity_matches_legacy_padded_conversion_smoke():
     """Smoke test: gathered multi-source sensitivity matches legacy padded->gathered conversion.
 
@@ -1492,7 +1885,8 @@ def test_load_basis_functions_prefers_datatree_schema(tmp_path):
     assert isinstance(loaded, BasisFunctions)
     xr.testing.assert_identical(loaded.flat_basis(), bf.operator.basis_flat.rename("basis"))
     xr.testing.assert_identical(loaded.operator.basis_matrix, bf.operator.basis_matrix)
-    xr.testing.assert_identical(loaded.flux, current_flux)
+    xr.testing.assert_allclose(loaded.flux, current_flux)
+    assert _flux_nonfinite_metadata(loaded.flux).policy == NONFINITE_POLICY_ZERO_FILL
 
 
 def test_datatree_basis_artifact_can_use_basisfunctions_state_labels(tmp_path):
@@ -1649,7 +2043,8 @@ def test_load_basis_functions_falls_back_to_legacy_flat(tmp_path):
     assert loaded.basis_artifact_path == str(saved_path)
     assert isinstance(loaded, BasisFunctions)
     xr.testing.assert_identical(loaded.operator.basis_matrix, expected.operator.basis_matrix)
-    xr.testing.assert_identical(loaded.flux, expected.flux)
+    xr.testing.assert_allclose(loaded.flux, flux)
+    assert _flux_nonfinite_metadata(loaded.flux).policy == NONFINITE_POLICY_ZERO_FILL
 
 
 def test_basis_artifact_metadata_properties_accept_plain_keys():

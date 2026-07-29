@@ -4,6 +4,37 @@
 
 ## Code changes
 
+- Added a tox PyTensor compiler preflight that automatically loads
+  `gcc/12.3.0-sknc` on Rocky Linux or recognized Blue Pebble hosts when the
+  compiler setting is empty, supports configurable module/compiler overrides,
+  and fails before pytest when `pytensor.config.cxx` remains empty instead of
+  allowing extremely slow C++-free PyMC test runs.
+- Added a shared RHIME flux-plan/compiler seam for standard and multisector
+  builders, and routed explicit sector-to-source mappings plus complete
+  per-sector priors through multisector preparation and model specifications.
+  Source-specific ragged state blocks remain gathered over
+  `(source, region_in_source)`, scalar source provenance remains single-sector,
+  and rectangular multisource adaptation is confined to the legacy
+  `fixedbasisMCMC` boundary.
+  [#402](https://github.com/openghg/openghg_inversions/issues/402),
+  [#403](https://github.com/openghg/openghg_inversions/issues/403),
+  [PR #529](https://github.com/openghg/openghg_inversions/pull/529)
+
+- Reset retained posterior draw labels after burn-in before attaching predictive
+  groups in both modern RHIME and fixed-basis sampling, and preserve the
+  discarded burn count through trace and `InversionOutput` round trips.
+  Trace-group merging still explicitly retains outer alignment for genuinely
+  unequal external groups, while multisector totals require a value from every
+  sector so padded draws cannot be interpreted as zero flux. Single- and
+  multisector PARIS country samples are now promoted to float64 before totals
+  and uncertainty statistics are calculated, then cast at the template
+  boundary, keeping posterior stdev and covariance calculations consistent.
+
+- Added `run_rhime_from_prepared_inputs` so modern standard and multisector
+  RHIME models can run from an existing `RhimePreparedInputs` object without
+  repeating OpenGHG-backed data preparation. Existing `run_rhime` entry points
+  now share the same post-preparation execution path.
+  [#509](https://github.com/openghg/openghg_inversions/issues/509)
 
 - Made retained `BasisFunctions` / `BasisOperator` metadata the primary basis
   contract for RHIME preparation and modern postprocessing outputs. Derived

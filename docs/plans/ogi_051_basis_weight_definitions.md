@@ -36,10 +36,9 @@ footprints, validation scores, or any hyperparameter selected against the same
 data used to evaluate the basis.
 
 Observation-aware builders must use only observations retained after filters.
-This should be implemented on top of the OGI-041 filter-before-basis RHIME path,
-not on current `origin/devel` behavior where generated bases are built before
-observation filters. Saved-basis runs should keep their current behavior because
-filtering after loading a fixed basis does not change how that basis was
+This should be implemented on top of the OGI-041 filter-before-basis RHIME path
+now available on `devel`. Saved-basis runs should keep their current behavior
+because filtering after loading a fixed basis does not change how that basis was
 constructed.
 
 Every generated basis built with a non-default weight builder should record
@@ -140,8 +139,8 @@ The pure-helper slice should keep validation focused on construction semantics:
 The first routing implementation task should then:
 
 - keep `paired_abs_response_weights(...)` as the only non-default builder;
-- add a `make_basis_functions(...)` or `prepare_rhime_inputs(...)` test after
-  OGI-041 is merged into `devel`;
+- add a `make_basis_functions(...)` or `prepare_rhime_inputs(...)` test covering
+  the OGI-041 retained-observation filtering path;
 - add metadata assertions for `weight_kind` and retained site/time counts when
   generated basis metadata routing exists.
 

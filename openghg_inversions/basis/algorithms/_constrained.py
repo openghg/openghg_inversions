@@ -37,6 +37,7 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 import xarray as xr
+from scipy import ndimage
 
 from ._weighted import bucket_value_split
 
@@ -80,6 +81,18 @@ class SplitStrategy(Protocol):
             Integer label array with positive labels inside ``class_mask`` and
             zero outside it.
         """
+        ...
+
+
+class ComponentConsolidationPolicy(Protocol):
+    """Policy protocol for optional post-construction region consolidation."""
+
+    def __call__(
+        self,
+        labels: xr.DataArray,
+        region_classes: xr.DataArray,
+    ) -> xr.DataArray:
+        """Return labels after optional class-safe region consolidation."""
         ...
 
 
@@ -617,6 +630,71 @@ class InertialSplitStep:
         return [left, right]
 
 
+def _connected_node_components(
+    nodes: GridPartition,
+    shape: tuple[int, int],
+    *,
+    connectivity: int,
+) -> list[GridPartition]:
+    """Return deterministic connected components for grid nodes."""
+    if not nodes:
+        return []
+    if connectivity not in (1, 2):
+        raise ValueError("connectivity must be 1 (edge) or 2 (edge and corner).")
+
+    mask = np.zeros(shape, dtype=bool)
+    rows, columns = zip(*nodes, strict=True)
+    mask[np.asarray(rows), np.asarray(columns)] = True
+    labels, count = ndimage.label(
+        mask,
+        structure=ndimage.generate_binary_structure(2, connectivity),
+    )
+    return [list(zip(*np.where(labels == component), strict=True)) for component in range(1, int(count) + 1)]
+
+
+@dataclass(frozen=True)
+class ConnectedComponentPartitionStep:
+    """Make every child from another partition step spatially connected.
+
+    This wrapper is useful for partition steps such as
+    :class:`InertialSplitStep`, whose one-dimensional projection can assign
+    spatially disconnected cells to the same child. Each proposed child is
+    decomposed into deterministic connected components before the greedy
+    orchestrator accepts it.
+
+    Attributes:
+        split_step: Partition step whose children should be made connected.
+        connectivity: Two-dimensional neighbourhood definition. ``1`` uses
+            edge-sharing (four-neighbour) connectivity and ``2`` additionally
+            includes corner-sharing (eight-neighbour) connectivity.
+    """
+
+    split_step: PartitionStep
+    connectivity: int = 1
+
+    def __post_init__(self) -> None:
+        """Validate the requested two-dimensional connectivity."""
+        if self.connectivity not in (1, 2):
+            raise ValueError("connectivity must be 1 (edge) or 2 (edge and corner).")
+
+    def __call__(
+        self,
+        nodes: GridPartition,
+        weights: np.ndarray,
+    ) -> list[GridPartition]:
+        """Split once, then separate disconnected pieces of every child."""
+        children = self.split_step(nodes, weights)
+        return [
+            component
+            for child in children
+            for component in _connected_node_components(
+                child,
+                weights.shape,
+                connectivity=self.connectivity,
+            )
+        ]
+
+
 @dataclass(frozen=True)
 class GreedyAxisParallelSplitStrategy:
     """Class-local greedy repeated-bisection strategy.
@@ -673,6 +751,105 @@ class GreedyAxisParallelSplitStrategy:
             split_acceptance=self.split_acceptance,
         )
         return _labels_from_node_partition(partition, weights.shape)
+
+
+@dataclass
+class ConnectedComponentSplitStrategy:
+    """Allocate and split each connected piece of a class independently.
+
+    A disconnected class requires at least one label per connected component.
+    If ``target_regions`` is below that geographic minimum, the effective
+    target is raised rather than assigning one label to disconnected cells.
+    Targets above the minimum are allocated across components by weight, with
+    the existing area fallback for all-zero weights.
+
+    Attributes:
+        split_strategy: Class-local strategy applied separately to each
+            connected component.
+        connectivity: Two-dimensional neighbourhood definition. ``1`` uses
+            edge-sharing (four-neighbour) connectivity and ``2`` additionally
+            includes corner-sharing (eight-neighbour) connectivity.
+        diagnostics: Per-call requested, minimum, effective, and actual region
+            counts.
+    """
+
+    split_strategy: SplitStrategy
+    connectivity: int = 1
+    diagnostics: list[dict[str, int]] = field(default_factory=list, init=False)
+
+    def __post_init__(self) -> None:
+        """Validate the requested two-dimensional connectivity."""
+        if self.connectivity not in (1, 2):
+            raise ValueError("connectivity must be 1 (edge) or 2 (edge and corner).")
+
+    def __call__(
+        self,
+        weights: np.ndarray,
+        class_mask: np.ndarray,
+        target_regions: int,
+    ) -> np.ndarray:
+        """Return connected labels, raising the target to the geographic minimum."""
+        if target_regions < 1:
+            raise ValueError("target_regions must be at least 1.")
+        if weights.shape != class_mask.shape or weights.ndim != 2:
+            raise ValueError("weights and class_mask must be aligned two-dimensional arrays.")
+        if not class_mask.any():
+            return np.zeros(weights.shape, dtype=np.int64)
+
+        component_labels, component_count = ndimage.label(
+            class_mask,
+            structure=ndimage.generate_binary_structure(2, self.connectivity),
+        )
+        effective_target = min(
+            max(int(target_regions), int(component_count)),
+            int(class_mask.sum()),
+        )
+        dims = ("row", "column")
+        coordinates = {
+            "row": np.arange(weights.shape[0]),
+            "column": np.arange(weights.shape[1]),
+        }
+        allocation = allocate_nbasis_by_class(
+            xr.DataArray(weights, dims=dims, coords=coordinates),
+            xr.DataArray(component_labels, dims=dims, coords=coordinates),
+            effective_target,
+            allocation="weight",
+            min_regions_per_class=1,
+            unmapped_values=(0,),
+        )
+
+        labels = np.zeros(weights.shape, dtype=np.int64)
+        next_region = 1
+        for component in range(1, int(component_count) + 1):
+            component_mask = component_labels == component
+            local_labels = self.split_strategy(
+                weights,
+                component_mask,
+                allocation[component],
+            )
+            if not np.array_equal(local_labels > 0, component_mask):
+                raise RuntimeError("Connected split strategy did not preserve class coverage.")
+            for local_region in _positive_labels(local_labels):
+                region_mask = local_labels == local_region
+                _component_labels, region_component_count = ndimage.label(
+                    region_mask,
+                    structure=ndimage.generate_binary_structure(2, self.connectivity),
+                )
+                if int(region_component_count) != 1:
+                    raise RuntimeError("Connected split strategy produced a disconnected label.")
+                labels[region_mask] = next_region
+                next_region += 1
+
+        actual_regions = next_region - 1
+        self.diagnostics.append(
+            {
+                "requested_target": int(target_regions),
+                "connected_component_minimum": int(component_count),
+                "effective_target": int(effective_target),
+                "actual_regions": int(actual_regions),
+            }
+        )
+        return labels
 
 
 @dataclass(frozen=True)
@@ -748,6 +925,7 @@ def region_constrained_basis(
     allocation: AllocationMode = "weight",
     min_regions_per_class: int = 1,
     split_strategy: SplitStrategy | None = None,
+    component_consolidation: ComponentConsolidationPolicy | None = None,
     unmapped_values: Iterable[Hashable] = (),
 ) -> xr.DataArray:
     """Generate basis labels independently inside each mask/region class.
@@ -769,6 +947,10 @@ def region_constrained_basis(
             requires, a ``ValueError`` is raised.
         split_strategy: Class-local splitting strategy. Defaults to
             :class:`GreedyAxisParallelSplitStrategy`.
+        component_consolidation: Optional policy applied to the globally
+            relabelled basis after class-local construction. Policies that
+            deliberately combine disconnected components must preserve class
+            boundaries and report that strict connectivity no longer holds.
         unmapped_values: Additional class values to leave as output label ``0``.
 
     Returns:
@@ -811,7 +993,10 @@ def region_constrained_basis(
             labels[(local_labels == local_label) & class_mask] = next_label
             next_label += 1
 
-    return _labels_dataarray(labels, weights)
+    result = _labels_dataarray(labels, weights)
+    if component_consolidation is not None:
+        result = component_consolidation(result, region_classes)
+    return result
 
 
 def intersect_region_class_layers(
@@ -1837,16 +2022,19 @@ def _labels_dataarray(labels: np.ndarray, weights: xr.DataArray) -> xr.DataArray
 
 
 __all__ = [
-    "AllocationMode",
     "AllSplitAcceptancePolicies",
-    "AxisParallelSplitStep",
+    "AllocationMode",
     "AxisAlignedWeightedSplitStrategy",
+    "AxisParallelSplitStep",
+    "ComponentConsolidationPolicy",
+    "ConnectedComponentPartitionStep",
+    "ConnectedComponentSplitStrategy",
     "GreedyAxisParallelSplitStrategy",
     "InertialSplitStep",
     "LatLonGridGeometry",
     "MaxChildPCAEccentricity",
-    "MinChildWeightShare",
     "MinChildTargetWeightShare",
+    "MinChildWeightShare",
     "NbasisAllocation",
     "PartitionStep",
     "SplitAcceptance",

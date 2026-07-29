@@ -108,7 +108,7 @@ test-xdist = "pytest -n 2 --dist=loadscope tests"
 country-file-smoke = "pytest -s tests/postprocessing/test_country_file_smoke.py"
 lint = "ruff check ."
 typecheck = "pyright"
-tox = "tox -p"
+tox = "tox -p --parallel-no-spinner"
 
 [tool.pixi.feature.dev.pypi-dependencies]
 tox = ">=4.24"

@@ -8,10 +8,12 @@ import shutil
 import tempfile
 import time
 from importlib.metadata import version
-from typing import Iterator
+from typing import Callable, Iterator
 from types import MappingProxyType
 from unittest.mock import patch
 
+import arviz as az
+import numpy as np
 import pytest
 from openghg.standardise import (
     standardise_surface,
@@ -22,6 +24,9 @@ from openghg.standardise import (
 )
 import xarray as xr
 import zarr
+
+from openghg_inversions.basis.basis_functions import BASIS_ARTIFACT_SOURCE_ATTR, BasisFunctions
+from openghg_inversions.postprocessing.inversion_output import InversionOutput
 
 _raw_data_path = Path(".").resolve() / "tests/data/"
 _TEST_STORE_DIR_NAME = "openghg_inversions_testing_store"
@@ -84,6 +89,176 @@ def merged_data_file_name():
 def europe_country_file(raw_data_path):
     """Provides path to the EUROPE countryfile"""
     return raw_data_path / "country_EUROPE.nc"
+
+
+@pytest.fixture
+def fake_multisector_basis_functions() -> Callable[..., BasisFunctions]:
+    """Provide a builder for a one-cell basis artifact with sector prior fluxes."""
+
+    def _build(*, artifact_source: str = "generated") -> BasisFunctions:
+        """Build a one-cell basis artifact with source-specific prior flux."""
+        basis = xr.DataArray(
+            [[1]],
+            dims=("lat", "lon"),
+            coords={"lat": [0.0], "lon": [0.0]},
+            name="basis",
+        )
+        flux = xr.DataArray(
+            [[[1.0]], [[3.0]]],
+            dims=("source", "lat", "lon"),
+            coords={
+                "source": ["ff-inventory", "ocean-inventory"],
+                "lat": [0.0],
+                "lon": [0.0],
+            },
+            name="flux",
+        )
+        flux.attrs["units"] = "mol/m2/s"
+        return BasisFunctions.from_flat_basis(
+            basis_flat=basis,
+            flux=flux,
+            operator_kwargs={"state_dim": "region"},
+            metadata={BASIS_ARTIFACT_SOURCE_ATTR: artifact_source},
+        )
+
+    return _build
+
+
+@pytest.fixture
+def fake_multisector_basis_functions_matching_country_grid() -> Callable[..., BasisFunctions]:
+    """Provide a builder for a multisector basis artifact on a country grid."""
+
+    def _build(country_file: Path, *, coord_offset: float = 0.0) -> BasisFunctions:
+        """Build a one-region multisector basis artifact on a test country grid."""
+        country_grid = xr.open_dataset(country_file)
+        lat = country_grid.lat.values + coord_offset
+        lon = country_grid.lon.values + coord_offset
+        basis = xr.DataArray(
+            np.ones((country_grid.sizes["lat"], country_grid.sizes["lon"]), dtype=int),
+            dims=("lat", "lon"),
+            coords={"lat": lat, "lon": lon},
+            name="basis",
+        )
+        flux = xr.concat(
+            [
+                xr.ones_like(basis, dtype=float).expand_dims(source=["ff-inventory"]),
+                (3.0 * xr.ones_like(basis, dtype=float)).expand_dims(source=["ocean-inventory"]),
+            ],
+            dim="source",
+        ).rename("flux")
+        flux.attrs["units"] = "mol/m2/s"
+        return BasisFunctions.from_flat_basis(
+            basis_flat=basis,
+            flux=flux,
+            operator_kwargs={"state_dim": "region"},
+            metadata={BASIS_ARTIFACT_SOURCE_ATTR: "country-grid-multisector-test"},
+        )
+
+    return _build
+
+
+@pytest.fixture
+def fake_source_specific_multisector_basis_functions() -> Callable[..., BasisFunctions]:
+    """Provide a builder for source-specific multisector basis artifacts."""
+
+    def _build(*, artifact_source: str = "generated") -> BasisFunctions:
+        """Build a one-cell source-specific basis artifact for multisector tests."""
+        basis = xr.DataArray(
+            [[1]],
+            dims=("lat", "lon"),
+            coords={"lat": [0.0], "lon": [0.0]},
+            name="basis",
+        )
+        flux = xr.DataArray(
+            [[[1.0]], [[3.0]]],
+            dims=("source", "lat", "lon"),
+            coords={
+                "source": ["ff-inventory", "ocean-inventory"],
+                "lat": [0.0],
+                "lon": [0.0],
+            },
+            name="flux",
+        )
+        flux.attrs["units"] = "mol/m2/s"
+        return BasisFunctions.from_multi_source_flat_basis(
+            basis_flat={"ff-inventory": basis, "ocean-inventory": basis},
+            flux=flux,
+            operator_kwargs={"state_dim": "region"},
+            metadata={BASIS_ARTIFACT_SOURCE_ATTR: artifact_source},
+        )
+
+    return _build
+
+
+@pytest.fixture
+def multisector_postprocessing_inv_out(
+    fake_multisector_basis_functions: Callable[..., BasisFunctions],
+) -> Callable[[BasisFunctions | None], InversionOutput]:
+    """Provide a builder for small multisector postprocessing outputs."""
+
+    def _build(basis_functions: BasisFunctions | None = None) -> InversionOutput:
+        """Build a small multisector output for flux reconstruction tests."""
+        inv_inputs = xr.Dataset(
+            {
+                "H": (("region", "nmeasure"), [[1.0]]),
+                "mf": ("nmeasure", [10.0]),
+                "mf_error": ("nmeasure", [1.0]),
+                "mf_repeatability": ("nmeasure", [0.5]),
+                "mf_variability": ("nmeasure", [0.25]),
+                "site_indicator": ("nmeasure", [0]),
+            },
+            coords={
+                "region": [0],
+                "nmeasure": [0],
+                "site": ("nmeasure", ["TAC"]),
+                "time": (
+                    "nmeasure",
+                    np.array(["2019-01-01T00:00:00"], dtype="datetime64[ns]"),
+                ),
+            },
+        )
+        inv_inputs["mf"].attrs["units"] = "ppm"
+
+        return InversionOutput(
+            trace=az.from_dict(
+                posterior={
+                    "x_ff": np.array([[[0.0], [2.0]]]),
+                    "x_ocean": np.array([[[2.0 / 3.0], [0.0]]]),
+                },
+                prior={
+                    "x_ff": np.array([[[1.0], [1.0]]]),
+                    "x_ocean": np.array([[[1.0], [1.0]]]),
+                },
+                coords={"region": [0]},
+                dims={"x_ff": ["region"], "x_ocean": ["region"]},
+            ),
+            inv_inputs=inv_inputs.set_index(nmeasure=["site", "time"]),
+            basis_functions=basis_functions or fake_multisector_basis_functions(),
+            run_metadata={
+                "start_date": "2019-01-01",
+                "end_date": "2019-01-02",
+                "sites": ["TAC"],
+                "split_by_sectors": True,
+            },
+            model_metadata={
+                "species": "ch4",
+                "domain": "EUROPE",
+                "sectors": [
+                    {
+                        "name": "FF",
+                        "flux_source": "ff-inventory",
+                        "variable_suffix": "ff",
+                    },
+                    {
+                        "name": "Ocean",
+                        "flux_source": "ocean-inventory",
+                        "variable_suffix": "ocean",
+                    },
+                ],
+            },
+        )
+
+    return _build
 
 
 @pytest.fixture

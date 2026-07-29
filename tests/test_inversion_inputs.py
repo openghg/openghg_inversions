@@ -25,6 +25,7 @@ from openghg_inversions.inversion_inputs import (
     concat_gather_datasets,
     make_inv_inputs,
 )
+from openghg_inversions.sigma import SigmaAlignment
 
 
 # Helpers for saving result of make_inv_inputs
@@ -61,6 +62,21 @@ def load_frozen_npz(path: Path):
     mcmc_args = {k.replace("mcmc__", "", 1): data[k] for k in data.files if k.startswith("mcmc__")}
     post_args = {k.replace("post__", "", 1): data[k] for k in data.files if k.startswith("post__")}
     return mcmc_args, post_args
+
+
+def _attach_legacy_sigma_index(
+    inv_inputs: xr.Dataset,
+    *,
+    frequency: str | None,
+    anchor_time: str | None,
+) -> xr.Dataset:
+    """Attach the sigma index expected by the legacy hbmcmc compatibility path."""
+    alignment = SigmaAlignment.from_frequency(
+        inv_inputs["site_indicator"],
+        frequency=frequency,
+        anchor_time=anchor_time,
+    )
+    return inv_inputs.assign(sigma_freq_index=alignment.period_index.rename("sigma_freq_index"))
 
 
 # Helpers for comparisons
@@ -118,9 +134,20 @@ def test_inversion_input_create_frozen(raw_data_path, inv_inputs_args):
         **{
             k: v
             for k, v in inv_inputs_args.items()
-            if k != "calculate_min_error" and k != "use_bc" and k != "min_error_options"
+            if k
+            not in {
+                "calculate_min_error",
+                "use_bc",
+                "min_error_options",
+                "sigma_freq",
+            }
         },
         min_error_per_site=inv_inputs_args["min_error_options"].get("by_site", False),
+    )
+    inv_inputs = _attach_legacy_sigma_index(
+        inv_inputs,
+        frequency=inv_inputs_args["sigma_freq"],
+        anchor_time=inv_inputs_args["start_date"],
     )
     obs_prior_factor = (
         inv_inputs.mf_prior_factor.values
@@ -165,9 +192,13 @@ def test_inversion_input_hbmcmc_matches_frozen(raw_data_path, inv_inputs_args):
         sites=inv_inputs_args["sites"],
         start_date=inv_inputs_args["start_date"],
         bc_freq=inv_inputs_args["bc_freq"],
-        sigma_freq=inv_inputs_args["sigma_freq"],
         min_error=inv_inputs_args["min_error"],
         min_error_per_site=inv_inputs_args["min_error_options"].get("by_site", False),
+    )
+    inv_inputs = _attach_legacy_sigma_index(
+        inv_inputs,
+        frequency=inv_inputs_args["sigma_freq"],
+        anchor_time=inv_inputs_args["start_date"],
     )
 
     result_mcmc = {
@@ -258,9 +289,57 @@ def test_make_inv_inputs_drops_non_shared_data_vars():
         result = make_inv_inputs(fp_data=fp_data, sites=["AAA", "BBB"], min_error=0.0)
 
     assert "inlet_height" not in result
-    assert {"H", "mf", "mf_error", "site_indicator", "site_names", "sigma_freq_index", "min_error"} <= set(
-        result.data_vars
-    )
+    assert {"H", "mf", "mf_error", "site_indicator", "site_names", "min_error"} <= set(result.data_vars)
+    assert "sigma_freq_index" not in result
+
+
+def test_make_inv_inputs_rejects_mismatched_gathered_state_indexes() -> None:
+    """Site gathering must not outer-align different source/region state layouts."""
+    fp_data = {
+        "AAA": _make_minimal_fp_site(mf_base=10.0, include_inlet_height=False),
+        "BBB": _make_minimal_fp_site(mf_base=20.0, include_inlet_height=False),
+    }
+    state_indexes = {
+        "AAA": pd.MultiIndex.from_tuples(
+            [("ff", 0), ("ff", 1), ("ocean", 0)],
+            names=["source", "region_in_source"],
+        ),
+        "BBB": pd.MultiIndex.from_tuples(
+            [("ff", 0), ("ocean", 0)],
+            names=["source", "region_in_source"],
+        ),
+    }
+    for site, state_index in state_indexes.items():
+        time = fp_data[site].coords["time"]
+        fp_data[site]["H"] = xr.DataArray(
+            np.ones((len(state_index), time.size)),
+            dims=("state", "time"),
+            coords={
+                **xr.Coordinates.from_pandas_multiindex(state_index, "state"),
+                "time": time,
+            },
+        )
+
+    with pytest.raises(ValueError, match="identical indexes on every non-time dimension"):
+        make_inv_inputs(fp_data=fp_data, sites=["AAA", "BBB"], min_error=0.0)
+
+
+def test_make_inv_inputs_rejects_mismatched_state_dimension_names() -> None:
+    """Site gathering must not broadcast differently named state dimensions."""
+    fp_data = {
+        "AAA": _make_minimal_fp_site(mf_base=10.0, include_inlet_height=False),
+        "BBB": _make_minimal_fp_site(mf_base=20.0, include_inlet_height=False),
+    }
+    for site, state_dim in (("AAA", "state"), ("BBB", "region")):
+        time = fp_data[site].coords["time"]
+        fp_data[site]["H"] = xr.DataArray(
+            np.ones((2, time.size)),
+            dims=(state_dim, "time"),
+            coords={state_dim: [0, 1], "time": time},
+        )
+
+    with pytest.raises(ValueError, match="variable 'H'.*same non-time dimensions"):
+        make_inv_inputs(fp_data=fp_data, sites=["AAA", "BBB"], min_error=0.0)
 
 
 def test_make_inv_inputs_raises_if_required_var_would_be_dropped():

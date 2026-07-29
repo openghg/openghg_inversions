@@ -38,7 +38,7 @@ import xarray as xr
 import openghg_inversions.hbmcmc.inversion_pymc as mcmc
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.models.priors import lognormal_mu_sigma
-from openghg_inversions.utils import ncdf_encoding
+from openghg_inversions.utils import ncdf_encoding, write_netcdf_preserving_bounds_attrs
 from openghg_inversions.inversion_data import FixedBasisPreparedData, prepare_fixedbasis_inversion_data
 from openghg_inversions.postprocessing.inversion_output import (
     InversionOutput,
@@ -154,7 +154,7 @@ def _canonicalize_fixedbasis_trace(trace: object, basis_functions: BasisFunction
         }
         renamed_groups[group] = ds.rename(applicable) if applicable else ds.copy()
 
-    return cast(Any, az.InferenceData)(**renamed_groups)
+    return cast(Any, az.InferenceData)(attrs=dict(trace.attrs), **renamed_groups)
 
 
 def _inv_inputs_from_rerun_arrays(
@@ -479,7 +479,8 @@ def _handle_core_output_artifacts(context: _OutputContext) -> None:
         trace = context.mcmc_results["trace"]
         if isinstance(trace, az.InferenceData):
             trace = cast(Any, az.InferenceData)(
-                **{group: _reset_serialisation_multiindexes(trace[group]) for group in trace.groups()}
+                attrs=dict(trace.attrs),
+                **{group: _reset_serialisation_multiindexes(trace[group]) for group in trace.groups()},
             )
         trace.to_netcdf(str(trace_path), engine="netcdf4", compress=True)
 
@@ -565,11 +566,15 @@ def _finalize_output(context: _OutputContext) -> xr.Dataset | dict | InversionOu
         )
         Path(context.outputpath).mkdir(parents=True, exist_ok=True)
 
-        conc_outs.to_netcdf(
-            conc_output_filename, unlimited_dims=["time"], mode="w", encoding=ncdf_encoding(conc_outs)
+        write_netcdf_preserving_bounds_attrs(
+            conc_outs,
+            conc_output_filename,
+            unlimited_dims=["time"],
         )
-        flux_outs.to_netcdf(
-            flux_output_filename, unlimited_dims=["time"], mode="w", encoding=ncdf_encoding(flux_outs)
+        write_netcdf_preserving_bounds_attrs(
+            flux_outs,
+            flux_output_filename,
+            unlimited_dims=["time"],
         )
 
         logging.info("PARIS concentration outputs saved to %s", conc_output_filename)
@@ -796,11 +801,19 @@ def fixedbasisMCMC(
         return_basis_objects: If True, include retained basis objects in ``output_format="mcmc_args"``
             debug output. Fixedbasis output modes that construct modern inversion output retain them
             internally regardless of this setting. They are not passed to ``inferpymc``.
+        flux_non_finite_check: Non-finite flux handling mode. ``"lazy"``
+            applies zero-fill lazily and records attrs; ``"count"`` computes
+            count metadata once and warns if non-finite values are present.
 
     Returns:
         xr.Dataset | dict: Results from the inversion in a Dataset if skip_post_processing==False,
             in a dictionary if True.
     """
+    flux_non_finite_check = cast(
+        Literal["lazy", "count"],
+        kwargs.pop("flux_non_finite_check", "lazy"),
+    )
+
     # Check if any observations are column based.
     if inlet is not None:
         is_column = any(i == "column" for i in inlet)
@@ -875,6 +888,7 @@ def fixedbasisMCMC(
         min_error_options=min_error_options,
         return_basis_objects=return_basis_objects or needs_modern_inv_out,
         merged_data_only=output_format == "merged_data",
+        flux_non_finite_check=flux_non_finite_check,
     )
 
     if output_format == "merged_data":

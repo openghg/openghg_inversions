@@ -204,6 +204,7 @@ def test_fixedbasisMCMC_uses_fixedbasis_preparation_contract_for_mcmc_args(monke
         outputname="contract",
         output_format="mcmc_args",
         return_basis_objects=True,
+        flux_non_finite_check="count",
         use_bc=False,
     )
 
@@ -211,6 +212,7 @@ def test_fixedbasisMCMC_uses_fixedbasis_preparation_contract_for_mcmc_args(monke
     assert captured_kwargs["split_by_sectors"] is False
     assert captured_kwargs["return_basis_objects"] is True
     assert captured_kwargs["merged_data_only"] is False
+    assert captured_kwargs["flux_non_finite_check"] == "count"
     assert isinstance(result, dict)
     assert result["inv_inputs"] is prepared.inv_inputs
     assert result["basis_objects"] is prepared.basis_objects
@@ -391,9 +393,25 @@ def test_fixedbasisMCMC_paris_postprocessing_receives_modern_output(monkeypatch,
     def fake_make_paris_outputs(inv_out, **kwargs):
         captured["inv_out"] = inv_out
         captured["paris_kwargs"] = kwargs
+        concentration = xr.Dataset(
+            {
+                "Yobs": ("time", np.array([1900.0])),
+                "time_bnds": (("time", "nbnds"), np.array([[0.0, 1.0]])),
+            },
+            coords={"time": [0.5], "nbnds": [0, 1]},
+        )
+        concentration.time.attrs = {
+            "bounds": "time_bnds",
+            "units": "days since 1970-01-01 00:00:00",
+            "calendar": "proleptic_gregorian",
+        }
+        concentration.time_bnds.attrs = {
+            "units": "days since 1970-01-01 00:00:00",
+            "calendar": "proleptic_gregorian",
+        }
         return (
             xr.Dataset({"flux_total_posterior": ("time", np.array([1.0]))}, coords={"time": [0.0]}),
-            xr.Dataset({"Yobs": ("time", np.array([1900.0]))}, coords={"time": [0.0]}),
+            concentration,
         )
 
     monkeypatch.setattr(
@@ -422,6 +440,10 @@ def test_fixedbasisMCMC_paris_postprocessing_receives_modern_output(monkeypatch,
     assert captured["inv_out"].basis_functions is prepared.basis_objects["emissions"]
     assert isinstance(result, xr.Dataset)
     assert "Yobs" in result
+    concentration_path = next(tmp_path.glob("*_conc_*.nc"))
+    with xr.open_dataset(concentration_path, decode_cf=False) as saved_concentration:
+        assert saved_concentration.time_bnds.attrs["units"] == "days since 1970-01-01 00:00:00"
+        assert saved_concentration.time_bnds.attrs["calendar"] == "proleptic_gregorian"
 
 
 def test_fixedbasisMCMC_basic_postprocessing_receives_modern_output(monkeypatch, tmp_path):
