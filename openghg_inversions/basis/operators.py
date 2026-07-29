@@ -51,15 +51,15 @@ Notes
 
 from __future__ import annotations
 
+import json
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass
-import json
 from typing import Any, ClassVar, Literal, TypeVar, cast
-from typing_extensions import Self
 
 import numpy as np
 import xarray as xr
+from typing_extensions import Self
 
 from openghg_inversions.array_ops import (
     align_to_multi_index_level_values,
@@ -356,6 +356,88 @@ def drop_singleton_time(da: xr.DataArray, *, name: str = "basis_flat") -> xr.Dat
     return da.squeeze("time", drop=True)
 
 
+def _canonicalise_multisource_basis_grids(
+    basis_flat: dict[str, xr.DataArray],
+    *,
+    grid_dims: tuple[str, ...],
+) -> dict[str, xr.DataArray]:
+    """Align source bases to the configured dimensions and first labeled grid.
+
+    Args:
+        basis_flat: Nonempty source-to-basis mapping.
+        grid_dims: Expected grid dimension names.
+
+    Returns:
+        Source bases in ``grid_dims`` order with coordinate labels ordered
+        like the first source. Data attributes are preserved.
+
+    Raises:
+        ValueError: If a basis has unexpected dimensions, non-unique grid
+            labels, or labels that differ from the first source.
+    """
+    source_items = list(basis_flat.items())
+    reference_source, reference = source_items[0]
+    input_reference_dims = cast(tuple[str, ...], reference.dims)
+    if set(input_reference_dims) != set(grid_dims):
+        raise ValueError(
+            f"Multi-source flat basis {reference_source!r} must have grid dimensions "
+            f"{grid_dims!r}; got {input_reference_dims!r}."
+        )
+    reference_dims = grid_dims
+    reference = reference.transpose(*reference_dims)
+
+    reference_indexes = {}
+    for dim in reference_dims:
+        reference_index = reference.get_index(dim)
+        if not reference_index.is_unique:
+            raise ValueError(
+                "Multi-source flat bases must have unique grid coordinate labels; "
+                f"source {reference_source!r} has duplicates on {dim!r}."
+            )
+        reference_indexes[dim] = reference_index
+
+    canonical: dict[str, xr.DataArray] = {}
+    reference_coords = {
+        dim: reference.coords[dim]
+        if dim in reference.coords
+        else xr.IndexVariable(dim, reference_indexes[dim])
+        for dim in reference_dims
+    }
+    for source, basis in source_items:
+        if set(basis.dims) != set(reference_dims):
+            raise ValueError(
+                "Multi-source flat bases must have the same grid dimensions; "
+                f"source {reference_source!r} has {reference_dims!r}, "
+                f"source {source!r} has {basis.dims!r}."
+            )
+
+        aligned = basis.transpose(*reference_dims)
+        indexers: dict[str, np.ndarray] = {}
+        for dim in reference_dims:
+            source_index = aligned.get_index(dim)
+            if not source_index.is_unique:
+                raise ValueError(
+                    "Multi-source flat bases must have unique grid coordinate labels; "
+                    f"source {source!r} has duplicates on {dim!r}."
+                )
+
+            reference_index = reference_indexes[dim]
+            if (
+                len(reference_index) != len(source_index)
+                or not reference_index.difference(source_index).empty
+                or not source_index.difference(reference_index).empty
+            ):
+                raise ValueError(
+                    "Multi-source flat bases must have the same grid coordinate labels; "
+                    f"sources {reference_source!r} and {source!r} differ on {dim!r}."
+                )
+            indexers[dim] = source_index.get_indexer(reference_index)
+
+        canonical[source] = aligned.isel(indexers).assign_coords(reference_coords)
+
+    return canonical
+
+
 # ----------------------------
 # Concrete operators
 # ----------------------------
@@ -620,7 +702,8 @@ class MultiSourceBucketBasisOperator(BasisOperator):
 
         Raises:
             ValueError: If `basis_flat` is empty or a source label is not a
-                string.
+                string, or if source bases have incompatible dimensions,
+                non-unique grid labels, or different grid labels.
         """
         meta = meta or BasisMeta()
         if state_dim is not None:
@@ -640,6 +723,10 @@ class MultiSourceBucketBasisOperator(BasisOperator):
             k: drop_singleton_time(v, name=f"basis_flat[{k!r}]") for k, v in basis_flat.items()
         }
         self.basis_flat = {k: v.rename("basis_flat") for k, v in self.basis_flat.items()}
+        self.basis_flat = _canonicalise_multisource_basis_grids(
+            self.basis_flat,
+            grid_dims=self.meta.grid_dims,
+        )
 
         # Build per-source dummy matrices with ragged region_in_source dim
         mats: dict[str, xr.DataArray] = {}
@@ -698,37 +785,14 @@ class MultiSourceBucketBasisOperator(BasisOperator):
             ValueError: If source bases do not have the same grid dimensions
                 and coordinate-label sets.
         """
-        source_items = list(self.basis_flat.items())
-        reference_source, reference = source_items[0]
-        reference = reference.transpose(*self.meta.grid_dims)
-        aligned_bases = [reference]
-        for source, basis in source_items[1:]:
-            if set(basis.dims) != set(reference.dims):
-                raise ValueError(
-                    "Multi-source flat bases must have the same grid dimensions; "
-                    f"source {reference_source!r} has {reference.dims!r}, "
-                    f"source {source!r} has {basis.dims!r}."
-                )
-            aligned = basis.transpose(*reference.dims)
-            for dim in reference.dims:
-                reference_index = reference.get_index(dim)
-                source_index = aligned.get_index(dim)
-                if (
-                    not reference_index.is_unique
-                    or not source_index.is_unique
-                    or len(reference_index) != len(source_index)
-                    or not reference_index.difference(source_index).empty
-                    or not source_index.difference(reference_index).empty
-                ):
-                    raise ValueError(
-                        "Multi-source flat bases must have the same grid coordinate labels; "
-                        f"sources {reference_source!r} and {source!r} differ on {dim!r}."
-                    )
-            aligned_bases.append(aligned.sel({dim: reference[dim] for dim in reference.dims}))
+        canonical = _canonicalise_multisource_basis_grids(
+            self.basis_flat,
+            grid_dims=self.meta.grid_dims,
+        )
 
         try:
             basis_flat = xr.concat(
-                aligned_bases,
+                list(canonical.values()),
                 dim=xr.IndexVariable(self.source_dim, list(self.source_labels)),
                 join="exact",
                 combine_attrs="drop_conflicts",

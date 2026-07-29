@@ -14,12 +14,12 @@ model.
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from numbers import Integral
 from pathlib import Path
 from typing import Any, Literal, cast
-import warnings
 
 import numpy as np
 import pandas as pd
@@ -39,13 +39,13 @@ from openghg_inversions.flux_sanitization import FluxNonFiniteCheck, sanitize_fl
 from openghg_inversions.inversion_data.get_data import convert_to_list, data_processing_surface_notracer
 from openghg_inversions.inversion_data.serialise import load_merged_data
 from openghg_inversions.inversion_inputs import make_inv_inputs
-from openghg_inversions.sigma import SigmaAlignment
 from openghg_inversions.serialization import (
     decode_cf_multiindexes,
     encode_cf_multiindexes,
     open_datatree_loaded,
     save_datatree,
 )
+from openghg_inversions.sigma import SigmaAlignment
 
 MinErrorConfig = Literal["percentile", "residual"] | dict[str, float] | None | int | float
 RHIME_PREPARED_INPUTS_SCHEMA = "openghg_inversions.rhime_prepared_inputs"
@@ -539,7 +539,8 @@ def _canonicalize_rhime_inv_inputs(
         Inversion inputs with regenerated ``site_indicator`` and ``site_names``
         plus site metadata selected into the observed-site order. For
         multi-source bases, variables are also reordered to the basis source
-        coordinate.
+        order, whether sources form a dimension or a level of the gathered
+        state index.
 
     Raises:
         ValueError: If measurement indexes, site labels, or source labels do
@@ -547,7 +548,7 @@ def _canonicalize_rhime_inv_inputs(
     """
     nmeasure_index = ds.indexes.get("nmeasure")
     if not isinstance(nmeasure_index, pd.MultiIndex):
-        raise ValueError(
+        raise ValueError(  # noqa: TRY004 - malformed artifact schema, not an argument type error
             "RhimePreparedInputs inv_inputs must have a 'nmeasure' MultiIndex with levels ('site', 'time')."
         )
     if tuple(nmeasure_index.names) != ("site", "time"):
@@ -590,13 +591,34 @@ def _canonicalize_rhime_inv_inputs(
         return result, site_metadata
     if len(set(expected_sources)) != len(expected_sources):
         raise ValueError("RhimePreparedInputs multi-source basis labels must be unique.")
-    if "H" not in result or "source" not in result["H"].dims:
-        raise ValueError(
-            "RhimePreparedInputs inv_inputs H must have a source dimension for a multi-source basis."
-        )
-    actual_sources = tuple(str(source) for source in result["H"]["source"].values)
-    if len(set(actual_sources)) != len(actual_sources):
-        raise ValueError("RhimePreparedInputs inv_inputs H source labels must be unique.")
+    if "H" not in result:
+        raise ValueError("RhimePreparedInputs inv_inputs must contain H for a multi-source basis.")
+    sensitivity = result["H"]
+    state_dim: str | None = None
+    if "source" in sensitivity.dims:
+        actual_sources = tuple(str(source) for source in sensitivity["source"].values)
+        if len(set(actual_sources)) != len(actual_sources):
+            raise ValueError("RhimePreparedInputs inv_inputs H source labels must be unique.")
+    else:
+        gathered_dims = [
+            str(dim)
+            for dim in sensitivity.dims
+            if isinstance(sensitivity.indexes.get(dim), pd.MultiIndex)
+            and "source" in sensitivity.indexes[dim].names
+        ]
+        if len(gathered_dims) != 1:
+            raise ValueError(
+                "RhimePreparedInputs inv_inputs H must have either a source dimension or "
+                "one gathered state MultiIndex containing a 'source' level for a multi-source basis."
+            )
+        state_dim = gathered_dims[0]
+        state_index = sensitivity.indexes[state_dim]
+        source_values = state_index.get_level_values("source").to_numpy()
+        if not all(isinstance(source, str | np.str_) for source in source_values):
+            raise ValueError("RhimePreparedInputs gathered H source labels must all be strings.")
+        source_labels = tuple(str(source) for source in source_values)
+        _, first_indices = np.unique(source_values, return_index=True)
+        actual_sources = tuple(str(source_values[index]) for index in np.sort(first_indices))
     if set(actual_sources) != set(expected_sources):
         missing = sorted(set(expected_sources) - set(actual_sources))
         unexpected = sorted(set(actual_sources) - set(expected_sources))
@@ -604,6 +626,14 @@ def _canonicalize_rhime_inv_inputs(
             "RhimePreparedInputs inv_inputs H source labels do not match the basis operator: "
             f"missing={missing!r}, unexpected={unexpected!r}."
         )
+    if state_dim is not None:
+        state_order = [
+            index
+            for source in expected_sources
+            for index, actual_source in enumerate(source_labels)
+            if actual_source == source
+        ]
+        return result.isel({state_dim: state_order}), site_metadata
     result = result.assign_coords(source=("source", list(actual_sources)))
     return result.sel(source=list(expected_sources)), site_metadata
 

@@ -3,14 +3,13 @@ from pathlib import Path
 import numpy as np
 import pytest
 import xarray as xr
+from helpers import basis_function
 
 from openghg_inversions.basis.operators import (
+    BasisOperator,
     BucketBasisOperator,
     MultiSourceBucketBasisOperator,
-    BasisOperator,
 )
-
-from helpers import basis_function
 
 
 @pytest.fixture
@@ -106,11 +105,24 @@ def test_multisource_basis_operator_reorders_equivalent_grid_indexes(
     basis_func,
     basis_func2,
 ):
-    """Serialization follows coordinate labels instead of array position."""
-    reversed_basis = basis_func2.isel(lon=slice(None, None, -1))
+    """Construction aligns dimension and coordinate order without dropping attrs."""
+    basis_func = basis_func.assign_attrs(units="1")
+    basis_func2 = basis_func2.assign_attrs(units="1")
+    transposed_basis = basis_func.transpose("lon", "lat")
+    reversed_basis = basis_func2.transpose("lon", "lat").isel(lon=slice(None, None, -1))
     operator = MultiSourceBucketBasisOperator(
-        {"A": basis_func, "B": reversed_basis},
+        {"A": transposed_basis, "B": reversed_basis},
         state_dim="state",
+    )
+
+    assert operator.basis_flat["A"].dims == ("lat", "lon")
+    xr.testing.assert_identical(
+        operator.basis_flat["A"],
+        basis_func.rename("basis_flat"),
+    )
+    xr.testing.assert_identical(
+        operator.basis_flat["B"],
+        basis_func2.rename("basis_flat"),
     )
 
     restored = BasisOperator.decode_datatree(operator.to_datatree())
@@ -126,15 +138,50 @@ def test_multisource_basis_operator_rejects_different_grid_labels(
     basis_func,
     basis_func2,
 ):
-    """Serialization rejects genuinely different source grids."""
+    """Construction rejects genuinely different source grids."""
     shifted_basis = basis_func2.assign_coords(lon=basis_func2.lon + 0.5)
-    operator = MultiSourceBucketBasisOperator(
-        {"A": basis_func, "B": shifted_basis},
-        state_dim="state",
-    )
 
     with pytest.raises(ValueError, match="same grid coordinate labels"):
-        operator.to_datatree()
+        MultiSourceBucketBasisOperator(
+            {"A": basis_func, "B": shifted_basis},
+            state_dim="state",
+        )
+
+
+@pytest.mark.parametrize("duplicate_source", ["A", "B"])
+def test_multisource_basis_operator_rejects_duplicate_grid_labels(
+    basis_func,
+    basis_func2,
+    duplicate_source,
+):
+    """Construction identifies duplicate labels in every source grid."""
+    duplicate_basis = basis_func.assign_coords(lon=[*basis_func.lon.values[:-1], 10])
+    basis = {"A": basis_func, "B": basis_func2}
+    basis[duplicate_source] = duplicate_basis
+
+    with pytest.raises(
+        ValueError,
+        match=rf"unique grid coordinate labels.*source {duplicate_source!r}.*'lon'",
+    ):
+        MultiSourceBucketBasisOperator(basis, state_dim="state")
+
+
+def test_multisource_basis_operator_rejects_shared_duplicate_grid_labels(
+    basis_func,
+    basis_func2,
+):
+    """Identical duplicate indexes remain invalid even when exact alignment would pass."""
+    duplicate_lon = [*basis_func.lon.values[:-1], 10]
+    basis = {
+        "A": basis_func.assign_coords(lon=duplicate_lon),
+        "B": basis_func2.assign_coords(lon=duplicate_lon),
+    }
+
+    with pytest.raises(
+        ValueError,
+        match=r"unique grid coordinate labels.*source 'A'.*'lon'",
+    ):
+        MultiSourceBucketBasisOperator(basis, state_dim="state")
 
 
 @pytest.mark.parametrize("suffix", [".nc", ".zarr"])

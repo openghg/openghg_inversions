@@ -146,6 +146,39 @@ def test_prepared_inputs_normalizes_h_to_basis_source_order() -> None:
     assert prepared.inv_inputs.source.values.tolist() == ["B", "A"]
 
 
+def test_prepared_inputs_normalizes_gathered_h_to_basis_source_order() -> None:
+    """Gathered H state blocks follow basis order without losing state coordinates."""
+    original = _multisource_prepared_inputs()
+    state_index = pd.MultiIndex.from_tuples(
+        [("A", 0), ("B", 0), ("A", 1), ("B", 1)],
+        names=("source", "region_in_source"),
+    )
+    inv_inputs = original.inv_inputs.drop_dims(("source", "region"))
+    inv_inputs["H"] = xr.DataArray(
+        [[10.0], [20.0], [30.0], [40.0]],
+        dims=("region", "nmeasure"),
+        coords={
+            **xr.Coordinates.from_pandas_multiindex(state_index, "region"),
+            "nmeasure": inv_inputs["nmeasure"],
+            "state_note": ("region", ["a0", "b0", "a1", "b1"]),
+        },
+    )
+
+    prepared = RhimePreparedInputs(
+        inv_inputs=inv_inputs,
+        basis_functions=original.basis_functions,
+        site_metadata=original.site_metadata,
+    )
+
+    expected_index = pd.MultiIndex.from_tuples(
+        [("B", 0), ("B", 1), ("A", 0), ("A", 1)],
+        names=("source", "region_in_source"),
+    )
+    assert prepared.inv_inputs.indexes["region"].equals(expected_index)
+    assert prepared.inv_inputs["H"].values[:, 0].tolist() == [20.0, 40.0, 10.0, 30.0]
+    assert prepared.inv_inputs["state_note"].values.tolist() == ["b0", "b1", "a0", "a1"]
+
+
 def test_prepared_inputs_rejects_h_source_mismatch() -> None:
     """H cannot omit an operator source or introduce an unknown source."""
     original = _multisource_prepared_inputs()
