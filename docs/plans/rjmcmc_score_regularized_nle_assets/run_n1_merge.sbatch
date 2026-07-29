@@ -108,7 +108,7 @@ export MKL_NUM_THREADS=1
 export NUMEXPR_NUM_THREADS=1
 export JAX_ENABLE_X64=True
 export JAX_PLATFORM_NAME=cpu
-export XLA_FLAGS="--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1"
+export XLA_FLAGS="--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1 --xla_cpu_parallel_codegen_split_count=1"
 export PYTHONPATH="${NLE_SOURCE}${PYTHONPATH:+:${PYTHONPATH}}"
 cache_root="${TMPDIR:-/tmp}/score-nle-n1-merge-${SLURM_JOB_ID}"
 export XDG_CACHE_HOME="${cache_root}/xdg"

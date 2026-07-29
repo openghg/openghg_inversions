@@ -437,6 +437,29 @@ initialization and optimizer streams; these four private task streams use
 Independent model-selection loss chooses the lower composite loss, with
 initialization index as the exact-tie breaker.
 
+### Frozen CPU compilation control
+
+The first \(S=4096\) N1 launch at source revision
+`d014b7b9f021bbd47aa88d5554fee8fa760b6e13` failed during XLA/LLVM CPU
+code generation at both 8 GB and 16 GB per task, before any scientific
+artifact was published.  The evidence and immutable checksums are recorded in
+`rjmcmc_score_regularized_nle_n1_jit_recovery.md`.
+
+Freeze the recovery runtime setting as:
+
+```text
+XLA_FLAGS=--xla_cpu_multi_thread_eigen=false
+          intra_op_parallelism_threads=1
+          --xla_cpu_parallel_codegen_split_count=1
+```
+
+The final flag serializes CPU LLVM module splitting relative to XLA's
+multi-split default.  It is a compilation-memory control only: the native
+model, simulated arrays, flow architecture, loss, batch and score microbatch,
+optimizer, seeds, thresholds, and selection rule are unchanged.  The exact
+flag string is part of the development protocol hash, is asserted by N0 and
+N1 before importing JAX, and must be held fixed for all later stages.
+
 ### PARIS programme
 
 The training mass catalogue is a scrambled one-dimensional Sobol draw from

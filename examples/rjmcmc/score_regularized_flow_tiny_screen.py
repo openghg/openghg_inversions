@@ -67,7 +67,11 @@ Profile = Literal["smoke", "development"]
 SCHEMA = "rjmcmc-score-regularized-flow-tiny-screen-v1"
 PROTOCOL = tiny_domains.PROTOCOL
 DEVELOPMENT_PROTOCOL_SHA256 = (
-    "f03b5c3ba9f22bc12992807631fc14660ddfe59cbcefdd1ce40f8bfc4a9a8f0a"
+    "b114637e6f8cdbeb9f835ed61119f1c910898683091d9339fd93af8117e31f97"
+)
+CPU_XLA_FLAGS = (
+    "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1 "
+    "--xla_cpu_parallel_codegen_split_count=1"
 )
 
 DEVELOPMENT_MATRIX = tiny_domains.DEVELOPMENT_MATRIX
@@ -226,6 +230,7 @@ def _protocol_payload() -> dict[str, Any]:
             "smallest common six-case size starting an all-larger passing "
             "suffix of length at least two"
         ),
+        "cpu_xla_flags": CPU_XLA_FLAGS,
         "runtime": _runtime_versions(),
     }
 

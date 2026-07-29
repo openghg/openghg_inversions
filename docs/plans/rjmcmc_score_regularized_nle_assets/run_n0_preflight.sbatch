@@ -111,7 +111,7 @@ export MKL_NUM_THREADS=1
 export NUMEXPR_NUM_THREADS=1
 export JAX_ENABLE_X64=True
 export JAX_PLATFORM_NAME=cpu
-export XLA_FLAGS="--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1"
+export XLA_FLAGS="--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1 --xla_cpu_parallel_codegen_split_count=1"
 export PYTHONPATH="${NLE_SOURCE}${PYTHONPATH:+:${PYTHONPATH}}"
 cache_root="${TMPDIR:-/tmp}/score-nle-n0-${SLURM_JOB_ID}"
 export XDG_CACHE_HOME="${cache_root}/xdg"
@@ -139,7 +139,7 @@ run_preflight() {
   local observed_protocol
   observed_protocol="$(
     pixi run --frozen --no-install -e nle-dev python -c \
-      'from examples.rjmcmc import score_regularized_flow_tiny_screen as m; print(m._protocol_sha256())'
+      'import os; from examples.rjmcmc import score_regularized_flow_tiny_screen as m; assert os.environ["XLA_FLAGS"] == m.CPU_XLA_FLAGS; print(m._protocol_sha256())'
   )"
   if [[ "${observed_protocol}" != "${NLE_PROTOCOL_SHA256}" ]]; then
     echo "The imported NLE protocol digest does not match." >&2

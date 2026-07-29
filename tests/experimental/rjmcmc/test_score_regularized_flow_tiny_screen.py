@@ -63,6 +63,10 @@ def test_development_protocol_is_frozen_and_fails_closed(
             "initialization index"
         ),
     }
+    assert payload["cpu_xla_flags"] == (
+        "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1 "
+        "--xla_cpu_parallel_codegen_split_count=1"
+    )
     screen._validate_development_protocol()
     monkeypatch.setattr(screen, "DEVELOPMENT_PROTOCOL_SHA256", "")
     with pytest.raises(RuntimeError, match="has not been frozen"):

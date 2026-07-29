@@ -35,6 +35,7 @@ def test_n0_and_n1_assets_are_valid_bash_with_shared_node_resources() -> None:
         assert "score_regularized_flow_tiny_screen.py" in text
         assert "symbolic-ref -q HEAD" in text
         assert "status --porcelain --untracked-files=all" in text
+        assert text.count("--xla_cpu_parallel_codegen_split_count=1") == 1
 
     n0 = _N0.read_text(encoding="utf-8")
     assert "#SBATCH --time=00:30:00" in n0
