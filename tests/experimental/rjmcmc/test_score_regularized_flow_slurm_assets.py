@@ -46,6 +46,8 @@ def test_n0_and_n1_assets_are_valid_bash_with_shared_node_resources() -> None:
     assert "separate_process_artifact_replay" in n0
     assert "--training-sample-count 64" in n0
     assert ".score-flow" in n0
+    assert "test_score_regularized_flow_compile_canary.py" in n0
+    assert "score_regularized_flow_compile_canary.py" in n0
     assert "test_score_regularized_flow_tiny_certify.py" in n0
 
 

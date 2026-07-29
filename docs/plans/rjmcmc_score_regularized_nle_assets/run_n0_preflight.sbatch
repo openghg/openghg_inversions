@@ -155,6 +155,7 @@ run_preflight() {
     tests/experimental/rjmcmc/test_aggregation_error_score_flow_artifact.py \
     tests/experimental/rjmcmc/test_score_regularized_flow_tiny_domains.py \
     tests/experimental/rjmcmc/test_score_regularized_flow_tiny_screen.py \
+    tests/experimental/rjmcmc/test_score_regularized_flow_compile_canary.py \
     tests/experimental/rjmcmc/test_score_regularized_flow_tiny_certify.py \
     tests/experimental/rjmcmc/test_score_regularized_flow_slurm_assets.py
   echo "focused_pytest_pass"
@@ -167,6 +168,7 @@ run_preflight() {
     openghg_inversions/experimental/rjmcmc/aggregation_error_score_flow_artifact.py \
     examples/rjmcmc/score_regularized_flow_tiny_domains.py \
     examples/rjmcmc/score_regularized_flow_tiny_screen.py \
+    examples/rjmcmc/score_regularized_flow_compile_canary.py \
     examples/rjmcmc/score_regularized_flow_tiny_certify.py \
     tests/experimental/rjmcmc/test_aggregation_error_score_regularized_flow.py \
     tests/experimental/rjmcmc/test_aggregation_error_score_flow_training.py \
@@ -174,6 +176,7 @@ run_preflight() {
     tests/experimental/rjmcmc/test_aggregation_error_score_flow_artifact.py \
     tests/experimental/rjmcmc/test_score_regularized_flow_tiny_domains.py \
     tests/experimental/rjmcmc/test_score_regularized_flow_tiny_screen.py \
+    tests/experimental/rjmcmc/test_score_regularized_flow_compile_canary.py \
     tests/experimental/rjmcmc/test_score_regularized_flow_tiny_certify.py \
     tests/experimental/rjmcmc/test_score_regularized_flow_slurm_assets.py
   echo "focused_ruff_pass"
@@ -187,6 +190,7 @@ run_preflight() {
     openghg_inversions/experimental/rjmcmc/aggregation_error_score_flow_artifact.py \
     examples/rjmcmc/score_regularized_flow_tiny_domains.py \
     examples/rjmcmc/score_regularized_flow_tiny_screen.py \
+    examples/rjmcmc/score_regularized_flow_compile_canary.py \
     examples/rjmcmc/score_regularized_flow_tiny_certify.py
   echo "focused_pyright_pass"
 
