@@ -432,9 +432,10 @@ SHA256(
 
 Unknown or protected domain names are rejected before deriving a seed.  The
 two initializations share the task's simulated arrays but have distinct
-initialization and optimizer streams.  Independent model-selection loss
-chooses the lower composite loss, with initialization index as the exact-tie
-breaker.
+initialization and optimizer streams; these four private task streams use
+`training` as the `public_domain` byte string in the formula above.
+Independent model-selection loss chooses the lower composite loss, with
+initialization index as the exact-tie breaker.
 
 ### PARIS programme
 
@@ -486,8 +487,14 @@ Before scientific fits:
 
 ### N1: six-case exact-oracle development
 
-Run all 24 case/size tasks as one Slurm array.  A task fits both frozen
-initializations and publishes only after independent selection.
+Run the 24 case/size tasks as four homogeneous six-case Slurm arrays, one
+array for each frozen training size.  A task fits both frozen initializations
+and publishes only after independent selection.  Submit the \(S=4096\) tier
+first with a two-hour shared-node limit.  Before submitting each larger tier,
+use completed smaller-tier Slurm `Elapsed` evidence to set a size-appropriate
+walltime; walltime is a computational control only and cannot alter the
+frozen scientific matrix, seeds, model, selection rule, or gate.  No N1 tier
+may inherit the former 72-hour safety ceiling.
 
 Reuse the exact tiny thresholds:
 
@@ -502,7 +509,8 @@ Reuse the exact tiny thresholds:
 | Interval-endpoint error | 0.05 reference SD |
 
 Also require finite normalized density, finite score risks, and independent
-model-selection-versus-test NLL agreement.  A common lock requires an
+model-selection-versus-test NLL agreement no larger than
+`max(0.02*q nat, 5*pooled NLL MCSE)`.  A common lock requires an
 all-six-case, all-larger passing training-size suffix of at least two sizes.
 No lock is a terminal architecture stop.
 
