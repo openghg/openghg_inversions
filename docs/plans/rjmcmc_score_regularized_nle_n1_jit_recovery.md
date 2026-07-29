@@ -74,6 +74,24 @@ tasks failed with the same LLVM allocation signature across
 codegen split therefore did not resolve the compiler failure.  No scientific
 task bundle was published.
 
+The first forward-mode recovery source was
+`7c5d83d2ed08564c93342ae847e874bdc45d1de5`, with run root
+`/group/chem/acrg/brendan_for_codex/rjmcmc_score_regularized_nle/run-7c5d83d2ed08564c93342ae847e874bdc45d1de5`.
+N0 job `18214715` passed in 6 minutes 45 seconds.  The report and final
+completion marker SHA-256 values were
+`7331752cb88d2d2262a59d0df051c8d764b099bdfcebf0cfad88a598a264c86e`
+and
+`9ea3fbf78057dc9e984d76a7cc45883fa0989a60e15201b824149ae81bb25906`.
+
+The first two-task compile-canary launch, array `18214737`, stopped in two
+seconds with exit 127 on both `bp1-compute051` and `bp1-compute058`.  Peak
+RSS was only 2.0–2.1 MiB and no canary log, report, or marker was created.
+The wrapper had attempted to call Git before redirecting its log but omitted
+the Git module load used by every other committed NLE Slurm script.  This is
+a launch-wrapper failure, not a JAX compile result or scientific result.  Its
+wakeup ticket was `sw-20260729T225217Z-81238a9b1cc8`, with callback job
+`18214738`.
+
 ## Evidence Checksums
 
 The following table authenticates the passing N0 report/marker and every
@@ -156,3 +174,8 @@ ordinary shared nodes, 8 GB per task, and a 30-minute limit.  It evaluates no
 scientific threshold.  Only if both canaries pass may the complete six-case
 \(S=4096\) array run; no larger N1 size may run until that tier publishes six
 authenticated task bundles.
+
+The canary wrapper must load the same pinned Git module as N0/N1 before
+performing source authentication.  Because the failed wrapper produced no
+canary artifact, its corrected launch uses a new exact source and run root;
+the scheduler failure remains preserved by Slurm and its wakeup ticket.

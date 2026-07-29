@@ -9,6 +9,9 @@
 #SBATCH --error=/dev/null
 
 set -euo pipefail
+set -o noclobber
+
+module load git/2.45.1-pqk5
 
 : "${NLE_SOURCE:?Set NLE_SOURCE to the detached exact-SHA source.}"
 : "${NLE_RUN_ROOT:?Set NLE_RUN_ROOT to the fresh score-NLE run root.}"

@@ -32,6 +32,7 @@ def test_n0_and_n1_assets_are_valid_bash_with_shared_node_resources() -> None:
         assert "#SBATCH --mem=8G" in text
         assert "--exclusive" not in text
         assert "#SBATCH --account" not in text
+        assert "module load git/2.45.1-pqk5" in text
         assert "PARIS_inversions" in text
         assert "score_regularized_flow_tiny_screen.py" in text
         assert "symbolic-ref -q HEAD" in text
