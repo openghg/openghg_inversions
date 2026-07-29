@@ -20,6 +20,7 @@ from openghg_inversions.basis import (
     bucket_basis_from_weights,
     bucket_basis_function,
     fixed_outer_regions_basis,
+    paired_abs_response_weights,
     quadtree_basis_from_weights,
     quadtree_basis_function,
     region_constrained_basis_from_weights,
@@ -157,6 +158,146 @@ def test_basis_weights_from_fp_all_applies_abs_flux_and_mask():
 
     expected = flux.mean("time").where(mask, drop=True)
     xr.testing.assert_allclose(weights, expected)
+
+
+def test_paired_abs_response_weights_use_retained_footprint_times_only():
+    """Paired response weights use only the footprint observations supplied."""
+    times = pd.to_datetime(["2020-01-01", "2020-01-02"])
+    coords = {"time": times, "lat": [0.0], "lon": [10.0, 20.0]}
+    flux = xr.DataArray(
+        np.array([[[1.0, -4.0]], [[100.0, 200.0]]]),
+        dims=("time", "lat", "lon"),
+        coords=coords,
+        name="flux",
+    )
+    retained_footprint = xr.DataArray(
+        np.array([[[2.0, 3.0]]]),
+        dims=("time", "lat", "lon"),
+        coords={"time": [times[0]], "lat": coords["lat"], "lon": coords["lon"]},
+        name="fp",
+    )
+
+    weights = paired_abs_response_weights(flux, [retained_footprint])
+
+    expected = abs(retained_footprint.isel(time=0, drop=True) * flux.isel(time=0, drop=True))
+    xr.testing.assert_allclose(weights, expected)
+    mean_product = _mean_fp_times_mean_flux(flux, [retained_footprint])
+    assert not np.allclose(weights.values, mean_product.values)
+
+
+def test_paired_abs_response_weights_applies_mask():
+    """Paired response weights preserve the lower-level mask convention."""
+    fp_all = _simple_fp_all_for_basis_weights()
+    flux = fp_all[".flux"]["test-source"].data.flux
+    footprint = fp_all["TAC"].fp
+    mask = xr.DataArray(
+        np.array([[True, False], [False, True]]),
+        dims=("lat", "lon"),
+        coords={"lat": flux.lat, "lon": flux.lon},
+    )
+
+    weights = paired_abs_response_weights(flux, [footprint], mask=mask)
+
+    expected = abs(footprint * flux).sum("time") / footprint.sizes["time"]
+    xr.testing.assert_allclose(weights, expected.where(mask, drop=True))
+
+
+def test_paired_abs_response_weights_weights_sites_by_retained_observation_count():
+    """Paired response weights average over retained observations, not sites."""
+    times = pd.to_datetime(["2020-01-01", "2020-01-02", "2020-01-03"])
+    coords = {"time": times, "lat": [0.0], "lon": [10.0, 20.0]}
+    flux = xr.DataArray(
+        np.array([[[1.0, 2.0]], [[10.0, 20.0]], [[100.0, 200.0]]]),
+        dims=("time", "lat", "lon"),
+        coords=coords,
+        name="flux",
+    )
+    one_observation_site = xr.DataArray(
+        np.array([[[2.0, 3.0]]]),
+        dims=("time", "lat", "lon"),
+        coords={"time": [times[0]], "lat": coords["lat"], "lon": coords["lon"]},
+        name="fp",
+    )
+    two_observation_site = xr.DataArray(
+        np.array([[[1.0, 2.0]], [[3.0, 4.0]]]),
+        dims=("time", "lat", "lon"),
+        coords={"time": times[1:], "lat": coords["lat"], "lon": coords["lon"]},
+        name="fp",
+    )
+
+    weights = paired_abs_response_weights(flux, [one_observation_site, two_observation_site])
+
+    expected = (
+        abs(one_observation_site * flux.sel(time=one_observation_site.time)).sum("time")
+        + abs(two_observation_site * flux.sel(time=two_observation_site.time)).sum("time")
+    ) / 3
+    xr.testing.assert_allclose(weights, expected)
+
+
+def test_paired_abs_response_weights_rejects_unpaired_times():
+    """Paired response weights fail fast when retained observations lack flux."""
+    fp_all = _simple_fp_all_for_basis_weights()
+    flux = fp_all[".flux"]["test-source"].data.flux
+    footprint = fp_all["TAC"].fp.assign_coords(time=pd.to_datetime(["2021-01-01", "2021-01-02"]))
+
+    with pytest.raises(ValueError, match="footprint times must be present"):
+        paired_abs_response_weights(flux, [footprint])
+
+
+def test_paired_abs_response_weights_rejects_reordered_spatial_coordinates():
+    """Paired response weights fail fast instead of multiplying grids positionally."""
+    fp_all = _simple_fp_all_for_basis_weights()
+    flux = fp_all[".flux"]["test-source"].data.flux
+    footprint = fp_all["TAC"].fp.sortby("lon", ascending=False)
+
+    with pytest.raises(ValueError, match="exact time and spatial coordinates"):
+        paired_abs_response_weights(flux, [footprint])
+
+
+def test_paired_abs_response_weights_rejects_reordered_mask_coordinates():
+    """Paired response masks must be on the same coordinate grid."""
+    fp_all = _simple_fp_all_for_basis_weights()
+    flux = fp_all[".flux"]["test-source"].data.flux
+    footprint = fp_all["TAC"].fp
+    mask = xr.DataArray(
+        np.array([[False, True], [True, False]]),
+        dims=("lat", "lon"),
+        coords={"lat": flux.lat, "lon": list(reversed(flux.lon.values))},
+    )
+
+    with pytest.raises(ValueError, match="mask must share exact spatial coordinates"):
+        paired_abs_response_weights(flux, [footprint], mask=mask)
+
+
+def test_paired_abs_response_weights_rejects_mismatched_spatial_dimensions():
+    """Paired responses reject arrays that would broadcast across renamed dimensions."""
+    fp_all = _simple_fp_all_for_basis_weights()
+    flux = fp_all[".flux"]["test-source"].data.flux
+    footprint = fp_all["TAC"].fp.rename(lat="latitude", lon="longitude")
+
+    with pytest.raises(ValueError, match="same time and spatial dimensions"):
+        paired_abs_response_weights(flux, [footprint])
+
+
+def test_paired_abs_response_weights_rejects_extra_flux_dimensions():
+    """Paired responses remain two-dimensional when callers pass source-stacked flux."""
+    fp_all = _simple_fp_all_for_basis_weights()
+    flux = fp_all[".flux"]["test-source"].data.flux.expand_dims(source=["test-source"])
+    footprint = fp_all["TAC"].fp
+
+    with pytest.raises(ValueError, match="exactly two spatial dimensions"):
+        paired_abs_response_weights(flux, [footprint])
+
+
+def test_paired_abs_response_weights_rejects_non_boolean_mask():
+    """Paired response masks reject numeric values with ambiguous truth semantics."""
+    fp_all = _simple_fp_all_for_basis_weights()
+    flux = fp_all[".flux"]["test-source"].data.flux
+    footprint = fp_all["TAC"].fp
+    mask = xr.ones_like(flux.isel(time=0), dtype=float)
+
+    with pytest.raises(ValueError, match="mask must be Boolean"):
+        paired_abs_response_weights(flux, [footprint], mask=mask)
 
 
 def test_flux_from_fp_all_sanitizes_nonfinite_single_source():
