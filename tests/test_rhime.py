@@ -1432,6 +1432,8 @@ def test_public_rhime_dataclasses_keep_existing_positional_order() -> None:
     assert not hasattr(run_spec, "sampling")
     assert result.output_metadata == output_metadata
     assert result.sampler == RhimeSampler()
+    assert model_spec.pollution_events_from_obs_one_sided is False
+    assert model_spec.pollution_events_from_obs_johnson_su is False
 
 
 @pytest.mark.parametrize("sector_count", [1, 2])
@@ -1858,6 +1860,10 @@ def test_rhime_runner_setup_builds_specs_before_preparation(tmp_path: Path) -> N
         "sample_kwargs": {"random_seed": 42},
         "posterior_predictive_kwargs": {"random_seed": 43},
         "builder_strategy": "compiled",
+        "pollution_events_from_obs": True,
+        "pollution_events_from_obs_one_sided": False,
+        "pollution_events_from_obs_johnson_su": True,
+        "power": 2.0,
     }
 
     setup = rhime_params.make_rhime_runner_setup(
@@ -1873,6 +1879,9 @@ def test_rhime_runner_setup_builds_specs_before_preparation(tmp_path: Path) -> N
     assert setup.run_spec.sites == ("TAC",)
     assert setup.run_spec.averaging_period == ("1h",)
     assert setup.run_spec.output.output_format == "none"
+    assert setup.run_spec.model.pollution_events_from_obs is True
+    assert setup.run_spec.model.pollution_events_from_obs_one_sided is False
+    assert setup.run_spec.model.pollution_events_from_obs_johnson_su is True
     assert setup.sampler == RhimeSampler(
         draws=7,
         burn=1,
@@ -1958,7 +1967,7 @@ def test_rhime_normalises_legacy_output_format_aliases(
 def test_build_rhime_model_from_spec_forwards_single_sector_prior(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Forward the sector prior and construct prepared sigma alignment."""
+    """Forward the sector prior, sigma alignment, and PEFO options."""
     sentinel = cast(pm.Model, object())
     seen: dict[str, Any] = {}
 
@@ -1984,6 +1993,10 @@ def test_build_rhime_model_from_spec_forwards_single_sector_prior(
         sigma_per_site=False,
         sigma_freq="8D",
         sigma_freq_anchor="2019-01-01",
+        pollution_events_from_obs=True,
+        pollution_events_from_obs_one_sided=False,
+        pollution_events_from_obs_johnson_su=True,
+        power=2.0,
     )
 
     model = build_rhime_model_from_spec(inv_inputs, model_spec)
@@ -1998,6 +2011,9 @@ def test_build_rhime_model_from_spec_forwards_single_sector_prior(
     assert alignment.nperiod == 1
     np.testing.assert_array_equal(alignment.site_index, np.array([0]))
     np.testing.assert_array_equal(alignment.period_index, np.array([0]))
+    assert seen["kwargs"]["pollution_events_from_obs"] is True
+    assert seen["kwargs"]["pollution_events_from_obs_one_sided"] is False
+    assert seen["kwargs"]["pollution_events_from_obs_johnson_su"] is True
 
 
 def test_build_rhime_model_from_spec_requires_one_sector() -> None:
@@ -2044,6 +2060,8 @@ def test_build_rhime_model_from_spec_dispatches_compiled_opt_in(
                 "ff",
             ),
         ),
+        pollution_events_from_obs=True,
+        pollution_events_from_obs_one_sided=True,
         builder_strategy="compiled",
     )
 
@@ -2052,12 +2070,14 @@ def test_build_rhime_model_from_spec_dispatches_compiled_opt_in(
     assert model is sentinel
     assert seen["inv_inputs"] is inv_inputs
     assert seen["kwargs"]["x_prior"] == {"pdf": "normal", "mu": 1.0, "sigma": 0.2}
+    assert seen["kwargs"]["pollution_events_from_obs"] is True
+    assert seen["kwargs"]["pollution_events_from_obs_one_sided"] is True
 
 
 def test_build_rhime_multisector_model_from_spec_preserves_sector_source_mapping(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Spec wrapper keeps sector labels separate from OpenGHG source values."""
+    """The multisector spec wrapper forwards source mappings and PEFO options."""
     sentinel = cast(pm.Model, object())
     seen: dict[str, Any] = {}
 
@@ -2089,6 +2109,10 @@ def test_build_rhime_multisector_model_from_spec_preserves_sector_source_mapping
                 variable_suffix="ocean",
             ),
         ),
+        pollution_events_from_obs=True,
+        pollution_events_from_obs_one_sided=False,
+        pollution_events_from_obs_johnson_su=True,
+        power=2.0,
     )
 
     model = build_rhime_multisector_model_from_spec(inv_inputs, model_spec)
@@ -2103,6 +2127,9 @@ def test_build_rhime_multisector_model_from_spec_preserves_sector_source_mapping
         "ocean": {"pdf": "normal", "mu": 1.0, "sigma": 0.3},
     }
     assert isinstance(seen["kwargs"]["sigma_alignment"], SigmaAlignment)
+    assert seen["kwargs"]["pollution_events_from_obs"] is True
+    assert seen["kwargs"]["pollution_events_from_obs_one_sided"] is False
+    assert seen["kwargs"]["pollution_events_from_obs_johnson_su"] is True
 
 
 def test_build_rhime_multisector_model_from_spec_dispatches_compiled_opt_in(
@@ -2140,6 +2167,8 @@ def test_build_rhime_multisector_model_from_spec_dispatches_compiled_opt_in(
                 "ocean",
             ),
         ),
+        pollution_events_from_obs=True,
+        pollution_events_from_obs_one_sided=True,
         builder_strategy="compiled",
     )
 
@@ -2148,6 +2177,8 @@ def test_build_rhime_multisector_model_from_spec_dispatches_compiled_opt_in(
     assert model is sentinel
     assert seen["inv_inputs"] is inv_inputs
     assert seen["kwargs"]["sectors"] == ["FF", "ocean"]
+    assert seen["kwargs"]["pollution_events_from_obs"] is True
+    assert seen["kwargs"]["pollution_events_from_obs_one_sided"] is True
 
 
 def test_rhime_model_spec_rejects_unknown_builder_strategy() -> None:
@@ -2158,6 +2189,67 @@ def test_rhime_model_spec_rejects_unknown_builder_strategy() -> None:
             domain="EUROPE",
             sectors=(),
             builder_strategy=cast(Any, "fallback"),
+        )
+
+
+@pytest.mark.parametrize(
+    ("options", "message"),
+    [
+        (
+            {
+                "pollution_events_from_obs": False,
+                "pollution_events_from_obs_johnson_su": True,
+                "power": 2.0,
+            },
+            "pollution_events_from_obs",
+        ),
+        (
+            {
+                "pollution_events_from_obs": True,
+                "pollution_events_from_obs_one_sided": True,
+                "pollution_events_from_obs_johnson_su": True,
+                "power": 2.0,
+            },
+            "one_sided",
+        ),
+        (
+            {
+                "pollution_events_from_obs": True,
+                "pollution_events_from_obs_johnson_su": True,
+                "no_model_error": True,
+                "power": 2.0,
+            },
+            "no_model_error",
+        ),
+        (
+            {
+                "pollution_events_from_obs": True,
+                "pollution_events_from_obs_johnson_su": True,
+                "power": 1.99,
+            },
+            "power.*2",
+        ),
+        (
+            {
+                "pollution_events_from_obs": True,
+                "pollution_events_from_obs_johnson_su": True,
+                "power": {"pdf": "uniform", "lower": 1.9, "upper": 2.1},
+            },
+            "power.*2",
+        ),
+    ],
+)
+def test_rhime_model_spec_rejects_invalid_johnson_su_combinations(
+    options: dict[str, Any],
+    message: str,
+) -> None:
+    """Invalid Johnson-SU combinations fail while constructing the serializable spec."""
+    with pytest.raises(ValueError, match=message):
+        RhimeModelSpec(
+            species="ch4",
+            domain="EUROPE",
+            sectors=(),
+            **options,
         )
 
 

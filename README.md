@@ -267,6 +267,8 @@ nuts_sampler = "numpyro"
 save_trace = False
 min_error = "percentile"
 pollution_events_from_obs = True
+pollution_events_from_obs_one_sided = False
+pollution_events_from_obs_johnson_su = False
 reparameterise_log_normal = False
 sampler_kwargs = {"target_accept": 0.99}
 ```
@@ -360,6 +362,17 @@ Historical inferpymc-era parameters included:
 - `pollution_events_from_obs`: Determines whether the model error is calculated as a fraction of:
   - the measured enhancement above the modelled baseline (if `True`)
   - the prior modelled enhancement (if `False`)
+- `pollution_events_from_obs_one_sided`: when `True`, clips negative measured
+  enhancements relative to the modelled baseline to zero. This option only
+  affects runs with `pollution_events_from_obs = True` and defaults to `False`,
+  preserving the absolute-enhancement behavior. Without a modelled baseline,
+  a small non-negative numerical stabilizer is added after clipping.
+- `pollution_events_from_obs_johnson_su`: experimental opt-in for a coherent,
+  mean-centred transformed Johnson-SU observation distribution instead of the
+  response-scaled Normal pseudo-likelihood. It requires
+  `pollution_events_from_obs = True`,
+  `pollution_events_from_obs_one_sided = False`, `no_model_error = False`, and
+  fixed numeric `power = 2`.
 - `no_model_error`: if `True`, only use obs error in likelihood (omitting min. model error and model error from scaling pollution events).
 - `reparameterise_log_normal`: if `True`, then log normal priors will be sampled by transforming samples from standard normal random variable to samples from the appropriate log normal distribution.
 

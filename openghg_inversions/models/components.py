@@ -32,6 +32,11 @@ import xarray as xr
 from pytensor.tensor.variable import TensorVariable
 
 from openghg_inversions.inversion_inputs import make_freq_indicator
+from openghg_inversions.models._observation import (
+    _mean_centered_johnson_su_logp,
+    _mean_centered_johnson_su_random,
+    validate_johnson_su_options,
+)
 from openghg_inversions.models.coords import add_coords
 from openghg_inversions.models.priors import parse_prior
 from openghg_inversions.sigma import SigmaAlignment
@@ -316,11 +321,14 @@ def add_inferpymc_likelihood_component(
     pollution_events_from_obs: bool = False,
     no_model_error: bool = False,
     output_dim: str = "nmeasure",
+    pollution_events_from_obs_one_sided: bool = False,
+    pollution_events_from_obs_johnson_su: bool = False,
 ) -> TensorVariable:
     """Add the inferpymc observation model.
 
     ``mu`` is the non-baseline forward-model contribution. ``mu_bc`` is the
-    baseline contribution, usually ``H_bc @ bc``, plus offset if applicable.
+    boundary-condition baseline, usually ``H_bc @ bc``. ``offset`` is added
+    separately.
 
     Args:
         data: Canonical inferpymc input dataset.
@@ -335,10 +343,39 @@ def add_inferpymc_likelihood_component(
             observations instead of ``mu``.
         no_model_error: Whether to bypass the model-error term.
         output_dim: Observation/output dimension name.
+        pollution_events_from_obs_one_sided: Whether observation-derived
+            pollution events use only positive enhancements above the
+            baseline. This option only applies when
+            ``pollution_events_from_obs`` is true. Without a baseline, a small
+            non-negative numerical stabilizer is added after clipping.
+        pollution_events_from_obs_johnson_su: Whether to replace the
+            response-scaled Normal pseudo-likelihood with a coherent,
+            mean-centred transformed Johnson-SU distribution. This option
+            requires observation-derived, two-sided model error with fixed
+            numeric ``power=2``.
 
     Returns:
-        The ``epsilon`` deterministic variable used by the observation model.
+        The ``epsilon`` deterministic. It is the Normal scale for the existing
+        likelihoods and the observed response-scaled diagnostic for the
+        transformed Johnson-SU likelihood.
+
+    Raises:
+        ValueError: If Johnson-SU mode is combined with incompatible options,
+            or if its effective observation error is non-finite or
+            non-positive.
+
+    Side Effects:
+        Registers observation data, sigma, ``epsilon``, and the observed
+        ``y`` random variable in the active PyMC model.
     """
+    validate_johnson_su_options(
+        enabled=pollution_events_from_obs_johnson_su,
+        pollution_events_from_obs=pollution_events_from_obs,
+        pollution_events_from_obs_one_sided=pollution_events_from_obs_one_sided,
+        no_model_error=no_model_error,
+        power=power,
+    )
+
     y_data = add_model_data(data["mf"].transpose(output_dim), "Y")
     error_data = add_model_data(data["mf_error"].transpose(output_dim), "error")
     min_error_data = add_model_data(data["min_error"].transpose(output_dim), "min_error")
@@ -348,11 +385,59 @@ def add_inferpymc_likelihood_component(
         prior_args=sigprior,
     )
 
+    baseline = pt.zeros_like(mu)
+    if mu_bc is not None:
+        baseline = baseline + mu_bc
+    if offset is not None:
+        baseline = baseline + offset
+    total_mu = mu + baseline
+
+    if pollution_events_from_obs_johnson_su:
+        effective_error_values = np.maximum(
+            np.abs(data["mf_error"].transpose(output_dim).values),
+            data["min_error"].transpose(output_dim).values,
+        )
+        if not np.all(np.isfinite(effective_error_values)) or np.any(effective_error_values <= 0.0):
+            raise ValueError(
+                "The transformed Johnson-SU likelihood requires every effective "
+                "error `max(abs(mf_error), min_error)` to be finite and strictly positive."
+            )
+
+        effective_error = cast(
+            TensorVariable,
+            pt.maximum(pt.abs(error_data), min_error_data),
+        )
+        observed_enhancement = y_data - baseline
+        eps = cast(
+            TensorVariable,
+            pt.sqrt(effective_error**2 + (sigma * observed_enhancement) ** 2),
+        )
+        epsilon = pm.Deterministic("epsilon", eps, dims=output_dim)
+        pm.CustomDist(
+            "y",
+            baseline,
+            mu,
+            effective_error,
+            sigma,
+            logp=_mean_centered_johnson_su_logp,
+            random=_mean_centered_johnson_su_random,
+            signature="(),(),(),()->()",
+            observed=y_data,
+            dims=output_dim,
+        )
+        return epsilon
+
     if pollution_events_from_obs is True:
         if mu_bc is not None:
-            pollution_event = pt.abs(y_data - mu_bc)
+            enhancement = y_data - mu_bc
+            pollution_event = (
+                pt.maximum(enhancement, 0.0) if pollution_events_from_obs_one_sided else pt.abs(enhancement)
+            )
         else:
-            pollution_event = pt.abs(y_data) + 1e-6 * pt.mean(y_data)
+            if pollution_events_from_obs_one_sided:
+                pollution_event = pt.maximum(y_data, 0.0) + 1e-6 * pt.abs(pt.mean(y_data))
+            else:
+                pollution_event = pt.abs(y_data) + 1e-6 * pt.mean(y_data)
     else:
         pollution_event = pt.abs(mu)
 
@@ -368,14 +453,6 @@ def add_inferpymc_likelihood_component(
             pt.sqrt(error_data**2 + pt.pow(pollution_event_scaled_error, power0)),
             min_error_data,
         )
-
-    # TODO: this calculation should probably happen separately
-    # e.g. using a add_linear_component_sum function.
-    total_mu = mu
-    if mu_bc is not None:
-        total_mu = total_mu + mu_bc
-    if offset is not None:
-        total_mu = total_mu + offset
 
     epsilon = pm.Deterministic("epsilon", eps, dims=output_dim)
     pm.Normal("y", mu=total_mu, sigma=epsilon, observed=y_data, dims=output_dim)

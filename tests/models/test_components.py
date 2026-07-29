@@ -1,8 +1,11 @@
 import numpy as np
 import pandas as pd
 import pymc as pm
+import pytensor.tensor as pt
+import pytest
 import xarray as xr
 
+import openghg_inversions.models.components as components_module
 from openghg_inversions.models.components import (
     LinearComponentResult,
     add_inferpymc_likelihood_component,
@@ -294,6 +297,261 @@ def test_likelihood_pollution_events_from_obs_can_run_without_boundary_condition
     epsilon = model.named_vars["epsilon"].eval()
     assert np.all(np.diff(epsilon) > 0)
     assert "y" in model.named_vars
+
+
+def _epsilon_for_obs_pollution_events(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    one_sided: bool | None,
+) -> np.ndarray:
+    """Build and evaluate an observation-derived likelihood with fixed sigma.
+
+    Args:
+        monkeypatch: Pytest helper used to replace the sampled sigma component.
+        one_sided: Whether to enable one-sided PEFO. ``None`` omits the option
+            so the public default is exercised.
+
+    Returns:
+        Evaluated observation-aligned epsilon values.
+    """
+    ds = _likelihood_dataset()
+    mu_bc_values = np.array([2.0, 1.0, 4.0, 2.0])
+
+    def fixed_sigma(*args, **kwargs):
+        """Return deterministic observation-aligned sigma values for this regression test."""
+        return pt.full((ds.sizes["nmeasure"],), 0.5)
+
+    monkeypatch.setattr(components_module, "add_sigma_component", fixed_sigma)
+
+    likelihood_options = {"pollution_events_from_obs": True}
+    if one_sided is not None:
+        likelihood_options["pollution_events_from_obs_one_sided"] = one_sided
+
+    with pm.Model(coords={"nmeasure": np.arange(4)}) as model:
+        attach_coord_registry(model, CoordRegistry())
+        mu = pm.Data("mu_input", np.zeros(4), dims="nmeasure")
+        mu_bc = pm.Data("mu_bc_input", mu_bc_values, dims="nmeasure")
+        add_inferpymc_likelihood_component(
+            ds,
+            mu=mu,
+            mu_bc=mu_bc,
+            sigprior={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
+            sigma_alignment=_sigma_alignment(ds, per_site=False),
+            power=2.0,
+            **likelihood_options,
+        )
+
+    return model.named_vars["epsilon"].eval()
+
+
+def test_obs_pollution_events_remain_two_sided_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """PEFO retains absolute observed enhancements when one-sided mode is omitted."""
+    epsilon = _epsilon_for_obs_pollution_events(monkeypatch, one_sided=None)
+
+    pollution_events = np.array([1.0, 1.0, 1.0, 2.0])
+    expected = np.sqrt(0.1**2 + (0.5 * pollution_events) ** 2)
+    np.testing.assert_allclose(epsilon, expected)
+
+
+def test_obs_pollution_events_one_sided_clip_below_baseline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One-sided PEFO clips below-baseline values while retaining positive enhancements."""
+    epsilon = _epsilon_for_obs_pollution_events(monkeypatch, one_sided=True)
+
+    pollution_events = np.array([0.0, 1.0, 0.0, 2.0])
+    expected = np.sqrt(0.1**2 + (0.5 * pollution_events) ** 2)
+    np.testing.assert_allclose(epsilon, expected)
+
+
+@pytest.mark.parametrize(
+    ("one_sided", "pollution_events"),
+    [
+        (None, np.array([3.999999, 1.999999, -0.000001, 1.999999])),
+        (True, np.array([0.000001, 0.000001, 0.000001, 2.000001])),
+    ],
+)
+def test_obs_pollution_events_without_bc_preserve_default_and_clip_one_sided(
+    monkeypatch: pytest.MonkeyPatch,
+    one_sided: bool | None,
+    pollution_events: np.ndarray,
+) -> None:
+    """No-BC PEFO preserves its default stabilizer while one-sided mode stays nonnegative."""
+    ds = _likelihood_dataset().assign(mf=("nmeasure", np.array([-4.0, -2.0, 0.0, 2.0])))
+
+    def fixed_sigma(*args, **kwargs):
+        """Return deterministic observation-aligned sigma values for this regression test."""
+        return pt.full((ds.sizes["nmeasure"],), 0.5)
+
+    monkeypatch.setattr(components_module, "add_sigma_component", fixed_sigma)
+    likelihood_options = {"pollution_events_from_obs": True}
+    if one_sided is not None:
+        likelihood_options["pollution_events_from_obs_one_sided"] = one_sided
+
+    with pm.Model(coords={"nmeasure": np.arange(4)}) as model:
+        attach_coord_registry(model, CoordRegistry())
+        mu = pm.Data("mu_input", np.zeros(4), dims="nmeasure")
+        add_inferpymc_likelihood_component(
+            ds,
+            mu=mu,
+            mu_bc=None,
+            sigprior={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
+            sigma_alignment=_sigma_alignment(ds, per_site=False),
+            power=2.0,
+            **likelihood_options,
+        )
+
+    expected = np.sqrt(0.1**2 + (0.5 * pollution_events) ** 2)
+    np.testing.assert_allclose(model.named_vars["epsilon"].eval(), expected)
+
+
+@pytest.mark.parametrize(
+    ("options", "message"),
+    [
+        (
+            {
+                "pollution_events_from_obs": False,
+                "pollution_events_from_obs_johnson_su": True,
+                "power": 2.0,
+            },
+            "pollution_events_from_obs",
+        ),
+        (
+            {
+                "pollution_events_from_obs": True,
+                "pollution_events_from_obs_one_sided": True,
+                "pollution_events_from_obs_johnson_su": True,
+                "power": 2.0,
+            },
+            "one_sided",
+        ),
+        (
+            {
+                "pollution_events_from_obs": True,
+                "pollution_events_from_obs_johnson_su": True,
+                "no_model_error": True,
+                "power": 2.0,
+            },
+            "no_model_error",
+        ),
+        (
+            {
+                "pollution_events_from_obs": True,
+                "pollution_events_from_obs_johnson_su": True,
+                "power": 1.99,
+            },
+            "power.*2",
+        ),
+    ],
+)
+def test_johnson_su_pollution_events_reject_invalid_combinations(
+    options: dict[str, bool | float],
+    message: str,
+) -> None:
+    """Johnson-SU PEFO rejects modes that do not define its transformed distribution."""
+    ds = _likelihood_dataset()
+
+    with pm.Model(coords={"nmeasure": np.arange(4)}) as model:
+        attach_coord_registry(model, CoordRegistry())
+        mu = pm.Data("mu_input", np.ones(4), dims="nmeasure")
+        mu_bc = pm.Data("mu_bc_input", np.zeros(4), dims="nmeasure")
+        with pytest.raises(ValueError, match=message):
+            add_inferpymc_likelihood_component(
+                ds,
+                mu=mu,
+                mu_bc=mu_bc,
+                sigprior={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
+                sigma_alignment=_sigma_alignment(ds, per_site=False),
+                **options,
+            )
+
+
+def test_johnson_su_likelihood_uses_full_baseline_and_coherent_predictive_draws(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Johnson-SU mode uses BC plus offset and never reuses observed Y when drawing."""
+    observed = np.array([1.2, 2.0, 3.1, 4.4])
+    observation_error = np.array([-0.1, 0.05, -0.5, 0.2])
+    min_error = np.array([0.2, 0.1, 0.1, 0.3])
+    ds = _likelihood_dataset().assign(
+        mf=("nmeasure", observed),
+        mf_error=("nmeasure", observation_error),
+        min_error=("nmeasure", min_error),
+    )
+    mu_values = np.array([0.2, 0.5, 1.1, -0.1])
+    mu_bc_values = np.array([0.8, 1.0, 1.5, 2.0])
+    offset_values = np.array([0.1, -0.2, 0.3, 0.4])
+    sigma_values = pm.floatX(np.array([0.2, 0.25, 0.3, 0.15]))
+
+    def fixed_sigma(*args, **kwargs):
+        """Return deterministic observation-aligned sigma for component semantics."""
+        return pt.as_tensor_variable(sigma_values)
+
+    monkeypatch.setattr(components_module, "add_sigma_component", fixed_sigma)
+
+    with pm.Model(coords={"nmeasure": np.arange(4)}) as model:
+        attach_coord_registry(model, CoordRegistry())
+        mu = pm.Data("mu_input", mu_values, dims="nmeasure")
+        mu_bc = pm.Data("mu_bc_input", mu_bc_values, dims="nmeasure")
+        offset = pm.Data("offset_input", offset_values, dims="nmeasure")
+        add_inferpymc_likelihood_component(
+            ds,
+            mu=mu,
+            mu_bc=mu_bc,
+            offset=offset,
+            sigprior={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
+            sigma_alignment=_sigma_alignment(ds, per_site=False),
+            pollution_events_from_obs=True,
+            pollution_events_from_obs_johnson_su=True,
+            power=2.0,
+        )
+
+    baseline = mu_bc_values + offset_values
+    effective_error = np.maximum(np.abs(observation_error), min_error)
+    expected_epsilon = np.sqrt(effective_error**2 + (sigma_values * (observed - baseline)) ** 2)
+    np.testing.assert_allclose(model.named_vars["epsilon"].eval(), expected_epsilon)
+    assert "CustomDist" in type(model.named_vars["y"].owner.op).__name__
+
+    first_draws = pm.draw(model.named_vars["y"], draws=7, random_seed=943)
+    with model:
+        pm.set_data({"Y": observed + 1000.0})
+    second_draws = pm.draw(model.named_vars["y"], draws=7, random_seed=943)
+
+    assert first_draws.shape == (7, 4)
+    np.testing.assert_array_equal(first_draws, second_draws)
+
+
+def test_johnson_su_likelihood_requires_positive_effective_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Johnson-SU mode rejects a singular zero observation-error transform."""
+    ds = _likelihood_dataset().assign(
+        mf_error=("nmeasure", np.zeros(4)),
+        min_error=("nmeasure", np.zeros(4)),
+    )
+
+    def fixed_sigma(*args, **kwargs):
+        """Return a harmless fixed sigma so the test isolates observation error."""
+        return pt.full((ds.sizes["nmeasure"],), 0.2)
+
+    monkeypatch.setattr(components_module, "add_sigma_component", fixed_sigma)
+
+    with pm.Model(coords={"nmeasure": np.arange(4)}) as model:
+        attach_coord_registry(model, CoordRegistry())
+        mu = pm.Data("mu_input", np.ones(4), dims="nmeasure")
+        with pytest.raises(ValueError, match="finite.*positive|positive.*finite"):
+            add_inferpymc_likelihood_component(
+                ds,
+                mu=mu,
+                mu_bc=None,
+                sigprior={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
+                sigma_alignment=_sigma_alignment(ds, per_site=False),
+                pollution_events_from_obs=True,
+                pollution_events_from_obs_johnson_su=True,
+                power=2.0,
+            )
 
 
 def test_likelihood_samples_prior_predictive_with_shared_sigma_and_registered_site_indicator() -> None:

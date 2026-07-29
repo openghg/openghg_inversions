@@ -35,6 +35,7 @@ from openghg_inversions.models._rhime_flux import (
 from openghg_inversions.models._rhime_flux import (
     safe_pymc_name as _safe_pymc_name,
 )
+from openghg_inversions.models._observation import validate_johnson_su_options
 from openghg_inversions.models.components import (
     add_inferpymc_likelihood_component,
     add_linear_component,
@@ -112,11 +113,22 @@ class RhimeModelSpec:
         sigma_prior: Prior specification for model-error terms.
         offset_prior: Prior specification for optional offsets.
         offset_args: Extra keyword arguments forwarded to the offset component.
+        pollution_events_from_obs_one_sided: Whether observation-derived model
+            error uses only positive enhancements above the baseline. This
+            option only applies when ``pollution_events_from_obs`` is true.
+        pollution_events_from_obs_johnson_su: Whether to use the opt-in,
+            mean-centred transformed Johnson-SU observation likelihood. This
+            requires observation-derived two-sided error, enabled model error,
+            and fixed numeric ``power=2``.
         builder_strategy: Public model-construction strategy. ``"concrete"``
             directly composes the default, readable reference model.
             ``"compiled"`` opts into the private semantic-plan compiler for
             extension work and regression checking. There is no automatic
             fallback between strategies.
+
+    Raises:
+        ValueError: If ``builder_strategy`` is unsupported or the transformed
+            Johnson-SU option is combined with incompatible likelihood options.
     """
 
     species: str
@@ -134,14 +146,23 @@ class RhimeModelSpec:
     sigma_prior: dict[str, Any] | None = None
     offset_prior: dict[str, Any] | None = None
     offset_args: dict[str, Any] | None = None
+    pollution_events_from_obs_one_sided: bool = False
+    pollution_events_from_obs_johnson_su: bool = field(default=False, kw_only=True)
     builder_strategy: RhimeBuilderStrategy = field(default="concrete", kw_only=True)
 
     def __post_init__(self) -> None:
-        """Validate the explicitly supported model-construction strategies."""
+        """Validate builder strategy and observation-likelihood combinations."""
         if self.builder_strategy not in ("concrete", "compiled"):
             raise ValueError(
                 f"`builder_strategy` must be either 'concrete' or 'compiled'; got {self.builder_strategy!r}."
             )
+        validate_johnson_su_options(
+            enabled=self.pollution_events_from_obs_johnson_su,
+            pollution_events_from_obs=self.pollution_events_from_obs,
+            pollution_events_from_obs_one_sided=self.pollution_events_from_obs_one_sided,
+            no_model_error=self.no_model_error,
+            power=self.power,
+        )
 
 
 def _prepare_builder_priors(
@@ -170,6 +191,8 @@ def _add_rhime_observation_components(
     add_offset: bool,
     use_bc: bool,
     pollution_events_from_obs: bool,
+    pollution_events_from_obs_one_sided: bool,
+    pollution_events_from_obs_johnson_su: bool,
     no_model_error: bool,
     offset_args: dict | None,
     power: dict | float,
@@ -186,6 +209,11 @@ def _add_rhime_observation_components(
         add_offset: Whether to add an offset component.
         use_bc: Whether to add a boundary-condition component.
         pollution_events_from_obs: Whether error scaling uses observations.
+        pollution_events_from_obs_one_sided: Whether observation-derived
+            pollution events use only positive enhancements above the
+            baseline.
+        pollution_events_from_obs_johnson_su: Whether to use the transformed
+            Johnson-SU observation likelihood.
         no_model_error: Whether to suppress explicit model error.
         offset_args: Extra offset-component arguments.
         power: Likelihood error-scaling exponent or prior.
@@ -225,6 +253,8 @@ def _add_rhime_observation_components(
         sigma_alignment=sigma_alignment,
         power=power,
         pollution_events_from_obs=pollution_events_from_obs,
+        pollution_events_from_obs_one_sided=pollution_events_from_obs_one_sided,
+        pollution_events_from_obs_johnson_su=pollution_events_from_obs_johnson_su,
         no_model_error=no_model_error,
         output_dim="nmeasure",
     )
@@ -241,6 +271,8 @@ def _assemble_compiled_rhime_model(
     add_offset: bool,
     use_bc: bool,
     pollution_events_from_obs: bool,
+    pollution_events_from_obs_one_sided: bool,
+    pollution_events_from_obs_johnson_su: bool,
     no_model_error: bool,
     offset_args: dict | None,
     power: dict | float,
@@ -257,6 +289,11 @@ def _assemble_compiled_rhime_model(
         add_offset: Whether to add an offset component.
         use_bc: Whether to add a boundary-condition component.
         pollution_events_from_obs: Whether error scaling uses observations.
+        pollution_events_from_obs_one_sided: Whether observation-derived
+            pollution events use only positive enhancements above the
+            baseline.
+        pollution_events_from_obs_johnson_su: Whether to use the transformed
+            Johnson-SU observation likelihood.
         no_model_error: Whether to suppress explicit model error.
         offset_args: Extra offset-component arguments.
         power: Likelihood error-scaling exponent or prior.
@@ -277,6 +314,8 @@ def _assemble_compiled_rhime_model(
             add_offset=add_offset,
             use_bc=use_bc,
             pollution_events_from_obs=pollution_events_from_obs,
+            pollution_events_from_obs_one_sided=pollution_events_from_obs_one_sided,
+            pollution_events_from_obs_johnson_su=pollution_events_from_obs_johnson_su,
             no_model_error=no_model_error,
             offset_args=offset_args,
             power=power,
@@ -296,9 +335,11 @@ def build_rhime_model(
     add_offset: bool = False,
     use_bc: bool = True,
     pollution_events_from_obs: bool = False,
+    pollution_events_from_obs_one_sided: bool = False,
     no_model_error: bool = False,
     offset_args: dict | None = None,
     power: dict | float = 1.99,
+    pollution_events_from_obs_johnson_su: bool = False,
 ) -> pm.Model:
     """Build the standard single-sector RHIME model.
 
@@ -314,12 +355,24 @@ def build_rhime_model(
         use_bc: Whether to include boundary-condition terms.
         pollution_events_from_obs: Whether to derive pollution-event scaling
             from observations rather than modelled concentrations.
+        pollution_events_from_obs_one_sided: Whether observation-derived
+            pollution events use only positive enhancements above the
+            baseline. This option only applies when
+            ``pollution_events_from_obs`` is true.
         no_model_error: Whether to suppress the explicit model-error term.
         offset_args: Extra keyword arguments forwarded to the offset component.
         power: Exponent or prior specification used in likelihood error scaling.
+        pollution_events_from_obs_johnson_su: Whether to use the opt-in,
+            mean-centred transformed Johnson-SU observation likelihood. This
+            requires ``pollution_events_from_obs=True``, one-sided mode off,
+            model error enabled, and fixed numeric ``power=2``.
 
     Returns:
         Built PyMC model.
+
+    Raises:
+        ValueError: If transformed Johnson-SU mode has incompatible options or
+            non-finite or non-positive effective observation error.
     """
     x_prior, bc_prior, sigma_prior, offset_prior = _prepare_builder_priors(
         x_prior=x_prior,
@@ -349,6 +402,8 @@ def build_rhime_model(
             add_offset=add_offset,
             use_bc=use_bc,
             pollution_events_from_obs=pollution_events_from_obs,
+            pollution_events_from_obs_one_sided=pollution_events_from_obs_one_sided,
+            pollution_events_from_obs_johnson_su=pollution_events_from_obs_johnson_su,
             no_model_error=no_model_error,
             offset_args=offset_args,
             power=power,
@@ -368,9 +423,11 @@ def _build_compiled_rhime_model(
     add_offset: bool = False,
     use_bc: bool = True,
     pollution_events_from_obs: bool = False,
+    pollution_events_from_obs_one_sided: bool = False,
     no_model_error: bool = False,
     offset_args: dict | None = None,
     power: dict | float = 1.99,
+    pollution_events_from_obs_johnson_su: bool = False,
 ) -> pm.Model:
     """Build the standard RHIME model through the opt-in flux compiler.
 
@@ -387,9 +444,16 @@ def _build_compiled_rhime_model(
         add_offset: Whether to include an offset term.
         use_bc: Whether to include boundary-condition terms.
         pollution_events_from_obs: Whether pollution scaling uses observations.
+        pollution_events_from_obs_one_sided: Whether observation-derived
+            pollution events use only positive enhancements above the
+            baseline.
         no_model_error: Whether to suppress the explicit model-error term.
         offset_args: Extra keyword arguments forwarded to the offset component.
         power: Exponent or prior specification used in likelihood error scaling.
+        pollution_events_from_obs_johnson_su: Whether to use the opt-in,
+            mean-centred transformed Johnson-SU observation likelihood. This
+            requires ``pollution_events_from_obs=True``, one-sided mode off,
+            model error enabled, and fixed numeric ``power=2``.
 
     Returns:
         Built PyMC model.
@@ -411,6 +475,8 @@ def _build_compiled_rhime_model(
         add_offset=add_offset,
         use_bc=use_bc,
         pollution_events_from_obs=pollution_events_from_obs,
+        pollution_events_from_obs_one_sided=pollution_events_from_obs_one_sided,
+        pollution_events_from_obs_johnson_su=pollution_events_from_obs_johnson_su,
         no_model_error=no_model_error,
         offset_args=offset_args,
         power=power,
@@ -452,6 +518,8 @@ def build_rhime_model_from_spec(inv_inputs: xr.Dataset, model_spec: RhimeModelSp
         add_offset=model_spec.add_offset,
         use_bc=model_spec.use_bc,
         pollution_events_from_obs=model_spec.pollution_events_from_obs,
+        pollution_events_from_obs_one_sided=model_spec.pollution_events_from_obs_one_sided,
+        pollution_events_from_obs_johnson_su=model_spec.pollution_events_from_obs_johnson_su,
         no_model_error=model_spec.no_model_error,
         offset_args=model_spec.offset_args,
         power=model_spec.power,
@@ -473,9 +541,11 @@ def build_rhime_multisector_model(
     add_offset: bool = False,
     use_bc: bool = True,
     pollution_events_from_obs: bool = False,
+    pollution_events_from_obs_one_sided: bool = False,
     no_model_error: bool = False,
     offset_args: dict | None = None,
     power: dict | float = 1.99,
+    pollution_events_from_obs_johnson_su: bool = False,
 ) -> pm.Model:
     """Build the first shared-basis multi-sector RHIME model.
 
@@ -508,12 +578,24 @@ def build_rhime_multisector_model(
         use_bc: Whether to include boundary-condition terms.
         pollution_events_from_obs: Whether to derive pollution-event scaling
             from observations rather than modelled concentrations.
+        pollution_events_from_obs_one_sided: Whether observation-derived
+            pollution events use only positive enhancements above the
+            baseline. This option only applies when
+            ``pollution_events_from_obs`` is true.
         no_model_error: Whether to suppress explicit model-error terms.
         offset_args: Extra keyword arguments forwarded to the offset component.
         power: Exponent or prior specification used in likelihood error scaling.
+        pollution_events_from_obs_johnson_su: Whether to use the opt-in,
+            mean-centred transformed Johnson-SU observation likelihood. This
+            requires ``pollution_events_from_obs=True``, one-sided mode off,
+            model error enabled, and fixed numeric ``power=2``.
 
     Returns:
         Built PyMC model.
+
+    Raises:
+        ValueError: If transformed Johnson-SU mode has incompatible options or
+            non-finite or non-positive effective observation error.
     """
     sector_bindings = _resolve_sector_bindings(
         inv_inputs,
@@ -562,6 +644,8 @@ def build_rhime_multisector_model(
             add_offset=add_offset,
             use_bc=use_bc,
             pollution_events_from_obs=pollution_events_from_obs,
+            pollution_events_from_obs_one_sided=pollution_events_from_obs_one_sided,
+            pollution_events_from_obs_johnson_su=pollution_events_from_obs_johnson_su,
             no_model_error=no_model_error,
             offset_args=offset_args,
             power=power,
@@ -585,9 +669,11 @@ def _build_compiled_rhime_multisector_model(
     add_offset: bool = False,
     use_bc: bool = True,
     pollution_events_from_obs: bool = False,
+    pollution_events_from_obs_one_sided: bool = False,
     no_model_error: bool = False,
     offset_args: dict | None = None,
     power: dict | float = 1.99,
+    pollution_events_from_obs_johnson_su: bool = False,
 ) -> pm.Model:
     """Build multisector RHIME through the opt-in flux compiler.
 
@@ -605,9 +691,16 @@ def _build_compiled_rhime_multisector_model(
         add_offset: Whether to include an offset term.
         use_bc: Whether to include boundary-condition terms.
         pollution_events_from_obs: Whether pollution scaling uses observations.
+        pollution_events_from_obs_one_sided: Whether observation-derived
+            pollution events use only positive enhancements above the
+            baseline.
         no_model_error: Whether to suppress explicit model-error terms.
         offset_args: Extra keyword arguments forwarded to the offset component.
         power: Exponent or prior specification used in likelihood error scaling.
+        pollution_events_from_obs_johnson_su: Whether to use the opt-in,
+            mean-centred transformed Johnson-SU observation likelihood. This
+            requires ``pollution_events_from_obs=True``, one-sided mode off,
+            model error enabled, and fixed numeric ``power=2``.
 
     Returns:
         Built PyMC model.
@@ -638,6 +731,8 @@ def _build_compiled_rhime_multisector_model(
         add_offset=add_offset,
         use_bc=use_bc,
         pollution_events_from_obs=pollution_events_from_obs,
+        pollution_events_from_obs_one_sided=pollution_events_from_obs_one_sided,
+        pollution_events_from_obs_johnson_su=pollution_events_from_obs_johnson_su,
         no_model_error=no_model_error,
         offset_args=offset_args,
         power=power,
@@ -682,6 +777,8 @@ def build_rhime_multisector_model_from_spec(
         add_offset=model_spec.add_offset,
         use_bc=model_spec.use_bc,
         pollution_events_from_obs=model_spec.pollution_events_from_obs,
+        pollution_events_from_obs_one_sided=model_spec.pollution_events_from_obs_one_sided,
+        pollution_events_from_obs_johnson_su=model_spec.pollution_events_from_obs_johnson_su,
         no_model_error=model_spec.no_model_error,
         offset_args=model_spec.offset_args,
         power=model_spec.power,

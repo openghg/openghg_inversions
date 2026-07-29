@@ -340,6 +340,65 @@ def test_inferpymc_forwards_numpyro_sampler_without_pymc_step(
     assert "step" not in captured["adapter_kwargs"]["sample_kwargs"]
 
 
+@pytest.mark.parametrize(
+    "option_name",
+    [
+        "pollution_events_from_obs_one_sided",
+        "pollution_events_from_obs_johnson_su",
+    ],
+)
+def test_inferpymc_forwards_pollution_event_options(
+    inv_inputs: xr.Dataset,
+    model_args: dict,
+    monkeypatch: pytest.MonkeyPatch,
+    option_name: str,
+) -> None:
+    """The legacy adapter forwards each opt-in PEFO mode to model construction."""
+    captured: dict[str, Any] = {}
+    sentinel_model = pm.Model()
+
+    def fake_build_inferpymc_model(dataset: xr.Dataset, **kwargs: Any) -> pm.Model:
+        captured["inv_inputs"] = dataset
+        captured["model_kwargs"] = kwargs
+        return sentinel_model
+
+    def fake_sample(model: pm.Model, **kwargs: Any) -> object:
+        captured["sample_model"] = model
+        return object()
+
+    def fake_adapt_legacy_inferpymc_results(**kwargs: Any) -> dict[str, bool]:
+        return {"ok": True}
+
+    monkeypatch.setattr(
+        inversion_pymc_module,
+        "build_inferpymc_model",
+        fake_build_inferpymc_model,
+    )
+    monkeypatch.setattr(inversion_pymc_module, "sample", fake_sample)
+    monkeypatch.setattr(
+        inversion_pymc_module,
+        "_adapt_legacy_inferpymc_results",
+        fake_adapt_legacy_inferpymc_results,
+    )
+
+    result = inferpymc(
+        inv_inputs=inv_inputs,
+        nuts_sampler="numpyro",
+        nit=1,
+        burn=0,
+        tune=0,
+        nchain=1,
+        **{option_name: True},
+        **model_args,
+    )
+
+    assert result == {"ok": True}
+    assert captured["inv_inputs"] is inv_inputs
+    assert captured["sample_model"] is sentinel_model
+    assert captured["model_kwargs"]["pollution_events_from_obs"] is True
+    assert captured["model_kwargs"][option_name] is True
+
+
 def test_build_inferpymc_model_contains_expected_variables(inv_inputs: xr.Dataset, model_args: dict) -> None:
     """The builder adds the core named variables expected by downstream code."""
     model = build_inferpymc_model(inv_inputs, **model_args)

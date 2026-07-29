@@ -42,6 +42,8 @@ nchain = 3
 verbose = True
 sampler_kwargs = {"target_accept": 0.9}
 reparameterise_log_normal = False
+pollution_events_from_obs_one_sided = True
+pollution_events_from_obs_johnson_su = False
 
 [MCMC.OUTPUT]
 outputpath = "out"
@@ -53,6 +55,7 @@ output_format = "hbmcmc"
 
 
 def test_fixedbasis_params_to_rhime_translates_legacy_names(tmp_path: Path) -> None:
+    """Legacy fixed-basis INI options, including opt-in PEFO modes, map to RHIME names."""
     config_file = tmp_path / "hbmcmc.ini"
     _fixedbasis_config(config_file)
     params = run_hbmcmc.hbmcmc_extract_param(str(config_file), print_param=False)
@@ -71,9 +74,33 @@ def test_fixedbasis_params_to_rhime_translates_legacy_names(tmp_path: Path) -> N
     assert translated["output_format"] == "legacy"
     assert translated["output_filename_convention"] == "legacy"
     assert translated["save_inversion_output"] is False
+    assert translated["pollution_events_from_obs_one_sided"] is True
+    assert translated["pollution_events_from_obs_johnson_su"] is False
     assert "mcmc_type" not in translated
     assert "nit" not in translated
     assert "nchain" not in translated
+
+
+def test_fixedbasis_params_to_rhime_translates_johnson_su_option(tmp_path: Path) -> None:
+    """The legacy adapter preserves a valid transformed Johnson-SU selection."""
+    config_file = tmp_path / "hbmcmc.ini"
+    _fixedbasis_config(config_file)
+    params = run_hbmcmc.hbmcmc_extract_param(str(config_file), print_param=False)
+    params.update(
+        {
+            "pollution_events_from_obs": True,
+            "pollution_events_from_obs_one_sided": False,
+            "pollution_events_from_obs_johnson_su": True,
+            "power": 2.0,
+        }
+    )
+
+    translated = run_hbmcmc.fixedbasis_params_to_rhime(params)
+
+    assert translated["pollution_events_from_obs"] is True
+    assert translated["pollution_events_from_obs_one_sided"] is False
+    assert translated["pollution_events_from_obs_johnson_su"] is True
+    assert translated["power"] == 2.0
 
 
 def test_fixedbasis_params_to_rhime_translates_reparameterise_log_normal(tmp_path: Path) -> None:

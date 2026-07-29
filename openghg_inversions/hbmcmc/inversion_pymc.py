@@ -97,9 +97,11 @@ def build_inferpymc_model(
     use_bc: bool = True,
     reparameterise_log_normal: bool = False,
     pollution_events_from_obs: bool = False,
+    pollution_events_from_obs_one_sided: bool = False,
     no_model_error: bool = False,
     offset_args: dict | None = None,
     power: dict | float = 1.99,
+    pollution_events_from_obs_johnson_su: bool = False,
 ) -> pm.Model:
     """Compatibility adapter for the standard RHIME model builder.
 
@@ -122,14 +124,26 @@ def build_inferpymc_model(
             reparameterisation for supported priors.
         pollution_events_from_obs: Whether to derive pollution-event scaling
             from observations rather than modelled concentrations.
+        pollution_events_from_obs_one_sided: Whether observation-derived
+            pollution events use only positive enhancements above the
+            baseline. This option only applies when
+            ``pollution_events_from_obs`` is true.
         no_model_error: Whether to suppress the explicit model-error term.
         offset_args: Extra keyword arguments forwarded to
             ``add_offset_component``.
         power: Exponent or prior specification used in the likelihood error
             scaling.
+        pollution_events_from_obs_johnson_su: Whether to use the opt-in,
+            mean-centred transformed Johnson-SU observation likelihood. This
+            requires ``pollution_events_from_obs=True``, one-sided mode off,
+            model error enabled, and fixed numeric ``power=2``.
 
     Returns:
         Built PyMC model for the current inferpymc compatibility path.
+
+    Raises:
+        ValueError: If transformed Johnson-SU mode has incompatible options or
+            non-finite or non-positive effective observation error.
     """
     xprior, bcprior, sigprior, offsetprior = _prepare_builder_priors(
         xprior=xprior,
@@ -154,6 +168,8 @@ def build_inferpymc_model(
         add_offset=add_offset,
         use_bc=use_bc,
         pollution_events_from_obs=pollution_events_from_obs,
+        pollution_events_from_obs_one_sided=pollution_events_from_obs_one_sided,
+        pollution_events_from_obs_johnson_su=pollution_events_from_obs_johnson_su,
         no_model_error=no_model_error,
         offset_args=offset_args,
         power=power,
@@ -413,6 +429,8 @@ def inferpymc(
     offset_args: dict | None = None,
     power: dict | float = 1.99,
     sampler_kwargs: dict | None = None,
+    pollution_events_from_obs_one_sided: bool = False,
+    pollution_events_from_obs_johnson_su: bool = False,
 ) -> dict:
     """Perform Bayesian inference with PyMC for emissions, BCs, and model error.
 
@@ -448,6 +466,13 @@ def inferpymc(
         offset_args: Additional arguments used when constructing offsets.
         power: Exponent used in certain weighting or prior schemes; may be a dict or float.
         sampler_kwargs: Extra keyword arguments passed to the sampler.
+        pollution_events_from_obs_one_sided: If True, use only positive
+            observed enhancements above the baseline. This option only applies
+            when ``pollution_events_from_obs`` is true.
+        pollution_events_from_obs_johnson_su: Whether to use the opt-in,
+            mean-centred transformed Johnson-SU observation likelihood. This
+            requires ``pollution_events_from_obs=True``, one-sided mode off,
+            model error enabled, and fixed numeric ``power=2``.
 
     Returns:
         Dictionary containing inference results, samples, and diagnostics in
@@ -461,9 +486,9 @@ def inferpymc(
         - ``"OFFSETtrace"`` when offsets are enabled
         - ``"trace"``, ``"model"``, and convergence metadata
 
-        Raises:
-            ValueError: If the model cannot be built from the supplied
-                ``inv_inputs`` and configuration.
+    Raises:
+        ValueError: If the model cannot be built from the supplied
+            ``inv_inputs`` and configuration.
     """
     burn = int(burn)
     nit = int(nit)
@@ -479,6 +504,8 @@ def inferpymc(
         use_bc=use_bc,
         reparameterise_log_normal=reparameterise_log_normal,
         pollution_events_from_obs=pollution_events_from_obs,
+        pollution_events_from_obs_one_sided=pollution_events_from_obs_one_sided,
+        pollution_events_from_obs_johnson_su=pollution_events_from_obs_johnson_su,
         no_model_error=no_model_error,
         offset_args=offset_args,
         power=power,

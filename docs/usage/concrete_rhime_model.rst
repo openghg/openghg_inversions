@@ -133,6 +133,59 @@ The current observed distribution is
 
    y \sim \mathcal{N}(\mu_{\mathrm{obs}}, \epsilon).
 
+Transformed Johnson-SU observation alternative
+-----------------------------------------------
+
+The experimental ``pollution_events_from_obs_johnson_su`` option replaces the
+response-scaled Normal pseudo-likelihood with a coherent generative
+distribution. Let
+
+.. math::
+
+   b &= \mu_{bc} + \mathrm{offset}, \\
+   D &= y - b, \\
+   u &= \mu, \\
+   e &= \max\left(\left|\mathrm{error}\right|,\mathrm{min\_error}\right).
+
+Omitted baseline components contribute zero. Define the deterministic
+transformation and its mean-centred Normal location by
+
+.. math::
+
+   T(d) &=
+   \frac{1}{\sigma}
+   \operatorname{asinh}\left(\frac{\sigma d}{e}\right), \\
+   m(u) &=
+   \frac{1}{\sigma}
+   \operatorname{asinh}\left[
+     \frac{\sigma u}{e}\exp\left(-\frac{\sigma^2}{2}\right)
+   \right].
+
+The observation model is then
+
+.. math::
+
+   T(D) \sim \mathcal{N}\left(m(u), 1\right).
+
+Equivalently, draw :math:`Z \sim \mathcal{N}(m(u), 1)` and set
+
+.. math::
+
+   y = b + \frac{e}{\sigma}\sinh(\sigma Z).
+
+This choice makes :math:`\mathbb{E}[D]=u`; it also supplies a normalized
+log-density and a matching posterior-predictive sampler. The reported
+``epsilon`` remains a diagnostic,
+
+.. math::
+
+   \epsilon = \sqrt{e^2 + \left(\sigma D_{\mathrm{observed}}\right)^2},
+
+and is not passed to an ordinary Normal likelihood. Enabling the option
+requires ``pollution_events_from_obs=True``,
+``pollution_events_from_obs_one_sided=False``, ``no_model_error=False``, fixed
+numeric ``power=2``, and strictly positive finite effective errors.
+
 The default priors are:
 
 .. list-table::

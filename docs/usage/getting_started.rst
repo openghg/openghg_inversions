@@ -424,6 +424,14 @@ The following file, ``my_hbmcmc_inputs.ini`` can be used to run an
    ; pollution_events_from_obs (bool): Determines whether the model error is calculated as a fraction of:
    ;                                   - the measured enhancement above the modelled baseline (if True)
    ;                                   - the prior modelled enhancement (if False)
+   ; pollution_events_from_obs_one_sided (bool): Only applies when pollution_events_from_obs is True.
+   ;                                             If True, negative measured enhancements relative to the
+   ;                                             modelled baseline are clipped to zero. Defaults to False.
+   ;                                             Without a baseline, a small non-negative stabilizer is retained.
+   ; pollution_events_from_obs_johnson_su (bool): Experimental coherent transformed likelihood.
+   ;                                              Requires pollution_events_from_obs = True,
+   ;                                              pollution_events_from_obs_one_sided = False,
+   ;                                              no_model_error = False, and fixed numeric power = 2.
    ; reparameterise_log_normal (bool): If True, rewrite log normal prior samples as a function of standard normal samples.
    ;                                   This may reduce divergences when sampling.
    ; sampler_kwargs (dict): Kwargs to pass to the sampler (e.g. sampler_kwargs = {'target_accept': 0.99})
@@ -436,6 +444,8 @@ The following file, ``my_hbmcmc_inputs.ini`` can be used to run an
    save_trace = True
    min_error_options = {"by_site": True}  ; options to pass to function used to compute min error
    pollution_events_from_obs = True
+   pollution_events_from_obs_one_sided = False
+   pollution_events_from_obs_johnson_su = False
    no_model_error = False
    reparameterise_log_normal = False
 

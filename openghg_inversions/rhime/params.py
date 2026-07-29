@@ -363,6 +363,8 @@ def validate_supported_params(params: Mapping[str, Any], *, data_params: set[str
         "sector_priors",
         "sector_sources",
         "pollution_events_from_obs",
+        "pollution_events_from_obs_one_sided",
+        "pollution_events_from_obs_johnson_su",
         "no_model_error",
         "power",
         "draws",
@@ -452,6 +454,8 @@ def _make_model_spec(
     sigma_freq_anchor: str | None,
     add_offset: bool,
     pollution_events_from_obs: bool,
+    pollution_events_from_obs_one_sided: bool,
+    pollution_events_from_obs_johnson_su: bool,
     no_model_error: bool,
     power: dict[str, Any] | float,
     offset_args: dict[str, Any] | None,
@@ -505,6 +509,8 @@ def _make_model_spec(
         sigma_freq_anchor=sigma_freq_anchor,
         add_offset=add_offset,
         pollution_events_from_obs=pollution_events_from_obs,
+        pollution_events_from_obs_one_sided=pollution_events_from_obs_one_sided,
+        pollution_events_from_obs_johnson_su=pollution_events_from_obs_johnson_su,
         no_model_error=no_model_error,
         power=power,
         bc_prior=bc_prior,
@@ -564,6 +570,8 @@ def make_rhime_runner_setup(
     sigma_freq = remaining.pop("sigma_freq", None)
     add_offset = remaining.get("add_offset", False)
     pollution_events_from_obs = remaining.pop("pollution_events_from_obs", False)
+    pollution_events_from_obs_one_sided = remaining.pop("pollution_events_from_obs_one_sided", False)
+    pollution_events_from_obs_johnson_su = remaining.pop("pollution_events_from_obs_johnson_su", False)
     no_model_error = remaining.pop("no_model_error", False)
     power = remaining.pop("power", 1.99)
     builder_strategy = cast(
@@ -614,6 +622,8 @@ def make_rhime_runner_setup(
         sigma_freq_anchor=start_date,
         add_offset=add_offset,
         pollution_events_from_obs=pollution_events_from_obs,
+        pollution_events_from_obs_one_sided=pollution_events_from_obs_one_sided,
+        pollution_events_from_obs_johnson_su=pollution_events_from_obs_johnson_su,
         no_model_error=no_model_error,
         power=power,
         offset_args=offset_args,
