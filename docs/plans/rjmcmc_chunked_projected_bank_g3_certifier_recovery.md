@@ -80,3 +80,35 @@ bank identity.
 Only a passing repaired G3 certificate may open G4.  Any earlier gate failure
 is preserved and stops the new run.  The protected catalogue remains sealed,
 and nothing is written to `PARIS_inversions`.
+
+## Human substantive adjudication
+
+The project owner subsequently clarified that the G0--G4 gate names are
+documentation and reproducibility scaffolding, not a requirement to repeat
+scientifically decisive work after an automation-only failure.  A complete
+stage may be adjudicated as passed when its underlying evidence is sufficient
+and the automatic check failed only for a diagnosed technical reason.
+
+The repaired certifier was therefore applied read-only to the complete
+`92cd2335d02119dd8114bb6808d1848433e03fc2` matrix.  It passed all four
+chunks and all twelve tasks, selecting \(C=8192\) and \(P=256\).  The new
+separate recertification report has SHA-256
+`d4825a511f06c93e6f6dcbe3beee1c2b890f9633b8e2fec0b60a5794741cff3e`.
+The original run root remains unchanged.
+
+The exclusive-node recovery array `18207955` was stopped once the owner
+clarified that whole-node isolation had not been requested.  Tasks 0--7
+completed; tasks 8--11 were deliberately cancelled before starting.  The
+three complete \(C=1024\) repeats, three complete \(C=2048\) repeats, and
+the completed \(C=4096\) candidates all reproduced projected-array SHA-256
+`7f309f7560bd9695d5d3093e1542b7e5d42c0b8634abdd2c5a95da7dc61d86a0`
+and binary-file SHA-256
+`aec20f2d3fd1c93c6ba52c2fbc4a84986121debafbad48e3b7e07943911a33a7`.
+
+G3 is consequently a substantive pass.  For the current execution, the
+smallest fully replicated same-SHA chunk, \(C=1024\), and its already locked
+\(P=64\) are used as engineering controls for G4.  This choice does not alter
+the native model, Sobol catalogue, or projected scientific bank.  The
+human-adjudication artifact authenticates both the complete prior matrix and
+the current same-SHA three-repeat reference, records both Git revisions, and
+publishes the current `G3_COMPLETE.txt` marker last.
