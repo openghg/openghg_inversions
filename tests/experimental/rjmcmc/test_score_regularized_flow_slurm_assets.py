@@ -14,12 +14,13 @@ _ASSETS = (
     / "rjmcmc_score_regularized_nle_assets"
 )
 _N0 = _ASSETS / "run_n0_preflight.sbatch"
+_COMPILE_CANARY = _ASSETS / "run_n1_compile_canary.sbatch"
 _N1 = _ASSETS / "run_n1_development_array.sbatch"
 _N1_MERGE = _ASSETS / "run_n1_merge.sbatch"
 
 
 def test_n0_and_n1_assets_are_valid_bash_with_shared_node_resources() -> None:
-    for script in (_N0, _N1, _N1_MERGE):
+    for script in (_N0, _COMPILE_CANARY, _N1, _N1_MERGE):
         subprocess.run(
             ["bash", "-n", str(script)],
             check=True,
@@ -46,6 +47,19 @@ def test_n0_and_n1_assets_are_valid_bash_with_shared_node_resources() -> None:
     assert "--training-sample-count 64" in n0
     assert ".score-flow" in n0
     assert "test_score_regularized_flow_tiny_certify.py" in n0
+
+
+def test_compile_canary_is_a_short_complete_two_branch_array() -> None:
+    text = _COMPILE_CANARY.read_text(encoding="utf-8")
+    assert "#SBATCH --array=0-1" in text
+    assert "#SBATCH --time=00:30:00" in text
+    assert "dimensions=(1 3)" in text
+    assert 'dimension="${dimensions[case_index]}"' in text
+    assert "score_regularized_flow_compile_canary" in text
+    assert "Authenticated N0 evidence is required." in text
+    assert "Compile canary requires the complete q=1,q=3 array." in text
+    assert "q${dimension}.report.json" in text
+    assert "The frozen nle-dev Python is missing." in text
 
 
 def test_n1_is_one_complete_frozen_size_tier_array() -> None:

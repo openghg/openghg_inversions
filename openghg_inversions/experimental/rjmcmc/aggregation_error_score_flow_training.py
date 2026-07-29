@@ -185,19 +185,22 @@ def _batch_scalar(values: jax.Array, *, name: str) -> jax.Array:
     raise ValueError(f"{name} must have shape (n,) or (n, 1).")
 
 
-def raw_log_mass_condition_score(
+def _raw_log_mass_condition_log_prob_and_score(
     distribution: Any,
     projected: jax.Array,
     raw_log_mass: jax.Array,
     *,
     condition_center: float,
     condition_scale: float,
-) -> jax.Array:
-    """Evaluate ``partial_tau log q(x | standardized(tau))`` per batch row.
+) -> tuple[jax.Array, jax.Array]:
+    """Evaluate conditional log density and its raw-mass score per batch row.
 
-    JAX differentiates the scalar raw ``tau`` before the outer parameter
-    gradient is taken.  Consequently a loss built from this function retains
-    the mixed derivatives needed to train the flow parameters.
+    The raw-mass derivative is a scalar-input Jacobian-vector product.  A loss
+    built from this function may then take the outer parameter gradient,
+    retaining the exact mixed derivative while avoiding a reverse-over-reverse
+    compilation graph.  Returning the primal value from the same JVP also
+    avoids evaluating the conditional flow a second time for the likelihood
+    term.
     """
     center = _finite_scalar(condition_center, name="condition_center")
     scale = _finite_scalar(condition_scale, name="condition_scale")
@@ -211,11 +214,40 @@ def raw_log_mass_condition_score(
     if tau.shape[0] != targets.shape[0]:
         raise ValueError("projected and raw_log_mass batch sizes must match.")
 
-    def log_prob_one(target: jax.Array, raw_tau: jax.Array) -> jax.Array:
-        condition = jnp.expand_dims((raw_tau - center) / scale, axis=0)
-        return distribution.log_prob(target, condition)
+    def value_and_score_one(
+        target: jax.Array,
+        raw_tau: jax.Array,
+    ) -> tuple[jax.Array, jax.Array]:
+        def log_prob_one(local_tau: jax.Array) -> jax.Array:
+            condition = jnp.expand_dims((local_tau - center) / scale, axis=0)
+            return distribution.log_prob(target, condition)
 
-    return jax.vmap(jax.grad(log_prob_one, argnums=1))(targets, tau)
+        return jax.jvp(
+            log_prob_one,
+            (raw_tau,),
+            (jnp.ones_like(raw_tau),),
+        )
+
+    return jax.vmap(value_and_score_one)(targets, tau)
+
+
+def raw_log_mass_condition_score(
+    distribution: Any,
+    projected: jax.Array,
+    raw_log_mass: jax.Array,
+    *,
+    condition_center: float,
+    condition_scale: float,
+) -> jax.Array:
+    """Evaluate ``partial_tau log q(x | standardized(tau))`` per batch row."""
+    _, score = _raw_log_mass_condition_log_prob_and_score(
+        distribution,
+        projected,
+        raw_log_mass,
+        condition_center=condition_center,
+        condition_scale=condition_scale,
+    )
+    return score
 
 
 class RawLogMassScoreLoss(eqx.Module):
@@ -266,17 +298,14 @@ class RawLogMassScoreLoss(eqx.Module):
         tau = _batch_scalar(raw_log_mass, name="raw_log_mass")
         if tau.shape[0] != targets.shape[0]:
             raise ValueError("projected and raw_log_mass batch sizes must match.")
-        conditions = jnp.expand_dims(
-            (tau - self.condition_center) / self.condition_scale,
-            axis=-1,
-        )
-        log_probabilities = distribution.log_prob(targets, conditions)
-        predicted_score = raw_log_mass_condition_score(
-            distribution,
-            targets,
-            tau,
-            condition_center=self.condition_center,
-            condition_scale=self.condition_scale,
+        log_probabilities, predicted_score = (
+            _raw_log_mass_condition_log_prob_and_score(
+                distribution,
+                targets,
+                tau,
+                condition_center=self.condition_center,
+                condition_scale=self.condition_scale,
+            )
         )
         dimension = jnp.asarray(targets.shape[1], dtype=log_probabilities.dtype)
         negative_log_likelihood = -jnp.mean(log_probabilities) / dimension

@@ -204,6 +204,106 @@ def test_raw_score_matches_known_conditional_normal_derivative() -> None:
     np.testing.assert_allclose(actual, expected, rtol=2e-14, atol=2e-14)
 
 
+def test_forward_mode_raw_score_matches_direct_reverse_mode_on_flow() -> None:
+    flow = make_score_regularized_conditional_flow(2, source_seed=829)
+    projected = jnp.asarray(
+        [[-1.0, 0.4], [-0.2, 1.1], [0.7, -0.5]],
+        dtype=jnp.float64,
+    )
+    raw_tau = jnp.asarray([-0.8, 0.1, 0.9], dtype=jnp.float64)
+    center = 0.15
+    condition_scale = 1.3
+
+    actual = raw_log_mass_condition_score(
+        flow,
+        projected,
+        raw_tau,
+        condition_center=center,
+        condition_scale=condition_scale,
+    )
+
+    def reverse_mode_score(target: jax.Array, tau: jax.Array) -> jax.Array:
+        def log_prob(local_tau: jax.Array) -> jax.Array:
+            condition = jnp.asarray(
+                [(local_tau - center) / condition_scale],
+                dtype=jnp.float64,
+            )
+            return flow.log_prob(target, condition)
+
+        return jax.grad(log_prob)(tau)
+
+    expected = jax.vmap(reverse_mode_score)(projected, raw_tau)
+    np.testing.assert_allclose(actual, expected, rtol=2e-13, atol=2e-13)
+
+
+def test_forward_mode_mixed_parameter_gradient_matches_prior_schedule() -> None:
+    flow = make_score_regularized_conditional_flow(1, source_seed=839)
+    params, static = _partition(flow)
+    projected = jnp.asarray([[-0.7], [0.9]], dtype=jnp.float64)
+    raw_tau = jnp.asarray([-0.45, 0.65], dtype=jnp.float64)
+    target_score = jnp.asarray([0.2, -0.35], dtype=jnp.float64)
+    center = 0.1
+    condition_scale = 1.25
+    current_loss = RawLogMassScoreLoss(
+        condition_center=center,
+        condition_scale=condition_scale,
+    )
+    current_value, current_gradient = eqx.filter_value_and_grad(current_loss)(
+        params,
+        static,
+        projected,
+        raw_tau,
+        target_score,
+    )
+
+    def prior_schedule_loss(
+        local_params: Any,
+        local_static: Any,
+    ) -> jax.Array:
+        distribution = paramax.unwrap(
+            eqx.combine(local_params, local_static)
+        )
+        conditions = ((raw_tau - center) / condition_scale)[:, None]
+        log_probabilities = distribution.log_prob(projected, conditions)
+
+        def log_prob_one(
+            target: jax.Array,
+            tau: jax.Array,
+        ) -> jax.Array:
+            condition = jnp.asarray(
+                [(tau - center) / condition_scale],
+                dtype=jnp.float64,
+            )
+            return distribution.log_prob(target, condition)
+
+        predicted_score = jax.vmap(
+            jax.grad(log_prob_one, argnums=1)
+        )(projected, raw_tau)
+        return -jnp.mean(log_probabilities) + jnp.mean(
+            jnp.square(predicted_score - target_score)
+        )
+
+    prior_value, prior_gradient = eqx.filter_value_and_grad(
+        prior_schedule_loss
+    )(params, static)
+    np.testing.assert_allclose(
+        current_value,
+        prior_value,
+        rtol=2e-13,
+        atol=2e-13,
+    )
+    current_leaves = _inexact_leaves(current_gradient)
+    prior_leaves = _inexact_leaves(prior_gradient)
+    assert len(current_leaves) == len(prior_leaves)
+    for current, prior in zip(current_leaves, prior_leaves, strict=True):
+        np.testing.assert_allclose(
+            current,
+            prior,
+            rtol=2e-11,
+            atol=2e-12,
+        )
+
+
 def test_composite_parameter_gradient_matches_independent_reference() -> None:
     model = _KnownConditionalNormal(
         coefficient=jnp.asarray(0.43, dtype=jnp.float64),

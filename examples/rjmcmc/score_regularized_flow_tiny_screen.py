@@ -67,11 +67,14 @@ Profile = Literal["smoke", "development"]
 SCHEMA = "rjmcmc-score-regularized-flow-tiny-screen-v1"
 PROTOCOL = tiny_domains.PROTOCOL
 DEVELOPMENT_PROTOCOL_SHA256 = (
-    "b114637e6f8cdbeb9f835ed61119f1c910898683091d9339fd93af8117e31f97"
+    "ec40ba6c1f73f511d7f5766310a0889a1bea2d4c742c075f9d8ad771dcd239af"
 )
 CPU_XLA_FLAGS = (
     "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1 "
     "--xla_cpu_parallel_codegen_split_count=1"
+)
+MASS_SCORE_AUTODIFF = (
+    "forward-jvp-in-raw-log-mass-then-reverse-parameter-gradient"
 )
 
 DEVELOPMENT_MATRIX = tiny_domains.DEVELOPMENT_MATRIX
@@ -210,6 +213,7 @@ def _protocol_payload() -> dict[str, Any]:
                 INTERNAL_VALIDATION_PROPORTION
             ),
             "objective": "nll_per_q_plus_raw_log_mass_score_mse_per_q",
+            "mass_score_autodiff": MASS_SCORE_AUTODIFF,
             "selection": (
                 "minimum independent model-selection composite loss then "
                 "initialization index"

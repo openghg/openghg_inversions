@@ -460,6 +460,31 @@ optimizer, seeds, thresholds, and selection rule are unchanged.  The exact
 flag string is part of the development protocol hash, is asserted by N0 and
 N1 before importing JAX, and must be held fixed for all later stages.
 
+The complete six-case retry at revision
+`3eae1bd49d7152b82f78957cdf4db3771e4c819c` still failed at the same LLVM
+allocation boundary.  Preserve that falsification and retain the flag, but
+freeze the next exact compiler recovery as:
+
+```text
+mass-score derivative:
+  forward JVP in scalar raw log mass,
+  followed by the outer reverse-mode parameter gradient
+```
+
+For scalar raw log mass, the JVP with tangent one is exactly
+\(\partial_\tau\log q_\theta(x\mid\tau)\).  Reusing the JVP's primal value for
+the NLL removes a duplicate flow evaluation.  This refactor changes only the
+automatic-differentiation schedule; it preserves the normalized density,
+loss, flow, optimizer, batch and score microbatch, catalogues, seeds, and
+scientific thresholds.  Record the derivative schedule in the protocol
+identity.
+
+After a fresh passing N0, run the committed \(q=1,q=3\) compile canary as one
+two-task, 30-minute, shared-node array with 8 GB per task.  It must execute one
+finite value-and-gradient evaluation at the frozen score microbatch of 64 and
+publishes no scientific decision.  Only a two-task pass permits another
+complete \(S=4096\) N1 array.
+
 ### PARIS programme
 
 The training mass catalogue is a scrambled one-dimensional Sobol draw from

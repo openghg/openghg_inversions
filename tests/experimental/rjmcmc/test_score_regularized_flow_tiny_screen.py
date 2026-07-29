@@ -58,6 +58,9 @@ def test_development_protocol_is_frozen_and_fails_closed(
         "early_stopping_patience": 10,
         "internal_validation_proportion": 0.1,
         "objective": "nll_per_q_plus_raw_log_mass_score_mse_per_q",
+        "mass_score_autodiff": (
+            "forward-jvp-in-raw-log-mass-then-reverse-parameter-gradient"
+        ),
         "selection": (
             "minimum independent model-selection composite loss then "
             "initialization index"
