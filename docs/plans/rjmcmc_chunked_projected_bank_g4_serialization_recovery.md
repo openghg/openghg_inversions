@@ -42,3 +42,17 @@ stage, records the repair Git SHA in the seed report, and authenticates the
 unchanged threshold supplement from the original execution source.  The
 scientific execution revision, input, grid, spectrum, G3 controls, seed,
 sample/rank ladders, and thresholds remain unchanged.
+
+## Recovery outcome
+
+Retry job `18214252` completed `0:0` on `bp1-compute051` in 57 minutes
+17 seconds.  Its projected-bank and likelihood files are byte-identical to
+the preserved failed attempt.  The repaired seed report therefore exposes the
+original scientific result without recomputation drift.
+
+The formal development decision has no passing retained-rank suffix.  This is
+not another serialization or checkpoint technicality: normalized
+source-likelihood changes exceed the frozen leakage tolerances by orders of
+magnitude.  No confirmation array was submitted.  The complete scientific
+result and checksums are recorded in
+[`rjmcmc_chunked_projected_bank_g4_bp1_report.md`](rjmcmc_chunked_projected_bank_g4_bp1_report.md).

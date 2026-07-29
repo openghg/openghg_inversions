@@ -10,6 +10,12 @@ likelihood.
 It does not authorize RJ acceptance, inference on \(K\), partition weights,
 or output to `PARIS_inversions`.
 
+The completed calibrated BP1 result is recorded in
+[`rjmcmc_chunked_projected_bank_g4_bp1_report.md`](rjmcmc_chunked_projected_bank_g4_bp1_report.md).
+G0--G3 passed substantively, but G4 found decisive finite-source likelihood
+instability at every retained rank.  No G4 development lock was published,
+and the confirmation array, G5, and G6 were not run.
+
 ## Frozen input
 
 ```text
