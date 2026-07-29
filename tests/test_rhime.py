@@ -865,11 +865,11 @@ def test_build_rhime_multisector_model_selects_sources_by_label(
     np.testing.assert_allclose(model["hx_ocean"].get_value(), expected_ocean.values)
 
 
-def test_build_rhime_multisector_model_accepts_gathered_ragged_states(
+def test_concrete_and_compiled_multisector_models_accept_gathered_ragged_states(
     multisector_inv_inputs: xr.Dataset,
     builder_args: dict,
 ) -> None:
-    """Source-specific state blocks remain gathered until model normalization."""
+    """Both builders preserve source-specific ragged state dimensions."""
     state_index = pd.MultiIndex.from_tuples(
         [
             ("ff-inventory", 0),
@@ -893,21 +893,54 @@ def test_build_rhime_multisector_model_accepts_gathered_ragged_states(
         },
     )
 
-    model = build_rhime_multisector_model(
-        inv_inputs,
-        sectors=["FF", "ocean"],
-        sector_sources={"FF": "ff-inventory", "ocean": "ocean-inventory"},
-        sector_priors={
+    kwargs = {
+        "sectors": ["FF", "ocean"],
+        "sector_sources": {"FF": "ff-inventory", "ocean": "ocean-inventory"},
+        "sector_priors": {
             "FF": {"pdf": "normal", "mu": 1.0, "sigma": 0.2},
             "ocean": {"pdf": "normal", "mu": 1.0, "sigma": 0.3},
         },
         **builder_args,
+    }
+    model = build_rhime_multisector_model(inv_inputs, **kwargs)
+    compiled = rhime_models_module._build_compiled_rhime_multisector_model(
+        inv_inputs,
+        **kwargs,
     )
 
     np.testing.assert_allclose(model["hx_ff"].get_value(), values[:2].T)
     np.testing.assert_allclose(model["hx_ocean"].get_value(), values[2:].T)
+    np.testing.assert_allclose(compiled["hx_ff"].get_value(), values[:2].T)
+    np.testing.assert_allclose(compiled["hx_ocean"].get_value(), values[2:].T)
     assert model.named_vars_to_dims["x_ff"] == ("state_ff",)
     assert model.named_vars_to_dims["x_ocean"] == ("state_ocean",)
+    assert compiled.named_vars_to_dims["x_ff"] == ("state_ff",)
+    assert compiled.named_vars_to_dims["x_ocean"] == ("state_ocean",)
+    assert model.coords["state_ff"] == (0, 1)
+    assert model.coords["state_ocean"] == (0, 1, 2)
+    assert compiled.coords["state_ff"] == (0, 1)
+    assert compiled.coords["state_ocean"] == (0, 1, 2)
+
+    var_names = ["x_ff", "mu_ff", "x_ocean", "mu_ocean", "mu"]
+    with model:
+        concrete_prior = pm.sample_prior_predictive(
+            draws=2,
+            var_names=var_names,
+            random_seed=535,
+        )
+    with compiled:
+        compiled_prior = pm.sample_prior_predictive(
+            draws=2,
+            var_names=var_names,
+            random_seed=535,
+        )
+    concrete_dataset = cast(Any, concrete_prior).prior
+    compiled_dataset = cast(Any, compiled_prior).prior
+    xr.testing.assert_allclose(concrete_dataset, compiled_dataset)
+    xr.testing.assert_allclose(
+        concrete_dataset["mu"],
+        concrete_dataset["mu_ff"] + concrete_dataset["mu_ocean"],
+    )
 
 
 def test_build_rhime_multisector_model_rejects_ungathered_source_state(
@@ -976,9 +1009,7 @@ def test_build_rhime_multisector_model_rejects_duplicate_prepared_sources(
     builder_args: dict,
 ) -> None:
     """Duplicate source coordinates fail before label selection becomes ambiguous."""
-    duplicate_sources = multisector_inv_inputs.sel(
-        source=["total-ukghg-edgar7", "total-ukghg-edgar7"]
-    )
+    duplicate_sources = multisector_inv_inputs.sel(source=["total-ukghg-edgar7", "total-ukghg-edgar7"])
 
     with pytest.raises(ValueError, match="duplicate source 'total-ukghg-edgar7'"):
         build_rhime_multisector_model(duplicate_sources, **builder_args)
@@ -1095,11 +1126,11 @@ def test_build_rhime_multisector_model_requires_exact_sector_prior_keys(
         )
 
 
-def test_build_rhime_multisector_model_rejects_reparameterized_name_collisions(
+def test_concrete_multisector_model_rejects_reparameterized_name_collisions(
     multisector_inv_inputs: xr.Dataset,
     builder_args: dict,
 ) -> None:
-    """Generated latent names participate in pre-compilation name validation."""
+    """Concrete composition preserves PyMC's generated-name collision check."""
     reparameterized_prior = {
         "pdf": "lognormal",
         "mean": 1.0,
@@ -1107,7 +1138,7 @@ def test_build_rhime_multisector_model_rejects_reparameterized_name_collisions(
         "reparameterise": True,
     }
 
-    with pytest.raises(ValueError, match="backend names"):
+    with pytest.raises(ValueError, match="x_ff_latent.*already exists"):
         build_rhime_multisector_model(
             multisector_inv_inputs,
             sectors=["FF", "other"],
@@ -1118,13 +1149,66 @@ def test_build_rhime_multisector_model_rejects_reparameterized_name_collisions(
         )
 
 
-def test_standard_and_multisector_builders_share_loop_sum_compiler(
+def test_compiled_multisector_model_preflights_reparameterized_name_collisions(
+    multisector_inv_inputs: xr.Dataset,
+    builder_args: dict,
+) -> None:
+    """The opt-in compiler retains whole-plan generated-name validation."""
+    reparameterized_prior = {
+        "pdf": "lognormal",
+        "mean": 1.0,
+        "stdev": 0.2,
+        "reparameterise": True,
+    }
+
+    with pytest.raises(ValueError, match="backend names"):
+        rhime_models_module._build_compiled_rhime_multisector_model(
+            multisector_inv_inputs,
+            sectors=["FF", "other"],
+            sector_sources={"FF": "total-ukghg-edgar7", "other": "sector-2"},
+            sector_variable_suffixes={"FF": "ff", "other": "ff_latent"},
+            sector_priors={"FF": reparameterized_prior, "other": reparameterized_prior},
+            **builder_args,
+        )
+
+
+def test_public_rhime_builders_default_to_concrete_construction(
     monkeypatch: pytest.MonkeyPatch,
     rhime_inv_inputs: xr.Dataset,
     multisector_inv_inputs: xr.Dataset,
     builder_args: dict,
 ) -> None:
-    """Both public builders normalize fluxes through the same private compiler."""
+    """Public concrete builders do not invoke the private compiler."""
+
+    def fail_compile(plan: _FluxPlan) -> Any:
+        raise AssertionError("Concrete builders must not invoke the flux compiler.")
+
+    monkeypatch.setattr(rhime_models_module, "_compile_loop_sum", fail_compile)
+
+    build_rhime_model(rhime_inv_inputs, **builder_args)
+    build_rhime_multisector_model(
+        multisector_inv_inputs,
+        sectors=["FF", "ocean"],
+        sector_sources={"FF": "total-ukghg-edgar7", "ocean": "sector-2"},
+        sector_variable_suffixes={"FF": "ff", "ocean": "ocean"},
+        **builder_args,
+    )
+
+    model_spec = RhimeModelSpec(species="ch4", domain="EUROPE", sectors=())
+    assert model_spec.builder_strategy == "concrete"
+    assert (
+        inspect.signature(RhimeModelSpec).parameters["builder_strategy"].kind
+        is inspect.Parameter.KEYWORD_ONLY
+    )
+
+
+def test_opt_in_compiled_builders_share_loop_sum_compiler(
+    monkeypatch: pytest.MonkeyPatch,
+    rhime_inv_inputs: xr.Dataset,
+    multisector_inv_inputs: xr.Dataset,
+    builder_args: dict,
+) -> None:
+    """Both opt-in builders normalize fluxes through the private compiler."""
     captured_plans: list[_FluxPlan] = []
 
     def compile_spy(plan: _FluxPlan) -> Any:
@@ -1133,8 +1217,8 @@ def test_standard_and_multisector_builders_share_loop_sum_compiler(
 
     monkeypatch.setattr(rhime_models_module, "_compile_loop_sum", compile_spy)
 
-    build_rhime_model(rhime_inv_inputs, **builder_args)
-    build_rhime_multisector_model(
+    rhime_models_module._build_compiled_rhime_model(rhime_inv_inputs, **builder_args)
+    rhime_models_module._build_compiled_rhime_multisector_model(
         multisector_inv_inputs,
         sectors=["FF", "ocean"],
         sector_sources={"FF": "total-ukghg-edgar7", "ocean": "sector-2"},
@@ -1148,7 +1232,82 @@ def test_standard_and_multisector_builders_share_loop_sum_compiler(
     assert [term.deterministic_name for term in standard_plan.terms] == ["mu"]
     assert [state.variable_name for state in multisector_plan.states] == ["x_ff", "x_ocean"]
     assert [term.deterministic_name for term in multisector_plan.terms] == ["mu_ff", "mu_ocean"]
-    assert all("strategy" not in parameter for parameter in inspect.signature(RhimeModelSpec).parameters)
+
+
+def test_concrete_and_compiled_standard_models_are_equivalent(
+    rhime_inv_inputs: xr.Dataset,
+    builder_args: dict,
+) -> None:
+    """Concrete and compiled standard graphs preserve the same trace contract."""
+    concrete = build_rhime_model(rhime_inv_inputs, **builder_args)
+    compiled = rhime_models_module._build_compiled_rhime_model(rhime_inv_inputs, **builder_args)
+
+    assert set(concrete.named_vars) == set(compiled.named_vars)
+    assert concrete.named_vars_to_dims == compiled.named_vars_to_dims
+    np.testing.assert_allclose(concrete["hx"].get_value(), compiled["hx"].get_value())
+    np.testing.assert_allclose(concrete["hbc"].get_value(), compiled["hbc"].get_value())
+
+    var_names = ["x", "mu", "mu_bc", "sigma", "epsilon"]
+    with concrete:
+        concrete_prior = pm.sample_prior_predictive(
+            draws=2,
+            var_names=var_names,
+            random_seed=402,
+        )
+    with compiled:
+        compiled_prior = pm.sample_prior_predictive(
+            draws=2,
+            var_names=var_names,
+            random_seed=402,
+        )
+    xr.testing.assert_allclose(
+        cast(Any, concrete_prior).prior,
+        cast(Any, compiled_prior).prior,
+    )
+
+
+def test_concrete_and_compiled_multisector_models_are_equivalent(
+    multisector_inv_inputs: xr.Dataset,
+    builder_args: dict,
+) -> None:
+    """Concrete and compiled multisector graphs preserve additive semantics."""
+    kwargs = {
+        "sectors": ["FF", "ocean"],
+        "sector_sources": {"FF": "total-ukghg-edgar7", "ocean": "sector-2"},
+        "sector_variable_suffixes": {"FF": "ff", "ocean": "ocean"},
+        **builder_args,
+    }
+    concrete = build_rhime_multisector_model(multisector_inv_inputs, **kwargs)
+    compiled = rhime_models_module._build_compiled_rhime_multisector_model(
+        multisector_inv_inputs,
+        **kwargs,
+    )
+
+    assert set(concrete.named_vars) == set(compiled.named_vars)
+    assert concrete.named_vars_to_dims == compiled.named_vars_to_dims
+    for name in ("hx_ff", "hx_ocean", "hbc"):
+        np.testing.assert_allclose(concrete[name].get_value(), compiled[name].get_value())
+
+    var_names = ["x_ff", "mu_ff", "x_ocean", "mu_ocean", "mu"]
+    with concrete:
+        concrete_prior = pm.sample_prior_predictive(
+            draws=2,
+            var_names=var_names,
+            random_seed=403,
+        )
+    with compiled:
+        compiled_prior = pm.sample_prior_predictive(
+            draws=2,
+            var_names=var_names,
+            random_seed=403,
+        )
+    concrete_dataset = cast(Any, concrete_prior).prior
+    compiled_dataset = cast(Any, compiled_prior).prior
+    xr.testing.assert_allclose(concrete_dataset, compiled_dataset)
+    xr.testing.assert_allclose(
+        concrete_dataset["mu"],
+        concrete_dataset["mu_ff"] + concrete_dataset["mu_ocean"],
+    )
 
 
 def test_build_rhime_multisector_model_requires_multiple_sectors(
@@ -1656,6 +1815,7 @@ def test_rhime_runner_setup_builds_specs_before_preparation(tmp_path: Path) -> N
         "chains": "3",
         "sample_kwargs": {"random_seed": 42},
         "posterior_predictive_kwargs": {"random_seed": 43},
+        "builder_strategy": "compiled",
     }
 
     setup = rhime_params.make_rhime_runner_setup(
@@ -1692,6 +1852,30 @@ def test_rhime_runner_setup_builds_specs_before_preparation(tmp_path: Path) -> N
     assert setup.run_spec.model.sectors[1].x_prior == {"pdf": "normal", "mu": 0.7, "sigma": 0.2}
     assert setup.run_spec.model.sigma_freq == "8D"
     assert setup.run_spec.model.sigma_freq_anchor == "2019-01-01"
+    assert setup.run_spec.model.builder_strategy == "compiled"
+
+
+def test_rhime_runner_setup_rejects_unknown_builder_strategy() -> None:
+    """Invalid builder selection fails during setup, before data preparation."""
+    params = {
+        "species": "ch4",
+        "sites": ["TAC"],
+        "averaging_period": ["1h"],
+        "domain": "EUROPE",
+        "start_date": "2019-01-01",
+        "end_date": "2019-01-02",
+        "flux_sources": ["ff-source"],
+        "output_name": "test",
+        "output_format": "none",
+        "builder_strategy": "fallback",
+    }
+
+    with pytest.raises(ValueError, match="builder_strategy.*concrete.*compiled"):
+        rhime_params.make_rhime_runner_setup(
+            params=params,
+            multisector=False,
+            data_param_names=set(inspect.signature(prepare_rhime_inputs).parameters),
+        )
 
 
 def test_legacy_sampling_names_are_not_rhime_config_aliases() -> None:
@@ -1789,6 +1973,45 @@ def test_build_rhime_model_from_spec_requires_one_sector() -> None:
         build_rhime_model_from_spec(_minimal_inv_inputs(), model_spec)
 
 
+def test_build_rhime_model_from_spec_dispatches_compiled_opt_in(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A serializable model-spec option selects the private compiler path."""
+    sentinel = cast(pm.Model, object())
+    seen: dict[str, Any] = {}
+
+    def fake_compiled_builder(inv_inputs: xr.Dataset, **kwargs: Any) -> pm.Model:
+        seen["inv_inputs"] = inv_inputs
+        seen["kwargs"] = kwargs
+        return sentinel
+
+    monkeypatch.setattr(
+        rhime_models_module,
+        "_build_compiled_rhime_model",
+        fake_compiled_builder,
+    )
+    inv_inputs = _minimal_output_inv_inputs()
+    model_spec = RhimeModelSpec(
+        species="ch4",
+        domain="EUROPE",
+        sectors=(
+            SectorSpec(
+                "FF",
+                "ff-inventory",
+                {"pdf": "normal", "mu": 1.0, "sigma": 0.2},
+                "ff",
+            ),
+        ),
+        builder_strategy="compiled",
+    )
+
+    model = build_rhime_model_from_spec(inv_inputs, model_spec)
+
+    assert model is sentinel
+    assert seen["inv_inputs"] is inv_inputs
+    assert seen["kwargs"]["x_prior"] == {"pdf": "normal", "mu": 1.0, "sigma": 0.2}
+
+
 def test_build_rhime_multisector_model_from_spec_preserves_sector_source_mapping(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1838,6 +2061,62 @@ def test_build_rhime_multisector_model_from_spec_preserves_sector_source_mapping
         "ocean": {"pdf": "normal", "mu": 1.0, "sigma": 0.3},
     }
     assert isinstance(seen["kwargs"]["sigma_alignment"], SigmaAlignment)
+
+
+def test_build_rhime_multisector_model_from_spec_dispatches_compiled_opt_in(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The multisector spec wrapper selects compilation only when requested."""
+    sentinel = cast(pm.Model, object())
+    seen: dict[str, Any] = {}
+
+    def fake_compiled_builder(inv_inputs: xr.Dataset, **kwargs: Any) -> pm.Model:
+        seen["inv_inputs"] = inv_inputs
+        seen["kwargs"] = kwargs
+        return sentinel
+
+    monkeypatch.setattr(
+        rhime_models_module,
+        "_build_compiled_rhime_multisector_model",
+        fake_compiled_builder,
+    )
+    inv_inputs = _minimal_output_inv_inputs()
+    model_spec = RhimeModelSpec(
+        species="ch4",
+        domain="EUROPE",
+        sectors=(
+            SectorSpec(
+                "FF",
+                "ff-inventory",
+                {"pdf": "normal", "mu": 1.0, "sigma": 0.2},
+                "ff",
+            ),
+            SectorSpec(
+                "ocean",
+                "ocean-inventory",
+                {"pdf": "normal", "mu": 1.0, "sigma": 0.3},
+                "ocean",
+            ),
+        ),
+        builder_strategy="compiled",
+    )
+
+    model = build_rhime_multisector_model_from_spec(inv_inputs, model_spec)
+
+    assert model is sentinel
+    assert seen["inv_inputs"] is inv_inputs
+    assert seen["kwargs"]["sectors"] == ["FF", "ocean"]
+
+
+def test_rhime_model_spec_rejects_unknown_builder_strategy() -> None:
+    """Invalid graph-construction modes fail at model-spec construction."""
+    with pytest.raises(ValueError, match="builder_strategy.*concrete.*compiled"):
+        RhimeModelSpec(
+            species="ch4",
+            domain="EUROPE",
+            sectors=(),
+            builder_strategy=cast(Any, "fallback"),
+        )
 
 
 def test_rhime_sampler_runs_pymc_sampling_and_predictive_steps(
@@ -2406,6 +2685,8 @@ def test_new_rhime_docs_use_flux_sources_for_examples() -> None:
     assert "flux_sources" in readme
     assert "flux_sources" in template
     assert "sector_sources" in template
+    assert 'builder_strategy = "concrete"' in template
+    assert 'builder_strategy="compiled"' in rhime_doc
     assert "emissions_name =" not in rhime_doc
     assert "emissions_name =" not in readme
     assert "emissions_name =" not in template
@@ -2527,8 +2808,10 @@ def test_prepared_multisector_runner_accepts_gathered_source_specific_basis_layo
     )
     inv_inputs = _minimal_output_inv_inputs().drop_dims("region")
     inv_inputs["min_error"] = xr.zeros_like(inv_inputs["mf"])
-    inv_inputs["H"] = basis_functions.sensitivity(fp_x_flux).rename(time="nmeasure").assign_coords(
-        nmeasure=inv_inputs.coords["nmeasure"]
+    inv_inputs["H"] = (
+        basis_functions.sensitivity(fp_x_flux)
+        .rename(time="nmeasure")
+        .assign_coords(nmeasure=inv_inputs.coords["nmeasure"])
     )
 
     prepared = RhimePreparedInputs(
@@ -4006,6 +4289,12 @@ def test_make_multisector_output_bundle_builds_latest_paris_flux(
 def test_modern_inversion_output_save_load_roundtrip(tmp_path: Path) -> None:
     """Modern InversionOutput preserves trace burn metadata, inputs, and basis."""
     model_spec, output_spec, run_spec = _minimal_output_specs()
+    model_spec = RhimeModelSpec(
+        species=model_spec.species,
+        domain=model_spec.domain,
+        sectors=model_spec.sectors,
+        builder_strategy="compiled",
+    )
     basis_artifact_path = str(tmp_path / "unit-basis.nc")
     prepared = RhimePreparedInputs(
         inv_inputs=_minimal_output_inv_inputs(),
@@ -4042,6 +4331,7 @@ def test_modern_inversion_output_save_load_roundtrip(tmp_path: Path) -> None:
     assert reloaded.basis_functions.basis_artifact_path == basis_artifact_path
     assert reloaded.provenance["basis_representation"] == "operator-backed"
     assert reloaded.output_metadata["output_format"] == "inv_out"
+    assert reloaded.model_metadata["builder_strategy"] == "compiled"
     assert reloaded.trace.attrs["burn"] == 1000
     assert cast(Any, reloaded.trace).posterior.attrs["burn"] == 1000
     xr.testing.assert_identical(reloaded.inv_inputs, prepared.inv_inputs)

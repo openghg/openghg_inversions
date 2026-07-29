@@ -16,7 +16,13 @@ from typing import Any, cast
 import warnings
 
 from openghg_inversions.config import config
-from openghg_inversions.models import DEFAULT_X_PRIOR, RhimeModelSpec, SectorSpec, safe_pymc_name
+from openghg_inversions.models import (
+    DEFAULT_X_PRIOR,
+    RhimeBuilderStrategy,
+    RhimeModelSpec,
+    SectorSpec,
+    safe_pymc_name,
+)
 from openghg_inversions.rhime.sampling import RhimeSampler
 from openghg_inversions.rhime.specs import RhimeRunSpec, make_output_spec
 
@@ -102,8 +108,7 @@ def resolve_flux_sources(
     duplicates = _duplicate_names(resolved)
     if duplicates:
         raise ValueError(
-            "`flux_sources` must contain unique OpenGHG source values; "
-            f"duplicate source(s): {duplicates!r}."
+            f"`flux_sources` must contain unique OpenGHG source values; duplicate source(s): {duplicates!r}."
         )
     return resolved
 
@@ -379,6 +384,7 @@ def validate_supported_params(params: Mapping[str, Any], *, data_params: set[str
         "add_offset",
         "sigma_per_site",
         "sigma_freq",
+        "builder_strategy",
     }
     supported = data_params | runner_params | required_run_params()
     unsupported = sorted(set(params) - supported)
@@ -449,6 +455,7 @@ def _make_model_spec(
     no_model_error: bool,
     power: dict[str, Any] | float,
     offset_args: dict[str, Any] | None,
+    builder_strategy: RhimeBuilderStrategy,
 ) -> RhimeModelSpec:
     """Create a lightweight model spec from normalized run parameters."""
     default_x_prior = DEFAULT_X_PRIOR.copy() if x_prior is None else x_prior.copy()
@@ -504,6 +511,7 @@ def _make_model_spec(
         sigma_prior=sigma_prior,
         offset_prior=offset_prior,
         offset_args=offset_args,
+        builder_strategy=builder_strategy,
     )
 
 
@@ -558,6 +566,10 @@ def make_rhime_runner_setup(
     pollution_events_from_obs = remaining.pop("pollution_events_from_obs", False)
     no_model_error = remaining.pop("no_model_error", False)
     power = remaining.pop("power", 1.99)
+    builder_strategy = cast(
+        RhimeBuilderStrategy,
+        remaining.pop("builder_strategy", "concrete"),
+    )
 
     sampler = RhimeSampler(
         draws=remaining.pop("draws", 1000),
@@ -605,6 +617,7 @@ def make_rhime_runner_setup(
         no_model_error=no_model_error,
         power=power,
         offset_args=offset_args,
+        builder_strategy=builder_strategy,
     )
     run_spec = RhimeRunSpec(
         start_date=start_date,
