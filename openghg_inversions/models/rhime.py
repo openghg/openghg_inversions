@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Literal, cast
+from typing import Any, Literal, TypeAlias, cast
 
 import pymc as pm
 import pytensor.tensor as pt
@@ -49,7 +49,13 @@ DEFAULT_BC_PRIOR: PriorArgs = {"pdf": "truncatednormal", "mu": 1.0, "sigma": 0.0
 DEFAULT_SIGMA_PRIOR: PriorArgs = {"pdf": "uniform", "lower": 0.1, "upper": 3.0}
 DEFAULT_OFFSET_PRIOR: PriorArgs = {"pdf": "normal", "mu": 0, "sigma": 1}
 
-RhimeBuilderStrategy = Literal["concrete", "compiled"]
+#: Public RHIME model-construction strategy.
+#:
+#: ``"concrete"`` selects the default, readable reference implementation.
+#: ``"compiled"`` selects the opt-in extension and regression-checking path.
+#: Compiler plan objects remain private, while these public strategy values and
+#: the graph contract of unchanged model components are stable.
+RhimeBuilderStrategy: TypeAlias = Literal["concrete", "compiled"]
 
 
 def safe_pymc_name(value: str) -> str:
@@ -106,9 +112,11 @@ class RhimeModelSpec:
         sigma_prior: Prior specification for model-error terms.
         offset_prior: Prior specification for optional offsets.
         offset_args: Extra keyword arguments forwarded to the offset component.
-        builder_strategy: Model-construction path. ``"concrete"`` directly
-            composes public model components. ``"compiled"`` opts into the
-            private semantic-plan compiler.
+        builder_strategy: Public model-construction strategy. ``"concrete"``
+            directly composes the default, readable reference model.
+            ``"compiled"`` opts into the private semantic-plan compiler for
+            extension work and regression checking. There is no automatic
+            fallback between strategies.
     """
 
     species: str

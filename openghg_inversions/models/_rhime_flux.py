@@ -276,7 +276,43 @@ def _resolve_multisector_components(
     x_prior: Mapping[str, Any] | None,
     default_x_prior: Mapping[str, Any],
 ) -> tuple[_ResolvedSectorComponent, ...]:
-    """Resolve selected sector designs and priors independently of graph construction."""
+    """Resolve multisector designs and priors independently of graph construction.
+
+    Each semantic sector binding selects sensitivity data by its OpenGHG
+    ``source`` label. Rectangular canonical inputs use a ``source`` dimension;
+    selection removes that dimension, leaving the observation and state
+    dimensions. Gathered ragged inputs use one state dimension with a
+    MultiIndex containing ``source`` and one region level; the selected state
+    dimension is renamed with the sector variable suffix so sectors may retain
+    different scientific coordinates.
+
+    Prior precedence is explicit: a supplied ``sector_priors`` mapping wins,
+    otherwise ``x_prior`` is shared by every sector, and ``default_x_prior`` is
+    used only when neither is supplied. When ``sector_priors`` is present it
+    must define exactly the resolved sector set.
+
+    Args:
+        inv_inputs: Canonical inversion inputs containing source-resolved
+            sensitivity in ``H``.
+        sector_bindings: Ordered semantic sector, source, and backend-name
+            bindings already validated against the requested sectors.
+        sector_priors: Optional complete mapping from sector names to
+            flux-scaling prior specifications.
+        x_prior: Optional prior shared by every sector when per-sector priors
+            are absent.
+        default_x_prior: Final shared prior used when neither explicit prior
+            option is supplied.
+
+    Returns:
+        Ordered resolved components containing each sector identity, selected
+        two-dimensional design, variable suffix, and copied prior metadata.
+
+    Raises:
+        KeyError: If ``inv_inputs`` does not contain ``H``.
+        ValueError: If per-sector prior keys are missing or unused, source
+            selection fails, a rectangular design declares padding, or a
+            gathered design has an invalid source/state layout.
+    """
     sector_names = [binding.name for binding in sector_bindings]
     if sector_priors is not None:
         missing_priors = [sector for sector in sector_names if sector not in sector_priors]

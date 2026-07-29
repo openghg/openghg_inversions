@@ -869,14 +869,13 @@ def test_concrete_and_compiled_multisector_models_accept_gathered_ragged_states(
     multisector_inv_inputs: xr.Dataset,
     builder_args: dict,
 ) -> None:
-    """Both builders preserve source-specific ragged state dimensions."""
+    """Both builders preserve and restore labelled source-specific states."""
+    ff_labels = ["north", "south"]
+    ocean_labels = ["atlantic", "pacific", "indian"]
     state_index = pd.MultiIndex.from_tuples(
         [
-            ("ff-inventory", 0),
-            ("ff-inventory", 1),
-            ("ocean-inventory", 0),
-            ("ocean-inventory", 1),
-            ("ocean-inventory", 2),
+            *(("ff-inventory", label) for label in ff_labels),
+            *(("ocean-inventory", label) for label in ocean_labels),
         ],
         names=["source", "region_in_source"],
     )
@@ -908,10 +907,13 @@ def test_concrete_and_compiled_multisector_models_accept_gathered_ragged_states(
         **kwargs,
     )
 
+    assert set(model.named_vars) == set(compiled.named_vars)
+    assert model.named_vars_to_dims == compiled.named_vars_to_dims
     np.testing.assert_allclose(model["hx_ff"].get_value(), values[:2].T)
     np.testing.assert_allclose(model["hx_ocean"].get_value(), values[2:].T)
     np.testing.assert_allclose(compiled["hx_ff"].get_value(), values[:2].T)
     np.testing.assert_allclose(compiled["hx_ocean"].get_value(), values[2:].T)
+    np.testing.assert_allclose(model["hbc"].get_value(), compiled["hbc"].get_value())
     assert model.named_vars_to_dims["x_ff"] == ("state_ff",)
     assert model.named_vars_to_dims["x_ocean"] == ("state_ocean",)
     assert compiled.named_vars_to_dims["x_ff"] == ("state_ff",)
@@ -920,6 +922,15 @@ def test_concrete_and_compiled_multisector_models_accept_gathered_ragged_states(
     assert model.coords["state_ocean"] == (0, 1, 2)
     assert compiled.coords["state_ff"] == (0, 1)
     assert compiled.coords["state_ocean"] == (0, 1, 2)
+
+    concrete_registry = models.get_coord_registry(model)
+    compiled_registry = models.get_coord_registry(compiled)
+    assert concrete_registry is not None
+    assert compiled_registry is not None
+    for registry in (concrete_registry, compiled_registry):
+        assert list(registry.original_coords["state_ff"]) == ff_labels
+        assert list(registry.original_coords["state_ocean"]) == ocean_labels
+        assert registry.original_coords["nmeasure"].equals(inv_inputs.indexes["nmeasure"])
 
     var_names = ["x_ff", "mu_ff", "x_ocean", "mu_ocean", "mu"]
     with model:
@@ -934,9 +945,20 @@ def test_concrete_and_compiled_multisector_models_accept_gathered_ragged_states(
             var_names=var_names,
             random_seed=535,
         )
-    concrete_dataset = cast(Any, concrete_prior).prior
-    compiled_dataset = cast(Any, compiled_prior).prior
+    concrete_prior = models.restore_inferencedata_coords(
+        cast(az.InferenceData, concrete_prior),
+        concrete_registry,
+    )
+    compiled_prior = models.restore_inferencedata_coords(
+        cast(az.InferenceData, compiled_prior),
+        compiled_registry,
+    )
+    concrete_dataset = concrete_prior.prior
+    compiled_dataset = compiled_prior.prior
     xr.testing.assert_allclose(concrete_dataset, compiled_dataset)
+    assert list(concrete_dataset["state_ff"].values) == ff_labels
+    assert list(concrete_dataset["state_ocean"].values) == ocean_labels
+    assert concrete_dataset.indexes["nmeasure"].equals(inv_inputs.indexes["nmeasure"])
     xr.testing.assert_allclose(
         concrete_dataset["mu"],
         concrete_dataset["mu_ff"] + concrete_dataset["mu_ocean"],
@@ -1238,16 +1260,23 @@ def test_concrete_and_compiled_standard_models_are_equivalent(
     rhime_inv_inputs: xr.Dataset,
     builder_args: dict,
 ) -> None:
-    """Concrete and compiled standard graphs preserve the same trace contract."""
-    concrete = build_rhime_model(rhime_inv_inputs, **builder_args)
-    compiled = rhime_models_module._build_compiled_rhime_model(rhime_inv_inputs, **builder_args)
+    """Float32 sensitivities and the default reparameterized prior retain parity."""
+    inv_inputs = rhime_inv_inputs.copy()
+    inv_inputs["H"] = inv_inputs["H"].astype(np.float32)
+    kwargs = {**builder_args, "x_prior": None}
+    concrete = build_rhime_model(inv_inputs, **kwargs)
+    compiled = rhime_models_module._build_compiled_rhime_model(inv_inputs, **kwargs)
 
     assert set(concrete.named_vars) == set(compiled.named_vars)
     assert concrete.named_vars_to_dims == compiled.named_vars_to_dims
+    assert {"x", "x_latent", "mu"}.issubset(concrete.named_vars)
+    assert concrete.named_vars_to_dims["x"] == concrete.named_vars_to_dims["x_latent"]
     np.testing.assert_allclose(concrete["hx"].get_value(), compiled["hx"].get_value())
     np.testing.assert_allclose(concrete["hbc"].get_value(), compiled["hbc"].get_value())
+    assert concrete["hx"].get_value().dtype == np.dtype("float32")
+    assert compiled["hx"].get_value().dtype == np.dtype("float32")
 
-    var_names = ["x", "mu", "mu_bc", "sigma", "epsilon"]
+    var_names = ["x_latent", "x", "mu", "mu_bc", "sigma", "epsilon"]
     with concrete:
         concrete_prior = pm.sample_prior_predictive(
             draws=2,
@@ -1260,9 +1289,22 @@ def test_concrete_and_compiled_standard_models_are_equivalent(
             var_names=var_names,
             random_seed=402,
         )
+    concrete_dataset = cast(Any, concrete_prior).prior
+    compiled_dataset = cast(Any, compiled_prior).prior
+    xr.testing.assert_allclose(concrete_dataset, compiled_dataset)
+
+    registered_h = xr.DataArray(
+        concrete["hx"].get_value(),
+        dims=("nmeasure", "region"),
+        coords={
+            "nmeasure": concrete_dataset["nmeasure"],
+            "region": concrete_dataset["region"],
+        },
+    )
+    expected_mu = xr.dot(concrete_dataset["x"], registered_h, dim="region")
     xr.testing.assert_allclose(
-        cast(Any, concrete_prior).prior,
-        cast(Any, compiled_prior).prior,
+        concrete_dataset["mu"],
+        expected_mu.transpose(*concrete_dataset["mu"].dims).rename("mu"),
     )
 
 
@@ -2397,6 +2439,37 @@ output_name = "test"
 
     params = params_from_config(config_file)
     assert params["flux_sources"] == ["legacy-source"]
+
+
+def test_params_from_config_parses_builder_strategy(tmp_path: Path) -> None:
+    """A real RHIME INI file preserves the requested model-builder strategy."""
+    config_file = tmp_path / "rhime.ini"
+    config_file.write_text(
+        """
+[INPUT.MEASUREMENTS]
+species = "ch4"
+sites = ["TAC"]
+averaging_period = ["1h"]
+start_date = "2019-01-01"
+end_date = "2019-01-02"
+
+[INPUT.PRIORS]
+domain = "EUROPE"
+flux_sources = ["ff-source"]
+
+[RHIME.OPTIONS]
+builder_strategy = "compiled"
+
+[RHIME.OUTPUT]
+output_path = "out"
+output_name = "test"
+""",
+        encoding="utf-8",
+    )
+
+    params = params_from_config(config_file)
+
+    assert params["builder_strategy"] == "compiled"
 
 
 @pytest.mark.parametrize("prior_name", ["x_prior", "bc_prior", "sigma_prior", "offset_prior"])
