@@ -96,6 +96,8 @@ catalogue.
 
 The isolated timing recovery is specified in
 [`rjmcmc_chunked_projected_bank_g3_certifier_recovery.md`](rjmcmc_chunked_projected_bank_g3_certifier_recovery.md).
+The create-only seed-731 JSON publication recovery is specified in
+[`rjmcmc_chunked_projected_bank_g4_serialization_recovery.md`](rjmcmc_chunked_projected_bank_g4_serialization_recovery.md).
 
 ## Interpretation and stop rule
 

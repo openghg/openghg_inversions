@@ -15,7 +15,7 @@ set -o noclobber
 : "${FROZEN_INPUT_SHA:?}"
 : "${BANK_G3_REFERENCE:?Set this to repeat0 for the selected G3 C.}"
 
-stage="${BANK_RUN_ROOT}/g4/development/seed731"
+stage="${BANK_G4_DEVELOPMENT_STAGE:-${BANK_RUN_ROOT}/g4/development/seed731}"
 time_report="${stage}/resource.time"
 for path in "${stage}/seed_report.json" "${stage}/projected_locations.npy" \
   "${stage}/log_likelihood.npy" "${stage}/G4_SEED_COMPLETE.txt" \

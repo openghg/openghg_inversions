@@ -165,6 +165,15 @@ def test_common_suffix_requires_two_all_larger_passing_ranks() -> None:
     assert g4._common_suffix({16: True, 32: True, 64: False, 128: True}) == ()
 
 
+def test_translation_parity_metrics_are_strictly_json_serializable() -> None:
+    likelihood = np.array([[[1.0, 2.0]]])
+    metrics = g4._translation_parity_metrics(likelihood, likelihood.copy())
+
+    assert metrics["passed"] is True
+    assert isinstance(metrics["tolerance"], float)
+    assert json.loads(g4.hpc._canonical_json(metrics)) == metrics
+
+
 def test_g3_controls_require_the_scientific_selected_c_and_p(tmp_path: Path) -> None:
     decision = tmp_path / "g3.json"
     _canonical(

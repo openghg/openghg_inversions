@@ -21,6 +21,7 @@ from collections.abc import Mapping, Sequence
 import itertools
 import math
 from numbers import Real
+import os
 from pathlib import Path
 import sys
 import time
@@ -78,9 +79,14 @@ LIKELIHOOD_MEDIAN_LIMIT_NAT = 0.05
 LIKELIHOOD_P99_LIMIT_NAT = 0.20
 TRANSLATION_FACTOR = 4_096.0
 MINIMUM_SUFFIX_LENGTH = 2
-THRESHOLD_SUPPLEMENT = (
-    Path(__file__).resolve().parents[2]
-    / "docs/plans/rjmcmc_chunked_projected_bank_g4_threshold_supplement.md"
+THRESHOLD_SUPPLEMENT = Path(
+    os.environ.get(
+        "RJMCMC_G4_THRESHOLD_SUPPLEMENT",
+        str(
+            Path(__file__).resolve().parents[2]
+            / "docs/plans/rjmcmc_chunked_projected_bank_g4_threshold_supplement.md"
+        ),
+    )
 )
 
 
@@ -825,6 +831,34 @@ def _difference_metrics(
     }
 
 
+def _translation_parity_metrics(
+    likelihood: FloatArray,
+    translated_likelihood: FloatArray,
+) -> dict[str, object]:
+    """Return JSON-native parity diagnostics for the two offset paths."""
+    difference = float(
+        np.max(
+            np.abs(
+                np.asarray(likelihood, dtype=np.float64) - np.asarray(translated_likelihood, dtype=np.float64)
+            ),
+            initial=0.0,
+        )
+    )
+    scale = max(
+        1.0,
+        float(np.max(np.abs(likelihood), initial=0.0)),
+        float(np.max(np.abs(translated_likelihood), initial=0.0)),
+    )
+    tolerance = float(TRANSLATION_FACTOR * np.finfo(np.float64).eps * scale)
+    return {
+        "maximum_log_likelihood_difference_nat": difference,
+        "scale": scale,
+        "tolerance": tolerance,
+        "formula": "4096*eps64*max(1,max_abs(logp(y,b)),max_abs(logp(y-b,0)))",
+        "passed": bool(difference <= tolerance),
+    }
+
+
 def _strict_development_reference(
     manifest_path: Path,
     *,
@@ -1044,14 +1078,8 @@ def run_seed(
         locations,
         spectrum,
     )
-    translation_difference = float(np.max(np.abs(likelihood - translated_likelihood), initial=0.0))
-    translation_scale = max(
-        1.0,
-        float(np.max(np.abs(likelihood), initial=0.0)),
-        float(np.max(np.abs(translated_likelihood), initial=0.0)),
-    )
-    translation_tolerance = TRANSLATION_FACTOR * np.finfo(np.float64).eps * translation_scale
-    translation_passed = translation_difference <= translation_tolerance
+    translation_parity = _translation_parity_metrics(likelihood, translated_likelihood)
+    translation_passed = bool(translation_parity["passed"])
     likelihood_record = _array_record(output_dir / "log_likelihood.npy", likelihood)
 
     nested_likelihood: dict[str, object] = {}
@@ -1066,7 +1094,7 @@ def run_seed(
         )
         - math.log(S_LADDER[-1])
     )
-    normalization_limit = TRANSLATION_FACTOR * np.finfo(np.float64).eps
+    normalization_limit = float(TRANSLATION_FACTOR * np.finfo(np.float64).eps)
     for rank_index, rank in enumerate(Q_LADDER):
         comparisons = {}
         for count_index, sample_count in enumerate(S_LADDER[:-1]):
@@ -1168,13 +1196,7 @@ def run_seed(
         "nested_likelihood_metrics": nested_likelihood,
         "rank_vs_128_likelihood_metrics": rank_vs_maximum,
         "finite_normalization_support": finite_support,
-        "translation_parity": {
-            "maximum_log_likelihood_difference_nat": translation_difference,
-            "scale": translation_scale,
-            "tolerance": translation_tolerance,
-            "formula": "4096*eps64*max(1,max_abs(logp(y,b)),max_abs(logp(y-b,0)))",
-            "passed": translation_passed,
-        },
+        "translation_parity": translation_parity,
         "rank_decisions": rank_decisions,
         "direct_likelihood": {
             "leading_coordinates": "equal-weight finite source location mixture",
@@ -1191,6 +1213,13 @@ def run_seed(
         "production_output_written": False,
         "passed_internal_checks": True,
     }
+    recovery_revision = os.environ.get("RJMCMC_G4_SERIALIZATION_RECOVERY_REVISION")
+    if recovery_revision is not None:
+        if len(recovery_revision) != 40 or any(
+            character not in "0123456789abcdef" for character in recovery_revision
+        ):
+            raise ValueError("serialization recovery revision must be one full lower-case Git SHA")
+        report["serialization_recovery_revision"] = recovery_revision
     hpc._atomic_write_json(output_dir / "seed_report.json", report)
     return report
 
