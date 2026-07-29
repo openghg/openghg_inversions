@@ -4,6 +4,14 @@
 
 ## Code changes
 
+- Made direct composition of concrete standard and multisector RHIME models
+  the default builder strategy. The semantic flux-plan compiler remains
+  available as an explicit `builder_strategy="compiled"` opt-in on
+  `RhimeModelSpec` and in RHIME configuration, while both paths share the same
+  source selection, gathered ragged-state handling, and sector-prior
+  validation. The concrete builders are the readable reference
+  implementations; compiler internals remain private, and unchanged graph
+  components are continuously checked against that reference contract.
 - Added a tox PyTensor compiler preflight that automatically loads
   `gcc/12.3.0-sknc` on Rocky Linux or recognized Blue Pebble hosts when the
   compiler setting is empty, supports configurable module/compiler overrides,

@@ -2,7 +2,9 @@
 
 These builders are the modern public model-construction names. They reuse the
 component-based PyMC helpers, while keeping the legacy ``inferpymc`` adapter out
-of the RHIME runtime path.
+of the RHIME runtime path. Public builders compose those components directly;
+``RhimeModelSpec`` can opt into the private flux-plan compiler for development
+and parity testing.
 
 The standard builder optimizes one flux scaling component. The multi-sector
 builder optimizes one component per sector, where each sector is normally backed
@@ -14,17 +16,20 @@ and names PyMC variables by sector.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
-from typing import Any
+from dataclasses import dataclass, field
+from typing import Any, Literal, TypeAlias, cast
 
 import pymc as pm
+import pytensor.tensor as pt
 import xarray as xr
+from pytensor.tensor.variable import TensorVariable
 
 from openghg_inversions.inversion_inputs import DatetimeLike
 from openghg_inversions.models._rhime_compiler import _compile_loop_sum, _FluxPlan
 from openghg_inversions.models._rhime_flux import (
     _normalize_multisector_flux_plan,
     _normalize_standard_flux_plan,
+    _resolve_multisector_components,
     _resolve_sector_bindings,
 )
 from openghg_inversions.models._rhime_flux import (
@@ -43,6 +48,14 @@ DEFAULT_X_PRIOR: PriorArgs = {"pdf": "lognormal", "mean": 1.0, "stdev": 1.0, "re
 DEFAULT_BC_PRIOR: PriorArgs = {"pdf": "truncatednormal", "mu": 1.0, "sigma": 0.05, "lower": 0.0}
 DEFAULT_SIGMA_PRIOR: PriorArgs = {"pdf": "uniform", "lower": 0.1, "upper": 3.0}
 DEFAULT_OFFSET_PRIOR: PriorArgs = {"pdf": "normal", "mu": 0, "sigma": 1}
+
+#: Public RHIME model-construction strategy.
+#:
+#: ``"concrete"`` selects the default, readable reference implementation.
+#: ``"compiled"`` selects the opt-in extension and regression-checking path.
+#: Compiler plan objects remain private, while these public strategy values and
+#: the graph contract of unchanged model components are stable.
+RhimeBuilderStrategy: TypeAlias = Literal["concrete", "compiled"]
 
 
 def safe_pymc_name(value: str) -> str:
@@ -99,6 +112,11 @@ class RhimeModelSpec:
         sigma_prior: Prior specification for model-error terms.
         offset_prior: Prior specification for optional offsets.
         offset_args: Extra keyword arguments forwarded to the offset component.
+        builder_strategy: Public model-construction strategy. ``"concrete"``
+            directly composes the default, readable reference model.
+            ``"compiled"`` opts into the private semantic-plan compiler for
+            extension work and regression checking. There is no automatic
+            fallback between strategies.
     """
 
     species: str
@@ -116,6 +134,14 @@ class RhimeModelSpec:
     sigma_prior: dict[str, Any] | None = None
     offset_prior: dict[str, Any] | None = None
     offset_args: dict[str, Any] | None = None
+    builder_strategy: RhimeBuilderStrategy = field(default="concrete", kw_only=True)
+
+    def __post_init__(self) -> None:
+        """Validate the explicitly supported model-construction strategies."""
+        if self.builder_strategy not in ("concrete", "compiled"):
+            raise ValueError(
+                f"`builder_strategy` must be either 'concrete' or 'compiled'; got {self.builder_strategy!r}."
+            )
 
 
 def _prepare_builder_priors(
@@ -133,7 +159,78 @@ def _prepare_builder_priors(
     return prepared_x_prior, prepared_bc_prior, prepared_sigma_prior, prepared_offset_prior
 
 
-def _assemble_rhime_model(
+def _add_rhime_observation_components(
+    inv_inputs: xr.Dataset,
+    *,
+    mu: TensorVariable,
+    sigma_alignment: SigmaAlignment,
+    bc_prior: dict,
+    sigma_prior: dict,
+    offset_prior: dict,
+    add_offset: bool,
+    use_bc: bool,
+    pollution_events_from_obs: bool,
+    no_model_error: bool,
+    offset_args: dict | None,
+    power: dict | float,
+) -> None:
+    """Add boundary, offset, error, and likelihood components to a RHIME model.
+
+    Args:
+        inv_inputs: Canonical inversion inputs.
+        mu: Total flux contribution in observation space.
+        sigma_alignment: Prepared observation alignment for model error.
+        bc_prior: Prepared boundary-condition prior.
+        sigma_prior: Prepared model-error prior.
+        offset_prior: Prepared optional offset prior.
+        add_offset: Whether to add an offset component.
+        use_bc: Whether to add a boundary-condition component.
+        pollution_events_from_obs: Whether error scaling uses observations.
+        no_model_error: Whether to suppress explicit model error.
+        offset_args: Extra offset-component arguments.
+        power: Likelihood error-scaling exponent or prior.
+
+    """
+    mu_bc = None
+    if use_bc:
+        if "H_bc" not in inv_inputs:
+            raise ValueError("If `use_bc` is True, `inv_inputs` must contain `H_bc`.")
+        bc_component = add_linear_component(
+            inv_inputs["H_bc"],
+            data_name="hbc",
+            prior_args=bc_prior,
+            var_name="bc",
+            output_name="mu_bc",
+            output_dim="nmeasure",
+            compute_deterministic=True,
+        )
+        mu_bc = bc_component.output
+
+    offset = None
+    if add_offset:
+        offset = add_offset_component(
+            inv_inputs["site_indicator"],
+            prior_args=offset_prior,
+            output_name="offset",
+            output_dim="nmeasure",
+            **(offset_args or {}),
+        )
+
+    add_inferpymc_likelihood_component(
+        inv_inputs,
+        mu=mu,
+        mu_bc=mu_bc,
+        offset=offset,
+        sigprior=sigma_prior,
+        sigma_alignment=sigma_alignment,
+        power=power,
+        pollution_events_from_obs=pollution_events_from_obs,
+        no_model_error=no_model_error,
+        output_dim="nmeasure",
+    )
+
+
+def _assemble_compiled_rhime_model(
     inv_inputs: xr.Dataset,
     *,
     flux_plan: _FluxPlan,
@@ -148,7 +245,7 @@ def _assemble_rhime_model(
     offset_args: dict | None,
     power: dict | float,
 ) -> pm.Model:
-    """Assemble shared RHIME components around a normalized flux plan.
+    """Compile a normalized flux plan and add the shared RHIME components.
 
     Args:
         inv_inputs: Canonical inversion inputs.
@@ -170,43 +267,19 @@ def _assemble_rhime_model(
     with pm.Model() as model:
         attach_coord_registry(model, CoordRegistry())
         compiled_flux = _compile_loop_sum(flux_plan)
-
-        mu_bc = None
-        if use_bc:
-            if "H_bc" not in inv_inputs:
-                raise ValueError("If `use_bc` is True, `inv_inputs` must contain `H_bc`.")
-            bc_component = add_linear_component(
-                inv_inputs["H_bc"],
-                data_name="hbc",
-                prior_args=bc_prior,
-                var_name="bc",
-                output_name="mu_bc",
-                output_dim="nmeasure",
-                compute_deterministic=True,
-            )
-            mu_bc = bc_component.output
-
-        offset = None
-        if add_offset:
-            offset = add_offset_component(
-                inv_inputs["site_indicator"],
-                prior_args=offset_prior,
-                output_name="offset",
-                output_dim="nmeasure",
-                **(offset_args or {}),
-            )
-
-        add_inferpymc_likelihood_component(
+        _add_rhime_observation_components(
             inv_inputs,
             mu=compiled_flux.mu,
-            mu_bc=mu_bc,
-            offset=offset,
-            sigprior=sigma_prior,
             sigma_alignment=sigma_alignment,
-            power=power,
+            bc_prior=bc_prior,
+            sigma_prior=sigma_prior,
+            offset_prior=offset_prior,
+            add_offset=add_offset,
+            use_bc=use_bc,
             pollution_events_from_obs=pollution_events_from_obs,
             no_model_error=no_model_error,
-            output_dim="nmeasure",
+            offset_args=offset_args,
+            power=power,
         )
 
     return model
@@ -254,8 +327,81 @@ def build_rhime_model(
         sigma_prior=sigma_prior,
         offset_prior=offset_prior,
     )
+
+    with pm.Model() as model:
+        attach_coord_registry(model, CoordRegistry())
+        flux_component = add_linear_component(
+            inv_inputs["H"],
+            data_name="hx",
+            prior_args=x_prior,
+            var_name="x",
+            output_name="mu",
+            output_dim="nmeasure",
+            compute_deterministic=True,
+        )
+        _add_rhime_observation_components(
+            inv_inputs,
+            mu=flux_component.output,
+            sigma_alignment=sigma_alignment,
+            bc_prior=bc_prior,
+            sigma_prior=sigma_prior,
+            offset_prior=offset_prior,
+            add_offset=add_offset,
+            use_bc=use_bc,
+            pollution_events_from_obs=pollution_events_from_obs,
+            no_model_error=no_model_error,
+            offset_args=offset_args,
+            power=power,
+        )
+
+    return model
+
+
+def _build_compiled_rhime_model(
+    inv_inputs: xr.Dataset,
+    *,
+    sigma_alignment: SigmaAlignment,
+    x_prior: dict | None = None,
+    bc_prior: dict | None = None,
+    sigma_prior: dict | None = None,
+    offset_prior: dict | None = None,
+    add_offset: bool = False,
+    use_bc: bool = True,
+    pollution_events_from_obs: bool = False,
+    no_model_error: bool = False,
+    offset_args: dict | None = None,
+    power: dict | float = 1.99,
+) -> pm.Model:
+    """Build the standard RHIME model through the opt-in flux compiler.
+
+    This produces the same public model graph as :func:`build_rhime_model`,
+    while retaining the private plan/compiler path for further development.
+
+    Args:
+        inv_inputs: Canonical inversion-input dataset.
+        sigma_alignment: Backend-neutral site and period alignment for sigma.
+        x_prior: Prior specification for flux scaling factors.
+        bc_prior: Prior specification for boundary-condition scaling factors.
+        sigma_prior: Prior specification for model-error terms.
+        offset_prior: Prior specification for optional offsets.
+        add_offset: Whether to include an offset term.
+        use_bc: Whether to include boundary-condition terms.
+        pollution_events_from_obs: Whether pollution scaling uses observations.
+        no_model_error: Whether to suppress the explicit model-error term.
+        offset_args: Extra keyword arguments forwarded to the offset component.
+        power: Exponent or prior specification used in likelihood error scaling.
+
+    Returns:
+        Built PyMC model.
+    """
+    x_prior, bc_prior, sigma_prior, offset_prior = _prepare_builder_priors(
+        x_prior=x_prior,
+        bc_prior=bc_prior,
+        sigma_prior=sigma_prior,
+        offset_prior=offset_prior,
+    )
     flux_plan = _normalize_standard_flux_plan(inv_inputs, x_prior)
-    return _assemble_rhime_model(
+    return _assemble_compiled_rhime_model(
         inv_inputs,
         flux_plan=flux_plan,
         sigma_alignment=sigma_alignment,
@@ -295,7 +441,8 @@ def build_rhime_model_from_spec(inv_inputs: xr.Dataset, model_spec: RhimeModelSp
         per_site=model_spec.sigma_per_site,
         anchor_time=model_spec.sigma_freq_anchor,
     )
-    return build_rhime_model(
+    builder = build_rhime_model if model_spec.builder_strategy == "concrete" else _build_compiled_rhime_model
+    return builder(
         inv_inputs,
         sigma_alignment=sigma_alignment,
         x_prior=dict(sector.x_prior),
@@ -374,6 +521,103 @@ def build_rhime_multisector_model(
         sector_sources=sector_sources,
         sector_variable_suffixes=sector_variable_suffixes,
     )
+    sector_components = _resolve_multisector_components(
+        inv_inputs,
+        sector_bindings,
+        sector_priors=sector_priors,
+        x_prior=x_prior,
+        default_x_prior=DEFAULT_X_PRIOR,
+    )
+    bc_prior = dict(DEFAULT_BC_PRIOR if bc_prior is None else bc_prior)
+    sigma_prior = dict(DEFAULT_SIGMA_PRIOR if sigma_prior is None else sigma_prior)
+    offset_prior = dict(DEFAULT_OFFSET_PRIOR if offset_prior is None else offset_prior)
+
+    with pm.Model() as model:
+        attach_coord_registry(model, CoordRegistry())
+        sector_outputs = []
+        for component in sector_components:
+            linear_component = add_linear_component(
+                component.design,
+                data_name=f"hx_{component.variable_suffix}",
+                prior_args=dict(component.prior_args),
+                var_name=f"x_{component.variable_suffix}",
+                output_name=f"mu_{component.variable_suffix}",
+                output_dim="nmeasure",
+                compute_deterministic=True,
+            )
+            sector_outputs.append(linear_component.output)
+
+        total_mu = pm.Deterministic(
+            "mu",
+            cast(Any, pt.stack(sector_outputs, axis=0)).sum(axis=0),
+            dims="nmeasure",
+        )
+        _add_rhime_observation_components(
+            inv_inputs,
+            mu=total_mu,
+            sigma_alignment=sigma_alignment,
+            bc_prior=bc_prior,
+            sigma_prior=sigma_prior,
+            offset_prior=offset_prior,
+            add_offset=add_offset,
+            use_bc=use_bc,
+            pollution_events_from_obs=pollution_events_from_obs,
+            no_model_error=no_model_error,
+            offset_args=offset_args,
+            power=power,
+        )
+
+    return model
+
+
+def _build_compiled_rhime_multisector_model(
+    inv_inputs: xr.Dataset,
+    *,
+    sigma_alignment: SigmaAlignment,
+    sectors: Sequence[str] | None = None,
+    sector_sources: Mapping[str, str] | None = None,
+    sector_variable_suffixes: Mapping[str, str] | None = None,
+    sector_priors: Mapping[str, dict] | None = None,
+    x_prior: dict | None = None,
+    bc_prior: dict | None = None,
+    sigma_prior: dict | None = None,
+    offset_prior: dict | None = None,
+    add_offset: bool = False,
+    use_bc: bool = True,
+    pollution_events_from_obs: bool = False,
+    no_model_error: bool = False,
+    offset_args: dict | None = None,
+    power: dict | float = 1.99,
+) -> pm.Model:
+    """Build multisector RHIME through the opt-in flux compiler.
+
+    Args:
+        inv_inputs: Canonical inversion-input dataset.
+        sigma_alignment: Backend-neutral site and period alignment for sigma.
+        sectors: Ordered model sector labels to optimize.
+        sector_sources: Mapping from sector label to prepared flux source.
+        sector_variable_suffixes: Mapping from sector label to PyMC suffix.
+        sector_priors: Complete optional mapping of per-sector priors.
+        x_prior: Shared prior used when ``sector_priors`` is absent.
+        bc_prior: Prior specification for boundary-condition scaling factors.
+        sigma_prior: Prior specification for model-error terms.
+        offset_prior: Prior specification for optional offsets.
+        add_offset: Whether to include an offset term.
+        use_bc: Whether to include boundary-condition terms.
+        pollution_events_from_obs: Whether pollution scaling uses observations.
+        no_model_error: Whether to suppress explicit model-error terms.
+        offset_args: Extra keyword arguments forwarded to the offset component.
+        power: Exponent or prior specification used in likelihood error scaling.
+
+    Returns:
+        Built PyMC model.
+    """
+    sector_bindings = _resolve_sector_bindings(
+        inv_inputs,
+        sectors,
+        sector_sources=sector_sources,
+        sector_variable_suffixes=sector_variable_suffixes,
+    )
     flux_plan = _normalize_multisector_flux_plan(
         inv_inputs,
         sector_bindings,
@@ -384,7 +628,7 @@ def build_rhime_multisector_model(
     bc_prior = dict(DEFAULT_BC_PRIOR if bc_prior is None else bc_prior)
     sigma_prior = dict(DEFAULT_SIGMA_PRIOR if sigma_prior is None else sigma_prior)
     offset_prior = dict(DEFAULT_OFFSET_PRIOR if offset_prior is None else offset_prior)
-    return _assemble_rhime_model(
+    return _assemble_compiled_rhime_model(
         inv_inputs,
         flux_plan=flux_plan,
         sigma_alignment=sigma_alignment,
@@ -420,7 +664,12 @@ def build_rhime_multisector_model_from_spec(
         per_site=model_spec.sigma_per_site,
         anchor_time=model_spec.sigma_freq_anchor,
     )
-    return build_rhime_multisector_model(
+    builder = (
+        build_rhime_multisector_model
+        if model_spec.builder_strategy == "concrete"
+        else _build_compiled_rhime_multisector_model
+    )
+    return builder(
         inv_inputs,
         sigma_alignment=sigma_alignment,
         sectors=[sector.name for sector in model_spec.sectors],

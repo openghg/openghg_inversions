@@ -1,4 +1,4 @@
-"""Lower RHIME flux declarations into private PyMC compiler plans."""
+"""Resolve RHIME flux declarations for concrete builders and compiler plans."""
 
 from __future__ import annotations
 
@@ -27,6 +27,17 @@ class _ResolvedSectorBinding:
     variable_suffix: str
 
 
+@dataclass(frozen=True)
+class _ResolvedSectorComponent:
+    """Describe one selected sector design and its flux-scaling prior."""
+
+    name: str
+    flux_source: str
+    variable_suffix: str
+    design: xr.DataArray
+    prior_args: Mapping[str, Any]
+
+
 def safe_pymc_name(value: str) -> str:
     """Return a stable PyMC-safe suffix for a user-facing sector/source name."""
     name = re.sub(r"\W+", "_", str(value).strip().lower()).strip("_")
@@ -37,9 +48,7 @@ def _prepared_sources(design: xr.DataArray, *, observation_dim: str = "nmeasure"
     """Return ordered source labels from rectangular or gathered sensitivity."""
     source_coord = design.coords.get("source")
     if source_coord is None:
-        raise ValueError(
-            "Multi-sector RHIME requires inv_inputs['H'] to contain OpenGHG source labels."
-        )
+        raise ValueError("Multi-sector RHIME requires inv_inputs['H'] to contain OpenGHG source labels.")
 
     source_labels = [str(value) for value in source_coord.values]
     if "source" in design.dims:
@@ -67,8 +76,7 @@ def _prepared_sources(design: xr.DataArray, *, observation_dim: str = "nmeasure"
     if not state_index.is_unique:
         duplicate = state_index[state_index.duplicated()][0]
         raise ValueError(
-            "Gathered multi-sector H requires unique state labels; "
-            f"duplicate state {duplicate!r}."
+            f"Gathered multi-sector H requires unique state labels; duplicate state {duplicate!r}."
         )
     return list(dict.fromkeys(source_labels))
 
@@ -120,9 +128,7 @@ def _resolve_sector_bindings(
     for sector in sector_names:
         source_sectors.setdefault(source_by_sector[sector], []).append(sector)
     duplicate_sources = {
-        source: mapped_sectors
-        for source, mapped_sectors in source_sectors.items()
-        if len(mapped_sectors) > 1
+        source: mapped_sectors for source, mapped_sectors in source_sectors.items() if len(mapped_sectors) > 1
     }
     if duplicate_sources:
         details = ", ".join(
@@ -130,9 +136,7 @@ def _resolve_sector_bindings(
             for source, mapped_sectors in duplicate_sources.items()
         )
         raise ValueError(
-            "Multi-sector RHIME requires a distinct source for each current sector; "
-            + details
-            + "."
+            "Multi-sector RHIME requires a distinct source for each current sector; " + details + "."
         )
 
     missing = [
@@ -149,9 +153,7 @@ def _resolve_sector_bindings(
 
     unused_suffixes = [sector for sector in suffix_by_sector if sector not in sector_names]
     if unused_suffixes:
-        raise ValueError(
-            f"`sector_variable_suffixes` contains unused sector key(s): {unused_suffixes!r}."
-        )
+        raise ValueError(f"`sector_variable_suffixes` contains unused sector key(s): {unused_suffixes!r}.")
     bindings = tuple(
         _ResolvedSectorBinding(
             name=sector,
@@ -208,8 +210,7 @@ def _select_sector_design(
     available_sources = _prepared_sources(design, observation_dim=observation_dim)
     if source not in available_sources:
         raise ValueError(
-            f"Sector {sector!r} requires source {source!r}, but prepared H contains "
-            f"{available_sources!r}."
+            f"Sector {sector!r} requires source {source!r}, but prepared H contains {available_sources!r}."
         )
 
     if "source" in design.dims:
@@ -267,15 +268,51 @@ def _normalize_standard_flux_plan(inv_inputs: xr.Dataset, x_prior: Mapping[str, 
     )
 
 
-def _normalize_multisector_flux_plan(
+def _resolve_multisector_components(
     inv_inputs: xr.Dataset,
     sector_bindings: Sequence[_ResolvedSectorBinding],
     *,
     sector_priors: Mapping[str, Mapping[str, Any]] | None,
     x_prior: Mapping[str, Any] | None,
     default_x_prior: Mapping[str, Any],
-) -> _FluxPlan:
-    """Normalize selected sector designs into separate state and term plans."""
+) -> tuple[_ResolvedSectorComponent, ...]:
+    """Resolve multisector designs and priors independently of graph construction.
+
+    Each semantic sector binding selects sensitivity data by its OpenGHG
+    ``source`` label. Rectangular canonical inputs use a ``source`` dimension;
+    selection removes that dimension, leaving the observation and state
+    dimensions. Gathered ragged inputs use one state dimension with a
+    MultiIndex containing ``source`` and one region level; the selected state
+    dimension is renamed with the sector variable suffix so sectors may retain
+    different scientific coordinates.
+
+    Prior precedence is explicit: a supplied ``sector_priors`` mapping wins,
+    otherwise ``x_prior`` is shared by every sector, and ``default_x_prior`` is
+    used only when neither is supplied. When ``sector_priors`` is present it
+    must define exactly the resolved sector set.
+
+    Args:
+        inv_inputs: Canonical inversion inputs containing source-resolved
+            sensitivity in ``H``.
+        sector_bindings: Ordered semantic sector, source, and backend-name
+            bindings already validated against the requested sectors.
+        sector_priors: Optional complete mapping from sector names to
+            flux-scaling prior specifications.
+        x_prior: Optional prior shared by every sector when per-sector priors
+            are absent.
+        default_x_prior: Final shared prior used when neither explicit prior
+            option is supplied.
+
+    Returns:
+        Ordered resolved components containing each sector identity, selected
+        two-dimensional design, variable suffix, and copied prior metadata.
+
+    Raises:
+        KeyError: If ``inv_inputs`` does not contain ``H``.
+        ValueError: If per-sector prior keys are missing or unused, source
+            selection fails, a rectangular design declares padding, or a
+            gathered design has an invalid source/state layout.
+    """
     sector_names = [binding.name for binding in sector_bindings]
     if sector_priors is not None:
         missing_priors = [sector for sector in sector_names if sector not in sector_priors]
@@ -287,34 +324,64 @@ def _normalize_multisector_flux_plan(
                 f"unused sector prior key(s): {unused_priors!r}."
             )
 
+    components = []
+    for binding in sector_bindings:
+        if sector_priors is not None:
+            prior = sector_priors[binding.name]
+        elif x_prior is not None:
+            prior = x_prior
+        else:
+            prior = default_x_prior
+        components.append(
+            _ResolvedSectorComponent(
+                name=binding.name,
+                flux_source=binding.flux_source,
+                variable_suffix=binding.variable_suffix,
+                design=_select_sector_design(
+                    inv_inputs["H"],
+                    sector=binding.name,
+                    source=binding.flux_source,
+                    variable_suffix=binding.variable_suffix,
+                ),
+                prior_args=dict(prior),
+            )
+        )
+    return tuple(components)
+
+
+def _normalize_multisector_flux_plan(
+    inv_inputs: xr.Dataset,
+    sector_bindings: Sequence[_ResolvedSectorBinding],
+    *,
+    sector_priors: Mapping[str, Mapping[str, Any]] | None,
+    x_prior: Mapping[str, Any] | None,
+    default_x_prior: Mapping[str, Any],
+) -> _FluxPlan:
+    """Normalize selected sector designs into separate state and term plans."""
     states: list[_StatePlan] = []
     terms: list[_ForwardTermPlan] = []
-    for binding in sector_bindings:
-        design = _select_sector_design(
-            inv_inputs["H"],
-            sector=binding.name,
-            source=binding.flux_source,
-            variable_suffix=binding.variable_suffix,
-        )
-        prior = (
-            sector_priors[binding.name]
-            if sector_priors is not None
-            else default_x_prior if x_prior is None else x_prior
-        )
+    components = _resolve_multisector_components(
+        inv_inputs,
+        sector_bindings,
+        sector_priors=sector_priors,
+        x_prior=x_prior,
+        default_x_prior=default_x_prior,
+    )
+    for component in components:
         states.append(
             _StatePlan(
-                state_id=binding.name,
-                variable_name=f"x_{binding.variable_suffix}",
-                prior_args=dict(prior),
+                state_id=component.name,
+                variable_name=f"x_{component.variable_suffix}",
+                prior_args=component.prior_args,
             )
         )
         terms.append(
             _ForwardTermPlan(
-                term_id=binding.name,
-                state_id=binding.name,
-                design=design,
-                data_name=f"hx_{binding.variable_suffix}",
-                deterministic_name=f"mu_{binding.variable_suffix}",
+                term_id=component.name,
+                state_id=component.name,
+                design=component.design,
+                data_name=f"hx_{component.variable_suffix}",
+                deterministic_name=f"mu_{component.variable_suffix}",
                 coefficient=1.0,
             )
         )
