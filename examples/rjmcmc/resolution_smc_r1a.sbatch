@@ -16,7 +16,7 @@ fi
 experiment_worktree="$1"
 experiment_run_root="$2"
 experiment_source_sha="$3"
-experiment_git="/usr/bin/git"
+experiment_git_module="git/2.45.1-pqk5"
 
 if [[ ! "${experiment_source_sha}" =~ ^[0-9a-f]{40}$ ]]; then
     echo "SOURCE_SHA must be a complete lowercase Git SHA" >&2
@@ -26,15 +26,18 @@ if [[ -z "${SLURM_ARRAY_TASK_ID:-}" ]]; then
     echo "SLURM_ARRAY_TASK_ID is required" >&2
     exit 2
 fi
+
+# BP1 compute nodes do not provide the login-node /usr/bin/git.  Load the
+# cluster's versioned Git module so both this launcher and the Python
+# provenance checks use the same authenticated executable.
+export PATH="/usr/bin:/bin:${PATH:-}"
+source /etc/profile.d/modules.sh
+module load "${experiment_git_module}"
+experiment_git="$(command -v git || true)"
 if [[ ! -x "${experiment_git}" ]]; then
-    echo "required Git executable is unavailable: ${experiment_git}" >&2
+    echo "required Git module did not provide an executable: ${experiment_git_module}" >&2
     exit 2
 fi
-
-# BP1 compute jobs receive a deliberately minimal PATH.  Keep the Python
-# provenance checks functional as well as using an authenticated absolute Git
-# path in this launcher.
-export PATH="/usr/bin:/bin:${PATH:-}"
 
 cd "${experiment_worktree}"
 
