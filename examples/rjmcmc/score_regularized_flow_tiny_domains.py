@@ -13,10 +13,11 @@ epsilon ~ Normal(0, I)
 x = (T * xi + epsilon) / sqrt(1 + T**2 * lambda).
 ```
 
-The allocation, mass, and measurement-noise catalogues use distinct
-domain-separated scrambled Sobol streams.  All catalogues are exact prefixes
-when a larger power-of-two sample count is reconstructed with the same case,
-public domain, and base seed.
+The allocation, mass, and measurement-noise catalogues use genuinely
+independent, domain-separated PCG64 streams.  All catalogues are exact
+prefixes when a larger power-of-two sample count is reconstructed with the
+same case, public domain, and base seed.  This corrected v2 protocol must not
+be confused with the historical v1 row-aligned Sobol construction.
 """
 
 from __future__ import annotations
@@ -31,10 +32,9 @@ from typing import Any, Literal, Mapping, TypeAlias, cast
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
+import scipy
 from scipy import special
-from scipy.stats import qmc
 
-from examples.rjmcmc import conditional_allocation_likelihood_tiny_screen as c1
 from openghg_inversions.experimental.rjmcmc.aggregation_error_conditional_mixture import (
     ConditionalAllocationMixture,
 )
@@ -52,6 +52,7 @@ from openghg_inversions.experimental.rjmcmc.aggregation_error_score_regularized_
     component_partial_log_mass_score,
     standardize_simulator_draw,
 )
+from openghg_inversions.experimental.rjmcmc import aggregation_error_tiny_oracle
 
 FloatArray: TypeAlias = NDArray[np.float64]
 IntArray: TypeAlias = NDArray[np.int64]
@@ -62,11 +63,14 @@ PublicDomain = Literal[
     "development-reporting-test",
 ]
 
-PROTOCOL = "score-regularized-projected-root-nle-v1"
-SCHEMA = "score-regularized-flow-tiny-domain-v1"
-EVIDENCE_SCHEMA = "score-regularized-flow-tiny-domain-evidence-v1"
-CONSTRUCTION_METHOD = "scrambled_sobol_balanced_dirichlet"
-SOBOL_BITS = 52
+PROTOCOL = "score-regularized-projected-root-nle-pcg64-iid-v2"
+SCHEMA = "score-regularized-flow-tiny-domain-v2"
+EVIDENCE_SCHEMA = "score-regularized-flow-tiny-domain-evidence-v2"
+CONSTRUCTION_METHOD = "keyed_pcg64_dirichlet"
+UNIFORM_GENERATOR = "numpy.random.Generator(numpy.random.PCG64(seed))"
+UNIFORM_DRAW_CONTRACT = "row-major Generator.random((sample_count, dimension))"
+ROOT_TOTAL_TRANSFORM = "scipy.special.gammaincinv(shape, uniform) / rate"
+STANDARD_NORMAL_TRANSFORM = "scipy.special.ndtri(uniform)"
 
 TRAINING_DOMAIN = "training"
 MODEL_SELECTION_VALIDATION_DOMAIN = "model-selection-validation"
@@ -183,13 +187,13 @@ def domain_stream_seed(
     domain: str,
     stream_name: str,
 ) -> int:
-    """Derive the frozen unsigned 32-bit seed for one public simulator stream.
+    """Derive the frozen unsigned 64-bit seed for one public simulator stream.
 
     The byte contract is exactly
 
     ``SHA256(PROTOCOL || uint64_le(seed) || case_id || domain || stream)``;
 
-    the returned seed is the little-endian integer in its first four bytes.
+    the returned seed is the little-endian integer in its first eight bytes.
     Domain validation deliberately precedes hashing.
     """
     normalized_base = _unsigned_64(base_seed, name="base_seed")
@@ -204,7 +208,7 @@ def domain_stream_seed(
     digest.update(case_id.encode("ascii"))
     digest.update(normalized_domain.encode("ascii"))
     digest.update(stream_name.encode("ascii"))
-    return int.from_bytes(digest.digest()[:4], byteorder="little", signed=False)
+    return int.from_bytes(digest.digest()[:8], byteorder="little", signed=False)
 
 
 def _permutation(
@@ -277,6 +281,13 @@ class TinyScoreDomainEvidence:
     gamma_rate: float
     conditioning_center: float
     conditioning_scale: float
+    construction_method: str
+    uniform_generator: str
+    uniform_draw_contract: str
+    root_total_transform: str
+    standard_normal_transform: str
+    numpy_version: str
+    scipy_version: str
     stream_seeds: tuple[tuple[str, int], ...]
     scientific_input_sha256: str
     spectrum_sha256: str
@@ -297,6 +308,13 @@ class TinyScoreDomainEvidence:
             "gamma_rate": self.gamma_rate,
             "conditioning_center": self.conditioning_center,
             "conditioning_scale": self.conditioning_scale,
+            "construction_method": self.construction_method,
+            "uniform_generator": self.uniform_generator,
+            "uniform_draw_contract": self.uniform_draw_contract,
+            "root_total_transform": self.root_total_transform,
+            "standard_normal_transform": self.standard_normal_transform,
+            "numpy_version": self.numpy_version,
+            "scipy_version": self.scipy_version,
             "stream_seeds": dict(self.stream_seeds),
             "scientific_input_sha256": self.scientific_input_sha256,
             "spectrum_sha256": self.spectrum_sha256,
@@ -321,6 +339,8 @@ class TinyScoreDomain:
     case_id: str
     domain: PublicDomain
     spectrum: RootResidualSpectrum
+    root_total_uniform: FloatArray
+    gaussian_noise_uniform: FloatArray
     total_mass: FloatArray
     raw_log_mass: FloatArray
     allocation_residual: FloatArray
@@ -372,6 +392,8 @@ class TinyScoreDomain:
         """Raise if any returned array or evidence identity has drifted."""
         self.evidence.verify()
         arrays = {
+            "root_total_uniform": self.root_total_uniform,
+            "gaussian_noise_uniform": self.gaussian_noise_uniform,
             "total_mass": self.total_mass,
             "raw_log_mass": self.raw_log_mass,
             "allocation_residual": self.allocation_residual,
@@ -385,21 +407,15 @@ class TinyScoreDomain:
             raise ValueError("tiny-domain arrays do not match their authenticated hashes.")
 
 
-def _sobol_uniforms(sample_count: int, dimension: int, seed: int) -> FloatArray:
-    """Return one nested scrambled-Sobol catalogue in the open unit cube."""
-    engine = qmc.Sobol(
-        d=dimension,
-        scramble=True,
-        bits=SOBOL_BITS,
-        rng=np.random.default_rng(seed),
-        optimization=None,
-    )
+def _pcg64_uniforms(sample_count: int, dimension: int, seed: int) -> FloatArray:
+    """Return one independent PCG64 catalogue in the open unit cube."""
+    generator = np.random.Generator(np.random.PCG64(seed))
     uniforms = np.asarray(
-        engine.random_base2(sample_count.bit_length() - 1),
+        generator.random((sample_count, dimension)),
         dtype=np.float64,
     )
     uniforms = np.clip(uniforms, _LOWER_OPEN_UNIT, _UPPER_OPEN_UNIT)
-    return _readonly_float64(uniforms, name="Sobol uniforms")
+    return _readonly_float64(uniforms, name="PCG64 uniforms")
 
 
 def _spectrum_sha256(spectrum: RootResidualSpectrum) -> str:
@@ -445,8 +461,9 @@ def simulate_tiny_score_domain(
     normalized_domain = _public_domain(domain)
     count = _power_of_two(sample_count, name="sample_count")
     normalized_base_seed = _unsigned_64(base_seed, name="base_seed")
-    regime = c1._regime(regime_name)
-    shapes, gamma_rate, design, _, noise = c1._case_arrays(regime, family)
+    del regime_name, family
+    root_case = aggregation_error_tiny_oracle.tiny_root_case(case_id)
+    shapes, gamma_rate, design, _, noise = root_case.arrays()
     canonical_shapes = np.asarray(shapes, dtype=np.float64)
     canonical_design = np.asarray(design, dtype=np.float64)
     canonical_noise = np.asarray(noise, dtype=np.float64)
@@ -492,6 +509,8 @@ def simulate_tiny_score_domain(
         )
         for stream in SIMULATOR_STREAMS
     }
+    if len(set(seeds.values())) != len(seeds):
+        raise RuntimeError("simulator stream seed collision.")
     projected_aggregation = AdditiveDirichletAggregation(
         permuted_shapes,
         permuted_design,
@@ -519,7 +538,11 @@ def simulate_tiny_score_domain(
 
     gamma_shape = float(math.fsum(float(value) for value in canonical_shapes))
     rate = float(gamma_rate)
-    mass_uniform = _sobol_uniforms(count, 1, seeds[ROOT_TOTAL_STREAM])[:, 0]
+    mass_uniform = _pcg64_uniforms(
+        count,
+        1,
+        seeds[ROOT_TOTAL_STREAM],
+    )[:, 0]
     total_mass = _readonly_float64(
         special.gammaincinv(gamma_shape, mass_uniform) / rate,
         name="total_mass",
@@ -528,7 +551,7 @@ def simulate_tiny_score_domain(
         raise FloatingPointError("Gamma inverse returned a non-positive root total.")
     raw_log_mass = _readonly_float64(np.log(total_mass), name="raw_log_mass")
 
-    noise_uniform = _sobol_uniforms(
+    noise_uniform = _pcg64_uniforms(
         count,
         spectrum.retained_rank,
         seeds[STANDARD_NORMAL_STREAM],
@@ -570,6 +593,8 @@ def simulate_tiny_score_domain(
     )
 
     arrays = {
+        "root_total_uniform": mass_uniform,
+        "gaussian_noise_uniform": noise_uniform,
         "total_mass": total_mass,
         "raw_log_mass": raw_log_mass,
         "allocation_residual": allocation,
@@ -581,7 +606,9 @@ def simulate_tiny_score_domain(
     array_hashes = tuple((name, _array_sha256(values)) for name, values in arrays.items())
     scientific_input_sha256 = _sha256_json(
         {
-            "a1_definitions_sha256": c1.A1_DEFINITIONS_SHA256,
+            "tiny_root_definitions_sha256": (
+                aggregation_error_tiny_oracle.definitions_sha256()
+            ),
             "case_id": case_id,
             "cell_alphas_sha256": _array_sha256(permuted_shapes),
             "design_sha256": _array_sha256(permuted_design),
@@ -603,6 +630,13 @@ def simulate_tiny_score_domain(
         "gamma_rate": rate,
         "conditioning_center": conditioning_center,
         "conditioning_scale": conditioning_scale,
+        "construction_method": CONSTRUCTION_METHOD,
+        "uniform_generator": UNIFORM_GENERATOR,
+        "uniform_draw_contract": UNIFORM_DRAW_CONTRACT,
+        "root_total_transform": ROOT_TOTAL_TRANSFORM,
+        "standard_normal_transform": STANDARD_NORMAL_TRANSFORM,
+        "numpy_version": np.__version__,
+        "scipy_version": scipy.__version__,
         "stream_seeds": seeds,
         "scientific_input_sha256": scientific_input_sha256,
         "spectrum_sha256": _spectrum_sha256(spectrum),
@@ -620,6 +654,13 @@ def simulate_tiny_score_domain(
         gamma_rate=rate,
         conditioning_center=conditioning_center,
         conditioning_scale=conditioning_scale,
+        construction_method=CONSTRUCTION_METHOD,
+        uniform_generator=UNIFORM_GENERATOR,
+        uniform_draw_contract=UNIFORM_DRAW_CONTRACT,
+        root_total_transform=ROOT_TOTAL_TRANSFORM,
+        standard_normal_transform=STANDARD_NORMAL_TRANSFORM,
+        numpy_version=np.__version__,
+        scipy_version=scipy.__version__,
         stream_seeds=tuple(seeds.items()),
         scientific_input_sha256=scientific_input_sha256,
         spectrum_sha256=cast(str, evidence_without_sha["spectrum_sha256"]),
@@ -631,6 +672,8 @@ def simulate_tiny_score_domain(
         case_id=case_id,
         domain=normalized_domain,
         spectrum=spectrum,
+        root_total_uniform=mass_uniform,
+        gaussian_noise_uniform=noise_uniform,
         total_mass=total_mass,
         raw_log_mass=raw_log_mass,
         allocation_residual=allocation,
