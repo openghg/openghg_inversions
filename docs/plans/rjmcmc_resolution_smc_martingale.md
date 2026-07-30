@@ -298,6 +298,113 @@ alone.  Generic-chaining or martingale maximal inequalities would become more
 relevant only if a later goal required a uniform bound over observation
 indices, retained masses, or partitions.
 
+## Literature retained for later curation
+
+The references below motivated parts of this design discussion but have not
+yet been curated into a durable `inversions-knowledge` literature synthesis.
+They are recorded here so that a later results write-up can distinguish
+standard methodology from project-specific constructions.
+
+### Direct foundations for the proposed experiment
+
+- Del Moral, Doucet, and Jasra (2006),
+  [*Sequential Monte Carlo samplers*](https://doi.org/10.1111/j.1467-9868.2006.00553.x),
+  gives the general SMC-sampler construction for a sequence of targets known
+  up to normalizing constants.  It supports the use of incremental target
+  ratios and normalizing-constant estimation.  It does not analyze the
+  Gamma--Beta resolution sequence proposed here.
+- Stuhlmüller, Hawkins, Siddharth, and Goodman (2015),
+  [*Coarse-to-Fine Sequential Monte Carlo for Probabilistic
+  Programs*](https://arxiv.org/abs/1509.02962), is the closest conceptual
+  precedent found for using model structure to generate information
+  progressively while preserving the fine model's marginal distribution.
+  Its program transformation and applications are different from the
+  conditional Gamma--Dirichlet construction.
+- Chopin and Papaspiliopoulos (2020),
+  [*An Introduction to Sequential Monte
+  Carlo*](https://doi.org/10.1007/978-3-030-47845-2), is a useful general
+  reference for Feynman--Kac targets, importance resampling, normalizing
+  constants, SMC samplers, particle MCMC, and sequential QMC.  It is a
+  background reference rather than evidence that this particular estimator
+  will be efficient.
+
+### Guided and future-likelihood particle methods
+
+- Heng, Bishop, Deligiannidis, and Doucet (2020),
+  [*Controlled Sequential Monte
+  Carlo*](https://doi.org/10.1214/19-AOS1914), formalizes the use of
+  approximate optimal-control or future-likelihood information to improve
+  SMC proposals.  It motivates treating the Gaussian unresolved-tail message
+  as a guide rather than as the terminal scientific likelihood.
+- Whiteley and Lee (2014),
+  [*Twisted particle filters*](https://doi.org/10.1214/13-AOS1167), studies
+  likelihood-guided changes of particle sampling law and their effect on
+  marginal-likelihood variance.  Its state-space and asymptotic-in-time
+  results do not transfer directly to a finite spatial refinement tree.
+- Beskos, Jasra, Law, Marzouk, and Zhou (2018),
+  [*Multilevel Sequential Monte Carlo with Dimension-Independent
+  Likelihood-Informed Proposals*](https://doi.org/10.1137/17M1120993), is a
+  related inverse-problem example of combining resolution levels with
+  likelihood-informed proposals.  It assumes a different, principally
+  Gaussian/PDE setting and is a follow-on lead rather than a justification
+  for the present Beta proposal.
+
+### Multilevel diagnostics
+
+- Giles (2008),
+  [*Multilevel Monte Carlo Path
+  Simulation*](https://doi.org/10.1287/opre.1070.0496), supplies the standard
+  cost-versus-variance logic for a telescoping Monte Carlo estimator.  The
+  current plan borrows its correction-variance diagnostic; it does not yet
+  claim the regularity or cost rates required by Giles's analysis.
+- Beskos, Jasra, Law, Tempone, and Zhou (2017),
+  [*Multilevel Sequential Monte Carlo
+  Samplers*](https://doi.org/10.1016/j.spa.2016.08.004), combines multilevel
+  telescoping with SMC for discretized Bayesian inverse problems.  This is
+  relevant if the resolution corrections decay, but its discretization
+  hierarchy is not the same as revealing latent Dirichlet coordinates.
+
+### Downstream stochastic-likelihood inference
+
+- Andrieu and Roberts (2009),
+  [*The pseudo-marginal approach for efficient Monte Carlo
+  computations*](https://doi.org/10.1214/07-AOS574), establishes why a
+  suitable non-negative unbiased likelihood estimator can be used in an
+  exact marginal Metropolis--Hastings construction.  This reference is
+  already catalogued in `inversions-knowledge` as
+  `Andrieu2009PseudoMarginal`.
+- Andrieu, Doucet, and Holenstein (2010),
+  [*Particle Markov chain Monte Carlo
+  methods*](https://doi.org/10.1111/j.1467-9868.2009.00736.x), is the broader
+  particle-MCMC continuation if the SMC estimator eventually becomes usable
+  inside inference.  Neither paper makes a high-variance likelihood estimator
+  practical, and neither justifies ordinary HMC with stochastic likelihoods.
+
+### RQMC and generic-chaining boundaries
+
+- Gerber and Chopin (2015),
+  [*Sequential quasi Monte
+  Carlo*](https://doi.org/10.1111/rssb.12104), provides a genuine SQMC
+  construction.  It is the appropriate literature starting point if RQMC is
+  later combined with resampling.  It does not justify calling ordinary SMC
+  with separately scrambled Sobol propagation an RQMC method.
+- Talagrand (2005),
+  [*The Generic Chaining: Upper and Lower Bounds of Stochastic
+  Processes*](https://doi.org/10.1007/3-540-27499-5), is the source of the
+  multiscale analogy raised in discussion.  The relevant transferable idea is
+  the use of nested approximations and a problem-specific metric.  Its main
+  \(\gamma_2\) results concern expected suprema of stochastic processes, not
+  estimation of one conditional likelihood.
+
+These papers establish surrounding methods, not the correctness of the
+project-specific target sequence.  Correctness here still depends on the
+explicit Gamma--Dirichlet disintegration, exact terminal target, proposal
+density, weight, and resampling calculations.  Performance remains an
+experimental question.  Once results exist, the references most directly
+used should be added to `inversions-knowledge/docs/literature/references.md`
+and cited from a reviewed research or derivation page; the more distant leads
+should remain labelled as follow-on reading.
+
 ## Existing implementation that should be reused
 
 The first prototype should be additive rather than a new framework:
