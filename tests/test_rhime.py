@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Callable, cast
 
@@ -148,11 +149,13 @@ def _fake_basis_functions(*, artifact_source: str = "generated") -> BasisFunctio
 
 def _fake_basis_functions_matching_country_grid(country_file: Path) -> BasisFunctions:
     """Build a one-region basis artifact on the grid of a test country file."""
-    country_grid = xr.open_dataset(country_file)
+    with xr.open_dataset(country_file) as country_grid:
+        lat = country_grid.lat.values.copy()
+        lon = country_grid.lon.values.copy()
     basis = xr.DataArray(
-        np.ones((country_grid.sizes["lat"], country_grid.sizes["lon"]), dtype=int),
+        np.ones((lat.size, lon.size), dtype=int),
         dims=("lat", "lon"),
-        coords={"lat": country_grid.lat, "lon": country_grid.lon},
+        coords={"lat": lat, "lon": lon},
         name="basis",
     )
     flux = xr.ones_like(basis, dtype=float).rename("flux")
@@ -167,22 +170,24 @@ def _fake_basis_functions_matching_country_grid(country_file: Path) -> BasisFunc
 
 def _two_region_basis_functions_matching_country_grid(country_file: Path) -> BasisFunctions:
     """Build a non-uniform two-region basis artifact on the grid of a test country file."""
-    country_grid = xr.open_dataset(country_file)
-    nlat = country_grid.sizes["lat"]
-    nlon = country_grid.sizes["lon"]
+    with xr.open_dataset(country_file) as country_grid:
+        lat = country_grid.lat.values.copy()
+        lon = country_grid.lon.values.copy()
+    nlat = lat.size
+    nlon = lon.size
     basis_values = np.ones((nlat, nlon), dtype=int)
     basis_values[nlat // 2 :, :] = 2
     basis = xr.DataArray(
         basis_values,
         dims=("lat", "lon"),
-        coords={"lat": country_grid.lat, "lon": country_grid.lon},
+        coords={"lat": lat, "lon": lon},
         name="basis",
     )
     flux_values = np.linspace(1.0, 3.0, nlat * nlon, dtype=float).reshape(nlat, nlon)
     flux = xr.DataArray(
         flux_values,
         dims=("lat", "lon"),
-        coords={"lat": country_grid.lat, "lon": country_grid.lon},
+        coords={"lat": lat, "lon": lon},
         name="flux",
     )
     flux.attrs["units"] = "mol/m2/s"
@@ -253,11 +258,13 @@ def _recording_basis_functions_matching_country_grid(
     country_file: Path,
 ) -> tuple[BasisFunctions, _RecordingBasisOperator]:
     """Build a retained basis artifact with a recording operator."""
-    country_grid = xr.open_dataset(country_file)
+    with xr.open_dataset(country_file) as country_grid:
+        lat = country_grid.lat.values.copy()
+        lon = country_grid.lon.values.copy()
     basis = xr.DataArray(
-        np.ones((country_grid.sizes["lat"], country_grid.sizes["lon"]), dtype=int),
+        np.ones((lat.size, lon.size), dtype=int),
         dims=("lat", "lon"),
-        coords={"lat": country_grid.lat, "lon": country_grid.lon},
+        coords={"lat": lat, "lon": lon},
         name="basis",
     )
     flux = xr.ones_like(basis, dtype=float).rename("flux")
@@ -456,6 +463,15 @@ def _modern_postprocessing_inv_out(
         },
         model_metadata={"species": "ch4", "domain": "EUROPE"},
     )
+
+
+def _with_column_prior_factors(inv_out: InversionOutput) -> InversionOutput:
+    """Return a copy with OCO-style column prior correction factors."""
+    inv_inputs = inv_out.inv_inputs.copy()
+    coords = {"nmeasure": inv_inputs["nmeasure"]}
+    inv_inputs["mf_prior_factor"] = xr.DataArray([0.2], dims=("nmeasure",), coords=coords)
+    inv_inputs["mf_prior_upper_level_factor"] = xr.DataArray([0.3], dims=("nmeasure",), coords=coords)
+    return replace(inv_out, inv_inputs=inv_inputs)
 
 
 class _SpyBasisFunctions:
@@ -3249,6 +3265,58 @@ def test_prepare_rhime_inputs_filters_sites_before_basis_generation(
     assert filtering_calls == 1
 
 
+def test_satellite_bc_sensitivity_is_scaled_to_corrected_column_signal() -> None:
+    """Satellite H_bc is reduced into the same OCO corrected-column space as mf."""
+    inv_inputs = xr.Dataset(
+        {
+            "H_bc": (
+                ("bc_region", "nmeasure"),
+                np.array([[100.0, 200.0], [300.0, 400.0]], dtype=float),
+            ),
+            "mf": ("nmeasure", np.array([50.0, 100.0], dtype=float)),
+            "mf_prior_factor": ("nmeasure", np.array([0.0, 0.0], dtype=float)),
+            "mf_prior_upper_level_factor": ("nmeasure", np.array([350.0, 300.0], dtype=float)),
+            "site": ("nmeasure", np.array(["OCO2-EASTASIA", "OCO2-EASTASIA"])),
+        }
+    )
+
+    result = prep_module._scale_satellite_bc_sensitivity_to_column_signal(
+        inv_inputs,
+        sites=["OCO2-EASTASIA"],
+        platform=["satellite"],
+    )
+
+    np.testing.assert_allclose(
+        result["H_bc"].values,
+        np.array([[12.5, 50.0], [37.5, 100.0]]),
+    )
+    assert "satellite_column_bc_scale" in result["H_bc"].attrs
+
+
+def test_surface_bc_sensitivity_is_not_scaled_by_column_factors() -> None:
+    """Non-satellite H_bc is unchanged even if similarly named diagnostics exist."""
+    inv_inputs = xr.Dataset(
+        {
+            "H_bc": (
+                ("bc_region", "nmeasure"),
+                np.array([[100.0, 200.0], [300.0, 400.0]], dtype=float),
+            ),
+            "mf": ("nmeasure", np.array([50.0, 100.0], dtype=float)),
+            "mf_prior_factor": ("nmeasure", np.array([0.0, 0.0], dtype=float)),
+            "mf_prior_upper_level_factor": ("nmeasure", np.array([350.0, 300.0], dtype=float)),
+            "site": ("nmeasure", np.array(["TAC", "TAC"])),
+        }
+    )
+
+    result = prep_module._scale_satellite_bc_sensitivity_to_column_signal(
+        inv_inputs,
+        sites=["TAC"],
+        platform=[None],
+    )
+
+    xr.testing.assert_identical(result["H_bc"], inv_inputs["H_bc"])
+
+
 def test_prepare_rhime_inputs_applies_daily_median_before_sensitivity(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -4499,6 +4567,46 @@ def test_paris_output_processes_modern_output(europe_country_file: Path) -> None
         assert flux_outputs[name].dtype == np.dtype("float32")
 
 
+def test_paris_concentration_without_column_prior_factors_leaves_bc_unchanged(
+    europe_country_file: Path,
+) -> None:
+    """Site-like outputs without column prior factors keep existing concentration values."""
+    from openghg_inversions.postprocessing.make_paris_outputs import paris_concentration_outputs
+
+    conc_outputs = paris_concentration_outputs(
+        _modern_postprocessing_inv_out(europe_country_file),
+        obs_avg_period="1h",
+    )
+
+    units = 1e-9
+    assert "Yobs_prior_factor" not in conc_outputs
+    assert "Yobs_prior_upper_level_factor" not in conc_outputs
+    assert float(conc_outputs["Yobs"].squeeze()) == pytest.approx(10.0 * units)
+    assert float(conc_outputs["Yapriori"].squeeze()) == pytest.approx(9.0 * units)
+    assert float(conc_outputs["Yapost"].squeeze()) == pytest.approx(10.0 * units)
+    assert float(conc_outputs["YaprioriBC"].squeeze()) == pytest.approx(0.05 * units)
+    assert float(conc_outputs["YapostBC"].squeeze()) == pytest.approx(0.1 * units)
+
+
+def test_paris_concentration_column_prior_factor_is_added_to_totals_not_bc(europe_country_file: Path) -> None:
+    """Column prior correction belongs in totals, not boundary-condition fields."""
+    from openghg_inversions.postprocessing.make_paris_outputs import paris_concentration_outputs
+
+    conc_outputs = paris_concentration_outputs(
+        _with_column_prior_factors(_modern_postprocessing_inv_out(europe_country_file)),
+        obs_avg_period="1h",
+    )
+
+    units = 1e-9
+    assert float(conc_outputs["Yobs"].squeeze()) == pytest.approx(10.5 * units)
+    assert float(conc_outputs["Yapriori"].squeeze()) == pytest.approx(9.5 * units)
+    assert float(conc_outputs["Yapost"].squeeze()) == pytest.approx(10.5 * units)
+    assert float(conc_outputs["YaprioriBC"].squeeze()) == pytest.approx(0.05 * units)
+    assert float(conc_outputs["YapostBC"].squeeze()) == pytest.approx(0.1 * units)
+    assert float(conc_outputs["Yobs_prior_factor"].squeeze()) == pytest.approx(0.2 * units)
+    assert float(conc_outputs["Yobs_prior_upper_level_factor"].squeeze()) == pytest.approx(0.3 * units)
+
+
 def test_latest_paris_output_processes_modern_output(europe_country_file: Path, tmp_path: Path) -> None:
     """Explicit latest PARIS output uses the new concentration and flux templates."""
     from openghg_inversions.postprocessing.make_paris_outputs import (
@@ -4571,6 +4679,48 @@ def test_latest_paris_output_processes_modern_output(europe_country_file: Path, 
         assert reloaded_flux["flux_total_posterior"].dtype == np.dtype("float32")
         assert reloaded_flux["covariance_flux_total_posterior_country"].dtype == np.dtype("float32")
         assert reloaded_flux["time_bnds"].dtype == np.dtype("float64")
+
+
+def test_latest_paris_concentration_without_column_prior_factors_leaves_bc_unchanged(
+    europe_country_file: Path,
+) -> None:
+    """Latest site-like outputs without column prior factors keep existing concentration values."""
+    from openghg_inversions.postprocessing.make_paris_outputs import paris_concentration_outputs
+
+    conc_outputs = paris_concentration_outputs(
+        _modern_postprocessing_inv_out(europe_country_file),
+        obs_avg_period="1h",
+        template_version="latest",
+    )
+
+    units = 1e-9
+    assert "y_obs_prior_factor" not in conc_outputs
+    assert "y_obs_prior_upper_level_factor" not in conc_outputs
+    assert float(conc_outputs["mf_observed"].squeeze()) == pytest.approx(10.0 * units)
+    assert float(conc_outputs["mf_prior"].squeeze()) == pytest.approx(9.0 * units)
+    assert float(conc_outputs["mf_posterior"].squeeze()) == pytest.approx(10.0 * units)
+    assert float(conc_outputs["mf_bc_prior"].squeeze()) == pytest.approx(0.05 * units)
+    assert float(conc_outputs["mf_bc_posterior"].squeeze()) == pytest.approx(0.1 * units)
+
+
+def test_latest_paris_concentration_column_prior_factor_is_added_to_totals_not_bc(
+    europe_country_file: Path,
+) -> None:
+    """Latest PARIS concentration keeps column prior correction out of BC fields."""
+    from openghg_inversions.postprocessing.make_paris_outputs import paris_concentration_outputs
+
+    conc_outputs = paris_concentration_outputs(
+        _with_column_prior_factors(_modern_postprocessing_inv_out(europe_country_file)),
+        obs_avg_period="1h",
+        template_version="latest",
+    )
+
+    units = 1e-9
+    assert float(conc_outputs["mf_observed"].squeeze()) == pytest.approx(10.5 * units)
+    assert float(conc_outputs["mf_prior"].squeeze()) == pytest.approx(9.5 * units)
+    assert float(conc_outputs["mf_posterior"].squeeze()) == pytest.approx(10.5 * units)
+    assert float(conc_outputs["mf_bc_prior"].squeeze()) == pytest.approx(0.05 * units)
+    assert float(conc_outputs["mf_bc_posterior"].squeeze()) == pytest.approx(0.1 * units)
 
 
 def test_latest_paris_concentration_fills_missing_bc_with_nan(europe_country_file: Path) -> None:
