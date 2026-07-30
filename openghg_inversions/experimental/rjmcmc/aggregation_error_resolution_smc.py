@@ -38,12 +38,15 @@ from typing import Literal, Mapping, Sequence, TypeAlias, cast
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
+from scipy import special
 from scipy.special import logsumexp
+from scipy.stats import qmc
 
 FloatArray: TypeAlias = NDArray[np.float64]
 IntArray: TypeAlias = NDArray[np.int64]
 NestedCellChart: TypeAlias = int | tuple["NestedCellChart", "NestedCellChart"]
 ResamplingPolicy: TypeAlias = Literal["never", "ess", "always"]
+ProposalKind: TypeAlias = Literal["prior", "piecewise_beta_guide"]
 
 __all__ = [
     "DirectIIDResult",
@@ -60,6 +63,7 @@ __all__ = [
     "breadth_first_schedule",
     "direct_iid_likelihood_average",
     "draw_prior_allocation_paths",
+    "draw_scrambled_sobol_allocation_paths",
     "parent_first_priority_schedule",
     "run_resolution_smc",
 ]
@@ -570,6 +574,9 @@ class ResolutionSMCConfig:
     seed: int
     resampling_policy: ResamplingPolicy = "ess"
     ess_fraction: float = 0.5
+    proposal_kind: ProposalKind = "prior"
+    proposal_bin_count: int = 16
+    proposal_audit_order: int = 32
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -591,6 +598,18 @@ class ResolutionSMCConfig:
         object.__setattr__(self, "ess_fraction", threshold)
         if self.resampling_policy == "ess" and threshold == 0.0:
             raise ValueError("ESS-triggered resampling requires a positive ess_fraction.")
+        if self.proposal_kind not in ("prior", "piecewise_beta_guide"):
+            raise ValueError("proposal_kind must be 'prior' or 'piecewise_beta_guide'.")
+        object.__setattr__(
+            self,
+            "proposal_bin_count",
+            _positive_integer(self.proposal_bin_count, name="proposal_bin_count"),
+        )
+        object.__setattr__(
+            self,
+            "proposal_audit_order",
+            _positive_integer(self.proposal_audit_order, name="proposal_audit_order"),
+        )
 
     @property
     def identity(self) -> str:
@@ -602,6 +621,9 @@ class ResolutionSMCConfig:
                 "seed": self.seed,
                 "resampling_policy": self.resampling_policy,
                 "ess_fraction": self.ess_fraction,
+                "proposal_kind": self.proposal_kind,
+                "proposal_bin_count": self.proposal_bin_count,
+                "proposal_audit_order": self.proposal_audit_order,
                 "bit_generator": "PCG64",
                 "resampling_method": "multinomial",
             }
@@ -655,6 +677,14 @@ class SMCLevelDiagnostic:
     max_covariance_update_error: float
     max_terminal_prediction_error: float
     max_terminal_unresolved_covariance: float
+    proposal_kind: str = "prior"
+    proposal_bin_count: int = 0
+    proposal_construction_seconds: float = 0.0
+    proposal_guide_evaluation_count: int = 0
+    proposal_normalizer_relative_error_mean: float = 0.0
+    proposal_normalizer_relative_error_max: float = 0.0
+    proposal_log_density_correction_mean: float = 0.0
+    proposal_log_density_correction_sd: float = 0.0
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -749,6 +779,235 @@ def _exact_terminal_log_likelihood(
     if not np.all(np.isfinite(result)):
         raise ValueError("terminal native Gaussian likelihood is non-finite.")
     return np.asarray(result, dtype=np.float64)
+
+
+def _exact_prediction_log_likelihood(
+    guide: GaussianGuideSpecification,
+    means: FloatArray,
+) -> FloatArray:
+    """Evaluate the exact native-noise likelihood from observation means."""
+    residual = (
+        guide.observation[np.newaxis, :] - (guide.mean_offset[np.newaxis, :] + means)
+    ) / guide.noise_sd[np.newaxis, :]
+    result = -0.5 * (
+        guide.observation.size * _LOG_TWO_PI
+        + 2.0 * float(np.log(guide.noise_sd).sum())
+        + np.einsum("ni,ni->n", residual, residual)
+    )
+    if not np.all(np.isfinite(result)):
+        raise ValueError("candidate terminal Gaussian likelihood is non-finite.")
+    return np.asarray(result, dtype=np.float64)
+
+
+def _candidate_refinement_guides(
+    tree: ResolutionTree,
+    guide: GaussianGuideSpecification,
+    moments: _TreeGuideMoments,
+    *,
+    node_id: int,
+    parent_mass: FloatArray,
+    fractions: FloatArray,
+    observation_mean: FloatArray,
+    unresolved_covariance: FloatArray,
+    terminal: bool,
+) -> FloatArray:
+    """Evaluate next-frontier guides for a particle-by-candidate Beta grid."""
+    node = tree.node(node_id)
+    assert node.left_id is not None and node.right_id is not None
+    left_node = tree.node(node.left_id)
+    if fractions.ndim != 2 or fractions.shape[0] != parent_mass.size:
+        raise ValueError("candidate fractions must have one row per particle.")
+    left_mass = parent_mass[:, np.newaxis] * fractions
+    right_mass = parent_mass[:, np.newaxis] - left_mass
+    prior_left = left_node.alpha_total / node.alpha_total
+    contrast = moments.means[node.left_id] - moments.means[node.right_id]
+    candidate_mean = (
+        observation_mean[:, np.newaxis, :]
+        + (parent_mass[:, np.newaxis] * (fractions - prior_left))[:, :, np.newaxis]
+        * contrast[np.newaxis, np.newaxis, :]
+    )
+    flattened_mean = np.asarray(
+        candidate_mean.reshape(-1, guide.observation.size),
+        dtype=np.float64,
+    )
+    if terminal:
+        values = _exact_prediction_log_likelihood(guide, flattened_mean)
+    else:
+        base_covariance = unresolved_covariance - (
+            np.square(parent_mass)[:, np.newaxis, np.newaxis] * moments.covariances[node_id][np.newaxis, :, :]
+        )
+        candidate_covariance = (
+            base_covariance[:, np.newaxis, :, :]
+            + np.square(left_mass)[:, :, np.newaxis, np.newaxis]
+            * moments.covariances[node.left_id][np.newaxis, np.newaxis, :, :]
+            + np.square(right_mass)[:, :, np.newaxis, np.newaxis]
+            * moments.covariances[node.right_id][np.newaxis, np.newaxis, :, :]
+        )
+        candidate_covariance = 0.5 * (candidate_covariance + np.swapaxes(candidate_covariance, 2, 3))
+        values = _batched_gaussian_log_likelihood(
+            guide,
+            flattened_mean,
+            np.asarray(
+                candidate_covariance.reshape(
+                    -1,
+                    guide.observation.size,
+                    guide.observation.size,
+                ),
+                dtype=np.float64,
+            ),
+        )
+    return np.asarray(values.reshape(fractions.shape), dtype=np.float64)
+
+
+@dataclass(frozen=True, slots=True)
+class _GuidedProposalDraw:
+    fractions: FloatArray
+    log_prior_over_proposal: FloatArray
+    endpoint_repair_count: int
+    guide_evaluation_count: int
+    normalizer_relative_error_mean: float
+    normalizer_relative_error_max: float
+    construction_seconds: float
+
+
+def _piecewise_beta_guide_draw(
+    tree: ResolutionTree,
+    guide: GaussianGuideSpecification,
+    moments: _TreeGuideMoments,
+    *,
+    node_id: int,
+    parent_mass: FloatArray,
+    observation_mean: FloatArray,
+    unresolved_covariance: FloatArray,
+    terminal: bool,
+    config: ResolutionSMCConfig,
+    generator: np.random.Generator,
+) -> _GuidedProposalDraw:
+    """Sample an exactly normalized piecewise-Beta continuous proposal.
+
+    Equal-prior-probability bins use the next-frontier Gaussian guide at each
+    bin's prior-quantile midpoint as a piecewise-constant likelihood factor.
+    Within a selected bin, sampling is an exact truncated-Beta inverse CDF.
+    The returned prior/proposal density ratio is therefore exact for this
+    approximation.  A separate Gauss--Jacobi calculation audits only the
+    approximation to the ideal one-dimensional guide normalizer.
+    """
+    started = time.perf_counter()
+    node = tree.node(node_id)
+    assert node.left_id is not None and node.right_id is not None
+    left_alpha = tree.node(node.left_id).alpha_total
+    right_alpha = tree.node(node.right_id).alpha_total
+    particle_count = config.particle_count
+    bin_count = config.proposal_bin_count
+    midpoint_probabilities = (np.arange(bin_count, dtype=np.float64) + 0.5) / bin_count
+    midpoint_fractions = special.betaincinv(
+        left_alpha,
+        right_alpha,
+        midpoint_probabilities,
+    )
+    midpoint_fractions = np.clip(
+        midpoint_fractions,
+        np.nextafter(0.0, 1.0),
+        np.nextafter(1.0, 0.0),
+    )
+    candidate_fractions = np.broadcast_to(
+        midpoint_fractions[np.newaxis, :],
+        (particle_count, bin_count),
+    )
+    candidate_guides = _candidate_refinement_guides(
+        tree,
+        guide,
+        moments,
+        node_id=node_id,
+        parent_mass=parent_mass,
+        fractions=candidate_fractions,
+        observation_mean=observation_mean,
+        unresolved_covariance=unresolved_covariance,
+        terminal=terminal,
+    )
+    log_bin_sum = np.asarray(logsumexp(candidate_guides, axis=1), dtype=np.float64)
+    log_approximate_normalizer = log_bin_sum - math.log(bin_count)
+    bin_probabilities = np.exp(candidate_guides - log_bin_sum[:, np.newaxis])
+    cumulative = np.cumsum(bin_probabilities, axis=1)
+    cumulative[:, -1] = 1.0
+    selected_bins = np.sum(
+        generator.random(particle_count)[:, np.newaxis] > cumulative,
+        axis=1,
+        dtype=np.int64,
+    )
+    selected_bins = np.minimum(selected_bins, bin_count - 1)
+    selected_midpoint_guides = candidate_guides[
+        np.arange(particle_count),
+        selected_bins,
+    ]
+    prior_probabilities = (selected_bins.astype(np.float64) + generator.random(particle_count)) / bin_count
+    fractions = np.asarray(
+        special.betaincinv(left_alpha, right_alpha, prior_probabilities),
+        dtype=np.float64,
+    )
+    endpoint = (fractions <= 0.0) | (fractions >= 1.0)
+    endpoint_repair_count = int(np.count_nonzero(endpoint))
+    fractions = np.clip(
+        fractions,
+        np.nextafter(0.0, 1.0),
+        np.nextafter(1.0, 0.0),
+    )
+    log_prior_over_proposal = log_approximate_normalizer - selected_midpoint_guides
+
+    nodes, weights = special.roots_jacobi(
+        config.proposal_audit_order,
+        right_alpha - 1.0,
+        left_alpha - 1.0,
+    )
+    audit_fractions = np.broadcast_to(
+        ((nodes + 1.0) * 0.5)[np.newaxis, :],
+        (particle_count, config.proposal_audit_order),
+    )
+    audit_guides = _candidate_refinement_guides(
+        tree,
+        guide,
+        moments,
+        node_id=node_id,
+        parent_mass=parent_mass,
+        fractions=audit_fractions,
+        observation_mean=observation_mean,
+        unresolved_covariance=unresolved_covariance,
+        terminal=terminal,
+    )
+    normalized_weights = weights / float(np.sum(weights))
+    log_audit_normalizer = np.asarray(
+        logsumexp(
+            audit_guides + np.log(normalized_weights)[np.newaxis, :],
+            axis=1,
+        ),
+        dtype=np.float64,
+    )
+    relative_error = np.abs(
+        np.expm1(
+            np.clip(
+                log_approximate_normalizer - log_audit_normalizer,
+                -700.0,
+                700.0,
+            )
+        )
+    )
+    if (
+        not np.all(np.isfinite(fractions))
+        or not np.all(np.isfinite(log_prior_over_proposal))
+        or not np.all(np.isfinite(relative_error))
+    ):
+        raise ValueError("piecewise-Beta guide proposal produced non-finite arithmetic.")
+    fractions.setflags(write=False)
+    log_prior_over_proposal.setflags(write=False)
+    return _GuidedProposalDraw(
+        fractions=fractions,
+        log_prior_over_proposal=log_prior_over_proposal,
+        endpoint_repair_count=endpoint_repair_count,
+        guide_evaluation_count=particle_count * (bin_count + config.proposal_audit_order),
+        normalizer_relative_error_mean=float(np.mean(relative_error)),
+        normalizer_relative_error_max=float(np.max(relative_error)),
+        construction_seconds=time.perf_counter() - started,
+    )
 
 
 def _logmeanexp(values: FloatArray) -> float:
@@ -905,6 +1164,59 @@ def draw_prior_allocation_paths(
     return result
 
 
+def draw_scrambled_sobol_allocation_paths(
+    tree: ResolutionTree,
+    schedule: ResolutionSchedule,
+    *,
+    particle_count: int,
+    seed: int,
+) -> FloatArray:
+    """Draw a balanced scrambled-Sobol bank in schedule Beta coordinates.
+
+    Each independent replicate uses one independently scrambled joint Sobol
+    net.  The inverse regularized incomplete Beta transform is exact up to
+    floating-point representation; represented endpoints are moved to the
+    nearest open-support float and are counted later by the ordinary path
+    diagnostics.
+    """
+    count = _positive_integer(particle_count, name="particle_count")
+    if count & (count - 1):
+        raise ValueError("scrambled-Sobol particle_count must be a power of two.")
+    if isinstance(seed, bool) or not isinstance(seed, Integral) or not 0 <= int(seed) < 2**64:
+        raise ValueError("scrambled-Sobol seed must be an integer in [0, 2**64).")
+    dimension = len(schedule.coordinate_node_ids)
+    engine = qmc.Sobol(
+        d=dimension,
+        scramble=True,
+        bits=52,
+        rng=int(seed),
+        optimization=None,
+    )
+    uniforms = engine.random_base2(count.bit_length() - 1)
+    if uniforms.shape != (count, dimension):
+        raise RuntimeError("Sobol engine returned an unexpected path shape.")
+    result = np.empty_like(uniforms, dtype=np.float64)
+    for coordinate, node_id in enumerate(schedule.coordinate_node_ids):
+        node = tree.node(node_id)
+        assert node.left_id is not None and node.right_id is not None
+        left = tree.node(node.left_id)
+        right = tree.node(node.right_id)
+        values = special.betaincinv(
+            left.alpha_total,
+            right.alpha_total,
+            uniforms[:, coordinate],
+        )
+        if not np.all(np.isfinite(values)):
+            raise ValueError("scrambled-Sobol inverse Beta transform is non-finite.")
+        result[:, coordinate] = np.clip(
+            values,
+            np.nextafter(0.0, 1.0),
+            np.nextafter(1.0, 0.0),
+        )
+    result.setflags(write=False)
+    return cast(FloatArray, result)
+
+
 def _validate_paths(
     paths: ArrayLike | None,
     *,
@@ -1050,7 +1362,11 @@ def _scientific_fingerprint(
     diagnostic_payload = []
     for diagnostic in diagnostics:
         payload = asdict(diagnostic)
-        for operational in ("elapsed_seconds", "peak_rss_bytes"):
+        for operational in (
+            "elapsed_seconds",
+            "peak_rss_bytes",
+            "proposal_construction_seconds",
+        ):
             payload.pop(operational)
         diagnostic_payload.append(payload)
     return _sha256_json(
@@ -1384,6 +1700,11 @@ def run_resolution_smc(
     if not normalized_source_identity:
         raise ValueError("source_identity cannot be empty.")
     paths = _validate_paths(allocation_paths, config=config, schedule=schedule)
+    if config.proposal_kind != "prior":
+        if paths is not None:
+            raise ValueError("guided proposals cannot consume preassigned prior paths.")
+        if any(len(batch.node_ids) != 1 for batch in schedule.batches):
+            raise ValueError("the first guided proposal requires one eligible split per level.")
     paths_sha256 = _path_identity(paths)
     target_level = (
         len(schedule.batches)
@@ -1475,9 +1796,42 @@ def run_resolution_smc(
     for level_index in range(completed_levels, target_level):
         level_start = time.perf_counter()
         batch = schedule.batches[level_index]
+        terminal = level_index == len(schedule.batches) - 1
         previous_guide = np.array(current_guide, copy=True)
         max_conservation_error = 0.0
         beta_endpoint_repair_count = 0
+        proposal_log_density_correction = np.zeros(
+            config.particle_count,
+            dtype=np.float64,
+        )
+        proposal_construction_seconds = 0.0
+        proposal_guide_evaluation_count = 0
+        proposal_normalizer_relative_error_mean = 0.0
+        proposal_normalizer_relative_error_max = 0.0
+        guided_draw: _GuidedProposalDraw | None = None
+        if config.proposal_kind == "piecewise_beta_guide":
+            guided_node_id = batch.node_ids[0]
+            guided_draw = _piecewise_beta_guide_draw(
+                tree,
+                guide,
+                moments,
+                node_id=guided_node_id,
+                parent_mass=node_masses[:, guided_node_id],
+                observation_mean=observation_mean,
+                unresolved_covariance=unresolved_covariance,
+                terminal=terminal,
+                config=config,
+                generator=propagation_rng,
+            )
+            proposal_log_density_correction = np.array(
+                guided_draw.log_prior_over_proposal,
+                copy=True,
+            )
+            beta_endpoint_repair_count += guided_draw.endpoint_repair_count
+            proposal_construction_seconds = guided_draw.construction_seconds
+            proposal_guide_evaluation_count = guided_draw.guide_evaluation_count
+            proposal_normalizer_relative_error_mean = guided_draw.normalizer_relative_error_mean
+            proposal_normalizer_relative_error_max = guided_draw.normalizer_relative_error_max
         for node_id in batch.node_ids:
             if node_id not in active_frontier:
                 raise RuntimeError("scheduled node is not active at this resolution.")
@@ -1486,7 +1840,9 @@ def run_resolution_smc(
             left_node = tree.node(node.left_id)
             right_node = tree.node(node.right_id)
             parent_mass = node_masses[:, node_id]
-            if paths is None:
+            if guided_draw is not None:
+                fraction = guided_draw.fractions
+            elif paths is None:
                 fraction, fraction_repairs = _open_beta_draw(
                     propagation_rng,
                     left_node.alpha_total,
@@ -1569,7 +1925,6 @@ def run_resolution_smc(
         observation_mean = recomputed_mean
         unresolved_covariance = recomputed_covariance
 
-        terminal = level_index == len(schedule.batches) - 1
         terminal_prediction_error = 0.0
         terminal_covariance_error = 0.0
         if terminal:
@@ -1601,7 +1956,7 @@ def run_resolution_smc(
                 unresolved_covariance,
             )
 
-        incremental = current_guide - previous_guide
+        incremental = current_guide - previous_guide + proposal_log_density_correction
         if not np.all(np.isfinite(incremental)):
             raise ValueError("SMC incremental log weights are non-finite.")
         log_increment = float(cast(float, logsumexp(normalized_log_weights + incremental)))
@@ -1687,8 +2042,10 @@ def run_resolution_smc(
                 log_normalizer_increment=log_increment,
                 beta_draw_count=0 if paths is not None else config.particle_count * len(batch.node_ids),
                 beta_endpoint_repair_count=beta_endpoint_repair_count,
-                forward_update_count=config.particle_count * len(batch.node_ids),
-                likelihood_evaluation_count=config.particle_count,
+                forward_update_count=(
+                    config.particle_count * len(batch.node_ids) + proposal_guide_evaluation_count
+                ),
+                likelihood_evaluation_count=(config.particle_count + proposal_guide_evaluation_count),
                 elapsed_seconds=level_elapsed,
                 state_bytes=state_bytes,
                 peak_rss_bytes=_peak_rss_bytes(),
@@ -1697,6 +2054,16 @@ def run_resolution_smc(
                 max_covariance_update_error=max_covariance_update_error,
                 max_terminal_prediction_error=terminal_prediction_error,
                 max_terminal_unresolved_covariance=terminal_covariance_error,
+                proposal_kind=config.proposal_kind,
+                proposal_bin_count=(
+                    config.proposal_bin_count if config.proposal_kind == "piecewise_beta_guide" else 0
+                ),
+                proposal_construction_seconds=proposal_construction_seconds,
+                proposal_guide_evaluation_count=proposal_guide_evaluation_count,
+                proposal_normalizer_relative_error_mean=(proposal_normalizer_relative_error_mean),
+                proposal_normalizer_relative_error_max=(proposal_normalizer_relative_error_max),
+                proposal_log_density_correction_mean=float(np.mean(proposal_log_density_correction)),
+                proposal_log_density_correction_sd=float(np.std(proposal_log_density_correction)),
             )
         )
         completed_levels = level_index + 1
@@ -1732,7 +2099,7 @@ def run_resolution_smc(
         terminal_leaf_masses,
     )
     accumulator_log_likelihood = log_normalizer
-    if config.resampling_policy == "never":
+    if config.resampling_policy == "never" and config.proposal_kind == "prior":
         # Algebraically this is the same normalizer as the telescoping
         # accumulator.  The terminal expression is authoritative so a
         # path-matched direct IID calculation is bitwise identical.

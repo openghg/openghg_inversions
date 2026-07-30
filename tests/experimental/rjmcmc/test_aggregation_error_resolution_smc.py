@@ -27,6 +27,7 @@ from openghg_inversions.experimental.rjmcmc.aggregation_error_resolution_smc imp
     breadth_first_schedule,
     direct_iid_likelihood_average,
     draw_prior_allocation_paths,
+    draw_scrambled_sobol_allocation_paths,
     parent_first_priority_schedule,
     run_resolution_smc,
 )
@@ -259,6 +260,68 @@ def test_path_matched_direct_iid_and_no_resampling_smc_are_bitwise_identical() -
     assert smc.no_resampling_accumulator_error == pytest.approx(0.0, abs=2.0e-14)
 
 
+def test_scrambled_sobol_paths_replay_nest_and_match_the_tiny_oracle() -> None:
+    """The wider-R1 RQMC baseline should be replayable and correctly transformed."""
+    tree, schedule, guide = _two_cell(shapes=(0.12, 0.18))
+    small = draw_scrambled_sobol_allocation_paths(
+        tree,
+        schedule,
+        particle_count=256,
+        seed=1701,
+    )
+    replay = draw_scrambled_sobol_allocation_paths(
+        tree,
+        schedule,
+        particle_count=256,
+        seed=1701,
+    )
+    large = draw_scrambled_sobol_allocation_paths(
+        tree,
+        schedule,
+        particle_count=4_096,
+        seed=1701,
+    )
+    np.testing.assert_array_equal(small, replay)
+    np.testing.assert_array_equal(small, large[: small.shape[0]])
+    assert np.all((small > 0.0) & (small < 1.0))
+
+    config = ResolutionSMCConfig(
+        large.shape[0],
+        seed=1701,
+        resampling_policy="never",
+    )
+    direct = direct_iid_likelihood_average(
+        tree,
+        schedule,
+        guide,
+        root_total=1.0,
+        config=config,
+        allocation_paths=large,
+    )
+    oracle = TwoCellAggregationOracle(
+        gamma_shape=0.30,
+        gamma_rate=0.30,
+        beta_first_shape=0.12,
+        beta_second_shape=0.18,
+        fraction_order=128,
+    )
+    exact = oracle.coarse_conditional_likelihood(
+        1.0,
+        guide.observation,
+        guide.design,
+        guide.noise_sd,
+    )
+    assert direct.likelihood == pytest.approx(exact, rel=2.0e-3)
+
+    with pytest.raises(ValueError, match="power of two"):
+        draw_scrambled_sobol_allocation_paths(
+            tree,
+            schedule,
+            particle_count=100,
+            seed=1701,
+        )
+
+
 def test_terminal_likelihood_agrees_with_four_cell_quadrature_oracle() -> None:
     """The four-cell continuous target should cover an independently charted oracle."""
     tree, schedule, guide = _four_cell(chart="row")
@@ -361,6 +424,105 @@ def test_bootstrap_multinomial_resampling_and_deterministic_replay() -> None:
     assert first.diagnostics[0].resampled
     assert not first.diagnostics[-1].resampled
     assert first.diagnostics[0].unique_ancestor_count <= config.particle_count
+
+
+def test_piecewise_beta_guide_is_corrected_continuous_and_unbiased() -> None:
+    """The bounded R2 proposal must retain the exact continuous terminal target."""
+    tree, schedule, guide = _two_cell(shapes=(0.12, 0.18))
+    estimates = []
+    for seed in range(32):
+        config = ResolutionSMCConfig(
+            128,
+            seed=30_000 + seed,
+            resampling_policy="never",
+            proposal_kind="piecewise_beta_guide",
+            proposal_bin_count=16,
+            proposal_audit_order=32,
+        )
+        result = _result(tree, schedule, guide, config)
+        estimates.append(result.likelihood)
+        diagnostic = result.diagnostics[0]
+        assert diagnostic.proposal_kind == "piecewise_beta_guide"
+        assert diagnostic.proposal_bin_count == 16
+        assert diagnostic.proposal_guide_evaluation_count == 128 * (16 + 32)
+        assert math.isfinite(diagnostic.proposal_normalizer_relative_error_max)
+        assert diagnostic.proposal_normalizer_relative_error_max >= 0.0
+        assert result.no_resampling_accumulator_error is None
+
+    oracle = TwoCellAggregationOracle(
+        gamma_shape=0.30,
+        gamma_rate=0.30,
+        beta_first_shape=0.12,
+        beta_second_shape=0.18,
+        fraction_order=128,
+    ).coarse_conditional_likelihood(
+        1.0,
+        guide.observation,
+        guide.design,
+        guide.noise_sd,
+    )
+    values = np.asarray(estimates)
+    standard_error = float(np.std(values, ddof=1) / math.sqrt(values.size))
+    assert abs(float(np.mean(values)) - oracle) <= 5.0 * standard_error
+
+
+def test_guided_proposal_checkpoint_replays_and_requires_single_split_levels(
+    tmp_path: Path,
+) -> None:
+    """Guided proposal state and RNG use should replay from an intermediate level."""
+    tree, breadth, guide = _four_cell()
+    schedule = parent_first_priority_schedule(
+        tree,
+        guide,
+        root_total=1.0,
+        favorable=True,
+    )
+    config = ResolutionSMCConfig(
+        96,
+        seed=8128,
+        resampling_policy="always",
+        proposal_kind="piecewise_beta_guide",
+        proposal_bin_count=8,
+        proposal_audit_order=16,
+    )
+    uninterrupted = _result(tree, schedule, guide, config)
+    repeated = _result(tree, schedule, guide, config)
+    assert repeated.scientific_fingerprint == uninterrupted.scientific_fingerprint
+
+    _, partial = run_resolution_smc(
+        tree,
+        schedule,
+        guide,
+        root_total=1.0,
+        config=config,
+        source_identity="focused-test-source",
+        stop_after_level=1,
+    )
+    path = tmp_path / "guided-boundary.npz"
+    partial.save(path)
+    loaded = ResolutionSMCCheckpoint.load(
+        path,
+        tree=tree,
+        schedule=schedule,
+        guide=guide,
+        config=config,
+        allocation_paths_sha256=None,
+        source_identity="focused-test-source",
+    )
+    resumed, _ = run_resolution_smc(
+        tree,
+        schedule,
+        guide,
+        root_total=1.0,
+        config=config,
+        source_identity="focused-test-source",
+        checkpoint=loaded,
+    )
+    assert resumed is not None
+    assert resumed.scientific_fingerprint == uninterrupted.scientific_fingerprint
+
+    with pytest.raises(ValueError, match="one eligible split"):
+        _result(tree, breadth, guide, config)
 
 
 def test_checkpoint_restart_replays_from_every_resolution_boundary(tmp_path: Path) -> None:
