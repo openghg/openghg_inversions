@@ -652,6 +652,24 @@ def _connected_node_components(
     return [list(zip(*np.where(labels == component), strict=True)) for component in range(1, int(count) + 1)]
 
 
+def _decompose_connected_children(
+    children: list[GridPartition],
+    shape: tuple[int, int],
+    *,
+    connectivity: int,
+) -> list[GridPartition]:
+    """Return the connected-component decomposition of child partitions."""
+    return [
+        component
+        for child in children
+        for component in _connected_node_components(
+            child,
+            shape,
+            connectivity=connectivity,
+        )
+    ]
+
+
 @dataclass(frozen=True)
 class ConnectedComponentPartitionStep:
     """Make every child from another partition step spatially connected.
@@ -684,15 +702,210 @@ class ConnectedComponentPartitionStep:
     ) -> list[GridPartition]:
         """Split once, then separate disconnected pieces of every child."""
         children = self.split_step(nodes, weights)
-        return [
-            component
-            for child in children
-            for component in _connected_node_components(
-                child,
-                weights.shape,
-                connectivity=self.connectivity,
+        return _decompose_connected_children(
+            children,
+            weights.shape,
+            connectivity=self.connectivity,
+        )
+
+
+def _component_adjacencies(
+    left_components: list[GridPartition],
+    right_components: list[GridPartition],
+    shape: tuple[int, int],
+    *,
+    connectivity: int,
+) -> tuple[list[set[int]], list[set[int]]]:
+    """Return cross-side adjacency sets for two component collections."""
+    right_labels = np.zeros(shape, dtype=np.int64)
+    for component_index, component in enumerate(right_components, start=1):
+        rows, columns = _node_indices(component)
+        right_labels[rows, columns] = component_index
+
+    if connectivity == 1:
+        offsets = ((-1, 0), (0, -1), (0, 1), (1, 0))
+    else:
+        offsets = tuple(
+            (row_offset, column_offset)
+            for row_offset in (-1, 0, 1)
+            for column_offset in (-1, 0, 1)
+            if row_offset != 0 or column_offset != 0
+        )
+
+    left_adjacencies = [set() for _component in left_components]
+    right_adjacencies = [set() for _component in right_components]
+    nrows, ncolumns = shape
+    for left_index, component in enumerate(left_components):
+        for row, column in component:
+            for row_offset, column_offset in offsets:
+                adjacent_row = row + row_offset
+                adjacent_column = column + column_offset
+                if not (0 <= adjacent_row < nrows and 0 <= adjacent_column < ncolumns):
+                    continue
+                right_index = int(right_labels[adjacent_row, adjacent_column]) - 1
+                if right_index >= 0:
+                    left_adjacencies[left_index].add(right_index)
+                    right_adjacencies[right_index].add(left_index)
+
+    return left_adjacencies, right_adjacencies
+
+
+def _repair_binary_connected_children(
+    parent: GridPartition,
+    children: list[GridPartition],
+    weights: np.ndarray,
+    *,
+    connectivity: int,
+) -> list[GridPartition] | None:
+    """Return a deterministic connected binary repair when one exists."""
+    if len(children) != 2 or not all(children):
+        return None
+
+    parent_nodes = set(parent)
+    left_nodes = set(children[0])
+    right_nodes = set(children[1])
+    if (
+        len(parent_nodes) != len(parent)
+        or len(left_nodes) != len(children[0])
+        or len(right_nodes) != len(children[1])
+        or left_nodes & right_nodes
+        or left_nodes | right_nodes != parent_nodes
+    ):
+        return None
+
+    left_components = _connected_node_components(
+        children[0],
+        weights.shape,
+        connectivity=connectivity,
+    )
+    right_components = _connected_node_components(
+        children[1],
+        weights.shape,
+        connectivity=connectivity,
+    )
+    if not left_components or not right_components:
+        return None
+
+    left_adjacencies, right_adjacencies = _component_adjacencies(
+        left_components,
+        right_components,
+        weights.shape,
+        connectivity=connectivity,
+    )
+    left_weights = [_node_weight(component, weights) for component in left_components]
+    right_weights = [_node_weight(component, weights) for component in right_components]
+    total_left_weight = sum(left_weights)
+    total_right_weight = sum(right_weights)
+
+    best_key: tuple[float, float, int, int] | None = None
+    best_primary_indices: tuple[int, int] | None = None
+    for left_index, adjacent_right in enumerate(left_adjacencies):
+        if len(right_components) - len(adjacent_right) > 1:
+            continue
+        for right_index, adjacent_left in enumerate(right_adjacencies):
+            if len(left_components) - len(adjacent_left) > 1:
+                continue
+            if len(adjacent_right) - int(right_index in adjacent_right) != len(right_components) - 1:
+                continue
+            if len(adjacent_left) - int(left_index in adjacent_left) != len(left_components) - 1:
+                continue
+
+            moved_weight = (
+                total_left_weight
+                - left_weights[left_index]
+                + total_right_weight
+                - right_weights[right_index]
             )
+            repaired_left_weight = left_weights[left_index] + total_right_weight - right_weights[right_index]
+            repaired_right_weight = right_weights[right_index] + total_left_weight - left_weights[left_index]
+            key = (
+                moved_weight,
+                abs(repaired_left_weight - repaired_right_weight),
+                left_index,
+                right_index,
+            )
+            if best_key is None or key < best_key:
+                best_key = key
+                best_primary_indices = (left_index, right_index)
+
+    if best_primary_indices is None:
+        return None
+
+    left_primary, right_primary = best_primary_indices
+    repaired_left = sorted(
+        left_components[left_primary]
+        + [
+            node
+            for component_index, component in enumerate(right_components)
+            if component_index != right_primary
+            for node in component
         ]
+    )
+    repaired_right = sorted(
+        right_components[right_primary]
+        + [
+            node
+            for component_index, component in enumerate(left_components)
+            if component_index != left_primary
+            for node in component
+        ]
+    )
+    return [repaired_left, repaired_right]
+
+
+@dataclass(frozen=True)
+class ConnectedBinaryPartitionStep:
+    """Repair a provisional binary split into two connected child partitions.
+
+    This opt-in wrapper preserves binary arity when disconnected cut fragments
+    can be reassigned safely. It labels the connected components on both sides,
+    retains one primary component on each original side, and moves every
+    secondary component to the opposite side. Candidates are valid only when
+    both resulting children are connected.
+
+    Valid candidates are selected deterministically by minimum moved fitting
+    weight, then minimum absolute child-weight imbalance, then row-major
+    component order. If the wrapped step does not return a valid binary
+    partition, or no connected binary reassignment exists, the result falls
+    back to the same multi-child component decomposition as
+    :class:`ConnectedComponentPartitionStep`.
+
+    Attributes:
+        split_step: Partition step whose provisional binary children should be
+            repaired.
+        connectivity: Two-dimensional neighbourhood definition. ``1`` uses
+            edge-sharing (four-neighbour) connectivity and ``2`` additionally
+            includes corner-sharing (eight-neighbour) connectivity.
+    """
+
+    split_step: PartitionStep
+    connectivity: int = 1
+
+    def __post_init__(self) -> None:
+        """Validate the requested two-dimensional connectivity."""
+        if self.connectivity not in (1, 2):
+            raise ValueError("connectivity must be 1 (edge) or 2 (edge and corner).")
+
+    def __call__(
+        self,
+        nodes: GridPartition,
+        weights: np.ndarray,
+    ) -> list[GridPartition]:
+        """Return two repaired connected children or the component fallback."""
+        children = self.split_step(nodes, weights)
+        repaired = _repair_binary_connected_children(
+            nodes,
+            children,
+            weights,
+            connectivity=self.connectivity,
+        )
+        if repaired is not None:
+            return repaired
+        return _decompose_connected_children(
+            children,
+            weights.shape,
+            connectivity=self.connectivity,
+        )
 
 
 @dataclass(frozen=True)
@@ -2027,6 +2240,7 @@ __all__ = [
     "AxisAlignedWeightedSplitStrategy",
     "AxisParallelSplitStep",
     "ComponentConsolidationPolicy",
+    "ConnectedBinaryPartitionStep",
     "ConnectedComponentPartitionStep",
     "ConnectedComponentSplitStrategy",
     "GreedyAxisParallelSplitStrategy",
