@@ -16,6 +16,7 @@ import openghg_inversions.inversion_data.getters as getters_module
 import openghg_inversions.inversion_data.scenario as scenario_module
 from openghg_inversions.flux_sanitization import FluxNonFiniteMetadata, NonFiniteFluxWarning
 from openghg_inversions.inversion_data._site_options import expand_site_option
+from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
 from openghg_inversions.inversion_data.get_data import (
     add_obs_error,
     convert_to_list,
@@ -27,6 +28,15 @@ from openghg_inversions.inversion_data.serialise import (
     load_merged_data,
     make_combined_scenario,
 )
+
+
+@pytest.mark.parametrize(
+    ("raw_units", "expected"),
+    [("1", 1.0), ("mol/mol", 1.0), ("ppb", 1e-9), ("1e-09 mol/mol", 1e-9)],
+)
+def test_mole_fraction_unit_scale_uses_openghg_registry(raw_units: str, expected: float) -> None:
+    """OpenGHG unit expressions map directly to their mol/mol scale."""
+    assert mole_fraction_unit_scale(raw_units, context="test observations") == pytest.approx(expected)
 
 
 def test_data_processing_surface_notracer(tac_ch4_data_args, merged_data_file_name, raw_data_path):

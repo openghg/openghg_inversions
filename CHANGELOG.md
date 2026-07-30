@@ -11,10 +11,9 @@
   schema, and legacy migration warnings remain visible under default warning
   filters. Retained calibration scales now follow site pruning, and
   fresh scenarios delegate common-unit conversion to OpenGHG
-  ``ModelScenario`` while reloaded site datasets use the xarray Pint accessor
-  before concatenation. Explicit site order is preserved during input
-  assembly, and mixed surface/column inputs retain their column correction
-  factors.
+  ``ModelScenario``; saved merged datasets already carry those common units.
+  Explicit site order is preserved during input assembly, and mixed
+  surface/column inputs retain their column correction factors.
   [#427](https://github.com/openghg/openghg_inversions/issues/427)
 - Made direct composition of concrete standard and multisector RHIME models
   the default builder strategy. The semantic flux-plan compiler remains

@@ -5,9 +5,9 @@
 - `load_merged_data` restores the `fp_all` dict from these saved formats
 - `make_combined_scenario` converts the `fp_all` dict into a xr.Dataset
 
-Deserialization restores the legacy numeric ``.units`` scale from serialized
-``mf`` units. Retained-site preparation performs any later cross-site Pint
-alignment.
+DataTree and pickle loads restore stored ``.units`` metadata unchanged.
+``fp_all_from_dataset`` derives the numeric scale from the combined dataset's
+common ``mf`` units.
 """
 
 import json
@@ -321,7 +321,7 @@ def make_combined_scenario(fp_all: dict) -> xr.Dataset:
         combined_fluxes = combined_fluxes.squeeze("time")
 
     # Merge with override in case coordinates are slightly off. Fresh data are
-    # unit-aligned by ModelScenario; retained preparation aligns reloads.
+    # already unit-aligned by ModelScenario.
     combined_scenario = combined_scenario.merge(combined_fluxes, join="override")
 
     # merge in boundary conditions
@@ -417,7 +417,7 @@ def fp_all_from_dataset(ds: xr.Dataset) -> dict:
     fp_all[".species"] = species
 
     fp_all[".units"] = mole_fraction_unit_scale(
-        ds.mf.attrs.get("units", 1.0),
+        ds.mf.attrs.get("units", "mol/mol"),
         context="serialized merged observations",
     )
 

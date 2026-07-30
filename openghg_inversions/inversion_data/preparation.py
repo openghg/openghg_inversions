@@ -34,7 +34,6 @@ from openghg_inversions.inversion_data._site_options import (
     expand_site_option,
     is_column_observation,
 )
-from openghg_inversions.inversion_data._units import align_observation_units
 from openghg_inversions.inversion_data.get_data import data_processing_surface_notracer
 from openghg_inversions.inversion_data.serialise import load_merged_data
 from openghg_inversions.inversion_inputs import make_inv_inputs
@@ -363,13 +362,7 @@ def _drop_sites_missing_from_loaded_data(
 
 
 def _select_fp_all_sites(fp_all: dict, sites: Sequence[str]) -> dict:
-    """Keep requested sites and synchronize site-keyed scientific metadata.
-
-    Calibration-scale provenance is pruned to the retained site set.
-    Observation-valued variables are converted lazily through OpenGHG's Pint
-    machinery to the first retained site's units, and the legacy numeric
-    ``.units`` scale is updated to match.
-    """
+    """Keep requested sites and prune site-keyed calibration scales."""
     site_names = set(sites)
     selected = {key: value for key, value in fp_all.items() if key.startswith(".") or key in site_names}
 
@@ -377,7 +370,7 @@ def _select_fp_all_sites(fp_all: dict, sites: Sequence[str]) -> dict:
     if isinstance(scales, Mapping):
         selected[".scales"] = {site: scales[site] for site in sites if site in scales}
 
-    return align_observation_units(selected, sites, require_units=True)
+    return selected
 
 
 def _make_inv_inputs(
