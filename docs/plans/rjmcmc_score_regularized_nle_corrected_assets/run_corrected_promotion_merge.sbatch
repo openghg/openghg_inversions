@@ -11,7 +11,8 @@ module load git/2.45.1-pqk5
 
 : "${NLE_SOURCE:?Set NLE_SOURCE to the clean detached full-SHA worktree.}"
 : "${NLE_RUN_ROOT:?Set NLE_RUN_ROOT to the fresh corrected run root.}"
-: "${NLE_REVISION:?Set NLE_REVISION to the exact 40-character source SHA.}"
+: "${NLE_REVISION:?Set NLE_REVISION to the exact evaluation-code SHA.}"
+: "${NLE_ARTIFACT_REVISION:?Set NLE_ARTIFACT_REVISION to the exact attempt/oracle source SHA.}"
 : "${NLE_MATRIX_ID:?Set NLE_MATRIX_ID to one frozen promotion matrix.}"
 : "${NLE_ATTEMPT_TAG:?Set NLE_ATTEMPT_TAG to the immutable array tag.}"
 
@@ -32,6 +33,31 @@ if [[ "$(git -C "${source_root}" rev-parse HEAD)" != "${NLE_REVISION}" ||
   echo "NLE_SOURCE must be the exact clean detached revision." >&2
   exit 64
 fi
+if [[ ! "${NLE_ARTIFACT_REVISION}" =~ ^[0-9a-f]{40}$ ]] ||
+   ! git -C "${source_root}" cat-file -e "${NLE_ARTIFACT_REVISION}^{commit}"; then
+  echo "NLE_ARTIFACT_REVISION must name one exact available commit." >&2
+  exit 64
+fi
+while IFS= read -r changed_path; do
+  case "${changed_path}" in
+    docs/plans/rjmcmc_score_regularized_nle_corrected_assets/run_corrected_promotion_merge.sbatch | \
+      docs/plans/rjmcmc_score_regularized_nle_corrected_assets/run_corrected_promotion_certify.sbatch | \
+      docs/plans/rjmcmc_score_regularized_nle_corrected_exploration_log.md | \
+      docs/plans/rjmcmc_score_regularized_nle_corrected_promotion_plan.md | \
+      docs/plans/rjmcmc_score_regularized_nle_corrected_promotion_review.md | \
+      examples/rjmcmc/score_regularized_flow_corrected_promotion_merge.py | \
+      examples/rjmcmc/score_regularized_flow_corrected_promotion_certify.py | \
+      tests/experimental/rjmcmc/test_score_regularized_flow_corrected_exploration.py | \
+      tests/experimental/rjmcmc/test_score_regularized_flow_corrected_promotion.py | \
+      tests/experimental/rjmcmc/test_score_regularized_flow_corrected_promotion_certify.py)
+      ;;
+    *)
+      echo "Recovery revision changes a non-allowlisted path: ${changed_path}" >&2
+      exit 64
+      ;;
+  esac
+done < <(git -C "${source_root}" diff --name-only \
+  "${NLE_ARTIFACT_REVISION}" "${NLE_REVISION}" --)
 mkdir -p "${log_directory}"
 if [[ -e "${log}" || -L "${log}" ]]; then
   echo "Refusing to replace an existing merger log." >&2
@@ -65,5 +91,6 @@ exec "${python_bin}" \
   examples/rjmcmc/score_regularized_flow_corrected_promotion_merge.py \
   --matrix-id "${NLE_MATRIX_ID}" \
   --attempt-tag "${NLE_ATTEMPT_TAG}" \
-  --source-git-revision "${NLE_REVISION}" \
+  --artifact-source-git-revision "${NLE_ARTIFACT_REVISION}" \
+  --evaluation-source-git-revision "${NLE_REVISION}" \
   --output-root "${run_root}"

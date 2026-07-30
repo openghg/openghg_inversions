@@ -145,3 +145,47 @@ Measured E2 resource use sets initial shared-node requests:
 
 Use `slurm-wakeup` for every long job. Preserve failures and publish
 completion markers last.
+
+## Predeclared streaming-merger recovery
+
+The two development arrays completed successfully, but the original merger
+retained XLA compilation state while evaluating all 12 selected flows in one
+Python process. This caused cumulative memory failure before any summary was
+published: `S=4096` failed at 3 GiB and 5 GiB, `S=16384` failed at 5 GiB, and
+the final `S=4096` resource-only check failed at an 8 GiB allocation with an
+LLVM mapped-section allocation error. These are execution failures, not
+scientific misses.
+
+Resource escalation stops at that measured 8 GiB failure. The recovery keeps
+the globally blind start-selection rule unchanged, then evaluates one case
+per fresh spawned process. A development worker sees only the already
+selected candidate and comparator for that case and shares their exact-grid
+cache; its process exits before the next case. This changes computational
+partition only. It does not change the catalogue, candidate, selected start,
+oracle, thresholds, simulator seed, reporting data, or any scientific
+calculation.
+
+The cross-size certifier applies the same boundary: each case's selected
+`S=4096` and `S=16384` flows are compared in one fresh spawned process, which
+exits before the next case. Parent processes rebind every returned case,
+configuration, selected report/artifact, runtime, execution, and all-start
+manifest identity before publication.
+
+The successful attempts and oracle remain bound to producer revision
+`3ef17c2253d5b56eda6ee5f028d704857a4e0d4b`. A recovery commit cannot
+truthfully relabel them as its own outputs, so promotion summary and
+certificate schema v2 record two exact identities:
+
+- `artifact_source_git_revision`, for the preserved attempt and oracle
+  producer;
+- `evaluation_source_git_revision`, for the streaming merger and certifier
+  implementation.
+
+Both revisions are authenticated independently by the committed launch
+scripts. The recovery writes only new create-only summaries below the same
+fresh promotion run root; it neither modifies nor copies the preserved
+attempts, oracle, failed logs, or completion markers. The first recovery
+keeps the original 3 GiB merger request because each disposable worker
+evaluates at most two selected flows, rather than accumulating compiled state
+for all 12. Its measured peak determines any later size-specific request; no
+speculative 5--8 GiB allocation is predeclared.

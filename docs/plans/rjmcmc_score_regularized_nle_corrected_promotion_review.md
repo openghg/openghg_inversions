@@ -69,3 +69,32 @@ development matrices if and only if the oracle passes.**
 This is not a promotion verdict. The candidate must pass every predeclared
 development and confirmation gate before any protected-data work is
 considered.
+
+## Streaming-merger recovery review
+
+After the preserved single-process merger attempts exhausted cumulative
+XLA/LLVM memory without publishing a summary, the recovery diff received two
+new independent exact-diff reviews. The reviewed implementation:
+
+- completes every model-selection-only start choice before loading the oracle
+  or spawning any scientific evaluation;
+- evaluates one case per fresh spawned process in both the matrix merger and
+  cross-size certifier;
+- rebinds returned case, sample, configuration, attempt, report payload/file,
+  artifact, runtime, execution, all-start manifest, and model-selection NLL
+  identities in the parent;
+- authenticates the untouched attempt/oracle producer SHA separately from
+  the recovery evaluation-code SHA in v2 summaries, certificates, and both
+  completion-marker paths;
+- refuses launch if the recovery revision changes any non-allowlisted
+  scientific/model/runtime path;
+- preserves the candidate, comparator, start-selection rule, public domains,
+  oracle, thresholds, and evidence-as-leakage-only invariant;
+- restores the first recovery request to 3 GiB, with later allocations
+  conditional on measured peak use.
+
+The complete corrected-NLE promotion-focused suite passed 70 tests. The two
+independent reviewers additionally reran 59 and 16 focused tests
+respectively. Ruff check and format check, focused Pyright including modified
+tests, both Slurm-script syntax checks, and `git diff --check` passed. Both
+reviewers returned **PASS** with no code or scientific blocker.

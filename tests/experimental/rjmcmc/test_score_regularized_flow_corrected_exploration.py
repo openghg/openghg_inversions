@@ -1336,6 +1336,10 @@ def test_corrected_slurm_assets_use_shared_nodes_and_array_contract() -> None:
     assert array_text.rstrip().endswith('--patience "${NLE_PATIENCE}"')
     assert merger_text.rstrip().endswith('--output-root "${run_root}"')
     assert certifier_text.rstrip().endswith('--certificate-tag "${NLE_CERTIFICATE_TAG}"')
+    for text in (merger_text, certifier_text):
+        assert "NLE_ARTIFACT_REVISION" in text
+        assert '--artifact-source-git-revision "${NLE_ARTIFACT_REVISION}"' in text
+        assert '--evaluation-source-git-revision "${NLE_REVISION}"' in text
 
 
 def test_promotion_execution_identity_freezes_environment(

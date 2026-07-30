@@ -11,7 +11,8 @@ module load git/2.45.1-pqk5
 
 : "${NLE_SOURCE:?Set NLE_SOURCE to the clean detached full-SHA worktree.}"
 : "${NLE_RUN_ROOT:?Set NLE_RUN_ROOT to the fresh corrected run root.}"
-: "${NLE_REVISION:?Set NLE_REVISION to the exact 40-character source SHA.}"
+: "${NLE_REVISION:?Set NLE_REVISION to the exact evaluation-code SHA.}"
+: "${NLE_ARTIFACT_REVISION:?Set NLE_ARTIFACT_REVISION to the exact attempt/oracle source SHA.}"
 : "${NLE_CERTIFICATE_TAG:?Set NLE_CERTIFICATE_TAG to a fresh immutable tag.}"
 : "${NLE_SUMMARY_ROOTS:?Set NLE_SUMMARY_ROOTS to colon-separated exact summary roots.}"
 
@@ -32,6 +33,31 @@ if [[ "$(git -C "${source_root}" rev-parse HEAD)" != "${NLE_REVISION}" ||
   echo "NLE_SOURCE must be the exact clean detached revision." >&2
   exit 64
 fi
+if [[ ! "${NLE_ARTIFACT_REVISION}" =~ ^[0-9a-f]{40}$ ]] ||
+   ! git -C "${source_root}" cat-file -e "${NLE_ARTIFACT_REVISION}^{commit}"; then
+  echo "NLE_ARTIFACT_REVISION must name one exact available commit." >&2
+  exit 64
+fi
+while IFS= read -r changed_path; do
+  case "${changed_path}" in
+    docs/plans/rjmcmc_score_regularized_nle_corrected_assets/run_corrected_promotion_merge.sbatch | \
+      docs/plans/rjmcmc_score_regularized_nle_corrected_assets/run_corrected_promotion_certify.sbatch | \
+      docs/plans/rjmcmc_score_regularized_nle_corrected_exploration_log.md | \
+      docs/plans/rjmcmc_score_regularized_nle_corrected_promotion_plan.md | \
+      docs/plans/rjmcmc_score_regularized_nle_corrected_promotion_review.md | \
+      examples/rjmcmc/score_regularized_flow_corrected_promotion_merge.py | \
+      examples/rjmcmc/score_regularized_flow_corrected_promotion_certify.py | \
+      tests/experimental/rjmcmc/test_score_regularized_flow_corrected_exploration.py | \
+      tests/experimental/rjmcmc/test_score_regularized_flow_corrected_promotion.py | \
+      tests/experimental/rjmcmc/test_score_regularized_flow_corrected_promotion_certify.py)
+      ;;
+    *)
+      echo "Recovery revision changes a non-allowlisted path: ${changed_path}" >&2
+      exit 64
+      ;;
+  esac
+done < <(git -C "${source_root}" diff --name-only \
+  "${NLE_ARTIFACT_REVISION}" "${NLE_REVISION}" --)
 IFS=: read -r -a summary_roots <<<"${NLE_SUMMARY_ROOTS}"
 if [[ "${#summary_roots[@]}" -ne 2 && "${#summary_roots[@]}" -ne 5 ]]; then
   echo "NLE_SUMMARY_ROOTS must contain the exact development pair or all five roots." >&2
@@ -73,6 +99,7 @@ cd "${source_root}"
 exec "${python_bin}" \
   examples/rjmcmc/score_regularized_flow_corrected_promotion_certify.py \
   "${summary_arguments[@]}" \
-  --source-git-revision "${NLE_REVISION}" \
+  --artifact-source-git-revision "${NLE_ARTIFACT_REVISION}" \
+  --evaluation-source-git-revision "${NLE_REVISION}" \
   --output-root "${run_root}" \
   --certificate-tag "${NLE_CERTIFICATE_TAG}"

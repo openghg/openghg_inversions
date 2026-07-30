@@ -5,10 +5,12 @@ from __future__ import annotations
 
 import argparse
 from collections import Counter, defaultdict
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
 import hashlib
 import json
 import math
+import multiprocessing
 from pathlib import Path
 from typing import Any, cast
 
@@ -16,7 +18,7 @@ from examples.rjmcmc import score_regularized_flow_corrected_array as arrays
 from examples.rjmcmc import score_regularized_flow_corrected_exploration as experiment
 from examples.rjmcmc import score_regularized_flow_corrected_merge as exploratory_merge
 
-SCHEMA = "rjmcmc-score-nle-corrected-promotion-summary-v1"
+SCHEMA = "rjmcmc-score-nle-corrected-promotion-summary-v2"
 PRIMARY_CONFIG_ID = "fisher_observation_joint"
 COMPARATOR_CONFIG_ID = "nll_only"
 FIXED_INITIALIZATION_INDICES = (0, 1, 2, 3)
@@ -488,10 +490,110 @@ def _primary_comparator_checks(
     return checks, diagnostics
 
 
+def _evaluate_case_group(
+    selected_by_config: dict[str, SelectedAttempt],
+    oracle_bundle: dict[str, Any],
+    *,
+    development: bool,
+) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
+    """Evaluate one case in one disposable process after global selection."""
+    exact_grid_cache: dict[int, Any] = {}
+    evaluated_by_config = {
+        config_id: _evaluate_selected(
+            selected,
+            oracle_bundle,
+            exact_grid_cache=exact_grid_cache,
+        )
+        for config_id, selected in sorted(selected_by_config.items())
+    }
+    rows = [
+        _post_selection_row(selected_by_config[config_id], evaluated_by_config[config_id])
+        for config_id in sorted(selected_by_config)
+    ]
+    if not development:
+        return rows, None
+    if set(evaluated_by_config) != {PRIMARY_CONFIG_ID, COMPARATOR_CONFIG_ID}:
+        raise ValueError("development case does not contain the frozen candidate and comparator.")
+    checks, diagnostics = _primary_comparator_checks(
+        evaluated_by_config[PRIMARY_CONFIG_ID],
+        evaluated_by_config[COMPARATOR_CONFIG_ID],
+    )
+    first = evaluated_by_config[PRIMARY_CONFIG_ID]
+    return rows, {
+        "case_id": first["target"]["case_id"],
+        "sample_count": first["target"]["sample_count"],
+        "checks": checks,
+        "diagnostics": diagnostics,
+        "pass": all(checks.values()),
+    }
+
+
+def _evaluate_case_isolated(
+    selected_by_config: dict[str, SelectedAttempt],
+    oracle_bundle: dict[str, Any],
+    *,
+    development: bool,
+) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
+    """Bound compiled-flow memory with one fresh spawned process per case."""
+    context = multiprocessing.get_context("spawn")
+    with ProcessPoolExecutor(max_workers=1, mp_context=context) as executor:
+        return executor.submit(
+            _evaluate_case_group,
+            selected_by_config,
+            oracle_bundle,
+            development=development,
+        ).result()
+
+
+def _validate_case_result(
+    rows: list[dict[str, Any]],
+    comparison: dict[str, Any] | None,
+    selected_by_config: dict[str, SelectedAttempt],
+    *,
+    case_id: str,
+    sample_count: int,
+    development: bool,
+) -> None:
+    """Fail closed if a worker result differs from its selected identities."""
+    rows_by_config = {str(row.get("config_id")): row for row in rows}
+    if len(rows_by_config) != len(rows) or set(rows_by_config) != set(selected_by_config):
+        raise ValueError("isolated case result has the wrong configuration set.")
+    for config_id, selected in selected_by_config.items():
+        row = rows_by_config[config_id]
+        expected_nll_manifest = {
+            str(item["initialization_index"]): item["model_selection_nll_nat_per_dimension"]
+            for item in selected.all_start_manifest
+        }
+        if (
+            row.get("case_id") != case_id
+            or row.get("sample_count") != sample_count
+            or row.get("selected_initialization_index") != selected.report["initialization_index"]
+            or row.get("selected_attempt_id") != selected.report["attempt_id"]
+            or row.get("selected_report_payload_sha256") != selected.report["sha256"]
+            or row.get("selected_report_file_sha256") != selected.report_file_sha256
+            or row.get("selected_artifact_file_sha256") != selected.artifact_file_sha256
+            or row.get("selected_runtime_identity_sha256") != selected.report["runtime_identity_sha256"]
+            or row.get("selected_execution_identity_sha256") != selected.report["execution_identity_sha256"]
+            or row.get("all_start_manifest") != list(selected.all_start_manifest)
+            or row.get("model_selection_nll_by_initialization") != expected_nll_manifest
+        ):
+            raise ValueError("isolated case result does not bind its selected input.")
+    if development:
+        if (
+            not isinstance(comparison, dict)
+            or comparison.get("case_id") != case_id
+            or comparison.get("sample_count") != sample_count
+        ):
+            raise ValueError("isolated development comparison has the wrong identity.")
+    elif comparison is not None:
+        raise ValueError("confirmation case unexpectedly returned a comparator.")
+
+
 def merge(
     matrix_id: str,
     attempt_tag: str,
-    source_git_revision: str,
+    artifact_source_git_revision: str,
+    evaluation_source_git_revision: str,
     output_root: Path,
 ) -> dict[str, Any]:
     """Authenticate attempts, select blindly, then evaluate selected artifacts."""
@@ -515,7 +617,7 @@ def merge(
         try:
             loaded = exploratory_merge._load_attempt(
                 attempt_root,
-                source_git_revision=source_git_revision,
+                source_git_revision=artifact_source_git_revision,
                 matrix_id=matrix_id,
                 array_task_id=task_id,
                 matrix_row=row,
@@ -567,41 +669,35 @@ def merge(
         selected_by_key = {key: _select_attempt(items) for key, items in sorted(grouped.items())}
         oracle_bundle = experiment._load_oracle_bundle(
             output_root / "oracle" / "oracle_bundle.json",
-            source_git_revision,
+            artifact_source_git_revision,
             promotion=True,
         )
-        exact_grid_caches: dict[str, dict[int, Any]] = defaultdict(dict)
-        evaluated_by_key = {
-            key: _evaluate_selected(
-                selected,
+        development = matrix_id in DEVELOPMENT_MATRIX_IDS
+        for case_id, sample_count in sorted(
+            {(case_id, sample_count) for case_id, sample_count, _ in selected_by_key}
+        ):
+            selected_by_config = {
+                config_id: selected_by_key[(case_id, sample_count, config_id)]
+                for selected_case_id, selected_sample_count, config_id in selected_by_key
+                if selected_case_id == case_id and selected_sample_count == sample_count
+            }
+            rows, comparison = _evaluate_case_isolated(
+                selected_by_config,
                 oracle_bundle,
-                exact_grid_cache=exact_grid_caches[key[0]],
+                development=development,
             )
-            for key, selected in selected_by_key.items()
-        }
-        selected_rows = [
-            _post_selection_row(selected_by_key[key], evaluated_by_key[key])
-            for key in sorted(selected_by_key)
-        ]
-        if matrix_id in DEVELOPMENT_MATRIX_IDS:
-            for case_id, sample_count in sorted(
-                {(case_id, sample_count) for case_id, sample_count, _ in selected_by_key}
-            ):
-                primary = evaluated_by_key[(case_id, sample_count, PRIMARY_CONFIG_ID)]
-                comparator = evaluated_by_key[(case_id, sample_count, COMPARATOR_CONFIG_ID)]
-                checks, diagnostics = _primary_comparator_checks(
-                    primary,
-                    comparator,
-                )
-                comparisons.append(
-                    {
-                        "case_id": case_id,
-                        "sample_count": sample_count,
-                        "checks": checks,
-                        "diagnostics": diagnostics,
-                        "pass": all(checks.values()),
-                    }
-                )
+            _validate_case_result(
+                rows,
+                comparison,
+                selected_by_config,
+                case_id=case_id,
+                sample_count=sample_count,
+                development=development,
+            )
+            selected_rows.extend(rows)
+            if comparison is not None:
+                comparisons.append(comparison)
+        selected_rows.sort(key=lambda row: (row["case_id"], row["sample_count"], row["config_id"]))
     primary_rows = [row for row in selected_rows if row["config_id"] == PRIMARY_CONFIG_ID]
     promotion_pass = (
         complete
@@ -613,7 +709,8 @@ def merge(
         "schema": SCHEMA,
         "matrix_id": matrix_id,
         "attempt_tag": attempt_tag,
-        "source_git_revision": source_git_revision,
+        "artifact_source_git_revision": artifact_source_git_revision,
+        "evaluation_source_git_revision": evaluation_source_git_revision,
         "expected_base_seed": expected_base_seed,
         "promotion_spec": promotion_spec,
         "expected_attempt_count": len(matrix),
@@ -632,6 +729,11 @@ def merge(
             "selection_uses_reporting_data": False,
             "selection_uses_oracle_evidence": False,
             "approximate_evidence_used_as_structural_weight": False,
+            "post_selection_evaluation_partition": (
+                "one fresh spawned process per case; candidate and comparator "
+                "share only that case's exact-grid cache"
+            ),
+            "evaluation_partition_changes_scientific_target": False,
         },
         "scientific_thresholds": SCIENTIFIC_THRESHOLDS,
         "selected_rows": selected_rows,
@@ -657,7 +759,8 @@ def _publish(
             summary_root / "INCOMPLETE.json",
             {
                 "schema": SCHEMA,
-                "source_git_revision": result["source_git_revision"],
+                "artifact_source_git_revision": result["artifact_source_git_revision"],
+                "evaluation_source_git_revision": result["evaluation_source_git_revision"],
                 "matrix_id": result["matrix_id"],
                 "attempt_tag": result["attempt_tag"],
                 "summary_path": str(summary_path),
@@ -671,7 +774,8 @@ def _publish(
         summary_root / "COMPLETE.json",
         {
             "schema": SCHEMA,
-            "source_git_revision": result["source_git_revision"],
+            "artifact_source_git_revision": result["artifact_source_git_revision"],
+            "evaluation_source_git_revision": result["evaluation_source_git_revision"],
             "matrix_id": result["matrix_id"],
             "attempt_tag": result["attempt_tag"],
             "summary_path": str(summary_path),
@@ -691,13 +795,15 @@ def main() -> None:
         required=True,
     )
     parser.add_argument("--attempt-tag", required=True)
-    parser.add_argument("--source-git-revision", required=True)
+    parser.add_argument("--artifact-source-git-revision", required=True)
+    parser.add_argument("--evaluation-source-git-revision", required=True)
     parser.add_argument("--output-root", type=Path, required=True)
     arguments = parser.parse_args()
     result = merge(
         arguments.matrix_id,
         arguments.attempt_tag,
-        arguments.source_git_revision,
+        arguments.artifact_source_git_revision,
+        arguments.evaluation_source_git_revision,
         arguments.output_root,
     )
     summary_root = (

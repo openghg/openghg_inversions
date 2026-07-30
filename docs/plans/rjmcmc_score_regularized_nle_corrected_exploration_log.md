@@ -377,3 +377,53 @@ The final exact-diff reviews returned PASS:
 The prelaunch hard stop is therefore cleared for the committed all-six oracle
 only. Development arrays remain conditional on its create-only passing
 certificate.
+
+## 2026-07-30T14:41:36Z — development complete; merger execution recovery
+
+The frozen promotion producer revision is
+`3ef17c2253d5b56eda6ee5f028d704857a4e0d4b`. Its detached source and fresh
+run root are:
+
+- `/group/chem/acrg/brendan_for_codex/rjmcmc_score_regularized_nle_corrected/source-3ef17c2253d5b56eda6ee5f028d704857a4e0d4b`;
+- `/group/chem/acrg/brendan_for_codex/rjmcmc_score_regularized_nle_corrected/run-3ef17c2253d5b56eda6ee5f028d704857a4e0d4b`.
+
+Oracle job `18218317` completed and its committed loader authenticated all six
+cases and all nested scientific checks. The bundle payload, exact bundle-file,
+and completion-file SHA-256 values are respectively
+`39e75bf40868649752a7508c5130bb86e90c4920db3cad5a34264f5484ec10ef`,
+`bb75cc79dd1baad2926a3773e0d3675286d6ec1eb2bb613c14b890749b05f583`,
+and `4d8d3e06cd218397f26626ff89ad50aa897f1c61fac91e039c7a50b9ab3e28cb`.
+
+Development arrays `18218592` (`S=4096`) and `18218594` (`S=16384`)
+completed all 48 tasks each. Their authenticated attempt-manifest SHA-256
+values are
+`a2d1a3acd9716ed331e1dbfe11402cad05e5c0582dde95e360e7f4c4fa8179c3`
+and `993393184faa9e30d676e682d4a2ab6fb8f674ec3ff5314d1556d0774d5a6e28`.
+
+The original single-process merger then exposed cumulative XLA/LLVM memory,
+without publishing any promotion summary:
+
+- job `18218822`, `S=4096`, 3 GiB: Slurm OOM after 5 minutes 8 seconds,
+  peak batch RSS `3144528K`;
+- job `18218991`, `S=4096`, 5 GiB: Slurm OOM after 8 minutes 25 seconds,
+  peak batch RSS `5241660K`;
+- job `18219026`, `S=16384`, 5 GiB: Slurm OOM after 7 minutes 5 seconds,
+  peak batch RSS `5241688K`;
+- job `18219047`, `S=4096`, final 8 GiB envelope check: LLVM/XLA mapped
+  section allocation failure after 9 minutes 26 seconds, peak batch RSS
+  `5742244K`.
+
+The four logs and empty summary state are preserved. Resource escalation is
+closed. A committed schema-v2 recovery partitions post-selection evaluation
+into one fresh spawned process per case, while retaining one global
+model-selection lock before any reporting or oracle evaluation. It records
+the preserved artifact/oracle producer SHA separately from the recovery
+evaluation-code SHA. No candidate, seed, threshold, selected start, or
+scientific calculation changes.
+
+The recovery also isolates each cross-size certifier case, preventing the
+same process-global compiler accumulation downstream. Parent-side validation
+rebinds all selected and all-start provenance returned by each worker.
+Seventy promotion-focused tests passed, together with Ruff check/format,
+focused Pyright, shell syntax, and `git diff --check`. Two independent
+re-reviews returned PASS after separately rerunning 59 and 16 focused tests.

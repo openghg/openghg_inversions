@@ -18,6 +18,7 @@ from examples.rjmcmc import (
 
 
 SOURCE_GIT_REVISION = "a" * 40
+EVALUATION_GIT_REVISION = "b" * 40
 
 
 def _summary(
@@ -41,7 +42,8 @@ def _summary(
         "schema": promotion.SCHEMA,
         "matrix_id": matrix_id,
         "attempt_tag": f"{matrix_id}-tag",
-        "source_git_revision": SOURCE_GIT_REVISION,
+        "artifact_source_git_revision": SOURCE_GIT_REVISION,
+        "evaluation_source_git_revision": EVALUATION_GIT_REVISION,
         "expected_base_seed": base_seed,
         "complete": True,
         "selected_rows": rows,
@@ -121,7 +123,8 @@ def test_certifier_requires_exact_development_pair_or_all_five_matrices(
 
     development_certificate = certify.certify(
         development,
-        source_git_revision=SOURCE_GIT_REVISION,
+        artifact_source_git_revision=SOURCE_GIT_REVISION,
+        evaluation_source_git_revision=EVALUATION_GIT_REVISION,
         output_root=tmp_path,
     )
     assert development_certificate["phase"] == "development"
@@ -133,13 +136,15 @@ def test_certifier_requires_exact_development_pair_or_all_five_matrices(
     with pytest.raises(ValueError, match="not the frozen development or final set"):
         certify.certify(
             development[:1],
-            source_git_revision=SOURCE_GIT_REVISION,
+            artifact_source_git_revision=SOURCE_GIT_REVISION,
+            evaluation_source_git_revision=EVALUATION_GIT_REVISION,
             output_root=tmp_path,
         )
     with pytest.raises(ValueError, match="duplicate matrix IDs"):
         certify.certify(
             [development[0], development[0]],
-            source_git_revision=SOURCE_GIT_REVISION,
+            artifact_source_git_revision=SOURCE_GIT_REVISION,
+            evaluation_source_git_revision=EVALUATION_GIT_REVISION,
             output_root=tmp_path,
         )
 
@@ -153,7 +158,8 @@ def test_certifier_requires_exact_development_pair_or_all_five_matrices(
     ]
     final_certificate = certify.certify(
         [*development, *confirmations],
-        source_git_revision=SOURCE_GIT_REVISION,
+        artifact_source_git_revision=SOURCE_GIT_REVISION,
+        evaluation_source_git_revision=EVALUATION_GIT_REVISION,
         output_root=tmp_path,
     )
     assert final_certificate["phase"] == "final_confirmation"
@@ -186,7 +192,8 @@ def test_certifier_fails_closed_on_missing_case_bad_seed_or_failed_matrix(
     with pytest.raises(ValueError, match="lacks one all-six primary row"):
         certify.certify(
             development,
-            source_git_revision=SOURCE_GIT_REVISION,
+            artifact_source_git_revision=SOURCE_GIT_REVISION,
+            evaluation_source_git_revision=EVALUATION_GIT_REVISION,
             output_root=tmp_path,
         )
 
@@ -218,7 +225,8 @@ def test_certifier_fails_closed_on_missing_case_bad_seed_or_failed_matrix(
     ]
     certificate = certify.certify(
         [*passing_development, *confirmations],
-        source_git_revision=SOURCE_GIT_REVISION,
+        artifact_source_git_revision=SOURCE_GIT_REVISION,
+        evaluation_source_git_revision=EVALUATION_GIT_REVISION,
         output_root=other_root,
     )
     assert certificate["checks"]["all_input_matrix_summaries_pass"] is False
@@ -237,24 +245,33 @@ def test_summary_loader_and_certificate_publication_bind_exact_bytes(
     )
     summary, identity = certify._load_summary(
         summary_root,
-        source_git_revision=SOURCE_GIT_REVISION,
+        artifact_source_git_revision=SOURCE_GIT_REVISION,
+        evaluation_source_git_revision=EVALUATION_GIT_REVISION,
     )
     assert identity["summary_payload_sha256"] == summary["sha256"]
     assert (
         identity["summary_file_sha256"]
         == hashlib.sha256((summary_root / "summary.json").read_bytes()).hexdigest()
     )
+    with pytest.raises(ValueError, match="identity does not replay"):
+        certify._load_summary(
+            summary_root,
+            artifact_source_git_revision=SOURCE_GIT_REVISION,
+            evaluation_source_git_revision="c" * 40,
+        )
     with (summary_root / "summary.json").open("ab") as stream:
         stream.write(b"\n")
     with pytest.raises(ValueError, match="identity does not replay"):
         certify._load_summary(
             summary_root,
-            source_git_revision=SOURCE_GIT_REVISION,
+            artifact_source_git_revision=SOURCE_GIT_REVISION,
+            evaluation_source_git_revision=EVALUATION_GIT_REVISION,
         )
 
     without_sha = {
         "schema": certify.SCHEMA,
-        "source_git_revision": SOURCE_GIT_REVISION,
+        "artifact_source_git_revision": SOURCE_GIT_REVISION,
+        "evaluation_source_git_revision": EVALUATION_GIT_REVISION,
         "phase": "development",
         "certificate_pass": True,
     }
@@ -268,7 +285,8 @@ def test_summary_loader_and_certificate_publication_bind_exact_bytes(
     completion = json.loads((certificate_root / "COMPLETE.json").read_text(encoding="ascii"))
     assert completion == {
         "schema": certify.SCHEMA,
-        "source_git_revision": SOURCE_GIT_REVISION,
+        "artifact_source_git_revision": SOURCE_GIT_REVISION,
+        "evaluation_source_git_revision": EVALUATION_GIT_REVISION,
         "phase": "development",
         "certificate_path": str(report_path),
         "certificate_payload_sha256": certificate["sha256"],
@@ -314,7 +332,6 @@ def test_cross_size_certifier_rejects_exact_grid_hash_mismatch(
         "selected_artifact_path": "unused",
         "selected_artifact_file_sha256": "a" * 64,
     }
-    summary = {"selected_rows": [selected_row]}
     oracle_bundle = {
         "selected_cases": {
             case_id: {
@@ -336,8 +353,61 @@ def test_cross_size_certifier_rejects_exact_grid_hash_mismatch(
         ValueError,
         match="exact grid differs from the oracle preflight",
     ):
-        certify._cross_size_rows(
-            summary,
-            summary,
-            oracle_bundle,
+        certify._cross_size_row(
+            case_id,
+            selected_row,
+            selected_row,
+            oracle_bundle["selected_cases"][case_id],
         )
+
+
+def test_cross_size_row_uses_one_disposable_spawned_worker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    context = object()
+    expected: dict[str, object] = {
+        "case_id": "case",
+        "small_selected_artifact_file_sha256": "a" * 64,
+        "large_selected_artifact_file_sha256": "b" * 64,
+    }
+    calls: list[tuple[object, ...]] = []
+
+    def get_context(method: str) -> object:
+        assert method == "spawn"
+        return context
+
+    class FakeFuture:
+        def result(self) -> dict[str, object]:
+            return expected
+
+    class FakeExecutor:
+        def __init__(self, *, max_workers: int, mp_context: object) -> None:
+            assert max_workers == 1
+            assert mp_context is context
+
+        def __enter__(self) -> FakeExecutor:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def submit(self, function: object, *args: object) -> FakeFuture:
+            assert function is certify._cross_size_row
+            calls.append(args)
+            return FakeFuture()
+
+    monkeypatch.setattr(certify.multiprocessing, "get_context", get_context)
+    monkeypatch.setattr(certify, "ProcessPoolExecutor", FakeExecutor)
+    small = {"selected_artifact_file_sha256": "a" * 64}
+    large = {"selected_artifact_file_sha256": "b" * 64}
+    oracle_case = {"reference": {}}
+
+    observed = certify._cross_size_row_isolated(
+        "case",
+        small,
+        large,
+        oracle_case,
+    )
+
+    assert observed == expected
+    assert calls == [("case", small, large, oracle_case)]

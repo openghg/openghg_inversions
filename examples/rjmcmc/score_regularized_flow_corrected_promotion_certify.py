@@ -4,8 +4,10 @@
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ProcessPoolExecutor
 import hashlib
 import json
+import multiprocessing
 from pathlib import Path
 from typing import Any, cast
 
@@ -16,7 +18,7 @@ from examples.rjmcmc import score_regularized_flow_corrected_exploration as expe
 from examples.rjmcmc import score_regularized_flow_corrected_promotion_merge as promotion
 from openghg_inversions.experimental.rjmcmc import aggregation_error_tiny_oracle
 
-SCHEMA = "rjmcmc-score-nle-corrected-promotion-certificate-v1"
+SCHEMA = "rjmcmc-score-nle-corrected-promotion-certificate-v2"
 DEVELOPMENT_MATRIX_IDS = frozenset(
     {
         "promotion_development_s4096",
@@ -31,7 +33,8 @@ CROSS_SIZE_THRESHOLDS = {
 _SUMMARY_COMPLETION_KEYS = frozenset(
     {
         "schema",
-        "source_git_revision",
+        "artifact_source_git_revision",
+        "evaluation_source_git_revision",
         "matrix_id",
         "attempt_tag",
         "summary_path",
@@ -83,7 +86,8 @@ def _weighted_quantile(
 def _load_summary(
     summary_root: Path,
     *,
-    source_git_revision: str,
+    artifact_source_git_revision: str,
+    evaluation_source_git_revision: str,
 ) -> tuple[dict[str, Any], dict[str, str]]:
     summary_path = summary_root / "summary.json"
     complete_path = summary_root / "COMPLETE.json"
@@ -104,7 +108,8 @@ def _load_summary(
     file_sha = hashlib.sha256(summary_bytes).hexdigest()
     if (
         completion["schema"] != promotion.SCHEMA
-        or completion["source_git_revision"] != source_git_revision
+        or completion["artifact_source_git_revision"] != artifact_source_git_revision
+        or completion["evaluation_source_git_revision"] != evaluation_source_git_revision
         or completion["matrix_id"] != summary.get("matrix_id")
         or completion["attempt_tag"] != summary.get("attempt_tag")
         or completion["summary_path"] != str(summary_path)
@@ -113,7 +118,8 @@ def _load_summary(
         or completion["promotion_pass"] != summary.get("promotion_pass")
         or completion["completion_marker_published_last"] is not True
         or summary.get("schema") != promotion.SCHEMA
-        or summary.get("source_git_revision") != source_git_revision
+        or summary.get("artifact_source_git_revision") != artifact_source_git_revision
+        or summary.get("evaluation_source_git_revision") != evaluation_source_git_revision
         or _sha256_json(without_sha) != payload_sha
     ):
         raise ValueError("promotion summary identity does not replay.")
@@ -149,6 +155,95 @@ def _artifact(row: dict[str, Any]) -> experiment.ScoreRegularizedRootFlow:
     )
 
 
+def _cross_size_row(
+    case_id: str,
+    small_row: dict[str, Any],
+    large_row: dict[str, Any],
+    oracle_case: dict[str, Any],
+) -> dict[str, Any]:
+    """Evaluate one cross-size case inside one disposable process."""
+    small_artifact = _artifact(small_row)
+    large_artifact = _artifact(large_row)
+    case = aggregation_error_tiny_oracle.tiny_root_case(case_id)
+    shapes, rate, _, observation, _ = case.arrays()
+    count = experiment.GRID_COUNTS[-1]
+    totals = np.asarray(
+        stats.gamma.ppf(
+            (np.arange(count, dtype=np.float64) + 0.5) / count,
+            a=float(shapes.sum()),
+            scale=1.0 / rate,
+        ),
+        dtype=np.float64,
+    )
+    small = experiment._vectorized_artifact_log_likelihood(
+        small_artifact,
+        observation,
+        totals,
+    )
+    large = experiment._vectorized_artifact_log_likelihood(
+        large_artifact,
+        observation,
+        totals,
+    )
+    difference = np.abs(small - large)
+    exact = np.asarray(
+        aggregation_error_tiny_oracle.root_conditional_log_likelihood(
+            case_id,
+            totals,
+            fraction_order=int(oracle_case["reference"]["fraction_order"]),
+        ),
+        dtype=np.float64,
+    )
+    preflight_rows = {int(row["count"]): row for row in oracle_case["metric_grid_preflight"]["rows"]}
+    expected_grid = preflight_rows[count]
+    if (
+        expected_grid["total_grid_sha256"]
+        != hashlib.sha256(np.ascontiguousarray(totals, dtype="<f8").tobytes()).hexdigest()
+        or expected_grid["exact_log_likelihood_sha256"]
+        != hashlib.sha256(np.ascontiguousarray(exact, dtype="<f8").tobytes()).hexdigest()
+    ):
+        raise ValueError("cross-size exact grid differs from the oracle preflight.")
+    exact_weights = np.exp(exact - _logsumexp_scalar(exact))
+    prior_weights = np.full(count, 1.0 / count)
+    metrics = {
+        "prior_weighted_median_absolute_log_likelihood_difference_nat": (
+            _weighted_quantile(difference, prior_weights, 0.5)
+        ),
+        "posterior_weighted_p99_absolute_log_likelihood_difference_nat": (
+            _weighted_quantile(difference, exact_weights, 0.99)
+        ),
+        "absolute_log_evidence_difference_nat": abs(_logsumexp_scalar(small) - _logsumexp_scalar(large)),
+    }
+    checks = {key: metrics[key] <= threshold for key, threshold in CROSS_SIZE_THRESHOLDS.items()}
+    return {
+        "case_id": case_id,
+        "grid_count": count,
+        "small_selected_artifact_file_sha256": (small_row["selected_artifact_file_sha256"]),
+        "large_selected_artifact_file_sha256": (large_row["selected_artifact_file_sha256"]),
+        "metrics": metrics,
+        "checks": checks,
+        "pass": all(checks.values()),
+        "evidence_difference_role": ("leakage diagnostic only; never a structural weight"),
+    }
+
+
+def _cross_size_row_isolated(
+    case_id: str,
+    small_row: dict[str, Any],
+    large_row: dict[str, Any],
+    oracle_case: dict[str, Any],
+) -> dict[str, Any]:
+    context = multiprocessing.get_context("spawn")
+    with ProcessPoolExecutor(max_workers=1, mp_context=context) as executor:
+        return executor.submit(
+            _cross_size_row,
+            case_id,
+            small_row,
+            large_row,
+            oracle_case,
+        ).result()
+
+
 def _cross_size_rows(
     small_summary: dict[str, Any],
     large_summary: dict[str, Any],
@@ -158,85 +253,40 @@ def _cross_size_rows(
     large_rows = _primary_rows(large_summary)
     rows: list[dict[str, Any]] = []
     for case_id in experiment.PROMOTION_CASES:
-        small_artifact = _artifact(small_rows[case_id])
-        large_artifact = _artifact(large_rows[case_id])
-        case = aggregation_error_tiny_oracle.tiny_root_case(case_id)
-        shapes, rate, _, observation, _ = case.arrays()
-        count = experiment.GRID_COUNTS[-1]
-        totals = np.asarray(
-            stats.gamma.ppf(
-                (np.arange(count, dtype=np.float64) + 0.5) / count,
-                a=float(shapes.sum()),
-                scale=1.0 / rate,
-            ),
-            dtype=np.float64,
+        row = _cross_size_row_isolated(
+            case_id,
+            small_rows[case_id],
+            large_rows[case_id],
+            oracle_bundle["selected_cases"][case_id],
         )
-        small = experiment._vectorized_artifact_log_likelihood(
-            small_artifact,
-            observation,
-            totals,
-        )
-        large = experiment._vectorized_artifact_log_likelihood(
-            large_artifact,
-            observation,
-            totals,
-        )
-        difference = np.abs(small - large)
-        exact = np.asarray(
-            aggregation_error_tiny_oracle.root_conditional_log_likelihood(
-                case_id,
-                totals,
-                fraction_order=int(oracle_bundle["selected_cases"][case_id]["reference"]["fraction_order"]),
-            ),
-            dtype=np.float64,
-        )
-        preflight_rows = {
-            int(row["count"]): row
-            for row in oracle_bundle["selected_cases"][case_id]["metric_grid_preflight"]["rows"]
-        }
-        expected_grid = preflight_rows[count]
         if (
-            expected_grid["total_grid_sha256"]
-            != hashlib.sha256(np.ascontiguousarray(totals, dtype="<f8").tobytes()).hexdigest()
-            or expected_grid["exact_log_likelihood_sha256"]
-            != hashlib.sha256(np.ascontiguousarray(exact, dtype="<f8").tobytes()).hexdigest()
+            row.get("case_id") != case_id
+            or row.get("small_selected_artifact_file_sha256")
+            != small_rows[case_id]["selected_artifact_file_sha256"]
+            or row.get("large_selected_artifact_file_sha256")
+            != large_rows[case_id]["selected_artifact_file_sha256"]
         ):
-            raise ValueError("cross-size exact grid differs from the oracle preflight.")
-        exact_weights = np.exp(exact - _logsumexp_scalar(exact))
-        prior_weights = np.full(count, 1.0 / count)
-        metrics = {
-            "prior_weighted_median_absolute_log_likelihood_difference_nat": (
-                _weighted_quantile(difference, prior_weights, 0.5)
-            ),
-            "posterior_weighted_p99_absolute_log_likelihood_difference_nat": (
-                _weighted_quantile(difference, exact_weights, 0.99)
-            ),
-            "absolute_log_evidence_difference_nat": abs(_logsumexp_scalar(small) - _logsumexp_scalar(large)),
-        }
-        checks = {key: metrics[key] <= threshold for key, threshold in CROSS_SIZE_THRESHOLDS.items()}
-        rows.append(
-            {
-                "case_id": case_id,
-                "grid_count": count,
-                "small_selected_artifact_file_sha256": (small_rows[case_id]["selected_artifact_file_sha256"]),
-                "large_selected_artifact_file_sha256": (large_rows[case_id]["selected_artifact_file_sha256"]),
-                "metrics": metrics,
-                "checks": checks,
-                "pass": all(checks.values()),
-                "evidence_difference_role": ("leakage diagnostic only; never a structural weight"),
-            }
-        )
+            raise ValueError("isolated cross-size row does not bind its selected inputs.")
+        rows.append(row)
     return rows
 
 
 def certify(
     summary_roots: list[Path],
     *,
-    source_git_revision: str,
+    artifact_source_git_revision: str,
+    evaluation_source_git_revision: str,
     output_root: Path,
 ) -> dict[str, Any]:
     """Authenticate the exact development pair or the full five matrices."""
-    loaded = [_load_summary(root, source_git_revision=source_git_revision) for root in summary_roots]
+    loaded = [
+        _load_summary(
+            root,
+            artifact_source_git_revision=artifact_source_git_revision,
+            evaluation_source_git_revision=evaluation_source_git_revision,
+        )
+        for root in summary_roots
+    ]
     summaries = {str(summary["matrix_id"]): summary for summary, _ in loaded}
     if len(summaries) != len(loaded):
         raise ValueError("certificate inputs contain duplicate matrix IDs.")
@@ -249,7 +299,7 @@ def certify(
         raise ValueError("certificate inputs are not the frozen development or final set.")
     oracle_bundle = experiment._load_oracle_bundle(
         output_root / "oracle" / "oracle_bundle.json",
-        source_git_revision,
+        artifact_source_git_revision,
         promotion=True,
     )
     small = summaries["promotion_development_s4096"]
@@ -278,7 +328,8 @@ def certify(
     certificate_pass = all(checks.values())
     without_sha: dict[str, Any] = {
         "schema": SCHEMA,
-        "source_git_revision": source_git_revision,
+        "artifact_source_git_revision": artifact_source_git_revision,
+        "evaluation_source_git_revision": evaluation_source_git_revision,
         "phase": phase,
         "input_matrix_ids": sorted(summaries),
         "input_summary_identities": [
@@ -323,7 +374,8 @@ def _publish(
         certificate_root / "COMPLETE.json",
         {
             "schema": SCHEMA,
-            "source_git_revision": certificate["source_git_revision"],
+            "artifact_source_git_revision": certificate["artifact_source_git_revision"],
+            "evaluation_source_git_revision": certificate["evaluation_source_git_revision"],
             "phase": certificate["phase"],
             "certificate_path": str(report_path),
             "certificate_payload_sha256": certificate["sha256"],
@@ -337,13 +389,15 @@ def _publish(
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--summary-root", type=Path, action="append", required=True)
-    parser.add_argument("--source-git-revision", required=True)
+    parser.add_argument("--artifact-source-git-revision", required=True)
+    parser.add_argument("--evaluation-source-git-revision", required=True)
     parser.add_argument("--output-root", type=Path, required=True)
     parser.add_argument("--certificate-tag", required=True)
     arguments = parser.parse_args()
     certificate = certify(
         arguments.summary_root,
-        source_git_revision=arguments.source_git_revision,
+        artifact_source_git_revision=arguments.artifact_source_git_revision,
+        evaluation_source_git_revision=arguments.evaluation_source_git_revision,
         output_root=arguments.output_root,
     )
     certificate_root = (
