@@ -427,3 +427,39 @@ rebinds all selected and all-start provenance returned by each worker.
 Seventy promotion-focused tests passed, together with Ruff check/format,
 focused Pyright, shell syntax, and `git diff --check`. Two independent
 re-reviews returned PASS after separately rerunning 59 and 16 focused tests.
+
+## 2026-07-30T16:11:44Z — terminal corrected E3 development result
+
+The per-case evaluator published both development summaries without changing
+the frozen selections or scientific calculations:
+
+- job `18219152` evaluated `S=4096` in 11 minutes 8 seconds, peaking at
+  `1772736K` under 3 GiB;
+- job `18219258` preserved a measured `S=16384` 3 GiB OOM at `3144532K`;
+- job `18219293` evaluated `S=16384` in 26 minutes 16 seconds, peaking at
+  `3653020K` under 5 GiB.
+
+The `S=4096` candidate passed zero of six selected rows. The `S=16384`
+candidate passed near-Gaussian two-cell and skewed two-cell only. The
+mandatory candidate-versus-NLL-only comparison passed three of six cases at
+each size. Both boundary-heavy cases retained large likelihood and gradient
+errors; at `S=16384`, their prior-weighted median likelihood errors were
+`0.637` and `0.761` nat and gradient errors were `1.55` and `2.70`.
+
+Cross-size certifier job `18219435` published a failing development
+certificate in 2 minutes 21 seconds, peaking at `663152K`. The nonzero job
+exit records the numerical failure rather than a technical crash. Cross-size
+likelihood stability passed both near-Gaussian cases and skewed two-cell, but
+failed skewed four-cell and both boundary-heavy cases. Certificate payload
+SHA-256 is
+`3affb2a5ded446f01594998e3b388519cf14f56cb842791eedc509e897bacfcd`;
+exact certificate-file SHA-256 is
+`8bd9cce9c2287f0e1672f4f4dd7d66d3a2f01922405e9115e6b729c47fe5dd66`.
+
+The frozen corrected `fisher_observation_joint` candidate therefore fails
+development promotion on the six public synthetic root projections and is
+ineligible for confirmation. No confirmation array or protected-data job
+ran. This does not reject NLE generally, other flow/objective/sample
+regimes, lognormal or other native-prior alternatives, or any hypothesis
+about protected PARIS observations. The final independent
+scientific-interpretation review returned PASS on this exact scope.

@@ -1,0 +1,304 @@
+{
+  "schema": "rjmcmc-score-nle-corrected-promotion-result-v1",
+  "scientific_status": "frozen_candidate_failed_development",
+  "artifact_source_git_revision": "3ef17c2253d5b56eda6ee5f028d704857a4e0d4b",
+  "evaluation_source_git_revision": "bf94e055854c285fe5cbf8176dab263c725e1886",
+  "branch": "codex/rjmcmc-score-nle-corrected-exploration",
+  "run_root": "/group/chem/acrg/brendan_for_codex/rjmcmc_score_regularized_nle_corrected/run-3ef17c2253d5b56eda6ee5f028d704857a4e0d4b",
+  "scope": {
+    "candidate": "fisher_observation_joint",
+    "comparator": "nll_only",
+    "cases": [
+      "near_gaussian__two_cell__root",
+      "near_gaussian__four_cell__root",
+      "skewed__two_cell__root",
+      "skewed__four_cell__root",
+      "boundary_heavy__two_cell__root",
+      "boundary_heavy__four_cell__root"
+    ],
+    "sample_counts": [
+      4096,
+      16384
+    ],
+    "base_seed": 1731,
+    "training_controls": {
+      "learning_rate": 0.0005,
+      "batch_size": 1024,
+      "microbatch_size": 64,
+      "maximum_total_epochs": 40,
+      "patience": 6
+    },
+    "fixed_initialization_indices": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "selection_rule": "minimum independent model-selection NLL per retained dimension; exact tie resolved by lowest initialization index",
+    "selection_uses_reporting_data": false,
+    "selection_uses_oracle_evidence": false,
+    "public_synthetic_only": true,
+    "protected_paris_data_accessed": false,
+    "paris_inversions_written": false
+  },
+  "oracle": {
+    "job_id": "18218317",
+    "pass": true,
+    "payload_sha256": "39e75bf40868649752a7508c5130bb86e90c4920db3cad5a34264f5484ec10ef",
+    "file_sha256": "bb75cc79dd1baad2926a3773e0d3675286d6ec1eb2bb613c14b890749b05f583",
+    "completion_file_sha256": "4d8d3e06cd218397f26626ff89ad50aa897f1c61fac91e039c7a50b9ab3e28cb"
+  },
+  "development": {
+    "promotion_pass": false,
+    "eligible_for_confirmation": false,
+    "matrices": {
+      "promotion_development_s4096": {
+        "array_job_id": "18218592",
+        "attempt_count": 48,
+        "attempt_tag": "promotion-dev-s4096-3ef17c2-v1",
+        "attempt_manifest_sha256": "a2d1a3acd9716ed331e1dbfe11402cad05e5c0582dde95e360e7f4c4fa8179c3",
+        "evaluation_job_id": "18219152",
+        "summary_payload_sha256": "a12583367743435fbef64f10202dca2ccf867a68a802dc17fcdce2efc895acfc",
+        "summary_file_sha256": "01249349b876d96188e751c1b6f0c4ca8c8060184c781738f8abb4761a2a5edb",
+        "completion_file_sha256": "4523072c2316cc71ef0b496e3584890775d32f9f8d6e151f37e1b6b624e6d0a5",
+        "selected_candidate_pass_count": 0,
+        "comparator_check_pass_count": 3
+      },
+      "promotion_development_s16384": {
+        "array_job_id": "18218594",
+        "attempt_count": 48,
+        "attempt_tag": "promotion-dev-s16384-3ef17c2-v1",
+        "attempt_manifest_sha256": "993393184faa9e30d676e682d4a2ab6fb8f674ec3ff5314d1556d0774d5a6e28",
+        "evaluation_job_id": "18219293",
+        "summary_payload_sha256": "ee504aca4979b7bf7e17d63097fb039cc0fc88363d120936ab84b960052c2be9",
+        "summary_file_sha256": "0b4d62beaa9fefc6c6b3d4143331b8288549e303dd213674a3789fadc1c916f4",
+        "completion_file_sha256": "db622ef95581139f85f512d740c3967e78d0e8db956ae18feeaeb9f244c16118",
+        "selected_candidate_pass_count": 2,
+        "comparator_check_pass_count": 3
+      }
+    },
+    "selected_candidate_metrics": [
+      {
+        "case_id": "near_gaussian__two_cell__root",
+        "sample_count": 4096,
+        "selected_initialization_index": 1,
+        "prior_weighted_median_absolute_log_likelihood_error_nat": 0.010417786664561501,
+        "posterior_weighted_p99_absolute_log_likelihood_error_nat": 0.041037600804996854,
+        "scaled_retained_mass_gradient_error": 0.246115080834231,
+        "absolute_log_evidence_error_nat": 0.009662193090541837,
+        "pass": false
+      },
+      {
+        "case_id": "near_gaussian__two_cell__root",
+        "sample_count": 16384,
+        "selected_initialization_index": 3,
+        "prior_weighted_median_absolute_log_likelihood_error_nat": 0.024109685520955715,
+        "posterior_weighted_p99_absolute_log_likelihood_error_nat": 0.03705004564366843,
+        "scaled_retained_mass_gradient_error": 0.012724293561644506,
+        "absolute_log_evidence_error_nat": 0.022557051250256865,
+        "pass": true
+      },
+      {
+        "case_id": "near_gaussian__four_cell__root",
+        "sample_count": 4096,
+        "selected_initialization_index": 2,
+        "prior_weighted_median_absolute_log_likelihood_error_nat": 0.013766381871915256,
+        "posterior_weighted_p99_absolute_log_likelihood_error_nat": 0.19883841438081018,
+        "scaled_retained_mass_gradient_error": 0.05959147328603758,
+        "absolute_log_evidence_error_nat": 0.02131802751269496,
+        "pass": false
+      },
+      {
+        "case_id": "near_gaussian__four_cell__root",
+        "sample_count": 16384,
+        "selected_initialization_index": 2,
+        "prior_weighted_median_absolute_log_likelihood_error_nat": 0.0167998534893955,
+        "posterior_weighted_p99_absolute_log_likelihood_error_nat": 0.07596420133948156,
+        "scaled_retained_mass_gradient_error": 1.3755270485184647,
+        "absolute_log_evidence_error_nat": 0.01203456729291097,
+        "pass": false
+      },
+      {
+        "case_id": "skewed__two_cell__root",
+        "sample_count": 4096,
+        "selected_initialization_index": 0,
+        "prior_weighted_median_absolute_log_likelihood_error_nat": 0.05356732509392881,
+        "posterior_weighted_p99_absolute_log_likelihood_error_nat": 0.151828039423626,
+        "scaled_retained_mass_gradient_error": 0.0012145980468105408,
+        "absolute_log_evidence_error_nat": 0.038183340794507525,
+        "pass": false
+      },
+      {
+        "case_id": "skewed__two_cell__root",
+        "sample_count": 16384,
+        "selected_initialization_index": 0,
+        "prior_weighted_median_absolute_log_likelihood_error_nat": 0.02588945913735069,
+        "posterior_weighted_p99_absolute_log_likelihood_error_nat": 0.15305560201623236,
+        "scaled_retained_mass_gradient_error": 0.036969473918163215,
+        "absolute_log_evidence_error_nat": 0.00930972378673528,
+        "pass": true
+      },
+      {
+        "case_id": "skewed__four_cell__root",
+        "sample_count": 4096,
+        "selected_initialization_index": 2,
+        "prior_weighted_median_absolute_log_likelihood_error_nat": 0.05231954677952855,
+        "posterior_weighted_p99_absolute_log_likelihood_error_nat": 0.1939027664406695,
+        "scaled_retained_mass_gradient_error": 0.10693130246336693,
+        "absolute_log_evidence_error_nat": 0.05748890558421804,
+        "pass": false
+      },
+      {
+        "case_id": "skewed__four_cell__root",
+        "sample_count": 16384,
+        "selected_initialization_index": 2,
+        "prior_weighted_median_absolute_log_likelihood_error_nat": 0.07771009729679657,
+        "posterior_weighted_p99_absolute_log_likelihood_error_nat": 0.12924926536158532,
+        "scaled_retained_mass_gradient_error": 0.16171983258989459,
+        "absolute_log_evidence_error_nat": 0.0697919464238912,
+        "pass": false
+      },
+      {
+        "case_id": "boundary_heavy__two_cell__root",
+        "sample_count": 4096,
+        "selected_initialization_index": 2,
+        "prior_weighted_median_absolute_log_likelihood_error_nat": 0.9287764566502119,
+        "posterior_weighted_p99_absolute_log_likelihood_error_nat": 0.4691071719674844,
+        "scaled_retained_mass_gradient_error": 10.3338209139612,
+        "absolute_log_evidence_error_nat": 0.25167827967823553,
+        "pass": false
+      },
+      {
+        "case_id": "boundary_heavy__two_cell__root",
+        "sample_count": 16384,
+        "selected_initialization_index": 2,
+        "prior_weighted_median_absolute_log_likelihood_error_nat": 0.6373349373211568,
+        "posterior_weighted_p99_absolute_log_likelihood_error_nat": 0.3794763345539014,
+        "scaled_retained_mass_gradient_error": 1.548180087451875,
+        "absolute_log_evidence_error_nat": 0.002285553080267233,
+        "pass": false
+      },
+      {
+        "case_id": "boundary_heavy__four_cell__root",
+        "sample_count": 4096,
+        "selected_initialization_index": 1,
+        "prior_weighted_median_absolute_log_likelihood_error_nat": 1.1336157803545746,
+        "posterior_weighted_p99_absolute_log_likelihood_error_nat": 0.7309882830983669,
+        "scaled_retained_mass_gradient_error": 5.035030038194769,
+        "absolute_log_evidence_error_nat": 0.3707440360804579,
+        "pass": false
+      },
+      {
+        "case_id": "boundary_heavy__four_cell__root",
+        "sample_count": 16384,
+        "selected_initialization_index": 2,
+        "prior_weighted_median_absolute_log_likelihood_error_nat": 0.7610812875484587,
+        "posterior_weighted_p99_absolute_log_likelihood_error_nat": 0.3130007736094358,
+        "scaled_retained_mass_gradient_error": 2.7047824953989337,
+        "absolute_log_evidence_error_nat": 0.09772390172681167,
+        "pass": false
+      }
+    ],
+    "cross_size": {
+      "job_id": "18219435",
+      "certificate_payload_sha256": "3affb2a5ded446f01594998e3b388519cf14f56cb842791eedc509e897bacfcd",
+      "certificate_file_sha256": "8bd9cce9c2287f0e1672f4f4dd7d66d3a2f01922405e9115e6b729c47fe5dd66",
+      "completion_file_sha256": "8194b0774586719723e664632b93b35b06d42c9701b4077932f99ae4b3846935",
+      "common_all_six_cross_size_stability": false,
+      "passing_case_count": 3,
+      "rows": [
+        {
+          "case_id": "near_gaussian__two_cell__root",
+          "prior_weighted_median_absolute_log_likelihood_difference_nat": 0.0200592621075647,
+          "posterior_weighted_p99_absolute_log_likelihood_difference_nat": 0.03714576664634406,
+          "absolute_log_evidence_difference_nat": 0.012894858159715028,
+          "pass": true
+        },
+        {
+          "case_id": "near_gaussian__four_cell__root",
+          "prior_weighted_median_absolute_log_likelihood_difference_nat": 0.02094261627666727,
+          "posterior_weighted_p99_absolute_log_likelihood_difference_nat": 0.15434707437942397,
+          "absolute_log_evidence_difference_nat": 0.00928346021978399,
+          "pass": true
+        },
+        {
+          "case_id": "skewed__two_cell__root",
+          "prior_weighted_median_absolute_log_likelihood_difference_nat": 0.048289112247035915,
+          "posterior_weighted_p99_absolute_log_likelihood_difference_nat": 0.09101367250552705,
+          "absolute_log_evidence_difference_nat": 0.047493064581242805,
+          "pass": true
+        },
+        {
+          "case_id": "skewed__four_cell__root",
+          "prior_weighted_median_absolute_log_likelihood_difference_nat": 0.12568291730504333,
+          "posterior_weighted_p99_absolute_log_likelihood_difference_nat": 0.27116091752013805,
+          "absolute_log_evidence_difference_nat": 0.12728085200810924,
+          "pass": false
+        },
+        {
+          "case_id": "boundary_heavy__two_cell__root",
+          "prior_weighted_median_absolute_log_likelihood_difference_nat": 0.3312428119492239,
+          "posterior_weighted_p99_absolute_log_likelihood_difference_nat": 0.566525385945865,
+          "absolute_log_evidence_difference_nat": 0.25396383275850276,
+          "pass": false
+        },
+        {
+          "case_id": "boundary_heavy__four_cell__root",
+          "prior_weighted_median_absolute_log_likelihood_difference_nat": 0.9490708298272068,
+          "posterior_weighted_p99_absolute_log_likelihood_difference_nat": 1.0367442783802936,
+          "absolute_log_evidence_difference_nat": 0.4684679378072696,
+          "pass": false
+        }
+      ]
+    }
+  },
+  "decision": {
+    "confirmation_run": false,
+    "protected_data_run": false,
+    "candidate_ready_for_promotion": false,
+    "scientific_conclusion": "The frozen corrected score-regularized flow and training objective do not approximate all six public projected native-Gamma likelihoods and retained-mass derivatives accurately enough for promotion.",
+    "scope_limit": "This result does not show that every neural likelihood estimator, support-aware flow, loss schedule, sample regime, lognormal model, or other native prior family must fail."
+  },
+  "technical_execution_recovery": {
+    "scientific_gate": false,
+    "jobs": [
+      {
+        "job_id": "18218822",
+        "role": "original_s4096_evaluator",
+        "state": "out_of_memory",
+        "requested_memory_gib": 3,
+        "peak_rss_kib": 3144528
+      },
+      {
+        "job_id": "18218991",
+        "role": "original_s4096_evaluator",
+        "state": "out_of_memory",
+        "requested_memory_gib": 5,
+        "peak_rss_kib": 5241660
+      },
+      {
+        "job_id": "18219047",
+        "role": "original_s4096_evaluator",
+        "state": "llvm_allocation_failure",
+        "requested_memory_gib": 8,
+        "peak_rss_kib": 5742244
+      },
+      {
+        "job_id": "18219026",
+        "role": "original_s16384_evaluator",
+        "state": "out_of_memory",
+        "requested_memory_gib": 5,
+        "peak_rss_kib": 5241688
+      },
+      {
+        "job_id": "18219258",
+        "role": "per_case_s16384_evaluator",
+        "state": "out_of_memory",
+        "requested_memory_gib": 3,
+        "peak_rss_kib": 3144532
+      }
+    ]
+  },
+  "final_independent_scientific_interpretation_review": "pass",
+  "scientific_invariant": "One common native model; exact marginal likelihood is invariant to computational partition and retained rank. Approximate evidence differences are leakage diagnostics only and are never structural weights."
+}

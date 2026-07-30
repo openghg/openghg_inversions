@@ -98,3 +98,21 @@ independent reviewers additionally reran 59 and 16 focused tests
 respectively. Ruff check and format check, focused Pyright including modified
 tests, both Slurm-script syntax checks, and `git diff --check` passed. Both
 reviewers returned **PASS** with no code or scientific blocker.
+
+## Final scientific-interpretation review
+
+After both development summaries and the cross-size certificate were
+published, one independent final review checked the numerical conclusion
+against the exact result artifacts. It returned **PASS** on the following
+scope:
+
+> The frozen corrected `fisher_observation_joint` candidate failed
+> development promotion on the six public synthetic root projections at
+> `S=4096` and `S=16384` and is ineligible for confirmation.
+
+The review confirmed that the preserved OOM/LLVM jobs are technical execution
+failures, whereas the recovered summaries give a genuine numerical
+rejection. It also confirmed that evidence differences remain leakage
+diagnostics only. The result is not a verdict on NLE generally, other flow
+architectures/objectives/sample regimes, lognormal or other native-prior
+alternatives, or protected PARIS data.
