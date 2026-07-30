@@ -16,6 +16,7 @@ fi
 experiment_worktree="$1"
 experiment_run_root="$2"
 experiment_source_sha="$3"
+experiment_git="/usr/bin/git"
 
 if [[ ! "${experiment_source_sha}" =~ ^[0-9a-f]{40}$ ]]; then
     echo "SOURCE_SHA must be a complete lowercase Git SHA" >&2
@@ -25,19 +26,28 @@ if [[ -z "${SLURM_ARRAY_TASK_ID:-}" ]]; then
     echo "SLURM_ARRAY_TASK_ID is required" >&2
     exit 2
 fi
+if [[ ! -x "${experiment_git}" ]]; then
+    echo "required Git executable is unavailable: ${experiment_git}" >&2
+    exit 2
+fi
+
+# BP1 compute jobs receive a deliberately minimal PATH.  Keep the Python
+# provenance checks functional as well as using an authenticated absolute Git
+# path in this launcher.
+export PATH="/usr/bin:/bin:${PATH:-}"
 
 cd "${experiment_worktree}"
 
-actual_sha="$(git rev-parse HEAD)"
+actual_sha="$("${experiment_git}" rev-parse HEAD)"
 if [[ "${actual_sha}" != "${experiment_source_sha}" ]]; then
     echo "detached worktree SHA mismatch: ${actual_sha}" >&2
     exit 3
 fi
-if [[ -n "$(git status --porcelain)" ]]; then
+if [[ -n "$("${experiment_git}" status --porcelain)" ]]; then
     echo "detached worktree is not clean" >&2
     exit 3
 fi
-if git symbolic-ref -q HEAD >/dev/null; then
+if "${experiment_git}" symbolic-ref -q HEAD >/dev/null; then
     echo "scientific worktree must be detached" >&2
     exit 3
 fi
