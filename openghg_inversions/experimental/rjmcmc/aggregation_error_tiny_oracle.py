@@ -209,6 +209,7 @@ def _conditional_log_likelihood_function(
     case: TinyRootCase,
     *,
     fraction_order: int,
+    root_chart: Literal["row-first", "column-first"] = "row-first",
 ) -> Any:
     shapes, rate, design, observation, noise = case.arrays()
     order = _positive_order(fraction_order, name="fraction_order")
@@ -245,6 +246,7 @@ def _conditional_log_likelihood_function(
             design,
             noise,
             tiling="root",
+            root_chart=root_chart,
         )
 
     return evaluate_four
@@ -255,12 +257,14 @@ def root_conditional_log_likelihood(
     total_mass: ArrayLike,
     *,
     fraction_order: int = 64,
+    root_chart: Literal["row-first", "column-first"] = "row-first",
 ) -> float | FloatArray:
     """Evaluate the exact allocation-marginalized likelihood at fixed total."""
     case = tiny_root_case(case_id)
     return _conditional_log_likelihood_function(
         case,
         fraction_order=fraction_order,
+        root_chart=root_chart,
     )(total_mass)
 
 
@@ -285,6 +289,8 @@ class AdaptiveRootSummary:
     posterior_median: float
     posterior_upper_0_975: float
     scaled_quadrature_error: float
+    maximum_relative_moment_quadrature_error: float
+    maximum_scaled_cdf_quadrature_error: float
     represented_prior_mass: float
     represented_posterior_mass: float
     posterior_mass_accounting: str
@@ -306,6 +312,7 @@ def adaptive_log_total_summary(
     case_id: str,
     *,
     fraction_order: int,
+    root_chart: Literal["row-first", "column-first"] = "row-first",
     epsabs: float = 1.0e-10,
     epsrel: float = 1.0e-10,
     prior_tail_probability: float = 1.0e-15,
@@ -338,6 +345,7 @@ def adaptive_log_total_summary(
     conditional = _conditional_log_likelihood_function(
         case,
         fraction_order=order,
+        root_chart=root_chart,
     )
     log_gamma_normalizer = gamma_shape * math.log(rate) - float(special.gammaln(gamma_shape))
 
@@ -375,8 +383,10 @@ def adaptive_log_total_summary(
     if not math.isfinite(normalizer) or normalizer <= 0.0:
         raise FloatingPointError("adaptive log-total normalizer is invalid.")
 
+    moment_relative_errors: list[float] = []
+
     def posterior_moment(order_value: int) -> float:
-        value, _ = _adaptive_quad(
+        value, error = _adaptive_quad(
             lambda z: scaled_density(z) * math.exp(order_value * z),
             lower_z,
             upper_z,
@@ -385,14 +395,18 @@ def adaptive_log_total_summary(
             points=(mode_z,),
             limit=400,
         )
+        moment_relative_errors.append(float(error / max(abs(value), np.finfo(np.float64).tiny)))
         return value / normalizer
 
     mean = posterior_moment(1)
     second = posterior_moment(2)
     sd = math.sqrt(max(second - mean * mean, 0.0))
 
+    maximum_cdf_error = 0.0
+
     def posterior_cdf(z: float) -> float:
-        value, _ = _adaptive_quad(
+        nonlocal maximum_cdf_error
+        value, error = _adaptive_quad(
             scaled_density,
             lower_z,
             z,
@@ -401,6 +415,7 @@ def adaptive_log_total_summary(
             points=(mode_z,) if z > mode_z else None,
             limit=400,
         )
+        maximum_cdf_error = max(maximum_cdf_error, error / normalizer)
         return value / normalizer
 
     def quantile(probability: float) -> float:
@@ -435,7 +450,11 @@ def adaptive_log_total_summary(
         "schema": SCHEMA,
         "case_id": case_id,
         "definitions_sha256": definitions_sha256(),
-        "method": "adaptive_log_total_with_gauss_jacobi_allocation",
+        "method": (
+            "adaptive_log_total_with_gauss_jacobi_allocation"
+            if root_chart == "row-first"
+            else "adaptive_log_total_with_column_first_gauss_jacobi_allocation"
+        ),
         "fraction_order": order,
         "lower_log_total": lower_z,
         "upper_log_total": upper_z,
@@ -449,6 +468,11 @@ def adaptive_log_total_summary(
         "posterior_median": quantile(0.5),
         "posterior_upper_0_975": quantile(0.975),
         "scaled_quadrature_error": normalizer_error / normalizer,
+        "maximum_relative_moment_quadrature_error": max(
+            moment_relative_errors,
+            default=0.0,
+        ),
+        "maximum_scaled_cdf_quadrature_error": maximum_cdf_error,
         "represented_prior_mass": prior_retained,
         "represented_posterior_mass": posterior_retained_lower_bound,
         "posterior_mass_accounting": (

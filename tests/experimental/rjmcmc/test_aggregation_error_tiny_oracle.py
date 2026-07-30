@@ -91,9 +91,7 @@ def test_independent_native_log_mass_tail_ladder_converges() -> None:
 
 
 def test_support_audit_rejects_a_mode_excluding_negligible_subset() -> None:
-    log_prior = np.log(
-        np.asarray((0.4999998, 1.0e-7, 0.5000000, 1.0e-7))
-    )
+    log_prior = np.log(np.asarray((0.4999998, 1.0e-7, 0.5000000, 1.0e-7)))
     log_likelihood = np.asarray((-40.0, -40.0, 0.0, -40.0))
     checkerboard = np.asarray((False, True, False, True))
     audit = oracle.audit_evaluation_support(

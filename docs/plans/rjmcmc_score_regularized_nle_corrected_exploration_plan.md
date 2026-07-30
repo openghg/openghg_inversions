@@ -147,12 +147,17 @@ Substantial work runs as SLURM arrays through `slurm-wakeup`. Resource
 requests are based on measured canaries and should not reserve exclusive
 nodes or excessive walltime without evidence.
 
-## E3: possible promotion
+## E3: frozen promotion experiment
 
-Promotion is permitted only after E2 identifies a credible, replayable
-candidate against converged references. A promotion plan must then freeze the
-candidate, largest justified sample sizes, confirmation seeds, all-six-case
-matrix, and thresholds before confirmation results are viewed.
+E2 identified `fisher_observation_joint`, with the start chosen solely by
+independent model-selection NLL, as a credible but not yet passing candidate.
+The candidate, NLL-only comparator, all-six v2 oracle, two development sizes,
+three confirmation seeds, thresholds, and cross-size certifier are frozen in
+`rjmcmc_score_regularized_nle_corrected_promotion_plan.md`.
+
+Workers defer reporting and oracle evaluation until after the four-start
+selection. Confirmation remains forbidden unless the common all-six
+two-size development certificate passes.
 
 PARIS, the protected catalogue, and G3-style target-rank science remain
 forbidden until such a candidate passes. A target-rank canary may be used for

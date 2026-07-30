@@ -17,6 +17,7 @@ import math
 import os
 from pathlib import Path
 import resource
+import sys
 import tempfile
 import time
 from typing import Any, cast
@@ -52,17 +53,41 @@ from openghg_inversions.experimental.rjmcmc import aggregation_error_tiny_oracle
 
 SCHEMA = "rjmcmc-score-nle-corrected-exploration-attempt-v1"
 PROTOCOL = "rjmcmc-score-nle-corrected-pcg64-exploration-v1"
-ORACLE_BUNDLE_SCHEMA = "rjmcmc-score-nle-corrected-oracle-bundle-v1"
+LEGACY_ORACLE_BUNDLE_SCHEMA = "rjmcmc-score-nle-corrected-oracle-bundle-v1"
+PROMOTION_ORACLE_BUNDLE_SCHEMA = "rjmcmc-score-nle-corrected-oracle-bundle-v2"
+ORACLE_BUNDLE_SCHEMA = PROMOTION_ORACLE_BUNDLE_SCHEMA
 SELECTED_CASES = (
     "near_gaussian__two_cell__root",
     "skewed__four_cell__root",
     "boundary_heavy__two_cell__root",
 )
+PROMOTION_CASES = aggregation_error_tiny_oracle.CASE_IDS
 OVERFIT_CASES = (
     "near_gaussian__two_cell__root",
     "skewed__four_cell__root",
 )
 STANDARD_SAMPLE_COUNTS = (4_096, 16_384)
+PROMOTION_SAMPLE_COUNTS = STANDARD_SAMPLE_COUNTS
+PROMOTION_ORACLE_ORDER_LADDERS = {
+    "near_gaussian__two_cell__root": (16, 32),
+    "near_gaussian__four_cell__root": (8, 12, 16),
+    "skewed__two_cell__root": (8, 16, 32),
+    "skewed__four_cell__root": (8, 12, 16),
+    "boundary_heavy__two_cell__root": (16, 32, 64),
+    "boundary_heavy__four_cell__root": (12, 16, 24),
+}
+PROMOTION_EXECUTION_ENVIRONMENT = {
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "JAX_ENABLE_X64": "True",
+    "JAX_PLATFORM_NAME": "cpu",
+    "XLA_FLAGS": (
+        "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1 "
+        "--xla_cpu_parallel_codegen_split_count=1"
+    ),
+}
 OVERFIT_SAMPLE_COUNT = 256
 CONFIG_IDS = (
     "nll_only",
@@ -573,18 +598,46 @@ def _logsumexp_scalar(values: np.ndarray) -> float:
 def _posterior_summary(
     totals: np.ndarray,
     log_likelihood: np.ndarray,
+    *,
+    prior_cdf_bin_gamma: tuple[float, float] | None = None,
 ) -> dict[str, float]:
     log_weights = log_likelihood - _logsumexp_scalar(log_likelihood)
     weights = np.exp(log_weights)
     mean = float(weights @ totals)
     sd = math.sqrt(float(weights @ np.square(totals - mean)))
+    if prior_cdf_bin_gamma is None:
+
+        def quantile(probability: float) -> float:
+            return _weighted_quantile(totals, weights, probability)
+
+    else:
+        gamma_shape, gamma_rate = prior_cdf_bin_gamma
+
+        def quantile(probability: float) -> float:
+            """Interpolate within the crossing equal-prior-probability bin."""
+            cumulative = np.cumsum(weights)
+            index = min(
+                int(np.searchsorted(cumulative, probability, side="left")),
+                weights.size - 1,
+            )
+            previous = 0.0 if index == 0 else float(cumulative[index - 1])
+            fraction = (probability - previous) / float(weights[index])
+            prior_probability = (index + min(max(fraction, 0.0), 1.0)) / weights.size
+            return float(
+                stats.gamma.ppf(
+                    prior_probability,
+                    a=gamma_shape,
+                    scale=1.0 / gamma_rate,
+                )
+            )
+
     return {
         "log_evidence": (_logsumexp_scalar(log_likelihood) - math.log(log_likelihood.size)),
         "mean_total": mean,
         "sd_total": sd,
-        "lower_0_025_total": _weighted_quantile(totals, weights, 0.025),
-        "median_total": _weighted_quantile(totals, weights, 0.5),
-        "upper_0_975_total": _weighted_quantile(totals, weights, 0.975),
+        "lower_0_025_total": quantile(0.025),
+        "median_total": quantile(0.5),
+        "upper_0_975_total": quantile(0.975),
     }
 
 
@@ -592,12 +645,36 @@ def _scientific_grid_evaluation(
     artifact: ScoreRegularizedRootFlow,
     case_id: str,
     oracle_reference: dict[str, Any],
+    *,
+    interpolate_posterior_quantiles: bool = False,
+    exact_grid_cache: dict[int, np.ndarray] | None = None,
+    promotion_oracle_case: dict[str, Any] | None = None,
 ) -> dict[str, object]:
     case = aggregation_error_tiny_oracle.tiny_root_case(case_id)
     shapes, rate, _, observation, _ = case.arrays()
     gamma_shape = float(shapes.sum())
     fraction_order = int(oracle_reference["fraction_order"])
     reference_sd = float(oracle_reference["posterior_sd_total"])
+    expected_grid_rows: dict[int, dict[str, Any]] = {}
+    gradient_preflight: dict[str, Any] | None = None
+    oracle_certificate_valid = True
+    if promotion_oracle_case is not None:
+        if (
+            promotion_oracle_case.get("reference") != oracle_reference
+            or promotion_oracle_case.get("pass") is not True
+        ):
+            raise ValueError("promotion oracle case/reference is not passing.")
+        metric_preflight = promotion_oracle_case.get("metric_grid_preflight")
+        gradient_preflight = promotion_oracle_case.get("gradient_preflight")
+        if (
+            not isinstance(metric_preflight, dict)
+            or metric_preflight.get("pass") is not True
+            or not isinstance(gradient_preflight, dict)
+            or gradient_preflight.get("pass") is not True
+        ):
+            raise ValueError("promotion metric/gradient preflight is not passing.")
+        expected_grid_rows = {int(row["count"]): row for row in metric_preflight["rows"]}
+        oracle_certificate_valid = True
     ladder: list[dict[str, Any]] = []
     final_totals: np.ndarray | None = None
     final_exact: np.ndarray | None = None
@@ -612,21 +689,49 @@ def _scientific_grid_evaluation(
             ),
             dtype=np.float64,
         )
-        exact = np.asarray(
-            aggregation_error_tiny_oracle.root_conditional_log_likelihood(
-                case_id,
-                totals,
-                fraction_order=fraction_order,
-            ),
-            dtype=np.float64,
+        if exact_grid_cache is not None and count in exact_grid_cache:
+            exact = np.asarray(
+                exact_grid_cache[count],
+                dtype=np.float64,
+            )
+            if exact.shape != totals.shape:
+                raise ValueError("cached exact metric grid has the wrong shape.")
+        else:
+            exact = np.asarray(
+                aggregation_error_tiny_oracle.root_conditional_log_likelihood(
+                    case_id,
+                    totals,
+                    fraction_order=fraction_order,
+                ),
+                dtype=np.float64,
+            )
+            if exact_grid_cache is not None:
+                exact_grid_cache[count] = exact
+        expected_grid_row = expected_grid_rows.get(count)
+        if expected_grid_row is not None:
+            observed_total_sha256 = _sha256_bytes(np.ascontiguousarray(totals, dtype="<f8").tobytes())
+            observed_exact_sha256 = _sha256_bytes(np.ascontiguousarray(exact, dtype="<f8").tobytes())
+            if (
+                expected_grid_row.get("total_grid_sha256") != observed_total_sha256
+                or expected_grid_row.get("exact_log_likelihood_sha256") != observed_exact_sha256
+            ):
+                raise ValueError("scientific exact grid differs from the oracle preflight.")
+        quantile_rule = (gamma_shape, rate) if interpolate_posterior_quantiles else None
+        exact_summary = _posterior_summary(
+            totals,
+            exact,
+            prior_cdf_bin_gamma=quantile_rule,
         )
-        exact_summary = _posterior_summary(totals, exact)
         learned = _vectorized_artifact_log_likelihood(
             artifact,
             observation,
             totals,
         )
-        learned_summary = _posterior_summary(totals, learned)
+        learned_summary = _posterior_summary(
+            totals,
+            learned,
+            prior_cdf_bin_gamma=quantile_rule,
+        )
         exact_weights = np.exp(exact - _logsumexp_scalar(exact))
         error = np.abs(learned - exact)
         prior_weights = np.full(totals.size, 1.0 / totals.size)
@@ -676,8 +781,17 @@ def _scientific_grid_evaluation(
         final_learned = learned
     if final_totals is None or final_exact is None or final_learned is None:  # pragma: no cover
         raise RuntimeError("scientific grid ladder is empty.")
-    exact_summary = _posterior_summary(final_totals, final_exact)
-    learned_summary = _posterior_summary(final_totals, final_learned)
+    quantile_rule = (gamma_shape, rate) if interpolate_posterior_quantiles else None
+    exact_summary = _posterior_summary(
+        final_totals,
+        final_exact,
+        prior_cdf_bin_gamma=quantile_rule,
+    )
+    learned_summary = _posterior_summary(
+        final_totals,
+        final_learned,
+        prior_cdf_bin_gamma=quantile_rule,
+    )
     exact_weights = np.exp(final_exact - _logsumexp_scalar(final_exact))
     error = np.abs(final_learned - final_exact)
     prior_weights = np.full(final_totals.size, 1.0 / final_totals.size)
@@ -718,21 +832,49 @@ def _scientific_grid_evaluation(
         final_totals.size - 1,
     )
     mode_representative = float(final_totals[mode_bin])
-    step = 2.0**-14
+    gradient_steps = (2.0**-12, 2.0**-13, 2.0**-14)
 
-    def log_total_gradient(function: Any) -> float:
+    def log_total_gradient(function: Any, step: float) -> float:
         return (
             float(function(mode_total * math.exp(step))) - float(function(mode_total * math.exp(-step)))
         ) / (2.0 * step)
 
-    exact_gradient = log_total_gradient(
-        lambda total: aggregation_error_tiny_oracle.root_conditional_log_likelihood(
-            case_id,
-            total,
-            fraction_order=fraction_order,
+    gradient_ladder = []
+    for gradient_step in gradient_steps:
+        exact_gradient_at_step = log_total_gradient(
+            lambda total: aggregation_error_tiny_oracle.root_conditional_log_likelihood(
+                case_id,
+                total,
+                fraction_order=fraction_order,
+            ),
+            gradient_step,
         )
+        learned_gradient_at_step = log_total_gradient(
+            lambda total: artifact.log_likelihood(observation, total),
+            gradient_step,
+        )
+        gradient_ladder.append(
+            {
+                "log_total_step": gradient_step,
+                "exact_log_total_gradient": exact_gradient_at_step,
+                "learned_log_total_gradient": learned_gradient_at_step,
+                "scaled_error": (
+                    abs(learned_gradient_at_step - exact_gradient_at_step)
+                    / (1.0 + abs(exact_gradient_at_step))
+                ),
+            }
+        )
+    exact_gradient = float(gradient_ladder[-1]["exact_log_total_gradient"])
+    learned_gradient = float(gradient_ladder[-1]["learned_log_total_gradient"])
+    gradient_scaled_error_delta = abs(
+        float(gradient_ladder[-1]["scaled_error"]) - float(gradient_ladder[-2]["scaled_error"])
     )
-    learned_gradient = log_total_gradient(lambda total: artifact.log_likelihood(observation, total))
+    gradient_numerically_interpretable = True
+    if gradient_preflight is not None:
+        gradient_numerically_interpretable = (
+            abs(exact_gradient - float(gradient_preflight["reference_gradient"]))
+            <= 1.0e-12 * (1.0 + abs(exact_gradient))
+        ) and gradient_scaled_error_delta <= 0.005
     previous = ladder[-2]
     final = ladder[-1]
     previous_exact = previous["exact_posterior"]
@@ -822,12 +964,16 @@ def _scientific_grid_evaluation(
             float(final["exact_log_evidence_error_from_adaptive_reference_nat"])
             <= GRID_EVIDENCE_TOLERANCE_NAT
         ),
-        "final_exact_posterior_matches_adaptive": all(
+        "final_exact_posterior_mean_matches_adaptive": (
+            float(final["exact_posterior_errors_from_adaptive_reference"]["mean_error_reference_sd"])
+            <= GRID_POSTERIOR_LOCATION_TOLERANCE_REFERENCE_SD
+        ),
+        "final_exact_posterior_sd_matches_adaptive": (
+            float(final["exact_posterior_errors_from_adaptive_reference"]["sd_relative_error"])
+            <= GRID_POSTERIOR_SD_RELATIVE_TOLERANCE
+        ),
+        "final_exact_posterior_quantiles_match_adaptive": all(
             (
-                float(final["exact_posterior_errors_from_adaptive_reference"]["mean_error_reference_sd"])
-                <= GRID_POSTERIOR_LOCATION_TOLERANCE_REFERENCE_SD,
-                float(final["exact_posterior_errors_from_adaptive_reference"]["sd_relative_error"])
-                <= GRID_POSTERIOR_SD_RELATIVE_TOLERANCE,
                 float(
                     final["exact_posterior_errors_from_adaptive_reference"][
                         "interval_endpoint_error_reference_sd"
@@ -839,7 +985,39 @@ def _scientific_grid_evaluation(
             )
         ),
     }
-    grid_converged = all(convergence_checks.values())
+    metric_interpretability = {
+        "prior_weighted_median_log_likelihood_error": (convergence_checks["prior_median_error"]),
+        "posterior_weighted_p99_log_likelihood_error": (convergence_checks["posterior_p99_error"]),
+        "log_evidence": all(
+            convergence_checks[key]
+            for key in (
+                "exact_log_evidence",
+                "learned_log_evidence",
+                "final_exact_evidence_matches_adaptive",
+            )
+        ),
+        "posterior_moments": all(
+            convergence_checks[key]
+            for key in (
+                "exact_posterior_mean",
+                "learned_posterior_mean",
+                "exact_posterior_sd",
+                "learned_posterior_sd",
+                "final_exact_posterior_mean_matches_adaptive",
+                "final_exact_posterior_sd_matches_adaptive",
+            )
+        ),
+        "posterior_quantiles": all(
+            convergence_checks[key]
+            for key in (
+                "exact_posterior_endpoints",
+                "learned_posterior_endpoints",
+                "final_exact_posterior_quantiles_match_adaptive",
+            )
+        ),
+        "retained_mass_gradient": gradient_numerically_interpretable,
+    }
+    grid_converged = all(metric_interpretability.values())
     exact_grid_errors = final["exact_posterior_errors_from_adaptive_reference"]
     learned_posterior_errors = {
         "mean_error_reference_sd": abs(
@@ -860,6 +1038,11 @@ def _scientific_grid_evaluation(
     return {
         "grid": {
             "construction": "midpoint prior-CDF strata",
+            "posterior_quantile_rule": (
+                "within-bin interpolation under piecewise-constant likelihood"
+                if interpolate_posterior_quantiles
+                else "crossing-bin midpoint"
+            ),
             "tail_bin_convention": (
                 "first and last midpoint represent their complete prior "
                 "probability bins; no conditional subset renormalization"
@@ -914,12 +1097,17 @@ def _scientific_grid_evaluation(
             "exact_log_total_gradient": exact_gradient,
             "learned_log_total_gradient": learned_gradient,
             "scaled_error": abs(learned_gradient - exact_gradient) / (1.0 + abs(exact_gradient)),
+            "step_ladder": gradient_ladder,
+            "last_two_scaled_error_delta": gradient_scaled_error_delta,
+            "numerical_tolerance": 0.005,
         },
         "normalization": {
             "normalized_density_by_flow_and_jacobian_construction": True,
             "finite_on_complete_metric_grid": bool(np.all(np.isfinite(final_learned))),
         },
         "scientific_metrics_interpretable": grid_converged,
+        "metric_interpretability": metric_interpretability,
+        "oracle_certificate_valid": oracle_certificate_valid,
         "vectorized_public_likelihood_parity": {
             "evaluated_indices": parity_indices.tolist(),
             "maximum_absolute_error_nat": parity_error,
@@ -931,10 +1119,17 @@ def _scientific_grid_evaluation(
     }
 
 
-def _load_oracle_bundle(path: Path, source_git_revision: str) -> dict[str, Any]:
+def _load_oracle_bundle(
+    path: Path,
+    source_git_revision: str,
+    *,
+    promotion: bool = False,
+) -> dict[str, Any]:
     report_bytes = path.read_bytes()
     payload = json.loads(report_bytes.decode("ascii"))
-    if payload.get("schema") != ORACLE_BUNDLE_SCHEMA:
+    expected_schema = PROMOTION_ORACLE_BUNDLE_SCHEMA if promotion else LEGACY_ORACLE_BUNDLE_SCHEMA
+    expected_cases = PROMOTION_CASES if promotion else SELECTED_CASES
+    if payload.get("schema") != expected_schema:
         raise ValueError("oracle bundle has the wrong schema.")
     if payload.get("source_git_revision") != source_git_revision:
         raise ValueError("oracle bundle Git revision differs from the attempt.")
@@ -949,7 +1144,7 @@ def _load_oracle_bundle(path: Path, source_git_revision: str) -> dict[str, Any]:
     completion_path = path.parent / "COMPLETE.json"
     completion = json.loads(completion_path.read_text(encoding="ascii"))
     if completion != {
-        "schema": ORACLE_BUNDLE_SCHEMA,
+        "schema": expected_schema,
         "source_git_revision": source_git_revision,
         "report_path": str(path),
         "oracle_bundle_payload_sha256": observed_sha,
@@ -958,7 +1153,7 @@ def _load_oracle_bundle(path: Path, source_git_revision: str) -> dict[str, Any]:
     }:
         raise ValueError("oracle completion marker does not bind the bundle.")
     selected = payload.get("selected_cases")
-    if not isinstance(selected, dict) or set(selected) != set(SELECTED_CASES):
+    if not isinstance(selected, dict) or set(selected) != set(expected_cases):
         raise ValueError("oracle bundle selected-case catalogue is incomplete.")
     for case_id, raw_case in selected.items():
         if not isinstance(raw_case, dict) or raw_case.get("pass") is not True:
@@ -984,6 +1179,43 @@ def _load_oracle_bundle(path: Path, source_git_revision: str) -> dict[str, Any]:
                 or _sha256_json(summary_without_sha) != summary_sha
             ):
                 raise ValueError("nested oracle summary identity does not replay.")
+        if promotion:
+            observed_orders = tuple(int(raw_summary["fraction_order"]) for raw_summary in ladder)
+            if observed_orders != PROMOTION_ORACLE_ORDER_LADDERS[case_id]:
+                raise ValueError("promotion oracle uses the wrong allocation-order ladder.")
+            grid = raw_case.get("metric_grid_preflight")
+            if not isinstance(grid, dict) or grid.get("pass") is not True:
+                raise ValueError("promotion metric-grid preflight is absent or failing.")
+            grid_without_sha = dict(grid)
+            grid_sha = grid_without_sha.pop("sha256", None)
+            grid_rows = grid.get("rows")
+            if (
+                grid.get("case_id") != case_id
+                or grid.get("counts") != list(GRID_COUNTS[-2:])
+                or not isinstance(grid_rows, list)
+                or [row.get("count") for row in grid_rows if isinstance(row, dict)] != list(GRID_COUNTS[-2:])
+                or not all(isinstance(row, dict) and row.get("finite") is True for row in grid_rows)
+                or _sha256_json(grid_without_sha) != grid_sha
+                or not grid.get("checks")
+                or not all(grid.get("checks", {}).values())
+            ):
+                raise ValueError("promotion metric-grid preflight identity differs.")
+            gradient = raw_case.get("gradient_preflight")
+            if not isinstance(gradient, dict) or gradient.get("pass") is not True:
+                raise ValueError("promotion gradient preflight is absent or failing.")
+            gradient_without_sha = dict(gradient)
+            gradient_sha = gradient_without_sha.pop("sha256", None)
+            if (
+                gradient.get("case_id") != case_id
+                or gradient.get("final_fraction_order") != PROMOTION_ORACLE_ORDER_LADDERS[case_id][-1]
+                or gradient.get("previous_fraction_order") != PROMOTION_ORACLE_ORDER_LADDERS[case_id][-2]
+                or [row.get("log_total_step") for row in gradient.get("final_order_step_ladder", [])]
+                != [2.0**-12, 2.0**-13, 2.0**-14]
+                or _sha256_json(gradient_without_sha) != gradient_sha
+                or not gradient.get("checks")
+                or not all(gradient.get("checks", {}).values())
+            ):
+                raise ValueError("promotion gradient preflight identity differs.")
     boundary = payload.get("boundary_independent_certificate")
     if not isinstance(boundary, dict) or boundary.get("pass") is not True:
         raise ValueError("boundary independent certificate is absent or failing.")
@@ -991,6 +1223,91 @@ def _load_oracle_bundle(path: Path, source_git_revision: str) -> dict[str, Any]:
     boundary_sha = boundary_without_sha.pop("sha256", None)
     if _sha256_json(boundary_without_sha) != boundary_sha:
         raise ValueError("boundary certificate SHA-256 does not replay.")
+    if promotion:
+        certificates = payload.get("independent_certificates")
+        expected_certificate_cases = {
+            "near_gaussian__four_cell__root",
+            "skewed__two_cell__root",
+            "skewed__four_cell__root",
+            "boundary_heavy__four_cell__root",
+        }
+        if not isinstance(certificates, dict) or set(certificates) != expected_certificate_cases:
+            raise ValueError("promotion independent-certificate catalogue differs.")
+        for case_id, certificate in certificates.items():
+            if not isinstance(certificate, dict) or certificate.get("pass") is not True:
+                raise ValueError("promotion independent certificate is failing.")
+            certificate_without_sha = dict(certificate)
+            certificate_sha = certificate_without_sha.pop("sha256", None)
+            if _sha256_json(certificate_without_sha) != certificate_sha:
+                raise ValueError("promotion independent certificate SHA-256 differs.")
+            selected_reference = selected[case_id]["reference"]
+            if (
+                certificate.get("case_id") != case_id
+                or not certificate.get("checks")
+                or not all(certificate.get("checks", {}).values())
+            ):
+                raise ValueError("promotion independent certificate semantics differ.")
+            if case_id.endswith("__four_cell__root"):
+                column = certificate.get("column_summary")
+                if not isinstance(column, dict):
+                    raise ValueError("four-cell column-chart summary is absent.")
+                column_without_sha = dict(column)
+                column_sha = column_without_sha.pop("sha256", None)
+                if (
+                    certificate.get("fraction_order") != selected_reference["fraction_order"]
+                    or certificate.get("row_reference_sha256") != selected_reference["sha256"]
+                    or column.get("schema") != aggregation_error_tiny_oracle.SCHEMA
+                    or column.get("definitions_sha256") != aggregation_error_tiny_oracle.definitions_sha256()
+                    or column.get("case_id") != case_id
+                    or column.get("fraction_order") != selected_reference["fraction_order"]
+                    or "column_first" not in str(column.get("method"))
+                    or _sha256_json(column_without_sha) != column_sha
+                ):
+                    raise ValueError("four-cell column-chart summary identity differs.")
+            else:
+                summaries = certificate.get("summaries")
+                if (
+                    case_id != "skewed__two_cell__root"
+                    or certificate.get("lower_log_mass_ladder") != [-80.0, -120.0]
+                    or not isinstance(summaries, list)
+                    or len(summaries) != 2
+                ):
+                    raise ValueError("skewed native-log-mass certificate differs.")
+                for summary_index, summary in enumerate(summaries):
+                    summary_without_sha = dict(summary)
+                    summary_sha = summary_without_sha.pop("sha256", None)
+                    if (
+                        summary.get("schema") != aggregation_error_tiny_oracle.SCHEMA
+                        or summary.get("definitions_sha256")
+                        != aggregation_error_tiny_oracle.definitions_sha256()
+                        or summary.get("case_id") != "skewed__two_cell__root"
+                        or summary.get("method") != "adaptive_native_two_dimensional_log_masses"
+                        or summary.get("lower_log_mass")
+                        != certificate["lower_log_mass_ladder"][summary_index]
+                        or _sha256_json(summary_without_sha) != summary_sha
+                    ):
+                        raise ValueError("native-log-mass summary SHA-256 differs.")
+        boundary_four = certificates["boundary_heavy__four_cell__root"].get("fixed_log_total_column_chart")
+        if (
+            not isinstance(boundary_four, dict)
+            or boundary_four.get("method") != "fixed Gauss-Legendre in log(total)"
+            or boundary_four.get("chart") != "column-first"
+            or boundary_four.get("fraction_order") != 24
+            or boundary_four.get("prior_tail_probability") != 1.0e-15
+            or boundary_four.get("total_order_ladder") != [512, 1024, 2048]
+            or boundary_four.get("pass") is not True
+            or not boundary_four.get("checks")
+            or not all(boundary_four.get("checks", {}).values())
+        ):
+            raise ValueError("boundary four-cell fixed-log-total certificate differs.")
+        checks = payload.get("checks")
+        if not isinstance(checks, dict) or not checks or not all(checks.values()):
+            raise ValueError("promotion oracle top-level checks are not all passing.")
+        from examples.rjmcmc import (
+            score_regularized_flow_corrected_oracle as promotion_oracle,
+        )
+
+        promotion_oracle.validate_bundle_semantics(payload)
     return payload
 
 
@@ -1010,6 +1327,39 @@ def _runtime_versions() -> dict[str, str]:
     }
 
 
+def _runtime_identity() -> dict[str, Any]:
+    repository_root = Path(__file__).resolve().parents[2]
+    lock_path = repository_root / "pixi.lock"
+    if not lock_path.is_file() or lock_path.is_symlink():
+        raise ValueError("runtime lock file must be a regular file.")
+    without_sha: dict[str, Any] = {
+        "schema": "rjmcmc-score-nle-runtime-identity-v1",
+        "python_version": ".".join(str(value) for value in sys.version_info[:3]),
+        "packages": _runtime_versions(),
+        "pixi_lock_sha256": _sha256_bytes(lock_path.read_bytes()),
+    }
+    return {**without_sha, "sha256": _sha256_json(without_sha)}
+
+
+def _execution_identity(*, promotion: bool) -> dict[str, Any]:
+    observed_environment = {key: os.environ.get(key) for key in PROMOTION_EXECUTION_ENVIRONMENT}
+    if promotion and observed_environment != PROMOTION_EXECUTION_ENVIRONMENT:
+        raise ValueError("promotion compiler/thread environment differs from the frozen identity.")
+    without_sha: dict[str, Any] = {
+        "schema": "rjmcmc-score-nle-execution-identity-v1",
+        "environment": observed_environment,
+        "jax_x64_enabled": bool(cast(Any, jax.config).x64_enabled),
+        "autodiff_schedule": {
+            "observation_score_parameter_gradient": ("outer_reverse_parameter_gradient_over_forward_jvp"),
+            "partial_score_parameter_gradient": ("outer_reverse_parameter_gradient_over_forward_jvp"),
+        },
+        "artifact_evaluation_policy": "canonical_deserialized_artifact",
+        "scheduler_policy": "shared_node_nonexclusive_single_cpu_array_task",
+        "promotion_array_required": promotion,
+    }
+    return {**without_sha, "sha256": _sha256_json(without_sha)}
+
+
 def run_attempt(arguments: argparse.Namespace, attempt_root: Path) -> dict[str, Any]:
     started = time.perf_counter()
     if arguments.mode == "standard":
@@ -1017,13 +1367,18 @@ def run_attempt(arguments: argparse.Namespace, attempt_root: Path) -> dict[str, 
             raise ValueError("standard mode case is not in the E2 catalogue.")
         if arguments.sample_count not in STANDARD_SAMPLE_COUNTS:
             raise ValueError("standard mode sample count is not in the E2 ladder.")
+    elif arguments.mode == "promotion":
+        if arguments.case_id not in PROMOTION_CASES:
+            raise ValueError("promotion mode case is not in the all-six catalogue.")
+        if arguments.sample_count not in PROMOTION_SAMPLE_COUNTS:
+            raise ValueError("promotion mode sample count is not in the frozen ladder.")
     elif arguments.mode == "overfit":
         if arguments.case_id not in OVERFIT_CASES:
             raise ValueError("overfit mode case is not in the E2 catalogue.")
         if arguments.sample_count != OVERFIT_SAMPLE_COUNT:
             raise ValueError("overfit mode requires the frozen small catalogue.")
     else:
-        raise ValueError("mode must be standard or overfit.")
+        raise ValueError("mode must be standard, promotion, or overfit.")
     if arguments.config_id not in CONFIG_IDS:
         raise ValueError("config_id is not in the corrected E2 catalogue.")
     if arguments.init_index < 0:
@@ -1043,15 +1398,33 @@ def run_attempt(arguments: argparse.Namespace, attempt_root: Path) -> dict[str, 
     declared_matrix_row = tuple(getattr(arguments, "matrix_row", frozen_matrix_row))
     if declared_matrix_row != frozen_matrix_row:
         raise ValueError("declared matrix row differs from attempt arguments.")
-    matrix_identity = {
+    legacy_matrix_identity = {
         "matrix_id": matrix_id,
         "array_task_id": matrix_task_id,
         "array_task_count": matrix_task_count,
         "row": list(frozen_matrix_row),
     }
+    declared_matrix_identity = getattr(arguments, "matrix_identity", None)
+    if declared_matrix_identity is None:
+        matrix_identity = legacy_matrix_identity
+    else:
+        matrix_identity = cast(dict[str, Any], declared_matrix_identity)
+        if matrix_identity.get("matrix_id") != matrix_id:
+            raise ValueError("declared matrix identity has the wrong matrix.")
+        if matrix_identity.get("array_task_id") != matrix_task_id:
+            raise ValueError("declared matrix identity has the wrong task.")
+        if matrix_identity.get("array_task_count") != matrix_task_count:
+            raise ValueError("declared matrix identity has the wrong task count.")
+        if matrix_identity.get("row") != list(frozen_matrix_row):
+            raise ValueError("declared matrix identity has the wrong row.")
+    runtime_identity = _runtime_identity()
+    execution_identity = _execution_identity(
+        promotion=arguments.mode == "promotion",
+    )
     oracle_bundle = _load_oracle_bundle(
         arguments.oracle_bundle,
         arguments.source_git_revision,
+        promotion=arguments.mode == "promotion",
     )
     constructed = {
         domain: domains.simulate_tiny_score_domain(
@@ -1209,11 +1582,6 @@ def run_attempt(arguments: argparse.Namespace, attempt_root: Path) -> dict[str, 
         observation,
         replay_totals,
     )
-    scientific = _scientific_grid_evaluation(
-        artifact,
-        arguments.case_id,
-        oracle_case["reference"],
-    )
     model_selection = _score_domain(
         artifact.flow,
         validation,
@@ -1222,14 +1590,29 @@ def run_attempt(arguments: argparse.Namespace, attempt_root: Path) -> dict[str, 
             float(value) for value in scale_diagnostics["observation_score_rms_by_coordinate"]
         ),
     )
-    reporting_test = _score_domain(
-        artifact.flow,
-        reporting,
-        partial_scale=float(scale_diagnostics["partial_score_rms"]),
-        observation_scales=tuple(
-            float(value) for value in scale_diagnostics["observation_score_rms_by_coordinate"]
-        ),
-    )
+    if arguments.mode == "promotion":
+        reporting_test: dict[str, object] = {
+            "status": "deferred_until_model_selection_only_start_selection",
+            "selection_uses_reporting_data": False,
+        }
+        scientific: dict[str, object] = {
+            "status": "deferred_until_model_selection_only_start_selection",
+            "selection_uses_oracle_evidence": False,
+        }
+    else:
+        reporting_test = _score_domain(
+            artifact.flow,
+            reporting,
+            partial_scale=float(scale_diagnostics["partial_score_rms"]),
+            observation_scales=tuple(
+                float(value) for value in scale_diagnostics["observation_score_rms_by_coordinate"]
+            ),
+        )
+        scientific = _scientific_grid_evaluation(
+            artifact,
+            arguments.case_id,
+            oracle_case["reference"],
+        )
     candidate_payload = {
         "config_id": arguments.config_id,
         "architecture_rank": dimension,
@@ -1253,12 +1636,31 @@ def run_attempt(arguments: argparse.Namespace, attempt_root: Path) -> dict[str, 
         "scientific_input_sha256": (training.evidence.scientific_input_sha256),
         "oracle_reference_sha256": oracle_case["reference"]["sha256"],
     }
+    scientific_target_payload = {
+        key: target_payload[key]
+        for key in (
+            "case_id",
+            "tiny_root_definitions_sha256",
+            "spectrum_sha256",
+            "scientific_input_sha256",
+            "oracle_reference_sha256",
+        )
+    }
+    catalogue_identity_payload = {
+        "mode": arguments.mode,
+        "sample_count": arguments.sample_count,
+        "domain_evidence_sha256": {name: value.evidence.sha256 for name, value in constructed.items()},
+    }
     attempt_identity = {
         "schema": SCHEMA,
         "source_git_revision": arguments.source_git_revision,
         "target": target_payload,
+        "scientific_target_sha256": _sha256_json(scientific_target_payload),
+        "catalogue_identity_sha256": _sha256_json(catalogue_identity_payload),
         "candidate_sha256": _sha256_json(candidate_payload),
-        "domain_evidence_sha256": {name: value.evidence.sha256 for name, value in constructed.items()},
+        "domain_evidence_sha256": catalogue_identity_payload["domain_evidence_sha256"],
+        "runtime_identity_sha256": runtime_identity["sha256"],
+        "execution_identity_sha256": execution_identity["sha256"],
         "initialization_index": arguments.init_index,
         "attempt_tag": arguments.attempt_tag,
         "matrix_identity": matrix_identity,
@@ -1268,6 +1670,10 @@ def run_attempt(arguments: argparse.Namespace, attempt_root: Path) -> dict[str, 
         **attempt_identity,
         "attempt_id": attempt_id,
         "candidate": candidate_payload,
+        "scientific_target": scientific_target_payload,
+        "catalogue_identity": catalogue_identity_payload,
+        "runtime_identity": runtime_identity,
+        "execution_identity": execution_identity,
         "streams": {
             "flow_initialization": {
                 **initialization_stream,
@@ -1292,7 +1698,8 @@ def run_attempt(arguments: argparse.Namespace, attempt_root: Path) -> dict[str, 
             "canonical_replay": replay_diagnostics,
         },
         "execution": {
-            "runtime_versions": _runtime_versions(),
+            "runtime_identity_sha256": runtime_identity["sha256"],
+            "execution_identity_sha256": execution_identity["sha256"],
             "runtime_seconds": time.perf_counter() - started,
             "maximum_rss_kib": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,
             "slurm_job_id": os.environ.get("SLURM_JOB_ID"),
@@ -1301,7 +1708,11 @@ def run_attempt(arguments: argparse.Namespace, attempt_root: Path) -> dict[str, 
             "output_root": str(attempt_root),
         },
         "interpretation": {
-            "status": "exploratory_result_not_promotion",
+            "status": (
+                "promotion_attempt_pending_independent_merger"
+                if arguments.mode == "promotion"
+                else "exploratory_result_not_promotion"
+            ),
             "overfit_validation_role": (
                 "same catalogue optimizer diagnostic" if arguments.mode == "overfit" else None
             ),
@@ -1321,26 +1732,34 @@ def run_attempt(arguments: argparse.Namespace, attempt_root: Path) -> dict[str, 
     report_file_sha256 = _sha256_bytes(report_bytes)
     _atomic_bytes(attempt_root / "artifact.bin", artifact_bytes)
     _atomic_bytes(attempt_root / "report.json", report_bytes)
+    completion_payload: dict[str, Any] = {
+        "schema": SCHEMA,
+        "attempt_id": attempt_id,
+        "source_git_revision": arguments.source_git_revision,
+        "report": str(attempt_root / "report.json"),
+        "report_payload_sha256": report["sha256"],
+        "report_file_sha256": report_file_sha256,
+        "artifact_metadata_sha256": artifact.artifact_sha256,
+        "serialized_artifact_file_sha256": serialized_sha256,
+        "completion_marker_published_last": True,
+    }
+    if arguments.mode == "promotion":
+        completion_payload.update(
+            {
+                "runtime_identity_sha256": runtime_identity["sha256"],
+                "execution_identity_sha256": execution_identity["sha256"],
+            }
+        )
     _atomic_json(
         attempt_root / "COMPLETE.json",
-        {
-            "schema": SCHEMA,
-            "attempt_id": attempt_id,
-            "source_git_revision": arguments.source_git_revision,
-            "report": str(attempt_root / "report.json"),
-            "report_payload_sha256": report["sha256"],
-            "report_file_sha256": report_file_sha256,
-            "artifact_metadata_sha256": artifact.artifact_sha256,
-            "serialized_artifact_file_sha256": serialized_sha256,
-            "completion_marker_published_last": True,
-        },
+        completion_payload,
     )
     return report
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--mode", choices=("standard", "overfit"), required=True)
+    parser.add_argument("--mode", choices=("standard", "promotion", "overfit"), required=True)
     parser.add_argument("--case-id", required=True)
     parser.add_argument("--sample-count", type=int, required=True)
     parser.add_argument("--config-id", choices=CONFIG_IDS, required=True)

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-#SBATCH --job-name=score-nle-e2
+#SBATCH --job-name=score-nle-corrected
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=8G
-#SBATCH --time=01:00:00
+#SBATCH --mem=5G
+#SBATCH --time=00:20:00
 
 set -euo pipefail
 
@@ -20,8 +20,8 @@ module load git/2.45.1-pqk5
 source_root="$(realpath -e "${NLE_SOURCE}")"
 run_root="$(realpath -e "${NLE_RUN_ROOT}")"
 python_bin="${source_root}/.pixi/envs/nle-dev/bin/python"
-task_id="${SLURM_ARRAY_TASK_ID:?E2 must run as a SLURM array.}"
-array_job_id="${SLURM_ARRAY_JOB_ID:?E2 must run as a SLURM array.}"
+task_id="${SLURM_ARRAY_TASK_ID:?Corrected NLE matrices must run as a SLURM array.}"
+array_job_id="${SLURM_ARRAY_JOB_ID:?Corrected NLE matrices must run as a SLURM array.}"
 log_directory="${run_root}/logs/${NLE_MATRIX_ID}"
 log="${log_directory}/${NLE_ATTEMPT_TAG}.${array_job_id}_${task_id}.log"
 oracle_bundle="${run_root}/oracle/oracle_bundle.json"

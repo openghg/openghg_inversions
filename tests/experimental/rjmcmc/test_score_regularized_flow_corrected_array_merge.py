@@ -39,6 +39,35 @@ def _write_attempt(
     artifact_bytes = f"artifact-{matrix_id}-{array_task_id}".encode("ascii")
     artifact_file_sha256 = hashlib.sha256(artifact_bytes).hexdigest()
     (attempt_root / "artifact.bin").write_bytes(artifact_bytes)
+    promotion = matrix_id in array_driver.PROMOTION_MATRIX_SPECS
+    target = {
+        "mode": mode,
+        "case_id": case_id,
+        "sample_count": sample_count,
+    }
+    candidate = {
+        "config_id": config_id,
+        "architecture_family": "test-flow",
+    }
+    if promotion:
+        target.update(
+            {
+                "tiny_root_definitions_sha256": "definitions",
+                "spectrum_sha256": "spectrum",
+                "scientific_input_sha256": "scientific-input",
+                "oracle_reference_sha256": "oracle-reference",
+            }
+        )
+        spec = array_driver.PROMOTION_MATRIX_SPECS[matrix_id]
+        candidate.update(
+            {
+                "learning_rate": spec["learning_rate"],
+                "batch_size": spec["batch_size"],
+                "microbatch_size": spec["microbatch_size"],
+                "maximum_total_epochs": spec["maximum_total_epochs"],
+                "patience": spec["patience"],
+            }
+        )
     report_without_sha: dict[str, Any] = {
         "schema": experiment.SCHEMA,
         "source_git_revision": SOURCE_GIT_REVISION,
@@ -48,15 +77,8 @@ def _write_attempt(
             matrix_id,
             array_task_id,
         ),
-        "target": {
-            "mode": mode,
-            "case_id": case_id,
-            "sample_count": sample_count,
-        },
-        "candidate": {
-            "config_id": config_id,
-            "architecture_family": "test-flow",
-        },
+        "target": target,
+        "candidate": candidate,
         "initialization_index": init_index,
         "model_selection": {"nll_nat_per_dimension": 1.0},
         "reporting_test": {
@@ -87,6 +109,60 @@ def _write_attempt(
             "serialized_artifact_file_sha256": artifact_file_sha256,
         },
     }
+    if promotion:
+        runtime_without_sha = {
+            "schema": "test-runtime-identity",
+            "python_version": "3.10.0",
+        }
+        execution_without_sha = {
+            "schema": "test-execution-identity",
+            "environment": experiment.PROMOTION_EXECUTION_ENVIRONMENT,
+            "jax_x64_enabled": True,
+        }
+        runtime_identity = {
+            **runtime_without_sha,
+            "sha256": merger._sha256_json(runtime_without_sha),
+        }
+        execution_identity = {
+            **execution_without_sha,
+            "sha256": merger._sha256_json(execution_without_sha),
+        }
+        domain_evidence_sha256 = {domain: f"domain-{domain}" for domain in experiment.domains.PUBLIC_DOMAINS}
+        scientific_target = {
+            key: target[key]
+            for key in (
+                "case_id",
+                "tiny_root_definitions_sha256",
+                "spectrum_sha256",
+                "scientific_input_sha256",
+                "oracle_reference_sha256",
+            )
+        }
+        catalogue_identity = {
+            "mode": mode,
+            "sample_count": sample_count,
+            "domain_evidence_sha256": domain_evidence_sha256,
+        }
+        report_without_sha.update(
+            {
+                "runtime_identity": runtime_identity,
+                "execution_identity": execution_identity,
+                "runtime_identity_sha256": runtime_identity["sha256"],
+                "execution_identity_sha256": execution_identity["sha256"],
+                "scientific_target": scientific_target,
+                "scientific_target_sha256": merger._sha256_json(scientific_target),
+                "catalogue_identity": catalogue_identity,
+                "catalogue_identity_sha256": merger._sha256_json(catalogue_identity),
+                "candidate_sha256": merger._sha256_json(candidate),
+                "domain_evidence_sha256": domain_evidence_sha256,
+            }
+        )
+        report_without_sha["execution"].update(
+            {
+                "runtime_identity_sha256": runtime_identity["sha256"],
+                "execution_identity_sha256": execution_identity["sha256"],
+            }
+        )
     report = {
         **report_without_sha,
         "sha256": merger._sha256_json(report_without_sha),
@@ -111,6 +187,13 @@ def _write_attempt(
         "serialized_artifact_file_sha256": artifact_file_sha256,
         "completion_marker_published_last": True,
     }
+    if promotion:
+        completion.update(
+            {
+                "runtime_identity_sha256": report["runtime_identity_sha256"],
+                "execution_identity_sha256": report["execution_identity_sha256"],
+            }
+        )
     (attempt_root / "COMPLETE.json").write_text(
         json.dumps(completion, sort_keys=True),
         encoding="ascii",
@@ -131,6 +214,11 @@ def test_frozen_array_matrices_cover_declared_attempt_counts() -> None:
             "standard_s16384_nll": 12,
             "standard_s16384_partial": 12,
             "standard_s16384_pretrain": 12,
+            "promotion_development_s4096": 48,
+            "promotion_development_s16384": 48,
+            "promotion_confirmation_s16384_seed2731": 24,
+            "promotion_confirmation_s16384_seed3731": 24,
+            "promotion_confirmation_s16384_seed4731": 24,
         }
     )
     assert set(array_driver.MATRICES["compile_canary"]) == {
@@ -167,6 +255,145 @@ def test_frozen_array_matrices_cover_declared_attempt_counts() -> None:
         assert {row[1] for row in matrix} == set(experiment.SELECTED_CASES)
     for matrix in array_driver.MATRICES.values():
         assert len(set(matrix)) == len(matrix)
+
+
+def test_legacy_e2_matrix_rows_remain_exact() -> None:
+    expected = {
+        "compile_canary": tuple(
+            ("overfit", case_id, 256, config_id, 0)
+            for case_id in (
+                "near_gaussian__two_cell__root",
+                "skewed__four_cell__root",
+            )
+            for config_id in (
+                "fisher_partial_joint",
+                "fisher_observation_joint",
+            )
+        ),
+        "overfit": tuple(
+            ("overfit", case_id, 256, config_id, init_index)
+            for case_id in (
+                "near_gaussian__two_cell__root",
+                "skewed__four_cell__root",
+            )
+            for config_id in ("nll_only", "fisher_partial_joint")
+            for init_index in range(4)
+        ),
+        "overfit_q3_extended": tuple(
+            (
+                "overfit",
+                "skewed__four_cell__root",
+                256,
+                "nll_only",
+                init_index,
+            )
+            for init_index in range(4)
+        ),
+        "standard_s4096": tuple(
+            ("standard", case_id, 4_096, config_id, init_index)
+            for case_id in experiment.SELECTED_CASES
+            for config_id in (
+                "nll_only",
+                "fisher_partial_joint",
+                "nll_pretrain_then_partial",
+            )
+            for init_index in range(4)
+        ),
+        "observation_canary": tuple(
+            (
+                "standard",
+                case_id,
+                4_096,
+                "fisher_observation_joint",
+                init_index,
+            )
+            for case_id in (
+                "near_gaussian__two_cell__root",
+                "skewed__four_cell__root",
+            )
+            for init_index in range(4)
+        ),
+        "standard_s16384_nll": tuple(
+            ("standard", case_id, 16_384, "nll_only", init_index)
+            for case_id in experiment.SELECTED_CASES
+            for init_index in range(4)
+        ),
+        "standard_s16384_partial": tuple(
+            (
+                "standard",
+                case_id,
+                16_384,
+                "fisher_partial_joint",
+                init_index,
+            )
+            for case_id in experiment.SELECTED_CASES
+            for init_index in range(4)
+        ),
+        "standard_s16384_pretrain": tuple(
+            (
+                "standard",
+                case_id,
+                16_384,
+                "nll_pretrain_then_partial",
+                init_index,
+            )
+            for case_id in experiment.SELECTED_CASES
+            for init_index in range(4)
+        ),
+    }
+    assert {matrix_id: array_driver.MATRICES[matrix_id] for matrix_id in expected} == expected
+    assert all(
+        "promotion_spec" not in array_driver.frozen_matrix_identity(matrix_id, 0) for matrix_id in expected
+    )
+
+
+def test_promotion_matrices_freeze_cases_seeds_and_hyperparameters() -> None:
+    development = {
+        "promotion_development_s4096": 4_096,
+        "promotion_development_s16384": 16_384,
+    }
+    confirmation = {
+        "promotion_confirmation_s16384_seed2731": 2731,
+        "promotion_confirmation_s16384_seed3731": 3731,
+        "promotion_confirmation_s16384_seed4731": 4731,
+    }
+    common = {
+        "learning_rate": 5.0e-4,
+        "batch_size": 1024,
+        "microbatch_size": 64,
+        "maximum_total_epochs": 40,
+        "patience": 6,
+    }
+    for matrix_id, sample_count in development.items():
+        rows = array_driver.MATRICES[matrix_id]
+        assert {row[0] for row in rows} == {"promotion"}
+        assert {row[1] for row in rows} == set(experiment.PROMOTION_CASES)
+        assert {row[2] for row in rows} == {sample_count}
+        assert {row[3] for row in rows} == {
+            "nll_only",
+            "fisher_observation_joint",
+        }
+        assert {row[4] for row in rows} == set(range(4))
+        assert array_driver.PROMOTION_MATRIX_SPECS[matrix_id] == {
+            **common,
+            "base_seed": 1731,
+            "role": "development-size-stability",
+        }
+    for matrix_id, base_seed in confirmation.items():
+        rows = array_driver.MATRICES[matrix_id]
+        assert {row[0] for row in rows} == {"promotion"}
+        assert {row[1] for row in rows} == set(experiment.PROMOTION_CASES)
+        assert {row[2] for row in rows} == {16_384}
+        assert {row[3] for row in rows} == {"fisher_observation_joint"}
+        assert {row[4] for row in rows} == set(range(4))
+        assert array_driver.PROMOTION_MATRIX_SPECS[matrix_id] == {
+            **common,
+            "base_seed": base_seed,
+            "role": "independent-confirmation",
+        }
+    for matrix_id in array_driver.PROMOTION_MATRIX_SPECS:
+        identity = array_driver.frozen_matrix_identity(matrix_id, 0)
+        assert identity["promotion_spec"] == (array_driver.PROMOTION_MATRIX_SPECS[matrix_id])
 
 
 def test_array_passes_exact_frozen_matrix_provenance(
@@ -218,6 +445,77 @@ def test_array_passes_exact_frozen_matrix_provenance(
     assert arguments.matrix_identity == identity
 
 
+def test_promotion_array_derives_frozen_spec_and_ignores_override(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+    matrix_id = "promotion_confirmation_s16384_seed2731"
+    task_id = 0
+    spec = array_driver.PROMOTION_MATRIX_SPECS[matrix_id]
+    monkeypatch.setattr(
+        experiment,
+        "run_attempt",
+        lambda arguments, attempt_root: captured.update(
+            arguments=arguments,
+            attempt_root=attempt_root,
+        ),
+    )
+    monkeypatch.setenv("SLURM_ARRAY_TASK_ID", str(task_id))
+    monkeypatch.setenv(
+        "SLURM_ARRAY_TASK_COUNT",
+        str(len(array_driver.MATRICES[matrix_id])),
+    )
+
+    def arguments(*, base_seed: int, output_root: Path = tmp_path) -> list[str]:
+        return [
+            "score_regularized_flow_corrected_array.py",
+            "--matrix-id",
+            matrix_id,
+            "--attempt-tag",
+            ATTEMPT_TAG,
+            "--base-seed",
+            str(base_seed),
+            "--source-git-revision",
+            SOURCE_GIT_REVISION,
+            "--oracle-bundle",
+            str(tmp_path / "oracle.json"),
+            "--output-root",
+            str(output_root),
+            "--learning-rate",
+            str(spec["learning_rate"]),
+            "--batch-size",
+            str(spec["batch_size"]),
+            "--microbatch-size",
+            str(spec["microbatch_size"]),
+            "--max-epochs",
+            str(spec["maximum_total_epochs"]),
+            "--patience",
+            str(spec["patience"]),
+        ]
+
+    monkeypatch.setattr(sys, "argv", arguments(base_seed=2731))
+    array_driver.main()
+    attempt_arguments = cast(argparse.Namespace, captured["arguments"])
+    assert attempt_arguments.base_seed == 2731
+    assert attempt_arguments.matrix_identity == (array_driver.frozen_matrix_identity(matrix_id, task_id))
+
+    override_root = tmp_path / "override"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        arguments(base_seed=2732, output_root=override_root),
+    )
+    array_driver.main()
+    overridden_arguments = cast(argparse.Namespace, captured["arguments"])
+    assert overridden_arguments.base_seed == 2731
+    assert overridden_arguments.learning_rate == spec["learning_rate"]
+    assert overridden_arguments.batch_size == spec["batch_size"]
+    assert overridden_arguments.microbatch_size == spec["microbatch_size"]
+    assert overridden_arguments.max_epochs == spec["maximum_total_epochs"]
+    assert overridden_arguments.patience == spec["patience"]
+
+
 def test_merger_authenticates_exact_files_schema_and_matrix_mapping(
     tmp_path: Path,
 ) -> None:
@@ -250,6 +548,130 @@ def test_merger_authenticates_exact_files_schema_and_matrix_mapping(
             matrix_row=row,
             attempt_tag=ATTEMPT_TAG,
         )
+
+
+def test_promotion_runtime_execution_and_completion_identities_are_bound(
+    tmp_path: Path,
+) -> None:
+    matrix_id = "promotion_development_s4096"
+    task_id = 0
+    attempt_root = _write_attempt(tmp_path, matrix_id, task_id)
+    row = array_driver.MATRICES[matrix_id][task_id]
+
+    loaded = merger._load_attempt(
+        attempt_root,
+        source_git_revision=SOURCE_GIT_REVISION,
+        matrix_id=matrix_id,
+        array_task_id=task_id,
+        matrix_row=row,
+        attempt_tag=ATTEMPT_TAG,
+    )
+
+    runtime = loaded.report["runtime_identity"]
+    execution = loaded.report["execution_identity"]
+    completion = json.loads((attempt_root / "COMPLETE.json").read_text(encoding="ascii"))
+    assert set(completion) == merger._PROMOTION_COMPLETION_KEYS
+    assert runtime["sha256"] == loaded.report["runtime_identity_sha256"]
+    assert execution["sha256"] == loaded.report["execution_identity_sha256"]
+    assert completion["runtime_identity_sha256"] == runtime["sha256"]
+    assert completion["execution_identity_sha256"] == execution["sha256"]
+    assert execution["environment"] == (experiment.PROMOTION_EXECUTION_ENVIRONMENT)
+
+    completion["runtime_identity_sha256"] = "0" * 64
+    (attempt_root / "COMPLETE.json").write_text(
+        json.dumps(completion, sort_keys=True),
+        encoding="ascii",
+    )
+    with pytest.raises(
+        ValueError,
+        match="promotion runtime/execution identity differs",
+    ):
+        merger._load_attempt(
+            attempt_root,
+            source_git_revision=SOURCE_GIT_REVISION,
+            matrix_id=matrix_id,
+            array_task_id=task_id,
+            matrix_row=row,
+            attempt_tag=ATTEMPT_TAG,
+        )
+
+
+def test_promotion_execution_identity_rejects_rehashed_environment_mutation(
+    tmp_path: Path,
+) -> None:
+    matrix_id = "promotion_development_s4096"
+    task_id = 0
+    attempt_root = _write_attempt(tmp_path, matrix_id, task_id)
+    report_path = attempt_root / "report.json"
+    completion_path = attempt_root / "COMPLETE.json"
+    report = json.loads(report_path.read_text(encoding="ascii"))
+    completion = json.loads(completion_path.read_text(encoding="ascii"))
+    execution = dict(report["execution_identity"])
+    execution_without_sha = dict(execution)
+    execution_without_sha.pop("sha256")
+    execution_without_sha["environment"] = {
+        **execution_without_sha["environment"],
+        "OMP_NUM_THREADS": "2",
+    }
+    execution = {
+        **execution_without_sha,
+        "sha256": merger._sha256_json(execution_without_sha),
+    }
+    report["execution_identity"] = execution
+    report["execution_identity_sha256"] = execution["sha256"]
+    report["execution"]["execution_identity_sha256"] = execution["sha256"]
+    report_without_sha = dict(report)
+    report_without_sha.pop("sha256")
+    report["sha256"] = merger._sha256_json(report_without_sha)
+    report_bytes = json.dumps(
+        report,
+        allow_nan=False,
+        ensure_ascii=True,
+        indent=2,
+        sort_keys=True,
+    ).encode("ascii")
+    report_path.write_bytes(report_bytes)
+    completion["execution_identity_sha256"] = execution["sha256"]
+    completion["report_payload_sha256"] = report["sha256"]
+    completion["report_file_sha256"] = hashlib.sha256(report_bytes).hexdigest()
+    completion_path.write_text(
+        json.dumps(completion, sort_keys=True),
+        encoding="ascii",
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="promotion runtime/execution identity differs",
+    ):
+        merger._load_attempt(
+            attempt_root,
+            source_git_revision=SOURCE_GIT_REVISION,
+            matrix_id=matrix_id,
+            array_task_id=task_id,
+            matrix_row=array_driver.MATRICES[matrix_id][task_id],
+            attempt_tag=ATTEMPT_TAG,
+        )
+
+
+def test_legacy_completion_schema_remains_exact(
+    tmp_path: Path,
+) -> None:
+    matrix_id = "compile_canary"
+    task_id = 0
+    attempt_root = _write_attempt(tmp_path, matrix_id, task_id)
+    completion_path = attempt_root / "COMPLETE.json"
+    completion = json.loads(completion_path.read_text(encoding="ascii"))
+    assert set(completion) == merger._LEGACY_COMPLETION_KEYS
+    assert "runtime_identity_sha256" not in completion
+    assert "execution_identity_sha256" not in completion
+    merger._load_attempt(
+        attempt_root,
+        source_git_revision=SOURCE_GIT_REVISION,
+        matrix_id=matrix_id,
+        array_task_id=task_id,
+        matrix_row=array_driver.MATRICES[matrix_id][task_id],
+        attempt_tag=ATTEMPT_TAG,
+    )
 
 
 def test_merger_rejects_file_or_frozen_row_tampering(tmp_path: Path) -> None:

@@ -17,7 +17,7 @@ from examples.rjmcmc import score_regularized_flow_corrected_array as arrays
 from examples.rjmcmc import score_regularized_flow_corrected_exploration as experiment
 
 SCHEMA = "rjmcmc-score-nle-corrected-exploration-summary-v1"
-_COMPLETION_KEYS = frozenset(
+_LEGACY_COMPLETION_KEYS = frozenset(
     {
         "schema",
         "attempt_id",
@@ -30,6 +30,13 @@ _COMPLETION_KEYS = frozenset(
         "completion_marker_published_last",
     }
 )
+_PROMOTION_COMPLETION_KEYS = _LEGACY_COMPLETION_KEYS | frozenset(
+    {
+        "runtime_identity_sha256",
+        "execution_identity_sha256",
+    }
+)
+_COMPLETION_KEYS = _LEGACY_COMPLETION_KEYS
 
 
 @dataclass(frozen=True)
@@ -87,7 +94,9 @@ def _load_attempt(
     report_bytes = report_path.read_bytes()
     report = json.loads(report_bytes.decode("ascii"))
     completion = json.loads(complete_path.read_text(encoding="ascii"))
-    if set(completion) != _COMPLETION_KEYS:
+    promotion = matrix_id in arrays.PROMOTION_MATRIX_SPECS
+    expected_completion_keys = _PROMOTION_COMPLETION_KEYS if promotion else _LEGACY_COMPLETION_KEYS
+    if set(completion) != expected_completion_keys:
         raise ValueError("attempt completion marker has the wrong exact schema.")
     if completion["schema"] != experiment.SCHEMA:
         raise ValueError("attempt completion marker schema differs.")
@@ -112,6 +121,61 @@ def _load_attempt(
         raise ValueError("attempt completion marker does not bind its report.")
     if completion["attempt_id"] != report.get("attempt_id"):
         raise ValueError("attempt completion marker has the wrong identity.")
+    if promotion:
+        runtime_identity = report.get("runtime_identity")
+        execution_identity = report.get("execution_identity")
+        if not isinstance(runtime_identity, dict) or not isinstance(
+            execution_identity,
+            dict,
+        ):
+            raise ValueError("promotion runtime/execution identity is absent.")
+        runtime_without_sha = dict(runtime_identity)
+        runtime_sha = runtime_without_sha.pop("sha256", None)
+        execution_without_sha = dict(execution_identity)
+        execution_sha = execution_without_sha.pop("sha256", None)
+        if (
+            _sha256_json(runtime_without_sha) != runtime_sha
+            or _sha256_json(execution_without_sha) != execution_sha
+            or report.get("runtime_identity_sha256") != runtime_sha
+            or report.get("execution_identity_sha256") != execution_sha
+            or completion["runtime_identity_sha256"] != runtime_sha
+            or completion["execution_identity_sha256"] != execution_sha
+            or execution_identity.get("environment") != experiment.PROMOTION_EXECUTION_ENVIRONMENT
+            or execution_identity.get("jax_x64_enabled") is not True
+        ):
+            raise ValueError("promotion runtime/execution identity differs.")
+        scientific_target = report.get("scientific_target")
+        catalogue_identity = report.get("catalogue_identity")
+        target = report.get("target")
+        candidate = report.get("candidate")
+        domain_evidence_sha256 = report.get("domain_evidence_sha256")
+        if (
+            not isinstance(scientific_target, dict)
+            or not isinstance(catalogue_identity, dict)
+            or not isinstance(target, dict)
+            or not isinstance(candidate, dict)
+            or report.get("scientific_target_sha256") != _sha256_json(scientific_target)
+            or report.get("catalogue_identity_sha256") != _sha256_json(catalogue_identity)
+            or report.get("candidate_sha256") != _sha256_json(candidate)
+            or scientific_target
+            != {
+                key: target[key]
+                for key in (
+                    "case_id",
+                    "tiny_root_definitions_sha256",
+                    "spectrum_sha256",
+                    "scientific_input_sha256",
+                    "oracle_reference_sha256",
+                )
+            }
+            or catalogue_identity
+            != {
+                "mode": target["mode"],
+                "sample_count": target["sample_count"],
+                "domain_evidence_sha256": domain_evidence_sha256,
+            }
+        ):
+            raise ValueError("promotion target/catalogue/candidate identity differs.")
     expected_matrix_identity = arrays.frozen_matrix_identity(
         matrix_id,
         array_task_id,

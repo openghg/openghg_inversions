@@ -281,3 +281,99 @@ Because skewed \(q=3\) NLL is still learning, a new committed four-task
 `overfit_q3_extended` exploratory matrix extends only those four NLL fits to
 160 epochs. This is a response to preserved public overfit evidence, not a
 change to a promotion gate or scientific target.
+
+## 2026-07-30T12:30:53Z — complete E2 evidence and frozen E3 design
+
+The authoritative corrected source for the completed E2 arrays is
+`569910063cdbfcf0681f8c6a04abb03eac3a3833`. Its detached source and run root
+are:
+
+- `/group/chem/acrg/brendan_for_codex/rjmcmc_score_regularized_nle_corrected/source-569910063cdbfcf0681f8c6a04abb03eac3a3833`;
+- `/group/chem/acrg/brendan_for_codex/rjmcmc_score_regularized_nle_corrected/run-569910063cdbfcf0681f8c6a04abb03eac3a3833`.
+
+The 36-task `S=4096` array `18216829`, wakeup ticket
+`sw-20260730T104852Z-e020eaf21092`, completed and merged. Its summary payload
+and exact file SHA-256 values are
+`ed5eeae9425b9c2eea39b659ccf664b6e1d85e03aec5fab4f1d8b375393f818f`
+and
+`dc97a2b4bb59d684287ea40e1276b977bfe71d6e34b6b24b7f03cb9082eff51f`.
+NLL-only evidence error was about `0.015--0.116` nat for near-Gaussian,
+`0.072--0.197` for skewed, and `0.022--0.135` for boundary-heavy cases.
+The score-finetuning alternatives were generally inferior or unstable.
+
+The 12-task `S=16384` NLL-only array `18216921`, ticket
+`sw-20260730T110727Z-e4d6e1d070dc`, completed 11 tasks. Task 4 alone exceeded
+the 4 GiB request. The incomplete primary summary is preserved with payload
+and file hashes
+`68d9fc6e670b3cbf0683677eb23ca5fe2810fb639b32d718324b87fa1532e576`
+and
+`0bad4bf380f9ee3e2003bc89f1e7852bb2a3b6b210b3a0e2d1d7d3363297bfda`.
+A first recovery job `18217432`, ticket
+`sw-20260730T112343Z-b0d38a9993b7`, failed only the array-count guard and is
+preserved. The corrected one-index recovery array `18217506`, ticket
+`sw-20260730T113240Z-44f5364328ae`, completed task 4 under 5 GiB. Its
+one-row summary payload is
+`ea5fc3e5eb3232e74ad2a09b13fcf74a716faf0d7b6a38c53c73f9a3634d2c85`.
+The recovered artifact has evidence error `0.0841` nat and
+posterior-weighted p99 `0.169` nat. The task-to-tag composition is frozen:
+tasks 0--3 and 5--11 use `standard-s16384-nll-5699100-v1`; task 4 uses
+`standard-s16384-nll-recovery-task4-5699100-v2`. Neither incomplete summary
+is altered.
+
+The observation-score canary ran as eight-task array `18217606`, wakeup
+ticket `sw-20260730T114815Z-c10cdf93bd83`. All tasks completed in
+3 minutes 29 seconds to 5 minutes 50 seconds under 3 GiB. The merged summary
+payload and file SHA-256 values are
+`b0e574a3fec6e4434f48b0883589d5b832fd206f55b5a189e90e7d289ee5b095`
+and
+`f5e825dfecb25355498211a27c5af92ab802eb4bc048a295d8b96b63838f487c`.
+
+Selecting one of four starts by minimum independent model-selection NLL,
+without looking at reporting or oracle values, chose scientifically credible
+observation-score fits:
+
+- near-Gaussian init 3: evidence error `0.00523` nat, p99 `0.0669` nat,
+  gradient error `0.0718`;
+- skewed init 2: evidence error `0.0336` nat, p99 `0.109` nat, gradient error
+  `0.00821`.
+
+The near-Gaussian gradient still misses the historical `0.05` threshold, so
+this is evidence to predeclare E3 rather than a promotion.
+
+The E3 implementation freezes the full observation-score algorithm, NLL-only
+development comparator, four-start model-selection rule, all six cases,
+`S=4096,16384` at seed 1731, and three fresh `S=16384` confirmation seeds
+2731, 3731, and 4731. Reporting and exact-oracle evaluation occur only after
+start selection. The all-six oracle v2 adds exact-grid preflight, within-bin
+posterior quantiles, per-metric interpretability, four-cell row/column chart
+checks, skewed native-log-mass validation, and a fixed-log-total
+boundary-four-cell certificate.
+
+Prelaunch focused validation passes 68 corrected driver, promotion,
+certifier, and oracle tests. No protected or PARIS input was read, and no
+file in `PARIS_inversions` was written.
+
+Final independent re-review then found three provenance/numerical gaps before
+launch: runtime/execution flags were not separately hashed, the hard gradient
+metric lacked step/order refinement, and recomputed exact grids were not
+checked against their preflight hashes. These were fixed without changing
+the candidate, ladder, thresholds, or resources. Independent-route
+quadrature/support errors and nested certificate semantics are now also hard
+gates. A builder-and-loader semantic validator now recomputes the primary,
+grid, gradient, boundary-native, four-cell chart, skew-native, fixed-log,
+selected-case, and top-level check maps from the authenticated nested
+numbers. It rejects rehashed numerical failures, incomplete schemas, and the
+JSON integer-versus-boolean ambiguity.
+
+The final exact-diff reviews returned PASS:
+
+- the independent code/provenance reviewer reran the nominal loader and 25
+  rehashed tamper cases;
+- the independent numerical-oracle reviewer reran 30 focused loader,
+  gradient, support, quadrature, and exact-grid tests;
+- the complete five-module suite passed all 68 tests, Ruff, focused Pyright,
+  shell syntax, and `git diff --check`.
+
+The prelaunch hard stop is therefore cleared for the committed all-six oracle
+only. Development arrays remain conditional on its create-only passing
+certificate.
