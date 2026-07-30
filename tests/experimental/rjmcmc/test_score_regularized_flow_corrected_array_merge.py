@@ -125,6 +125,7 @@ def test_frozen_array_matrices_cover_declared_attempt_counts() -> None:
         == {
             "compile_canary": 4,
             "overfit": 16,
+            "overfit_q3_extended": 4,
             "standard_s4096": 36,
             "observation_canary": 8,
             "standard_s16384_nll": 12,
@@ -142,6 +143,16 @@ def test_frozen_array_matrices_cover_declared_attempt_counts() -> None:
             "fisher_partial_joint",
             "fisher_observation_joint",
         )
+    }
+    assert set(array_driver.MATRICES["overfit_q3_extended"]) == {
+        (
+            "overfit",
+            "skewed__four_cell__root",
+            256,
+            "nll_only",
+            init_index,
+        )
+        for init_index in range(4)
     }
     expected_16k_configs = {
         "standard_s16384_nll": "nll_only",

@@ -119,6 +119,9 @@ The committed array catalogue is staged rather than launched wholesale:
    objectives for both the \(q=1\) and \(q=3\) architectures;
 2. one 16-task small-catalogue overfit matrix covering NLL-only and
    partial-score fits with four initializations;
+   after that matrix showed the skewed \(q=3\) NLL curves still improving at
+   epoch 40, one separately identified four-task `overfit_q3_extended` matrix
+   may extend only those NLL fits to 160 epochs;
 3. one 36-task \(S=4096\) matrix covering NLL-only, joint partial score, and
    NLL-pretrain/partial-finetune fits;
 4. one optional eight-task \(S=4096\) observation-score canary;

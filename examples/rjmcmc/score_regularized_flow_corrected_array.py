@@ -39,6 +39,16 @@ MATRICES = {
         for config_id in ("nll_only", "fisher_partial_joint")
         for init_index in range(4)
     ),
+    "overfit_q3_extended": tuple(
+        (
+            "overfit",
+            "skewed__four_cell__root",
+            256,
+            "nll_only",
+            init_index,
+        )
+        for init_index in range(4)
+    ),
     "standard_s4096": tuple(
         ("standard", case_id, 4_096, config_id, init_index)
         for case_id in experiment.SELECTED_CASES
@@ -89,6 +99,7 @@ MATRICES = {
 EXPECTED_MATRIX_ATTEMPT_COUNTS = {
     "compile_canary": 4,
     "overfit": 16,
+    "overfit_q3_extended": 4,
     "standard_s4096": 36,
     "observation_canary": 8,
     "standard_s16384_nll": 12,

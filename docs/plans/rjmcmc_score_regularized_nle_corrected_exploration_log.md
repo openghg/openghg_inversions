@@ -212,3 +212,72 @@ Post-correction validation:
 
 The two historical-screen mismatches are preserved as scope evidence. The
 invalid N1 certifier and its old run were not modified or reinterpreted.
+
+## 2026-07-30T10:22:40Z — canonical replay recovery and overfit evidence
+
+The canonical-replay correction was committed and pushed at
+`8f03c3174545a8ad73a956885520f7e856141a9e`. Its fresh detached source and run
+root are:
+
+- `/group/chem/acrg/brendan_for_codex/rjmcmc_score_regularized_nle_corrected/source-8f03c3174545a8ad73a956885520f7e856141a9e`;
+- `/group/chem/acrg/brendan_for_codex/rjmcmc_score_regularized_nle_corrected/run-8f03c3174545a8ad73a956885520f7e856141a9e`.
+
+Oracle job `18215891`, wakeup ticket
+`sw-20260730T095033Z-038dc2e94201`, completed in 2 minutes 14 seconds with
+1 GiB requested. The committed loader authenticated the completion marker,
+exact file bytes, nested oracle identities, all three cases, and the
+independent boundary certificate. Bundle payload, bundle-file, and
+completion-file SHA-256 values are respectively:
+
+- `74b154745802a829bce08c37aa08b2664edcf62f8c4d02ee9ac1df56d592ade7`;
+- `5f9c12d3d2b93b8b2fb5f87ac58cc96cd72cb1c99d9dcd431d77712654cf2223`;
+- `dcab7bf4dfa1ec764e504548aac93739c0799954f73bd32876b5b31507dfee33`.
+
+Compile-canary array `18215983`, wakeup ticket
+`sw-20260730T095857Z-9e5b1d997170`, completed all four tasks in 2 minutes
+2 seconds to 3 minutes 4 seconds. Peak attempt RSS was 1.64--1.79 GiB under
+the 3 GiB request. The committed merger authenticated all four attempts with
+no failures. Its summary payload SHA-256 is
+`0c3472c82dc19b02d66a95b7407423eceb4714e08890ddb2d90fc1cfe8096059`;
+the exact summary-file SHA-256 is
+`84dea59c7caa29ef571c913c51376e7805e91df69bfd9bf80f9f7150312f890b`.
+
+Overfit array `18216104`, wakeup ticket
+`sw-20260730T100815Z-843da52243e4`, ran all 16 tasks in 1 minute 40 seconds to
+2 minutes 44 seconds. Fifteen published complete authenticated attempts.
+Task 8, skewed \(q=3\) NLL-only initialization 0, finished training but hit a
+software false stop in the non-authoritative trained-object versus canonical
+replay diagnostic. One of three probe values differed by
+`2.39808173e-14` nat, about 108 binary64 output ULPs. Exact serialized bytes
+and SHA, every fitted floating leaf, the PyTree architecture, and every
+spectrum array remained identical. The create-only incomplete merger
+preserves payload SHA-256
+`3f5a205205493d6c88ea0648c7e7fc2610104931603c4def626b221f37c8377a`;
+its exact summary and incomplete-marker file SHA-256 values are
+`dc4447e645a9663f204f40cad8d10b345aa737ff4ca575e0815c63bac7e56e3f`
+and `be30551cf1f3151bf0b93cdaf33c0d51cdd5ad53ca97dbb03808489239bd5027`.
+
+The 15 interpretable overfit rows show:
+
+- NLL-only is much more stable than the jointly scaled partial-score loss;
+- near-Gaussian NLL-only absolute evidence errors range from `0.00085` to
+  `0.0557` nat across four initializations;
+- skewed \(q=3\) NLL-only errors for the three published initializations
+  remain around `0.389`--`0.441` nat, and their NLL curves are still improving
+  at epoch 40;
+- joint partial-score fitting is unstable and usually degrades NLL, evidence,
+  and likelihood accuracy, particularly in the near-Gaussian case where the
+  measured scaled score term is orders of magnitude larger than NLL.
+
+Independent numerical and code reviews classify the task-8 difference as
+layout-dependent roundoff, not artifact drift. The canonical deserialized
+artifact remains authoritative. Exact tree, leaf, spectrum, byte, SHA, and
+fresh-process canonical replay checks remain hard gates; the transient
+comparison becomes a labelled non-gating diagnostic reporting absolute,
+relative, and output-ULP differences against an advisory
+\(256\epsilon\max(1,|a|,|b|)\) range.
+
+Because skewed \(q=3\) NLL is still learning, a new committed four-task
+`overfit_q3_extended` exploratory matrix extends only those four NLL fits to
+160 epochs. This is a response to preserved public overfit evidence, not a
+change to a promotion gate or scientific target.

@@ -6,7 +6,10 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+from types import SimpleNamespace
+from typing import cast
 
+import numpy as np
 import pytest
 
 from examples.rjmcmc import (
@@ -155,6 +158,7 @@ def test_frozen_array_matrices_have_complete_unique_attempts() -> None:
     assert {name: len(matrix) for name, matrix in array_driver.MATRICES.items()} == {
         "compile_canary": 4,
         "overfit": 16,
+        "overfit_q3_extended": 4,
         "standard_s4096": 36,
         "observation_canary": 8,
         "standard_s16384_nll": 12,
@@ -307,9 +311,14 @@ def test_one_small_overfit_attempt_publishes_completion_last(
     assert report["artifact"]["byte_replay_pass"]
     replay = report["artifact"]["canonical_replay"]
     assert replay["canonical_replay_used_for_scientific_evaluation"]
+    assert replay["diagnostic"] == "non_authoritative_layout_roundoff_diagnostic"
+    assert replay["gating"] is False
+    assert replay["flow_tree_structure_identical"]
     assert replay["flow_float_leaves_bitwise_identical"]
     assert replay["spectrum_arrays_bitwise_identical"]
-    assert replay["roundoff_check_pass"]
+    assert replay["canonical_values_finite"]
+    assert replay["trained_values_finite"]
+    assert replay["within_advisory_roundoff_range"]
     assert len(report["scientific_evaluation"]["grid"]["ladder"]) == 3
     assert report["scientific_evaluation"]["vectorized_public_likelihood_parity"]["pass"]
     assert (attempt_root / "artifact.bin").is_file()
@@ -323,3 +332,65 @@ def test_one_small_overfit_attempt_publishes_completion_last(
         completion["serialized_artifact_file_sha256"]
         == hashlib.sha256((attempt_root / "artifact.bin").read_bytes()).hexdigest()
     )
+
+
+def _diagnostic_fake(
+    values: np.ndarray,
+    *,
+    flow: object | None = None,
+) -> driver.ScoreRegularizedRootFlow:
+    spectrum = SimpleNamespace(
+        observation_mean_design=np.asarray((0.2, -0.1)),
+        noise_sd=np.asarray((0.7, 1.1)),
+        basis=np.eye(2),
+        eigenvalues=np.asarray((0.8, 0.25)),
+    )
+    return cast(
+        driver.ScoreRegularizedRootFlow,
+        SimpleNamespace(
+            flow=np.asarray((1.0, 2.0)) if flow is None else flow,
+            spectrum=spectrum,
+            log_likelihood_batch=lambda _observation, _totals: values,
+        ),
+    )
+
+
+def test_transient_layout_roundoff_is_recorded_but_does_not_gate() -> None:
+    trained_values = np.asarray((-4.449186, 0.519406, -1.342784))
+    canonical_values = trained_values.copy()
+    canonical_values[-1] += 2.398081733190338e-14
+    diagnostic = driver._canonical_replay_diagnostics(
+        _diagnostic_fake(trained_values),
+        _diagnostic_fake(canonical_values),
+        np.asarray((0.2, -0.4)),
+        np.asarray((0.5, 1.0, 1.5)),
+    )
+    assert diagnostic["gating"] is False
+    assert diagnostic["within_advisory_roundoff_range"]
+    assert float(
+        diagnostic["trained_to_canonical_likelihood_max_absolute_error_nat"]  # type: ignore[arg-type]
+    ) == pytest.approx(2.398081733190338e-14)
+    assert float(
+        diagnostic["trained_to_canonical_likelihood_max_output_ulp_error"]  # type: ignore[arg-type]
+    ) == pytest.approx(108.0)
+
+
+def test_canonical_replay_diagnostic_still_gates_tree_and_leaf_identity() -> None:
+    values = np.asarray((-1.0, -2.0, -3.0))
+    with pytest.raises(RuntimeError, match="tree structure"):
+        driver._canonical_replay_diagnostics(
+            _diagnostic_fake(values),
+            _diagnostic_fake(
+                values,
+                flow={"parameters": np.asarray((1.0, 2.0))},
+            ),
+            np.asarray((0.2, -0.4)),
+            np.asarray((0.5, 1.0, 1.5)),
+        )
+    with pytest.raises(AssertionError):
+        driver._canonical_replay_diagnostics(
+            _diagnostic_fake(values),
+            _diagnostic_fake(values, flow=np.asarray((1.0, 3.0))),
+            np.asarray((0.2, -0.4)),
+            np.asarray((0.5, 1.0, 1.5)),
+        )
