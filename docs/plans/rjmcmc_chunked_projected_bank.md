@@ -2,8 +2,8 @@
 
 ## Status and scope
 
-This is a working background/design note for the next aggregation-error
-experiment.  It belongs in `openghg_inversions` until the numerical
+This is a working background/design note for the aggregation-error
+experiments.  It belongs in `openghg_inversions` until the numerical
 experiments have run; it is not yet a durable `inversions-knowledge`
 derivation.
 
@@ -18,6 +18,14 @@ in
 It is experimental, single-root only, float64 throughout, and has a distinct
 version-three source-artifact identity.  Existing version-one PCG64 and
 version-two all-at-once Sobol artifacts are unchanged.
+
+The PARIS G4 experiment subsequently showed that the raw equal-weight
+scrambled-Sobol bank was not a stable density estimator at
+\(S\le65{,}536\) and \(q\in\{16,32,64,128\}\).  The constructor and simulator
+remain valid.  The likelihood failure does not yet distinguish an
+intrinsically high-variance prior-source estimator from a high-dimensional
+RQMC construction that provides little or negative practical variance
+reduction.
 
 ## Model and approximation boundary
 
@@ -186,3 +194,50 @@ must still:
 
 These are described in
 [`rjmcmc_chunked_projected_bank_hpc_test_plan.md`](rjmcmc_chunked_projected_bank_hpc_test_plan.md).
+
+## Required IID-versus-QMC attribution experiment
+
+Before treating the G4 result as evidence against source-bank integration in
+general, compare IID Monte Carlo with the existing blocked scrambled-Sobol
+construction at equal \(S\), \(q\), simulator cost, and validation states.
+IID Monte Carlo is the certification baseline because, for
+
+\[
+\widehat p_S(y\mid T)=S^{-1}\sum_{s=1}^S k_y(W_s),
+\qquad W_s\overset{\mathrm{iid}}{\sim}P,
+\]
+
+it gives
+
+\[
+\frac{\mathbb E\{(\widehat p_S-p)^2\}}{p^2}
+=
+\frac{\chi^2\{P(W\mid y,T)\Vert P(W)\}}{S}.
+\]
+
+This has no explicit nominal-dimension discrepancy factor, although the
+relative variance can still be enormous when the likelihood concentrates on
+a small part of the allocation prior.
+
+The first comparison should reuse the observation-blind G4 validation
+catalogue and evaluate the direct, uncompressed likelihood.  For both IID and
+RQMC, record:
+
+- several independent banks or scrambles at matched sample counts;
+- signed nested-prefix log-likelihood changes, not only absolute changes;
+- the added-half to original-half likelihood-mass ratio;
+- normalized component-weight ESS, Shannon perplexity, and maximum weight;
+- between-replicate variance of the likelihood before taking logs; and
+- wall time and memory separately from statistical accuracy.
+
+Start with the smallest retained rank that exposed the failure, then widen
+the \(q\) comparison only after the within-\(q\) estimator is understood.
+Agreement among Sobol scrambles is not by itself a QMC error certificate.
+Conversely, IID failure at the same or larger scale would show that replacing
+Sobol points alone cannot repair the rare-event/importance-weight problem.
+
+This is an exploratory attribution experiment, not another production lock.
+It may iterate on diagnostics and sample-size ladders as long as every
+attempt is retained and labelled.  Only a later production approximation
+needs immutable predeclared thresholds.  No finite-bank evidence difference
+may be used to weight a partition or \(K\).

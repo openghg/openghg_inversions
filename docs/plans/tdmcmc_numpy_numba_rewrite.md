@@ -123,6 +123,8 @@ will be introduced only behind equivalence tests.
 | 2026-07-26 | Use exact log-coordinate involutions for HMC-specific edge flips and resolution relocations. | The first physical split implementation admitted forward binary64 paths without representable reverse fractions. Coordinate permutations give bit-exact reverse geometry, unit Jacobian, and explicit discrete catalogue accounting. |
 | 2026-07-26 | Keep the RJ Gaussian closure distinct from the non-RJ NLE/GMM marginal-likelihood track. | The Gaussian closure is an optional explicit approximation usable with RJ. The NLE/GMM alternative integrates hidden allocations for fixed partitions; its exact common-native-model limit is partition- and \(K\)-invariant and licenses no structural learning. Approximate evidence drift is leakage, not a learned structural weight. |
 | 2026-07-26 | Test a frozen conditional-allocation bank before adding `sbi`. | The transported standardized-shape mixture failed its T2 development screen. Frozen within-region Dirichlet shares retain the full conditional dependence on region masses, give a deterministic normalized Gaussian mixture after measurement-noise convolution, and can be differentiated directly in NumPy/PyTensor. Partitions remain externally weighted by their structural prior. |
+| 2026-07-30 | Use IID Monte Carlo as the certification baseline for the PARIS projected source bank and treat blocked scrambled Sobol as an empirical variance-reduction candidate. | The G4 Sobol bank showed a repeated \(\log 2\) likelihood-doubling signature, but that result alone cannot separate poor prior-to-posterior overlap from ineffective high-dimensional QMC. Matched independent IID banks and independent scrambles must compare likelihood variance, signed prefix changes, component-weight ESS/perplexity, and cost before choosing the source construction. |
+| 2026-07-30 | Do not accept the score-regularized NLE N1 result as an architecture hard stop. | The tiny simulator row-aligned separately scrambled Sobol catalogues for root mass, allocation, and Gaussian noise. The resulting strong cross-stream dependence violates the declared product law and invalidates the simulator-score target and scientific N1 interpretation. Use genuinely independent simulation streams or one valid joint net, then rerun a lighter exploratory programme before frozen certification. |
 
 ## Ganesan lineage and active hierarchy plan
 
@@ -617,6 +619,37 @@ likelihood and the problematic per-region hierarchy remain follow-up profiles,
 not implicit behavior of this implementation.
 
 ## Progress log
+
+### 2026-07-30
+
+- Completed the memory-bounded PARIS projected-bank construction and its G4
+  development experiment. G0--G3 passed; the direct equal-weight
+  scrambled-Sobol likelihood failed at every
+  \(q\in\{16,32,64,128\}\) and \(S\le65{,}536\). The repeated
+  \(0.693147\)-nat median absolute change after doubling from 32,768 to
+  65,536 components, together with rare positive changes of hundreds of nat,
+  diagnoses a sparse component-weight problem rather than a moment or
+  constructor failure.
+- Added a required matched IID-versus-QMC attribution experiment. It reuses
+  the observation-blind validation catalogue and compares uncompressed
+  likelihood variance, signed nested-prefix changes, added-half mass ratios,
+  component-weight ESS/perplexity, and cost across repeated IID banks and
+  independent scrambles. This is deliberately an iterative method-development
+  experiment rather than a terminal production-lock protocol.
+- Reviewed the completed score-regularized NLE branch and reproduced a
+  blocking simulator defect. Separately scrambled Sobol streams were paired
+  by row even though root mass, allocation, and measurement noise were
+  declared independent. Frozen two-cell streams show correlations as large as
+  \(0.90\) in magnitude and non-product quadrant frequencies that persist as
+  \(S\) grows. A second issue used IID `sd/sqrt(S)` MCSE on dependent rows from
+  one scramble. The boundary-heavy two-cell posterior metric also retained
+  only \(2.96\times10^{-7}\) of posterior weight and excluded its mode, while
+  the purported 64-node exact evidence oracle failed an order-refinement
+  check. The terminal N1 certificate therefore authenticates a completed
+  wrong-target, under-resolved-oracle experiment, not a failure of
+  score-regularized NLE.
+  The detailed review is in
+  [`rjmcmc_score_regularized_nle_review.md`](rjmcmc_score_regularized_nle_review.md).
 
 ### 2026-07-26
 

@@ -16,6 +16,16 @@ G0--G3 passed substantively, but G4 found decisive finite-source likelihood
 instability at every retained rank.  No G4 development lock was published,
 and the confirmation array, G5, and G6 were not run.
 
+The next source-bank question is a separate exploratory IID-versus-QMC
+attribution experiment, specified in
+[`rjmcmc_chunked_projected_bank.md`](rjmcmc_chunked_projected_bank.md#required-iid-versus-qmc-attribution-experiment).
+It does not reopen or weaken the completed G4 decision.  It asks whether the
+same direct likelihood is more stable under independent Monte Carlo than
+under the blocked scrambled-Sobol catalogue, and whether either method has
+usable component-weight ESS at the tested scale.  Unlike the production-lock
+stages below, this method-development comparison may iterate while retaining
+and reporting every attempted configuration.
+
 ## Frozen input
 
 ```text
