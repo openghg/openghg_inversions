@@ -15,6 +15,14 @@
   Explicit site order is preserved during input assembly, and mixed
   surface/column inputs retain their column correction factors.
   [#427](https://github.com/openghg/openghg_inversions/issues/427)
+- Added the opt-in `ConnectedBinaryPartitionStep` for repairing provisional
+  binary cuts whose sides contain disconnected components. Repair candidates
+  preserve the parent exactly, return two connected children, and are selected
+  deterministically by minimum moved weight and then child-weight balance. The
+  existing `ConnectedComponentPartitionStep` behavior is unchanged, and the
+  new wrapper falls back to its historical multi-child component decomposition
+  when no valid binary repair exists.
+  [#545](https://github.com/openghg/openghg_inversions/issues/545)
 - Made direct composition of concrete standard and multisector RHIME models
   the default builder strategy. The semantic flux-plan compiler remains
   available as an explicit `builder_strategy="compiled"` opt-in on
