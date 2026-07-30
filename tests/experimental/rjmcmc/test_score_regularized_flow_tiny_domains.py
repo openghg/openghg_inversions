@@ -56,10 +56,7 @@ def test_all_six_tiny_cases_have_complete_finite_score_domains(case_id: str) -> 
         assert np.all(np.isfinite(values))
         assert not values.flags.writeable
     assert np.all((result.root_total_uniform > 0.0) & (result.root_total_uniform < 1.0))
-    assert np.all(
-        (result.gaussian_noise_uniform > 0.0)
-        & (result.gaussian_noise_uniform < 1.0)
-    )
+    assert np.all((result.gaussian_noise_uniform > 0.0) & (result.gaussian_noise_uniform < 1.0))
     np.testing.assert_array_equal(result.raw_log_mass, np.log(result.total_mass))
     np.testing.assert_array_equal(
         result.standardized_draw,
@@ -114,24 +111,26 @@ def test_stream_seed_follows_the_frozen_byte_contract() -> None:
 
 
 @pytest.mark.parametrize("case_id", domains.CASE_IDS)
+@pytest.mark.parametrize("domain", domains.PUBLIC_DOMAINS)
 def test_nested_sample_sizes_are_exact_prefixes_for_every_returned_array(
     case_id: str,
+    domain: str,
 ) -> None:
     small = domains.simulate_tiny_score_domain(
         case_id,
-        domain=domains.TRAINING_DOMAIN,
+        domain=domain,
         sample_count=16,
         base_seed=731,
     )
     replay = domains.simulate_tiny_score_domain(
         case_id,
-        domain=domains.TRAINING_DOMAIN,
+        domain=domain,
         sample_count=16,
         base_seed=731,
     )
     large = domains.simulate_tiny_score_domain(
         case_id,
-        domain=domains.TRAINING_DOMAIN,
+        domain=domain,
         sample_count=64,
         base_seed=731,
     )
@@ -153,8 +152,10 @@ def test_nested_sample_sizes_are_exact_prefixes_for_every_returned_array(
     assert small.evidence.sha256 != large.evidence.sha256
 
 
-def test_public_domains_and_base_seeds_are_replayable_and_disjoint() -> None:
-    case_id = domains.CASE_IDS[0]
+@pytest.mark.parametrize("case_id", domains.CASE_IDS)
+def test_public_domains_and_base_seeds_are_replayable_and_disjoint(
+    case_id: str,
+) -> None:
     catalogues = {
         domain: domains.simulate_tiny_score_domain(
             case_id,
@@ -175,12 +176,7 @@ def test_public_domains_and_base_seeds_are_replayable_and_disjoint() -> None:
         catalogues[domains.TRAINING_DOMAIN].standardized_draw,
     )
     assert len({result.evidence.sha256 for result in catalogues.values()}) == 3
-    assert len(
-        {
-            result.evidence.stream_seeds
-            for result in catalogues.values()
-        }
-    ) == 3
+    assert len({result.evidence.stream_seeds for result in catalogues.values()}) == 3
     catalogue_values = tuple(catalogues.values())
     for first, second in zip(catalogue_values, catalogue_values[1:], strict=False):
         for name in (
@@ -212,9 +208,7 @@ def test_iid_pcg64_sources_recover_analytic_moments_roughly(case_id: str) -> Non
         sample_count=4_096,
         base_seed=731,
     )
-    shapes, rate, _, _, _ = aggregation_error_tiny_oracle.tiny_root_case(
-        case_id
-    ).arrays()
+    shapes, rate, _, _, _ = aggregation_error_tiny_oracle.tiny_root_case(case_id).arrays()
     gamma_shape = float(np.sum(shapes))
     assert float(np.mean(result.total_mass)) == pytest.approx(
         gamma_shape / rate,
@@ -328,11 +322,7 @@ def test_every_public_case_domain_has_no_detectable_cross_block_copula(
         }
     )
     pairs: list[tuple[str, str]] = []
-    pairs.extend(
-        ("total", name)
-        for name in blocks
-        if name.startswith(("allocation_", "noise_"))
-    )
+    pairs.extend(("total", name) for name in blocks if name.startswith(("allocation_", "noise_")))
     pairs.extend(
         (allocation, noise)
         for allocation in blocks
@@ -351,9 +341,7 @@ def test_every_public_case_domain_has_no_detectable_cross_block_copula(
         left_raw, left_uniform = blocks[left_name]
         right_raw, right_uniform = blocks[right_name]
         correlation = float(np.corrcoef(left_raw, right_raw)[0, 1])
-        quadrant = float(
-            np.mean((left_uniform < 0.5) & (right_uniform < 0.5))
-        )
+        quadrant = float(np.mean((left_uniform < 0.5) & (right_uniform < 0.5)))
         assert abs(correlation) <= 0.10, (left_name, right_name, correlation)
         assert abs(quadrant - 0.25) <= 0.04, (
             left_name,
@@ -373,18 +361,12 @@ def test_every_public_case_domain_has_no_detectable_cross_block_copula(
     for allocation_name in blocks:
         if not allocation_name.startswith("allocation_"):
             continue
-        allocation_phi = math.sqrt(3.0) * (
-            2.0 * blocks[allocation_name][1] - 1.0
-        )
+        allocation_phi = math.sqrt(3.0) * (2.0 * blocks[allocation_name][1] - 1.0)
         for noise_name in blocks:
             if not noise_name.startswith("noise_"):
                 continue
-            noise_phi = math.sqrt(3.0) * (
-                2.0 * blocks[noise_name][1] - 1.0
-            )
-            three_way = abs(
-                float(np.mean(total_phi * allocation_phi * noise_phi))
-            )
+            noise_phi = math.sqrt(3.0) * (2.0 * blocks[noise_name][1] - 1.0)
+            three_way = abs(float(np.mean(total_phi * allocation_phi * noise_phi)))
             assert three_way <= 0.10, (
                 allocation_name,
                 noise_name,
@@ -412,9 +394,7 @@ def test_all_public_case_domain_stream_seeds_are_unique() -> None:
 def test_cell_and_observation_permutations_preserve_scientific_arrays(
     case_id: str,
 ) -> None:
-    shapes, _, design, _, _ = aggregation_error_tiny_oracle.tiny_root_case(
-        case_id
-    ).arrays()
+    shapes, _, design, _, _ = aggregation_error_tiny_oracle.tiny_root_case(case_id).arrays()
     cell_permutation = np.arange(shapes.size - 1, -1, -1, dtype=np.int64)
     observation_permutation = np.arange(design.shape[0] - 1, -1, -1, dtype=np.int64)
     canonical = domains.simulate_tiny_score_domain(
@@ -461,9 +441,7 @@ def test_cell_and_observation_permutations_preserve_scientific_arrays(
             atol=6.0e-14,
         )
     assert permuted.evidence.stream_seeds == canonical.evidence.stream_seeds
-    assert permuted.evidence.scientific_input_sha256 != (
-        canonical.evidence.scientific_input_sha256
-    )
+    assert permuted.evidence.scientific_input_sha256 != (canonical.evidence.scientific_input_sha256)
 
 
 @pytest.mark.parametrize(
@@ -557,9 +535,7 @@ def test_conditioning_is_raw_log_mass_not_empirical_and_hashes_are_strict() -> N
     )
     assert math.isfinite(result.evidence.conditioning_center)
     assert result.evidence.conditioning_scale > 0.0
-    assert result.hashes["raw_log_mass"] == dict(result.evidence.array_sha256)[
-        "raw_log_mass"
-    ]
+    assert result.hashes["raw_log_mass"] == dict(result.evidence.array_sha256)["raw_log_mass"]
     assert result.evidence.construction_method == "keyed_pcg64_dirichlet"
     assert result.evidence.numpy_version == np.__version__
     result.verify()

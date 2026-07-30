@@ -68,3 +68,69 @@ Focused validation:
 
 Independent simulator, numerical-oracle, and code-design reviews informed
 the implementation. No SLURM work or protected-data access occurred.
+
+## 2026-07-30T08:36:59Z — E2 implementation and prelaunch review closure
+
+The E2 driver, committed array mappings, merger, and Slurm wrappers are now
+implemented locally. The implementation preserves every attempt in a fresh
+create-only directory and publishes completion last. Completion markers bind
+the canonical report payload, exact report-file bytes, artifact metadata, and
+exact serialized artifact bytes.
+
+Independent prelaunch reviews initially returned HOLD for concrete control
+defects. Those findings were fixed before any batch submission:
+
+- projected-coordinate observation scores now use a forward-coordinate
+  linearization, so parameter gradients are reverse-over-forward rather than
+  the previous reverse-over-reverse schedule;
+- the scalar partial-score Fisher risk is no longer divided by retained rank;
+- component row variances and parameter-gradient norms are measured at model
+  initialization before auxiliary loss weights are applied;
+- private initializer and optimizer streams are derived and checked against
+  every simulator stream before model construction;
+- paired optimizer randomness is keyed by stage position rather than
+  candidate name;
+- the vectorized scientific evaluator is checked against the public artifact
+  evaluator on representative tail and central points;
+- exact and learned scientific grid quantities are refined through 8192
+  midpoint prior-CDF strata and are marked non-interpretable if the numerical
+  convergence contract fails;
+- the boundary certificate now gates primary posterior refinement,
+  independent lower-tail refinement, and outer/inner quadrature errors;
+- oracle and attempt completion markers bind exact file bytes and are the
+  terminal publisher action;
+- Slurm wrappers load the pinned Git module, preserve scheduler logs for
+  pre-redirection failures, run on shared nodes, and end with the Python
+  driver via `exec`.
+
+The frozen E2 catalogue contains a four-task partial/observation \(q=1/q=3\)
+compile canary, 16 overfit tasks, 36 \(S=4096\) tasks, eight optional
+observation-score tasks, and three separate 12-task \(S=16384\) candidate
+matrices. Larger matrices will be launched only when the preceding evidence
+supports them.
+
+Focused validation after integration:
+
+- 110 corrected simulator, score-helper, oracle, driver, wrapper, and merger
+  tests passed in 113.97 seconds;
+- Ruff check and formatting passed;
+- focused Pyright passed with 0 errors;
+- Python and shell syntax checks passed.
+
+No SLURM work or protected-data access occurred during these fixes. The next
+step is independent final launch sign-off, followed by a coherent commit and
+push before a fresh detached full-SHA run root is created.
+
+## 2026-07-30T08:40:30Z — independent final launch sign-off
+
+The independent simulator/execution, numerical-oracle, and E2
+code/provenance reviewers each returned **PASS for commit and launch** after a
+read-only review of the integrated working tree. Their initial findings,
+dispositions, numerical evidence, and final conditions are preserved in the
+three corrected review documents.
+
+All reviewers require the same launch sequence: commit and push the complete
+working tree, resolve the exact full origin SHA, create a fresh clean detached
+worktree and run root, run the corrected oracle first, and submit the
+four-task compile canary only after the oracle publishes a valid completion
+marker.

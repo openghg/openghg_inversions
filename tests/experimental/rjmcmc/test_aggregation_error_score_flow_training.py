@@ -19,6 +19,7 @@ import pytest  # noqa: E402
 
 from openghg_inversions.experimental.rjmcmc.aggregation_error_score_flow_training import (  # noqa: E402
     RawLogMassScoreLoss,
+    conditional_log_prob_and_observation_score,
     gamma_log_mass_conditioning,
     make_score_regularized_conditional_flow,
     raw_log_mass_condition_score,
@@ -236,6 +237,53 @@ def test_forward_mode_raw_score_matches_direct_reverse_mode_on_flow() -> None:
     np.testing.assert_allclose(actual, expected, rtol=2e-13, atol=2e-13)
 
 
+@pytest.mark.parametrize("dimension", [1, 3])
+def test_forward_coordinate_observation_score_matches_reverse_mode(
+    dimension: int,
+) -> None:
+    flow = make_score_regularized_conditional_flow(
+        dimension,
+        source_seed=831 + dimension,
+    )
+    projected = jnp.reshape(
+        jnp.linspace(
+            -0.8,
+            0.9,
+            2 * dimension,
+            dtype=jnp.float64,
+        ),
+        (2, dimension),
+    )
+    raw_tau = jnp.asarray((-0.35, 0.55), dtype=jnp.float64)
+    center = 0.1
+    condition_scale = 1.25
+    actual_log_prob, actual_score = conditional_log_prob_and_observation_score(
+        flow,
+        projected,
+        raw_tau,
+        condition_center=center,
+        condition_scale=condition_scale,
+    )
+    conditions = ((raw_tau - center) / condition_scale)[:, None]
+    expected_log_prob = jax.vmap(flow.log_prob)(projected, conditions)
+    expected_score = jax.vmap(jax.grad(flow.log_prob))(
+        projected,
+        conditions,
+    )
+    np.testing.assert_allclose(
+        actual_log_prob,
+        expected_log_prob,
+        rtol=2e-13,
+        atol=2e-13,
+    )
+    np.testing.assert_allclose(
+        actual_score,
+        expected_score,
+        rtol=2e-12,
+        atol=2e-12,
+    )
+
+
 def test_forward_mode_mixed_parameter_gradient_matches_prior_schedule() -> None:
     flow = make_score_regularized_conditional_flow(1, source_seed=839)
     params, static = _partition(flow)
@@ -260,9 +308,7 @@ def test_forward_mode_mixed_parameter_gradient_matches_prior_schedule() -> None:
         local_params: Any,
         local_static: Any,
     ) -> jax.Array:
-        distribution = paramax.unwrap(
-            eqx.combine(local_params, local_static)
-        )
+        distribution = paramax.unwrap(eqx.combine(local_params, local_static))
         conditions = ((raw_tau - center) / condition_scale)[:, None]
         log_probabilities = distribution.log_prob(projected, conditions)
 
@@ -276,16 +322,10 @@ def test_forward_mode_mixed_parameter_gradient_matches_prior_schedule() -> None:
             )
             return distribution.log_prob(target, condition)
 
-        predicted_score = jax.vmap(
-            jax.grad(log_prob_one, argnums=1)
-        )(projected, raw_tau)
-        return -jnp.mean(log_probabilities) + jnp.mean(
-            jnp.square(predicted_score - target_score)
-        )
+        predicted_score = jax.vmap(jax.grad(log_prob_one, argnums=1))(projected, raw_tau)
+        return -jnp.mean(log_probabilities) + jnp.mean(jnp.square(predicted_score - target_score))
 
-    prior_value, prior_gradient = eqx.filter_value_and_grad(
-        prior_schedule_loss
-    )(params, static)
+    prior_value, prior_gradient = eqx.filter_value_and_grad(prior_schedule_loss)(params, static)
     np.testing.assert_allclose(
         current_value,
         prior_value,

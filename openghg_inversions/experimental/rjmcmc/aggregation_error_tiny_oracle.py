@@ -23,6 +23,7 @@ import json
 import math
 from numbers import Integral
 from typing import Any, Literal, TypeAlias, cast
+import warnings
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
@@ -188,12 +189,14 @@ def _adaptive_quad(
     **kwargs: Any,
 ) -> tuple[float, float]:
     """Call SciPy quad behind one stable scalar typing boundary."""
-    result = cast(Any, integrate.quad)(
-        function,
-        lower,
-        upper,
-        **kwargs,
-    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", integrate.IntegrationWarning)
+        result = cast(Any, integrate.quad)(
+            function,
+            lower,
+            upper,
+            **kwargs,
+        )
     return float(result[0]), float(result[1])
 
 
@@ -336,19 +339,13 @@ def adaptive_log_total_summary(
         case,
         fraction_order=order,
     )
-    log_gamma_normalizer = gamma_shape * math.log(rate) - float(
-        special.gammaln(gamma_shape)
-    )
+    log_gamma_normalizer = gamma_shape * math.log(rate) - float(special.gammaln(gamma_shape))
 
     def log_integrand(z: float) -> float:
-        if z < math.log(np.finfo(np.float64).tiny) or z > math.log(
-            np.finfo(np.float64).max
-        ):
+        if z < math.log(np.finfo(np.float64).tiny) or z > math.log(np.finfo(np.float64).max):
             return -math.inf
         total = math.exp(z)
-        log_prior_with_jacobian = (
-            log_gamma_normalizer + gamma_shape * z - rate * total
-        )
+        log_prior_with_jacobian = log_gamma_normalizer + gamma_shape * z - rate * total
         return log_prior_with_jacobian + float(conditional(total))
 
     optimization = cast(Any, optimize.minimize_scalar)(
@@ -407,13 +404,15 @@ def adaptive_log_total_summary(
         return value / normalizer
 
     def quantile(probability: float) -> float:
-        root = float(cast(Any, optimize.brentq)(
-            lambda z: posterior_cdf(float(z)) - probability,
-            lower_z,
-            upper_z,
-            xtol=1.0e-12,
-            rtol=np.float64(1.0e-12),
-        ))
+        root = float(
+            cast(Any, optimize.brentq)(
+                lambda z: posterior_cdf(float(z)) - probability,
+                lower_z,
+                upper_z,
+                xtol=1.0e-12,
+                rtol=np.float64(1.0e-12),
+            )
+        )
         return math.exp(root)
 
     prior_retained = float(
@@ -423,15 +422,12 @@ def adaptive_log_total_summary(
     log_evidence = math.log(normalizer) + log_scale
     omitted_prior_mass = max(1.0 - prior_retained, 0.0)
     gaussian_log_density_upper_bound = -0.5 * (
-        noise.size * math.log(2.0 * math.pi)
-        + 2.0 * float(np.log(noise).sum())
+        noise.size * math.log(2.0 * math.pi) + 2.0 * float(np.log(noise).sum())
     )
     if omitted_prior_mass == 0.0:
         posterior_retained_lower_bound = 1.0
     else:
-        log_omitted_evidence_upper_bound = (
-            math.log(omitted_prior_mass) + gaussian_log_density_upper_bound
-        )
+        log_omitted_evidence_upper_bound = math.log(omitted_prior_mass) + gaussian_log_density_upper_bound
         posterior_retained_lower_bound = 1.0 / (
             1.0 + math.exp(log_omitted_evidence_upper_bound - log_evidence)
         )
@@ -485,6 +481,7 @@ class NativeLogMassSummary:
     posterior_mean_total: float
     posterior_sd_total: float
     scaled_quadrature_error: float
+    maximum_inner_scaled_quadrature_error: float
     sha256: str
 
     def payload(self, *, include_sha256: bool = True) -> dict[str, object]:
@@ -530,27 +527,17 @@ def audit_evaluation_support(
         or log_prior.size == 0
     ):
         raise ValueError("support inputs must be aligned non-empty vectors and a Boolean mask.")
-    if (
-        not np.all(np.isfinite(log_prior))
-        or not np.all(np.isfinite(log_likelihood))
-        or not np.any(selected)
-    ):
+    if not np.all(np.isfinite(log_prior)) or not np.all(np.isfinite(log_likelihood)) or not np.any(selected):
         raise ValueError("support inputs must be finite and select at least one state.")
     if not 0.0 < minimum_posterior_mass <= 1.0:
         raise ValueError("minimum_posterior_mass must lie in (0, 1].")
     log_prior_total = _logsumexp_scalar(log_prior)
-    prior_retained = math.exp(
-        _logsumexp_scalar(log_prior[selected]) - log_prior_total
-    )
+    prior_retained = math.exp(_logsumexp_scalar(log_prior[selected]) - log_prior_total)
     log_joint = log_prior + log_likelihood
     log_evidence = _logsumexp_scalar(log_joint)
-    posterior_retained = math.exp(
-        _logsumexp_scalar(log_joint[selected]) - log_evidence
-    )
+    posterior_retained = math.exp(_logsumexp_scalar(log_joint[selected]) - log_evidence)
     mode_included = bool(selected[int(np.argmax(log_joint))])
-    valid = bool(
-        posterior_retained >= minimum_posterior_mass and mode_included
-    )
+    valid = bool(posterior_retained >= minimum_posterior_mass and mode_included)
     return SupportAudit(
         retained_prior_mass=prior_retained,
         omitted_prior_mass=max(1.0 - prior_retained, 0.0),
@@ -577,25 +564,17 @@ def native_log_mass_summary(
         raise ValueError("lower_log_mass must be a finite negative tail bound.")
     shapes, rate, design, observation, noise = case.arrays()
     upper_mass = max(
-        float(stats.gamma.ppf(1.0 - 1.0e-14, a=float(shape), scale=1.0 / rate))
-        for shape in shapes
+        float(stats.gamma.ppf(1.0 - 1.0e-14, a=float(shape), scale=1.0 / rate)) for shape in shapes
     )
     upper_z = math.log(upper_mass)
-    gaussian_constant = -0.5 * (
-        observation.size * math.log(2.0 * math.pi)
-        + 2.0 * float(np.log(noise).sum())
-    )
+    gaussian_constant = -0.5 * (observation.size * math.log(2.0 * math.pi) + 2.0 * float(np.log(noise).sum()))
     gamma_constants = shapes * math.log(rate) - special.gammaln(shapes)
 
     def log_joint(z: FloatArray) -> float:
         masses = np.exp(z)
         residual = (observation - design @ masses) / noise
-        log_prior_with_jacobian = float(
-            np.sum(gamma_constants + shapes * z - rate * masses)
-        )
-        return log_prior_with_jacobian + gaussian_constant - 0.5 * float(
-            residual @ residual
-        )
+        log_prior_with_jacobian = float(np.sum(gamma_constants + shapes * z - rate * masses))
+        return log_prior_with_jacobian + gaussian_constant - 0.5 * float(residual @ residual)
 
     mode = cast(Any, optimize.minimize)(
         lambda z: -log_joint(np.asarray(z, dtype=np.float64)),
@@ -609,18 +588,20 @@ def native_log_mass_summary(
     mode_z = np.asarray(mode.x, dtype=np.float64)
     log_scale = log_joint(mode_z)
 
-    def integrate_moment(moment_order: int) -> tuple[float, float]:
+    def integrate_moment(moment_order: int) -> tuple[float, float, float]:
+        maximum_inner_error = 0.0
+
         def outer(z_first: float) -> float:
+            nonlocal maximum_inner_error
+
             def inner(z_second: float) -> float:
                 z = np.asarray((z_first, z_second), dtype=np.float64)
                 log_value = log_joint(z) - log_scale
                 if log_value < -745.0:
                     return 0.0
-                return math.exp(log_value) * (
-                    math.exp(z_first) + math.exp(z_second)
-                ) ** moment_order
+                return math.exp(log_value) * (math.exp(z_first) + math.exp(z_second)) ** moment_order
 
-            value, _ = _adaptive_quad(
+            value, error = _adaptive_quad(
                 inner,
                 lower_log_mass,
                 upper_z,
@@ -629,9 +610,10 @@ def native_log_mass_summary(
                 points=(float(mode_z[1]),),
                 limit=400,
             )
+            maximum_inner_error = max(maximum_inner_error, error)
             return value
 
-        return _adaptive_quad(
+        value, error = _adaptive_quad(
             outer,
             lower_log_mass,
             upper_z,
@@ -640,10 +622,13 @@ def native_log_mass_summary(
             points=(float(mode_z[0]),),
             limit=400,
         )
+        return value, error, maximum_inner_error
 
-    normalizer, normalizer_error = integrate_moment(0)
-    first, _ = integrate_moment(1)
-    second, _ = integrate_moment(2)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", integrate.IntegrationWarning)
+        normalizer, normalizer_error, maximum_inner_error = integrate_moment(0)
+        first, _, _ = integrate_moment(1)
+        second, _, _ = integrate_moment(2)
     if not math.isfinite(normalizer) or normalizer <= 0.0:
         raise FloatingPointError("native log-mass normalizer is invalid.")
     mean = first / normalizer
@@ -661,6 +646,7 @@ def native_log_mass_summary(
         "posterior_mean_total": mean,
         "posterior_sd_total": math.sqrt(variance),
         "scaled_quadrature_error": normalizer_error / normalizer,
+        "maximum_inner_scaled_quadrature_error": (maximum_inner_error / normalizer),
     }
     summary = NativeLogMassSummary(
         **cast(Any, without_sha),
@@ -689,34 +675,68 @@ def boundary_oracle_certificate() -> dict[str, Any]:
     reference = primary[-1]
     previous = primary[-2]
     independent_reference = independent[-1]
+    independent_previous = independent[-2]
     primary_log_delta = abs(reference.log_evidence - previous.log_evidence)
-    independent_log_delta = abs(
-        reference.log_evidence - independent_reference.log_evidence
+    independent_log_delta = abs(reference.log_evidence - independent_reference.log_evidence)
+    location_delta = (
+        abs(reference.posterior_mean_total - independent_reference.posterior_mean_total)
+        / reference.posterior_sd_total
     )
-    location_delta = abs(
-        reference.posterior_mean_total
-        - independent_reference.posterior_mean_total
-    ) / reference.posterior_sd_total
-    sd_relative_delta = abs(
-        reference.posterior_sd_total - independent_reference.posterior_sd_total
-    ) / reference.posterior_sd_total
+    sd_relative_delta = (
+        abs(reference.posterior_sd_total - independent_reference.posterior_sd_total)
+        / reference.posterior_sd_total
+    )
+    primary_mean_delta = (
+        abs(reference.posterior_mean_total - previous.posterior_mean_total) / reference.posterior_sd_total
+    )
+    primary_sd_delta = (
+        abs(reference.posterior_sd_total - previous.posterior_sd_total) / reference.posterior_sd_total
+    )
+    primary_endpoint_delta = (
+        max(
+            abs(reference.posterior_lower_0_025 - previous.posterior_lower_0_025),
+            abs(reference.posterior_upper_0_975 - previous.posterior_upper_0_975),
+            abs(reference.posterior_median - previous.posterior_median),
+        )
+        / reference.posterior_sd_total
+    )
+    independent_tail_log_delta = abs(independent_reference.log_evidence - independent_previous.log_evidence)
+    independent_tail_mean_delta = (
+        abs(independent_reference.posterior_mean_total - independent_previous.posterior_mean_total)
+        / reference.posterior_sd_total
+    )
+    independent_tail_sd_delta = (
+        abs(independent_reference.posterior_sd_total - independent_previous.posterior_sd_total)
+        / reference.posterior_sd_total
+    )
     checks = {
-        "primary_log_evidence_converged": (
-            primary_log_delta <= PRIMARY_LOG_EVIDENCE_TOLERANCE_NAT
+        "primary_log_evidence_converged": (primary_log_delta <= PRIMARY_LOG_EVIDENCE_TOLERANCE_NAT),
+        "independent_log_evidence_agrees": (independent_log_delta <= INDEPENDENT_LOG_EVIDENCE_TOLERANCE_NAT),
+        "independent_posterior_mean_agrees": (location_delta <= POSTERIOR_LOCATION_TOLERANCE_REFERENCE_SD),
+        "independent_posterior_sd_agrees": (sd_relative_delta <= POSTERIOR_SD_RELATIVE_TOLERANCE),
+        "primary_posterior_mean_converged": (primary_mean_delta <= POSTERIOR_LOCATION_TOLERANCE_REFERENCE_SD),
+        "primary_posterior_sd_converged": (primary_sd_delta <= POSTERIOR_SD_RELATIVE_TOLERANCE),
+        "primary_posterior_endpoints_converged": (
+            primary_endpoint_delta <= POSTERIOR_LOCATION_TOLERANCE_REFERENCE_SD
         ),
-        "independent_log_evidence_agrees": (
-            independent_log_delta <= INDEPENDENT_LOG_EVIDENCE_TOLERANCE_NAT
+        "independent_tail_log_evidence_converged": (
+            independent_tail_log_delta <= INDEPENDENT_LOG_EVIDENCE_TOLERANCE_NAT
         ),
-        "independent_posterior_mean_agrees": (
-            location_delta <= POSTERIOR_LOCATION_TOLERANCE_REFERENCE_SD
+        "independent_tail_posterior_mean_converged": (
+            independent_tail_mean_delta <= POSTERIOR_LOCATION_TOLERANCE_REFERENCE_SD
         ),
-        "independent_posterior_sd_agrees": (
-            sd_relative_delta <= POSTERIOR_SD_RELATIVE_TOLERANCE
+        "independent_tail_posterior_sd_converged": (
+            independent_tail_sd_delta <= POSTERIOR_SD_RELATIVE_TOLERANCE
+        ),
+        "primary_scaled_quadrature_error_small": (reference.scaled_quadrature_error <= 1.0e-6),
+        "independent_outer_scaled_quadrature_error_small": (
+            independent_reference.scaled_quadrature_error <= 1.0e-6
+        ),
+        "independent_inner_scaled_quadrature_error_small": (
+            independent_reference.maximum_inner_scaled_quadrature_error <= 1.0e-6
         ),
         "support_retains_prior_mass": reference.represented_prior_mass >= 1.0 - 1.0e-12,
-        "support_retains_posterior_mass": (
-            reference.represented_posterior_mass >= 1.0 - 1.0e-6
-        ),
+        "support_retains_posterior_mass": (reference.represented_posterior_mass >= 1.0 - 1.0e-6),
         "posterior_mode_included": reference.mode_included,
     }
     without_sha: dict[str, Any] = {
@@ -724,14 +744,18 @@ def boundary_oracle_certificate() -> dict[str, Any]:
         "case_id": BOUNDARY_CASE_ID,
         "definitions_sha256": definitions_sha256(),
         "primary_order_ladder": [summary.payload() for summary in primary],
-        "independent_tail_ladder": [
-            summary.payload() for summary in independent
-        ],
+        "independent_tail_ladder": [summary.payload() for summary in independent],
         "diagnostics": {
             "primary_log_evidence_delta_nat": primary_log_delta,
             "independent_log_evidence_delta_nat": independent_log_delta,
             "independent_posterior_mean_delta_reference_sd": location_delta,
             "independent_posterior_sd_relative_delta": sd_relative_delta,
+            "primary_posterior_mean_delta_reference_sd": (primary_mean_delta),
+            "primary_posterior_sd_relative_delta": primary_sd_delta,
+            "primary_posterior_endpoint_delta_reference_sd": (primary_endpoint_delta),
+            "independent_tail_log_evidence_delta_nat": (independent_tail_log_delta),
+            "independent_tail_posterior_mean_delta_reference_sd": (independent_tail_mean_delta),
+            "independent_tail_posterior_sd_relative_delta": (independent_tail_sd_delta),
         },
         "checks": checks,
         "pass": all(checks.values()),

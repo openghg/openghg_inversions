@@ -38,8 +38,11 @@ __all__ = [
     "FLOW_SPLINE_INTERVAL",
     "FLOW_SPLINE_KNOTS",
     "RawLogMassScoreLoss",
+    "conditional_log_prob",
+    "conditional_log_prob_and_observation_score",
     "gamma_log_mass_conditioning",
     "make_score_regularized_conditional_flow",
+    "raw_log_mass_condition_log_prob_and_score",
     "raw_log_mass_condition_score",
 ]
 
@@ -231,6 +234,82 @@ def _raw_log_mass_condition_log_prob_and_score(
     return jax.vmap(value_and_score_one)(targets, tau)
 
 
+def conditional_log_prob(
+    distribution: Any,
+    projected: jax.Array,
+    raw_log_mass: jax.Array,
+    *,
+    condition_center: float,
+    condition_scale: float,
+) -> jax.Array:
+    """Evaluate conditional log density without compiling condition scores."""
+    center = _finite_scalar(condition_center, name="condition_center")
+    scale = _finite_scalar(condition_scale, name="condition_scale")
+    if scale <= 0.0:
+        raise ValueError("condition_scale must be positive.")
+    targets = jnp.asarray(projected)
+    if targets.ndim != 2 or targets.shape[1] < 1:
+        raise ValueError("projected must have shape (n, q) with q positive.")
+    tau = _batch_scalar(raw_log_mass, name="raw_log_mass")
+    if tau.shape[0] != targets.shape[0]:
+        raise ValueError("projected and raw_log_mass batch sizes must match.")
+    conditions = ((tau - center) / scale)[:, None]
+    return jax.vmap(distribution.log_prob)(targets, conditions)
+
+
+def conditional_log_prob_and_observation_score(
+    distribution: Any,
+    projected: jax.Array,
+    raw_log_mass: jax.Array,
+    *,
+    condition_center: float,
+    condition_scale: float,
+) -> tuple[jax.Array, jax.Array]:
+    """Evaluate log density and its projected-coordinate score per row."""
+    center = _finite_scalar(condition_center, name="condition_center")
+    scale = _finite_scalar(condition_scale, name="condition_scale")
+    if scale <= 0.0:
+        raise ValueError("condition_scale must be positive.")
+    targets = jnp.asarray(projected)
+    if targets.ndim != 2 or targets.shape[1] < 1:
+        raise ValueError("projected must have shape (n, q) with q positive.")
+    tau = _batch_scalar(raw_log_mass, name="raw_log_mass")
+    if tau.shape[0] != targets.shape[0]:
+        raise ValueError("projected and raw_log_mass batch sizes must match.")
+    conditions = ((tau - center) / scale)[:, None]
+
+    def value_and_score_one(
+        target: jax.Array,
+        condition: jax.Array,
+    ) -> tuple[jax.Array, jax.Array]:
+        def log_prob(local_target: jax.Array) -> jax.Array:
+            return distribution.log_prob(local_target, condition)
+
+        value, linearized = jax.linearize(log_prob, target)
+        score = jax.vmap(linearized)(jnp.eye(target.shape[0], dtype=target.dtype))
+        return value, score
+
+    return jax.vmap(value_and_score_one)(targets, conditions)
+
+
+def raw_log_mass_condition_log_prob_and_score(
+    distribution: Any,
+    projected: jax.Array,
+    raw_log_mass: jax.Array,
+    *,
+    condition_center: float,
+    condition_scale: float,
+) -> tuple[jax.Array, jax.Array]:
+    """Public exact likelihood/partial-score pair for exploratory losses."""
+    return _raw_log_mass_condition_log_prob_and_score(
+        distribution,
+        projected,
+        raw_log_mass,
+        condition_center=condition_center,
+        condition_scale=condition_scale,
+    )
+
+
 def raw_log_mass_condition_score(
     distribution: Any,
     projected: jax.Array,
@@ -298,14 +377,12 @@ class RawLogMassScoreLoss(eqx.Module):
         tau = _batch_scalar(raw_log_mass, name="raw_log_mass")
         if tau.shape[0] != targets.shape[0]:
             raise ValueError("projected and raw_log_mass batch sizes must match.")
-        log_probabilities, predicted_score = (
-            _raw_log_mass_condition_log_prob_and_score(
-                distribution,
-                targets,
-                tau,
-                condition_center=self.condition_center,
-                condition_scale=self.condition_scale,
-            )
+        log_probabilities, predicted_score = _raw_log_mass_condition_log_prob_and_score(
+            distribution,
+            targets,
+            tau,
+            condition_center=self.condition_center,
+            condition_scale=self.condition_scale,
         )
         dimension = jnp.asarray(targets.shape[1], dtype=log_probabilities.dtype)
         negative_log_likelihood = -jnp.mean(log_probabilities) / dimension

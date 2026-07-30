@@ -113,6 +113,33 @@ variances. Preserve full decomposed train/validation histories, failure
 risks, value/evidence/posterior/gradient diagnostics, normalization and
 replay checks, runtime, maximum RSS, exact job IDs, and checksums.
 
+The committed array catalogue is staged rather than launched wholesale:
+
+1. one four-task compile canary covering partial-score and observation-score
+   objectives for both the \(q=1\) and \(q=3\) architectures;
+2. one 16-task small-catalogue overfit matrix covering NLL-only and
+   partial-score fits with four initializations;
+3. one 36-task \(S=4096\) matrix covering NLL-only, joint partial score, and
+   NLL-pretrain/partial-finetune fits;
+4. one optional eight-task \(S=4096\) observation-score canary;
+5. three separate 12-task \(S=16384\) matrices, one per non-observation
+   candidate, so only configurations supported by the smaller experiment
+   consume the larger catalogue.
+
+Optimizer stream identity is keyed by case, initialization, and stage
+position, not by ablation name. This pairs the first-stage shuffle stream
+across candidate objectives while keeping the second curriculum stage
+separate. Every attempt fails before model creation if its private PCG64
+streams collide with any simulator stream, if private streams collide with
+one another, or if their derived JAX seeds collide.
+
+Scientific grid metrics use a frozen midpoint prior-CDF ladder at
+\(1024,2048,4096,8192\) rows. Exact and learned evidence, posterior summaries,
+and pointwise errors must be stable over the final two sizes, and the exact
+grid must agree with the independent adaptive reference, before the learned
+scientific errors are marked interpretable. Operational training metrics
+remain reportable when this numerical interpretation gate is false.
+
 Substantial work runs as SLURM arrays through `slurm-wakeup`. Resource
 requests are based on measured canaries and should not reserve exclusive
 nodes or excessive walltime without evidence.
