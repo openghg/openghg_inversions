@@ -4,6 +4,14 @@
 
 ## Code changes
 
+- Extended `MaxChildPCAEccentricity` with an optional
+  `min_child_target_weight_share` materiality threshold. The default zero keeps
+  the strict all-child eccentricity veto. Positive values allow only children
+  below that share of the class/source-local equal-target weight,
+  `weights.sum() / target_regions`, to bypass the veto; material children remain
+  guarded. This affects split acceptance only and does not reconnect, freeze,
+  prune, or marginalize the accepted low-weight child.
+  [PR #546](https://github.com/openghg/openghg_inversions/pull/546)
 - Added the opt-in `ConnectedBinaryPartitionStep` for repairing provisional
   binary cuts whose sides contain disconnected components. Repair candidates
   preserve the parent exactly, return two connected children, and are selected
