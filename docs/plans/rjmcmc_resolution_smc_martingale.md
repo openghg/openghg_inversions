@@ -2,9 +2,9 @@
 
 ## Status and scope
 
-This is a prospective design note.  It records the next experiment suggested
-by the coarse-to-fine martingale decomposition, after the calibrated G4
-projected-bank failure.  It is not a verified derivation and it does not
+This note began as a prospective design after the calibrated G4
+projected-bank failure.  The tiny implementation and first BP1 experiment now
+exist, but the PARIS-scale method remains experimental.  The note does not
 authorize use of approximate likelihood differences as evidence for a
 partition or \(K\).
 
@@ -24,6 +24,42 @@ The experiment proposed here is an alternative evaluator for the same
 single-root conditional marginal likelihood.  It is not an RJMCMC kernel and
 does not infer a tree.  The tree is a computational chart used to reveal one
 fixed native Gamma--Dirichlet allocation progressively.
+
+## Implementation status
+
+The implementation branch is
+`codex/rjmcmc-resolution-smc-experiment`.  Its latest verified remote commit
+on 2026-07-30 was
+`abdce3c30c65aebd88c3c4f27c588c71aaabe2c2`; it contains the tiny
+resolution-SMC implementation, the wider R1 matrix and a bounded guided R2
+experiment.
+
+R0 and R1a have completed.  R1a established target, normalization,
+conservation, replay and chart-equivalence correctness.  Direct IID and
+no-resampling SMC were exactly pathwise identical.  Bootstrap resampling
+reduced raw variance for the boundary-heavy target, but its guide and
+frontier overhead removed the gain: the best
+relative-variance-times-median-cost ratio was `1.66` relative to IID, where a
+value below one would favour SMC.  The minimum intermediate ESS fraction was
+`0.0668`.  The complete report is
+`docs/plans/rjmcmc_resolution_smc_r1a_report.md` on the implementation branch.
+
+The wider R1 Slurm array has now completed all 36 tasks with zero scheduler
+failures.  All 36 task certificates and their replicate/level records are
+present.  The three guided R2 tasks at 256, 1,024 and 4,096 particles also
+completed and published passing task certificates, including exact
+boundary-restart replay.  No related Slurm job remains active.
+
+This authenticates completed computation, not the scientific performance
+claim.  No merged R1/R2 analysis or final cost/variance report had been
+published at the last inspection.  Do not infer success from per-task
+certificates: they certify execution and local invariants, whereas promotion
+depends on the aggregate oracle agreement and variance-times-cost comparison.
+PARIS-scale R4 is not yet justified.
+
+The implementation branch was created before the later literature-map update
+on this planning branch.  Reconcile that documentation before merging the
+experiment branch; no numerical result depends on the missing prose.
 
 ## Current design model
 
@@ -204,6 +240,36 @@ Unbiasedness is assessed on the linear likelihood scale.  The logarithm is
 biased and is retained only as a stable reporting coordinate.
 
 ## Relationship to other estimators
+
+### Learned conditional likelihoods
+
+The corrected frozen score-regularized NLE candidate failed its public
+two-/four-cell promotion screen, especially for boundary-heavy likelihood
+shape and retained-mass gradients.  This is a candidate-specific result, not
+a reason to remove learned comparators.  It does mean that the current frozen
+score flow should appear only as a documented negative control.
+
+Before PARIS-scale SMC, use real-operator geometry in two observation-blind
+bridges:
+
+1. 4--16-cell PARIS-derived synthetic subproblems with exact or independently
+   converged likelihood oracles; and
+2. full-PARIS-operator model-generated observations assessed by
+   simulation-based calibration and posterior/predictive coverage.
+
+The first should compare direct IID, Gaussian closure, resolution-SMC,
+NLL-only flow and, if useful, a small conditional diffusion experiment.  The
+second should include only methods that survive the first.  Detailed NLE
+failure evidence and experiment definitions are in
+[`rjmcmc_score_regularized_nle_review.md`](rjmcmc_score_regularized_nle_review.md).
+
+Score-based diffusion remains scientifically possible, but it is less direct
+as a normalized likelihood evaluator: denoising score matching gives a
+data-space score, while likelihood values require probability-flow
+integration and retained-mass gradients require an additional reliable
+derivative.  It is more attractive if the downstream method can consume
+samples, posterior estimates or likelihood ratios rather than an explicit
+PyMC/HMC likelihood.
 
 ### IID and RQMC source banks
 

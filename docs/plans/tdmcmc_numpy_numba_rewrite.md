@@ -125,6 +125,8 @@ will be introduced only behind equivalence tests.
 | 2026-07-26 | Test a frozen conditional-allocation bank before adding `sbi`. | The transported standardized-shape mixture failed its T2 development screen. Frozen within-region Dirichlet shares retain the full conditional dependence on region masses, give a deterministic normalized Gaussian mixture after measurement-noise convolution, and can be differentiated directly in NumPy/PyTensor. Partitions remain externally weighted by their structural prior. |
 | 2026-07-30 | Use IID Monte Carlo as the certification baseline for the PARIS projected source bank and treat blocked scrambled Sobol as an empirical variance-reduction candidate. | The G4 Sobol bank showed a repeated \(\log 2\) likelihood-doubling signature, but that result alone cannot separate poor prior-to-posterior overlap from ineffective high-dimensional QMC. Matched independent IID banks and independent scrambles must compare likelihood variance, signed prefix changes, component-weight ESS/perplexity, and cost before choosing the source construction. |
 | 2026-07-30 | Do not accept the score-regularized NLE N1 result as an architecture hard stop. | The tiny simulator row-aligned separately scrambled Sobol catalogues for root mass, allocation, and Gaussian noise. The resulting strong cross-stream dependence violates the declared product law and invalidates the simulator-score target and scientific N1 interpretation. Use genuinely independent simulation streams or one valid joint net, then rerun a lighter exploratory programme before frozen certification. |
+| 2026-07-30 | Reject the corrected frozen `fisher_observation_joint` candidate, while retaining NLE and score-based generation as open model classes. | Independent simulation and certified oracles removed the earlier validity defects. At \(S=16{,}384\), only two of six cases passed; boundary-heavy density and mass-gradient errors remained large, and density accuracy did not imply gradient accuracy. The next screen uses observation-blind PARIS-derived subproblems before full-operator simulated-data calibration. |
+| 2026-07-30 | Continue resolution-SMC through the wider R1 and bounded guided R2 experiments, but do not promote it to PARIS scale from R1a. | R1a passed target, replay and conservation checks and showed some raw boundary-case variance reduction. Its best cost-adjusted SMC/IID ratio was nevertheless 1.66, so current bootstrap SMC was slower per unit precision than direct IID. |
 
 ## Ganesan lineage and active hierarchy plan
 
@@ -650,6 +652,20 @@ not implicit behavior of this implementation.
   score-regularized NLE.
   The detailed review is in
   [`rjmcmc_score_regularized_nle_review.md`](rjmcmc_score_regularized_nle_review.md).
+- Reviewed the corrected independent-simulator NLE result.  The frozen
+  normalized score-regularized flow is now validly rejected: two of six cases
+  passed at \(S=16{,}384\), with the strongest failures in boundary-sensitive
+  likelihood shape and retained-mass derivatives.  This does not reject
+  likelihood-only flows, conditional diffusion/score models, neural ratios or
+  posterior estimators.  Two observation-blind bridges are now planned:
+  exact-oracle PARIS-derived 4--16-cell subproblems, followed by
+  full-operator model-generated simulation-based calibration.
+- Recorded the first resolution-SMC result.  R0/R1a validated the estimator
+  and exact replay, but bootstrap variance reduction did not offset guide and
+  frontier cost.  The wider R1 array subsequently completed 36/36 tasks, and
+  all three guided R2 tasks published passing local certificates.  The
+  aggregate R1/R2 cost and variance analysis has not yet been published, so
+  these are completed computations rather than a scientific promotion.
 
 ### 2026-07-26
 

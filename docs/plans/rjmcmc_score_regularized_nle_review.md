@@ -192,3 +192,96 @@ target.
    validation risks, and a compact machine-readable result with the report.
 7. Only after the corrected tiny programme works should target-rank PARIS
    compilation or training resume.
+
+## Corrected frozen-candidate outcome
+
+The corrected programme subsequently ran with independent PCG64 streams and
+certified two- and four-cell oracles.  The final report is
+`rjmcmc_score_regularized_nle_corrected_promotion_report.md` at commit
+`5b1bfa9ad7246e06511403cdedf0a02778d149ba`; the simulator/training producer
+was `3ef17c2253d5b56eda6ee5f028d704857a4e0d4b` and the evaluator was
+`bf94e055854c285fe5cbf8176dab263c725e1886`.
+
+This corrected result supersedes the scientific interpretation of the invalid
+N1 experiment above.  It is a valid rejection of one frozen candidate,
+`fisher_observation_joint`, not a rejection of NLE in general.  The candidate
+was an explicit normalized conditional spline flow trained with NLL plus
+Fisher-scaled observation-score supervision.  Four deterministic
+initializations were selected by independent validation NLL for each case.
+
+At the larger training size, \(S=16{,}384\), only the near-Gaussian two-cell
+and skewed two-cell cases passed every likelihood, gradient, evidence and
+posterior gate.  The most informative failures were:
+
+- the near-Gaussian four-cell density was accurate, but its scaled
+  retained-mass gradient error was `1.38`;
+- the skewed four-cell case had moderate density and gradient errors; and
+- both boundary-heavy cases had prior-weighted median log-density errors of
+  `0.64--0.76` nat and gradient errors of `1.55--2.70`.
+
+The boundary-heavy evidence error could occasionally be small through
+integration cancellation even while the pointwise likelihood shape and
+derivative were wrong.  Value accuracy, evidence accuracy and gradient
+accuracy must therefore be reported separately.  A gradient gate is essential
+when the intended consumer is HMC; it need not be a hard requirement for a
+Metropolis or evidence-only consumer.
+
+Increasing \(S\) helped some cases but did not give uniform convergence.  In
+particular, the four-cell near-Gaussian gradient became worse after increasing
+the catalogue.  This points to boundary-sensitive approximation and
+optimization difficulty, not merely too few simulator draws.  No protected
+PARIS evaluation is justified for this frozen candidate.
+
+### Score-based generative modelling
+
+Score-based generative modelling remains an option, but it is not what the
+corrected experiment tested.  That experiment used a normalized flow with an
+auxiliary score loss.  A conditional diffusion or other score model would
+learn noisy-data scores and may represent sharp or multimodal residual laws
+more flexibly.
+
+The complication is the intended interface.  Standard denoising score
+matching supplies a score such as
+\(\nabla_y\log p_t(y\mid T)\), not a cheap normalized value for
+\(p(y\mid T)\).  Recovering a log likelihood generally requires a
+probability-flow ODE and divergence calculation, and a reliable derivative
+with respect to retained mass \(T\) requires further work.  That is expensive
+and can introduce numerical error into HMC or evidence calculations.
+Likelihood-free neural posterior or likelihood-ratio estimation may be the
+simpler score-based route when normalized likelihood values are not required.
+
+The next use of a diffusion model should therefore be a small,
+semi-realistic, low-retained-rank experiment.  It should test sample fidelity
+and, only if an explicit likelihood is required, probability-flow likelihood
+and mass-gradient accuracy against an oracle.  It should not yet be a
+PARIS-scale production campaign.
+
+### Two realistic-geometry bridge experiments
+
+The severe public boundary cases are useful stress tests, but they do not show
+how often the same geometry occurs under the real atmospheric operator.  Two
+experiments should bridge the gap without using realised observations to
+select an approximation.
+
+1. **Semi-realistic oracle subproblems.** Extract several observation-blind
+   4--16-cell subproblems from the real PARIS sensitivity matrix, retaining
+   the actual prior allocation shapes and measurement-error scales.  Include
+   diffuse, localized and strongly unequal footprint-contribution patterns.
+   Generate observations from the declared model and compare NLL-only flow,
+   the frozen score-flow result as a negative control, Gaussian closure, and
+   resolution-SMC or high-budget IID against exact quadrature or an
+   independently converged stochastic oracle.  Score log-density shape,
+   evidence, retained-mass gradients, cost and repeated-run uncertainty
+   separately.
+2. **Full-operator simulated-data calibration.** Use the complete PARIS
+   sensitivity matrix, prior and error model, but generate mole fractions
+   from that model rather than reading realised PARIS observations.  Compare
+   approximate methods using simulation-based calibration ranks, posterior
+   interval coverage, bias in retained totals and predictive calibration.
+   Gaussian closure and a high-budget conditional Monte Carlo or
+   resolution-SMC reference should accompany any learned model.  This asks
+   whether approximation error changes scientific inference even when a
+   pointwise exact likelihood oracle is unavailable.
+
+The first experiment diagnoses operator geometry cheaply.  Only methods that
+survive it should enter the full-operator calibration experiment.
