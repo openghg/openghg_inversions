@@ -9,9 +9,11 @@
   empty site selections now fail instead of expanding to every loaded site,
   calculated minimum-error options have a validated ``{"by_site": bool}``
   schema, and legacy migration warnings remain visible under default warning
-  filters. Retained calibration scales and observation units now follow site
-  pruning, explicit site order is preserved during input assembly, and mixed
-  surface/column inputs retain their column correction factors.
+  filters. Retained calibration scales now follow site pruning, and
+  observation-valued variables are converted to a common unit through
+  OpenGHG's Pint registry before concatenation. Explicit site order is
+  preserved during input assembly, and mixed surface/column inputs retain
+  their column correction factors.
   [#427](https://github.com/openghg/openghg_inversions/issues/427)
 - Made direct composition of concrete standard and multisector RHIME models
   the default builder strategy. The semantic flux-plan compiler remains

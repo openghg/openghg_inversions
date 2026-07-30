@@ -9,14 +9,14 @@ before constructing RHIME specs.
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
-import warnings
 
 from openghg_inversions.config import config
-from openghg_inversions.inversion_inputs import normalise_min_error_options
+from openghg_inversions.model_error import normalise_min_error_options
 from openghg_inversions.models import (
     DEFAULT_X_PRIOR,
     RhimeBuilderStrategy,

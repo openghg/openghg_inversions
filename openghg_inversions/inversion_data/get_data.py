@@ -9,17 +9,23 @@ saved merged data is handled by :mod:`openghg_inversions.inversion_data.serialis
 
 import logging
 import warnings
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from numbers import Integral
 from typing import Any, Literal
 
 import numpy as np
 import xarray as xr
-
 from openghg.retrieve import get_bc
 from openghg.types import SearchError
-from openghg.util import extract_float
 
+from openghg_inversions.flux_sanitization import FluxNonFiniteCheck
+from openghg_inversions.inversion_data._site_options import (
+    expand_site_option,
+    is_column_observation,
+    is_column_platform,
+    is_satellite_platform,
+)
+from openghg_inversions.inversion_data._units import align_observation_units
 from openghg_inversions.inversion_data.getters import (
     get_flux_data,
     get_footprint_data,
@@ -27,8 +33,6 @@ from openghg_inversions.inversion_data.getters import (
 )
 from openghg_inversions.inversion_data.scenario import merged_scenario_data
 from openghg_inversions.inversion_data.serialise import _save_merged_data
-from openghg_inversions.flux_sanitization import FluxNonFiniteCheck
-
 
 logger = logging.getLogger(__name__)
 
@@ -129,14 +133,15 @@ def add_obs_error(sites: list[str], fp_all: dict, add_averaging_error: bool = Tr
 
 
 def convert_to_list(
-    x: Sequence[Any] | str | int | None,
+    x: Iterable[Any] | str | slice | int | Integral | None,
     length: int,
     name: str | None = None,
 ) -> list[Any]:
     """Convert a scalar or sequence to a list of the expected size.
 
     Args:
-        x: Scalar string/integer/``None`` to broadcast, or a sequence to copy.
+        x: Scalar string/integer/slice/``None`` to broadcast, or an iterable
+            to copy.
         length: Required output length.
         name: Optional argument name used in error messages.
 
@@ -144,20 +149,10 @@ def convert_to_list(
         A new list of the requested length.
 
     Raises:
-        ValueError: If a sequence has the wrong length, or if ``x`` is neither
-            a supported scalar nor a sequence.
+        ValueError: If an iterable has the wrong length, or if ``x`` is neither
+            a supported scalar nor an iterable.
     """
-    if x is None or isinstance(x, str):
-        return [x] * length
-    if isinstance(x, Integral) and not isinstance(x, bool):
-        return [int(x)] * length
-
-    if not isinstance(x, Sequence):
-        raise ValueError(f"`{name or 'value'}` must be a scalar string/integer, a sequence, or None.")
-    if len(x) != length:
-        msg_name = name or x  # display entire list if name is not given
-        raise ValueError(f"List {msg_name} does not have specified length: {len(x)} != {length}.")
-    return list(x)
+    return list(expand_site_option(x, nsites=length, name=name or "value"))
 
 
 def data_processing_surface_notracer(
@@ -192,7 +187,7 @@ def data_processing_surface_notracer(
     output_name: str | None = None,
     flux_non_finite_check: FluxNonFiniteCheck = "lazy",
 ) -> tuple[dict, list, list, list, list, list]:
-    """Retrieve and prepare fixed-surface datasets from specified OpenGHG object stores.
+    """Retrieve and prepare surface or column datasets from OpenGHG stores.
 
     Use for forward simulations and model-data comparisons that do not
     use tracers.
@@ -280,6 +275,16 @@ def data_processing_surface_notracer(
     averaging_period = convert_to_list(averaging_period, nsites, "averaging_period")
     platform = convert_to_list(platform, nsites, "platform")
     max_level = convert_to_list(max_level, nsites, "max_level")
+    invalid_max_levels = [
+        value
+        for value in max_level
+        if value is not None and (not isinstance(value, Integral) or isinstance(value, bool))
+    ]
+    if invalid_max_levels:
+        raise ValueError(
+            f"`max_level` entries must be integers or None. Invalid value(s): {invalid_max_levels!r}."
+        )
+    max_level = [None if value is None else int(value) for value in max_level]
 
     fp_all = {}
     fp_all[".species"] = species.upper()
@@ -321,7 +326,6 @@ def data_processing_surface_notracer(
     # get obs and footprints, and make scenarios for each site
     scales = {}
     check_scales = set()
-    units = {}
     site_indices_to_keep = []
 
     keep_variables = [
@@ -384,20 +388,23 @@ def data_processing_surface_notracer(
             )
             continue  # skip this site
 
+        scenario_platform = (
+            "site-column"
+            if is_column_observation(inlet[i], site_platform) and not is_column_platform(site_platform)
+            else site_platform
+        )
         scenario_combined = merged_scenario_data(
             site_data,
             footprint_data,
             flux_dict,
             bc_data,
-            platform=site_platform,
+            platform=scenario_platform,
             max_level=max_level[i],
             split_by_sectors=split_by_sectors,
         )
         fp_all[site] = scenario_combined
 
-        units[site] = scenario_combined.mf.attrs.get("units")
-
-        if not (isinstance(site_platform, str) and "satellite" in site_platform.lower()):
+        if not is_satellite_platform(site_platform):
             scales[site] = scenario_combined.scale
             check_scales.add(scenario_combined.scale)
 
@@ -421,22 +428,9 @@ def data_processing_surface_notracer(
 
     fp_all[".scales"] = scales
 
-    normalized_units = {
-        site: extract_float(unit) if isinstance(unit, str) else float(unit)
-        for site, unit in units.items()
-        if unit is not None
-    }
-    if not normalized_units:
-        raise ValueError("No obs. units detected.")
-    if len(set(normalized_units.values())) > 1:
-        raise ValueError(
-            "Observation sites use incompatible units and cannot be concatenated "
-            f"without conversion: {units!r}."
-        )
-    fp_all[".units"] = next(iter(normalized_units.values()))
-
     # create `mf_error`
     add_obs_error(sites, fp_all, add_averaging_error=averagingerror)
+    fp_all = align_observation_units(fp_all, sites, require_units=True)
 
     if save_merged_data:
         if merged_data_dir is None:

@@ -1,7 +1,8 @@
-"""Contains functions for running all steps of the MCMC inversion using PyMC.
+"""Run the legacy ``fixedbasisMCMC`` compatibility workflow using PyMC.
 
-This module handles getting data, filtering, applying basis functions, sampling,
-and processing the outputs.
+The entry point retrieves or reloads data, applies filters and basis functions,
+samples, formats results, and can write traces, inversion outputs, merged data,
+and formatted NetCDF products. New workflows should use the RHIME runner.
 
 Notes
 -----
@@ -25,12 +26,12 @@ the users OpenGHG config file (default location: ~/.openghg/openghg.conf).
 """
 
 import logging
+import time
+import warnings
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-import time
 from typing import Any, Literal, cast
-import warnings
 
 import arviz as az
 import numpy as np
@@ -38,13 +39,17 @@ import xarray as xr
 
 import openghg_inversions.hbmcmc.inversion_pymc as mcmc
 from openghg_inversions.basis.basis_functions import BasisFunctions
-from openghg_inversions.models.priors import lognormal_mu_sigma
-from openghg_inversions.utils import ncdf_encoding, write_netcdf_preserving_bounds_attrs
 from openghg_inversions.inversion_data import FixedBasisPreparedData, prepare_fixedbasis_inversion_data
+from openghg_inversions.inversion_data._site_options import (
+    expand_site_option,
+    is_column_observation,
+)
+from openghg_inversions.models.priors import lognormal_mu_sigma
 from openghg_inversions.postprocessing.inversion_output import (
     InversionOutput,
     _reset_serialisation_multiindexes,
 )
+from openghg_inversions.utils import ncdf_encoding, write_netcdf_preserving_bounds_attrs
 
 
 def update_log_normal_prior(prior):
@@ -276,25 +281,24 @@ def _all_requested_sites_are_column(
     inlet: Sequence[str | slice | None] | str | None,
     platform: Sequence[str | None] | str | None,
 ) -> bool:
-    """Return whether every requested site is unambiguously column based."""
+    """Return whether every requested site is unambiguously column based.
 
-    def expand(value: Sequence[Any] | str | slice | None) -> tuple[Any, ...] | None:
-        if value is None or isinstance(value, str | slice):
-            return (value,) * len(sites)
-        values = tuple(value)
-        return values if len(values) == len(sites) else None
+    This conservative preflight check avoids retrieval when legacy output is
+    certainly unsupported. Invalid or misaligned options are left for the
+    preparation boundary to diagnose. A second check uses retained-site
+    metadata after retrieval and filtering.
+    """
+    if not sites:
+        return False
 
-    inlet_values = expand(inlet)
-    platform_values = expand(platform)
-    if not sites or inlet_values is None or platform_values is None:
+    try:
+        inlet_values = expand_site_option(inlet, nsites=len(sites), name="inlet")
+        platform_values = expand_site_option(platform, nsites=len(sites), name="platform")
+    except ValueError:
         return False
 
     return all(
-        (isinstance(site_inlet, str) and site_inlet.lower() == "column")
-        or (
-            isinstance(site_platform, str)
-            and site_platform.lower() in {"satellite", "site-column"}
-        )
+        is_column_observation(site_inlet, site_platform)
         for site_inlet, site_platform in zip(inlet_values, platform_values, strict=True)
     )
 
@@ -563,7 +567,6 @@ def _finalize_output(context: _OutputContext) -> xr.Dataset | dict | InversionOu
 
     if context.output_format == "paris":
         from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename
-
         from openghg_inversions.postprocessing.make_paris_outputs import make_paris_outputs
 
         obs_avg_period = context.averaging_period[0] or "0h"
@@ -817,7 +820,8 @@ def fixedbasisMCMC(
         save_trace: If True, save arviz `InferenceData` trace to `outputpath`. Alternatively,
             a file path (including file name and extension) can be passed, and the trace will be
             saved there.
-        merged_data_only: If True, save merged data, and do nothing else.
+        save_inversion_output: If true, save the modern ``InversionOutput`` to
+            ``outputpath``. A complete file path may be supplied instead.
         min_error: If float, the value represents the minimun error. Otherwise, compute min model error
             using the "residual" method or the "percentile" method. (See `openghg_inversions.model_error.py` for
             details.) Combines the functionality of the previous min_error and calculate_min_error parameters.
@@ -837,18 +841,25 @@ def fixedbasisMCMC(
               as netCDF files in the directory `outputpath`
             - "mcmc_args": return the arguments passed to `fixedbasisMCMC`, but do not run the inversion
             - "mcmc_results": return the results of `fixedbasisMCMC` with no further processing
+            Legacy output is not supported when any retained site contains
+            column observations.
+        paris_postprocessing: Deprecated switch selecting PARIS output.
         paris_postprocessing_kwargs: Dict of kwargs to pass to `make_paris_outputs`.
         power: Power to raise pollution event size to if using pollution events from obs. Default is 1.99.
         return_basis_objects: If True, include retained basis objects in ``output_format="mcmc_args"``
             debug output. Fixedbasis output modes that construct modern inversion output retain them
             internally regardless of this setting. They are not passed to ``inferpymc``.
-        flux_non_finite_check: Non-finite flux handling mode. ``"lazy"``
-            applies zero-fill lazily and records attrs; ``"count"`` computes
-            count metadata once and warns if non-finite values are present.
+        **kwargs: Additional sampler arguments. The compatibility-only
+            ``flux_non_finite_check`` key selects ``"lazy"`` or ``"count"``
+            flux sanitization before the remaining values are forwarded.
 
     Returns:
-        xr.Dataset | dict: Results from the inversion in a Dataset if skip_post_processing==False,
-            in a dictionary if True.
+        The selected output: a formatted ``Dataset``, raw merged-data/debug
+        dictionary, or modern ``InversionOutput``.
+
+    Warns:
+        FutureWarning: If deprecated minimum-error arguments are supplied.
+        UserWarning: If deprecated output-format aliases are supplied.
     """
     flux_non_finite_check = cast(
         Literal["lazy", "count"],

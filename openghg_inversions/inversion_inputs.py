@@ -4,13 +4,12 @@
 ``nmeasure`` dataset, validates shared state layouts, adds site/minimum-error
 metadata, transforms boundary-condition periods, drops unusable rows, and
 materializes core arrays. ``sites=None`` infers non-metadata entries; an
-explicit empty selection is an error. ``normalise_min_error_options`` defines
-the runner-supported calculated-error option schema.
+explicit empty selection is an error.
 """
 
 import datetime as dt
 import numbers
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable
 from typing import Any, Literal
 
 import numpy as np
@@ -18,43 +17,16 @@ import pandas as pd
 import xarray as xr
 
 from openghg_inversions.array_ops import concat_gather_datasets, get_xr_dummies
-from openghg_inversions.model_error import percentile_error_method, residual_error_method, xr_setup_min_error
+from openghg_inversions.model_error import (
+    normalise_min_error_options as normalise_min_error_options,  # noqa: PLC0414
+)
+from openghg_inversions.model_error import (
+    percentile_error_method,
+    residual_error_method,
+    xr_setup_min_error,
+)
 
 DatetimeLike = str | dt.datetime | np.datetime64 | pd.Timestamp
-
-
-def normalise_min_error_options(options: Mapping[str, Any] | None) -> dict[str, bool]:
-    """Validate options supported by calculated minimum-error methods.
-
-    The runner boundary currently supports only ``by_site``. Rejecting other
-    keys avoids silently accepting configuration that has no effect.
-
-    Args:
-        options: Optional minimum-error configuration mapping.
-
-    Returns:
-        A normalized mapping containing a boolean ``by_site`` value.
-
-    Raises:
-        ValueError: If the value is not a mapping, contains unsupported keys,
-            or supplies a non-boolean ``by_site`` value.
-    """
-    if options is None:
-        return {"by_site": False}
-    if not isinstance(options, Mapping):
-        raise ValueError(f"`min_error_options` must be a mapping/dict or None, got {type(options).__name__}.")
-
-    unsupported = sorted(str(key) for key in options if key != "by_site")
-    if unsupported:
-        raise ValueError(
-            "`min_error_options` contains unsupported option(s): "
-            f"{unsupported!r}. The only supported option is `by_site`."
-        )
-
-    by_site = options.get("by_site", False)
-    if not isinstance(by_site, bool):
-        raise ValueError(f"`min_error_options['by_site']` must be a boolean, got {type(by_site).__name__}.")
-    return {"by_site": by_site}
 
 
 def _validate_per_site_dimension_names(
@@ -368,8 +340,24 @@ def _check_required_inv_input_vars(
 def _fill_missing_optional_observation_factors(
     site_data: dict[str, xr.Dataset],
 ) -> dict[str, xr.Dataset]:
-    """Zero-fill column-only factors on sites where they are not defined."""
+    """Validate column-factor pairs and zero-fill them on surface-only sites.
+
+    Raises:
+        ValueError: If a site defines only one of the two column prior-factor
+            variables.
+    """
     factor_names = ("mf_prior_factor", "mf_prior_upper_level_factor")
+    partial_sites = {
+        site: [name for name in factor_names if name in dataset]
+        for site, dataset in site_data.items()
+        if sum(name in dataset for name in factor_names) == 1
+    }
+    if partial_sites:
+        raise ValueError(
+            "Column observation datasets must define both `mf_prior_factor` and "
+            f"`mf_prior_upper_level_factor`; partial definitions: {partial_sites!r}."
+        )
+
     result = dict(site_data)
     for name in factor_names:
         template = next((dataset[name] for dataset in site_data.values() if name in dataset), None)

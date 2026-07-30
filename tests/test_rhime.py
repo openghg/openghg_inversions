@@ -4,45 +4,40 @@ import inspect
 from pathlib import Path
 from typing import Any, Callable, cast
 
-import numpy as np
 import arviz as az
+import numpy as np
 import pandas as pd
 import pymc as pm
 import pytest
 import xarray as xr
 
+import openghg_inversions.hbmcmc.inversion_pymc as legacy_mcmc
+import openghg_inversions.inversion_data.preparation as prep_module
 import openghg_inversions.models as models
 import openghg_inversions.models._rhime_compiler as rhime_compiler_module
 import openghg_inversions.models.rhime as rhime_models_module
-import openghg_inversions.hbmcmc.inversion_pymc as legacy_mcmc
 import openghg_inversions.postprocessing.inversion_output as inversion_output_module
 import openghg_inversions.rhime as rhime_public
-import openghg_inversions.rhime.params as rhime_params
 import openghg_inversions.rhime.outputs as rhime_outputs
+import openghg_inversions.rhime.params as rhime_params
+import openghg_inversions.rhime.runner as rhime_module
 import openghg_inversions.rhime.sampling as rhime_sampling
 import openghg_inversions.rhime.specs as rhime_specs
-import openghg_inversions.inversion_data.preparation as prep_module
-import openghg_inversions.rhime.runner as rhime_module
 from openghg_inversions.basis.basis_functions import (
     BASIS_ARTIFACT_PATH_ATTR,
     BASIS_ARTIFACT_SOURCE_ATTR,
     BasisFunctions,
 )
+from openghg_inversions.basis.operators import BasisMeta, BasisOperator, BucketBasisOperator
 from openghg_inversions.cli import main
 from openghg_inversions.flux_sanitization import (
-    FluxNonFiniteMetadata,
     NONFINITE_POLICY_ZERO_FILL,
+    FluxNonFiniteMetadata,
     NonFiniteFluxWarning,
 )
 from openghg_inversions.inversion_data import RhimePreparedInputs, prepare_rhime_inputs
+from openghg_inversions.inversion_data._units import _mole_fraction_scale
 from openghg_inversions.inversion_inputs import make_inv_inputs
-from openghg_inversions.basis.operators import BasisMeta, BasisOperator, BucketBasisOperator
-from openghg_inversions.models._rhime_compiler import (
-    _FluxPlan,
-    _ForwardTermPlan,
-    _StatePlan,
-    _compile_loop_sum,
-)
 from openghg_inversions.models import (
     build_rhime_model,
     build_rhime_model_from_spec,
@@ -50,8 +45,13 @@ from openghg_inversions.models import (
     build_rhime_multisector_model_from_spec,
     safe_pymc_name,
 )
+from openghg_inversions.models._rhime_compiler import (
+    _compile_loop_sum,
+    _FluxPlan,
+    _ForwardTermPlan,
+    _StatePlan,
+)
 from openghg_inversions.models.coords import CoordRegistry, attach_coord_registry
-from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.postprocessing._basis_products import (
     BASIS_ARTIFACT_PATH_OUTPUT_ATTR,
     BASIS_ARTIFACT_SOURCE_LOADED_DATATREE,
@@ -59,6 +59,7 @@ from openghg_inversions.postprocessing._basis_products import (
     BASIS_RECONSTRUCTION_OPERATOR_BACKED,
     BASIS_RECONSTRUCTION_PATH_ATTR,
 )
+from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.postprocessing.make_outputs import observation_inputs_for_outputs
 from openghg_inversions.postprocessing.make_paris_outputs import PARIS_LATEST_COUNTRIES
 from openghg_inversions.rhime import (
@@ -283,14 +284,19 @@ def _site_dataset(values: list[float] | None = None) -> xr.Dataset:
         dims=("time", "lat", "lon"),
         coords={"time": time, "lat": [0.0], "lon": [0.0]},
         name="fp_x_flux",
+        attrs={"units": "1e-9"},
     )
     return xr.Dataset(
         {
             "fp_x_flux": fp_x_flux,
-            "mf": ("time", np.linspace(10.0, 10.0 + len(values) - 1, len(values))),
-            "mf_error": ("time", np.ones(len(values))),
-            "mf_repeatability": ("time", np.full(len(values), 0.5)),
-            "mf_variability": ("time", np.full(len(values), 0.25)),
+            "mf": (
+                "time",
+                np.linspace(10.0, 10.0 + len(values) - 1, len(values)),
+                {"units": "1e-9"},
+            ),
+            "mf_error": ("time", np.ones(len(values)), {"units": "1e-9"}),
+            "mf_repeatability": ("time", np.full(len(values), 0.5), {"units": "1e-9"}),
+            "mf_variability": ("time", np.full(len(values), 0.25), {"units": "1e-9"}),
         },
         coords={"time": time},
     )
@@ -3194,6 +3200,7 @@ def test_fixedbasis_preparation_adds_anchored_legacy_sigma_index(
 def test_prepare_rhime_inputs_uses_basis_sensitivity_without_legacy_side_channels(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """RHIME preparation derives sensitivity without legacy side channels."""
     site_data = _site_dataset([2.0])
     sensitivity = xr.DataArray(
         [[8.0]],
@@ -3221,7 +3228,7 @@ def test_prepare_rhime_inputs_uses_basis_sensitivity_without_legacy_side_channel
         assert "return_basis_objects" not in kwargs
         fp_all = kwargs["fp_all"]
         assert isinstance(fp_all, dict)
-        assert fp_all["TAC"] is site_data
+        xr.testing.assert_allclose(fp_all["TAC"], site_data)
         return basis_functions
 
     def fake_make_inv_inputs(fp_data: dict, sites: list[str], **kwargs: object) -> xr.Dataset:
@@ -3266,7 +3273,7 @@ def test_prepare_rhime_inputs_uses_basis_sensitivity_without_legacy_side_channel
     assert prepared.basis_artifact_source == "datatree"
     assert captured_fp_data_keys == {"TAC"}
     assert len(basis_functions.sensitivity_calls) == 1
-    xr.testing.assert_identical(basis_functions.sensitivity_calls[0], site_data["fp_x_flux"])
+    xr.testing.assert_allclose(basis_functions.sensitivity_calls[0], site_data["fp_x_flux"])
 
 
 def test_prepare_rhime_inputs_matches_direct_sensitivity_inv_inputs(
@@ -3309,7 +3316,7 @@ def test_prepare_rhime_inputs_matches_direct_sensitivity_inv_inputs(
         use_bc=False,
     )
 
-    expected_site_data = site_data.copy()
+    expected_site_data = prep_module._select_fp_all_sites({"TAC": site_data}, ["TAC"])["TAC"]
     expected_site_data["H"] = basis_functions.sensitivity(expected_site_data["fp_x_flux"])
     expected_inv_inputs = make_inv_inputs(
         {"TAC": expected_site_data},
@@ -3326,6 +3333,7 @@ def test_prepare_rhime_inputs_matches_direct_sensitivity_inv_inputs(
 def test_prepare_rhime_inputs_prunes_reloaded_merged_data_to_requested_sites(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    """Reload pruning removes unrequested sites and site-keyed metadata."""
     captured_fp_all_keys: set[str] = set()
 
     def fake_load_merged_data(*args: object, **kwargs: object) -> dict:
@@ -3374,6 +3382,7 @@ def test_prepare_rhime_inputs_prunes_reloaded_merged_data_to_requested_sites(
         ".species",
         ".scales",
         ".split_by_sectors",
+        ".units",
     }
 
 
@@ -3419,7 +3428,7 @@ def test_prepare_merged_data_reload_keeps_all_options_aligned(
         met_model=["met-mhd"],
         max_level=[20],
     )
-    assert set(merged.fp_all) == {"MHD", ".species", ".split_by_sectors"}
+    assert set(merged.fp_all) == {"MHD", ".species", ".split_by_sectors", ".units"}
 
 
 def test_site_options_direct_construction_enforces_immutable_alignment() -> None:
@@ -3632,15 +3641,90 @@ def test_filtering_synchronizes_scales_and_units_with_retained_sites() -> None:
     assert filtered.fp_all[".units"] == pytest.approx(1e-6)
 
 
-def test_retained_sites_reject_incompatible_observation_units() -> None:
-    """Retaining differently scaled observations fails before concatenation."""
+def test_retained_sites_convert_compatible_observation_units() -> None:
+    """Retained observations convert lazily to the first site's units."""
     tac = _site_dataset([2.0])
-    mhd = _site_dataset([3.0])
-    tac["mf"].attrs["units"] = "1e-9 mol/mol"
-    mhd["mf"].attrs["units"] = "1e-6 mol/mol"
+    mhd = _site_dataset([3.0]).chunk({"time": 1})
+    converted_names = (
+        "mf",
+        "mf_error",
+        "mf_repeatability",
+        "mf_variability",
+        "fp_x_flux",
+    )
+    for name in converted_names:
+        tac[name].attrs["units"] = "ppb"
+        mhd[name] = mhd[name].astype("float32")
+        mhd[name].attrs["units"] = "ppm"
+    mhd["mf"].attrs["custom"] = "preserved"
+    mhd["pressure"] = ("time", np.array([1000.0], dtype="float32"), {"units": "hPa"})
+    mhd.attrs["provenance"] = "kept"
+    original_mhd = mhd.copy(deep=True)
 
-    with pytest.raises(ValueError, match="incompatible units"):
-        prep_module._select_fp_all_sites({"TAC": tac, "MHD": mhd}, ["TAC", "MHD"])
+    selected = prep_module._select_fp_all_sites({"TAC": tac, "MHD": mhd}, ["TAC", "MHD"])
+
+    assert selected[".units"] == pytest.approx(1e-9)
+    for name in converted_names:
+        np.testing.assert_allclose(selected["MHD"][name], original_mhd[name] * 1000.0)
+        assert selected["MHD"][name].attrs["units"] == selected["TAC"][name].attrs["units"]
+        assert selected["MHD"][name].chunks is not None
+        assert selected["MHD"][name].dtype == original_mhd[name].dtype
+    assert selected["MHD"]["mf"].attrs["custom"] == "preserved"
+    assert selected["MHD"]["mf"].dims == original_mhd["mf"].dims
+    assert selected["MHD"]["mf"].indexes["time"].equals(original_mhd["mf"].indexes["time"])
+    assert selected["MHD"].attrs["provenance"] == "kept"
+    xr.testing.assert_identical(selected["MHD"]["pressure"], original_mhd["pressure"])
+
+
+@pytest.mark.parametrize(
+    ("raw_units", "expected_scale"),
+    [
+        ("1", 1.0),
+        ("mol/mol", 1.0),
+        (1.0, 1.0),
+        ("1e-9", 1e-9),
+        ("ppb", 1e-9),
+        ("1e-9 mol/mol", 1e-9),
+    ],
+)
+def test_retained_observation_unit_aliases(
+    raw_units: str | float,
+    expected_scale: float,
+) -> None:
+    """OpenGHG mole-fraction aliases produce the expected legacy scale."""
+    dataset = xr.Dataset({"mf": ("time", [1.0], {"units": raw_units})})
+
+    selected = prep_module._select_fp_all_sites({"TAC": dataset}, ["TAC"])
+
+    assert selected[".units"] == pytest.approx(expected_scale)
+
+
+def test_retained_observation_units_use_legacy_scale_fallback() -> None:
+    """Legacy numeric metadata supplies missing per-site mf unit attributes."""
+    tac = xr.Dataset({"mf": ("time", [1.0]), "mf_error": ("time", [0.1])})
+
+    selected = prep_module._select_fp_all_sites({"TAC": tac, ".units": 1e-9}, ["TAC"])
+
+    assert selected[".units"] == pytest.approx(1e-9)
+    for name in ("mf", "mf_error"):
+        assert _mole_fraction_scale(
+            selected["TAC"][name].attrs["units"],
+            context=f"test variable {name!r}",
+        ) == pytest.approx(1e-9)
+
+
+def test_retained_observation_units_reject_missing_or_partial_metadata() -> None:
+    """Selection rejects unverifiable or partially specified site units."""
+    tac = xr.Dataset({"mf": ("time", [1.0])})
+    mhd = xr.Dataset({"mf": ("time", [2.0], {"units": "ppb"})})
+
+    with pytest.raises(ValueError, match="missing `mf` unit metadata"):
+        prep_module._select_fp_all_sites({"TAC": tac}, ["TAC"])
+    with pytest.raises(ValueError, match="missing `mf` unit metadata"):
+        prep_module._select_fp_all_sites(
+            {"TAC": tac, "MHD": mhd, ".units": 1e-9},
+            ["TAC", "MHD"],
+        )
 
 
 @pytest.mark.parametrize(
@@ -3655,6 +3739,7 @@ def test_prepare_rhime_inputs_normalises_averaging_period_to_site_count(
     averaging_period: str | None,
     expected: list[str | None],
 ) -> None:
+    """Scalar and None averaging periods broadcast across requested sites."""
     captured_averaging_period: list[str | None] | None = None
     site_data = {"TAC": _site_dataset([2.0]), "MHD": _site_dataset([3.0])}
 
@@ -3775,6 +3860,7 @@ def test_run_rhime_leaves_scalar_averaging_period_for_shared_preparation(
 def test_prepare_rhime_inputs_treats_min_error_none_as_default(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """A None minimum-error value is normalized to the numeric default."""
     captured_min_error: object = None
     site_data = _site_dataset([2.0])
 

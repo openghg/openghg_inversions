@@ -291,10 +291,26 @@ def test_make_inv_inputs_preserves_requested_order_and_column_factors() -> None:
     np.testing.assert_allclose(result["mf_prior_factor"].values, [0.2, 0.0])
     np.testing.assert_allclose(result["mf_prior_upper_level_factor"].values, [0.3, 0.0])
     assert result["mf_prior_factor"].attrs["long_name"] == "column prior factor"
-    assert (
-        result["mf_prior_upper_level_factor"].attrs["long_name"]
-        == "upper-level prior factor"
+    assert result["mf_prior_upper_level_factor"].attrs["long_name"] == "upper-level prior factor"
+
+
+def test_make_inv_inputs_rejects_partial_column_factor_pair() -> None:
+    """Column datasets cannot silently omit one prior-factor variable."""
+    time = pd.date_range("2019-01-01", periods=1, freq="h")
+    dataset = xr.Dataset(
+        {
+            "H": (("region", "time"), [[1.0]]),
+            "mf": ("time", [2.0]),
+            "mf_error": ("time", [0.1]),
+            "mf_repeatability": ("time", [0.1]),
+            "mf_variability": ("time", [0.0]),
+            "mf_prior_factor": ("time", [0.2]),
+        },
+        coords={"region": [0], "time": time},
     )
+
+    with pytest.raises(ValueError, match="must define both"):
+        make_inv_inputs({"SATELLITE": dataset}, sites=["SATELLITE"], min_error=0.0)
 
 
 # ----------------------------------------

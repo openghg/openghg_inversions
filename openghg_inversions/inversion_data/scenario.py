@@ -1,7 +1,8 @@
 import xarray as xr
-
 from openghg.analyse import ModelScenario
-from openghg.dataobjects import ObsData, BoundaryConditionsData, FluxData, FootprintData
+from openghg.dataobjects import BoundaryConditionsData, FluxData, FootprintData, ObsData
+
+from openghg_inversions.inversion_data._site_options import is_column_platform
 
 
 def merged_scenario_data(
@@ -16,16 +17,16 @@ def merged_scenario_data(
     """Create ModelScenario and get result of `footprint_data_merge`."""
     # Create ModelScenario object for all emissions_sectors
     # and combine into one object
-    if platform is not None and "satellite" in platform:
+    if is_column_platform(platform):
         model_scenario = ModelScenario(
             obs_column=obs_data,
             footprint=footprint_data,
             flux=flux_dict,
             bc=bc_data,
             platform=platform,
-            max_level=max_level
+            max_level=max_level,
         )
-    else: 
+    else:
         model_scenario = ModelScenario(
             obs=obs_data,
             footprint=footprint_data,

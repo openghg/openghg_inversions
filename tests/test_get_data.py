@@ -1,6 +1,7 @@
 import copy
 import logging
 from types import SimpleNamespace
+from typing import Any
 from unittest import mock
 
 import numpy as np
@@ -13,17 +14,18 @@ from openghg.types import SearchError
 import openghg_inversions.inversion_data.get_data as get_data_module
 import openghg_inversions.inversion_data.getters as getters_module
 from openghg_inversions.flux_sanitization import FluxNonFiniteMetadata, NonFiniteFluxWarning
-from openghg_inversions.inversion_data.serialise import (
-    fp_all_from_dataset,
-    make_combined_scenario,
-    load_merged_data,
-)
+from openghg_inversions.inversion_data._site_options import expand_site_option
 from openghg_inversions.inversion_data.get_data import (
+    add_obs_error,
     convert_to_list,
     data_processing_surface_notracer,
-    add_obs_error,
 )
 from openghg_inversions.inversion_data.getters import get_flux_data
+from openghg_inversions.inversion_data.serialise import (
+    fp_all_from_dataset,
+    load_merged_data,
+    make_combined_scenario,
+)
 
 
 def test_data_processing_surface_notracer(tac_ch4_data_args, merged_data_file_name, raw_data_path):
@@ -128,13 +130,13 @@ def test_mixed_platforms_keep_surface_calibration_scale_per_site(
         )
         return object()
 
-    def fake_merged_scenario_data(*args: object, **kwargs: object) -> SimpleNamespace:
+    def fake_merged_scenario_data(*args: object, **kwargs: object) -> xr.Dataset:
         """Return a minimal scenario with a platform-specific scale."""
         platform = kwargs["platform"] if isinstance(kwargs["platform"], str) else None
         scenario_platforms.append(platform)
         scale = "surface-scale" if platform == "surface" else "satellite-scale"
         mf = xr.DataArray([1.0], dims="time", attrs={"units": "1e-9"})
-        return SimpleNamespace(mf=mf, scale=scale)
+        return xr.Dataset({"mf": mf}, attrs={"scale": scale})
 
     monkeypatch.setattr(get_data_module, "get_flux_data", lambda **kwargs: {})
     monkeypatch.setattr(get_data_module, "get_obs_data", fake_get_obs_data)
@@ -165,26 +167,213 @@ def test_mixed_platforms_keep_surface_calibration_scale_per_site(
     assert len(result) == 6
 
 
+def test_get_obs_data_routes_site_column_platform_to_column_retrieval(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The documented site-column platform uses site-based column retrieval."""
+    captured: dict[str, object] = {}
+    obs_data = SimpleNamespace(data=xr.Dataset(coords={"time": [np.datetime64("2019-01-01")]}))
+
+    def fake_get_obs_column(**kwargs: object) -> SimpleNamespace:
+        """Capture site-column lookup arguments."""
+        captured.update(kwargs)
+        return obs_data
+
+    monkeypatch.setattr(getters_module, "get_obs_column", fake_get_obs_column)
+    monkeypatch.setattr(
+        getters_module,
+        "get_obs_surface",
+        lambda **kwargs: pytest.fail("site-column must not use surface retrieval"),
+    )
+
+    result = getters_module.get_obs_data(
+        site="TAC",
+        species="ch4",
+        inlet=None,
+        start_date="2019-01-01",
+        end_date="2019-01-02",
+        platform="site-column",
+        max_level=17,
+        stores="test",
+    )
+
+    assert result is obs_data
+    assert captured["site"] == "TAC"
+    assert captured["max_level"] == 17
+
+
+@pytest.mark.parametrize("platform", [None, "surface"])
+def test_column_inlet_labels_scenario_as_site_column(
+    monkeypatch: pytest.MonkeyPatch,
+    platform: str | None,
+) -> None:
+    """A column inlet overrides absent or contradictory surface platforms."""
+    captured_platforms: list[str | None] = []
+
+    def fake_scenario(*args: object, **kwargs: object) -> xr.Dataset:
+        """Capture the normalized scenario platform."""
+        platform = kwargs.get("platform")
+        captured_platforms.append(platform if isinstance(platform, str) else None)
+        return xr.Dataset(
+            {
+                "mf": ("time", [1.0], {"units": "ppb"}),
+                "mf_repeatability": ("time", [0.1]),
+            },
+            attrs={"scale": "test-scale"},
+        )
+
+    monkeypatch.setattr(get_data_module, "get_flux_data", lambda **kwargs: {})
+    monkeypatch.setattr(get_data_module, "get_obs_data", lambda **kwargs: object())
+    monkeypatch.setattr(get_data_module, "get_footprint_data", lambda **kwargs: object())
+    monkeypatch.setattr(get_data_module, "merged_scenario_data", fake_scenario)
+
+    data_processing_surface_notracer(
+        species="ch4",
+        sites=["TAC"],
+        domain="EUROPE",
+        averaging_period="1h",
+        start_date="2019-01-01",
+        end_date="2019-01-02",
+        inlet="column",
+        platform=platform,
+        max_level=17,
+        emissions_name=["inventory"],
+        use_bc=False,
+    )
+
+    assert captured_platforms == ["site-column"]
+
+
 def test_convert_to_list_accepts_numpy_integer_scalar() -> None:
-    """NumPy integral scalars are broadcast as built-in integers."""
+    """NumPy scalars and arrays retain the legacy list-returning contract."""
     result = convert_to_list(np.int64(17), length=2, name="max_level")
 
     assert result == [17, 17]
     assert all(type(value) is int for value in result)
+    assert convert_to_list(np.array(["a", "b"]), length=2, name="inlet") == ["a", "b"]
 
 
-def test_data_processing_rejects_incompatible_observation_units(
+def test_data_processing_rejects_boolean_max_level_before_retrieval() -> None:
+    """Boolean maximum levels are not accepted as integers."""
+    with pytest.raises(ValueError, match="must be integers or None"):
+        data_processing_surface_notracer(
+            species="ch4",
+            sites=["TAC"],
+            domain="EUROPE",
+            averaging_period="1h",
+            start_date="2019-01-01",
+            end_date="2019-01-02",
+            max_level=[True],
+            emissions_name=["inventory"],
+            use_bc=False,
+        )
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("column", ("column", "column")),
+        (slice(1, 4), (slice(1, 4), slice(1, 4))),
+        (None, (None, None)),
+        ((1, 2), (1, 2)),
+        (np.array([3, 4]), (3, 4)),
+    ],
+)
+def test_expand_site_option_returns_immutable_site_aligned_values(
+    value: Any,
+    expected: tuple[object, object],
+) -> None:
+    """The shared broadcaster accepts scalar and array-like site options."""
+    assert expand_site_option(value, nsites=2, name="option") == expected
+
+
+def test_expand_site_option_rejects_misaligned_or_boolean_values() -> None:
+    """The shared broadcaster rejects ambiguous or drifted option values."""
+    with pytest.raises(ValueError, match="does not have specified length"):
+        expand_site_option(["only-one"], nsites=2, name="option")
+    with pytest.raises(ValueError, match="site-aligned iterable"):
+        expand_site_option(True, nsites=2, name="option")
+    with pytest.raises(ValueError, match="site-aligned iterable"):
+        expand_site_option({"unordered", "values"}, nsites=2, name="option")
+    with pytest.raises(ValueError, match="site-aligned iterable"):
+        expand_site_option({"TAC": "value"}, nsites=1, name="option")
+
+
+def test_data_processing_converts_compatible_observation_units(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Sites with different observation scales are not silently concatenated."""
+    """Compatible site observations are converted to the first site's units."""
 
-    def fake_scenario(*args: object, **kwargs: object) -> SimpleNamespace:
+    def fake_scenario(*args: object, **kwargs: object) -> xr.Dataset:
         """Return a minimal scenario with site-dependent units."""
         platform = kwargs["platform"]
-        units = "1e-9 mol/mol" if platform == "surface" else "1e-6 mol/mol"
-        return SimpleNamespace(
-            mf=xr.DataArray([1.0], dims="time", attrs={"units": units}),
-            scale="test-scale",
+        units = "ppb" if platform == "surface" else "ppm"
+        scale = 1.0 if platform == "surface" else 0.001
+        return xr.Dataset(
+            {
+                "mf": xr.DataArray(
+                    [1000.0 if platform == "surface" else 1.0], dims="time", attrs={"units": units}
+                ),
+                "mf_mod": xr.DataArray(
+                    [900.0 if platform == "surface" else 0.9], dims="time", attrs={"units": units}
+                ),
+                "mf_mod_sectoral": xr.DataArray(
+                    [800.0 if platform == "surface" else 0.8],
+                    dims="time",
+                    attrs={"units": units},
+                ),
+                "mf_repeatability": ("time", [2.0 * scale]),
+                "mf_variability": ("time", [3.0 * scale]),
+                "mf_prior_factor": ("time", [4.0 * scale]),
+                "mf_prior_upper_level_factor": ("time", [5.0 * scale]),
+                "mf_number_of_observations": ("time", [10 if platform == "surface" else 20]),
+            },
+            attrs={"scale": "test-scale"},
+        )
+
+    monkeypatch.setattr(get_data_module, "get_flux_data", lambda **kwargs: {})
+    monkeypatch.setattr(get_data_module, "get_obs_data", lambda **kwargs: object())
+    monkeypatch.setattr(get_data_module, "get_footprint_data", lambda **kwargs: object())
+    monkeypatch.setattr(get_data_module, "merged_scenario_data", fake_scenario)
+
+    fp_all, *_ = data_processing_surface_notracer(
+        species="ch4",
+        sites=["TAC", "GOSAT-BRAZIL"],
+        domain="EUROPE",
+        averaging_period="1h",
+        start_date="2019-01-01",
+        end_date="2019-01-02",
+        platform=["surface", "satellite"],
+        emissions_name=["inventory"],
+        use_bc=False,
+    )
+
+    assert fp_all[".units"] == pytest.approx(1e-9)
+    np.testing.assert_allclose(fp_all["TAC"]["mf"], [1000.0])
+    np.testing.assert_allclose(fp_all["GOSAT-BRAZIL"]["mf"], [1000.0])
+    np.testing.assert_allclose(fp_all["GOSAT-BRAZIL"]["mf_mod"], [900.0])
+    np.testing.assert_allclose(fp_all["GOSAT-BRAZIL"]["mf_mod_sectoral"], [800.0])
+    np.testing.assert_allclose(fp_all["GOSAT-BRAZIL"]["mf_repeatability"], [2.0])
+    np.testing.assert_allclose(fp_all["GOSAT-BRAZIL"]["mf_variability"], [3.0])
+    np.testing.assert_allclose(fp_all["GOSAT-BRAZIL"]["mf_error"], [np.sqrt(13.0)])
+    np.testing.assert_allclose(fp_all["GOSAT-BRAZIL"]["mf_prior_factor"], [4.0])
+    np.testing.assert_allclose(fp_all["GOSAT-BRAZIL"]["mf_prior_upper_level_factor"], [5.0])
+    np.testing.assert_array_equal(fp_all["GOSAT-BRAZIL"]["mf_number_of_observations"], [20])
+    assert fp_all["TAC"]["mf"].attrs["units"] == fp_all["GOSAT-BRAZIL"]["mf"].attrs["units"]
+
+
+def test_data_processing_rejects_non_mole_fraction_observation_units(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Dimensionally incompatible observation units fail with site context."""
+
+    def fake_scenario(*args: object, **kwargs: object) -> xr.Dataset:
+        """Return one valid and one dimensionally invalid observation."""
+        platform = kwargs["platform"]
+        units = "ppb" if platform == "surface" else "kg"
+        return xr.Dataset(
+            {"mf": xr.DataArray([1.0], dims="time", attrs={"units": units})},
+            attrs={"scale": "test-scale"},
         )
 
     monkeypatch.setattr(get_data_module, "get_flux_data", lambda **kwargs: {})
@@ -193,7 +382,7 @@ def test_data_processing_rejects_incompatible_observation_units(
     monkeypatch.setattr(get_data_module, "merged_scenario_data", fake_scenario)
     monkeypatch.setattr(get_data_module, "add_obs_error", lambda *args, **kwargs: None)
 
-    with pytest.raises(ValueError, match="incompatible units"):
+    with pytest.raises(ValueError, match="not compatible with a molar mixing ratio"):
         data_processing_surface_notracer(
             species="ch4",
             sites=["TAC", "GOSAT-BRAZIL"],

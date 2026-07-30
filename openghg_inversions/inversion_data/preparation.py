@@ -14,13 +14,12 @@ model.
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from numbers import Integral
 from pathlib import Path
-import re
 from typing import Any, Literal, cast
-import warnings
 
 import numpy as np
 import xarray as xr
@@ -31,16 +30,21 @@ from openghg_inversions.basis._helpers import bc_sensitivity
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.filters import filtering
 from openghg_inversions.flux_sanitization import FluxNonFiniteCheck, sanitize_flux_nonfinite
-from openghg_inversions.inversion_data.get_data import convert_to_list, data_processing_surface_notracer
+from openghg_inversions.inversion_data._site_options import (
+    expand_site_option,
+    is_column_observation,
+)
+from openghg_inversions.inversion_data._units import align_observation_units
+from openghg_inversions.inversion_data.get_data import data_processing_surface_notracer
 from openghg_inversions.inversion_data.serialise import load_merged_data
-from openghg_inversions.inversion_inputs import make_inv_inputs, normalise_min_error_options
+from openghg_inversions.inversion_inputs import make_inv_inputs
+from openghg_inversions.model_error import normalise_min_error_options
 from openghg_inversions.sigma import SigmaAlignment
 
 MinErrorConfig = Literal["percentile", "residual"] | dict[str, float] | None | int | float
 SiteStringOption = Sequence[str | None] | str | None
 SiteInletOption = Sequence[str | slice | None] | str | None
 SiteIntegerOption = Sequence[int | None] | int | None
-_UNIT_SCALE_PATTERN = re.compile(r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?")
 
 
 @dataclass
@@ -105,7 +109,7 @@ def _normalise_site_strings(
     name: str,
 ) -> list[str | None]:
     """Normalize and validate one optional-string value per requested site."""
-    normalized = list(convert_to_list(value, length=length, name=name))
+    normalized = list(expand_site_option(value, nsites=length, name=name))
     invalid = [item for item in normalized if item is not None and not isinstance(item, str)]
     if invalid:
         raise ValueError(f"`{name}` entries must be strings or None. Invalid value(s): {invalid!r}.")
@@ -119,14 +123,7 @@ def _normalise_site_integers(
     name: str,
 ) -> list[int | None]:
     """Normalize and validate one optional integer value per requested site."""
-    if value is None or isinstance(value, Integral) and not isinstance(value, bool):
-        normalized: list[int | None] = [None if value is None else int(value)] * length
-    elif isinstance(value, Sequence) and not isinstance(value, str | bytes):
-        normalized = list(value)
-        if len(normalized) != length:
-            raise ValueError(f"List {name} does not have specified length: {len(normalized)} != {length}.")
-    else:
-        raise ValueError(f"`{name}` must be an integer, a site-aligned sequence, or None.")
+    normalized = list(expand_site_option(value, nsites=length, name=name))
 
     invalid = [
         item
@@ -144,7 +141,7 @@ def _normalise_site_inlets(
     length: int,
 ) -> list[str | slice | None]:
     """Normalize inlet selectors, including legacy per-site slice selectors."""
-    normalized = list(convert_to_list(value, length=length, name="inlet"))
+    normalized = list(expand_site_option(value, nsites=length, name="inlet"))
     invalid = [item for item in normalized if item is not None and not isinstance(item, str | slice)]
     if invalid:
         raise ValueError(f"`inlet` entries must be strings, slices, or None. Invalid value(s): {invalid!r}.")
@@ -271,8 +268,7 @@ class _SiteOptions:
     def is_column(self) -> bool:
         """Whether any retained site uses a supported column-data selector."""
         return any(
-            (isinstance(inlet, str) and inlet.lower() == "column")
-            or (isinstance(platform, str) and platform.lower() in {"satellite", "site-column"})
+            is_column_observation(inlet, platform)
             for inlet, platform in zip(self.inlet, self.platform, strict=True)
         )
 
@@ -366,37 +362,14 @@ def _drop_sites_missing_from_loaded_data(
     return site_options.select_indices(keep_indices)
 
 
-def _retained_observation_unit(fp_all: Mapping[str, Any], sites: Sequence[str]) -> float | None:
-    """Return one validated observation-unit scale for retained site datasets."""
-    raw_units: dict[str, Any] = {}
-    normalized_units: dict[str, float] = {}
-    for site in sites:
-        dataset = fp_all.get(site)
-        if not isinstance(dataset, xr.Dataset) or "mf" not in dataset:
-            continue
-        raw_unit = dataset["mf"].attrs.get("units")
-        if raw_unit is None:
-            continue
-        raw_units[site] = raw_unit
-        if isinstance(raw_unit, str):
-            match = _UNIT_SCALE_PATTERN.search(raw_unit)
-            if match is None:
-                raise ValueError(f"Could not determine a numeric observation-unit scale from {raw_unit!r}.")
-            normalized_units[site] = float(match.group())
-        else:
-            normalized_units[site] = float(raw_unit)
-
-    unique_units = set(normalized_units.values())
-    if len(unique_units) > 1:
-        raise ValueError(
-            "Retained observation sites use incompatible units and cannot be concatenated "
-            f"without conversion: {raw_units!r}."
-        )
-    return next(iter(unique_units), None)
-
-
 def _select_fp_all_sites(fp_all: dict, sites: Sequence[str]) -> dict:
-    """Keep requested sites and synchronize site-keyed scientific metadata."""
+    """Keep requested sites and synchronize site-keyed scientific metadata.
+
+    Calibration-scale provenance is pruned to the retained site set.
+    Observation-valued variables are converted lazily through OpenGHG's Pint
+    machinery to the first retained site's units, and the legacy numeric
+    ``.units`` scale is updated to match.
+    """
     site_names = set(sites)
     selected = {key: value for key, value in fp_all.items() if key.startswith(".") or key in site_names}
 
@@ -404,10 +377,7 @@ def _select_fp_all_sites(fp_all: dict, sites: Sequence[str]) -> dict:
     if isinstance(scales, Mapping):
         selected[".scales"] = {site: scales[site] for site in sites if site in scales}
 
-    retained_unit = _retained_observation_unit(selected, sites)
-    if retained_unit is not None:
-        selected[".units"] = retained_unit
-    return selected
+    return align_observation_units(selected, sites, require_units=True)
 
 
 def _make_inv_inputs(
@@ -608,9 +578,7 @@ def _prepare_merged_data(
             "instrument": retained_instrument,
         }
         misaligned_lengths = {
-            name: len(values)
-            for name, values in returned_metadata.items()
-            if len(values) != retained_count
+            name: len(values) for name, values in returned_metadata.items() if len(values) != retained_count
         }
         if misaligned_lengths:
             raise ValueError(
