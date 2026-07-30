@@ -27,6 +27,7 @@ jax.config.update("jax_enable_x64", True)
 
 import jax.numpy as jnp  # noqa: E402
 import jax.random as jr  # noqa: E402
+import equinox as eqx  # noqa: E402
 import numpy as np  # noqa: E402
 from scipy import special, stats  # noqa: E402
 
@@ -93,6 +94,76 @@ def _sha256_json(payload: object) -> str:
 
 def _sha256_bytes(payload: bytes) -> str:
     return hashlib.sha256(payload).hexdigest()
+
+
+def _canonical_replay_diagnostics(
+    trained: ScoreRegularizedRootFlow,
+    canonical: ScoreRegularizedRootFlow,
+    observation: np.ndarray,
+    totals: np.ndarray,
+) -> dict[str, object]:
+    """Authenticate parameters and bound trained-to-replay roundoff."""
+    trained_leaves = [
+        np.asarray(leaf) for leaf in jax.tree_util.tree_leaves(trained.flow) if eqx.is_inexact_array(leaf)
+    ]
+    canonical_leaves = [
+        np.asarray(leaf) for leaf in jax.tree_util.tree_leaves(canonical.flow) if eqx.is_inexact_array(leaf)
+    ]
+    if len(trained_leaves) != len(canonical_leaves):
+        raise RuntimeError("canonical replay changed the fitted-flow tree.")
+    for trained_leaf, canonical_leaf in zip(
+        trained_leaves,
+        canonical_leaves,
+        strict=True,
+    ):
+        np.testing.assert_array_equal(trained_leaf, canonical_leaf)
+    for name in (
+        "observation_mean_design",
+        "noise_sd",
+        "basis",
+        "eigenvalues",
+    ):
+        np.testing.assert_array_equal(
+            getattr(trained.spectrum, name),
+            getattr(canonical.spectrum, name),
+        )
+
+    trained_values = np.asarray(
+        trained.log_likelihood_batch(observation, totals),
+        dtype=np.float64,
+    )
+    canonical_values = np.asarray(
+        canonical.log_likelihood_batch(observation, totals),
+        dtype=np.float64,
+    )
+    absolute_error = np.abs(trained_values - canonical_values)
+    denominator = np.maximum(
+        np.maximum(np.abs(trained_values), np.abs(canonical_values)),
+        np.finfo(np.float64).tiny,
+    )
+    relative_error = absolute_error / denominator
+    epsilon = float(np.finfo(np.float64).eps)
+    absolute_tolerance = 32.0 * epsilon
+    relative_tolerance = 16.0 * epsilon
+    np.testing.assert_allclose(
+        trained_values,
+        canonical_values,
+        rtol=relative_tolerance,
+        atol=absolute_tolerance,
+    )
+    return {
+        "canonical_replay_used_for_scientific_evaluation": True,
+        "flow_float_leaf_count": len(trained_leaves),
+        "flow_float_leaves_bitwise_identical": True,
+        "spectrum_arrays_bitwise_identical": True,
+        "trained_to_canonical_likelihood_max_absolute_error_nat": float(np.max(absolute_error, initial=0.0)),
+        "trained_to_canonical_likelihood_max_relative_error": float(np.max(relative_error, initial=0.0)),
+        "roundoff_tolerance": {
+            "absolute_nat": absolute_tolerance,
+            "relative": relative_tolerance,
+        },
+        "roundoff_check_pass": True,
+    }
 
 
 def _json_bytes(payload: object) -> bytes:
@@ -1072,7 +1143,7 @@ def run_attempt(arguments: argparse.Namespace, attempt_root: Path) -> dict[str, 
             loss_config,
             stage_plan[0][1],
         )
-    artifact = ScoreRegularizedRootFlow(
+    trained_artifact = ScoreRegularizedRootFlow(
         training.spectrum,
         dimension,
         training.evidence.gamma_shape,
@@ -1086,30 +1157,34 @@ def run_attempt(arguments: argparse.Namespace, attempt_root: Path) -> dict[str, 
             f"git={arguments.source_git_revision}"
         ),
     )
-    artifact_bytes = artifact.to_bytes()
+    artifact_bytes = trained_artifact.to_bytes()
     serialized_sha256 = _sha256_bytes(artifact_bytes)
-    replay = ScoreRegularizedRootFlow.from_bytes(
+    artifact = ScoreRegularizedRootFlow.from_bytes(
         artifact_bytes,
         expected_sha256=serialized_sha256,
     )
+    if artifact.to_bytes() != artifact_bytes:
+        raise RuntimeError("authenticated artifact did not replay exact bytes.")
     oracle_case = cast(
         dict[str, Any],
         oracle_bundle["selected_cases"][arguments.case_id],
+    )
+    case = aggregation_error_tiny_oracle.tiny_root_case(arguments.case_id)
+    _, _, _, observation, _ = case.arrays()
+    replay_totals = np.asarray((0.5, 1.0, 1.5), dtype=np.float64)
+    replay_diagnostics = _canonical_replay_diagnostics(
+        trained_artifact,
+        artifact,
+        observation,
+        replay_totals,
     )
     scientific = _scientific_grid_evaluation(
         artifact,
         arguments.case_id,
         oracle_case["reference"],
     )
-    case = aggregation_error_tiny_oracle.tiny_root_case(arguments.case_id)
-    _, _, _, observation, _ = case.arrays()
-    replay_totals = np.asarray((0.5, 1.0, 1.5), dtype=np.float64)
-    np.testing.assert_array_equal(
-        artifact.log_likelihood_batch(observation, replay_totals),
-        replay.log_likelihood_batch(observation, replay_totals),
-    )
     model_selection = _score_domain(
-        model,
+        artifact.flow,
         validation,
         partial_scale=float(scale_diagnostics["partial_score_rms"]),
         observation_scales=tuple(
@@ -1117,7 +1192,7 @@ def run_attempt(arguments: argparse.Namespace, attempt_root: Path) -> dict[str, 
         ),
     )
     reporting_test = _score_domain(
-        model,
+        artifact.flow,
         reporting,
         partial_scale=float(scale_diagnostics["partial_score_rms"]),
         observation_scales=tuple(
@@ -1182,7 +1257,8 @@ def run_attempt(arguments: argparse.Namespace, attempt_root: Path) -> dict[str, 
             "serialized_sha256": serialized_sha256,
             "serialized_artifact_file_sha256": serialized_sha256,
             "serialized_size_bytes": len(artifact_bytes),
-            "byte_replay_pass": (replay.artifact_sha256 == artifact.artifact_sha256),
+            "byte_replay_pass": (artifact.artifact_sha256 == trained_artifact.artifact_sha256),
+            "canonical_replay": replay_diagnostics,
         },
         "execution": {
             "runtime_versions": _runtime_versions(),

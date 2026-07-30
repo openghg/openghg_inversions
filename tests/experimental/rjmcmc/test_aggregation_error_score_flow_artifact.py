@@ -494,15 +494,34 @@ def test_strict_float64_serialization_replays_exactly(leading_rank: int) -> None
     )
 
 
+@pytest.mark.parametrize("leading_rank", [1, 3])
 def test_fresh_subprocess_replays_authenticated_bytes(
     tmp_path: Path,
+    leading_rank: int,
 ) -> None:
     """Template reconstruction and exact bytes are process-independent."""
-    artifact = _artifact(1)
+    if leading_rank == 1:
+        spectrum = _spectrum()
+        observation = np.asarray((0.2, -0.4))
+    else:
+        spectrum = _spectrum(
+            observation_count=3,
+            retained_rank=3,
+            eigenvalues=np.asarray((0.8, 0.25, 0.1)),
+        )
+        observation = np.asarray((0.2, -0.4, 0.1))
+    artifact = _artifact(leading_rank, spectrum=spectrum)
     artifact_path = tmp_path / "artifact.bin"
     artifact_path.write_bytes(artifact.to_bytes())
+    totals = np.asarray((0.5, 0.8, 1.2))
+    canonical = ScoreRegularizedRootFlow.from_bytes(
+        artifact_path.read_bytes(),
+        expected_sha256=artifact.sha256,
+    )
+    expected = canonical.log_likelihood_batch(observation, totals)
     script = f"""
 from pathlib import Path
+import numpy as np
 from openghg_inversions.experimental.rjmcmc.aggregation_error_score_flow_artifact import ScoreRegularizedRootFlow
 payload = Path({str(artifact_path)!r}).read_bytes()
 artifact = ScoreRegularizedRootFlow.from_bytes(
@@ -510,7 +529,14 @@ artifact = ScoreRegularizedRootFlow.from_bytes(
     expected_sha256={artifact.sha256!r},
 )
 assert artifact.to_bytes() == payload
-assert artifact.log_likelihood([0.2, -0.4], 0.8) == {artifact.log_likelihood([0.2, -0.4], 0.8)!r}
+actual = artifact.log_likelihood_batch(
+    np.asarray({observation.tolist()!r}, dtype=np.float64),
+    np.asarray({totals.tolist()!r}, dtype=np.float64),
+)
+np.testing.assert_array_equal(
+    actual,
+    np.asarray({expected.tolist()!r}, dtype=np.float64),
+)
 """
     completed = subprocess.run(
         [sys.executable, "-c", script],

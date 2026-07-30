@@ -305,6 +305,11 @@ def test_one_small_overfit_attempt_publishes_completion_last(
     assert all(report["streams"]["separation"]["checks"].values())
     assert report["initialization_loss_diagnostics"]["measured_before_loss_weights_applied"]
     assert report["artifact"]["byte_replay_pass"]
+    replay = report["artifact"]["canonical_replay"]
+    assert replay["canonical_replay_used_for_scientific_evaluation"]
+    assert replay["flow_float_leaves_bitwise_identical"]
+    assert replay["spectrum_arrays_bitwise_identical"]
+    assert replay["roundoff_check_pass"]
     assert len(report["scientific_evaluation"]["grid"]["ladder"]) == 3
     assert report["scientific_evaluation"]["vectorized_public_likelihood_parity"]["pass"]
     assert (attempt_root / "artifact.bin").is_file()
