@@ -2,7 +2,14 @@
 
 ## Status and motivation
 
-This is a new, observation-blind experiment after the calibrated finite
+**Final status (2026-07-30): terminal N1 architecture stop.**  The complete
+24-task exact-oracle matrix produced valid, finite, replayable fitted
+artifacts but zero scientific passes and no common training-size lock.  N2
+and all PARIS stages remain closed.  The authoritative result, resource
+record, Slurm identities, and checksums are in
+[`rjmcmc_score_regularized_nle_n1_bp1_report.md`](rjmcmc_score_regularized_nle_n1_bp1_report.md).
+
+This was an observation-blind experiment after the calibrated finite
 projected-bank likelihood stopped at G4.  The source simulator itself passed:
 it reproduced the frozen projected Gamma--Dirichlet catalogue with bounded
 memory.  The raw equal-weight bank did not converge as a density estimator at

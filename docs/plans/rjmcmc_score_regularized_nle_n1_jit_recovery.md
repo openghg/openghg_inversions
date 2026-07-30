@@ -160,22 +160,21 @@ graph, not the density, objective, model, simulated data, or thresholds.
 
 ## Follow-Up
 
-The next recovery replaces only that inner scalar reverse derivative with
-the JVP identity above and records
+The inner scalar reverse derivative was replaced with the exact JVP identity
+and recorded as
 `forward-jvp-in-raw-log-mass-then-reverse-parameter-gradient` in the protocol.
-Focused tests must compare its score to the prior direct reverse derivative
-and its composite parameter gradient to the independent analytic reference.
+Focused tests matched both the prior direct score derivative and an
+independent composite-gradient reference.
 
-A fresh commit, detached full-SHA source, run root, and N0 are required.
-Before another complete N1 array, a committed two-task Slurm canary must
-compile and execute one exact 64-row composite gradient for \(q=1\) and
-\(q=3\), covering the masked-autoregressive and coupling branches.  It uses
-ordinary shared nodes, 8 GB per task, and a 30-minute limit.  It evaluates no
-scientific threshold.  Only if both canaries pass may the complete six-case
-\(S=4096\) array run; no larger N1 size may run until that tier publishes six
-authenticated task bundles.
+After the canary wrapper was corrected to load the pinned Git module, both
+\(q=1\) and \(q=3\) canaries compiled and executed.  The complete 24-task N1
+matrix then ran successfully at source revision
+`475d5db6026a8472fd3c44eac2e0d2369686c78b`.  All fitted artifacts were
+finite and replayable, but none passed the complete scientific thresholds.
+The merger therefore published no size lock and closed the architecture at
+N1.  The final result, full job/ticket record, resource measurements, and
+checksums are in
+[`rjmcmc_score_regularized_nle_n1_bp1_report.md`](rjmcmc_score_regularized_nle_n1_bp1_report.md).
 
-The canary wrapper must load the same pinned Git module as N0/N1 before
-performing source authentication.  Because the failed wrapper produced no
-canary artifact, its corrected launch uses a new exact source and run root;
-the scheduler failure remains preserved by Slurm and its wakeup ticket.
+The original two-second canary wrapper failure remains preserved by Slurm and
+its wakeup ticket.  It is not counted as a compile or scientific result.
