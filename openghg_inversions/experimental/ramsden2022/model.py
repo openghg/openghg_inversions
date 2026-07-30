@@ -739,7 +739,8 @@ def build_ramsden_model(
             the declared reference ratio.
 
     Returns:
-        Built PyMC model ready for :class:`RhimeSampler`.
+        Built PyMC model ready for
+        :class:`~openghg_inversions.rhime.sampling.RhimeSampler`.
 
     Raises:
         ValueError: If model metadata, required input variables, source labels,
@@ -861,7 +862,9 @@ def run_ramsden_from_prepared_inputs(
     Notes:
         This function samples the model and may run multiple chains. It does
         not retrieve data, convert units, or write postprocessed products.
-        Sampling exceptions raised by :class:`RhimeSampler` are propagated.
+        Sampling exceptions raised by
+        :class:`~openghg_inversions.rhime.sampling.RhimeSampler` are
+        propagated.
     """
     model = build_ramsden_model(prepared_inputs, model_spec)
     primary_suffix = _channel_suffix(model_spec.primary)
