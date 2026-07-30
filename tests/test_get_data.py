@@ -13,6 +13,7 @@ from openghg.types import SearchError
 
 import openghg_inversions.inversion_data.get_data as get_data_module
 import openghg_inversions.inversion_data.getters as getters_module
+import openghg_inversions.inversion_data.scenario as scenario_module
 from openghg_inversions.flux_sanitization import FluxNonFiniteMetadata, NonFiniteFluxWarning
 from openghg_inversions.inversion_data._site_options import expand_site_option
 from openghg_inversions.inversion_data.get_data import (
@@ -299,101 +300,134 @@ def test_expand_site_option_rejects_misaligned_or_boolean_values() -> None:
         expand_site_option({"TAC": "value"}, nsites=1, name="option")
 
 
-def test_data_processing_converts_compatible_observation_units(
+def test_data_processing_reuses_first_successful_observation_units(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Compatible site observations are converted to the first site's units."""
+    """Later scenarios request the first successfully merged site's units."""
+    requested_output_units: list[object] = []
 
     def fake_scenario(*args: object, **kwargs: object) -> xr.Dataset:
-        """Return a minimal scenario with site-dependent units."""
+        """Return scenarios already converted by ModelScenario."""
         platform = kwargs["platform"]
-        units = "ppb" if platform == "surface" else "ppm"
-        scale = 1.0 if platform == "surface" else 0.001
+        requested_output_units.append(kwargs.get("output_units"))
         return xr.Dataset(
             {
-                "mf": xr.DataArray(
-                    [1000.0 if platform == "surface" else 1.0], dims="time", attrs={"units": units}
-                ),
-                "mf_mod": xr.DataArray(
-                    [900.0 if platform == "surface" else 0.9], dims="time", attrs={"units": units}
-                ),
-                "mf_mod_sectoral": xr.DataArray(
-                    [800.0 if platform == "surface" else 0.8],
-                    dims="time",
-                    attrs={"units": units},
-                ),
-                "mf_repeatability": ("time", [2.0 * scale]),
-                "mf_variability": ("time", [3.0 * scale]),
-                "mf_prior_factor": ("time", [4.0 * scale]),
-                "mf_prior_upper_level_factor": ("time", [5.0 * scale]),
+                "mf": ("time", [1000.0], {"units": "ppb"}),
+                "mf_mod": ("time", [900.0], {"units": "ppb"}),
+                "mf_repeatability": ("time", [2.0], {"units": "ppb"}),
+                "mf_variability": ("time", [3.0], {"units": "ppb"}),
                 "mf_number_of_observations": ("time", [10 if platform == "surface" else 20]),
             },
             attrs={"scale": "test-scale"},
         )
 
     monkeypatch.setattr(get_data_module, "get_flux_data", lambda **kwargs: {})
-    monkeypatch.setattr(get_data_module, "get_obs_data", lambda **kwargs: object())
+    monkeypatch.setattr(
+        get_data_module,
+        "get_obs_data",
+        lambda **kwargs: None if kwargs["site"] == "BSD" else object(),
+    )
     monkeypatch.setattr(get_data_module, "get_footprint_data", lambda **kwargs: object())
     monkeypatch.setattr(get_data_module, "merged_scenario_data", fake_scenario)
 
-    fp_all, *_ = data_processing_surface_notracer(
+    fp_all, retained_sites, *_ = data_processing_surface_notracer(
         species="ch4",
-        sites=["TAC", "GOSAT-BRAZIL"],
+        sites=["BSD", "TAC", "GOSAT-BRAZIL"],
         domain="EUROPE",
         averaging_period="1h",
         start_date="2019-01-01",
         end_date="2019-01-02",
-        platform=["surface", "satellite"],
+        platform=["surface", "surface", "satellite"],
         emissions_name=["inventory"],
         use_bc=False,
     )
 
+    assert requested_output_units == [None, "ppb"]
+    assert retained_sites == ["TAC", "GOSAT-BRAZIL"]
     assert fp_all[".units"] == pytest.approx(1e-9)
     np.testing.assert_allclose(fp_all["TAC"]["mf"], [1000.0])
     np.testing.assert_allclose(fp_all["GOSAT-BRAZIL"]["mf"], [1000.0])
     np.testing.assert_allclose(fp_all["GOSAT-BRAZIL"]["mf_mod"], [900.0])
-    np.testing.assert_allclose(fp_all["GOSAT-BRAZIL"]["mf_mod_sectoral"], [800.0])
     np.testing.assert_allclose(fp_all["GOSAT-BRAZIL"]["mf_repeatability"], [2.0])
     np.testing.assert_allclose(fp_all["GOSAT-BRAZIL"]["mf_variability"], [3.0])
     np.testing.assert_allclose(fp_all["GOSAT-BRAZIL"]["mf_error"], [np.sqrt(13.0)])
-    np.testing.assert_allclose(fp_all["GOSAT-BRAZIL"]["mf_prior_factor"], [4.0])
-    np.testing.assert_allclose(fp_all["GOSAT-BRAZIL"]["mf_prior_upper_level_factor"], [5.0])
     np.testing.assert_array_equal(fp_all["GOSAT-BRAZIL"]["mf_number_of_observations"], [20])
     assert fp_all["TAC"]["mf"].attrs["units"] == fp_all["GOSAT-BRAZIL"]["mf"].attrs["units"]
 
 
-def test_data_processing_rejects_non_mole_fraction_observation_units(
+@pytest.mark.parametrize("error_type", [TypeError, ValueError])
+def test_data_processing_reports_later_site_unit_conversion_failure(
     monkeypatch: pytest.MonkeyPatch,
+    error_type: type[Exception],
 ) -> None:
-    """Dimensionally incompatible observation units fail with site context."""
+    """A later ModelScenario unit failure identifies its site and retains the Pint cause."""
+    scenario_calls = 0
 
     def fake_scenario(*args: object, **kwargs: object) -> xr.Dataset:
-        """Return one valid and one dimensionally invalid observation."""
-        platform = kwargs["platform"]
-        units = "ppb" if platform == "surface" else "kg"
-        return xr.Dataset(
-            {"mf": xr.DataArray([1.0], dims="time", attrs={"units": units})},
-            attrs={"scale": "test-scale"},
-        )
+        """Return the target-unit scenario, then mimic a Pint conversion failure."""
+        nonlocal scenario_calls
+        scenario_calls += 1
+        if scenario_calls == 1:
+            assert kwargs["output_units"] is None
+            return xr.Dataset(
+                {"mf": ("time", [1000.0], {"units": "ppb"})},
+                attrs={"scale": "test-scale"},
+            )
+        assert kwargs["output_units"] == "ppb"
+        raise error_type("Pint could not convert ppm to ppb")
 
     monkeypatch.setattr(get_data_module, "get_flux_data", lambda **kwargs: {})
     monkeypatch.setattr(get_data_module, "get_obs_data", lambda **kwargs: object())
     monkeypatch.setattr(get_data_module, "get_footprint_data", lambda **kwargs: object())
     monkeypatch.setattr(get_data_module, "merged_scenario_data", fake_scenario)
-    monkeypatch.setattr(get_data_module, "add_obs_error", lambda *args, **kwargs: None)
 
-    with pytest.raises(ValueError, match="not compatible with a molar mixing ratio"):
+    with pytest.raises(ValueError, match="site 'MHD'.*target observation units 'ppb'") as exc_info:
         data_processing_surface_notracer(
             species="ch4",
-            sites=["TAC", "GOSAT-BRAZIL"],
+            sites=["TAC", "MHD"],
             domain="EUROPE",
             averaging_period="1h",
             start_date="2019-01-01",
             end_date="2019-01-02",
-            platform=["surface", "satellite"],
+            platform="surface",
             emissions_name=["inventory"],
             use_bc=False,
         )
+
+    assert isinstance(exc_info.value.__cause__, error_type)
+    assert str(exc_info.value.__cause__) == "Pint could not convert ppm to ppb"
+
+
+def test_merged_scenario_forwards_requested_output_units(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The scenario boundary delegates common-unit conversion to ModelScenario."""
+    merge_kwargs: dict[str, object] = {}
+    expected = xr.Dataset({"mf": ("time", [1.0], {"units": "ppb"})})
+
+    class FakeModelScenario:
+        """Capture the arguments passed to the OpenGHG scenario object."""
+
+        def __init__(self, **kwargs: object) -> None:
+            """Record ModelScenario constructor arguments for inspection."""
+            self.init_kwargs = kwargs
+
+        def footprints_data_merge(self, **kwargs: object) -> xr.Dataset:
+            """Capture merge options and return an already converted scenario."""
+            merge_kwargs.update(kwargs)
+            return expected
+
+    monkeypatch.setattr(scenario_module, "ModelScenario", FakeModelScenario)
+
+    result = scenario_module.merged_scenario_data(
+        obs_data=object(),  # type: ignore[arg-type]
+        footprint_data=object(),  # type: ignore[arg-type]
+        flux_dict={},
+        output_units="ppb",
+    )
+
+    assert result is expected
+    assert merge_kwargs["output_units"] == "ppb"
 
 
 def test_missing_data_at_all_sites(openghg_test_store):

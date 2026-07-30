@@ -4,25 +4,29 @@
   to disk (either as a pickle file, netCDF, or zarr)
 - `load_merged_data` restores the `fp_all` dict from these saved formats
 - `make_combined_scenario` converts the `fp_all` dict into a xr.Dataset
+
+Deserialization restores the legacy numeric ``.units`` scale from serialized
+``mf`` units. Retained-site preparation performs any later cross-site Pint
+alignment.
 """
 
 import json
 import pickle
+import warnings
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, cast, Literal
-import warnings
+from typing import Any, Literal, cast
 
-from numcodecs import Blosc
 import numpy as np
 import xarray as xr
 import zarr
-
+from numcodecs import Blosc
 from openghg.dataobjects import BoundaryConditionsData, FluxData
 from openghg.dataobjects._basedata import _BaseData
 from openghg.util import timestamp_now
-from openghg_inversions.utils import datatree_ncdf_encoding
 
+from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
+from openghg_inversions.utils import datatree_ncdf_encoding
 
 OutputFormat = Literal["pickle", "netcdf", "zarr", "zarr.zip"]  # for internal type hints
 
@@ -316,8 +320,8 @@ def make_combined_scenario(fp_all: dict) -> xr.Dataset:
     if "time" in combined_fluxes.dims and combined_fluxes.sizes["time"] == 1:
         combined_fluxes = combined_fluxes.squeeze("time")
 
-    # merge with override in case coordinates slightly off
-    # (data should already be aligned by `ModelScenario`)
+    # Merge with override in case coordinates are slightly off. Fresh data are
+    # unit-aligned by ModelScenario; retained preparation aligns reloads.
     combined_scenario = combined_scenario.merge(combined_fluxes, join="override")
 
     # merge in boundary conditions
@@ -344,6 +348,10 @@ def fp_all_from_dataset(ds: xr.Dataset) -> dict:
 
     Returns:
         dictionary containing model scenarios keyed by site, as well as flux and boundary conditions.
+
+    Raises:
+        ValueError: If serialized ``mf`` units are invalid or are not a molar
+            mixing ratio. Missing units default to ``mol/mol``.
     """
     fp_all = {}
 
@@ -408,11 +416,10 @@ def fp_all_from_dataset(ds: xr.Dataset) -> dict:
         species = species.upper()
     fp_all[".species"] = species
 
-    try:
-        fp_all[".units"] = float(ds.mf.attrs.get("units", 1.0))
-    except ValueError:
-        # conversion to float failed
-        fp_all[".units"] = 1.0
+    fp_all[".units"] = mole_fraction_unit_scale(
+        ds.mf.attrs.get("units", 1.0),
+        context="serialized merged observations",
+    )
 
     if bool(ds.attrs.get("split_by_sectors", False)):
         warnings.warn(

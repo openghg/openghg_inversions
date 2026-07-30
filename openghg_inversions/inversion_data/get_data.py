@@ -5,6 +5,8 @@ positions aligned during retrieval failures, assembles per-site model
 scenarios, and can save the resulting merged-data artifact. Retrieval and
 optional saving have external object-store and filesystem side effects; loading
 saved merged data is handled by :mod:`openghg_inversions.inversion_data.serialise`.
+The first successful scenario supplies the unit target forwarded to later
+OpenGHG ``ModelScenario`` merges.
 """
 
 import logging
@@ -25,7 +27,7 @@ from openghg_inversions.inversion_data._site_options import (
     is_column_platform,
     is_satellite_platform,
 )
-from openghg_inversions.inversion_data._units import align_observation_units
+from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
 from openghg_inversions.inversion_data.getters import (
     get_flux_data,
     get_footprint_data,
@@ -260,7 +262,9 @@ def data_processing_surface_notracer(
 
     Notes:
         This function reads OpenGHG stores, emits progress messages and
-        warnings, and may save a merged-data artifact.
+        warnings, and may save a merged-data artifact. The first retained
+        scenario defines the unit target requested for later sites;
+        ``fp_all[".units"]`` stores that unit's scale against ``mol/mol``.
     """
     site_values = [sites] if isinstance(sites, str) else sites
     sites = [site.upper() for site in site_values]
@@ -327,6 +331,7 @@ def data_processing_surface_notracer(
     scales = {}
     check_scales = set()
     site_indices_to_keep = []
+    output_units: str | None = None
 
     keep_variables = [
         f"{species}",
@@ -393,15 +398,28 @@ def data_processing_surface_notracer(
             if is_column_observation(inlet[i], site_platform) and not is_column_platform(site_platform)
             else site_platform
         )
-        scenario_combined = merged_scenario_data(
-            site_data,
-            footprint_data,
-            flux_dict,
-            bc_data,
-            platform=scenario_platform,
-            max_level=max_level[i],
-            split_by_sectors=split_by_sectors,
-        )
+        try:
+            scenario_combined = merged_scenario_data(
+                site_data,
+                footprint_data,
+                flux_dict,
+                bc_data,
+                platform=scenario_platform,
+                max_level=max_level[i],
+                split_by_sectors=split_by_sectors,
+                output_units=output_units,
+            )
+        except (TypeError, ValueError) as exc:
+            if output_units is None:
+                raise
+            raise ValueError(
+                f"Could not merge site {site!r} using target observation units {output_units!r}."
+            ) from exc
+        if output_units is None:
+            scenario_units = scenario_combined["mf"].attrs.get("units")
+            if not isinstance(scenario_units, str) or not scenario_units:
+                raise ValueError(f"No observation units detected for the first retained site {site!r}.")
+            output_units = scenario_units
         fp_all[site] = scenario_combined
 
         if not is_satellite_platform(site_platform):
@@ -430,7 +448,12 @@ def data_processing_surface_notracer(
 
     # create `mf_error`
     add_obs_error(sites, fp_all, add_averaging_error=averagingerror)
-    fp_all = align_observation_units(fp_all, sites, require_units=True)
+    if output_units is None:
+        raise ValueError("No observation units detected.")
+    fp_all[".units"] = mole_fraction_unit_scale(
+        output_units,
+        context=f"site {sites[0]!r} variable 'mf'",
+    )
 
     if save_merged_data:
         if merged_data_dir is None:

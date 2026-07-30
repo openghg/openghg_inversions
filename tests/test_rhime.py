@@ -36,7 +36,6 @@ from openghg_inversions.flux_sanitization import (
     NonFiniteFluxWarning,
 )
 from openghg_inversions.inversion_data import RhimePreparedInputs, prepare_rhime_inputs
-from openghg_inversions.inversion_data._units import _mole_fraction_scale
 from openghg_inversions.inversion_inputs import make_inv_inputs
 from openghg_inversions.models import (
     build_rhime_model,
@@ -3618,12 +3617,13 @@ def test_apply_filters_drops_complete_site_option_record() -> None:
     assert retained == site_options.select_indices([0, 2])
 
 
-def test_filtering_synchronizes_scales_and_units_with_retained_sites() -> None:
-    """Filtering prunes calibration provenance and recomputes survivor units."""
-    tac = _site_dataset([])
-    mhd = _site_dataset([3.0])
-    tac["mf"].attrs["units"] = "1e-9 mol/mol"
-    mhd["mf"].attrs["units"] = "1e-6 mol/mol"
+def test_filtering_aligns_cross_site_pint_units_and_scales() -> None:
+    """Reload filtering converts retained sites and preserves scale provenance."""
+    tac = _site_dataset([2.0])
+    mhd = _site_dataset([0.003])
+    for name in ("mf", "mf_error", "mf_repeatability", "mf_variability", "fp_x_flux"):
+        tac[name].attrs["units"] = "ppb"
+        mhd[name].attrs["units"] = "ppm"
     merged = prep_module._MergedInversionData(
         fp_all={
             "TAC": tac,
@@ -3634,11 +3634,15 @@ def test_filtering_synchronizes_scales_and_units_with_retained_sites() -> None:
         site_options=_site_options(["TAC", "MHD"], averaging_period=["1H", "1H"]),
     )
 
-    filtered = prep_module._filter_merged_inversion_data(merged=merged, filters=None)
+    filtered = prep_module._filter_merged_inversion_data(merged=merged, filters=[])
 
-    assert filtered.sites == ("MHD",)
-    assert filtered.fp_all[".scales"] == {"MHD": "mhd-scale"}
-    assert filtered.fp_all[".units"] == pytest.approx(1e-6)
+    assert filtered.sites == ("TAC", "MHD")
+    assert filtered.fp_all[".scales"] == {"TAC": "tac-scale", "MHD": "mhd-scale"}
+    assert filtered.fp_all[".units"] == pytest.approx(1e-9)
+    np.testing.assert_allclose(filtered.fp_all["MHD"]["mf"], [10_000.0])
+    np.testing.assert_allclose(filtered.fp_all["MHD"]["fp_x_flux"], [[[3.0]]])
+    mhd_mf_ppb = filtered.fp_all["MHD"]["mf"].pint.quantify().pint.to("ppb")
+    np.testing.assert_allclose(mhd_mf_ppb, [10_000.0])
 
 
 def test_retained_sites_convert_compatible_observation_units() -> None:
@@ -3666,7 +3670,8 @@ def test_retained_sites_convert_compatible_observation_units() -> None:
     assert selected[".units"] == pytest.approx(1e-9)
     for name in converted_names:
         np.testing.assert_allclose(selected["MHD"][name], original_mhd[name] * 1000.0)
-        assert selected["MHD"][name].attrs["units"] == selected["TAC"][name].attrs["units"]
+        converted_ppb = selected["MHD"][name].pint.quantify().pint.to("ppb")
+        np.testing.assert_allclose(converted_ppb, original_mhd[name] * 1000.0)
         assert selected["MHD"][name].chunks is not None
         assert selected["MHD"][name].dtype == original_mhd[name].dtype
     assert selected["MHD"]["mf"].attrs["custom"] == "preserved"
@@ -3677,26 +3682,52 @@ def test_retained_sites_convert_compatible_observation_units() -> None:
 
 
 @pytest.mark.parametrize(
-    ("raw_units", "expected_scale"),
-    [
-        ("1", 1.0),
-        ("mol/mol", 1.0),
-        (1.0, 1.0),
-        ("1e-9", 1e-9),
-        ("ppb", 1e-9),
-        ("1e-9 mol/mol", 1e-9),
-    ],
+    "count_attrs",
+    [{}, {"units": "1"}],
+    ids=["missing-count-units", "dimensionless-count-units"],
 )
-def test_retained_observation_unit_aliases(
-    raw_units: str | float,
-    expected_scale: float,
+def test_retained_sites_inherit_units_for_unitless_observation_variables(
+    count_attrs: dict[str, str],
 ) -> None:
-    """OpenGHG mole-fraction aliases produce the expected legacy scale."""
-    dataset = xr.Dataset({"mf": ("time", [1.0], {"units": raw_units})})
+    """Reloaded concentrations inherit site units without retagging float observation counts."""
+    tac = xr.Dataset({"mf": ("time", [1000.0], {"units": "ppb"})})
+    mhd = xr.Dataset(
+        {
+            "mf": ("time", [1.0], {"units": "ppm"}),
+            "mf_error": ("time", [0.002]),
+            "mf_mod": ("time", [0.9]),
+            "mf_number_of_observations": (
+                "time",
+                np.array([20.0], dtype="float64"),
+                count_attrs,
+            ),
+        }
+    )
 
-    selected = prep_module._select_fp_all_sites({"TAC": dataset}, ["TAC"])
+    selected = prep_module._select_fp_all_sites({"TAC": tac, "MHD": mhd}, ["TAC", "MHD"])
 
-    assert selected[".units"] == pytest.approx(expected_scale)
+    np.testing.assert_allclose(selected["MHD"]["mf"], [1000.0])
+    np.testing.assert_allclose(selected["MHD"]["mf_error"], [2.0])
+    np.testing.assert_allclose(selected["MHD"]["mf_mod"], [900.0])
+    np.testing.assert_array_equal(selected["MHD"]["mf_number_of_observations"], [20.0])
+    assert selected["MHD"]["mf_number_of_observations"].attrs == count_attrs
+
+
+def test_retained_sites_accept_repository_scaled_unit_spelling() -> None:
+    """Repository-scaled mole-fraction attrs normalize to quantifiable Pint units."""
+    tac = xr.Dataset(
+        {
+            "mf": ("time", [1900.0], {"units": "1e-09 mol/mol"}),
+            "mf_error": ("time", [2.0], {"units": "1e-09 mol/mol"}),
+        }
+    )
+
+    selected = prep_module._select_fp_all_sites({"TAC": tac}, ["TAC"])
+
+    assert selected[".units"] == pytest.approx(1e-9)
+    for name in ("mf", "mf_error"):
+        as_ppb = selected["TAC"][name].pint.quantify().pint.to("ppb")
+        np.testing.assert_allclose(as_ppb, tac[name])
 
 
 def test_retained_observation_units_use_legacy_scale_fallback() -> None:
@@ -3707,10 +3738,22 @@ def test_retained_observation_units_use_legacy_scale_fallback() -> None:
 
     assert selected[".units"] == pytest.approx(1e-9)
     for name in ("mf", "mf_error"):
-        assert _mole_fraction_scale(
-            selected["TAC"][name].attrs["units"],
-            context=f"test variable {name!r}",
-        ) == pytest.approx(1e-9)
+        as_ppb = selected["TAC"][name].pint.quantify().pint.to("ppb")
+        np.testing.assert_allclose(as_ppb, tac[name])
+
+
+def test_retained_observation_units_accept_numpy_legacy_scale() -> None:
+    """A standard NumPy float32 legacy scale supplies quantifiable ppb units."""
+    tac = xr.Dataset({"mf": ("time", [1900.0])})
+
+    selected = prep_module._select_fp_all_sites(
+        {"TAC": tac, ".units": np.float32(1e-9)},
+        ["TAC"],
+    )
+
+    assert selected[".units"] == pytest.approx(1e-9)
+    as_ppb = selected["TAC"]["mf"].pint.quantify().pint.to("ppb")
+    np.testing.assert_allclose(as_ppb, tac["mf"])
 
 
 def test_retained_observation_units_reject_missing_or_partial_metadata() -> None:
