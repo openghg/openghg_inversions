@@ -437,7 +437,12 @@
                   
   <section id="module-openghg_inversions.inversion_inputs">
 <span id="openghg-inversions-inversion-inputs"></span><h1>openghg_inversions.inversion_inputs<a class="headerlink" href="#module-openghg_inversions.inversion_inputs" title="Link to this heading">#</a></h1>
-<p>Create backend-neutral observations and sensitivities for inversions.</p>
+<p>Create backend-neutral, observation-aligned inversion inputs.</p>
+<p><code class="docutils literal notranslate"><span class="pre">make_inv_inputs</span></code> gathers selected per-site datasets into one ragged
+<code class="docutils literal notranslate"><span class="pre">nmeasure</span></code> dataset, validates shared state layouts, adds site/minimum-error
+metadata, transforms boundary-condition periods, drops unusable rows, and
+materializes core arrays. <code class="docutils literal notranslate"><span class="pre">sites=None</span></code> infers non-metadata entries; an
+explicit empty selection is an error.</p>
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.inversion_inputs.add_min_error">
 <span class="sig-prename descclassname"><span class="pre">openghg_inversions.inversion_inputs.</span></span><span class="sig-name descname"><span class="pre">add_min_error</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ds</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">fp_data</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><span class="pre">Any</span></a><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_error</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_error_per_site</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></span><a class="headerlink" href="#openghg_inversions.inversion_inputs.add_min_error" title="Link to this definition">#</a></dt>
@@ -466,7 +471,9 @@ constructed by their owning components.</p>
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>fp_data</strong> – Per-site merged observations and sensitivity data.</p></li>
-<li><p><strong>sites</strong> – Sites to retain. Defaults to all non-metadata entries.</p></li>
+<li><p><strong>sites</strong> – Sites to retain. <code class="docutils literal notranslate"><span class="pre">None</span></code> infers all non-metadata <code class="docutils literal notranslate"><span class="pre">fp_data</span></code>
+keys in insertion order. An explicit empty list is invalid, and
+every named site must exist in <code class="docutils literal notranslate"><span class="pre">fp_data</span></code>.</p></li>
 <li><p><strong>bc_freq</strong> – Optional frequency used to transform boundary-condition
 sensitivities.</p></li>
 <li><p><strong>min_error</strong> – Minimum-error value or calculation configuration.</p></li>
@@ -479,8 +486,9 @@ frequencies.</p></li>
 <dd class="field-even"><p>Canonical inversion inputs aligned along <code class="docutils literal notranslate"><span class="pre">nmeasure</span></code>.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If required input variables are missing or minimum-error
-    configuration is invalid.</p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If no sites can be inferred, the explicit selection is
+    empty, a requested site is missing, required input variables are
+    missing, or minimum-error configuration is invalid.</p>
 </dd>
 </dl>
 </dd></dl>

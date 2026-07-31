@@ -462,8 +462,9 @@ the component-based model, including at minimum <code class="docutils literal no
 <li><p><strong>offsetprior</strong> – Prior specification for optional offsets.</p></li>
 <li><p><strong>add_offset</strong> – Whether to include an offset term in the model.</p></li>
 <li><p><strong>use_bc</strong> – Whether to include boundary-condition terms in the model.</p></li>
-<li><p><strong>reparameterise_log_normal</strong> – Whether to request lognormal
-reparameterisation for supported priors.</p></li>
+<li><p><strong>reparameterise_log_normal</strong> – Deprecated compatibility flag for lognormal
+reparameterisation. Set <code class="docutils literal notranslate"><span class="pre">reparameterise=True</span></code> in the relevant
+prior mapping instead.</p></li>
 <li><p><strong>pollution_events_from_obs</strong> – Whether to derive pollution-event scaling
 from observations rather than modelled concentrations.</p></li>
 <li><p><strong>no_model_error</strong> – Whether to suppress the explicit model-error term.</p></li>
@@ -475,6 +476,9 @@ scaling.</p></li>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>Built PyMC model for the current inferpymc compatibility path.</p>
+</dd>
+<dt class="field-odd">Warns<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>FutureWarning</strong> – If <code class="docutils literal notranslate"><span class="pre">reparameterise_log_normal</span></code> is enabled.</p>
 </dd>
 </dl>
 </dd></dl>
@@ -535,7 +539,9 @@ controlled separately via <code class="docutils literal notranslate"><span class
 <li><p><strong>add_offset</strong> – If True, include an offset term in the model.</p></li>
 <li><p><strong>verbose</strong> – If True, print additional diagnostic information.</p></li>
 <li><p><strong>use_bc</strong> – If True, include boundary condition terms in the model.</p></li>
-<li><p><strong>reparameterise_log_normal</strong> – If True, reparameterise log-normal priors for numerical stability.</p></li>
+<li><p><strong>reparameterise_log_normal</strong> – Deprecated compatibility flag for lognormal
+reparameterisation. Set <code class="docutils literal notranslate"><span class="pre">reparameterise=True</span></code> in the relevant
+prior mapping instead.</p></li>
 <li><p><strong>pollution_events_from_obs</strong> – If True, derive pollution event terms from observations.</p></li>
 <li><p><strong>no_model_error</strong> – If True, do not include an explicit model-error term.</p></li>
 <li><p><strong>offset_args</strong> – Additional arguments used when constructing offsets.</p></li>
@@ -555,13 +561,14 @@ options, keys typically include:</p>
 <li><p><code class="docutils literal notranslate"><span class="pre">&quot;OFFSETtrace&quot;</span></code> when offsets are enabled</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">&quot;trace&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;model&quot;</span></code>, and convergence metadata</p></li>
 </ul>
-<dl class="field-list simple">
-<dt class="field-odd">raises ValueError<span class="colon">:</span></dt>
-<dd class="field-odd"><p>If the model cannot be built from the supplied
+</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If the model cannot be built from the supplied
     <code class="docutils literal notranslate"><span class="pre">inv_inputs</span></code> and configuration.</p>
 </dd>
-</dl>
-</p>
+<dt class="field-even">Warns<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>FutureWarning</strong> – If <code class="docutils literal notranslate"><span class="pre">reparameterise_log_normal</span></code> is enabled.</p>
 </dd>
 </dl>
 </dd></dl>
