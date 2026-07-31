@@ -17,7 +17,7 @@ points are :func:`_mean_centered_johnson_su_logp`,
 :func:`_mean_centered_johnson_su_random`, and
 :func:`validate_johnson_su_options`. The companion
 :func:`validate_additive_model_error_options` helper guards the experimental
-response-independent Gaussian comparator.
+response-independent additive Gaussian and Student-t comparators.
 """
 
 from __future__ import annotations
@@ -250,13 +250,17 @@ def validate_additive_model_error_options(
     pollution_events_from_obs_one_sided: bool,
     pollution_events_from_obs_johnson_su: bool,
     no_model_error: bool,
+    student_t_df: float | None = None,
 ) -> None:
-    """Validate the response-independent additive Gaussian comparator.
+    """Validate the response-independent additive likelihood comparators.
 
     The comparator interprets ``sigma`` in concentration units and uses
     ``sqrt(mf_error**2 + sigma**2)``. It is deliberately exclusive with every
     pollution-event option, whose ``sigma`` is dimensionless, and with
-    ``no_model_error``.
+    ``no_model_error``. When ``student_t_df`` is supplied, the Gaussian
+    observation distribution is replaced by a Student-t distribution using
+    the same additive scale. Fixed degrees of freedom greater than two keep
+    its variance finite and make the comparison easy to interpret.
 
     Args:
         enabled: Whether response-independent additive model error is selected.
@@ -267,14 +271,32 @@ def validate_additive_model_error_options(
         pollution_events_from_obs_johnson_su: Whether Johnson-SU mode is
             enabled.
         no_model_error: Whether explicit model error is disabled.
+        student_t_df: Optional fixed degrees of freedom for an additive
+            Student-t observation distribution. ``None`` selects Gaussian.
 
     Raises:
         ValueError: If additive model error is combined with an incompatible
-            likelihood option.
+            likelihood option, or the Student-t degrees of freedom are not a
+            finite numeric value greater than two.
 
     Returns:
         None.
     """
+    if student_t_df is not None:
+        if not enabled:
+            raise ValueError(
+                "`additive_student_t_nu` requires `additive_model_error=True`."
+            )
+        if (
+            isinstance(student_t_df, bool)
+            or not isinstance(student_t_df, Real)
+            or not np.isfinite(float(student_t_df))
+            or float(student_t_df) <= 2.0
+        ):
+            raise ValueError(
+                "`additive_student_t_nu` must be a finite numeric value greater than 2."
+            )
+
     if not enabled:
         return
 

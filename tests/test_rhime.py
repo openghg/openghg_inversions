@@ -1924,6 +1924,7 @@ def test_rhime_runner_setup_preserves_additive_model_error(tmp_path: Path) -> No
         "pollution_events_from_obs_one_sided": False,
         "pollution_events_from_obs_johnson_su": False,
         "additive_model_error": True,
+        "additive_student_t_nu": 4.0,
     }
 
     setup = rhime_params.make_rhime_runner_setup(
@@ -1933,7 +1934,9 @@ def test_rhime_runner_setup_preserves_additive_model_error(tmp_path: Path) -> No
     )
 
     assert setup.run_spec.model.additive_model_error is True
+    assert setup.run_spec.model.additive_student_t_nu == 4.0
     assert "additive_model_error" not in setup.data_args
+    assert "additive_student_t_nu" not in setup.data_args
 
 
 def test_rhime_runner_setup_rejects_unknown_builder_strategy() -> None:
@@ -2307,6 +2310,30 @@ def test_rhime_model_spec_rejects_invalid_additive_model_error_combinations(
             domain="EUROPE",
             sectors=(),
             **options,
+        )
+
+
+def test_rhime_model_spec_accepts_additive_student_t() -> None:
+    """A fixed Student-t tail option is valid only on the additive route."""
+    spec = RhimeModelSpec(
+        species="ch4",
+        domain="EUROPE",
+        sectors=(),
+        additive_model_error=True,
+        additive_student_t_nu=4.0,
+    )
+
+    assert spec.additive_student_t_nu == 4.0
+
+
+def test_rhime_model_spec_rejects_student_t_without_additive_error() -> None:
+    """The Student-t comparator cannot select PEFO modelled scaling."""
+    with pytest.raises(ValueError, match="additive_model_error=True"):
+        RhimeModelSpec(
+            species="ch4",
+            domain="EUROPE",
+            sectors=(),
+            additive_student_t_nu=4.0,
         )
 
 

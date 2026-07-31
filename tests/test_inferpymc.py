@@ -404,6 +404,46 @@ def test_inferpymc_forwards_observation_likelihood_options(
     assert captured["model_kwargs"][option_name] is True
 
 
+def test_inferpymc_forwards_additive_student_t_nu(
+    inv_inputs: xr.Dataset,
+    model_args: dict,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The legacy adapter forwards fixed Student-t degrees of freedom."""
+    captured: dict[str, Any] = {}
+    sentinel_model = pm.Model()
+
+    def fake_build_inferpymc_model(dataset: xr.Dataset, **kwargs: Any) -> pm.Model:
+        captured["model_kwargs"] = kwargs
+        return sentinel_model
+
+    monkeypatch.setattr(inversion_pymc_module, "build_inferpymc_model", fake_build_inferpymc_model)
+    monkeypatch.setattr(inversion_pymc_module, "sample", lambda *args, **kwargs: object())
+    monkeypatch.setattr(
+        inversion_pymc_module,
+        "_adapt_legacy_inferpymc_results",
+        lambda **kwargs: {"ok": True},
+    )
+    likelihood_args = dict(model_args)
+    likelihood_args["pollution_events_from_obs"] = False
+
+    result = inferpymc(
+        inv_inputs=inv_inputs,
+        nuts_sampler="numpyro",
+        nit=1,
+        burn=0,
+        tune=0,
+        nchain=1,
+        additive_model_error=True,
+        additive_student_t_nu=8.0,
+        **likelihood_args,
+    )
+
+    assert result == {"ok": True}
+    assert captured["model_kwargs"]["additive_model_error"] is True
+    assert captured["model_kwargs"]["additive_student_t_nu"] == 8.0
+
+
 def test_build_inferpymc_model_contains_expected_variables(inv_inputs: xr.Dataset, model_args: dict) -> None:
     """The builder adds the core named variables expected by downstream code."""
     model = build_inferpymc_model(inv_inputs, **model_args)

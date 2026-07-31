@@ -124,9 +124,12 @@ class RhimeModelSpec:
             requires observation-derived two-sided error, enabled model error,
             and fixed numeric ``power=2``.
         additive_model_error: Whether to use a response-independent additive
-            Gaussian model-error term. In this mode ``sigma`` has observation
+            model-error term. In this mode ``sigma`` has observation
             concentration units. It is incompatible with pollution-event
             options and ``no_model_error``.
+        additive_student_t_nu: Optional fixed Student-t degrees
+            of freedom for the additive observation distribution. ``None``
+            retains the Gaussian distribution.
         builder_strategy: Public model-construction strategy. ``"concrete"``
             directly composes the default, readable reference model.
             ``"compiled"`` opts into the private semantic-plan compiler for
@@ -156,6 +159,7 @@ class RhimeModelSpec:
     pollution_events_from_obs_one_sided: bool = False
     pollution_events_from_obs_johnson_su: bool = field(default=False, kw_only=True)
     additive_model_error: bool = field(default=False, kw_only=True)
+    additive_student_t_nu: float | None = field(default=None, kw_only=True)
     builder_strategy: RhimeBuilderStrategy = field(default="concrete", kw_only=True)
 
     def __post_init__(self) -> None:
@@ -177,6 +181,7 @@ class RhimeModelSpec:
             pollution_events_from_obs_one_sided=self.pollution_events_from_obs_one_sided,
             pollution_events_from_obs_johnson_su=self.pollution_events_from_obs_johnson_su,
             no_model_error=self.no_model_error,
+            student_t_df=self.additive_student_t_nu,
         )
 
 
@@ -209,6 +214,7 @@ def _add_rhime_observation_components(
     pollution_events_from_obs_one_sided: bool,
     pollution_events_from_obs_johnson_su: bool,
     additive_model_error: bool,
+    additive_student_t_nu: float | None,
     no_model_error: bool,
     offset_args: dict | None,
     power: dict | float,
@@ -231,7 +237,9 @@ def _add_rhime_observation_components(
         pollution_events_from_obs_johnson_su: Whether to use the transformed
             Johnson-SU observation likelihood.
         additive_model_error: Whether ``sigma`` is a response-independent
-            additive Gaussian error in concentration units.
+            additive error in concentration units.
+        additive_student_t_nu: Optional fixed Student-t degrees
+            of freedom for the additive observation distribution.
         no_model_error: Whether to suppress explicit model error.
         offset_args: Extra offset-component arguments.
         power: Likelihood error-scaling exponent or prior.
@@ -274,6 +282,7 @@ def _add_rhime_observation_components(
         pollution_events_from_obs_one_sided=pollution_events_from_obs_one_sided,
         pollution_events_from_obs_johnson_su=pollution_events_from_obs_johnson_su,
         additive_model_error=additive_model_error,
+        additive_student_t_nu=additive_student_t_nu,
         no_model_error=no_model_error,
         output_dim="nmeasure",
     )
@@ -293,6 +302,7 @@ def _assemble_compiled_rhime_model(
     pollution_events_from_obs_one_sided: bool,
     pollution_events_from_obs_johnson_su: bool,
     additive_model_error: bool,
+    additive_student_t_nu: float | None,
     no_model_error: bool,
     offset_args: dict | None,
     power: dict | float,
@@ -315,7 +325,9 @@ def _assemble_compiled_rhime_model(
         pollution_events_from_obs_johnson_su: Whether to use the transformed
             Johnson-SU observation likelihood.
         additive_model_error: Whether ``sigma`` is a response-independent
-            additive Gaussian error in concentration units.
+            additive error in concentration units.
+        additive_student_t_nu: Optional fixed Student-t degrees
+            of freedom for the additive observation distribution.
         no_model_error: Whether to suppress explicit model error.
         offset_args: Extra offset-component arguments.
         power: Likelihood error-scaling exponent or prior.
@@ -339,6 +351,7 @@ def _assemble_compiled_rhime_model(
             pollution_events_from_obs_one_sided=pollution_events_from_obs_one_sided,
             pollution_events_from_obs_johnson_su=pollution_events_from_obs_johnson_su,
             additive_model_error=additive_model_error,
+            additive_student_t_nu=additive_student_t_nu,
             no_model_error=no_model_error,
             offset_args=offset_args,
             power=power,
@@ -364,6 +377,7 @@ def build_rhime_model(
     power: dict | float = 1.99,
     pollution_events_from_obs_johnson_su: bool = False,
     additive_model_error: bool = False,
+    additive_student_t_nu: float | None = None,
 ) -> pm.Model:
     """Build the standard single-sector RHIME model.
 
@@ -391,7 +405,9 @@ def build_rhime_model(
             requires ``pollution_events_from_obs=True``, one-sided mode off,
             model error enabled, and fixed numeric ``power=2``.
         additive_model_error: Whether ``sigma`` is a response-independent
-            additive Gaussian error in concentration units.
+            additive error in concentration units.
+        additive_student_t_nu: Optional fixed Student-t degrees
+            of freedom for the additive observation distribution.
 
     Returns:
         Built PyMC model.
@@ -431,6 +447,7 @@ def build_rhime_model(
             pollution_events_from_obs_one_sided=pollution_events_from_obs_one_sided,
             pollution_events_from_obs_johnson_su=pollution_events_from_obs_johnson_su,
             additive_model_error=additive_model_error,
+            additive_student_t_nu=additive_student_t_nu,
             no_model_error=no_model_error,
             offset_args=offset_args,
             power=power,
@@ -456,6 +473,7 @@ def _build_compiled_rhime_model(
     power: dict | float = 1.99,
     pollution_events_from_obs_johnson_su: bool = False,
     additive_model_error: bool = False,
+    additive_student_t_nu: float | None = None,
 ) -> pm.Model:
     """Build the standard RHIME model through the opt-in flux compiler.
 
@@ -483,7 +501,9 @@ def _build_compiled_rhime_model(
             requires ``pollution_events_from_obs=True``, one-sided mode off,
             model error enabled, and fixed numeric ``power=2``.
         additive_model_error: Whether ``sigma`` is a response-independent
-            additive Gaussian error in concentration units.
+            additive error in concentration units.
+        additive_student_t_nu: Optional fixed Student-t degrees
+            of freedom for the additive observation distribution.
 
     Returns:
         Built PyMC model.
@@ -508,6 +528,7 @@ def _build_compiled_rhime_model(
         pollution_events_from_obs_one_sided=pollution_events_from_obs_one_sided,
         pollution_events_from_obs_johnson_su=pollution_events_from_obs_johnson_su,
         additive_model_error=additive_model_error,
+        additive_student_t_nu=additive_student_t_nu,
         no_model_error=no_model_error,
         offset_args=offset_args,
         power=power,
@@ -552,6 +573,7 @@ def build_rhime_model_from_spec(inv_inputs: xr.Dataset, model_spec: RhimeModelSp
         pollution_events_from_obs_one_sided=model_spec.pollution_events_from_obs_one_sided,
         pollution_events_from_obs_johnson_su=model_spec.pollution_events_from_obs_johnson_su,
         additive_model_error=model_spec.additive_model_error,
+        additive_student_t_nu=model_spec.additive_student_t_nu,
         no_model_error=model_spec.no_model_error,
         offset_args=model_spec.offset_args,
         power=model_spec.power,
@@ -579,6 +601,7 @@ def build_rhime_multisector_model(
     power: dict | float = 1.99,
     pollution_events_from_obs_johnson_su: bool = False,
     additive_model_error: bool = False,
+    additive_student_t_nu: float | None = None,
 ) -> pm.Model:
     """Build the first shared-basis multi-sector RHIME model.
 
@@ -623,7 +646,9 @@ def build_rhime_multisector_model(
             requires ``pollution_events_from_obs=True``, one-sided mode off,
             model error enabled, and fixed numeric ``power=2``.
         additive_model_error: Whether ``sigma`` is a response-independent
-            additive Gaussian error in concentration units.
+            additive error in concentration units.
+        additive_student_t_nu: Optional fixed Student-t degrees
+            of freedom for the additive observation distribution.
 
     Returns:
         Built PyMC model.
@@ -682,6 +707,7 @@ def build_rhime_multisector_model(
             pollution_events_from_obs_one_sided=pollution_events_from_obs_one_sided,
             pollution_events_from_obs_johnson_su=pollution_events_from_obs_johnson_su,
             additive_model_error=additive_model_error,
+            additive_student_t_nu=additive_student_t_nu,
             no_model_error=no_model_error,
             offset_args=offset_args,
             power=power,
@@ -711,6 +737,7 @@ def _build_compiled_rhime_multisector_model(
     power: dict | float = 1.99,
     pollution_events_from_obs_johnson_su: bool = False,
     additive_model_error: bool = False,
+    additive_student_t_nu: float | None = None,
 ) -> pm.Model:
     """Build multisector RHIME through the opt-in flux compiler.
 
@@ -739,7 +766,9 @@ def _build_compiled_rhime_multisector_model(
             requires ``pollution_events_from_obs=True``, one-sided mode off,
             model error enabled, and fixed numeric ``power=2``.
         additive_model_error: Whether ``sigma`` is a response-independent
-            additive Gaussian error in concentration units.
+            additive error in concentration units.
+        additive_student_t_nu: Optional fixed Student-t degrees
+            of freedom for the additive observation distribution.
 
     Returns:
         Built PyMC model.
@@ -773,6 +802,7 @@ def _build_compiled_rhime_multisector_model(
         pollution_events_from_obs_one_sided=pollution_events_from_obs_one_sided,
         pollution_events_from_obs_johnson_su=pollution_events_from_obs_johnson_su,
         additive_model_error=additive_model_error,
+        additive_student_t_nu=additive_student_t_nu,
         no_model_error=no_model_error,
         offset_args=offset_args,
         power=power,
@@ -820,6 +850,7 @@ def build_rhime_multisector_model_from_spec(
         pollution_events_from_obs_one_sided=model_spec.pollution_events_from_obs_one_sided,
         pollution_events_from_obs_johnson_su=model_spec.pollution_events_from_obs_johnson_su,
         additive_model_error=model_spec.additive_model_error,
+        additive_student_t_nu=model_spec.additive_student_t_nu,
         no_model_error=model_spec.no_model_error,
         offset_args=model_spec.offset_args,
         power=model_spec.power,

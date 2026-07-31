@@ -366,6 +366,7 @@ def validate_supported_params(params: Mapping[str, Any], *, data_params: set[str
         "pollution_events_from_obs_one_sided",
         "pollution_events_from_obs_johnson_su",
         "additive_model_error",
+        "additive_student_t_nu",
         "no_model_error",
         "power",
         "draws",
@@ -458,6 +459,7 @@ def _make_model_spec(
     pollution_events_from_obs_one_sided: bool,
     pollution_events_from_obs_johnson_su: bool,
     additive_model_error: bool,
+    additive_student_t_nu: float | None,
     no_model_error: bool,
     power: dict[str, Any] | float,
     offset_args: dict[str, Any] | None,
@@ -514,6 +516,7 @@ def _make_model_spec(
         pollution_events_from_obs_one_sided=pollution_events_from_obs_one_sided,
         pollution_events_from_obs_johnson_su=pollution_events_from_obs_johnson_su,
         additive_model_error=additive_model_error,
+        additive_student_t_nu=additive_student_t_nu,
         no_model_error=no_model_error,
         power=power,
         bc_prior=bc_prior,
@@ -576,6 +579,7 @@ def make_rhime_runner_setup(
     pollution_events_from_obs_one_sided = remaining.pop("pollution_events_from_obs_one_sided", False)
     pollution_events_from_obs_johnson_su = remaining.pop("pollution_events_from_obs_johnson_su", False)
     additive_model_error = remaining.pop("additive_model_error", False)
+    additive_student_t_nu = remaining.pop("additive_student_t_nu", None)
     no_model_error = remaining.pop("no_model_error", False)
     power = remaining.pop("power", 1.99)
     builder_strategy = cast(
@@ -629,6 +633,7 @@ def make_rhime_runner_setup(
         pollution_events_from_obs_one_sided=pollution_events_from_obs_one_sided,
         pollution_events_from_obs_johnson_su=pollution_events_from_obs_johnson_su,
         additive_model_error=additive_model_error,
+        additive_student_t_nu=additive_student_t_nu,
         no_model_error=no_model_error,
         power=power,
         offset_args=offset_args,

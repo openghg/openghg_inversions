@@ -1,3 +1,5 @@
+from typing import Any
+
 import numpy as np
 import pandas as pd
 import pymc as pm
@@ -306,6 +308,82 @@ def test_likelihood_additive_model_error_uses_response_independent_sigma(
     expected = np.maximum(np.sqrt(observation_error**2 + sigma_values**2), min_error)
     np.testing.assert_allclose(model.named_vars["epsilon"].eval(), expected)
     assert "Normal" in type(model.named_vars["y"].owner.op).__name__
+
+
+@pytest.mark.parametrize("nu", [4.0, 8.0])
+def test_likelihood_additive_student_t_uses_same_response_independent_scale(
+    monkeypatch: pytest.MonkeyPatch,
+    nu: float,
+) -> None:
+    """Additive Student-t changes the tails without changing epsilon."""
+    observation_error = np.array([-0.1, 0.2, -0.4, 0.3])
+    min_error = np.array([0.05, 0.6, 0.1, 0.2])
+    ds = _likelihood_dataset().assign(
+        mf_error=("nmeasure", observation_error),
+        min_error=("nmeasure", min_error),
+    )
+    sigma_values = pm.floatX(np.array([0.5, 0.5, 0.25, 0.25]))
+
+    def fixed_sigma(*args, **kwargs):
+        """Return fixed observation-aligned additive errors."""
+        return pt.as_tensor_variable(sigma_values)
+
+    monkeypatch.setattr(components_module, "add_sigma_component", fixed_sigma)
+
+    with pm.Model(coords={"nmeasure": np.arange(4)}) as model:
+        attach_coord_registry(model, CoordRegistry())
+        mu = pm.Data("mu_input", np.ones(4), dims="nmeasure")
+        add_inferpymc_likelihood_component(
+            ds,
+            mu=mu,
+            mu_bc=None,
+            sigprior={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
+            sigma_alignment=_sigma_alignment(ds, per_site=False),
+            additive_model_error=True,
+            additive_student_t_nu=nu,
+        )
+
+    expected = np.maximum(np.sqrt(observation_error**2 + sigma_values**2), min_error)
+    np.testing.assert_allclose(model.named_vars["epsilon"].eval(), expected)
+    assert "StudentT" in type(model.named_vars["y"].owner.op).__name__
+
+
+@pytest.mark.parametrize("nu", [True, 2.0, float("inf"), "4"])
+def test_additive_student_t_rejects_invalid_degrees_of_freedom(nu: Any) -> None:
+    """Student-t degrees of freedom must be fixed, numeric, and finite-variance."""
+    ds = _likelihood_dataset()
+
+    with pm.Model(coords={"nmeasure": np.arange(4)}) as model:
+        attach_coord_registry(model, CoordRegistry())
+        mu = pm.Data("mu_input", np.ones(4), dims="nmeasure")
+        with pytest.raises(ValueError, match="additive_student_t_nu"):
+            add_inferpymc_likelihood_component(
+                ds,
+                mu=mu,
+                mu_bc=None,
+                sigprior={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
+                sigma_alignment=_sigma_alignment(ds, per_site=False),
+                additive_model_error=True,
+                additive_student_t_nu=nu,
+            )
+
+
+def test_additive_student_t_requires_additive_model_error() -> None:
+    """Student-t cannot be attached to either pollution-event likelihood."""
+    ds = _likelihood_dataset()
+
+    with pm.Model(coords={"nmeasure": np.arange(4)}) as model:
+        attach_coord_registry(model, CoordRegistry())
+        mu = pm.Data("mu_input", np.ones(4), dims="nmeasure")
+        with pytest.raises(ValueError, match="additive_model_error=True"):
+            add_inferpymc_likelihood_component(
+                ds,
+                mu=mu,
+                mu_bc=None,
+                sigprior={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
+                sigma_alignment=_sigma_alignment(ds, per_site=False),
+                additive_student_t_nu=4.0,
+            )
 
 
 @pytest.mark.parametrize(

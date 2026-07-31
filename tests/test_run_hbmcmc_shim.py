@@ -124,6 +124,27 @@ def test_fixedbasis_params_to_rhime_translates_additive_model_error_option(tmp_p
     assert translated["additive_model_error"] is True
 
 
+def test_fixedbasis_params_to_rhime_translates_additive_student_t_option(tmp_path: Path) -> None:
+    """The legacy adapter preserves the additive Student-t tail selection."""
+    config_file = tmp_path / "hbmcmc.ini"
+    _fixedbasis_config(config_file)
+    params = run_hbmcmc.hbmcmc_extract_param(str(config_file), print_param=False)
+    params.update(
+        {
+            "pollution_events_from_obs": False,
+            "pollution_events_from_obs_one_sided": False,
+            "pollution_events_from_obs_johnson_su": False,
+            "additive_model_error": True,
+            "additive_student_t_nu": 8.0,
+        }
+    )
+
+    translated = run_hbmcmc.fixedbasis_params_to_rhime(params)
+
+    assert translated["additive_model_error"] is True
+    assert translated["additive_student_t_nu"] == 8.0
+
+
 def test_fixedbasis_params_to_rhime_translates_reparameterise_log_normal(tmp_path: Path) -> None:
     config_file = tmp_path / "hbmcmc.ini"
     _fixedbasis_config(config_file)
