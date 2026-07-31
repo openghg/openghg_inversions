@@ -48,7 +48,7 @@ jupyter = [
 dev = [
   "pytest",
   "pytest-xdist",
-  "ruff",
+  "ruff==0.16.0",
   "pyright",
   "mypy",
 ]
@@ -133,6 +133,10 @@ default-groups = ["uv_dev"]
 
 [tool.ruff]
 line-length = 110
+
+[tool.ruff.lint]
+# Preserve the pre-0.16 baseline by preventing default rule expansion; adopt broader rules separately.
+select = ["E4", "E7", "E9", "F"]
 
 [tool.pytest.ini_options]
 minversion = "6.0"

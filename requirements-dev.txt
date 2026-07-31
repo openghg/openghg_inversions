@@ -1,6 +1,6 @@
 # Required for testing
 pytest >= 6.2.5
 pytest-xdist
-ruff
+ruff==0.16.0
 tox >= 4.24
 tox-uv
