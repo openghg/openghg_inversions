@@ -440,6 +440,54 @@ def test_connected_binary_repair_avoids_eccentricity_rejection_and_target_oversh
     assert all(ndimage.label(repaired_labels == label)[1] == 1 for label in (1, 2))
 
 
+def test_influence_aware_eccentricity_accepts_connected_component_fragment():
+    """A low-weight eccentric component no longer vetoes material children."""
+    weights, class_mask, nodes = _coastline_like_binary_case()
+    split_step = ConnectedComponentPartitionStep(
+        AxisParallelSplitStep(balanced=True, clean_splits=True),
+        connectivity=1,
+    )
+    children = split_step(nodes, weights)
+    strict_guard = MaxChildPCAEccentricity(max_child_pca_eccentricity=10.0)
+    influence_aware_guard = MaxChildPCAEccentricity(
+        max_child_pca_eccentricity=10.0,
+        min_child_target_weight_share=0.1,
+    )
+
+    labels = GreedyAxisParallelSplitStrategy(
+        split_step=split_step,
+        split_acceptance=influence_aware_guard,
+    )(weights, class_mask, target_regions=3)
+
+    assert not strict_guard.accept_split(nodes, children, weights, target_regions=3)
+    assert influence_aware_guard.accept_split(nodes, children, weights, target_regions=3)
+    assert set(np.unique(labels)) == {0, 1, 2, 3}
+    assert all(ndimage.label(labels == label)[1] == 1 for label in (1, 2, 3))
+
+
+def test_influence_aware_eccentricity_preserves_connected_binary_result():
+    """Selecting connected-binary repair retains its existing guarded result."""
+    weights, class_mask, _nodes = _coastline_like_binary_case()
+    split_step = ConnectedBinaryPartitionStep(
+        AxisParallelSplitStep(balanced=True, clean_splits=True),
+        connectivity=1,
+    )
+    strict_labels = GreedyAxisParallelSplitStrategy(
+        split_step=split_step,
+        split_acceptance=MaxChildPCAEccentricity(max_child_pca_eccentricity=10.0),
+    )(weights, class_mask, target_regions=2)
+    influence_aware_labels = GreedyAxisParallelSplitStrategy(
+        split_step=split_step,
+        split_acceptance=MaxChildPCAEccentricity(
+            max_child_pca_eccentricity=10.0,
+            min_child_target_weight_share=0.1,
+        ),
+    )(weights, class_mask, target_regions=2)
+
+    assert np.array_equal(influence_aware_labels, strict_labels)
+    assert set(np.unique(influence_aware_labels)) == {0, 1, 2}
+
+
 def test_connected_strategy_raises_target_to_disconnected_class_minimum():
     """Disconnected class pieces receive distinct labels below the minimum target."""
     weights = np.asarray(
@@ -1308,6 +1356,91 @@ def test_max_child_pca_eccentricity_accepts_compact_and_single_cell_children():
     assert MaxChildPCAEccentricity(max_child_pca_eccentricity=2.0)(parent, children, weights)
 
 
+def test_max_child_pca_eccentricity_default_and_direct_calls_remain_strict():
+    """The default and target-free calls retain the strict all-child guard."""
+    weights = np.zeros((3, 5))
+    weights[0, :3] = 0.01
+    weights[1:, 3:] = 1.0
+    elongated = [(0, 0), (0, 1), (0, 2)]
+    compact = [(1, 3), (1, 4), (2, 3), (2, 4)]
+    parent = elongated + compact
+    children = [elongated, compact]
+    strict = MaxChildPCAEccentricity(max_child_pca_eccentricity=2.0)
+    target_aware = MaxChildPCAEccentricity(
+        max_child_pca_eccentricity=2.0,
+        min_child_target_weight_share=0.1,
+    )
+
+    assert not strict(parent, children, weights)
+    assert not strict.accept_split(parent, children, weights, target_regions=2)
+    assert not target_aware(parent, children, weights)
+
+
+def test_max_child_pca_eccentricity_exempts_immaterial_elongated_child():
+    """An eccentric child below the equal-target weight threshold is exempt."""
+    weights = np.zeros((3, 5))
+    weights[0, :3] = 0.01
+    weights[1:, 3:] = 1.0
+    elongated = [(0, 0), (0, 1), (0, 2)]
+    compact = [(1, 3), (1, 4), (2, 3), (2, 4)]
+    parent = elongated + compact
+    policy = MaxChildPCAEccentricity(
+        max_child_pca_eccentricity=2.0,
+        min_child_target_weight_share=0.1,
+    )
+
+    assert policy.accept_split(parent, [elongated, compact], weights, target_regions=2)
+
+
+def test_max_child_pca_eccentricity_rejects_material_elongated_child():
+    """An eccentric child at or above the materiality threshold still vetoes."""
+    weights = np.zeros((3, 5))
+    weights[0, :3] = 0.25
+    weights[1:, 3:] = 1.0
+    elongated = [(0, 0), (0, 1), (0, 2)]
+    compact = [(1, 3), (1, 4), (2, 3), (2, 4)]
+    parent = elongated + compact
+    policy = MaxChildPCAEccentricity(
+        max_child_pca_eccentricity=2.0,
+        min_child_target_weight_share=0.1,
+    )
+
+    assert not policy.accept_split(parent, [elongated, compact], weights, target_regions=2)
+
+
+def test_max_child_pca_eccentricity_zero_weight_falls_back_to_cell_target():
+    """Zero total weight uses cell counts to decide child materiality."""
+    weights = np.zeros((2, 4))
+    elongated = [(0, 0), (0, 1)]
+    compact = [(0, 2), (0, 3), (1, 2), (1, 3)]
+    parent = elongated + compact
+    children = [elongated, compact]
+
+    assert MaxChildPCAEccentricity(
+        max_child_pca_eccentricity=2.0,
+        min_child_target_weight_share=0.75,
+    ).accept_split(parent, children, weights, target_regions=2)
+    assert not MaxChildPCAEccentricity(
+        max_child_pca_eccentricity=2.0,
+        min_child_target_weight_share=0.5,
+    ).accept_split(parent, children, weights, target_regions=2)
+
+
+def test_max_child_pca_eccentricity_avoids_vacuous_immaterial_acceptance():
+    """If no child is material, the policy falls back to the strict guard."""
+    weights = np.zeros((2, 8))
+    weights[0, :4] = 0.01
+    weights[1, 7] = 100.0
+    children = [[(0, 0), (0, 1)], [(0, 2), (0, 3)]]
+    parent = children[0] + children[1]
+    policy = MaxChildPCAEccentricity(
+        max_child_pca_eccentricity=2.0,
+        min_child_target_weight_share=1.0,
+    )
+
+    assert not policy.accept_split(parent, children, weights, target_regions=2)
+
+
 def test_greedy_strategy_pca_eccentricity_stopping_freezes_rejected_partition():
     """Shape stopping can reject an otherwise valid split."""
     weights = np.ones((1, 4))
@@ -1370,6 +1503,25 @@ def test_max_child_pca_eccentricity_composes_with_target_weight_policy():
     assert set(np.unique(labels)) == {1}
 
 
+def test_influence_aware_eccentricity_composes_with_balance_policy():
+    """An eccentricity exemption does not bypass another acceptance policy."""
+    weights = np.zeros((3, 5))
+    weights[0, :3] = 0.01
+    weights[1:, 3:] = 1.0
+    elongated = [(0, 0), (0, 1), (0, 2)]
+    compact = [(1, 3), (1, 4), (2, 3), (2, 4)]
+    parent = elongated + compact
+    policy = AllSplitAcceptancePolicies(
+        MaxChildPCAEccentricity(
+            max_child_pca_eccentricity=2.0,
+            min_child_target_weight_share=0.1,
+        ),
+        MinChildWeightShare(min_child_weight_share=0.1),
+    )
+
+    assert not policy(parent, [elongated, compact], weights, target_regions=2)
+
+
 @pytest.mark.parametrize("threshold", [0.0, 0.999, -1.0, np.inf, np.nan])
 def test_max_child_pca_eccentricity_validates_threshold(threshold: float):
     """PCA eccentricity thresholds must be positive and finite."""
@@ -1382,6 +1534,16 @@ def test_max_child_pca_eccentricity_validates_tolerance(tolerance: float):
     """PCA eccentricity tolerance must be non-negative and finite."""
     with pytest.raises(ValueError, match="tolerance must be non-negative and finite"):
         MaxChildPCAEccentricity(max_child_pca_eccentricity=10.0, tolerance=tolerance)
+
+
+@pytest.mark.parametrize("threshold", [-0.1, 1.1, np.inf, np.nan])
+def test_max_child_pca_eccentricity_validates_materiality_threshold(threshold: float):
+    """PCA materiality thresholds must be finite shares from zero to one."""
+    with pytest.raises(ValueError, match="min_child_target_weight_share must be between 0 and 1"):
+        MaxChildPCAEccentricity(
+            max_child_pca_eccentricity=10.0,
+            min_child_target_weight_share=threshold,
+        )
 
 
 def test_split_contrast_score_is_zero_for_equal_mass_weighted_mean_contribution():

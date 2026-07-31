@@ -2,15 +2,25 @@
 
 ## Testing
 
-The default local tox workflow is intentionally fast: it tests against the
-current OpenGHG release and runs Ruff. Run it in parallel with:
+The default local tox workflow tests against the current OpenGHG release and
+runs Ruff:
 
 ```bash
 tox -p --parallel-no-spinner
 ```
 
-This fast default is the required local check before pushing a draft PR.
-GitHub Actions runs current, previous, and `devel` independently.
+While iterating, use a focused tox environment or test path rather than the
+default full set:
+
+```bash
+tox -e py310-openghgCur -- tests/test_array_ops.py
+tox -e lint
+```
+
+Run the default full tox set exactly once when the branch is ready to push as a
+draft PR. If that run fails, make and check fixes with focused commands first,
+then rerun the full set once to verify the fixes. GitHub Actions runs current,
+previous, and `devel` independently.
 
 For final review or release-sensitive dependency changes, run the explicit
 full compatibility matrix:
@@ -31,12 +41,6 @@ Install tox with the uv-backed runner:
 
 ```bash
 uv tool install tox --with tox-uv
-```
-
-While iterating, target one environment or one test path before running the full set:
-
-```bash
-tox -e py310-openghgCur -- tests/test_array_ops.py
 ```
 
 If a machine has limited cores, set `PYTEST_XDIST_WORKERS=1` or run tox

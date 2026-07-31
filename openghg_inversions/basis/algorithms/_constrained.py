@@ -467,18 +467,31 @@ class MaxChildPCAEccentricity:
     eccentricity ``1`` because they have no resolvable long axis. Multi-cell
     rank-one children have infinite eccentricity and are rejected by any finite
     threshold.
+
+    By default, every child is subject to the eccentricity limit. Setting
+    ``min_child_target_weight_share`` exempts children whose weight is below
+    that share of one class/source-local equal-weight target region,
+    ``weights.sum() / target_regions``. This target-aware exception is used
+    only through :meth:`accept_split`; the conservative three-argument call
+    remains strict.
+
+    The exception affects split acceptance only. It does not reconnect, freeze,
+    prune, or marginalize an exempt child after the split is accepted.
     """
 
     max_child_pca_eccentricity: float
     geometry: SplitGeometry | None = None
     tolerance: float = _INERTIAL_TOLERANCE
+    min_child_target_weight_share: float = 0.0
 
     def __post_init__(self) -> None:
-        """Validate the eccentricity threshold and tolerance."""
+        """Validate the eccentricity, tolerance, and materiality thresholds."""
         if self.max_child_pca_eccentricity < 1.0 or not np.isfinite(self.max_child_pca_eccentricity):
             raise ValueError("max_child_pca_eccentricity must be at least 1 and finite.")
         if self.tolerance < 0.0 or not np.isfinite(self.tolerance):
             raise ValueError("tolerance must be non-negative and finite.")
+        if not 0.0 <= self.min_child_target_weight_share <= 1.0:
+            raise ValueError("min_child_target_weight_share must be between 0 and 1.")
 
     def __call__(
         self,
@@ -493,6 +506,52 @@ class MaxChildPCAEccentricity:
             <= self.max_child_pca_eccentricity
             for child in children
         )
+
+    def accept_split(
+        self,
+        parent: GridPartition,
+        children: list[GridPartition],
+        weights: np.ndarray,
+        target_regions: int,
+    ) -> bool:
+        """Return true when every materially weighted child meets the limit.
+
+        ``weights`` is the class/source-local field passed to greedy
+        partitioning, so ``weights.sum() / target_regions`` is the equal-weight
+        target region weight. Children strictly below
+        ``min_child_target_weight_share`` times that reference weight are
+        exempt from the eccentricity veto.
+
+        If the total weight is zero, cell counts provide the same direct-call
+        fallback used by :class:`MinChildTargetWeightShare`; the default greedy
+        strategy already converts all-zero classes to an area surrogate before
+        policies are evaluated. If every child is below the materiality
+        threshold, the strict guard is retained rather than accepting
+        vacuously.
+        """
+        if target_regions < 1:
+            raise ValueError("target_regions must be at least 1.")
+        if self.min_child_target_weight_share == 0.0:
+            return self(parent, children, weights)
+
+        total_weight = float(weights.sum())
+        if total_weight <= 0.0:
+            total_weight = float(weights.size)
+            child_weights = [float(len(child)) for child in children]
+        else:
+            child_weights = [_node_weight(child, weights) for child in children]
+
+        if total_weight <= 0.0:
+            return False
+        minimum_material_weight = self.min_child_target_weight_share * total_weight / target_regions
+        material_children = [
+            child
+            for child, child_weight in zip(children, child_weights, strict=True)
+            if child_weight >= minimum_material_weight
+        ]
+        if not material_children:
+            material_children = children
+        return self(parent, material_children, weights)
 
 
 @dataclass(frozen=True, init=False)
