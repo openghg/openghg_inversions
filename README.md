@@ -326,12 +326,12 @@ Arguments affecting the inverse model:
   - Default value is `False`
   - If `True`, the "outer regions" of the (`EUROPE`) domain use basis regions specified by a file provided by the Met Office (from their "InTem" model), and the "inner region", which includes the UK, is fit using our basis algorithms.
   - This option is only available for the `EUROPE` domain currently.
-- `calculate_min_error`: calculate min_error (see below) on the fly using the "residual error method" or a method based on percentiles of observations. Available arguments:
-  - `residual`: use "residual error method"
-  - `percentile`: use method based on percentiles
-  - `None`: in this case, you should pass in a value directly using (for instance) `min_error = 12.3`
-- `min_error_options`: additional parameters to pass to the function that compute min error. This should be a dictionary, and the available options depend on the function used. (The functions to compute min. model error are in `model_error.py`).
-  - If `calculate_min_error = "residual"`, then, for instance, you could use `min_error_options = {"robust": False, "by_site": True}`. (By default, `robust` is `False`, this is just to show the possibilities.)
+- `min_error`: set a numeric lower bound directly, or calculate one by passing
+  `"residual"` or `"percentile"`. The legacy `calculate_min_error` spelling is
+  deprecated and is translated only by the `run_hbmcmc` compatibility shim.
+- `min_error_options`: options for calculated minimum error. The only supported key is the boolean `by_site`.
+  - With `min_error = "residual"`, `min_error_options = {"by_site": True}` calculates a separate residual error for each retained site. The default is `False`.
+  - Unsupported keys and non-boolean `by_site` values raise a configuration error rather than being ignored.
 - `filters`: filters to apply to data (after it is resampled and aligned)
   - `filters = None` will skip filtering
   - if `filters` is a list of filters (or a string containing a single filter name), those filters will be applied to all sites.
@@ -361,7 +361,8 @@ Historical inferpymc-era parameters included:
   - the measured enhancement above the modelled baseline (if `True`)
   - the prior modelled enhancement (if `False`)
 - `no_model_error`: if `True`, only use obs error in likelihood (omitting min. model error and model error from scaling pollution events).
-- `reparameterise_log_normal`: if `True`, then log normal priors will be sampled by transforming samples from standard normal random variable to samples from the appropriate log normal distribution.
+- `reparameterise_log_normal`: deprecated compatibility flag. Set
+  `reparameterise=True` in the relevant lognormal prior mapping instead.
 
 
 ### The output from inversions

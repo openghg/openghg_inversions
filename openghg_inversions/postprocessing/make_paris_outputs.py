@@ -16,6 +16,7 @@ from openghg_inversions import utils
 from openghg_inversions.array_ops import align_sparse_lat_lon
 from openghg_inversions.config.version import code_version
 from openghg_inversions.flux_sanitization import copy_flux_nonfinite_attrs
+from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
 from openghg_inversions.postprocessing._basis_products import add_basis_reconstruction_metadata
 from openghg_inversions.postprocessing.countries import Countries
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
@@ -595,7 +596,10 @@ def paris_concentration_outputs(
     template_files = paris_template_files(template_version)
     conc_attrs = get_data_var_attrs(template_files.concentration)
 
-    units = float(obs_and_errs_raw["y_obs"].attrs["units"].split(" ")[0])
+    units = mole_fraction_unit_scale(
+        obs_and_errs_raw["y_obs"].attrs["units"],
+        context="PARIS observation units",
+    )
 
     common_rename_dict = {"site": "nsite"}
 
@@ -734,7 +738,10 @@ def paris_concentration_outputs_latest(
 
     template_files = paris_template_files("latest")
     conc_attrs = get_data_var_attrs(template_files.concentration, species)
-    units = float(obs_and_errs_raw["y_obs"].attrs["units"].split(" ")[0])
+    units = mole_fraction_unit_scale(
+        obs_and_errs_raw["y_obs"].attrs["units"],
+        context="PARIS observation units",
+    )
 
     result = (
         xr.merge([result, platform_metadata])

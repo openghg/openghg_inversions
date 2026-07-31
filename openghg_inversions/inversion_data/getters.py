@@ -29,6 +29,10 @@ from openghg.types import SearchError
 
 from openghg_inversions import utils
 from openghg_inversions.flux_sanitization import FluxNonFiniteCheck, sanitize_flux_nonfinite
+from openghg_inversions.inversion_data._site_options import (
+    is_column_observation,
+    is_satellite_platform,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -195,18 +199,18 @@ def get_obs_data(
 ) -> ObsData | None:
     """Try to retrieve obs. data from listed stores."""
 
-    if platform == "satellite":
-        if max_level is None:
-            raise AttributeError(
-                "If you are using column-based data (i.e. platform is 'satellite' or 'site-column'), you need to pass max_level"
-            )
+    if is_column_observation(inlet, platform) and max_level is None:
+        raise AttributeError(
+            "If you are using column-based data (i.e. platform is 'satellite' or "
+            "'site-column', or inlet is 'column'), you need to pass max_level"
+        )
 
     if stores is None or isinstance(stores, str):
         stores = [stores]
 
     for store in stores:
         try:
-            if platform == "satellite":
+            if is_satellite_platform(platform):
                 # current convention: for satellite data, the site name
                 # has format satellitename-obs_region
                 # or format satellitename-obs_region-selection
@@ -229,7 +233,7 @@ def get_obs_data(
                     end_date=end_date,
                     store=store,
                 )
-            elif inlet == "column":
+            elif is_column_observation(inlet, platform):
                 obs_data = get_obs_column(
                     site=site,
                     species=species.lower(),
@@ -322,7 +326,7 @@ def get_footprint_to_match(
         "end_date": end_date,
     }
 
-    if platform == "satellite":
+    if is_satellite_platform(platform):
         # current convention: for satellite data, the site name
         # has format satellitename-obs_region
         # or format satellitename-obs_region-selection
@@ -468,7 +472,7 @@ def get_footprint_data(
                     fp_species=fp_species,
                     averaging_period=averaging_period,
                 )
-        elif platform == "satellite":
+        elif is_satellite_platform(platform):
             # current convention: for satellite data, the site name
             # has format satellitename-obs_region
             # or format satellitename-obs_region-selection

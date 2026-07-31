@@ -80,7 +80,7 @@ def test_build_inferpymc_model_warns_for_deprecated_reparameterise_flag(
     args["xprior"] = {"pdf": "lognormal", "mu": 1.0, "sigma": 1.0}
     args["reparameterise_log_normal"] = True
 
-    with pytest.warns(DeprecationWarning, match="reparameterise=True"):
+    with pytest.warns(FutureWarning, match="reparameterise=True"):
         build_inferpymc_model(inv_inputs, **args)
 
 
