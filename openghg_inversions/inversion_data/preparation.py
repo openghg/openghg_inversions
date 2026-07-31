@@ -14,11 +14,12 @@ model.
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from numbers import Integral
 from pathlib import Path
 from typing import Any, Literal, cast
-import warnings
 
 import numpy as np
 import xarray as xr
@@ -29,12 +30,20 @@ from openghg_inversions.basis._helpers import bc_sensitivity
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.filters import filtering
 from openghg_inversions.flux_sanitization import FluxNonFiniteCheck, sanitize_flux_nonfinite
-from openghg_inversions.inversion_data.get_data import convert_to_list, data_processing_surface_notracer
+from openghg_inversions.inversion_data._site_options import (
+    expand_site_option,
+    is_column_observation,
+)
+from openghg_inversions.inversion_data.get_data import data_processing_surface_notracer
 from openghg_inversions.inversion_data.serialise import load_merged_data
 from openghg_inversions.inversion_inputs import make_inv_inputs
+from openghg_inversions.model_error import normalise_min_error_options
 from openghg_inversions.sigma import SigmaAlignment
 
 MinErrorConfig = Literal["percentile", "residual"] | dict[str, float] | None | int | float
+SiteStringOption = Sequence[str | None] | str | None
+SiteInletOption = Sequence[str | slice | None] | str | None
+SiteIntegerOption = Sequence[int | None] | int | None
 
 
 @dataclass
@@ -50,6 +59,7 @@ class FixedBasisPreparedData:
         basis_objects: Basis objects returned by ``basis_functions_wrapper``.
         basis_artifact_source: Source of the flux basis artifact.
         basis_artifact_path: Path to the flux basis artifact, when loaded or saved.
+        is_column: Whether any retained observation is a column observation.
     """
 
     fp_all: dict
@@ -60,6 +70,7 @@ class FixedBasisPreparedData:
     basis_objects: dict[str, BasisFunctions] = field(default_factory=dict)
     basis_artifact_source: str = "generated"
     basis_artifact_path: str | None = None
+    is_column: bool = False
 
 
 @dataclass(frozen=True)
@@ -90,22 +101,213 @@ class RhimePreparedInputs:
     site_lons: tuple[float, ...] | None = None
 
 
+def _normalise_site_strings(
+    value: Sequence[str | None] | str | None,
+    *,
+    length: int,
+    name: str,
+) -> list[str | None]:
+    """Normalize and validate one optional-string value per requested site."""
+    normalized = list(expand_site_option(value, nsites=length, name=name))
+    invalid = [item for item in normalized if item is not None and not isinstance(item, str)]
+    if invalid:
+        raise ValueError(f"`{name}` entries must be strings or None. Invalid value(s): {invalid!r}.")
+    return normalized
+
+
+def _normalise_site_integers(
+    value: Sequence[int | None] | int | None,
+    *,
+    length: int,
+    name: str,
+) -> list[int | None]:
+    """Normalize and validate one optional integer value per requested site."""
+    normalized = list(expand_site_option(value, nsites=length, name=name))
+
+    invalid = [
+        item
+        for item in normalized
+        if item is not None and (not isinstance(item, Integral) or isinstance(item, bool))
+    ]
+    if invalid:
+        raise ValueError(f"`{name}` entries must be integers or None. Invalid value(s): {invalid!r}.")
+    return [None if item is None else int(item) for item in normalized]
+
+
+def _normalise_site_inlets(
+    value: Sequence[str | slice | None] | str | None,
+    *,
+    length: int,
+) -> list[str | slice | None]:
+    """Normalize inlet selectors, including legacy per-site slice selectors."""
+    normalized = list(expand_site_option(value, nsites=length, name="inlet"))
+    invalid = [item for item in normalized if item is not None and not isinstance(item, str | slice)]
+    if invalid:
+        raise ValueError(f"`inlet` entries must be strings, slices, or None. Invalid value(s): {invalid!r}.")
+    return normalized
+
+
+@dataclass(frozen=True)
+class _SiteOptions:
+    """All runner inputs whose positions are aligned to ``sites``.
+
+    Every field has the same length and ordering. Selection always creates a
+    new complete record so no option can drift independently from its site.
+    """
+
+    sites: tuple[str, ...]
+    averaging_period: tuple[str | None, ...]
+    inlet: tuple[str | slice | None, ...]
+    fp_height: tuple[str | None, ...]
+    instrument: tuple[str | None, ...]
+    platform: tuple[str | None, ...]
+    obs_data_level: tuple[str | None, ...]
+    met_model: tuple[str | None, ...]
+    max_level: tuple[int | None, ...]
+
+    def __post_init__(self) -> None:
+        """Freeze supplied sequences and enforce the common-length invariant."""
+        field_names = (
+            "sites",
+            "averaging_period",
+            "inlet",
+            "fp_height",
+            "instrument",
+            "platform",
+            "obs_data_level",
+            "met_model",
+            "max_level",
+        )
+        for name in field_names:
+            object.__setattr__(self, name, tuple(getattr(self, name)))
+
+        if not self.sites:
+            raise ValueError("At least one site must be specified for inversion data preparation.")
+        if len(set(self.sites)) != len(self.sites):
+            raise ValueError(f"Site names must be unique: {self.sites!r}.")
+
+        expected_length = len(self.sites)
+        misaligned = {
+            name: len(getattr(self, name))
+            for name in field_names[1:]
+            if len(getattr(self, name)) != expected_length
+        }
+        if misaligned:
+            raise ValueError(
+                "Every site-aligned option must have the same length as `sites`; "
+                f"expected {expected_length}, got {misaligned!r}."
+            )
+
+    @classmethod
+    def from_inputs(
+        cls,
+        *,
+        sites: Sequence[str],
+        averaging_period: Sequence[str | None] | str | None,
+        inlet: Sequence[str | slice | None] | str | None,
+        fp_height: Sequence[str | None] | str | None,
+        instrument: Sequence[str | None] | str | None,
+        platform: Sequence[str | None] | str | None,
+        obs_data_level: Sequence[str | None] | str | None,
+        met_model: Sequence[str | None] | str | None,
+        max_level: Sequence[int | None] | int | None,
+    ) -> _SiteOptions:
+        """Normalize all site options and validate their common length.
+
+        Site names are uppercased. Scalar option values are broadcast, while
+        sequences must match the number of sites. Inlets also support legacy
+        ``slice`` selectors; maximum levels reject booleans.
+
+        Raises:
+            ValueError: If no sites are supplied, site names are duplicated,
+                an option has the wrong length, or an entry has an invalid
+                type.
+        """
+        normalized_sites = [site.upper() for site in sites]
+        if not normalized_sites:
+            raise ValueError("At least one site must be specified for inversion data preparation.")
+        if len(set(normalized_sites)) != len(normalized_sites):
+            raise ValueError(f"Site names must be unique: {normalized_sites!r}.")
+        nsites = len(normalized_sites)
+        return cls(
+            sites=tuple(normalized_sites),
+            averaging_period=tuple(
+                _normalise_site_strings(averaging_period, length=nsites, name="averaging_period")
+            ),
+            inlet=tuple(_normalise_site_inlets(inlet, length=nsites)),
+            fp_height=tuple(_normalise_site_strings(fp_height, length=nsites, name="fp_height")),
+            instrument=tuple(_normalise_site_strings(instrument, length=nsites, name="instrument")),
+            platform=tuple(_normalise_site_strings(platform, length=nsites, name="platform")),
+            obs_data_level=tuple(
+                _normalise_site_strings(obs_data_level, length=nsites, name="obs_data_level")
+            ),
+            met_model=tuple(_normalise_site_strings(met_model, length=nsites, name="met_model")),
+            max_level=tuple(_normalise_site_integers(max_level, length=nsites, name="max_level")),
+        )
+
+    def select_indices(self, indices: Sequence[int]) -> _SiteOptions:
+        """Return a new complete option record restricted to ``indices``."""
+
+        def select(values: Sequence[Any]) -> tuple[Any, ...]:
+            return tuple(values[index] for index in indices)
+
+        return _SiteOptions(
+            sites=select(self.sites),
+            averaging_period=select(self.averaging_period),
+            inlet=select(self.inlet),
+            fp_height=select(self.fp_height),
+            instrument=select(self.instrument),
+            platform=select(self.platform),
+            obs_data_level=select(self.obs_data_level),
+            met_model=select(self.met_model),
+            max_level=select(self.max_level),
+        )
+
+    @property
+    def is_column(self) -> bool:
+        """Whether any retained site uses a supported column-data selector."""
+        return any(
+            is_column_observation(inlet, platform)
+            for inlet, platform in zip(self.inlet, self.platform, strict=True)
+        )
+
+    def retain_sites(self, retained_sites: Sequence[str], *, context: str) -> _SiteOptions:
+        """Return options for retained sites in their supplied order.
+
+        Raises:
+            ValueError: If requested or retained names are duplicated, or a
+                retained name was not in the original request.
+        """
+        normalized_retained = [site.upper() for site in retained_sites]
+        index_by_site = {site: index for index, site in enumerate(self.sites)}
+        if len(index_by_site) != len(self.sites):
+            raise ValueError(f"{context} cannot align duplicate requested site names: {self.sites!r}.")
+
+        missing_sites = [site for site in normalized_retained if site not in index_by_site]
+        if missing_sites:
+            raise ValueError(f"{context} returned site(s) that were not requested: {missing_sites!r}.")
+        if len(set(normalized_retained)) != len(normalized_retained):
+            raise ValueError(f"{context} returned duplicate site names: {normalized_retained!r}.")
+
+        return self.select_indices([index_by_site[site] for site in normalized_retained])
+
+
 @dataclass
 class _MergedInversionData:
-    """Merged data and site-aligned metadata shared by preparation paths."""
+    """Merged data and complete site-aligned metadata shared by preparation paths."""
 
     fp_all: dict
-    sites: list[str]
-    averaging_period: list[str | None]
+    site_options: _SiteOptions
 
+    @property
+    def sites(self) -> tuple[str, ...]:
+        """Retained site names."""
+        return self.site_options.sites
 
-def _filter_site_aligned_value(value: object, keep_indices: list[int]) -> object:
-    """Filter values that are aligned to the sites list."""
-    if value is None or isinstance(value, str | bytes):
-        return value
-    if not isinstance(value, Sequence):
-        return value
-    return [item for index, item in enumerate(value) if index in keep_indices]
+    @property
+    def averaging_period(self) -> tuple[str | None, ...]:
+        """Retained averaging periods aligned to :attr:`sites`."""
+        return self.site_options.averaging_period
 
 
 def _first_scalar_data_value(ds: xr.Dataset, names: tuple[str, ...]) -> float:
@@ -140,68 +342,46 @@ def _site_release_coordinates(
 def _drop_sites_missing_from_loaded_data(
     *,
     fp_all: dict,
-    sites: list[str],
-    inlet: Any,
-    fp_height: Any,
-    instrument: Any,
-    max_level: int | None,
-    averaging_period: list[str | None],
-) -> tuple[list[str], Any, Any, Any, int | None, list[str | None]]:
+    site_options: _SiteOptions,
+) -> _SiteOptions:
     """Align site-level options when loaded merged data lacks requested sites."""
     sites_merged = [site for site in fp_all if not site.startswith(".")]
-    if all(site in sites_merged for site in sites):
-        return sites, inlet, fp_height, instrument, max_level, list(averaging_period)
+    if all(site in sites_merged for site in site_options.sites):
+        return site_options
 
-    keep_indices = [index for index, site in enumerate(sites) if site in sites_merged]
-    dropped_sites = [site for site in sites if site not in sites_merged]
+    keep_indices = [index for index, site in enumerate(site_options.sites) if site in sites_merged]
+    dropped_sites = [site for site in site_options.sites if site not in sites_merged]
     if not keep_indices:
         raise ValueError(
             "Loaded merged data does not include any requested sites. "
-            f"Requested sites: {sites}. Available merged-data sites: {sites_merged}."
+            f"Requested sites: {site_options.sites}. Available merged-data sites: {sites_merged}."
         )
-
-    sites = [site for index, site in enumerate(sites) if index in keep_indices]
-    averaging_period = [period for index, period in enumerate(averaging_period) if index in keep_indices]
 
     print(f"\nDropping {dropped_sites} sites as they are not included in the merged data object.\n")
-    return (
-        sites,
-        _filter_site_aligned_value(inlet, keep_indices),
-        _filter_site_aligned_value(fp_height, keep_indices),
-        _filter_site_aligned_value(instrument, keep_indices),
-        max_level,
-        averaging_period,
-    )
+    return site_options.select_indices(keep_indices)
 
 
-def _select_fp_all_sites(fp_all: dict, sites: list[str]) -> dict:
-    """Keep only requested site entries and metadata from a merged-data object."""
+def _select_fp_all_sites(fp_all: dict, sites: Sequence[str]) -> dict:
+    """Keep requested sites and prune site-keyed calibration scales."""
     site_names = set(sites)
-    return {key: value for key, value in fp_all.items() if key.startswith(".") or key in site_names}
+    selected = {key: value for key, value in fp_all.items() if key.startswith(".") or key in site_names}
 
+    scales = selected.get(".scales")
+    if isinstance(scales, Mapping):
+        selected[".scales"] = {site: scales[site] for site in sites if site in scales}
 
-def _normalise_averaging_period(
-    averaging_period: list[str | None] | str | None, *, nsites: int
-) -> list[str | None]:
-    """Normalize and validate site-aligned averaging periods."""
-    normalized = convert_to_list(averaging_period, length=nsites, name="averaging_period")
-    invalid_periods = [period for period in normalized if period is not None and not isinstance(period, str)]
-    if invalid_periods:
-        raise ValueError(
-            f"`averaging_period` entries must be strings or None. Invalid value(s): {invalid_periods!r}."
-        )
-    return normalized
+    return selected
 
 
 def _make_inv_inputs(
     *,
     fp_data: dict,
-    sites: list[str],
+    sites: Sequence[str],
     start_date: str,
     bc_freq: str | None,
     min_error: MinErrorConfig,
     calculate_min_error: Literal["percentile", "residual"] | None,
-    min_error_options: dict | None,
+    min_error_per_site: bool,
 ) -> xr.Dataset:
     """Create backend-neutral inversion inputs with min-error compatibility.
 
@@ -212,7 +392,7 @@ def _make_inv_inputs(
         bc_freq: Optional boundary-condition period frequency.
         min_error: Minimum-error value or calculation method.
         calculate_min_error: Deprecated minimum-error calculation argument.
-        min_error_options: Options for calculated minimum error.
+        min_error_per_site: Whether calculated minimum error varies by site.
 
     Returns:
         Canonical observation-aligned inputs without component-specific model
@@ -241,13 +421,12 @@ def _make_inv_inputs(
                 f"Missing site(s): {missing_sites!r}."
             )
 
-    min_error_options = min_error_options or {}
     return make_inv_inputs(
         fp_data,
-        sites=sites,
+        sites=list(sites),
         bc_freq=bc_freq,
         min_error=min_error,
-        min_error_per_site=min_error_options.get("by_site", False),
+        min_error_per_site=min_error_per_site,
         start_date=start_date,
     )
 
@@ -265,7 +444,7 @@ def _prepare_merged_data(
     species: str,
     sites: list[str],
     domain: str,
-    averaging_period: list[str | None] | str | None,
+    averaging_period: SiteStringOption,
     start_date: str,
     end_date: str,
     output_name: str,
@@ -275,16 +454,16 @@ def _prepare_merged_data(
     obs_store: str = "user",
     footprint_store: str = "user",
     emissions_store: str = "user",
-    met_model: Any = None,
+    met_model: SiteStringOption = None,
     fp_model: str | None = None,
-    fp_height: Any = None,
+    fp_height: SiteStringOption = None,
     fp_species: str | None = None,
-    inlet: Any = None,
-    instrument: Any = None,
-    max_level: int | None = None,
+    inlet: SiteInletOption = None,
+    instrument: SiteStringOption = None,
+    max_level: SiteIntegerOption = None,
     calibration_scale: str | None = None,
-    obs_data_level: Any = None,
-    platform: Any = None,
+    obs_data_level: SiteStringOption = None,
+    platform: SiteStringOption = None,
     use_tracer: bool = False,
     use_bc: bool = True,
     bc_input: str | None = None,
@@ -299,14 +478,31 @@ def _prepare_merged_data(
 
     ``flux_sources`` contains modern OpenGHG flux ``source`` values. This
     helper passes them to lower-level data loading through the legacy
-    ``emissions_name`` argument.
+    ``emissions_name`` argument. Retrieval may access OpenGHG object stores,
+    print progress, and optionally save merged data. Reload reads a local
+    artifact. Both paths retain one complete :class:`_SiteOptions` record.
+
+    Returns:
+        Merged per-site data and aligned retained-site options.
+
+    Raises:
+        ValueError: If site options are invalid, no requested sites are loaded,
+            or retrieval returns misaligned metadata.
+        RuntimeError: If neither retrieval nor reload produces merged data.
     """
     if use_tracer:
         raise ValueError("Tracer inversions are not supported by this preparation path.")
-    if not sites:
-        raise ValueError("At least one site must be specified for inversion data preparation.")
-
-    averaging_period = _normalise_averaging_period(averaging_period, nsites=len(sites))
+    site_options = _SiteOptions.from_inputs(
+        sites=sites,
+        averaging_period=averaging_period,
+        inlet=inlet,
+        fp_height=fp_height,
+        instrument=instrument,
+        platform=platform,
+        obs_data_level=obs_data_level,
+        met_model=met_model,
+        max_level=max_level,
+    )
     rerun_merge = True
     fp_all: dict | None = None
     if reload_merged_data and merged_data_dir is not None:
@@ -318,46 +514,39 @@ def _prepare_merged_data(
             print("Successfully read in merged data.\n")
             fp_all[".split_by_sectors"] = split_by_sectors
             rerun_merge = False
-            sites, inlet, fp_height, instrument, max_level, averaging_period = (
-                _drop_sites_missing_from_loaded_data(
-                    fp_all=fp_all,
-                    sites=sites,
-                    inlet=inlet,
-                    fp_height=fp_height,
-                    instrument=instrument,
-                    max_level=max_level,
-                    averaging_period=averaging_period,
-                )
+            site_options = _drop_sites_missing_from_loaded_data(
+                fp_all=fp_all,
+                site_options=site_options,
             )
-            fp_all = _select_fp_all_sites(fp_all, sites)
+            fp_all = _select_fp_all_sites(fp_all, site_options.sites)
     elif reload_merged_data:
         print("Cannot reload merged data without a value for `merged_data_dir`; re-running data merge.")
 
     if rerun_merge:
         (
             fp_all,
-            sites,
-            inlet,
-            fp_height,
-            instrument,
-            averaging_period,
+            retained_sites,
+            retained_inlet,
+            retained_fp_height,
+            retained_instrument,
+            retained_averaging_period,
         ) = data_processing_surface_notracer(
             species=species,
-            sites=sites,
+            sites=list(site_options.sites),
             domain=domain,
-            averaging_period=averaging_period,
+            averaging_period=list(site_options.averaging_period),
             start_date=start_date,
             end_date=end_date,
-            obs_data_level=obs_data_level,
-            platform=platform,
-            met_model=met_model,
+            obs_data_level=list(site_options.obs_data_level),
+            platform=list(site_options.platform),
+            met_model=list(site_options.met_model),
             fp_model=fp_model,
-            fp_height=fp_height,
+            fp_height=list(site_options.fp_height),
             fp_species=fp_species,
             emissions_name=flux_sources,
-            inlet=inlet,
-            instrument=instrument,
-            max_level=max_level,
+            inlet=list(site_options.inlet),
+            instrument=list(site_options.instrument),
+            max_level=list(site_options.max_level),
             calibration_scale=calibration_scale,
             use_bc=use_bc,
             bc_input=bc_input,
@@ -373,11 +562,28 @@ def _prepare_merged_data(
             output_name=output_name,
             flux_non_finite_check=flux_non_finite_check,
         )
+        site_options = site_options.retain_sites(retained_sites, context="Data gathering")
+        retained_count = len(site_options.sites)
+        returned_metadata = {
+            "averaging_period": retained_averaging_period,
+            "inlet": retained_inlet,
+            "fp_height": retained_fp_height,
+            "instrument": retained_instrument,
+        }
+        misaligned_lengths = {
+            name: len(values) for name, values in returned_metadata.items() if len(values) != retained_count
+        }
+        if misaligned_lengths:
+            raise ValueError(
+                "Data gathering returned metadata with lengths that do not match retained sites; "
+                f"expected {retained_count}, got {misaligned_lengths!r}."
+            )
 
     if fp_all is None:
         raise RuntimeError("Data preparation did not create or load merged data.")
-    if not sites:
+    if not site_options.sites:
         raise ValueError("No sites remain after data gathering.")
+    fp_all = _select_fp_all_sites(fp_all, site_options.sites)
 
     flux_entries = fp_all.get(".flux")
     if isinstance(flux_entries, Mapping):
@@ -394,45 +600,42 @@ def _prepare_merged_data(
 
     return _MergedInversionData(
         fp_all=fp_all,
-        sites=sites,
-        averaging_period=cast(list[str | None], averaging_period),
+        site_options=site_options,
     )
 
 
 def _apply_filters_and_drop_empty_sites(
     *,
     fp_data: dict,
-    sites: list[str],
-    averaging_period: list[str | None],
+    site_options: _SiteOptions,
     filters: Any,
-) -> tuple[dict, list[str], list[str | None]]:
+) -> tuple[dict, _SiteOptions]:
     """Apply filters and keep site-aligned metadata in sync."""
     if filters is not None:
         try:
             fp_data = filtering(fp_data, filters)
         except ValueError:
-            for site in sites:
+            for site in site_options.sites:
                 fp_data[site] = fp_data[site].compute()
             fp_data = filtering(fp_data, filters)
 
     dropped_sites = []
-    for site in sites:
-        if fp_data[site].time.values.shape[0] == 0:
+    for site in site_options.sites:
+        if fp_data[site].sizes.get("time", 0) == 0:
             dropped_sites.append(site)
             del fp_data[site]
     if dropped_sites:
-        keep_indices = [index for index, site in enumerate(sites) if site not in dropped_sites]
+        keep_indices = [index for index, site in enumerate(site_options.sites) if site not in dropped_sites]
         if not keep_indices:
             raise ValueError(f"No sites remain after filtering. Dropped sites: {dropped_sites}.")
 
-        sites = [site for index, site in enumerate(sites) if index in keep_indices]
-        averaging_period = [period for index, period in enumerate(averaging_period) if index in keep_indices]
+        site_options = site_options.select_indices(keep_indices)
         print(f"\nDropping {dropped_sites} sites as no data passed the filtering.\n")
 
-    return fp_data, sites, averaging_period
+    return fp_data, site_options
 
 
-def _set_domain_attrs(fp_data: dict, sites: list[str], domain: str) -> None:
+def _set_domain_attrs(fp_data: dict, sites: Sequence[str], domain: str) -> None:
     """Attach the legacy domain attribute expected by downstream code."""
     for site in sites:
         fp_data[site].attrs["Domain"] = domain
@@ -560,25 +763,23 @@ def _filter_merged_inversion_data(
 
     Returns:
         Merged data containing filtered site datasets, with empty sites and
-        their aligned averaging periods removed. If no filters are configured
-        and all sites contain data, the original merged data are returned.
+        all of their aligned options removed. If no filters are configured and
+        all sites contain data, the original merged data are returned.
 
     Raises:
         ValueError: If every requested site is removed by filtering.
     """
-    if filters is None and all(merged.fp_all[site].time.values.shape[0] > 0 for site in merged.sites):
+    if filters is None and all(merged.fp_all[site].sizes.get("time", 0) > 0 for site in merged.sites):
         return merged
 
     fp_data = {site: merged.fp_all[site].copy() for site in merged.sites}
-    fp_data, sites, averaging_period = _apply_filters_and_drop_empty_sites(
+    fp_data, site_options = _apply_filters_and_drop_empty_sites(
         fp_data=fp_data,
-        sites=merged.sites,
-        averaging_period=merged.averaging_period,
+        site_options=merged.site_options,
         filters=filters,
     )
-    fp_all = {key: value for key, value in merged.fp_all.items() if key.startswith(".")}
-    fp_all.update(fp_data)
-    return _MergedInversionData(fp_all=fp_all, sites=sites, averaging_period=averaging_period)
+    fp_all = _select_fp_all_sites({**merged.fp_all, **fp_data}, site_options.sites)
+    return _MergedInversionData(fp_all=fp_all, site_options=site_options)
 
 
 def prepare_fixedbasis_inversion_data(
@@ -586,7 +787,7 @@ def prepare_fixedbasis_inversion_data(
     species: str,
     sites: list[str],
     domain: str,
-    averaging_period: list[str | None] | str | None,
+    averaging_period: SiteStringOption,
     start_date: str,
     end_date: str,
     output_name: str,
@@ -596,16 +797,16 @@ def prepare_fixedbasis_inversion_data(
     obs_store: str = "user",
     footprint_store: str = "user",
     emissions_store: str = "user",
-    met_model: Any = None,
+    met_model: SiteStringOption = None,
     fp_model: str | None = None,
-    fp_height: Any = None,
+    fp_height: SiteStringOption = None,
     fp_species: str | None = None,
-    inlet: Any = None,
-    instrument: Any = None,
-    max_level: int | None = None,
+    inlet: SiteInletOption = None,
+    instrument: SiteStringOption = None,
+    max_level: SiteIntegerOption = None,
     calibration_scale: str | None = None,
-    obs_data_level: Any = None,
-    platform: Any = None,
+    obs_data_level: SiteStringOption = None,
+    platform: SiteStringOption = None,
     use_tracer: bool = False,
     use_bc: bool = True,
     fp_basis_case: str | None = None,
@@ -628,7 +829,7 @@ def prepare_fixedbasis_inversion_data(
     basis_output_path: str | None = None,
     min_error: MinErrorConfig = 0.0,
     calculate_min_error: Literal["percentile", "residual"] | None = None,
-    min_error_options: dict | None = None,
+    min_error_options: Mapping[str, Any] | None = None,
     return_basis_objects: bool = False,
     merged_data_only: bool = False,
     flux_non_finite_check: FluxNonFiniteCheck = "lazy",
@@ -641,14 +842,43 @@ def prepare_fixedbasis_inversion_data(
     ``start_date``. Modern RHIME preparation intentionally omits this
     component-specific variable.
 
+    Args:
+        sites: Requested observation site names. At least one unique site is
+            required.
+        averaging_period: Observation averaging period, either scalar or
+            aligned to ``sites``.
+        inlet: Inlet selector, either scalar or aligned to ``sites``. Entries
+            may be strings, legacy ``slice`` selectors, or ``None``.
+        fp_height: Footprint inlet height, either scalar or aligned to
+            ``sites``.
+        instrument: Observation instrument, either scalar or aligned to
+            ``sites``.
+        platform: Observation platform, either scalar or aligned to ``sites``.
+        obs_data_level: Observation data level, either scalar or aligned to
+            ``sites``.
+        met_model: Footprint meteorological model, either scalar or aligned to
+            ``sites``.
+        max_level: Maximum column level, either scalar or aligned to ``sites``.
+            Entries must be integers or ``None``.
+        min_error: Numeric minimum error or ``"residual"``/``"percentile"``
+            calculation method.
+        calculate_min_error: Deprecated calculation-method spelling.
+        min_error_options: Calculated minimum-error options. The only supported
+            key is boolean ``by_site``.
+
     Returns:
         Prepared legacy data, including forward-model inputs and optional basis
         objects. When ``merged_data_only`` is true, only merged data and
         retained site metadata are populated.
 
+    Raises:
+        ValueError: If site options are empty, duplicated, misaligned, or have
+            invalid types, or if minimum-error options are invalid.
+
     Warns:
         FutureWarning: If deprecated ``calculate_min_error`` is supplied.
     """
+    min_error_options = normalise_min_error_options(min_error_options)
     merged = _prepare_merged_data(
         species=species,
         sites=sites,
@@ -687,8 +917,9 @@ def prepare_fixedbasis_inversion_data(
     if merged_data_only:
         return FixedBasisPreparedData(
             fp_all=merged.fp_all,
-            sites=merged.sites,
-            averaging_period=merged.averaging_period,
+            sites=list(merged.sites),
+            averaging_period=list(merged.averaging_period),
+            is_column=merged.site_options.is_column,
         )
 
     bc_basis_directory_arg = _bc_basis_directory_arg(bc_basis_directory)
@@ -718,12 +949,13 @@ def prepare_fixedbasis_inversion_data(
     basis_path = getattr(emissions_basis, "basis_artifact_path", None)
     basis_objects = fixedbasis_basis_objects if return_basis_objects else {}
 
-    fp_data, prepared_sites, prepared_averaging_period = _apply_filters_and_drop_empty_sites(
+    fp_data, prepared_site_options = _apply_filters_and_drop_empty_sites(
         fp_data=fp_data,
-        sites=merged.sites,
-        averaging_period=merged.averaging_period,
+        site_options=merged.site_options,
         filters=filters,
     )
+    prepared_sites = list(prepared_site_options.sites)
+    prepared_averaging_period = list(prepared_site_options.averaging_period)
     _set_domain_attrs(fp_data, prepared_sites, domain)
 
     inv_inputs = _make_inv_inputs(
@@ -733,7 +965,7 @@ def prepare_fixedbasis_inversion_data(
         bc_freq=bc_freq,
         min_error=min_error,
         calculate_min_error=calculate_min_error,
-        min_error_options=min_error_options,
+        min_error_per_site=min_error_options["by_site"],
     )
     sigma_alignment = SigmaAlignment.from_frequency(
         inv_inputs["site_indicator"],
@@ -744,7 +976,7 @@ def prepare_fixedbasis_inversion_data(
     _warn_for_nan_inputs(inv_inputs, use_bc=use_bc)
 
     return FixedBasisPreparedData(
-        fp_all=merged.fp_all,
+        fp_all=_select_fp_all_sites(merged.fp_all, prepared_sites),
         fp_data=fp_data,
         inv_inputs=inv_inputs,
         basis_objects=basis_objects,
@@ -752,6 +984,7 @@ def prepare_fixedbasis_inversion_data(
         basis_artifact_path=basis_path,
         sites=prepared_sites,
         averaging_period=prepared_averaging_period,
+        is_column=prepared_site_options.is_column,
     )
 
 
@@ -760,7 +993,7 @@ def prepare_rhime_inputs(
     species: str,
     sites: list[str],
     domain: str,
-    averaging_period: list[str | None] | str | None,
+    averaging_period: SiteStringOption,
     start_date: str,
     end_date: str,
     output_name: str,
@@ -770,16 +1003,16 @@ def prepare_rhime_inputs(
     obs_store: str = "user",
     footprint_store: str = "user",
     emissions_store: str = "user",
-    met_model: Any = None,
+    met_model: SiteStringOption = None,
     fp_model: str | None = None,
-    fp_height: Any = None,
+    fp_height: SiteStringOption = None,
     fp_species: str | None = None,
-    inlet: Any = None,
-    instrument: Any = None,
-    max_level: int | None = None,
+    inlet: SiteInletOption = None,
+    instrument: SiteStringOption = None,
+    max_level: SiteIntegerOption = None,
     calibration_scale: str | None = None,
-    obs_data_level: Any = None,
-    platform: Any = None,
+    obs_data_level: SiteStringOption = None,
+    platform: SiteStringOption = None,
     use_tracer: bool = False,
     use_bc: bool = True,
     fp_basis_case: str | None = None,
@@ -800,7 +1033,7 @@ def prepare_rhime_inputs(
     merged_data_name: str | None = None,
     basis_output_path: str | None = None,
     min_error: MinErrorConfig = 0.0,
-    min_error_options: dict | None = None,
+    min_error_options: Mapping[str, Any] | None = None,
     flux_non_finite_check: FluxNonFiniteCheck = "lazy",
 ) -> RhimePreparedInputs:
     """Prepare modern RHIME inputs without exposing legacy fixedbasis containers.
@@ -823,6 +1056,23 @@ def prepare_rhime_inputs(
         split_by_sectors: Whether to keep sector-resolved sensitivity inputs
             with a ``source`` provenance coordinate. Semantic sector names are
             applied later by the model specification.
+        inlet: Inlet selector, either scalar or aligned to ``sites``. Entries
+            may be strings, legacy ``slice`` selectors, or ``None``.
+        fp_height: Footprint inlet height, either scalar or aligned to
+            ``sites``.
+        instrument: Observation instrument, either scalar or aligned to
+            ``sites``.
+        platform: Observation platform, either scalar or aligned to ``sites``.
+        obs_data_level: Observation data level, either scalar or aligned to
+            ``sites``.
+        met_model: Footprint meteorological model, either scalar or aligned to
+            ``sites``.
+        max_level: Maximum column level, either scalar or aligned to ``sites``.
+            Entries must be integers or ``None``.
+        min_error: Numeric minimum error or ``"residual"``/``"percentile"``
+            calculation method.
+        min_error_options: Calculated minimum-error options. The only supported
+            key is boolean ``by_site``.
         use_tracer: Unsupported placeholder for tracer inversions, where an
             additional species constrains the primary species through linked
             forward models.
@@ -833,7 +1083,12 @@ def prepare_rhime_inputs(
     Returns:
         Modern RHIME prepared inputs containing canonical ``inv_inputs`` and a
         retained ``BasisFunctions`` object.
+
+    Raises:
+        ValueError: If site options are empty, duplicated, misaligned, or have
+            invalid types, or if minimum-error options are invalid.
     """
+    min_error_options = normalise_min_error_options(min_error_options)
     with timed("rhime.prepare_inputs.merged_data", sites=len(sites), split_by_sectors=split_by_sectors):
         merged = _prepare_merged_data(
             species=species,
@@ -918,7 +1173,7 @@ def prepare_rhime_inputs(
             bc_freq=bc_freq,
             min_error=min_error,
             calculate_min_error=None,
-            min_error_options=min_error_options,
+            min_error_per_site=min_error_options["by_site"],
         )
     _warn_for_nan_inputs(inv_inputs, use_bc=use_bc)
     site_lats, site_lons = _site_release_coordinates(fp_data, filtered_merged.sites)

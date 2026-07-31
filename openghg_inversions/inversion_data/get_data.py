@@ -1,26 +1,33 @@
-"""Functions for retrieving observations and datasets for creating forward simulations.
+"""Retrieve and merge observations, footprints, fluxes, and boundary data.
 
-Current data processing options include:
-- "data_processing_surface_notracer": Surface based measurements, without tracers
-
-Future data processing options will include:
-- "data_processing_surface_tracer": Surface based measurements, with tracers
-
-This module also includes functions for saving and loading "merged data" created
-by the data processing functions.
+``data_processing_surface_notracer`` expands scalar site options, keeps their
+positions aligned during retrieval failures, assembles per-site model
+scenarios, and can save the resulting merged-data artifact. Retrieval and
+optional saving have external object-store and filesystem side effects; loading
+saved merged data is handled by :mod:`openghg_inversions.inversion_data.serialise`.
+The first successful scenario supplies the unit target forwarded to later
+OpenGHG ``ModelScenario`` merges.
 """
 
 import logging
 import warnings
-from typing import Literal
+from collections.abc import Iterable, Sequence
+from numbers import Integral
+from typing import Any, Literal
 
 import numpy as np
 import xarray as xr
-
 from openghg.retrieve import get_bc
 from openghg.types import SearchError
-from openghg.util import extract_float
 
+from openghg_inversions.flux_sanitization import FluxNonFiniteCheck
+from openghg_inversions.inversion_data._site_options import (
+    expand_site_option,
+    is_column_observation,
+    is_column_platform,
+    is_satellite_platform,
+)
+from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
 from openghg_inversions.inversion_data.getters import (
     get_flux_data,
     get_footprint_data,
@@ -28,8 +35,6 @@ from openghg_inversions.inversion_data.getters import (
 )
 from openghg_inversions.inversion_data.scenario import merged_scenario_data
 from openghg_inversions.inversion_data.serialise import _save_merged_data
-from openghg_inversions.flux_sanitization import FluxNonFiniteCheck
-
 
 logger = logging.getLogger(__name__)
 
@@ -130,45 +135,40 @@ def add_obs_error(sites: list[str], fp_all: dict, add_averaging_error: bool = Tr
 
 
 def convert_to_list(
-    x: list[str | None] | str | None, length: int, name: str | None = None
-) -> list[str | None]:
-    """Convert variable that might be list, str, or None to a list of the expected size.
+    x: Iterable[Any] | str | slice | int | Integral | None,
+    length: int,
+    name: str | None = None,
+) -> list[Any]:
+    """Convert a scalar or sequence to a list of the expected size.
 
     Args:
-        x: variable to convert to list
-        length: length of the output list
-        name: name to use for error message
+        x: Scalar string/integer/slice/``None`` to broadcast, or an iterable
+            to copy.
+        length: Required output length.
+        name: Optional argument name used in error messages.
 
     Returns:
-        list of specified length; either the original list, or a list containing
-        repeats of the input value
+        A new list of the requested length.
 
     Raises:
-        ValueError: if input is a list and its length differs from the specified
-        length.
-
+        ValueError: If an iterable has the wrong length, or if ``x`` is neither
+            a supported scalar nor an iterable.
     """
-    if x is None or isinstance(x, str | int):
-        return [x] * length
-
-    if len(x) != length:
-        msg_name = name or x  # display entire list if name is not given
-        raise ValueError(f"List {msg_name} does not have specified length: {len(x)} != {length}.")
-    return x
+    return list(expand_site_option(x, nsites=length, name=name or "value"))
 
 
 def data_processing_surface_notracer(
     species: str,
-    sites: list | str,
+    sites: Sequence[str] | str,
     domain: str,
     averaging_period: list[str | None] | str | None,
     start_date: str,
     end_date: str,
     obs_data_level: list[str | None] | str | None = None,
     platform: list[str | None] | str | None = None,
-    inlet: list[str | None] | str | None = None,
+    inlet: Sequence[str | slice | None] | str | None = None,
     instrument: list[str | None] | str | None = None,
-    max_level: int | None = None,
+    max_level: Sequence[int | None] | int | None = None,
     calibration_scale: str | None = None,
     met_model: list[str | None] | str | None = None,
     fp_model: str | None = None,
@@ -189,7 +189,7 @@ def data_processing_surface_notracer(
     output_name: str | None = None,
     flux_non_finite_check: FluxNonFiniteCheck = "lazy",
 ) -> tuple[dict, list, list, list, list, list]:
-    """Retrieve and prepare fixed-surface datasets from specified OpenGHG object stores.
+    """Retrieve and prepare surface or column datasets from OpenGHG stores.
 
     Use for forward simulations and model-data comparisons that do not
     use tracers.
@@ -197,21 +197,28 @@ def data_processing_surface_notracer(
     Args:
         species: Atmospheric trace gas species of interest
             e.g. "co2"
-        sites: List of strings containing measurement
-            station/site abbreviations
-            e.g. ["MHD", "TAC"]
+        sites: Measurement station/site abbreviation, or a sequence of them,
+            e.g. ``"MHD"`` or ``["MHD", "TAC"]``.
             NOTE: for satellite, pass as "satellitename-obs_region" eg "GOSAT-BRAZIL" and pass corresponding platform as "satellite"
         domain: Model domain region of interest; e.g. "EUROPE"
-        averaging_period: List of averaging periods to apply to mole fraction data.
-             NB. len(averaging_period)==len(sites) e.g. ["1H", "1H"]
+        averaging_period: Averaging period to apply to mole fraction data,
+            either scalar or aligned to ``sites``.
         start_date: Date from which to gather data; e.g. "2020-01-01"
         end_date: Date until which to gather data; e.g. "2020-02-01"
-        obs_data_level: ICOS observations data level. For non-ICOS sites use "None"
-        inlet: Specific inlet height for the site observations (length must match number of sites)
-        instrument: Specific instrument for the site (length must match number of sites)
-        max_level: Maximum atmospheric level to extract. Only needed if using satellite/site-column data.
+        obs_data_level: ICOS observation data level, either scalar or aligned
+            to ``sites``. For non-ICOS sites use ``None``.
+        platform: Observation platform, either scalar or aligned to ``sites``.
+        inlet: Observation inlet selector, either scalar or aligned to
+            ``sites``. Entries may be strings, legacy ``slice`` selectors, or
+            ``None``.
+        instrument: Observation instrument, either scalar or aligned to
+            ``sites``.
+        max_level: Maximum atmospheric level to extract, either scalar or
+            aligned to ``sites``. This is required for satellite/site-column
+            data.
         calibration_scale: Convert measurements to defined calibration scale
-        met_model: Meteorological model used in the LPDM. List must be same length as number of sites.
+        met_model: Meteorological model used in the LPDM, either scalar or
+            aligned to ``sites``.
         fp_model: LPDM used for generating footprints.
         fp_height: Inlet height used in footprints for corresponding sites.
         fp_species: Species name associated with footprints in the object store
@@ -247,8 +254,20 @@ def data_processing_surface_notracer(
             - instrument: List of instrument for the updated list of sites
             - averaging_period: List of averaging_period for the updated list of sites
 
+    Raises:
+        SearchError: If no requested site has both observations and footprints.
+        ValueError: If aligned options have invalid lengths, emissions are not
+            specified, observation units are unavailable or incompatible, or
+            required error inputs are absent.
+
+    Notes:
+        This function reads OpenGHG stores, emits progress messages and
+        warnings, and may save a merged-data artifact. The first retained
+        scenario defines the unit target requested for later sites;
+        ``fp_all[".units"]`` stores that unit's scale against ``mol/mol``.
     """
-    sites = [site.upper() for site in sites]
+    site_values = [sites] if isinstance(sites, str) else sites
+    sites = [site.upper() for site in site_values]
 
     # Convert 'None' args to list
     nsites = len(sites)
@@ -260,6 +279,16 @@ def data_processing_surface_notracer(
     averaging_period = convert_to_list(averaging_period, nsites, "averaging_period")
     platform = convert_to_list(platform, nsites, "platform")
     max_level = convert_to_list(max_level, nsites, "max_level")
+    invalid_max_levels = [
+        value
+        for value in max_level
+        if value is not None and (not isinstance(value, Integral) or isinstance(value, bool))
+    ]
+    if invalid_max_levels:
+        raise ValueError(
+            f"`max_level` entries must be integers or None. Invalid value(s): {invalid_max_levels!r}."
+        )
+    max_level = [None if value is None else int(value) for value in max_level]
 
     fp_all = {}
     fp_all[".species"] = species.upper()
@@ -301,8 +330,8 @@ def data_processing_surface_notracer(
     # get obs and footprints, and make scenarios for each site
     scales = {}
     check_scales = set()
-    units = {}
     site_indices_to_keep = []
+    output_units: str | None = None
 
     keep_variables = [
         f"{species}",
@@ -315,7 +344,8 @@ def data_processing_surface_notracer(
     warnings.warn(f"Dropping all variables besides {keep_variables}")
     for i, site in enumerate(sites):
         # Get observations data
-        if isinstance(platform[i], str) and platform[i].lower() == "flask":
+        site_platform = platform[i]
+        if isinstance(site_platform, str) and site_platform.lower() == "flask":
             avg_period = None
         else:
             avg_period = averaging_period[i]
@@ -326,7 +356,7 @@ def data_processing_surface_notracer(
             inlet=inlet[i],
             start_date=start_date,
             domain=domain,
-            platform=platform[i],
+            platform=site_platform,
             end_date=end_date,
             data_level=obs_data_level[i],
             average=avg_period,
@@ -345,7 +375,7 @@ def data_processing_surface_notracer(
         footprint_data = get_footprint_data(
             site=site,
             domain=domain,
-            platform=platform[i],
+            platform=site_platform,
             fp_height=fp_height[i],
             start_date=start_date,
             end_date=end_date,
@@ -363,20 +393,36 @@ def data_processing_surface_notracer(
             )
             continue  # skip this site
 
-        scenario_combined = merged_scenario_data(
-            site_data,
-            footprint_data,
-            flux_dict,
-            bc_data,
-            platform=platform[i],
-            max_level=max_level[i],
-            split_by_sectors=split_by_sectors,
+        scenario_platform = (
+            "site-column"
+            if is_column_observation(inlet[i], site_platform) and not is_column_platform(site_platform)
+            else site_platform
         )
+        try:
+            scenario_combined = merged_scenario_data(
+                site_data,
+                footprint_data,
+                flux_dict,
+                bc_data,
+                platform=scenario_platform,
+                max_level=max_level[i],
+                split_by_sectors=split_by_sectors,
+                output_units=output_units,
+            )
+        except (TypeError, ValueError) as exc:
+            if output_units is None:
+                raise
+            raise ValueError(
+                f"Could not merge site {site!r} using target observation units {output_units!r}."
+            ) from exc
+        if output_units is None:
+            scenario_units = scenario_combined["mf"].attrs.get("units")
+            if not isinstance(scenario_units, str) or not scenario_units:
+                raise ValueError(f"No observation units detected for the first retained site {site!r}.")
+            output_units = scenario_units
         fp_all[site] = scenario_combined
 
-        units[site] = scenario_combined.mf.attrs.get("units")
-
-        if "satellite" not in platform:
+        if not is_satellite_platform(site_platform):
             scales[site] = scenario_combined.scale
             check_scales.add(scenario_combined.scale)
 
@@ -400,22 +446,14 @@ def data_processing_surface_notracer(
 
     fp_all[".scales"] = scales
 
-    units_set = set(list(units.values()))
-
-    if len(units_set) > 1:
-        logger.warning(f"Multiple units found {units}.")
-
-    try:
-        unit = next(unit for unit in units.values() if unit is not None)
-    except StopIteration:
-        raise ValueError("No obs. units detected.")
-    else:
-        if isinstance(unit, str):
-            unit = extract_float(unit)
-        fp_all[".units"] = unit
-
     # create `mf_error`
     add_obs_error(sites, fp_all, add_averaging_error=averagingerror)
+    if output_units is None:
+        raise ValueError("No observation units detected.")
+    fp_all[".units"] = mole_fraction_unit_scale(
+        output_units,
+        context=f"site {sites[0]!r} variable 'mf'",
+    )
 
     if save_merged_data:
         if merged_data_dir is None:

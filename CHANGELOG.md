@@ -4,6 +4,17 @@
 
 ## Code changes
 
+- Kept all site-aligned retrieval options paired with retained sites across
+  merged-data reloads, retrieval failures, and observation filtering. Explicit
+  empty site selections now fail instead of expanding to every loaded site,
+  calculated minimum-error options have a validated ``{"by_site": bool}``
+  schema, and legacy migration warnings remain visible under default warning
+  filters. Retained calibration scales now follow site pruning, and
+  fresh scenarios delegate common-unit conversion to OpenGHG
+  ``ModelScenario``; saved merged datasets already carry those common units.
+  Explicit site order is preserved during input assembly, and mixed
+  surface/column inputs retain their column correction factors.
+  [#427](https://github.com/openghg/openghg_inversions/issues/427)
 - Extended `MaxChildPCAEccentricity` with an optional
   `min_child_target_weight_share` materiality threshold. The default zero keeps
   the strict all-child eccentricity veto. Positive values allow only children
