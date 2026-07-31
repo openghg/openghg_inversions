@@ -102,6 +102,7 @@ def build_inferpymc_model(
     offset_args: dict | None = None,
     power: dict | float = 1.99,
     pollution_events_from_obs_johnson_su: bool = False,
+    additive_model_error: bool = False,
 ) -> pm.Model:
     """Compatibility adapter for the standard RHIME model builder.
 
@@ -137,6 +138,8 @@ def build_inferpymc_model(
             mean-centred transformed Johnson-SU observation likelihood. This
             requires ``pollution_events_from_obs=True``, one-sided mode off,
             model error enabled, and fixed numeric ``power=2``.
+        additive_model_error: Whether ``sigma`` is a response-independent
+            additive Gaussian error in concentration units.
 
     Returns:
         Built PyMC model for the current inferpymc compatibility path.
@@ -170,6 +173,7 @@ def build_inferpymc_model(
         pollution_events_from_obs=pollution_events_from_obs,
         pollution_events_from_obs_one_sided=pollution_events_from_obs_one_sided,
         pollution_events_from_obs_johnson_su=pollution_events_from_obs_johnson_su,
+        additive_model_error=additive_model_error,
         no_model_error=no_model_error,
         offset_args=offset_args,
         power=power,
@@ -431,6 +435,7 @@ def inferpymc(
     sampler_kwargs: dict | None = None,
     pollution_events_from_obs_one_sided: bool = False,
     pollution_events_from_obs_johnson_su: bool = False,
+    additive_model_error: bool = False,
 ) -> dict:
     """Perform Bayesian inference with PyMC for emissions, BCs, and model error.
 
@@ -473,6 +478,8 @@ def inferpymc(
             mean-centred transformed Johnson-SU observation likelihood. This
             requires ``pollution_events_from_obs=True``, one-sided mode off,
             model error enabled, and fixed numeric ``power=2``.
+        additive_model_error: Whether ``sigma`` is a response-independent
+            additive Gaussian error in concentration units.
 
     Returns:
         Dictionary containing inference results, samples, and diagnostics in
@@ -506,6 +513,7 @@ def inferpymc(
         pollution_events_from_obs=pollution_events_from_obs,
         pollution_events_from_obs_one_sided=pollution_events_from_obs_one_sided,
         pollution_events_from_obs_johnson_su=pollution_events_from_obs_johnson_su,
+        additive_model_error=additive_model_error,
         no_model_error=no_model_error,
         offset_args=offset_args,
         power=power,

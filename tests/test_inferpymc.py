@@ -345,15 +345,16 @@ def test_inferpymc_forwards_numpyro_sampler_without_pymc_step(
     [
         "pollution_events_from_obs_one_sided",
         "pollution_events_from_obs_johnson_su",
+        "additive_model_error",
     ],
 )
-def test_inferpymc_forwards_pollution_event_options(
+def test_inferpymc_forwards_observation_likelihood_options(
     inv_inputs: xr.Dataset,
     model_args: dict,
     monkeypatch: pytest.MonkeyPatch,
     option_name: str,
 ) -> None:
-    """The legacy adapter forwards each opt-in PEFO mode to model construction."""
+    """The legacy adapter forwards each opt-in observation-likelihood mode."""
     captured: dict[str, Any] = {}
     sentinel_model = pm.Model()
 
@@ -381,6 +382,10 @@ def test_inferpymc_forwards_pollution_event_options(
         fake_adapt_legacy_inferpymc_results,
     )
 
+    likelihood_args = dict(model_args)
+    if option_name == "additive_model_error":
+        likelihood_args["pollution_events_from_obs"] = False
+
     result = inferpymc(
         inv_inputs=inv_inputs,
         nuts_sampler="numpyro",
@@ -389,13 +394,13 @@ def test_inferpymc_forwards_pollution_event_options(
         tune=0,
         nchain=1,
         **{option_name: True},
-        **model_args,
+        **likelihood_args,
     )
 
     assert result == {"ok": True}
     assert captured["inv_inputs"] is inv_inputs
     assert captured["sample_model"] is sentinel_model
-    assert captured["model_kwargs"]["pollution_events_from_obs"] is True
+    assert captured["model_kwargs"]["pollution_events_from_obs"] is (option_name != "additive_model_error")
     assert captured["model_kwargs"][option_name] is True
 
 

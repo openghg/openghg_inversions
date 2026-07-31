@@ -1434,6 +1434,7 @@ def test_public_rhime_dataclasses_keep_existing_positional_order() -> None:
     assert result.sampler == RhimeSampler()
     assert model_spec.pollution_events_from_obs_one_sided is False
     assert model_spec.pollution_events_from_obs_johnson_su is False
+    assert model_spec.additive_model_error is False
 
 
 @pytest.mark.parametrize("sector_count", [1, 2])
@@ -1906,6 +1907,35 @@ def test_rhime_runner_setup_builds_specs_before_preparation(tmp_path: Path) -> N
     assert setup.run_spec.model.builder_strategy == "compiled"
 
 
+def test_rhime_runner_setup_preserves_additive_model_error(tmp_path: Path) -> None:
+    """INI-normalized parameters carry additive Gaussian mode into the model spec."""
+    params = {
+        "species": "sf6",
+        "sites": ["TAC"],
+        "averaging_period": ["1h"],
+        "domain": "EUROPE",
+        "start_date": "2019-01-01",
+        "end_date": "2020-01-01",
+        "flux_sources": ["edgar-annual-total"],
+        "output_path": str(tmp_path),
+        "output_name": "additive",
+        "output_format": "none",
+        "pollution_events_from_obs": False,
+        "pollution_events_from_obs_one_sided": False,
+        "pollution_events_from_obs_johnson_su": False,
+        "additive_model_error": True,
+    }
+
+    setup = rhime_params.make_rhime_runner_setup(
+        params=params,
+        multisector=False,
+        data_param_names=set(inspect.signature(prepare_rhime_inputs).parameters),
+    )
+
+    assert setup.run_spec.model.additive_model_error is True
+    assert "additive_model_error" not in setup.data_args
+
+
 def test_rhime_runner_setup_rejects_unknown_builder_strategy() -> None:
     """Invalid builder selection fails during setup, before data preparation."""
     params = {
@@ -2245,6 +2275,33 @@ def test_rhime_model_spec_rejects_invalid_johnson_su_combinations(
 ) -> None:
     """Invalid Johnson-SU combinations fail while constructing the serializable spec."""
     with pytest.raises(ValueError, match=message):
+        RhimeModelSpec(
+            species="ch4",
+            domain="EUROPE",
+            sectors=(),
+            **options,
+        )
+
+
+@pytest.mark.parametrize(
+    "incompatible_option",
+    [
+        "pollution_events_from_obs",
+        "pollution_events_from_obs_one_sided",
+        "pollution_events_from_obs_johnson_su",
+        "no_model_error",
+    ],
+)
+def test_rhime_model_spec_rejects_invalid_additive_model_error_combinations(
+    incompatible_option: str,
+) -> None:
+    """Invalid additive Gaussian combinations fail before model construction."""
+    options: dict[str, Any] = {"additive_model_error": True, incompatible_option: True}
+    if incompatible_option == "pollution_events_from_obs_johnson_su":
+        options["pollution_events_from_obs"] = True
+        options["power"] = 2.0
+
+    with pytest.raises(ValueError, match="additive_model_error|Johnson-SU"):
         RhimeModelSpec(
             species="ch4",
             domain="EUROPE",

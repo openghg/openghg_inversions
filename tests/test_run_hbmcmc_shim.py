@@ -44,6 +44,7 @@ sampler_kwargs = {"target_accept": 0.9}
 reparameterise_log_normal = False
 pollution_events_from_obs_one_sided = True
 pollution_events_from_obs_johnson_su = False
+additive_model_error = False
 
 [MCMC.OUTPUT]
 outputpath = "out"
@@ -76,6 +77,7 @@ def test_fixedbasis_params_to_rhime_translates_legacy_names(tmp_path: Path) -> N
     assert translated["save_inversion_output"] is False
     assert translated["pollution_events_from_obs_one_sided"] is True
     assert translated["pollution_events_from_obs_johnson_su"] is False
+    assert translated["additive_model_error"] is False
     assert "mcmc_type" not in translated
     assert "nit" not in translated
     assert "nchain" not in translated
@@ -101,6 +103,25 @@ def test_fixedbasis_params_to_rhime_translates_johnson_su_option(tmp_path: Path)
     assert translated["pollution_events_from_obs_one_sided"] is False
     assert translated["pollution_events_from_obs_johnson_su"] is True
     assert translated["power"] == 2.0
+
+
+def test_fixedbasis_params_to_rhime_translates_additive_model_error_option(tmp_path: Path) -> None:
+    """The legacy adapter preserves the additive Gaussian comparator selection."""
+    config_file = tmp_path / "hbmcmc.ini"
+    _fixedbasis_config(config_file)
+    params = run_hbmcmc.hbmcmc_extract_param(str(config_file), print_param=False)
+    params.update(
+        {
+            "pollution_events_from_obs": False,
+            "pollution_events_from_obs_one_sided": False,
+            "pollution_events_from_obs_johnson_su": False,
+            "additive_model_error": True,
+        }
+    )
+
+    translated = run_hbmcmc.fixedbasis_params_to_rhime(params)
+
+    assert translated["additive_model_error"] is True
 
 
 def test_fixedbasis_params_to_rhime_translates_reparameterise_log_normal(tmp_path: Path) -> None:

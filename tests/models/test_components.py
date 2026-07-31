@@ -273,6 +273,70 @@ def test_likelihood_no_model_error_uses_observation_error() -> None:
     np.testing.assert_allclose(model.named_vars["epsilon"].eval(), ds["mf_error"].values)
 
 
+def test_likelihood_additive_model_error_uses_response_independent_sigma(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Additive Gaussian mode combines observation error and sigma in quadrature."""
+    observation_error = np.array([-0.1, 0.2, -0.4, 0.3])
+    min_error = np.array([0.05, 0.6, 0.1, 0.2])
+    ds = _likelihood_dataset().assign(
+        mf_error=("nmeasure", observation_error),
+        min_error=("nmeasure", min_error),
+    )
+    sigma_values = pm.floatX(np.array([0.5, 0.5, 0.25, 0.25]))
+
+    def fixed_sigma(*args, **kwargs):
+        """Return fixed observation-aligned additive errors."""
+        return pt.as_tensor_variable(sigma_values)
+
+    monkeypatch.setattr(components_module, "add_sigma_component", fixed_sigma)
+
+    with pm.Model(coords={"nmeasure": np.arange(4)}) as model:
+        attach_coord_registry(model, CoordRegistry())
+        mu = pm.Data("mu_input", np.ones(4), dims="nmeasure")
+        add_inferpymc_likelihood_component(
+            ds,
+            mu=mu,
+            mu_bc=None,
+            sigprior={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
+            sigma_alignment=_sigma_alignment(ds, per_site=False),
+            additive_model_error=True,
+        )
+
+    expected = np.maximum(np.sqrt(observation_error**2 + sigma_values**2), min_error)
+    np.testing.assert_allclose(model.named_vars["epsilon"].eval(), expected)
+    assert "Normal" in type(model.named_vars["y"].owner.op).__name__
+
+
+@pytest.mark.parametrize(
+    "incompatible_option",
+    [
+        "pollution_events_from_obs",
+        "pollution_events_from_obs_one_sided",
+        "pollution_events_from_obs_johnson_su",
+        "no_model_error",
+    ],
+)
+def test_additive_model_error_rejects_incompatible_options(incompatible_option: str) -> None:
+    """Additive sigma cannot be mixed with dimensionless pollution-event modes."""
+    ds = _likelihood_dataset()
+    options = {"additive_model_error": True, incompatible_option: True}
+
+    with pm.Model(coords={"nmeasure": np.arange(4)}) as model:
+        attach_coord_registry(model, CoordRegistry())
+        mu = pm.Data("mu_input", np.ones(4), dims="nmeasure")
+        with pytest.raises(ValueError, match=incompatible_option):
+            add_inferpymc_likelihood_component(
+                ds,
+                mu=mu,
+                mu_bc=None,
+                sigprior={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
+                sigma_alignment=_sigma_alignment(ds, per_site=False),
+                power=2.0,
+                **options,
+            )
+
+
 def test_likelihood_pollution_events_from_obs_can_run_without_boundary_conditions() -> None:
     """Check obs-derived pollution-event scaling does not require BC terms."""
     ds = _likelihood_dataset().copy()

@@ -15,7 +15,9 @@ The elementwise parameters must be broadcastable. ``value``, ``baseline``,
 strictly positive. This module has no import-time side effects. Its main entry
 points are :func:`_mean_centered_johnson_su_logp`,
 :func:`_mean_centered_johnson_su_random`, and
-:func:`validate_johnson_su_options`.
+:func:`validate_johnson_su_options`. The companion
+:func:`validate_additive_model_error_options` helper guards the experimental
+response-independent Gaussian comparator.
 """
 
 from __future__ import annotations
@@ -239,3 +241,49 @@ def validate_johnson_su_options(
         )
     if isinstance(power, bool) or not isinstance(power, Real) or float(power) != 2.0:
         raise ValueError("`pollution_events_from_obs_johnson_su=True` requires fixed numeric `power=2`.")
+
+
+def validate_additive_model_error_options(
+    *,
+    enabled: bool,
+    pollution_events_from_obs: bool,
+    pollution_events_from_obs_one_sided: bool,
+    pollution_events_from_obs_johnson_su: bool,
+    no_model_error: bool,
+) -> None:
+    """Validate the response-independent additive Gaussian comparator.
+
+    The comparator interprets ``sigma`` in concentration units and uses
+    ``sqrt(mf_error**2 + sigma**2)``. It is deliberately exclusive with every
+    pollution-event option, whose ``sigma`` is dimensionless, and with
+    ``no_model_error``.
+
+    Args:
+        enabled: Whether response-independent additive model error is selected.
+        pollution_events_from_obs: Whether observation-derived event scaling
+            is enabled.
+        pollution_events_from_obs_one_sided: Whether one-sided event scaling
+            is enabled.
+        pollution_events_from_obs_johnson_su: Whether Johnson-SU mode is
+            enabled.
+        no_model_error: Whether explicit model error is disabled.
+
+    Raises:
+        ValueError: If additive model error is combined with an incompatible
+            likelihood option.
+
+    Returns:
+        None.
+    """
+    if not enabled:
+        return
+
+    incompatible = {
+        "pollution_events_from_obs": pollution_events_from_obs,
+        "pollution_events_from_obs_one_sided": pollution_events_from_obs_one_sided,
+        "pollution_events_from_obs_johnson_su": pollution_events_from_obs_johnson_su,
+        "no_model_error": no_model_error,
+    }
+    selected = [f"`{name}=True`" for name, value in incompatible.items() if value]
+    if selected:
+        raise ValueError("`additive_model_error=True` is incompatible with " + ", ".join(selected) + ".")

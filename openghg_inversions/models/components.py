@@ -35,6 +35,7 @@ from openghg_inversions.inversion_inputs import make_freq_indicator
 from openghg_inversions.models._observation import (
     _mean_centered_johnson_su_logp,
     _mean_centered_johnson_su_random,
+    validate_additive_model_error_options,
     validate_johnson_su_options,
 )
 from openghg_inversions.models.coords import add_coords
@@ -323,6 +324,7 @@ def add_inferpymc_likelihood_component(
     output_dim: str = "nmeasure",
     pollution_events_from_obs_one_sided: bool = False,
     pollution_events_from_obs_johnson_su: bool = False,
+    additive_model_error: bool = False,
 ) -> TensorVariable:
     """Add the inferpymc observation model.
 
@@ -353,6 +355,12 @@ def add_inferpymc_likelihood_component(
             mean-centred transformed Johnson-SU distribution. This option
             requires observation-derived, two-sided model error with fixed
             numeric ``power=2``.
+        additive_model_error: Whether to use response-independent additive
+            Gaussian model error. In this mode ``sigma`` has concentration
+            units and the observation scale is
+            ``max(sqrt(mf_error**2 + sigma**2), min_error)``. It is
+            incompatible with all pollution-event options and
+            ``no_model_error``.
 
     Returns:
         The ``epsilon`` deterministic. It is the Normal scale for the existing
@@ -374,6 +382,13 @@ def add_inferpymc_likelihood_component(
         pollution_events_from_obs_one_sided=pollution_events_from_obs_one_sided,
         no_model_error=no_model_error,
         power=power,
+    )
+    validate_additive_model_error_options(
+        enabled=additive_model_error,
+        pollution_events_from_obs=pollution_events_from_obs,
+        pollution_events_from_obs_one_sided=pollution_events_from_obs_one_sided,
+        pollution_events_from_obs_johnson_su=pollution_events_from_obs_johnson_su,
+        no_model_error=no_model_error,
     )
 
     y_data = add_model_data(data["mf"].transpose(output_dim), "Y")
@@ -425,6 +440,15 @@ def add_inferpymc_likelihood_component(
             observed=y_data,
             dims=output_dim,
         )
+        return epsilon
+
+    if additive_model_error:
+        eps = cast(
+            TensorVariable,
+            pt.maximum(pt.sqrt(error_data**2 + sigma**2), min_error_data),
+        )
+        epsilon = pm.Deterministic("epsilon", eps, dims=output_dim)
+        pm.Normal("y", mu=total_mu, sigma=epsilon, observed=y_data, dims=output_dim)
         return epsilon
 
     if pollution_events_from_obs is True:
