@@ -1,0 +1,1032 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Ramsden real-data validation &#8212; openghg_inversions  documentation</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../_static/styles/theme.css?digest=90905a2f556bf617f1a9" rel="stylesheet" />
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=90905a2f556bf617f1a9" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
+  
+  <!-- So that users can add custom icons -->
+  <script defer src="../_static/scripts/fontawesome.js?digest=90905a2f556bf617f1a9"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=90905a2f556bf617f1a9" />
+<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=90905a2f556bf617f1a9" />
+
+    <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'experimental/ramsden2022_validation';</script>
+    <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="openghg_inversions" href="../reference/modules.html" />
+    <link rel="prev" title="Ramsden methane/ethane model" href="ramsden2022.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="" />
+  
+    
+    <script src="../_static/searchtools.js"></script>
+    <script src="../_static/language_data.js"></script>
+    <script src="../searchindex.js"></script>
+  
+  </head>
+  <body data-default-mode="">
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+  
+  
+  
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header id="pst-header" class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../index.html">
+  
+  
+  
+  
+  
+  
+    <p class="title logo__title">openghg_inversions  documentation</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    <div class="me-auto navbar-header-items__center">
+      
+        <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../usage/usage.html">
+    Using OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="index.html">
+    Experimental code
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../reference/modules.html">
+    openghg_inversions
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+      
+    </div>
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+    <button class="pst-navbar-icon sidebar-toggle secondary-toggle" aria-label="On this page">
+      <span class="fa-solid fa-outdent"></span>
+    </button>
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+      <div class="sidebar-header-items__center">
+        
+          
+          
+            <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../usage/usage.html">
+    Using OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="index.html">
+    Experimental code
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../reference/modules.html">
+    openghg_inversions
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+          
+        
+      </div>
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item pst-sidebar-collapse"><button id="pst-collapse-sidebar-button" aria-expanded="true" aria-controls="pst-primary-sidebar">
+  <svg class="pst-icon" role="img" aria-hidden="true" focusable="false" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+    <path fill="currentColor" d="M3 15.5C2.36232 15.5 1.74874 15.2564 1.28478 14.8189C0.820828 14.3815 0.541576 13.7832 0.504167 13.1467L0.5 13L0.5 3C0.499965 2.36232 0.743605 1.74874 1.18107 1.28478C1.61854 0.820828 2.21676 0.541576 2.85333 0.504167L3 0.5L13 0.5C13.6377 0.499965 14.2513 0.743605 14.7152 1.18107C15.1792 1.61854 15.4584 2.21676 15.4958 2.85333L15.5 3L15.5 13C15.5 13.6377 15.2564 14.2513 14.8189 14.7152C14.3815 15.1792 13.7832 15.4584 13.1467 15.4958L13 15.5L3 15.5ZM3 13.8333L10.5 13.8333L10.5 2.16667L3 2.16667C2.79589 2.16669 2.59889 2.24163 2.44636 2.37726C2.29383 2.5129 2.19638 2.69979 2.1725 2.9025L2.16667 3L2.16667 13C2.16669 13.2041 2.24163 13.4011 2.37726 13.5536C2.5129 13.7062 2.69979 13.8036 2.9025 13.8275L3 13.8333ZM6.65583 10.325L6.5775 10.2558L4.91083 8.58917C4.76735 8.44567 4.68116 8.25476 4.66843 8.05223C4.65569 7.84971 4.71729 7.6495 4.84167 7.48917L4.91083 7.41083L6.5775 5.74417C6.72747 5.59471 6.9287 5.50794 7.14032 5.50148C7.35194 5.49502 7.55809 5.56935 7.7169 5.70937C7.8757 5.8494 7.97525 6.04463 7.99533 6.25539C8.01541 6.46616 7.95451 6.67667 7.825 6.84417L7.75583 6.9225L6.67917 8L7.75583 9.0775C7.89931 9.22099 7.98551 9.41191 7.99824 9.61443C8.01097 9.81695 7.94938 10.0172 7.825 10.1775L7.75583 10.2558C7.61234 10.3993 7.42142 10.4855 7.2189 10.4982C7.01638 10.511 6.81617 10.4494 6.65583 10.325Z"/>
+  </svg>
+  <span class="pst-collapse-sidebar-label">Collapse Sidebar</span>
+  <span class="pst-expand-sidebar-label">Expand Sidebar</span>
+</button></div>
+        <div class="sidebar-primary-item">
+
+<nav class="bd-docs-nav bd-links"
+     aria-label="Section Navigation">
+  <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
+  <div class="bd-toc-item navbar-nav"><ul class="current nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="ramsden2022.html">Ramsden methane/ethane model</a></li>
+<li class="toctree-l1 current active"><a class="current reference internal" href="#">Ramsden real-data validation</a></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+      <div class="sidebar-primary-item">
+<div id="ethical-ad-placement"
+      class="flat"
+      data-ea-publisher="readthedocs"
+      data-ea-type="readthedocs-sidebar"
+      data-ea-manual="true">
+</div></div>
+  </div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="index.html" class="nav-link">Experimental code</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Ramsden real-data validation</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="ramsden-real-data-validation">
+<h1>Ramsden real-data validation<a class="headerlink" href="#ramsden-real-data-validation" title="Link to this heading">#</a></h1>
+<section id="outcome">
+<h2>Outcome<a class="headerlink" href="#outcome" title="Link to this heading">#</a></h2>
+<p>The experimental implementation at model commit <code class="docutils literal notranslate"><span class="pre">f0d27d7</span></code> closely
+reproduces the retained original January 2019 inversion. The annualized UK
+fossil-fuel methane posterior mean changes by only 0.96%, all 49 regional 95%
+posterior intervals overlap, and the regional fossil-fuel posterior-mean
+correlation is 0.980.</p>
+<p>Observation-space posterior latent means are also nearly identical. The
+original-versus-modern correlations are 0.9983 for methane and 0.999963 for
+ethane.</p>
+<p>The validation also reproduces the principal scientific warning in the
+original analysis: both ethane model-error parameters concentrate at their
+50 ppt upper bound. Modern ethane 90% posterior-predictive coverage is only
+32.9% at MHD and 40.4% at TAC. This supports the implementation as a faithful,
+runnable historical comparison; it does not establish that the current
+ethane likelihood is scientifically production-ready.</p>
+</section>
+<section id="what-was-tested">
+<h2>What was tested<a class="headerlink" href="#what-was-tested" title="Link to this heading">#</a></h2>
+<p>The validation used retained real-data observations and sensitivity matrices
+for January 2019:</p>
+<div class="pst-scrollable-table-container"><table class="table" id="id1">
+<caption><span class="caption-text">Final validation configuration</span><a class="headerlink" href="#id1" title="Link to this table">#</a></caption>
+<colgroup>
+<col style="width: 28.0%" />
+<col style="width: 72.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Item</p></th>
+<th class="head"><p>Configuration</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Code</p></td>
+<td><p>Experimental model at <code class="docutils literal notranslate"><span class="pre">f0d27d7</span></code>.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Period</p></td>
+<td><p>1–31 January 2019, nominal four-hour observations.</p></td>
+</tr>
+<tr class="row-even"><td><p>Methane observations</p></td>
+<td><p>331 values at MHD, TAC, RGL, BSD, and HFD; numeric units ppb.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Ethane observations</p></td>
+<td><p>117 values at MHD and TAC; numeric units ppt.</p></td>
+</tr>
+<tr class="row-even"><td><p>Spatial state</p></td>
+<td><p>49 retained quadtree basis regions, with identical reconstructed maps
+for both channels.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Methane design</p></td>
+<td><p>Fossil and non-fossil source terms plus four boundary terms.</p></td>
+</tr>
+<tr class="row-even"><td><p>Ethane design</p></td>
+<td><p>Fossil source term only plus four boundary terms.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Coupling</p></td>
+<td><p>Shared 49-region fossil methane scaling state; no non-fossil ethane
+contribution.</p></td>
+</tr>
+<tr class="row-even"><td><p>Likelihood</p></td>
+<td><p>Independent Gaussian channels with measurement error plus inferred
+absolute site-month model error; <code class="docutils literal notranslate"><span class="pre">min_error=0</span></code>.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Sampler</p></td>
+<td><p>Four NumPyro NUTS chains; 1,000 tuning and 1,000 retained draws per
+chain; target acceptance 0.9.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>Priors followed the paper’s printed specification:</p>
+<ul class="simple">
+<li><p>fossil and non-fossil scaling:
+zero-truncated Gaussian with mean 1 and standard deviation 0.5;</p></li>
+<li><p>methane model error: <code class="docutils literal notranslate"><span class="pre">Uniform(10,</span> <span class="pre">50)</span></code> ppb by site and month;</p></li>
+<li><p>ethane model error: <code class="docutils literal notranslate"><span class="pre">Uniform(20,</span> <span class="pre">50)</span></code> ppt by site and month;</p></li>
+<li><p>methane boundary scaling:
+zero-truncated Gaussian with mean 1 and standard deviation 0.05;</p></li>
+<li><p>ethane boundary scaling:
+zero-truncated Gaussian with mean 1 and standard deviation 0.5; and</p></li>
+<li><p>physical molar ethane:methane ratio:
+<code class="docutils literal notranslate"><span class="pre">0.075</span> <span class="pre">*</span> <span class="pre">Uniform(0.1,</span> <span class="pre">2.7)</span></code> independently by region.</p></li>
+</ul>
+</section>
+<section id="terminology-and-truth">
+<h2>Terminology and truth<a class="headerlink" href="#terminology-and-truth" title="Link to this heading">#</a></h2>
+<p>This is a real-data inversion. There is no known state-space or flux truth and
+no flux-recovery score.</p>
+<p>The closest comparator is the retained original January 2019 posterior. It
+uses the same retained observations, designs, basis state, and month, but a
+historical sampler and a different effective methane model-error prior.</p>
+<p>The paper is a second, less direct comparator. It reports monthly inversions
+summarized as annual 2015–2019 UK totals. January’s annualized flux rate and
+an annual result are not like-for-like.</p>
+<p>Observation-space bias and RMSE below compare deterministic posterior latent
+means with retained observations. Posterior-predictive coverage instead uses
+simulated posterior observations and includes likelihood uncertainty. Neither
+kind of observation-space agreement demonstrates emission accuracy.</p>
+</section>
+<section id="input-provenance-and-limitations">
+<h2>Input provenance and limitations<a class="headerlink" href="#input-provenance-and-limitations" title="Link to this heading">#</a></h2>
+<p>The retained output supplied observations, timestamps, source-separated
+designs, boundary designs, site stacking, state ordering, and the gridded
+basis representation. Its provenance identifies:</p>
+<ul class="simple">
+<li><p>UKGHG/EDGAR fossil and non-fossil methane sources;</p></li>
+<li><p>an ethane fossil inventory already scaled by the reference ratio 0.075;</p></li>
+<li><p>a zero non-fossil ethane contribution; and</p></li>
+<li><p>a 49-region sensitivity-driven quadtree basis.</p></li>
+</ul>
+<p>The exact historical measurement-error arrays were not retained. Methane
+within-bin variability and ethane repeatability were reconstructed from frozen
+observation products. One missing TAC ethane repeatability value was filled
+with that site’s positive median. This is the main input-level limitation on a
+strict original-versus-modern comparison.</p>
+<p>The available current OpenGHG object store did not contain usable footprint
+and observation products for rebuilding this historical case. The validation
+therefore converted the retained designs into canonical prepared datasets
+rather than rerunning modern retrieval and preparation.</p>
+</section>
+<section id="sampling-diagnostics">
+<h2>Sampling diagnostics<a class="headerlink" href="#sampling-diagnostics" title="Link to this heading">#</a></h2>
+<p>The final four-chain run completed both likelihoods and posterior-predictive
+generation with zero divergences.</p>
+<div class="pst-scrollable-table-container"><table class="table" id="id2">
+<caption><span class="caption-text">Modern sampling diagnostics</span><a class="headerlink" href="#id2" title="Link to this table">#</a></caption>
+<colgroup>
+<col style="width: 60.0%" />
+<col style="width: 40.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Diagnostic</p></th>
+<th class="head"><p>Value</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Maximum unrounded R-hat</p></td>
+<td><p>1.0051</p></td>
+</tr>
+<tr class="row-odd"><td><p>Minimum bulk effective sample size</p></td>
+<td><p>1,447</p></td>
+</tr>
+<tr class="row-even"><td><p>Minimum tail effective sample size</p></td>
+<td><p>556</p></td>
+</tr>
+<tr class="row-odd"><td><p>Mean acceptance probability</p></td>
+<td><p>0.941</p></td>
+</tr>
+<tr class="row-even"><td><p>Maximum tree depth</p></td>
+<td><p>8</p></td>
+</tr>
+<tr class="row-odd"><td><p>Divergences</p></td>
+<td><p>0</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>The paper used an adaptive random-walk Metropolis-Hastings sampler, discarded
+the first 50%, and retained every 100th subsequent sample. It did not report
+chain count, R-hat, effective sample sizes, or equivalent modern convergence
+diagnostics, so convergence cannot be compared directly.</p>
+</section>
+<section id="flux-space-results">
+<h2>Flux-space results<a class="headerlink" href="#flux-space-results" title="Link to this heading">#</a></h2>
+<p>The retained per-region UK prior-flux weights were recovered by dividing each
+stored regional posterior flux trace by its scaling trace and taking the
+median over draws. Their sums exactly reproduce the stored fossil and
+non-fossil country priors. Applying the same weights to the modern posterior is
+valid because basis-map and state ordering were checked exactly.</p>
+<p>The table reports annualized January methane flux rates in Tg CH4 yr-1, not
+twelve-month annual totals.</p>
+<div class="pst-scrollable-table-container"><table class="table" id="id3">
+<caption><span class="caption-text">Annualized January UK methane flux</span><a class="headerlink" href="#id3" title="Link to this table">#</a></caption>
+<colgroup>
+<col style="width: 22.0%" />
+<col style="width: 28.0%" />
+<col style="width: 28.0%" />
+<col style="width: 22.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Sector</p></th>
+<th class="head"><p>Retained original mean (95% interval)</p></th>
+<th class="head"><p>Modern mean (95% interval)</p></th>
+<th class="head"><p>Change in mean</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Fossil fuel</p></td>
+<td><p>0.28094 (0.21625–0.35400)</p></td>
+<td><p>0.27825 (0.21405–0.35210)</p></td>
+<td><p>-0.96%</p></td>
+</tr>
+<tr class="row-odd"><td><p>Non-fossil</p></td>
+<td><p>1.57795 (1.34910–1.80753)</p></td>
+<td><p>1.65733 (1.41293–1.89559)</p></td>
+<td><p>+5.03%</p></td>
+</tr>
+<tr class="row-even"><td><p>Total</p></td>
+<td><p>1.85888 (1.61077–2.10658)</p></td>
+<td><p>1.93557 (1.69621–2.17447)</p></td>
+<td><p>+4.13%</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>The fossil-fuel aggregate, which is the quantity the added ethane channel is
+intended to constrain, is reproduced within 1%. The larger aggregate change is
+in the methane-only non-fossil sector.</p>
+</section>
+<section id="regional-state-results">
+<h2>Regional state results<a class="headerlink" href="#regional-state-results" title="Link to this heading">#</a></h2>
+<p>The following metrics compare posterior summaries for the same 49 basis
+regions. Scaling states and ratio multipliers are dimensionless.</p>
+<div class="pst-scrollable-table-container"><table class="table" id="id4">
+<caption><span class="caption-text">Regional state comparison</span><a class="headerlink" href="#id4" title="Link to this table">#</a></caption>
+<colgroup>
+<col style="width: 34.0%" />
+<col style="width: 22.0%" />
+<col style="width: 18.0%" />
+<col style="width: 26.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Parameter</p></th>
+<th class="head"><p>Correlation of posterior means</p></th>
+<th class="head"><p>RMSE of posterior means</p></th>
+<th class="head"><p>Regions with overlapping 95% intervals</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Fossil methane scaling</p></td>
+<td><p>0.9799</p></td>
+<td><p>0.1409</p></td>
+<td><p>49/49</p></td>
+</tr>
+<tr class="row-odd"><td><p>Non-fossil methane scaling</p></td>
+<td><p>0.8889</p></td>
+<td><p>0.1444</p></td>
+<td><p>49/49</p></td>
+</tr>
+<tr class="row-even"><td><p>Ratio multiplier</p></td>
+<td><p>0.9369</p></td>
+<td><p>0.2087</p></td>
+<td><p>49/49</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>The physical molar ratio means moles of ethane divided by moles of
+fossil-fuel methane. Because the retained ethane design already contains
+0.075, it equals <code class="docutils literal notranslate"><span class="pre">0.075</span> <span class="pre">*</span> <span class="pre">ratio_multiplier</span></code>.</p>
+<div class="pst-scrollable-table-container"><table class="table" id="id5">
+<caption><span class="caption-text">Physical ethane:methane ratio</span><a class="headerlink" href="#id5" title="Link to this table">#</a></caption>
+<colgroup>
+<col style="width: 52.0%" />
+<col style="width: 24.0%" />
+<col style="width: 24.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Summary</p></th>
+<th class="head"><p>Retained original</p></th>
+<th class="head"><p>Modern</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Unweighted mean over all region-draw values</p></td>
+<td><p>0.08209</p></td>
+<td><p>0.08320</p></td>
+</tr>
+<tr class="row-odd"><td><p>UK fossil-methane-flux-weighted mean</p></td>
+<td><p>0.08969</p></td>
+<td><p>0.09121</p></td>
+</tr>
+<tr class="row-even"><td><p>Weighted 95% interval</p></td>
+<td><p>0.07061–0.11703</p></td>
+<td><p>0.07125–0.11663</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>The weighted mean changes by 1.7%.</p>
+</section>
+<section id="observation-space-results">
+<h2>Observation-space results<a class="headerlink" href="#observation-space-results" title="Link to this heading">#</a></h2>
+<p>The table compares deterministic posterior latent means with observations.
+Methane bias and RMSE are in ppb; ethane values are in ppt.</p>
+<div class="pst-scrollable-table-container"><table class="table" id="id6">
+<caption><span class="caption-text">Site-level posterior latent-mean fit</span><a class="headerlink" href="#id6" title="Link to this table">#</a></caption>
+<colgroup>
+<col style="width: 16.0%" />
+<col style="width: 18.0%" />
+<col style="width: 33.0%" />
+<col style="width: 33.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Gas</p></th>
+<th class="head"><p>Site</p></th>
+<th class="head"><p>Retained original bias, RMSE</p></th>
+<th class="head"><p>Modern bias, RMSE</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>CH4</p></td>
+<td><p>MHD</p></td>
+<td><p>-1.610, 6.561</p></td>
+<td><p>-1.883, 7.242</p></td>
+</tr>
+<tr class="row-odd"><td><p>CH4</p></td>
+<td><p>TAC</p></td>
+<td><p>-2.498, 9.929</p></td>
+<td><p>-2.702, 10.163</p></td>
+</tr>
+<tr class="row-even"><td><p>CH4</p></td>
+<td><p>RGL</p></td>
+<td><p>-3.402, 15.198</p></td>
+<td><p>-2.041, 14.480</p></td>
+</tr>
+<tr class="row-odd"><td><p>CH4</p></td>
+<td><p>BSD</p></td>
+<td><p>-0.629, 5.530</p></td>
+<td><p>+0.393, 5.292</p></td>
+</tr>
+<tr class="row-even"><td><p>CH4</p></td>
+<td><p>HFD</p></td>
+<td><p>+0.867, 10.640</p></td>
+<td><p>+0.564, 10.406</p></td>
+</tr>
+<tr class="row-odd"><td><p>C2H6</p></td>
+<td><p>MHD</p></td>
+<td><p>-3.267, 229.104</p></td>
+<td><p>-3.982, 229.018</p></td>
+</tr>
+<tr class="row-even"><td><p>C2H6</p></td>
+<td><p>TAC</p></td>
+<td><p>+11.159, 165.840</p></td>
+<td><p>+11.510, 165.908</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>Overall methane RMSE changes from 10.126 to 10.004 ppb, and overall ethane
+RMSE from 206.038 to 206.003 ppt. Pointwise original-versus-modern latent-mean
+correlations are 0.99831 for methane and 0.999963 for ethane.</p>
+<p>Modern 90% posterior-predictive coverage is 93.3–100% across methane sites,
+32.9% for ethane at MHD, and 40.4% for ethane at TAC. Historical coverage
+cannot be computed on the same definition because the retained file does not
+contain equivalent likelihood-level predictive draws or the original
+measurement-error vector.</p>
+</section>
+<section id="model-error-and-boundary-results">
+<h2>Model-error and boundary results<a class="headerlink" href="#model-error-and-boundary-results" title="Link to this heading">#</a></h2>
+<p>The four boundary states for each channel are numerically close. They are not
+assigned compass names here because the retained boundary-column ordering
+cannot be established safely from the output alone.</p>
+<div class="pst-scrollable-table-container"><table class="table" id="id7">
+<caption><span class="caption-text">Boundary posterior means</span><a class="headerlink" href="#id7" title="Link to this table">#</a></caption>
+<colgroup>
+<col style="width: 18.0%" />
+<col style="width: 41.0%" />
+<col style="width: 41.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Channel</p></th>
+<th class="head"><p>Retained original</p></th>
+<th class="head"><p>Modern</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>CH4</p></td>
+<td><p>1.00177, 1.00357, 0.95488, 0.99873</p></td>
+<td><p>1.00065, 1.00294, 0.96018, 0.99906</p></td>
+</tr>
+<tr class="row-odd"><td><p>C2H6</p></td>
+<td><p>1.10707, 1.19605, 0.00531, 0.80497</p></td>
+<td><p>1.10547, 1.18075, 0.00531, 0.80432</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>Monthly site-level absolute model-error means are:</p>
+<div class="pst-scrollable-table-container"><table class="table" id="id8">
+<caption><span class="caption-text">Absolute model-error posterior means</span><a class="headerlink" href="#id8" title="Link to this table">#</a></caption>
+<colgroup>
+<col style="width: 24.0%" />
+<col style="width: 38.0%" />
+<col style="width: 38.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Channel and site order</p></th>
+<th class="head"><p>Retained original</p></th>
+<th class="head"><p>Modern</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>CH4: MHD, TAC, RGL, BSD, HFD (ppb)</p></td>
+<td><p>6.591, 7.861, 4.686, 4.090, 9.108</p></td>
+<td><p>10.218, 10.628, 10.365, 10.286, 10.685</p></td>
+</tr>
+<tr class="row-odd"><td><p>C2H6: MHD, TAC (ppt)</p></td>
+<td><p>49.964, 49.898</p></td>
+<td><p>49.964, 49.896</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>The methane values are not like-for-like: the modern validation imposed the
+paper’s printed 10 ppb lower bound, whereas the retained implementation used a
+zero lower bound. Both implementations give virtually identical ethane model
+error and press the 50 ppt upper bound.</p>
+</section>
+<section id="primary-figure">
+<h2>Primary figure<a class="headerlink" href="#primary-figure" title="Link to this heading">#</a></h2>
+<figure class="align-center" id="id9">
+<a class="reference internal image-reference" href="../_images/ramsden2022_pr543_validation_comparison.svg"><img alt="Grouped comparisons of UK methane flux rates and site-level methane and ethane posterior latent-mean RMSE." src="../_images/ramsden2022_pr543_validation_comparison.svg" style="width: 100%;" />
+</a>
+<figcaption>
+<p><span class="caption-text">Panel A compares annualized UK methane flux rates in Tg CH4 yr-1. Error bars
+are 95% posterior intervals. Retained-original and modern bars represent
+January states; hatched paper bars are annual 2019 values shown only for
+scale. Panels B and C compare deterministic posterior latent-mean RMSE by
+site for methane in ppb and ethane in ppt.</span><a class="headerlink" href="#id9" title="Link to this image">#</a></p>
+</figcaption>
+</figure>
+</section>
+<section id="comparison-with-ramsden-et-al-2022">
+<h2>Comparison with Ramsden et al. (2022)<a class="headerlink" href="#comparison-with-ramsden-et-al-2022" title="Link to this heading">#</a></h2>
+<p>The modern regional posterior-mean physical ratios span 0.0386–0.1997, with
+median 0.0674. This is inside the paper’s 2015–2019 regional range 0.009–0.2
+and is consistent in scale with the independent ratios quoted there:
+approximately 0.06 for UK gas leaks and 0.088 (0.04–0.18) for sampled North
+Sea plumes. Those external observations are sparse and local, so this is
+context rather than a validation score.</p>
+<p>The paper’s annual 2019 methane estimates and the modern January annualized
+state are:</p>
+<div class="pst-scrollable-table-container"><table class="table" id="id10">
+<caption><span class="caption-text">Paper context versus the modern January state</span><a class="headerlink" href="#id10" title="Link to this table">#</a></caption>
+<colgroup>
+<col style="width: 26.0%" />
+<col style="width: 37.0%" />
+<col style="width: 37.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Sector</p></th>
+<th class="head"><p>Paper annual 2019</p></th>
+<th class="head"><p>Modern January annualized state</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Fossil fuel</p></td>
+<td><p>0.25 (0.23–0.28)</p></td>
+<td><p>0.278 (0.214–0.352)</p></td>
+</tr>
+<tr class="row-odd"><td><p>Non-fossil</p></td>
+<td><p>1.90 (1.78–2.04)</p></td>
+<td><p>1.657 (1.413–1.896)</p></td>
+</tr>
+<tr class="row-even"><td><p>Total</p></td>
+<td><p>2.15 (2.03–2.28)</p></td>
+<td><p>1.936 (1.696–2.174)</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>Units are Tg CH4 yr-1 and intervals are 95% posterior intervals. All interval
+pairs overlap, but seasonal and annual averaging prevent a stronger
+reproduction claim.</p>
+<p>The paper also reports that adding ethane lowers fossil emissions by about 15%
+relative to a methane-only inversion and reduces fossil interval width by 15%
+on average and up to 35%. The present validation has no matched methane-only
+counterfactual, so those claims were not tested.</p>
+</section>
+<section id="paper-inconsistencies-affecting-interpretation">
+<h2>Paper inconsistencies affecting interpretation<a class="headerlink" href="#paper-inconsistencies-affecting-interpretation" title="Link to this heading">#</a></h2>
+<p>Three inconsistencies in the paper matter for exact reproduction:</p>
+<ol class="arabic simple">
+<li><p>The methods state a methane model-error prior of <code class="docutils literal notranslate"><span class="pre">Uniform(10,</span> <span class="pre">50)</span></code> ppb,
+but the results report an overall mean of 7.75 ppb and say 75% of site-month
+means lie between 5 and 10 ppb. Those results are impossible under the
+printed prior. The retained <code class="docutils literal notranslate"><span class="pre">Uniform(0,</span> <span class="pre">50)</span></code> implementation resolves the
+contradiction.</p></li>
+<li><p>The paper prints the ethane model-error bounds in ppb, while its ethane
+figures use pmol mol-1, equivalent to ppt. The retained data and
+configuration also support ppt.</p></li>
+<li><p>The text describes one fixed-ratio sensitivity case as April 2019, while
+the corresponding figure caption says May 2015.</p></li>
+</ol>
+</section>
+<section id="implementation-differences">
+<h2>Implementation differences<a class="headerlink" href="#implementation-differences" title="Link to this heading">#</a></h2>
+<p>The modern port preserves the paper-shaped equations, not the historical
+software stack:</p>
+<ul class="simple">
+<li><p>PyMC/NumPyro NUTS and ArviZ replace the custom adaptive random-walk sampler
+and bespoke output format.</p></li>
+<li><p>Prepared canonical datasets replace the historical loaders, cache, and
+configuration parser.</p></li>
+<li><p>Source labels, state indexes, basis maps, unit scales, ratio provenance, and
+boundary configuration are validated explicitly.</p></li>
+<li><p>The direct physical ratio and the multiplier of a pre-scaled tracer design
+are represented separately.</p></li>
+<li><p>The module does not reproduce historical gridded/country post-processing.</p></li>
+</ul>
+<p>The historical generalized branch also contains documented correctness
+problems, including a stale boundary proposal state, brittle posterior slicing,
+and omission of the sampled ratio from ethane gridded/country output. The
+comparison therefore uses explicit state variables, methane aggregate fluxes,
+boundary states, physical ratios, and observation latent means rather than the
+suspect stored national ethane result.</p>
+</section>
+<section id="assessment-and-follow-up">
+<h2>Assessment and follow-up<a class="headerlink" href="#assessment-and-follow-up" title="Link to this heading">#</a></h2>
+<p>The evidence supports computational fidelity of the modern forward model and
+posterior target for this retained January case:</p>
+<ul class="simple">
+<li><p>fossil UK methane flux is reproduced within 1%;</p></li>
+<li><p>all regional 95% posterior intervals overlap;</p></li>
+<li><p>fossil and ratio spatial patterns agree strongly;</p></li>
+<li><p>boundary states and observation-space latent means are nearly identical; and</p></li>
+<li><p>the distinctive ethane model-error ceiling is reproduced.</p></li>
+</ul>
+<p>It does not establish full reproduction of the paper. That would require:</p>
+<ul class="simple">
+<li><p>all 60 monthly inversions for 2015–2019;</p></li>
+<li><p>the exact original measurement-error inputs;</p></li>
+<li><p>a matched methane-only counterfactual; and</p></li>
+<li><p>the paper’s annual aggregation and uncertainty comparison.</p></li>
+</ul>
+<p>The low ethane posterior-predictive coverage should remain visible in any
+future milestone work. A generic linked-tracer API should preserve the
+successful shared-state and ratio contracts while making data preparation,
+unit provenance, predictive diagnostics, and tracer-aware output explicit.</p>
+</section>
+<section id="reference">
+<h2>Reference<a class="headerlink" href="#reference" title="Link to this heading">#</a></h2>
+<p>A. E. Ramsden et al. (2022), “Quantifying fossil fuel methane emissions using
+observations of atmospheric ethane and an uncertain emission ratio”,
+<em>Atmospheric Chemistry and Physics</em> 22, 3911–3929,
+<a class="reference external" href="https://doi.org/10.5194/acp-22-3911-2022">doi:10.5194/acp-22-3911-2022</a>.</p>
+</section>
+</section>
+
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="ramsden2022.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">Ramsden methane/ethane model</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="../reference/modules.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">openghg_inversions</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+                <dialog id="pst-secondary-sidebar-modal"></dialog>
+                <div id="pst-secondary-sidebar" class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#outcome">Outcome</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#what-was-tested">What was tested</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#terminology-and-truth">Terminology and truth</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#input-provenance-and-limitations">Input provenance and limitations</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#sampling-diagnostics">Sampling diagnostics</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#flux-space-results">Flux-space results</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#regional-state-results">Regional state results</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#observation-space-results">Observation-space results</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#model-error-and-boundary-results">Model-error and boundary results</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#primary-figure">Primary figure</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#comparison-with-ramsden-et-al-2022">Comparison with Ramsden et al. (2022)</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#paper-inconsistencies-affecting-interpretation">Paper inconsistencies affecting interpretation</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#implementation-differences">Implementation differences</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#assessment-and-follow-up">Assessment and follow-up</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#reference">Reference</a></li>
+</ul>
+  </nav></div>
+
+  <div class="sidebar-secondary-item">
+
+  <div class="tocsection sourcelink">
+    <a href="../_sources/experimental/ramsden2022_validation.rst.txt">
+      <i class="fa-solid fa-file-lines"></i> Show Source
+    </a>
+  </div>
+</div>
+
+</div></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../_static/scripts/bootstrap.js?digest=90905a2f556bf617f1a9"></script>
+<script defer src="../_static/scripts/pydata-sphinx-theme.js?digest=90905a2f556bf617f1a9"></script>
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+
+  <p class="copyright">
+    
+      © Copyright 2025, Eric Saboya and Brendan Murphy.
+      <br/>
+    
+  </p>
+</div>
+      
+        <div class="footer-item">
+
+  <p class="sphinx-version">
+    Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 9.0.4.
+    <br/>
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+    <div class="footer-items__end">
+      
+        <div class="footer-item">
+<p class="theme-version">
+  <!-- # L10n: Setting the PST URL as an argument as this does not need to be localized -->
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.20.0.
+</p></div>
+      
+    </div>
+  
+</div>
+
+  </footer>
+  </body>
+</html>

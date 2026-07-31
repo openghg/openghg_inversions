@@ -139,6 +139,13 @@
 
 
 <li class="nav-item ">
+  <a class="nav-link nav-internal" href="../experimental/index.html">
+    Experimental code
+  </a>
+</li>
+
+
+<li class="nav-item ">
   <a class="nav-link nav-internal" href="../reference/modules.html">
     openghg_inversions
   </a>
@@ -227,6 +234,13 @@
 <li class="nav-item current active">
   <a class="nav-link nav-internal" href="usage.html">
     Using OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../experimental/index.html">
+    Experimental code
   </a>
 </li>
 
@@ -580,6 +594,14 @@ class/source-local field being partitioned. Thresholds such as <code class="docu
 different things for those policies, and generated region counts become upper
 targets when split stopping rejects remaining candidates. These child-share
 policies are not currently routed through RHIME config options.</p>
+<p><code class="docutils literal notranslate"><span class="pre">MaxChildPCAEccentricity</span></code> strictly checks every proposed child by default.
+Its optional <code class="docutils literal notranslate"><span class="pre">min_child_target_weight_share</span></code> parameter can exempt only
+children below a configured share of the same class/source-local equal-target
+weight. This lets a low-weight, topology-forced fragment avoid vetoing
+well-shaped material children produced by <code class="docutils literal notranslate"><span class="pre">ConnectedComponentPartitionStep</span></code>.
+The exception changes split acceptance only: it does not reconnect, freeze,
+prune, or marginalize the resulting small region. A direct three-argument
+policy call has no target-region context and therefore remains strict.</p>
 </section>
 <section id="output-formats">
 <h2>Output Formats<a class="headerlink" href="#output-formats" title="Link to this heading">#</a></h2>

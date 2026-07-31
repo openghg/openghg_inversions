@@ -29,4 +29,5 @@ Releases are tagged with a `DOI <https://doi.org/10.5281/zenodo.10650595>`_.
    :caption: Contents:
 
    usage/usage
+   experimental/index
    reference/modules

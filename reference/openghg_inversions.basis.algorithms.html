@@ -138,6 +138,13 @@
 </li>
 
 
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../experimental/index.html">
+    Experimental code
+  </a>
+</li>
+
+
 <li class="nav-item current active">
   <a class="nav-link nav-internal" href="modules.html">
     openghg_inversions
@@ -231,6 +238,13 @@
 </li>
 
 
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../experimental/index.html">
+    Experimental code
+  </a>
+</li>
+
+
 <li class="nav-item current active">
   <a class="nav-link nav-internal" href="modules.html">
     openghg_inversions
@@ -292,6 +306,13 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.config.config.html">openghg_inversions.config.config</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.config.paths.html">openghg_inversions.config.paths</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.config.version.html">openghg_inversions.config.version</a></li>
+</ul>
+</details></li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.experimental.html">openghg_inversions.experimental</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="openghg_inversions.experimental.ramsden2022.html">openghg_inversions.experimental.ramsden2022</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.experimental.ramsden2022.model.html">openghg_inversions.experimental.ramsden2022.model</a></li>
+</ul>
+</details></li>
 </ul>
 </details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.hbmcmc.html">openghg_inversions.hbmcmc</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
@@ -497,6 +518,45 @@ itself remains a row- or column-aligned cut.</p></li>
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">openghg_inversions.basis.algorithms.</span></span><span class="sig-name descname"><span class="pre">ComponentConsolidationPolicy</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.algorithms.ComponentConsolidationPolicy" title="Link to this definition">#</a></dt>
 <dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Protocol" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Protocol</span></code></a></p>
 <p>Policy protocol for optional post-construction region consolidation.</p>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="openghg_inversions.basis.algorithms.ConnectedBinaryPartitionStep">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">openghg_inversions.basis.algorithms.</span></span><span class="sig-name descname"><span class="pre">ConnectedBinaryPartitionStep</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">split_step</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#openghg_inversions.basis.algorithms.PartitionStep" title="openghg_inversions.basis.algorithms._constrained.PartitionStep"><span class="pre">PartitionStep</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">connectivity</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.algorithms.ConnectedBinaryPartitionStep" title="Link to this definition">#</a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>Repair a provisional binary split into two connected child partitions.</p>
+<p>This opt-in wrapper preserves binary arity when disconnected cut fragments
+can be reassigned safely. It labels the connected components on both sides,
+retains one primary component on each original side, and moves every
+secondary component to the opposite side. Candidates are valid only when
+both resulting children are connected.</p>
+<p>Valid candidates are selected deterministically by minimum moved fitting
+weight, then minimum absolute child-weight imbalance, then row-major
+component order. If the wrapped step does not return a valid binary
+partition, or no connected binary reassignment exists, the result falls
+back to the same multi-child component decomposition as
+<a class="reference internal" href="#openghg_inversions.basis.algorithms.ConnectedComponentPartitionStep" title="openghg_inversions.basis.algorithms.ConnectedComponentPartitionStep"><code class="xref py py-class docutils literal notranslate"><span class="pre">ConnectedComponentPartitionStep</span></code></a>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Variables<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>split_step</strong> (<a class="reference internal" href="#openghg_inversions.basis.algorithms.PartitionStep" title="openghg_inversions.basis.algorithms._constrained.PartitionStep"><em>openghg_inversions.basis.algorithms._constrained.PartitionStep</em></a>) – Partition step whose provisional binary children should be
+repaired.</p></li>
+<li><p><strong>connectivity</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a>) – Two-dimensional neighbourhood definition. <code class="docutils literal notranslate"><span class="pre">1</span></code> uses
+edge-sharing (four-neighbour) connectivity and <code class="docutils literal notranslate"><span class="pre">2</span></code> additionally
+includes corner-sharing (eight-neighbour) connectivity.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="openghg_inversions.basis.algorithms.ConnectedBinaryPartitionStep.connectivity">
+<span class="sig-name descname"><span class="pre">connectivity</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">1</span></span><a class="headerlink" href="#openghg_inversions.basis.algorithms.ConnectedBinaryPartitionStep.connectivity" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="openghg_inversions.basis.algorithms.ConnectedBinaryPartitionStep.split_step">
+<span class="sig-name descname"><span class="pre">split_step</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#openghg_inversions.basis.algorithms.PartitionStep" title="openghg_inversions.basis.algorithms._constrained.PartitionStep"><span class="pre">PartitionStep</span></a></span><a class="headerlink" href="#openghg_inversions.basis.algorithms.ConnectedBinaryPartitionStep.split_step" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
 </dd></dl>
 
 <dl class="py class">
@@ -921,7 +981,7 @@ returned north-south and east-west metre offsets.</p></li>
 
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.basis.algorithms.MaxChildPCAEccentricity">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">openghg_inversions.basis.algorithms.</span></span><span class="sig-name descname"><span class="pre">MaxChildPCAEccentricity</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">max_child_pca_eccentricity</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">geometry</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#openghg_inversions.basis.algorithms.SplitGeometry" title="openghg_inversions.basis.algorithms._constrained.SplitGeometry"><span class="pre">SplitGeometry</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tolerance</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1e-12</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.algorithms.MaxChildPCAEccentricity" title="Link to this definition">#</a></dt>
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">openghg_inversions.basis.algorithms.</span></span><span class="sig-name descname"><span class="pre">MaxChildPCAEccentricity</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">max_child_pca_eccentricity</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">geometry</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#openghg_inversions.basis.algorithms.SplitGeometry" title="openghg_inversions.basis.algorithms._constrained.SplitGeometry"><span class="pre">SplitGeometry</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tolerance</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1e-12</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_child_target_weight_share</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.0</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.algorithms.MaxChildPCAEccentricity" title="Link to this definition">#</a></dt>
 <dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
 <p>Reject splits that create child partitions above a PCA eccentricity limit.</p>
 <p>The eccentricity is computed from each child partition’s unweighted node
@@ -930,6 +990,31 @@ otherwise row/column index coordinates are used. Single-cell children have
 eccentricity <code class="docutils literal notranslate"><span class="pre">1</span></code> because they have no resolvable long axis. Multi-cell
 rank-one children have infinite eccentricity and are rejected by any finite
 threshold.</p>
+<p>By default, every child is subject to the eccentricity limit. Setting
+<code class="docutils literal notranslate"><span class="pre">min_child_target_weight_share</span></code> exempts children whose weight is below
+that share of one class/source-local equal-weight target region,
+<code class="docutils literal notranslate"><span class="pre">weights.sum()</span> <span class="pre">/</span> <span class="pre">target_regions</span></code>. This target-aware exception is used
+only through <a class="reference internal" href="#openghg_inversions.basis.algorithms.MaxChildPCAEccentricity.accept_split" title="openghg_inversions.basis.algorithms.MaxChildPCAEccentricity.accept_split"><code class="xref py py-meth docutils literal notranslate"><span class="pre">accept_split()</span></code></a>; the conservative three-argument call
+remains strict.</p>
+<p>The exception affects split acceptance only. It does not reconnect, freeze,
+prune, or marginalize an exempt child after the split is accepted.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.basis.algorithms.MaxChildPCAEccentricity.accept_split">
+<span class="sig-name descname"><span class="pre">accept_split</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">parent</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.14)"><span class="pre">list</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">children</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.14)"><span class="pre">list</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.14)"><span class="pre">list</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">weights</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><span class="pre">ndarray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_regions</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span></span><a class="headerlink" href="#openghg_inversions.basis.algorithms.MaxChildPCAEccentricity.accept_split" title="Link to this definition">#</a></dt>
+<dd><p>Return true when every materially weighted child meets the limit.</p>
+<p><code class="docutils literal notranslate"><span class="pre">weights</span></code> is the class/source-local field passed to greedy
+partitioning, so <code class="docutils literal notranslate"><span class="pre">weights.sum()</span> <span class="pre">/</span> <span class="pre">target_regions</span></code> is the equal-weight
+target region weight. Children strictly below
+<code class="docutils literal notranslate"><span class="pre">min_child_target_weight_share</span></code> times that reference weight are
+exempt from the eccentricity veto.</p>
+<p>If the total weight is zero, cell counts provide the same direct-call
+fallback used by <a class="reference internal" href="#openghg_inversions.basis.algorithms.MinChildTargetWeightShare" title="openghg_inversions.basis.algorithms.MinChildTargetWeightShare"><code class="xref py py-class docutils literal notranslate"><span class="pre">MinChildTargetWeightShare</span></code></a>; the default greedy
+strategy already converts all-zero classes to an area surrogate before
+policies are evaluated. If every child is below the materiality
+threshold, the strict guard is retained rather than accepting
+vacuously.</p>
+</dd></dl>
+
 <dl class="py attribute">
 <dt class="sig sig-object py" id="openghg_inversions.basis.algorithms.MaxChildPCAEccentricity.geometry">
 <span class="sig-name descname"><span class="pre">geometry</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#openghg_inversions.basis.algorithms.SplitGeometry" title="openghg_inversions.basis.algorithms._constrained.SplitGeometry"><span class="pre">SplitGeometry</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#openghg_inversions.basis.algorithms.MaxChildPCAEccentricity.geometry" title="Link to this definition">#</a></dt>
@@ -938,6 +1023,11 @@ threshold.</p>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="openghg_inversions.basis.algorithms.MaxChildPCAEccentricity.max_child_pca_eccentricity">
 <span class="sig-name descname"><span class="pre">max_child_pca_eccentricity</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><a class="headerlink" href="#openghg_inversions.basis.algorithms.MaxChildPCAEccentricity.max_child_pca_eccentricity" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="openghg_inversions.basis.algorithms.MaxChildPCAEccentricity.min_child_target_weight_share">
+<span class="sig-name descname"><span class="pre">min_child_target_weight_share</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">0.0</span></span><a class="headerlink" href="#openghg_inversions.basis.algorithms.MaxChildPCAEccentricity.min_child_target_weight_share" title="Link to this definition">#</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
@@ -1375,6 +1465,11 @@ Defaults to 1</p></li>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.algorithms.ComponentConsolidationPolicy"><code class="docutils literal notranslate"><span class="pre">ComponentConsolidationPolicy</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.algorithms.ConnectedBinaryPartitionStep"><code class="docutils literal notranslate"><span class="pre">ConnectedBinaryPartitionStep</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.algorithms.ConnectedBinaryPartitionStep.connectivity"><code class="docutils literal notranslate"><span class="pre">ConnectedBinaryPartitionStep.connectivity</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.algorithms.ConnectedBinaryPartitionStep.split_step"><code class="docutils literal notranslate"><span class="pre">ConnectedBinaryPartitionStep.split_step</span></code></a></li>
+</ul>
+</li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.algorithms.ConnectedComponentPartitionStep"><code class="docutils literal notranslate"><span class="pre">ConnectedComponentPartitionStep</span></code></a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.algorithms.ConnectedComponentPartitionStep.connectivity"><code class="docutils literal notranslate"><span class="pre">ConnectedComponentPartitionStep.connectivity</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.algorithms.ConnectedComponentPartitionStep.split_step"><code class="docutils literal notranslate"><span class="pre">ConnectedComponentPartitionStep.split_step</span></code></a></li>
@@ -1438,8 +1533,10 @@ Defaults to 1</p></li>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.algorithms.MaxChildPCAEccentricity"><code class="docutils literal notranslate"><span class="pre">MaxChildPCAEccentricity</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.algorithms.MaxChildPCAEccentricity.accept_split"><code class="docutils literal notranslate"><span class="pre">MaxChildPCAEccentricity.accept_split()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.algorithms.MaxChildPCAEccentricity.geometry"><code class="docutils literal notranslate"><span class="pre">MaxChildPCAEccentricity.geometry</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.algorithms.MaxChildPCAEccentricity.max_child_pca_eccentricity"><code class="docutils literal notranslate"><span class="pre">MaxChildPCAEccentricity.max_child_pca_eccentricity</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.algorithms.MaxChildPCAEccentricity.min_child_target_weight_share"><code class="docutils literal notranslate"><span class="pre">MaxChildPCAEccentricity.min_child_target_weight_share</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.algorithms.MaxChildPCAEccentricity.tolerance"><code class="docutils literal notranslate"><span class="pre">MaxChildPCAEccentricity.tolerance</span></code></a></li>
 </ul>
 </li>

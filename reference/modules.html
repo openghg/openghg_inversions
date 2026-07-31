@@ -46,7 +46,7 @@
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
     <link rel="next" title="openghg_inversions" href="openghg_inversions.html" />
-    <link rel="prev" title="Concrete RHIME Model" href="../usage/concrete_rhime_model.html" />
+    <link rel="prev" title="Ramsden real-data validation" href="../experimental/ramsden2022_validation.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="" />
@@ -134,6 +134,13 @@
 <li class="nav-item ">
   <a class="nav-link nav-internal" href="../usage/usage.html">
     Using OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../experimental/index.html">
+    Experimental code
   </a>
 </li>
 
@@ -231,6 +238,13 @@
 </li>
 
 
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../experimental/index.html">
+    Experimental code
+  </a>
+</li>
+
+
 <li class="nav-item current active">
   <a class="nav-link nav-internal" href="#">
     openghg_inversions
@@ -292,6 +306,13 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.config.config.html">openghg_inversions.config.config</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.config.paths.html">openghg_inversions.config.paths</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.config.version.html">openghg_inversions.config.version</a></li>
+</ul>
+</details></li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.experimental.html">openghg_inversions.experimental</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="openghg_inversions.experimental.ramsden2022.html">openghg_inversions.experimental.ramsden2022</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.experimental.ramsden2022.model.html">openghg_inversions.experimental.ramsden2022.model</a></li>
+</ul>
+</details></li>
 </ul>
 </details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.hbmcmc.html">openghg_inversions.hbmcmc</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
@@ -433,6 +454,7 @@
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.AxisAlignedWeightedSplitStrategy"><code class="docutils literal notranslate"><span class="pre">AxisAlignedWeightedSplitStrategy</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.AxisParallelSplitStep"><code class="docutils literal notranslate"><span class="pre">AxisParallelSplitStep</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.ComponentConsolidationPolicy"><code class="docutils literal notranslate"><span class="pre">ComponentConsolidationPolicy</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.ConnectedBinaryPartitionStep"><code class="docutils literal notranslate"><span class="pre">ConnectedBinaryPartitionStep</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.ConnectedComponentPartitionStep"><code class="docutils literal notranslate"><span class="pre">ConnectedComponentPartitionStep</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.ConnectedComponentSplitStrategy"><code class="docutils literal notranslate"><span class="pre">ConnectedComponentSplitStrategy</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.ContrastProximityComponentConsolidation"><code class="docutils literal notranslate"><span class="pre">ContrastProximityComponentConsolidation</span></code></a></li>
@@ -508,6 +530,20 @@
 </li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.config.version.html">openghg_inversions.config.version</a><ul>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.config.version.html#openghg_inversions.config.version.code_version"><code class="docutils literal notranslate"><span class="pre">code_version()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.experimental.html">openghg_inversions.experimental</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.experimental.ramsden2022.html">openghg_inversions.experimental.ramsden2022</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.experimental.ramsden2022.html#openghg_inversions.experimental.ramsden2022.RamsdenChannelSpec"><code class="docutils literal notranslate"><span class="pre">RamsdenChannelSpec</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.experimental.ramsden2022.html#openghg_inversions.experimental.ramsden2022.RamsdenModelSpec"><code class="docutils literal notranslate"><span class="pre">RamsdenModelSpec</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.experimental.ramsden2022.html#openghg_inversions.experimental.ramsden2022.RamsdenPreparedInputs"><code class="docutils literal notranslate"><span class="pre">RamsdenPreparedInputs</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.experimental.ramsden2022.html#openghg_inversions.experimental.ramsden2022.RamsdenResult"><code class="docutils literal notranslate"><span class="pre">RamsdenResult</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.experimental.ramsden2022.html#openghg_inversions.experimental.ramsden2022.RamsdenSectorSpec"><code class="docutils literal notranslate"><span class="pre">RamsdenSectorSpec</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.experimental.ramsden2022.html#openghg_inversions.experimental.ramsden2022.build_ramsden_model"><code class="docutils literal notranslate"><span class="pre">build_ramsden_model()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.experimental.ramsden2022.html#openghg_inversions.experimental.ramsden2022.run_ramsden_from_prepared_inputs"><code class="docutils literal notranslate"><span class="pre">run_ramsden_from_prepared_inputs()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.experimental.ramsden2022.model.html">openghg_inversions.experimental.ramsden2022.model</a></li>
 </ul>
 </li>
 </ul>
@@ -1098,12 +1134,12 @@
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="../usage/concrete_rhime_model.html"
+       href="../experimental/ramsden2022_validation.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">Concrete RHIME Model</p>
+        <p class="prev-next-title">Ramsden real-data validation</p>
       </div>
     </a>
     <a class="right-next"
