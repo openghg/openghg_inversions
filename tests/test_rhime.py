@@ -4730,18 +4730,29 @@ def test_make_multisector_output_bundle_builds_latest_paris_flux(
 
 
 def test_modern_inversion_output_save_load_roundtrip(tmp_path: Path) -> None:
-    """Modern InversionOutput preserves trace burn metadata, inputs, and basis."""
-    model_spec, output_spec, run_spec = _minimal_output_specs()
+    """Modern output preserves January annual flux metadata for a June run."""
+    model_spec, output_spec, _ = _minimal_output_specs()
     model_spec = RhimeModelSpec(
         species=model_spec.species,
         domain=model_spec.domain,
         sectors=model_spec.sectors,
         builder_strategy="compiled",
     )
+    run_spec = RhimeRunSpec(
+        "2019-06-01",
+        "2019-07-01",
+        ("TAC",),
+        ("1h",),
+        model_spec,
+        output_spec,
+    )
     basis_artifact_path = str(tmp_path / "unit-basis.nc")
+    basis_functions = _fake_basis_functions(artifact_source="unit-test")
+    annual_flux = basis_functions.flux.expand_dims(flux_time=pd.to_datetime(["2019-01-01"]))
+    annual_flux.attrs["time_period"] = "1 year"
     prepared = RhimePreparedInputs(
         inv_inputs=_minimal_output_inv_inputs(),
-        basis_functions=_fake_basis_functions(artifact_source="unit-test").with_metadata(
+        basis_functions=basis_functions.with_flux(annual_flux).with_metadata(
             {BASIS_ARTIFACT_PATH_ATTR: basis_artifact_path}
         ),
         sites=("TAC",),
@@ -4768,7 +4779,8 @@ def test_modern_inversion_output_save_load_roundtrip(tmp_path: Path) -> None:
 
     assert reloaded.species == "ch4"
     assert reloaded.domain == "EUROPE"
-    assert reloaded.start_date == "2019-01-01"
+    assert reloaded.start_date == "2019-06-01"
+    assert reloaded.end_date == "2019-07-01"
     assert reloaded.run_metadata["basis_artifact_source"] == "unit-test"
     assert reloaded.run_metadata["basis_artifact_path"] == basis_artifact_path
     assert reloaded.basis_functions.basis_artifact_path == basis_artifact_path
@@ -4779,6 +4791,11 @@ def test_modern_inversion_output_save_load_roundtrip(tmp_path: Path) -> None:
     assert cast(Any, reloaded.trace).posterior.attrs["burn"] == 1000
     xr.testing.assert_identical(reloaded.inv_inputs, prepared.inv_inputs)
     xr.testing.assert_identical(reloaded.basis_functions.flux, prepared.basis_functions.flux)
+    np.testing.assert_array_equal(
+        reloaded.flux["flux_time"].values,
+        np.array(["2019-01-01"], dtype="datetime64[ns]"),
+    )
+    assert reloaded.flux.attrs["time_period"] == "1 year"
     xr.testing.assert_equal(
         reloaded.basis_functions.operator.basis_matrix,
         prepared.basis_functions.operator.basis_matrix,

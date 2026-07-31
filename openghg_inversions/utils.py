@@ -9,6 +9,7 @@ Many functions in this submodule originated in the ACRG code base (in `acrg.name
 """
 
 import re
+from itertools import pairwise
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Literal
@@ -16,12 +17,10 @@ from typing import Any, Literal
 import numpy as np
 import pandas as pd
 import xarray as xr
-
 from openghg.analyse import combine_datasets as openghg_combine_datasets
 
 from openghg_inversions._country_file import load_country_dataset
 from openghg_inversions.config.paths import Paths
-
 
 openghginv_path = Paths.openghginv
 
@@ -321,16 +320,81 @@ def areagrid(lat: np.ndarray, lon: np.ndarray) -> np.ndarray:
 # These stay private because they are implementation details for mapping
 # observation times onto available time-varying flux slices.
 # ---------------------------------------------------------------------
+def _normalize_flux_period(time_period: object) -> str | None:
+    """Normalize a calendar alias or validate a positive fixed period.
+
+    Args:
+        time_period: Source period metadata to interpret.
+
+    Returns:
+        ``"yearly"`` or ``"monthly"`` for recognized calendar aliases, the
+        stripped input for a positive fixed duration, or ``None`` when the
+        value is missing or unsupported.
+    """
+    period = str(time_period).strip()
+    normalized_period = period.casefold()
+    if _flux_period_is_missing(time_period):
+        return None
+    if normalized_period in {"1 year", "year", "yearly", "annual", "annually"}:
+        return "yearly"
+    if normalized_period in {"1 month", "month", "monthly"}:
+        return "monthly"
+
+    try:
+        fixed_period = pd.to_timedelta(period)
+    except (TypeError, ValueError):
+        return None
+    if pd.isna(fixed_period) or fixed_period <= pd.Timedelta(0):
+        return None
+    return period
+
+
+def _flux_period_is_missing(time_period: object) -> bool:
+    """Return whether source period metadata contains no usable value."""
+    if time_period is None or bool(pd.isna(time_period)):
+        return True
+    return str(time_period).strip().casefold() in {"", "nan", "nat", "none"}
+
+
+def _infer_calendar_flux_period(times: xr.DataArray | np.ndarray) -> str | None:
+    """Infer a regular yearly or monthly calendar period from timestamps.
+
+    Args:
+        times: Candidate flux-period start timestamps.
+
+    Returns:
+        ``"yearly"`` or ``"monthly"`` when every adjacent pair follows that
+        calendar offset, otherwise ``None``.
+    """
+    values = times.values if isinstance(times, xr.DataArray) else times
+    time_values = pd.DatetimeIndex(pd.to_datetime(values)).sort_values().unique()
+    if len(time_values) <= 1:
+        return None
+
+    consecutive_times = pairwise(time_values)
+    if all(end == start + pd.DateOffset(years=1) for start, end in consecutive_times):
+        return "yearly"
+
+    consecutive_times = pairwise(time_values)
+    if all(end == start + pd.DateOffset(months=1) for start, end in consecutive_times):
+        return "monthly"
+
+    return None
+
+
 def _infer_flux_period(times: xr.DataArray | np.ndarray, time_period: str | None = None) -> str:
     """Infer whether flux slices are yearly or monthly."""
     if time_period is not None:
-        time_period = str(time_period).lower()
-        if "year" in time_period:
-            return "yearly"
-        if "month" in time_period:
-            return "monthly"
+        normalized_period = _normalize_flux_period(time_period)
+        if normalized_period in ("yearly", "monthly"):
+            return normalized_period
 
-    time_values = pd.to_datetime(times)
+    calendar_period = _infer_calendar_flux_period(times)
+    if calendar_period is not None:
+        return calendar_period
+
+    values = times.values if isinstance(times, xr.DataArray) else times
+    time_values = pd.to_datetime(values)
     if len(time_values) <= 1:
         return "yearly"
 
@@ -347,8 +411,12 @@ def _map_times_to_available_period_positions(
 ) -> np.ndarray:
     """Map timestamps onto contiguous period positions defined by available flux periods."""
     period_code = "Y" if period == "yearly" else "M"
-    time_periods = pd.to_datetime(times).to_period(period_code)
-    available_periods = pd.Index(pd.to_datetime(available_times).to_period(period_code).unique())
+    time_values = times.values if isinstance(times, xr.DataArray) else times
+    available_time_values = (
+        available_times.values if isinstance(available_times, xr.DataArray) else available_times
+    )
+    time_periods = pd.to_datetime(time_values).to_period(period_code)
+    available_periods = pd.Index(pd.to_datetime(available_time_values).to_period(period_code).unique())
 
     if len(time_periods) == 0:
         return np.array([], dtype=int)

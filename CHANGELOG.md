@@ -4,6 +4,11 @@
 
 ## Code changes
 
+- Preserve retrieved flux periods instead of inferring them from inversion
+  duration, including annual priors used by mid-year monthly inversions.
+  Calendar-aware PARIS postprocessing and legacy merged-data round trips now
+  retain the original flux timestamps and per-source period metadata.
+  [#539](https://github.com/openghg/openghg_inversions/issues/539)
 - Kept all site-aligned retrieval options paired with retained sites across
   merged-data reloads, retrieval failures, and observation filtering. Explicit
   empty site selections now fail instead of expanding to every loaded site,

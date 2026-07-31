@@ -16,7 +16,11 @@ from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.postprocessing.legacy_outputs import _compute_apriori_flux
 
 
-def _minimal_legacy_inv_inputs(*, include_bc: bool = False) -> xr.Dataset:
+def _minimal_legacy_inv_inputs(
+    *,
+    include_bc: bool = False,
+    observation_times: tuple[str, str] = ("2019-01-01T00:00:00", "2019-01-01T01:00:00"),
+) -> xr.Dataset:
     """Build observation and fallback sensitivity inputs for legacy output tests."""
     data_vars = {
         "H": (("region", "nmeasure"), np.array([[9.0, 9.0]])),
@@ -38,7 +42,7 @@ def _minimal_legacy_inv_inputs(*, include_bc: bool = False) -> xr.Dataset:
         "site": ("nmeasure", np.array(["TAC", "TAC"])),
         "time": (
             "nmeasure",
-            np.array(["2019-01-01T00:00:00", "2019-01-01T01:00:00"], dtype="datetime64[ns]"),
+            np.array(observation_times, dtype="datetime64[ns]"),
         ),
     }
     if include_bc:
@@ -48,7 +52,7 @@ def _minimal_legacy_inv_inputs(*, include_bc: bool = False) -> xr.Dataset:
     return xr.Dataset(data_vars=data_vars, coords=coords).set_index(nmeasure=["site", "time"])
 
 
-def _basis_functions_stub() -> SimpleNamespace:
+def _basis_functions_stub(*, flux_time: str | None = None, time_period: str | None = None) -> SimpleNamespace:
     """Return the minimal basis-functions interface consumed by the legacy adapter."""
     flux = xr.DataArray(
         np.array([[1.0]]),
@@ -56,6 +60,10 @@ def _basis_functions_stub() -> SimpleNamespace:
         coords={"lat": [52.0], "lon": [1.0]},
         name="flux",
     )
+    if flux_time is not None:
+        flux = flux.expand_dims(flux_time=pd.to_datetime([flux_time]))
+    if time_period is not None:
+        flux.attrs["time_period"] = time_period
     return SimpleNamespace(
         flux=flux,
         operator=SimpleNamespace(meta=SimpleNamespace(state_dim="region")),
@@ -71,7 +79,15 @@ def _write_minimal_country_file(path: str | Path) -> None:
         h5.create_dataset("name", data=np.array([b"UNITED KINGDOM"]))
 
 
-def _legacy_inv_out(*, model_data: bool, include_bc: bool = False, chains: int = 1) -> InversionOutput:
+def _legacy_inv_out(
+    *,
+    model_data: bool,
+    include_bc: bool = False,
+    chains: int = 1,
+    observation_times: tuple[str, str] = ("2019-01-01T00:00:00", "2019-01-01T01:00:00"),
+    flux_time: str | None = None,
+    time_period: str | None = None,
+) -> InversionOutput:
     """Build a minimal InversionOutput for legacy adapter tests."""
     draw_count = 3
     posterior_vars = {
@@ -106,8 +122,8 @@ def _legacy_inv_out(*, model_data: bool, include_bc: bool = False, chains: int =
 
     return InversionOutput(
         trace=cast(Any, az.InferenceData)(**groups),
-        inv_inputs=_minimal_legacy_inv_inputs(include_bc=include_bc),
-        basis_functions=cast(Any, _basis_functions_stub()),
+        inv_inputs=_minimal_legacy_inv_inputs(include_bc=include_bc, observation_times=observation_times),
+        basis_functions=cast(Any, _basis_functions_stub(flux_time=flux_time, time_period=time_period)),
         run_metadata={
             "start_date": "2019-01-01",
             "end_date": "2019-01-02",
@@ -223,6 +239,29 @@ def test_map_times_to_available_period_positions_handles_gappy_flux_months():
     np.testing.assert_array_equal(positions, np.array([0, 0, 1, 2]))
 
 
+def test_collapse_flux_time_maps_june_observations_to_january_annual_prior():
+    """Legacy output maps June observations onto the January annual flux slice."""
+    flux_time = pd.to_datetime(["2019-01-01"])
+    country = xr.Dataset(
+        {"country_posterior_mean": (("country", "flux_time"), np.array([[2.5]]))},
+        coords={"country": ["GBR"], "flux_time": flux_time},
+    )
+    observation_times = pd.to_datetime(["2019-06-01", "2019-06-15"])
+
+    collapsed = legacy_outputs._collapse_flux_time_for_legacy(
+        country,
+        observation_times.to_numpy(),
+        flux_time.to_numpy(),
+        "1 year",
+    )
+
+    assert "flux_time" not in collapsed.dims
+    xr.testing.assert_identical(
+        collapsed["country_posterior_mean"],
+        xr.DataArray([2.5], dims=("country",), coords={"country": ["GBR"]}, name="country_posterior_mean"),
+    )
+
+
 def test_legacy_country_index_falls_back_when_h5netcdf_open_fails(monkeypatch, tmp_path):
     """Legacy country index loading uses the same direct HDF5 fallback as modern country outputs."""
     country_file = tmp_path / "country_TEST.nc"
@@ -296,6 +335,58 @@ def test_make_legacy_hbmcmc_output_derives_model_data_inputs(
     np.testing.assert_allclose(output["sigtrace"].values, np.ones((3, 1, 2)))
     assert output.attrs["Convergence"] == "Unavailable"
     assert output.attrs["Emissions Prior"] == "pdf,normal,mu,1.0,sigma,0.2"
+
+
+def test_make_legacy_hbmcmc_output_maps_june_to_january_annual_flux(
+    stub_legacy_product_builders: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Legacy output maps June observations to a retained January annual flux."""
+    inv_out = _legacy_inv_out(
+        model_data=True,
+        observation_times=("2019-06-01T00:00:00", "2019-06-15T00:00:00"),
+        flux_time="2019-01-01",
+        time_period="1 year",
+    )
+
+    def fake_country_outputs(inv_out: InversionOutput, **kwargs: object) -> xr.Dataset:
+        return xr.Dataset(
+            {
+                "country_posterior_mean": (("country", "flux_time"), [[1.0]]),
+                "country_posterior_median": (("country", "flux_time"), [[1.0]]),
+                "country_posterior_mode": (("country", "flux_time"), [[1.0]]),
+                "country_posterior_stdev": (("country", "flux_time"), [[0.1]]),
+                "country_posterior_hdi_68": (
+                    ("country", "flux_time", "hdi"),
+                    np.ones((1, 1, 2)),
+                ),
+                "country_posterior_hdi_95": (
+                    ("country", "flux_time", "hdi"),
+                    np.ones((1, 1, 2)),
+                ),
+                "country_prior_mean": (("country", "flux_time"), [[1.0]]),
+            },
+            coords={
+                "country": ["United Kingdom"],
+                "flux_time": pd.to_datetime(["2019-01-01"]),
+                "hdi": ["lower", "upper"],
+            },
+        )
+
+    monkeypatch.setattr(legacy_outputs, "make_country_outputs", fake_country_outputs)
+
+    output = legacy_outputs.make_legacy_hbmcmc_output(inv_out)
+
+    for name in (
+        "countrymean",
+        "countrymedian",
+        "countrymode",
+        "countrysd",
+        "country68",
+        "country95",
+        "countryapriori",
+    ):
+        assert "flux_time" not in output[name].dims
 
 
 def test_make_legacy_hbmcmc_output_falls_back_to_inv_inputs_for_sensitivities(

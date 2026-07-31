@@ -19,13 +19,15 @@ from openghg_inversions.postprocessing.make_outputs import (
     make_flux_outputs,
     observation_inputs_for_outputs,
 )
-
 from openghg_inversions.postprocessing.make_paris_outputs import (
     DEFAULT_PARIS_TEMPLATE_VERSION,
+    _assign_flux_time_bounds,
     _flux_interval_midpoints,
+    infer_flux_frequency,
     make_paris_outputs,
-    paris_template_files,
+    paris_concentration_outputs,
     paris_flux_output,
+    paris_template_files,
 )
 
 
@@ -630,6 +632,164 @@ def test_flux_interval_midpoints_with_non_overlapping_times():
     assert midpoints[0] == expected_midpoint
 
 
+def test_paris_flux_interval_keeps_january_annual_prior_for_june_inversion():
+    """PARIS retains and clips a January annual interval for June observations."""
+    midpoints, valid_indices = _flux_interval_midpoints(
+        [pd.Timestamp("2019-01-01")],
+        pd.DateOffset(years=1),
+        pd.Timestamp("2019-06-01"),
+        pd.Timestamp("2019-07-01"),
+    )
+
+    assert midpoints == [pd.Timestamp("2019-06-16")]
+    assert valid_indices == [0]
+
+
+@pytest.mark.parametrize(
+    ("time_period", "expected"),
+    [
+        ("annual", "yearly"),
+        ("ANNUAL", "yearly"),
+        ("1 Year", "yearly"),
+        ("1 YEAR", "yearly"),
+        ("monthly", "monthly"),
+        ("MONTHLY", "monthly"),
+        ("1 Month", "monthly"),
+    ],
+)
+def test_infer_flux_frequency_normalizes_authoritative_period_spellings(time_period, expected):
+    """Authoritative period spellings are normalized case-insensitively."""
+    flux = xr.DataArray([1.0], dims="flux_time", attrs={"time_period": time_period})
+
+    assert infer_flux_frequency(flux) == expected
+
+
+def test_infer_flux_frequency_recognizes_calendar_annual_period_without_attrs():
+    """January starts spanning a leap year identify an annual calendar period."""
+    flux = xr.DataArray(
+        np.ones(3),
+        dims="flux_time",
+        coords={"flux_time": pd.to_datetime(["2019-01-01", "2020-01-01", "2021-01-01"])},
+    )
+
+    assert infer_flux_frequency(flux) == "yearly"
+
+
+def test_infer_flux_frequency_recognizes_unequal_calendar_month_period_without_attrs():
+    """Unequal month-start gaps identify a monthly calendar period."""
+    flux = xr.DataArray(
+        np.ones(3),
+        dims="flux_time",
+        coords={"flux_time": pd.to_datetime(["2020-01-01", "2020-02-01", "2020-03-01"])},
+    )
+
+    assert infer_flux_frequency(flux) == "monthly"
+
+
+def test_infer_flux_frequency_defaults_metadata_free_singleton_to_yearly():
+    """A metadata-free singleton retains the historical yearly default."""
+    flux = xr.DataArray(
+        [1.0],
+        dims="flux_time",
+        coords={"flux_time": pd.to_datetime(["2019-01-01"])},
+    )
+
+    assert infer_flux_frequency(flux) == "yearly"
+
+
+@pytest.mark.parametrize("time_period", ["", "NaT", np.nan])
+def test_infer_flux_frequency_treats_missing_period_attrs_as_absent(time_period):
+    """Missing-valued period attributes fall back to calendar timestamps."""
+    flux = xr.DataArray(
+        np.ones(3),
+        dims="flux_time",
+        coords={"flux_time": pd.to_datetime(["2019-01-01", "2020-01-01", "2021-01-01"])},
+        attrs={"time_period": time_period},
+    )
+
+    assert infer_flux_frequency(flux) == "yearly"
+
+
+def test_infer_flux_frequency_preserves_positive_fixed_period():
+    """A positive fixed period remains available to PARIS interval logic."""
+    flux = xr.DataArray(
+        [1.0],
+        dims="flux_time",
+        attrs={"time_period": "36h"},
+    )
+
+    assert infer_flux_frequency(flux) == "36h"
+
+
+@pytest.mark.parametrize("time_period", ["2 years", "3 months", "0 days", "-1 day"])
+def test_infer_flux_frequency_rejects_unsupported_or_nonpositive_period(time_period):
+    """Unsupported calendar multiples and non-positive fixed periods are rejected."""
+    flux = xr.DataArray(
+        [1.0],
+        dims="flux_time",
+        attrs={"time_period": time_period},
+    )
+
+    with pytest.raises(ValueError, match="Flux period"):
+        infer_flux_frequency(flux)
+
+
+def test_assign_flux_time_bounds_reports_non_overlapping_period_bounds():
+    """No overlapping period reports flux and inversion bounds with the frequency."""
+    flux = xr.Dataset(coords={"time": pd.to_datetime(["2019-01-01"])})
+
+    with pytest.raises(ValueError) as exc_info:
+        _assign_flux_time_bounds(
+            flux,
+            flux_frequency="yearly",
+            inv_start=pd.Timestamp("2021-01-01"),
+            inv_end=pd.Timestamp("2021-02-01"),
+        )
+
+    message = str(exc_info.value).lower()
+    assert "flux" in message
+    assert "inversion" in message
+    assert "frequency" in message
+    assert "yearly" in message
+    assert "2019-01-01" in message
+    assert "2020-01-01" in message
+    assert "2021-01-01" in message
+    assert "2021-02-01" in message
+
+
+def test_assign_flux_time_bounds_reports_empty_flux_times():
+    """An empty flux coordinate raises the same contextual overlap error."""
+    flux = xr.Dataset(coords={"time": pd.DatetimeIndex([])})
+
+    with pytest.raises(ValueError) as exc_info:
+        _assign_flux_time_bounds(
+            flux,
+            flux_frequency="yearly",
+            inv_start=pd.Timestamp("2021-01-01"),
+            inv_end=pd.Timestamp("2021-02-01"),
+        )
+
+    message = str(exc_info.value)
+    assert "yearly" in message
+    assert "no flux timestamps" in message
+    assert "2021-01-01" in message
+    assert "2021-02-01" in message
+
+
+@pytest.mark.parametrize("flux_frequency", ["NaT", "0 days", "-1 day"])
+def test_assign_flux_time_bounds_rejects_nonpositive_explicit_period(flux_frequency):
+    """Explicit PARIS periods must be finite and positive."""
+    flux = xr.Dataset(coords={"time": pd.to_datetime(["2021-01-01"])})
+
+    with pytest.raises(ValueError, match="positive fixed duration"):
+        _assign_flux_time_bounds(
+            flux,
+            flux_frequency=flux_frequency,
+            inv_start=pd.Timestamp("2021-01-01"),
+            inv_end=pd.Timestamp("2021-02-01"),
+        )
+
+
 def test_paris_flux_output_timestamp(inv_out, europe_country_file):
     """Check that the flux output time coordinate is the midpoint of the inversion period.
 
@@ -645,6 +805,77 @@ def test_paris_flux_output_timestamp(inv_out, europe_country_file):
     expected = inv_out.period_midpoint
 
     assert actual == expected
+
+
+def test_paris_flux_output_uses_january_annual_period_for_june_run(inv_out, europe_country_file):
+    """Public PARIS output clips a retained January annual period to a June run."""
+    inv_out.run_metadata["start_date"] = "2019-06-01"
+    inv_out.run_metadata["end_date"] = "2019-07-01"
+
+    assert infer_flux_frequency(inv_out.flux) == "yearly"
+    flux_outs = paris_flux_output(
+        inv_out,
+        country_file=europe_country_file,
+        flux_frequency=infer_flux_frequency(inv_out.flux),
+    )
+
+    assert flux_outs.sizes["time"] == 1
+    actual = pd.Timestamp("1970-01-01") + pd.Timedelta(days=float(flux_outs.time.values[0]))
+    assert actual == pd.Timestamp("2019-06-16")
+
+
+def test_latest_paris_flux_output_reports_clipped_annual_midpoint_and_bounds(inv_out, europe_country_file):
+    """Latest PARIS flux reports the exact midpoint and bounds of a clipped annual prior."""
+    inv_out.run_metadata["start_date"] = "2019-06-01"
+    inv_out.run_metadata["end_date"] = "2019-07-01"
+
+    flux_outs = paris_flux_output(
+        inv_out,
+        country_file=europe_country_file,
+        inversion_grid=False,
+        flux_frequency=infer_flux_frequency(inv_out.flux),
+        template_version="latest",
+    )
+
+    epoch = pd.Timestamp("1970-01-01")
+    actual = epoch + pd.Timedelta(days=float(flux_outs.time.values[0]))
+    bounds = epoch + pd.to_timedelta(flux_outs.time_bnds.values[0], unit="D")
+
+    assert flux_outs.sizes["time"] == 1
+    assert actual == pd.Timestamp("2019-06-16")
+    assert list(bounds) == [pd.Timestamp("2019-06-01"), pd.Timestamp("2019-07-01")]
+
+
+def test_legacy_paris_concentration_shifts_hourly_observations_to_midpoints(inv_out):
+    """Legacy PARIS concentration shifts hourly observation starts by 30 minutes."""
+    observation_starts = pd.DatetimeIndex(observation_inputs_for_outputs(inv_out).time.values).unique()
+    expected = (observation_starts + pd.Timedelta(minutes=30) - pd.Timestamp("1970-01-01")) / pd.Timedelta(
+        days=1
+    )
+
+    result = paris_concentration_outputs(inv_out, obs_avg_period="1h")
+
+    assert result.time.dims == ("time",)
+    np.testing.assert_array_equal(result.time.values, expected.to_numpy())
+
+
+def test_latest_paris_concentration_reports_hourly_midpoints_and_bounds(inv_out):
+    """Latest PARIS concentration reports hourly midpoints and exact start/end bounds."""
+    epoch = pd.Timestamp("1970-01-01")
+    starts = pd.DatetimeIndex(observation_inputs_for_outputs(inv_out).time.values)
+    expected_starts = (starts - epoch) / pd.Timedelta(days=1)
+    expected_ends = (starts + pd.Timedelta(hours=1) - epoch) / pd.Timedelta(days=1)
+    expected_midpoints = (starts + pd.Timedelta(minutes=30) - epoch) / pd.Timedelta(days=1)
+
+    result = paris_concentration_outputs(inv_out, obs_avg_period="1h", template_version="latest")
+
+    assert result.time.dims == ("index",)
+    assert result.time_bnds.dims == ("index", "nbnds")
+    np.testing.assert_array_equal(result.time.values, expected_midpoints.to_numpy())
+    np.testing.assert_array_equal(
+        result.time_bnds.values,
+        np.column_stack([expected_starts.to_numpy(), expected_ends.to_numpy()]),
+    )
 
 
 def test_basic_outputs(inv_out, europe_country_file):
