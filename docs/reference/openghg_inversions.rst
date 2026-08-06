@@ -27,4 +27,5 @@ openghg\_inversions
    openghg_inversions.filters
    openghg_inversions.model_error
    openghg_inversions.rhime
+   openghg_inversions.serialization
    openghg_inversions.utils

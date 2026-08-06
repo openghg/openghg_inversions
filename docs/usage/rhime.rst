@@ -113,6 +113,7 @@ model, output, and sampler specifications:
 .. code-block:: python
 
    from openghg_inversions.models import RhimeModelSpec, SectorSpec
+   from openghg_inversions.inversion_data import RhimePreparedInputs
    from openghg_inversions.rhime import (
        RhimeOutputSpec,
        RhimeRunSpec,
@@ -123,6 +124,8 @@ model, output, and sampler specifications:
    # Produced by prepare_rhime_inputs or by another source adapter that
    # satisfies the same canonical contract.
    prepared = prepare_inputs_elsewhere()
+   prepared.save("prepared-inputs.nc")
+   prepared = RhimePreparedInputs.load("prepared-inputs.nc")
    model_spec = RhimeModelSpec(
        species="ch4",
        domain="EUROPE",
@@ -179,6 +182,32 @@ extension path and must preserve the externally meaningful graph contract for
 components it does not intentionally change. See
 :ref:`the concrete model stability contract <rhime-builder-stability>` for the
 full contract.
+
+``RhimePreparedInputs.save`` accepts NetCDF paths ending in ``.nc`` and Zarr
+paths ending in ``.zarr``. Each artifact contains the canonical inversion
+inputs and the retained operator-backed basis, including its reference flux;
+``basis_artifact_path`` is recorded only as provenance and is not needed to
+reload or run the prepared inputs. Prepared-input artifacts use a versioned
+schema, CF compression-by-gathering for MultiIndexes, and a labeled
+``site_metadata(site)`` dataset. Integer ``site_indicator`` values are derived
+from the ``nmeasure`` site level as zero-based positions into that separate
+site coordinate:
+``site_metadata.site[site_indicator]`` must equal the ``site`` level of
+``nmeasure``. The indicator itself is not the CF gathering coordinate, and
+callers do not need to keep a second positional decoder synchronized. Site
+metadata also aligns averaging periods, with exactly one value per site.
+Metadata that is genuinely constant per site may be stored there too. Release
+locations that vary within a site, as they do for satellite or aircraft
+observations, are instead arrays aligned with the observations and must not be
+reduced to site scalars. These metadata arrays may be carried alongside the
+inversion arrays without implying that the model consumes them. Static
+multisource bases store their order on an xarray ``source`` coordinate. Saving
+to an existing artifact path replaces that artifact.
+
+Source-specific retained fluxes must already share an exact time index before
+they are stacked on ``source``. Inputs with different native frequencies, such
+as hourly and monthly fluxes, require an explicit resampling policy rather than
+implicit xarray alignment.
 
 Config Files
 ------------

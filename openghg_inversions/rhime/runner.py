@@ -342,6 +342,7 @@ def run_rhime_from_prepared_inputs(
             count, prepared ``H`` layout, and prepared-data layout flag
             disagree, or output settings are invalid.
     """
+    prepared_inputs = prepared_inputs.validated()
     sector_count = len(run_spec.model.sectors)
     if sector_count < 1:
         raise ValueError(f"`run_spec.model.sectors` must contain at least one sector; found {sector_count}.")

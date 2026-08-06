@@ -9859,6 +9859,7 @@ packages:
   - matplotlib
   - scipy
   - openghg
+  - cf-xarray>=0.10.6
   - sparse
   - flox
   - opt-einsum

@@ -35,6 +35,7 @@ dependencies = [
     "matplotlib",
     "scipy",
     "openghg",
+    "cf_xarray>=0.10.6",
     "sparse",
     "flox",
     "opt_einsum",

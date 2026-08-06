@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Callable, cast
 
 import arviz as az
@@ -309,6 +310,35 @@ def _minimal_inv_inputs() -> xr.Dataset:
     )
 
 
+def _minimal_prepared_inv_inputs(sites: tuple[str, ...] = ("TAC",)) -> xr.Dataset:
+    """Build minimal inversion inputs satisfying the durable prepared contract."""
+    nmeasure = pd.MultiIndex.from_arrays(
+        [list(sites), pd.date_range("2019-01-01", periods=len(sites), freq="h")],
+        names=["site", "time"],
+    )
+    return xr.Dataset(
+        {
+            "H": (("region", "nmeasure"), [np.ones(len(sites))]),
+            "site_indicator": ("nmeasure", np.arange(len(sites), dtype=int)),
+        },
+        coords={
+            "region": [0],
+            **xr.Coordinates.from_pandas_multiindex(nmeasure, "nmeasure"),
+        },
+    )
+
+
+def _prepared_site_metadata(
+    sites: tuple[str, ...] = ("TAC",),
+    averaging_period: tuple[str | None, ...] = ("1h",),
+) -> xr.Dataset:
+    """Build labeled site metadata for the canonical prepared-input API."""
+    return xr.Dataset(
+        {"averaging_period": ("site", np.asarray(averaging_period, dtype=object))},
+        coords={"site": list(sites)},
+    )
+
+
 def _site_options(
     sites: list[str],
     *,
@@ -504,10 +534,10 @@ class _SpyBasisFunctions:
 
     @property
     def operator(self) -> object:
-        raise AssertionError("RHIME preparation should not materialise a basis matrix.")
+        return SimpleNamespace(source_labels=None)
 
     def flat_basis(self) -> xr.DataArray:
-        raise AssertionError("RHIME preparation should not request a flat basis.")
+        return xr.DataArray([[1]], dims=("lat", "lon"))
 
     def sensitivity(self, fp_x_flux: xr.DataArray, fillna: bool = True) -> xr.DataArray:
         self.sensitivity_calls.append(fp_x_flux)
@@ -535,9 +565,16 @@ class _DynamicSectorSpyBasisFunctions(_SpyBasisFunctions):
 
     def __init__(self) -> None:
         super().__init__(xr.DataArray())
+        self._source_labels: tuple[str, ...] = ()
+
+    @property
+    def operator(self) -> object:
+        """Expose source labels without constructing a basis matrix."""
+        return SimpleNamespace(source_labels=self._source_labels)
 
     def sensitivity(self, fp_x_flux: xr.DataArray, fillna: bool = True) -> xr.DataArray:
         self.sensitivity_calls.append(fp_x_flux)
+        self._source_labels = tuple(str(source) for source in fp_x_flux.source.values)
         return xr.DataArray(
             np.ones((1, fp_x_flux.sizes["time"], fp_x_flux.sizes["source"])),
             dims=("region", "time", "source"),
@@ -1507,9 +1544,7 @@ def test_run_rhime_from_prepared_inputs_routes_without_preparation(
     prepared = RhimePreparedInputs(
         inv_inputs=inv_inputs,
         basis_functions=_fake_basis_functions(),
-        sites=("TAC",),
-        averaging_period=("1h",),
-        basis_artifact_source="generated",
+        site_metadata=_prepared_site_metadata(),
     )
     sampler = RhimeSampler(draws=7, sample_prior_predictive=False, sample_posterior_predictive=False)
     built_model = pm.Model()
@@ -1606,9 +1641,7 @@ def test_run_rhime_from_prepared_inputs_rejects_layout_mode_mismatch_before_exec
     prepared = RhimePreparedInputs(
         inv_inputs=inv_inputs,
         basis_functions=_fake_basis_functions(),
-        sites=("TAC",),
-        averaging_period=("1h",),
-        basis_artifact_source="generated",
+        site_metadata=_prepared_site_metadata(),
     )
 
     def fail_execution(*args: Any, **kwargs: Any) -> None:
@@ -1660,9 +1693,7 @@ def test_run_rhime_from_prepared_inputs_rejects_flag_h_layout_mismatch_before_ex
     prepared = RhimePreparedInputs(
         inv_inputs=inv_inputs,
         basis_functions=_fake_basis_functions(),
-        sites=("TAC",),
-        averaging_period=("1h",),
-        basis_artifact_source="generated",
+        site_metadata=_prepared_site_metadata(),
     )
 
     def fail_execution(*args: Any, **kwargs: Any) -> None:
@@ -1700,9 +1731,7 @@ def test_run_rhime_from_prepared_inputs_defaults_sampler_and_skips_none_output_w
     prepared = RhimePreparedInputs(
         inv_inputs=_minimal_output_inv_inputs(),
         basis_functions=_fake_basis_functions(),
-        sites=("TAC",),
-        averaging_period=("1h",),
-        basis_artifact_source="generated",
+        site_metadata=_prepared_site_metadata(),
     )
     built_model = pm.Model()
     sampled_with: list[RhimeSampler] = []
@@ -1771,9 +1800,7 @@ def test_run_rhime_from_prepared_inputs_validates_output_before_execution(
     prepared = RhimePreparedInputs(
         inv_inputs=inv_inputs,
         basis_functions=_fake_basis_functions(),
-        sites=("TAC",),
-        averaging_period=("1h",),
-        basis_artifact_source="generated",
+        site_metadata=_prepared_site_metadata(),
     )
 
     def fail_execution(*args: Any, **kwargs: Any) -> None:
@@ -1801,9 +1828,7 @@ def test_run_rhime_from_prepared_inputs_rejects_empty_model() -> None:
     prepared = RhimePreparedInputs(
         inv_inputs=_minimal_output_inv_inputs(),
         basis_functions=_fake_basis_functions(),
-        sites=("TAC",),
-        averaging_period=("1h",),
-        basis_artifact_source="generated",
+        site_metadata=_prepared_site_metadata(),
     )
 
     with pytest.raises(ValueError, match="must contain at least one sector; found 0"):
@@ -2848,12 +2873,11 @@ def _rhime_preparation_args(data_args: dict, flux_sources: list[str], bc_basis_d
 
 
 def test_rhime_prepared_inputs_contract_exposes_only_modern_fields() -> None:
+    """The durable prepared-input API omits legacy merged-data side channels."""
     prepared = RhimePreparedInputs(
-        inv_inputs=_minimal_inv_inputs(),
+        inv_inputs=_minimal_prepared_inv_inputs(),
         basis_functions=_fake_basis_functions(),
-        sites=("TAC",),
-        averaging_period=("1H",),
-        basis_artifact_source="generated",
+        site_metadata=_prepared_site_metadata(averaging_period=("1H",)),
     )
 
     for legacy_attr in (
@@ -2930,9 +2954,7 @@ def test_prepared_multisector_runner_accepts_gathered_source_specific_basis_layo
     prepared = RhimePreparedInputs(
         inv_inputs=inv_inputs,
         basis_functions=basis_functions,
-        sites=("TAC",),
-        averaging_period=("1H",),
-        basis_artifact_source="generated",
+        site_metadata=_prepared_site_metadata(averaging_period=("1H",)),
     )
     run_spec = RhimeRunSpec(
         start_date="2019-01-01",
@@ -3237,7 +3259,7 @@ def test_prepare_rhime_inputs_uses_basis_sensitivity_without_legacy_side_channel
         assert sites == ["TAC"]
         assert set(fp_data) == {"TAC"}
         xr.testing.assert_identical(fp_data["TAC"]["H"], expected_sensitivity)
-        return _minimal_inv_inputs()
+        return _minimal_prepared_inv_inputs()
 
     def forbidden_basis_functions_wrapper(*args: object, **kwargs: object) -> None:
         raise AssertionError("RHIME preparation should use make_basis_functions and direct sensitivity.")
@@ -3355,7 +3377,7 @@ def test_prepare_rhime_inputs_prunes_reloaded_merged_data_to_requested_sites(
     def fake_make_inv_inputs(fp_data: dict, sites: list[str], **kwargs: object) -> xr.Dataset:
         """Return minimal inputs after checking retained reload sites."""
         assert sites == ["TAC"]
-        return _minimal_inv_inputs()
+        return _minimal_prepared_inv_inputs()
 
     monkeypatch.setattr(prep_module, "load_merged_data", fake_load_merged_data)
     monkeypatch.setattr(prep_module, "make_basis_functions", fake_make_basis_functions)
@@ -3683,10 +3705,7 @@ def test_prepare_rhime_inputs_normalises_averaging_period_to_site_count(
     def fake_make_inv_inputs(fp_data: dict, sites: list[str], **kwargs: object) -> xr.Dataset:
         """Return minimal gathered inputs for averaging-period normalization."""
         assert sites == ["TAC", "MHD"]
-        return xr.Dataset(
-            {"H": (("region", "nmeasure"), [[1.0, 1.0]])},
-            coords={"region": [0], "nmeasure": [0, 1]},
-        )
+        return _minimal_prepared_inv_inputs(("TAC", "MHD"))
 
     monkeypatch.setattr(
         prep_module,
@@ -3801,7 +3820,7 @@ def test_prepare_rhime_inputs_treats_min_error_none_as_default(
         """Capture the normalized minimum-error value."""
         nonlocal captured_min_error
         captured_min_error = kwargs["min_error"]
-        return _minimal_inv_inputs()
+        return _minimal_prepared_inv_inputs()
 
     monkeypatch.setattr(
         prep_module,
@@ -3938,7 +3957,7 @@ def test_prepare_rhime_inputs_filters_sites_before_basis_generation(
         assert tuple(fp_data["TAC"].time.values) == retained_times
         assert tuple(fp_data["TAC"]["H"].time.values) == retained_times
         assert tuple(fp_data["TAC"]["H_bc"].time.values) == retained_times
-        return _minimal_inv_inputs()
+        return _minimal_prepared_inv_inputs()
 
     monkeypatch.setattr(
         prep_module,
@@ -4012,7 +4031,7 @@ def test_prepare_rhime_inputs_applies_daily_median_before_sensitivity(
         """Capture sensitivity after daily-median filtering."""
         nonlocal final_sensitivity
         final_sensitivity = fp_data["TAC"]["H"].copy()
-        return _minimal_inv_inputs()
+        return _minimal_prepared_inv_inputs()
 
     monkeypatch.setattr(
         prep_module,
@@ -4098,7 +4117,9 @@ def test_prepare_rhime_inputs_filters_multisector_sites_before_basis_generation(
         assert tuple(fp_data["TAC"]["H"].time.values) == retained_times
         assert fp_data["TAC"]["H"].dims == ("region", "time", "source")
         assert tuple(fp_data["TAC"]["H"].source.values) == tuple(flux_sources)
-        return _minimal_inv_inputs()
+        inv_inputs = _minimal_prepared_inv_inputs()
+        inv_inputs["H"] = inv_inputs["H"].expand_dims(source=flux_sources)
+        return inv_inputs
 
     monkeypatch.setattr(
         prep_module,
@@ -4172,7 +4193,7 @@ def test_prepare_rhime_inputs_filters_loaded_basis_before_sensitivity(
         assert sites == ["TAC"]
         assert tuple(fp_data["TAC"].time.values) == retained_times
         assert tuple(fp_data["TAC"]["H"].time.values) == retained_times
-        return _minimal_inv_inputs()
+        return _minimal_prepared_inv_inputs()
 
     monkeypatch.setattr(
         prep_module,
@@ -4232,7 +4253,7 @@ def test_prepare_rhime_inputs_aligns_averaging_period_after_empty_site_drop(
     def fake_make_inv_inputs(fp_data: dict, sites: list[str], **kwargs: object) -> xr.Dataset:
         """Return minimal inputs after an empty site is removed."""
         assert sites == ["TAC"]
-        return _minimal_inv_inputs()
+        return _minimal_prepared_inv_inputs()
 
     monkeypatch.setattr(
         prep_module,
@@ -4574,12 +4595,14 @@ def test_derived_output_filename_can_use_legacy_convention(tmp_path: Path) -> No
 
 def test_make_standard_output_bundle_returns_outputs_without_mutating_result() -> None:
     model_spec, output_spec, run_spec = _minimal_output_specs()
+    inv_inputs = _minimal_output_inv_inputs().assign_coords(
+        release_lat=("nmeasure", [51.0]),
+        release_lon=("nmeasure", [-2.0]),
+    )
     prepared = RhimePreparedInputs(
-        inv_inputs=_minimal_output_inv_inputs(),
+        inv_inputs=inv_inputs,
         basis_functions=_fake_basis_functions(),
-        sites=("TAC",),
-        averaging_period=("1h",),
-        basis_artifact_source="generated",
+        site_metadata=_prepared_site_metadata(),
     )
 
     bundle = rhime_outputs.make_standard_output_bundle(
@@ -4592,6 +4615,10 @@ def test_make_standard_output_bundle_returns_outputs_without_mutating_result() -
     )
 
     assert isinstance(bundle.inv_out, InversionOutput)
+    xr.testing.assert_identical(bundle.inv_out.inv_inputs.release_lat, inv_inputs.release_lat)
+    xr.testing.assert_identical(bundle.inv_out.inv_inputs.release_lon, inv_inputs.release_lon)
+    assert "site_lats" not in bundle.inv_out.run_metadata
+    assert "site_lons" not in bundle.inv_out.run_metadata
     assert bundle.outputs == {"inversion_output": bundle.inv_out}
     assert bundle.output_metadata == {"inversion_output_contract": "modern"}
 
@@ -4626,9 +4653,7 @@ def test_make_multisector_output_bundle_returns_modern_inv_out() -> None:
     prepared = RhimePreparedInputs(
         inv_inputs=_minimal_output_inv_inputs(),
         basis_functions=_fake_basis_functions(),
-        sites=("TAC",),
-        averaging_period=("1h",),
-        basis_artifact_source="generated",
+        site_metadata=_prepared_site_metadata(),
     )
     idata = az.from_dict(
         posterior={
@@ -4701,12 +4726,13 @@ def test_make_multisector_output_bundle_builds_latest_paris_flux(
     )
     basis_functions = fake_multisector_basis_functions_matching_country_grid(europe_country_file)
     basis_functions.flux.attrs["time_period"] = "not-a-parseable-period"
+    inv_inputs = _minimal_output_inv_inputs()
+    assert basis_functions.source_labels is not None
+    inv_inputs["H"] = inv_inputs["H"].expand_dims(source=list(basis_functions.source_labels))
     prepared = RhimePreparedInputs(
-        inv_inputs=_minimal_output_inv_inputs(),
+        inv_inputs=inv_inputs,
         basis_functions=basis_functions,
-        sites=("TAC",),
-        averaging_period=("1h",),
-        basis_artifact_source="generated",
+        site_metadata=_prepared_site_metadata(),
     )
     idata = cast(Any, multisector_postprocessing_inv_out().trace)
 
@@ -4755,10 +4781,7 @@ def test_modern_inversion_output_save_load_roundtrip(tmp_path: Path) -> None:
         basis_functions=basis_functions.with_flux(annual_flux).with_metadata(
             {BASIS_ARTIFACT_PATH_ATTR: basis_artifact_path}
         ),
-        sites=("TAC",),
-        averaging_period=("1h",),
-        basis_artifact_source="unit-test",
-        basis_artifact_path=basis_artifact_path,
+        site_metadata=_prepared_site_metadata(),
     )
     idata = _minimal_output_idata()
     idata.attrs["burn"] = 1000
@@ -4809,9 +4832,7 @@ def test_modern_inversion_output_restores_bytes_multiindex_metadata() -> None:
     prepared = RhimePreparedInputs(
         inv_inputs=inv_inputs,
         basis_functions=_fake_basis_functions(artifact_source="unit-test"),
-        sites=("TAC",),
-        averaging_period=("1h",),
-        basis_artifact_source="unit-test",
+        site_metadata=_prepared_site_metadata(),
     )
     bundle = rhime_outputs.make_standard_output_bundle(
         output_spec=output_spec,
@@ -4833,7 +4854,7 @@ def test_modern_inversion_output_restores_bytes_multiindex_metadata() -> None:
 
     assert isinstance(reloaded.inv_inputs.indexes["nmeasure"], pd.MultiIndex)
     assert reloaded.inv_inputs.indexes["nmeasure"].names == ["site", "time"]
-    xr.testing.assert_identical(reloaded.inv_inputs, inv_inputs)
+    xr.testing.assert_identical(reloaded.inv_inputs, prepared.inv_inputs)
 
 
 def test_modern_inversion_output_roundtrips_trace_multiindex() -> None:
@@ -4858,9 +4879,7 @@ def test_modern_inversion_output_roundtrips_trace_multiindex() -> None:
     prepared = RhimePreparedInputs(
         inv_inputs=_minimal_output_inv_inputs(),
         basis_functions=_fake_basis_functions(artifact_source="unit-test"),
-        sites=("TAC",),
-        averaging_period=("1h",),
-        basis_artifact_source="unit-test",
+        site_metadata=_prepared_site_metadata(),
     )
     bundle = rhime_outputs.make_standard_output_bundle(
         output_spec=output_spec,
@@ -4897,9 +4916,7 @@ def test_modern_inversion_output_ignores_malformed_multiindex_metadata(raw_multi
     prepared = RhimePreparedInputs(
         inv_inputs=inv_inputs,
         basis_functions=_fake_basis_functions(artifact_source="unit-test"),
-        sites=("TAC",),
-        averaging_period=("1h",),
-        basis_artifact_source="unit-test",
+        site_metadata=_prepared_site_metadata(),
     )
     bundle = rhime_outputs.make_standard_output_bundle(
         output_spec=output_spec,
@@ -4930,9 +4947,7 @@ def test_modern_inversion_output_supports_flux_outputs() -> None:
     prepared = RhimePreparedInputs(
         inv_inputs=_minimal_output_inv_inputs(),
         basis_functions=_fake_basis_functions(),
-        sites=("TAC",),
-        averaging_period=("1h",),
-        basis_artifact_source="generated",
+        site_metadata=_prepared_site_metadata(),
     )
     bundle = rhime_outputs.make_standard_output_bundle(
         output_spec=output_spec,
@@ -5105,9 +5120,7 @@ def test_observation_inputs_for_outputs_stay_dataset_based() -> None:
     prepared = RhimePreparedInputs(
         inv_inputs=inv_inputs,
         basis_functions=_fake_basis_functions(),
-        sites=("TAC",),
-        averaging_period=("1h",),
-        basis_artifact_source="generated",
+        site_metadata=_prepared_site_metadata(),
     )
     bundle = rhime_outputs.make_standard_output_bundle(
         output_spec=output_spec,
@@ -5362,9 +5375,7 @@ def test_standard_basic_output_uses_modern_postprocessing_without_legacy_adapter
     prepared = RhimePreparedInputs(
         inv_inputs=_minimal_output_inv_inputs(),
         basis_functions=_fake_basis_functions(),
-        sites=("TAC",),
-        averaging_period=("1h",),
-        basis_artifact_source="generated",
+        site_metadata=_prepared_site_metadata(),
     )
     captured: dict[str, Any] = {}
 
@@ -5402,9 +5413,7 @@ def test_standard_paris_output_uses_modern_postprocessing_without_legacy_adapter
     prepared = RhimePreparedInputs(
         inv_inputs=_minimal_output_inv_inputs(),
         basis_functions=_fake_basis_functions(),
-        sites=("TAC",),
-        averaging_period=("1h",),
-        basis_artifact_source="generated",
+        site_metadata=_prepared_site_metadata(),
     )
     captured: dict[str, Any] = {}
 
@@ -5472,9 +5481,7 @@ def test_standard_legacy_output_uses_modern_inversion_output(
     prepared = RhimePreparedInputs(
         inv_inputs=_minimal_output_inv_inputs(),
         basis_functions=_fake_basis_functions(),
-        sites=("TAC",),
-        averaging_period=("1h",),
-        basis_artifact_source="generated",
+        site_metadata=_prepared_site_metadata(),
     )
     captured: dict[str, Any] = {}
 

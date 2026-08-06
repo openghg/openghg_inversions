@@ -2962,6 +2962,8 @@ name = "openghg-inversions"
 version = "0.6.0"
 source = { editable = "." }
 dependencies = [
+    { name = "cf-xarray", version = "0.10.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "cf-xarray", version = "0.10.10", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "flox", version = "0.10.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "flox", version = "0.10.8", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "matplotlib" },
@@ -3000,6 +3002,7 @@ uv-dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "cf-xarray", specifier = ">=0.10.6" },
     { name = "flox" },
     { name = "ipykernel", marker = "extra == 'jupyter'" },
     { name = "jupyterlab", marker = "extra == 'jupyter'" },

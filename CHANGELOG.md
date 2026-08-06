@@ -70,6 +70,19 @@
   and uncertainty statistics are calculated, then cast at the template
   boundary, keeping posterior stdev and covariance calculations consistent.
 
+- Added versioned NetCDF and Zarr persistence for ``RhimePreparedInputs``,
+  including CF compression-by-gathering for canonical MultiIndex inversion
+  inputs, labeled site metadata decoded by integer site indicators, and the
+  retained operator-backed basis and reference flux. Static multisource bases
+  now use an ordered xarray ``source`` coordinate; basis provenance remains
+  owned by ``BasisFunctions``. Site indicators are regenerated from labeled
+  measurement sites, avoiding a second user-maintained source of site truth.
+  Observation-varying release locations remain aligned to measurements rather
+  than being reduced to site scalars. Repeated Zarr saves replace the previous
+  artifact rather than retaining stale groups.
+  Generic DataTree, InferenceData, and MultiIndex serialization helpers now
+  have shared ownership outside postprocessing.
+
 - Added `run_rhime_from_prepared_inputs` so modern standard and multisector
   RHIME models can run from an existing `RhimePreparedInputs` object without
   repeating OpenGHG-backed data preparation. Existing `run_rhime` entry points
