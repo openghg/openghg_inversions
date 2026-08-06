@@ -4,6 +4,38 @@
 
 ## Code changes
 
+- Preserve retrieved flux periods instead of inferring them from inversion
+  duration, including annual priors used by mid-year monthly inversions.
+  Calendar-aware PARIS postprocessing and legacy merged-data round trips now
+  retain the original flux timestamps and per-source period metadata.
+  [#539](https://github.com/openghg/openghg_inversions/issues/539)
+- Kept all site-aligned retrieval options paired with retained sites across
+  merged-data reloads, retrieval failures, and observation filtering. Explicit
+  empty site selections now fail instead of expanding to every loaded site,
+  calculated minimum-error options have a validated ``{"by_site": bool}``
+  schema, and legacy migration warnings remain visible under default warning
+  filters. Retained calibration scales now follow site pruning, and
+  fresh scenarios delegate common-unit conversion to OpenGHG
+  ``ModelScenario``; saved merged datasets already carry those common units.
+  Explicit site order is preserved during input assembly, and mixed
+  surface/column inputs retain their column correction factors.
+  [#427](https://github.com/openghg/openghg_inversions/issues/427)
+- Extended `MaxChildPCAEccentricity` with an optional
+  `min_child_target_weight_share` materiality threshold. The default zero keeps
+  the strict all-child eccentricity veto. Positive values allow only children
+  below that share of the class/source-local equal-target weight,
+  `weights.sum() / target_regions`, to bypass the veto; material children remain
+  guarded. This affects split acceptance only and does not reconnect, freeze,
+  prune, or marginalize the accepted low-weight child.
+  [PR #546](https://github.com/openghg/openghg_inversions/pull/546)
+- Added the opt-in `ConnectedBinaryPartitionStep` for repairing provisional
+  binary cuts whose sides contain disconnected components. Repair candidates
+  preserve the parent exactly, return two connected children, and are selected
+  deterministically by minimum moved weight and then child-weight balance. The
+  existing `ConnectedComponentPartitionStep` behavior is unchanged, and the
+  new wrapper falls back to its historical multi-child component decomposition
+  when no valid binary repair exists.
+  [#545](https://github.com/openghg/openghg_inversions/issues/545)
 - Made direct composition of concrete standard and multisector RHIME models
   the default builder strategy. The semantic flux-plan compiler remains
   available as an explicit `builder_strategy="compiled"` opt-in on

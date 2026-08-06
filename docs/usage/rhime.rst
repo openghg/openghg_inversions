@@ -286,6 +286,15 @@ different things for those policies, and generated region counts become upper
 targets when split stopping rejects remaining candidates. These child-share
 policies are not currently routed through RHIME config options.
 
+``MaxChildPCAEccentricity`` strictly checks every proposed child by default.
+Its optional ``min_child_target_weight_share`` parameter can exempt only
+children below a configured share of the same class/source-local equal-target
+weight. This lets a low-weight, topology-forced fragment avoid vetoing
+well-shaped material children produced by ``ConnectedComponentPartitionStep``.
+The exception changes split acceptance only: it does not reconnect, freeze,
+prune, or marginalize the resulting small region. A direct three-argument
+policy call has no target-region context and therefore remains strict.
+
 Output Formats
 --------------
 
