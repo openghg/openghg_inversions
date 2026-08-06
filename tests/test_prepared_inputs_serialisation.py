@@ -12,7 +12,11 @@ import pytest
 import xarray as xr
 
 import openghg_inversions.rhime.runner as rhime_runner
-from openghg_inversions.basis.basis_functions import BasisFunctions
+from openghg_inversions.basis.basis_functions import (
+    BASIS_ARTIFACT_PATH_ATTR,
+    BASIS_ARTIFACT_SOURCE_ATTR,
+    BasisFunctions,
+)
 from openghg_inversions.basis.operators import MultiSourceBucketBasisOperator
 from openghg_inversions.inversion_data import RhimePreparedInputs, prepare_rhime_inputs
 from openghg_inversions.models import RhimeModelSpec, SectorSpec
@@ -51,11 +55,20 @@ def _basis_functions() -> BasisFunctions:
     )
 
 
+def _site_metadata(
+    sites: tuple[str, ...],
+    averaging_period: tuple[str | None, ...],
+) -> xr.Dataset:
+    """Build the canonical labeled site metadata used by prepared inputs."""
+    return xr.Dataset(
+        {"averaging_period": ("site", np.asarray(averaging_period, dtype=object))},
+        coords={"site": list(sites)},
+    )
+
+
 def _prepared_inputs(
     *,
     basis_artifact_path: str | None = "/path/that/does/not/exist/basis.nc",
-    site_lats: tuple[float, ...] | None = (51.0, 52.0),
-    site_lons: tuple[float, ...] | None = (-2.0, -1.0),
 ) -> RhimePreparedInputs:
     """Build canonical inputs with a site/time measurement MultiIndex."""
     nmeasure = pd.MultiIndex.from_arrays(
@@ -79,15 +92,13 @@ def _prepared_inputs(
         attrs={"prepared_by": "unit-test"},
     )
     inv_inputs["mf"].attrs["units"] = "ppm"
+    basis_metadata = {BASIS_ARTIFACT_SOURCE_ATTR: "unit-test-generated"}
+    if basis_artifact_path is not None:
+        basis_metadata[BASIS_ARTIFACT_PATH_ATTR] = basis_artifact_path
     return RhimePreparedInputs(
         inv_inputs=inv_inputs,
-        basis_functions=_basis_functions(),
-        sites=("TAC", "MHD"),
-        averaging_period=("1h", None),
-        basis_artifact_source="unit-test-generated",
-        basis_artifact_path=basis_artifact_path,
-        site_lats=site_lats,
-        site_lons=site_lons,
+        basis_functions=_basis_functions().with_metadata(basis_metadata),
+        site_metadata=_site_metadata(("TAC", "MHD"), ("1h", None)),
     )
 
 
@@ -123,12 +134,8 @@ def _multisource_prepared_inputs() -> RhimePreparedInputs:
     )
     return RhimePreparedInputs(
         inv_inputs=inv_inputs,
-        basis_functions=basis_functions,
-        sites=("TAC",),
-        averaging_period=("1h",),
-        basis_artifact_source="unit-test-generated",
-        site_lats=(51.0,),
-        site_lons=(-2.0,),
+        basis_functions=basis_functions.with_metadata({BASIS_ARTIFACT_SOURCE_ATTR: "unit-test-generated"}),
+        site_metadata=_site_metadata(("TAC",), ("1h",)),
     )
 
 
@@ -236,23 +243,49 @@ def test_prepared_inputs_normalizes_empty_averaging_period() -> None:
     assert prepared.averaging_period == (None, None)
 
 
-def test_prepared_inputs_preserves_legacy_positional_constructor() -> None:
-    """The pre-schema positional constructor is normalized without parallel state."""
+def test_prepared_inputs_legacy_factory_normalizes_inputs() -> None:
+    """The legacy factory adapts positional fields without parallel state."""
     original = _prepared_inputs()
 
-    prepared = RhimePreparedInputs(
+    prepared = RhimePreparedInputs.from_legacy_inputs(
         original.inv_inputs,
         original.basis_functions,
         original.sites,
         original.averaging_period,
         original.basis_artifact_source,
         original.basis_artifact_path,
-        original.site_lats,
-        original.site_lons,
+        (51.0, 52.0),
+        (-2.0, -1.0),
     )
 
     xr.testing.assert_identical(prepared.site_metadata, original.site_metadata)
-    xr.testing.assert_identical(prepared.inv_inputs, original.inv_inputs)
+    np.testing.assert_array_equal(prepared.inv_inputs.release_lat, [51.0, 52.0])
+    np.testing.assert_array_equal(prepared.inv_inputs.release_lon, [-2.0, -1.0])
+    assert prepared.inv_inputs.release_lat.dims == ("nmeasure",)
+    assert prepared.inv_inputs.release_lon.dims == ("nmeasure",)
+
+
+def test_prepared_inputs_legacy_factory_preserves_observation_release_metadata() -> None:
+    """Legacy site scalars do not replace higher-fidelity observation arrays."""
+    original = _prepared_inputs()
+    inv_inputs = original.inv_inputs.assign_coords(
+        release_lat=("nmeasure", [51.1, 52.2]),
+        release_lon=("nmeasure", [-2.1, -1.2]),
+    )
+
+    prepared = RhimePreparedInputs.from_legacy_inputs(
+        inv_inputs,
+        original.basis_functions,
+        original.sites,
+        original.averaging_period,
+        original.basis_artifact_source,
+        original.basis_artifact_path,
+        (0.0, 0.0),
+        (0.0, 0.0),
+    )
+
+    np.testing.assert_array_equal(prepared.inv_inputs.release_lat, [51.1, 52.2])
+    np.testing.assert_array_equal(prepared.inv_inputs.release_lon, [-2.1, -1.2])
 
 
 def test_prepared_inputs_preserves_site_metadata_attrs() -> None:
@@ -261,12 +294,6 @@ def test_prepared_inputs_preserves_site_metadata_attrs() -> None:
     site_metadata = original.site_metadata.copy(deep=True)
     site_metadata["site"].attrs["long_name"] = "observation site"
     site_metadata["averaging_period"].attrs["long_name"] = "observation averaging period"
-    site_metadata["release_lat"].attrs.update(
-        {"long_name": "footprint release latitude", "units": "degrees_north"}
-    )
-    site_metadata["release_lon"].attrs.update(
-        {"long_name": "footprint release longitude", "units": "degrees_east"}
-    )
     prepared = RhimePreparedInputs(
         inv_inputs=original.inv_inputs,
         basis_functions=original.basis_functions,
@@ -297,8 +324,6 @@ def _assert_prepared_identical(
     assert actual.averaging_period == expected.averaging_period
     assert actual.basis_artifact_source == expected.basis_artifact_source
     assert actual.basis_artifact_path == expected.basis_artifact_path
-    assert actual.site_lats == expected.site_lats
-    assert actual.site_lons == expected.site_lons
 
 
 @pytest.fixture(scope="module")
@@ -334,29 +359,36 @@ def test_prepared_inputs_datatree_roundtrip_is_self_contained() -> None:
 
 
 def test_prepared_inputs_datatree_roundtrips_nullable_metadata() -> None:
-    """Nullable periods, provenance, and release coordinates round-trip."""
-    prepared = _prepared_inputs(basis_artifact_path=None, site_lats=None, site_lons=None)
+    """Nullable periods and provenance round-trip."""
+    prepared = _prepared_inputs(basis_artifact_path=None)
 
     restored = RhimePreparedInputs.from_datatree(prepared.to_datatree())
 
     _assert_prepared_identical(restored, prepared)
     assert restored.averaging_period == ("1h", None)
-    assert restored.site_lats is None
-    assert restored.site_lons is None
 
 
-def test_prepared_inputs_datatree_roundtrips_missing_site_coordinate() -> None:
-    """A missing release coordinate remains labeled and nullable after decoding."""
-    prepared = _prepared_inputs(site_lats=(51.0, np.nan))
+def test_prepared_inputs_roundtrip_observation_aligned_release_metadata() -> None:
+    """Release locations remain observation arrays rather than site scalars."""
+    original = _prepared_inputs()
+    inv_inputs = original.inv_inputs.assign_coords(
+        release_lat=("nmeasure", [51.0, 52.0]),
+        release_lon=("nmeasure", [-2.0, -1.0]),
+    )
+    prepared = RhimePreparedInputs(
+        inv_inputs=inv_inputs,
+        basis_functions=original.basis_functions,
+        site_metadata=original.site_metadata,
+    )
 
-    dt = prepared.to_datatree()
-    restored = RhimePreparedInputs.from_datatree(dt)
+    restored = RhimePreparedInputs.from_datatree(prepared.to_datatree())
 
-    assert "metadata" not in dt.attrs
-    assert np.isnan(dt["site_metadata"]["release_lat"].sel(site="MHD"))
-    assert restored.site_lats is not None
-    assert restored.site_lats[0] == 51.0
-    assert np.isnan(restored.site_lats[1])
+    assert restored.inv_inputs.release_lat.dims == ("nmeasure",)
+    assert restored.inv_inputs.release_lon.dims == ("nmeasure",)
+    np.testing.assert_array_equal(restored.inv_inputs.release_lat, [51.0, 52.0])
+    np.testing.assert_array_equal(restored.inv_inputs.release_lon, [-2.0, -1.0])
+    assert "release_lat" not in restored.site_metadata
+    assert "release_lon" not in restored.site_metadata
 
 
 def test_site_indicator_is_derived_from_measurement_sites() -> None:
@@ -391,6 +423,8 @@ def test_real_prepared_inputs_save_load_and_run_without_repreparation(
     encoded_inputs = serialized["inv_inputs"].to_dataset()
     assert encoded_inputs["nmeasure"].attrs["compress"] == "site time"
     assert encoded_inputs["bc_region"].attrs["compress"] == "bc_curtain bc_period"
+    assert prepared.inv_inputs.release_lat.dims == ("nmeasure",)
+    assert prepared.inv_inputs.release_lon.dims == ("nmeasure",)
 
     artifact_path = tmp_path / f"real-prepared{suffix}"
     prepared.save(artifact_path)

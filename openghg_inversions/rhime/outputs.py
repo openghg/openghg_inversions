@@ -143,8 +143,6 @@ def _make_inversion_output(
             "split_by_sectors": run_spec.split_by_sectors,
             "basis_artifact_source": prepared.basis_artifact_source,
             "basis_artifact_path": prepared.basis_artifact_path,
-            "site_lats": list(prepared.site_lats) if prepared.site_lats is not None else None,
-            "site_lons": list(prepared.site_lons) if prepared.site_lons is not None else None,
         },
         model_metadata=asdict(model_spec),
         output_metadata={

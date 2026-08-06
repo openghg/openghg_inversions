@@ -195,9 +195,14 @@ site coordinate:
 ``site_metadata.site[site_indicator]`` must equal the ``site`` level of
 ``nmeasure``. The indicator itself is not the CF gathering coordinate, and
 callers do not need to keep a second positional decoder synchronized. Site
-metadata also aligns averaging periods and optional footprint release
-coordinates. Static multisource bases store their order on an xarray ``source``
-coordinate. Saving to an existing artifact path replaces that artifact.
+metadata also aligns averaging periods, with exactly one value per site.
+Metadata that is genuinely constant per site may be stored there too. Release
+locations that vary within a site, as they do for satellite or aircraft
+observations, are instead arrays aligned with the observations and must not be
+reduced to site scalars. These metadata arrays may be carried alongside the
+inversion arrays without implying that the model consumes them. Static
+multisource bases store their order on an xarray ``source`` coordinate. Saving
+to an existing artifact path replaces that artifact.
 
 Source-specific retained fluxes must already share an exact time index before
 they are stacked on ``source``. Inputs with different native frequencies, such

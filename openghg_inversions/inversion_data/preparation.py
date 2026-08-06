@@ -6,6 +6,12 @@ intentionally absent. ``prepare_fixedbasis_inversion_data`` is a compatibility
 adapter that retains the input variables required by ``fixedbasisMCMC``,
 including its sigma-period index.
 
+``RhimePreparedInputs`` validates the relationships between these labeled
+arrays when it is constructed. When the retained basis-functions object
+provides ``validated()``, preparation uses the returned copy after that method
+has rechecked its mutable flux, operator data, and source labels. Compatible
+objects without that hook are retained unchanged.
+
 Preparation can read OpenGHG object stores or local merged-data artifacts,
 write merged-data and basis artifacts, emit warnings and progress messages,
 and record timing information. Neither public entry point constructs a PyMC
@@ -51,8 +57,6 @@ MinErrorConfig = Literal["percentile", "residual"] | dict[str, float] | None | i
 RHIME_PREPARED_INPUTS_SCHEMA = "openghg_inversions.rhime_prepared_inputs"
 RHIME_PREPARED_INPUTS_SCHEMA_VERSION = 1
 _SITE_AVERAGING_PERIOD = "averaging_period"
-_SITE_LAT = "release_lat"
-_SITE_LON = "release_lon"
 
 
 @dataclass
@@ -97,21 +101,14 @@ class RhimePreparedInputs:
             builders.
         basis_functions: Retained flux basis object used to derive
             output-boundary basis and flux arrays.
-        site_metadata: Keyword-only dataset indexed by the authoritative
-            ``site`` coordinate.
-            It must contain ``averaging_period`` and may contain the paired
-            ``release_lat`` and ``release_lon`` variables. Every variable has
-            length ``site``. Release coordinates preserve their upstream units;
-            preparation currently supplies geographic degrees.
-        sites: Deprecated compatibility input used to construct
-            ``site_metadata`` when that dataset is omitted.
-        averaging_period: Deprecated site-aligned compatibility input.
-        basis_artifact_source: Deprecated compatibility provenance value,
-            normalized into ``basis_functions.metadata``.
-        basis_artifact_path: Deprecated compatibility provenance path,
-            normalized into ``basis_functions.metadata``.
-        site_lats: Deprecated site-aligned compatibility input.
-        site_lons: Deprecated site-aligned compatibility input.
+        site_metadata: Dataset indexed by the authoritative ``site``
+            coordinate. Every variable contains exactly one value per site,
+            and ``averaging_period`` is required. Observation metadata that
+            is genuinely constant per site may also be stored here. Values
+            that vary within a site, such as satellite or aircraft release
+            locations, must instead remain observation-aligned arrays. Such
+            arrays may be carried alongside the inversion arrays without
+            implying that model builders consume them.
 
     Raises:
         ValueError: If site metadata, measurement indexing, or multi-source
@@ -126,64 +123,22 @@ class RhimePreparedInputs:
         self,
         inv_inputs: xr.Dataset,
         basis_functions: BasisFunctions,
-        sites: Sequence[str] | None = None,
-        averaging_period: Sequence[str | None] | None = None,
-        basis_artifact_source: str | None = None,
-        basis_artifact_path: str | None = None,
-        site_lats: Sequence[float] | None = None,
-        site_lons: Sequence[float] | None = None,
-        *,
-        site_metadata: xr.Dataset | None = None,
+        site_metadata: xr.Dataset,
     ) -> None:
         """Initialize and normalize prepared inputs.
-
-        The legacy site-aligned arguments retain their previous positional
-        order while callers migrate to the keyword-only labeled
-        ``site_metadata`` dataset. They are immediately normalized into that
-        dataset and are not retained as parallel state.
 
         Args:
             inv_inputs: Canonical inversion inputs with a site/time measurement
                 MultiIndex and integer site indicators.
             basis_functions: Retained basis object and its provenance.
             site_metadata: Authoritative site-indexed metadata dataset.
-            sites: Deprecated site-label compatibility input.
-            averaging_period: Deprecated site-aligned compatibility input.
-            basis_artifact_source: Deprecated basis-provenance compatibility
-                input.
-            basis_artifact_path: Deprecated basis-path compatibility input.
-            site_lats: Deprecated release-latitude compatibility input.
-            site_lons: Deprecated release-longitude compatibility input.
 
         Raises:
-            ValueError: If both metadata representations are supplied or the
-                prepared-input semantic invariants do not hold.
+            ValueError: If the prepared-input semantic invariants do not hold.
         """
         validate_basis_functions = getattr(basis_functions, "validated", None)
         if callable(validate_basis_functions):
             basis_functions = cast(BasisFunctions, validate_basis_functions())
-        if site_metadata is None:
-            if sites is None or averaging_period is None:
-                raise ValueError(
-                    "RhimePreparedInputs requires site_metadata, or both sites and averaging_period."
-                )
-            site_metadata = _make_site_metadata(
-                sites=sites,
-                averaging_period=averaging_period,
-                site_lats=site_lats,
-                site_lons=site_lons,
-            )
-        elif any(value is not None for value in (sites, averaging_period, site_lats, site_lons)):
-            raise ValueError("Pass site_metadata or legacy site-aligned arguments, not both.")
-
-        existing_metadata = getattr(basis_functions, "metadata", {})
-        metadata = dict(existing_metadata)
-        if basis_artifact_source is not None:
-            metadata[BASIS_ARTIFACT_SOURCE_ATTR] = basis_artifact_source
-        if basis_artifact_path is not None:
-            metadata[BASIS_ARTIFACT_PATH_ATTR] = basis_artifact_path
-        if metadata != existing_metadata:
-            basis_functions = basis_functions.with_metadata(metadata)
 
         normalized_site_metadata = _normalize_site_metadata(site_metadata)
         normalized_inv_inputs, normalized_site_metadata = _canonicalize_rhime_inv_inputs(
@@ -194,6 +149,74 @@ class RhimePreparedInputs:
         object.__setattr__(self, "inv_inputs", normalized_inv_inputs)
         object.__setattr__(self, "basis_functions", basis_functions)
         object.__setattr__(self, "site_metadata", normalized_site_metadata)
+
+    @classmethod
+    def from_legacy_inputs(
+        cls: type[Self],
+        inv_inputs: xr.Dataset,
+        basis_functions: BasisFunctions,
+        sites: Sequence[str],
+        averaging_period: Sequence[str | None],
+        basis_artifact_source: str | None = None,
+        basis_artifact_path: str | None = None,
+        site_lats: Sequence[float] | None = None,
+        site_lons: Sequence[float] | None = None,
+    ) -> Self:
+        """Adapt the former positional fields to the labeled-data contract.
+
+        Args:
+            inv_inputs: Canonical inversion inputs.
+            basis_functions: Retained basis object.
+            sites: Site labels in indicator-decoding order.
+            averaging_period: Observation periods aligned to ``sites``.
+            basis_artifact_source: Optional basis provenance value.
+            basis_artifact_path: Optional basis provenance path.
+            site_lats: Optional legacy release latitudes, one per site.
+            site_lons: Optional legacy release longitudes, one per site.
+
+        Returns:
+            Prepared inputs using labeled site metadata.
+        """
+        existing_metadata = basis_functions.metadata
+        metadata = dict(existing_metadata)
+        if basis_artifact_source is not None:
+            metadata[BASIS_ARTIFACT_SOURCE_ATTR] = basis_artifact_source
+        if basis_artifact_path is not None:
+            metadata[BASIS_ARTIFACT_PATH_ATTR] = basis_artifact_path
+        if metadata != existing_metadata:
+            basis_functions = basis_functions.with_metadata(metadata)
+        if (site_lats is None) != (site_lons is None):
+            raise ValueError("Legacy site_lats and site_lons must be supplied together.")
+        if site_lats is not None and site_lons is not None:
+            if len(site_lats) != len(sites) or len(site_lons) != len(sites):
+                raise ValueError("Legacy release coordinates must have one value per site.")
+            has_release_lat = "release_lat" in inv_inputs
+            has_release_lon = "release_lon" in inv_inputs
+            if has_release_lat != has_release_lon:
+                raise ValueError("Observation-aligned release_lat and release_lon must be supplied together.")
+            if not has_release_lat:
+                site_lookup = {str(site): index for index, site in enumerate(sites)}
+                measurement_sites = tuple(str(site) for site in inv_inputs["site"].values)
+                missing_sites = sorted(set(measurement_sites) - set(site_lookup))
+                if missing_sites:
+                    raise ValueError(f"Legacy release coordinates are missing site(s): {missing_sites!r}.")
+                inv_inputs = inv_inputs.assign_coords(
+                    release_lat=(
+                        "nmeasure",
+                        [site_lats[site_lookup[site]] for site in measurement_sites],
+                    ),
+                    release_lon=(
+                        "nmeasure",
+                        [site_lons[site_lookup[site]] for site in measurement_sites],
+                    ),
+                )
+                inv_inputs["release_lat"].attrs["units"] = "degrees_north"
+                inv_inputs["release_lon"].attrs["units"] = "degrees_east"
+        return cls(
+            inv_inputs=inv_inputs,
+            basis_functions=basis_functions,
+            site_metadata=_make_site_metadata(sites=sites, averaging_period=averaging_period),
+        )
 
     @property
     def sites(self) -> tuple[str, ...]:
@@ -207,20 +230,6 @@ class RhimePreparedInputs:
             None if value is None or pd.isna(value) else str(value)
             for value in self.site_metadata[_SITE_AVERAGING_PERIOD].values
         )
-
-    @property
-    def site_lats(self) -> tuple[float, ...] | None:
-        """Return site release latitudes when retained."""
-        if _SITE_LAT not in self.site_metadata:
-            return None
-        return tuple(float(value) for value in self.site_metadata[_SITE_LAT].values)
-
-    @property
-    def site_lons(self) -> tuple[float, ...] | None:
-        """Return site release longitudes when retained."""
-        if _SITE_LON not in self.site_metadata:
-            return None
-        return tuple(float(value) for value in self.site_metadata[_SITE_LON].values)
 
     @property
     def basis_artifact_source(self) -> str:
@@ -387,39 +396,28 @@ def _make_site_metadata(
     *,
     sites: Sequence[str],
     averaging_period: Sequence[str | None],
-    site_lats: Sequence[float] | None = None,
-    site_lons: Sequence[float] | None = None,
 ) -> xr.Dataset:
     """Construct labeled site metadata from compatibility inputs.
 
     Args:
         sites: Authoritative labels in site-indicator decoding order.
         averaging_period: Observation periods aligned to ``sites``.
-        site_lats: Optional release latitudes aligned to ``sites``.
-        site_lons: Optional release longitudes aligned to ``sites``.
-
     Returns:
         Dataset containing the labeled site metadata.
 
     Raises:
-        ValueError: During normalization if lengths differ, averaging periods
-            are invalid, or only one release-coordinate vector is supplied.
+        ValueError: During normalization if lengths differ or averaging periods
+            are invalid.
     """
-    data_vars: dict[str, tuple[str, object]] = {
-        _SITE_AVERAGING_PERIOD: (
-            "site",
-            np.asarray(list(averaging_period), dtype=object),
-        )
-    }
-    if site_lats is not None:
-        data_vars[_SITE_LAT] = ("site", np.asarray(list(site_lats), dtype=float))
-    if site_lons is not None:
-        data_vars[_SITE_LON] = ("site", np.asarray(list(site_lons), dtype=float))
-    result = xr.Dataset(data_vars, coords={"site": [str(site) for site in sites]})
-    if _SITE_LAT in result:
-        result[_SITE_LAT].attrs["units"] = "degrees_north"
-        result[_SITE_LON].attrs["units"] = "degrees_east"
-    return result
+    return xr.Dataset(
+        {
+            _SITE_AVERAGING_PERIOD: (
+                "site",
+                np.asarray(list(averaging_period), dtype=object),
+            )
+        },
+        coords={"site": [str(site) for site in sites]},
+    )
 
 
 def _normalize_site_metadata(ds: xr.Dataset) -> xr.Dataset:
@@ -434,7 +432,7 @@ def _normalize_site_metadata(ds: xr.Dataset) -> xr.Dataset:
     Raises:
         ValueError: If site labels are missing or duplicated, required
             site-aligned variables are absent or misdimensioned, or coordinate
-            variables are incomplete or infinite.
+            variables are incomplete.
     """
     if "site" not in ds.coords or ds["site"].dims != ("site",):
         raise ValueError("RhimePreparedInputs site_metadata requires a one-dimensional 'site' coordinate.")
@@ -473,25 +471,9 @@ def _normalize_site_metadata(ds: xr.Dataset) -> xr.Dataset:
                 "RhimePreparedInputs site_metadata 'averaging_period' values must be strings or missing."
             )
 
-    has_lat = _SITE_LAT in ds
-    has_lon = _SITE_LON in ds
-    if has_lat != has_lon:
-        raise ValueError(
-            "RhimePreparedInputs site_metadata must contain both release_lat and release_lon, or neither."
-        )
-
     result = ds.copy()
     result = result.assign_coords(site=ds["site"].copy(data=np.asarray(sites, dtype=str)))
     result[_SITE_AVERAGING_PERIOD] = ds[_SITE_AVERAGING_PERIOD].copy(data=np.asarray(periods, dtype=object))
-    for name in (_SITE_LAT, _SITE_LON):
-        if name not in result:
-            continue
-        if result[name].dims != ("site",):
-            raise ValueError(f"RhimePreparedInputs site_metadata {name!r} must have dimension 'site'.")
-        values = np.asarray(result[name].data, dtype=float)
-        if np.isinf(values).any():
-            raise ValueError(f"RhimePreparedInputs site_metadata {name!r} must not contain infinity.")
-        result[name] = ds[name].copy(data=values)
     return result
 
 
@@ -654,35 +636,6 @@ def _filter_site_aligned_value(value: object, keep_indices: list[int]) -> object
     if not isinstance(value, Sequence):
         return value
     return [item for index, item in enumerate(value) if index in keep_indices]
-
-
-def _first_scalar_data_value(ds: xr.Dataset, names: tuple[str, ...]) -> float:
-    """Return the first scalar value found in a dataset variable or coordinate."""
-    for name in names:
-        if name not in ds:
-            continue
-        values = np.asarray(ds[name].values).reshape(-1)
-        if values.size:
-            return float(values[0])
-    return np.nan
-
-
-def _site_release_coordinates(
-    fp_data: dict[str, xr.Dataset],
-    sites: Sequence[str],
-) -> tuple[tuple[float, ...], tuple[float, ...]]:
-    """Return release lat/lon values aligned to retained sites."""
-    lats: list[float] = []
-    lons: list[float] = []
-    for site in sites:
-        site_data = fp_data.get(site)
-        if site_data is None:
-            lats.append(np.nan)
-            lons.append(np.nan)
-            continue
-        lats.append(_first_scalar_data_value(site_data, ("release_lat", "sitelats")))
-        lons.append(_first_scalar_data_value(site_data, ("release_lon", "sitelons")))
-    return tuple(lats), tuple(lons)
 
 
 def _drop_sites_missing_from_loaded_data(
@@ -1468,7 +1421,6 @@ def prepare_rhime_inputs(
             min_error_options=min_error_options,
         )
     _warn_for_nan_inputs(inv_inputs, use_bc=use_bc)
-    site_lats, site_lons = _site_release_coordinates(fp_data, filtered_merged.sites)
     log_timing(
         "rhime.prepare_inputs.prepared_dims",
         0.0,
@@ -1485,7 +1437,5 @@ def prepare_rhime_inputs(
         site_metadata=_make_site_metadata(
             sites=filtered_merged.sites,
             averaging_period=filtered_merged.averaging_period,
-            site_lats=site_lats,
-            site_lons=site_lons,
         ),
     )

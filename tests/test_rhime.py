@@ -323,6 +323,17 @@ def _minimal_prepared_inv_inputs(sites: tuple[str, ...] = ("TAC",)) -> xr.Datase
     )
 
 
+def _prepared_site_metadata(
+    sites: tuple[str, ...] = ("TAC",),
+    averaging_period: tuple[str | None, ...] = ("1h",),
+) -> xr.Dataset:
+    """Build labeled site metadata for the canonical prepared-input API."""
+    return xr.Dataset(
+        {"averaging_period": ("site", np.asarray(averaging_period, dtype=object))},
+        coords={"site": list(sites)},
+    )
+
+
 def _minimal_output_inv_inputs() -> xr.Dataset:
     """Build minimal inversion inputs for output adapter tests."""
     inv_inputs = xr.Dataset(
@@ -1502,9 +1513,7 @@ def test_run_rhime_from_prepared_inputs_routes_without_preparation(
     prepared = RhimePreparedInputs(
         inv_inputs=inv_inputs,
         basis_functions=_fake_basis_functions(),
-        sites=("TAC",),
-        averaging_period=("1h",),
-        basis_artifact_source="generated",
+        site_metadata=_prepared_site_metadata(),
     )
     sampler = RhimeSampler(draws=7, sample_prior_predictive=False, sample_posterior_predictive=False)
     built_model = pm.Model()
@@ -1601,9 +1610,7 @@ def test_run_rhime_from_prepared_inputs_rejects_layout_mode_mismatch_before_exec
     prepared = RhimePreparedInputs(
         inv_inputs=inv_inputs,
         basis_functions=_fake_basis_functions(),
-        sites=("TAC",),
-        averaging_period=("1h",),
-        basis_artifact_source="generated",
+        site_metadata=_prepared_site_metadata(),
     )
 
     def fail_execution(*args: Any, **kwargs: Any) -> None:
@@ -1655,9 +1662,7 @@ def test_run_rhime_from_prepared_inputs_rejects_flag_h_layout_mismatch_before_ex
     prepared = RhimePreparedInputs(
         inv_inputs=inv_inputs,
         basis_functions=_fake_basis_functions(),
-        sites=("TAC",),
-        averaging_period=("1h",),
-        basis_artifact_source="generated",
+        site_metadata=_prepared_site_metadata(),
     )
 
     def fail_execution(*args: Any, **kwargs: Any) -> None:
@@ -1695,9 +1700,7 @@ def test_run_rhime_from_prepared_inputs_defaults_sampler_and_skips_none_output_w
     prepared = RhimePreparedInputs(
         inv_inputs=_minimal_output_inv_inputs(),
         basis_functions=_fake_basis_functions(),
-        sites=("TAC",),
-        averaging_period=("1h",),
-        basis_artifact_source="generated",
+        site_metadata=_prepared_site_metadata(),
     )
     built_model = pm.Model()
     sampled_with: list[RhimeSampler] = []
@@ -1766,9 +1769,7 @@ def test_run_rhime_from_prepared_inputs_validates_output_before_execution(
     prepared = RhimePreparedInputs(
         inv_inputs=inv_inputs,
         basis_functions=_fake_basis_functions(),
-        sites=("TAC",),
-        averaging_period=("1h",),
-        basis_artifact_source="generated",
+        site_metadata=_prepared_site_metadata(),
     )
 
     def fail_execution(*args: Any, **kwargs: Any) -> None:
@@ -1796,9 +1797,7 @@ def test_run_rhime_from_prepared_inputs_rejects_empty_model() -> None:
     prepared = RhimePreparedInputs(
         inv_inputs=_minimal_output_inv_inputs(),
         basis_functions=_fake_basis_functions(),
-        sites=("TAC",),
-        averaging_period=("1h",),
-        basis_artifact_source="generated",
+        site_metadata=_prepared_site_metadata(),
     )
 
     with pytest.raises(ValueError, match="must contain at least one sector; found 0"):
@@ -2838,9 +2837,7 @@ def test_rhime_prepared_inputs_contract_exposes_only_modern_fields() -> None:
     prepared = RhimePreparedInputs(
         inv_inputs=_minimal_prepared_inv_inputs(),
         basis_functions=_fake_basis_functions(),
-        sites=("TAC",),
-        averaging_period=("1H",),
-        basis_artifact_source="generated",
+        site_metadata=_prepared_site_metadata(averaging_period=("1H",)),
     )
 
     for legacy_attr in (
@@ -2917,9 +2914,7 @@ def test_prepared_multisector_runner_accepts_gathered_source_specific_basis_layo
     prepared = RhimePreparedInputs(
         inv_inputs=inv_inputs,
         basis_functions=basis_functions,
-        sites=("TAC",),
-        averaging_period=("1H",),
-        basis_artifact_source="generated",
+        site_metadata=_prepared_site_metadata(averaging_period=("1H",)),
     )
     run_spec = RhimeRunSpec(
         start_date="2019-01-01",
@@ -4230,12 +4225,14 @@ def test_derived_output_filename_can_use_legacy_convention(tmp_path: Path) -> No
 
 def test_make_standard_output_bundle_returns_outputs_without_mutating_result() -> None:
     model_spec, output_spec, run_spec = _minimal_output_specs()
+    inv_inputs = _minimal_output_inv_inputs().assign_coords(
+        release_lat=("nmeasure", [51.0]),
+        release_lon=("nmeasure", [-2.0]),
+    )
     prepared = RhimePreparedInputs(
-        inv_inputs=_minimal_output_inv_inputs(),
+        inv_inputs=inv_inputs,
         basis_functions=_fake_basis_functions(),
-        sites=("TAC",),
-        averaging_period=("1h",),
-        basis_artifact_source="generated",
+        site_metadata=_prepared_site_metadata(),
     )
 
     bundle = rhime_outputs.make_standard_output_bundle(
@@ -4248,6 +4245,10 @@ def test_make_standard_output_bundle_returns_outputs_without_mutating_result() -
     )
 
     assert isinstance(bundle.inv_out, InversionOutput)
+    xr.testing.assert_identical(bundle.inv_out.inv_inputs.release_lat, inv_inputs.release_lat)
+    xr.testing.assert_identical(bundle.inv_out.inv_inputs.release_lon, inv_inputs.release_lon)
+    assert "site_lats" not in bundle.inv_out.run_metadata
+    assert "site_lons" not in bundle.inv_out.run_metadata
     assert bundle.outputs == {"inversion_output": bundle.inv_out}
     assert bundle.output_metadata == {"inversion_output_contract": "modern"}
 
@@ -4282,9 +4283,7 @@ def test_make_multisector_output_bundle_returns_modern_inv_out() -> None:
     prepared = RhimePreparedInputs(
         inv_inputs=_minimal_output_inv_inputs(),
         basis_functions=_fake_basis_functions(),
-        sites=("TAC",),
-        averaging_period=("1h",),
-        basis_artifact_source="generated",
+        site_metadata=_prepared_site_metadata(),
     )
     idata = az.from_dict(
         posterior={
@@ -4363,9 +4362,7 @@ def test_make_multisector_output_bundle_builds_latest_paris_flux(
     prepared = RhimePreparedInputs(
         inv_inputs=inv_inputs,
         basis_functions=basis_functions,
-        sites=("TAC",),
-        averaging_period=("1h",),
-        basis_artifact_source="generated",
+        site_metadata=_prepared_site_metadata(),
     )
     idata = cast(Any, multisector_postprocessing_inv_out().trace)
 
@@ -4403,10 +4400,7 @@ def test_modern_inversion_output_save_load_roundtrip(tmp_path: Path) -> None:
         basis_functions=_fake_basis_functions(artifact_source="unit-test").with_metadata(
             {BASIS_ARTIFACT_PATH_ATTR: basis_artifact_path}
         ),
-        sites=("TAC",),
-        averaging_period=("1h",),
-        basis_artifact_source="unit-test",
-        basis_artifact_path=basis_artifact_path,
+        site_metadata=_prepared_site_metadata(),
     )
     idata = _minimal_output_idata()
     idata.attrs["burn"] = 1000
@@ -4451,9 +4445,7 @@ def test_modern_inversion_output_restores_bytes_multiindex_metadata() -> None:
     prepared = RhimePreparedInputs(
         inv_inputs=inv_inputs,
         basis_functions=_fake_basis_functions(artifact_source="unit-test"),
-        sites=("TAC",),
-        averaging_period=("1h",),
-        basis_artifact_source="unit-test",
+        site_metadata=_prepared_site_metadata(),
     )
     bundle = rhime_outputs.make_standard_output_bundle(
         output_spec=output_spec,
@@ -4500,9 +4492,7 @@ def test_modern_inversion_output_roundtrips_trace_multiindex() -> None:
     prepared = RhimePreparedInputs(
         inv_inputs=_minimal_output_inv_inputs(),
         basis_functions=_fake_basis_functions(artifact_source="unit-test"),
-        sites=("TAC",),
-        averaging_period=("1h",),
-        basis_artifact_source="unit-test",
+        site_metadata=_prepared_site_metadata(),
     )
     bundle = rhime_outputs.make_standard_output_bundle(
         output_spec=output_spec,
@@ -4539,9 +4529,7 @@ def test_modern_inversion_output_ignores_malformed_multiindex_metadata(raw_multi
     prepared = RhimePreparedInputs(
         inv_inputs=inv_inputs,
         basis_functions=_fake_basis_functions(artifact_source="unit-test"),
-        sites=("TAC",),
-        averaging_period=("1h",),
-        basis_artifact_source="unit-test",
+        site_metadata=_prepared_site_metadata(),
     )
     bundle = rhime_outputs.make_standard_output_bundle(
         output_spec=output_spec,
@@ -4572,9 +4560,7 @@ def test_modern_inversion_output_supports_flux_outputs() -> None:
     prepared = RhimePreparedInputs(
         inv_inputs=_minimal_output_inv_inputs(),
         basis_functions=_fake_basis_functions(),
-        sites=("TAC",),
-        averaging_period=("1h",),
-        basis_artifact_source="generated",
+        site_metadata=_prepared_site_metadata(),
     )
     bundle = rhime_outputs.make_standard_output_bundle(
         output_spec=output_spec,
@@ -4747,9 +4733,7 @@ def test_observation_inputs_for_outputs_stay_dataset_based() -> None:
     prepared = RhimePreparedInputs(
         inv_inputs=inv_inputs,
         basis_functions=_fake_basis_functions(),
-        sites=("TAC",),
-        averaging_period=("1h",),
-        basis_artifact_source="generated",
+        site_metadata=_prepared_site_metadata(),
     )
     bundle = rhime_outputs.make_standard_output_bundle(
         output_spec=output_spec,
@@ -5004,9 +4988,7 @@ def test_standard_basic_output_uses_modern_postprocessing_without_legacy_adapter
     prepared = RhimePreparedInputs(
         inv_inputs=_minimal_output_inv_inputs(),
         basis_functions=_fake_basis_functions(),
-        sites=("TAC",),
-        averaging_period=("1h",),
-        basis_artifact_source="generated",
+        site_metadata=_prepared_site_metadata(),
     )
     captured: dict[str, Any] = {}
 
@@ -5044,9 +5026,7 @@ def test_standard_paris_output_uses_modern_postprocessing_without_legacy_adapter
     prepared = RhimePreparedInputs(
         inv_inputs=_minimal_output_inv_inputs(),
         basis_functions=_fake_basis_functions(),
-        sites=("TAC",),
-        averaging_period=("1h",),
-        basis_artifact_source="generated",
+        site_metadata=_prepared_site_metadata(),
     )
     captured: dict[str, Any] = {}
 
@@ -5114,9 +5094,7 @@ def test_standard_legacy_output_uses_modern_inversion_output(
     prepared = RhimePreparedInputs(
         inv_inputs=_minimal_output_inv_inputs(),
         basis_functions=_fake_basis_functions(),
-        sites=("TAC",),
-        averaging_period=("1h",),
-        basis_artifact_source="generated",
+        site_metadata=_prepared_site_metadata(),
     )
     captured: dict[str, Any] = {}
 

@@ -45,8 +45,9 @@
   now use an ordered xarray ``source`` coordinate; basis provenance remains
   owned by ``BasisFunctions``. Site indicators are regenerated from labeled
   measurement sites, avoiding a second user-maintained source of site truth.
-  Repeated Zarr saves replace the previous artifact rather than retaining stale
-  groups.
+  Observation-varying release locations remain aligned to measurements rather
+  than being reduced to site scalars. Repeated Zarr saves replace the previous
+  artifact rather than retaining stale groups.
   Generic DataTree, InferenceData, and MultiIndex serialization helpers now
   have shared ownership outside postprocessing.
 

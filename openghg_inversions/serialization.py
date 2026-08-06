@@ -409,12 +409,3 @@ def restore_serialisation_multiindexes(ds: xr.Dataset, *, strict: bool = False) 
                 f"MultiIndex metadata for dimension {dim!r} does not align with stored level coordinates."
             )
     return result
-
-
-# Compatibility aliases for callers that imported the original private names.
-_save_datatree = save_datatree
-_open_datatree_loaded = open_datatree_loaded
-_inferencedata_to_datatree = inferencedata_to_datatree
-_inferencedata_from_datatree = inferencedata_from_datatree
-_reset_serialisation_multiindexes = reset_serialisation_multiindexes
-_restore_serialisation_multiindexes = restore_serialisation_multiindexes
