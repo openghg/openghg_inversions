@@ -209,6 +209,238 @@ they are stacked on ``source``. Inputs with different native frequencies, such
 as hourly and monthly fluxes, require an explicit resampling policy rather than
 implicit xarray alignment.
 
+Source-neutral xarray preparation
+---------------------------------
+
+Source-neutral xarray inputs can be adapted at this boundary without OpenGHG
+data acquisition. The supported container boundary is deliberately narrow:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 25 15 60
+
+   * - Container
+     - Support
+     - Contract
+   * - Ordered ``Mapping[str, Dataset]``
+     - Supported
+     - One active-observation dataset per site; mapping insertion order is
+       retained.
+   * - ``DataTree``
+     - Supported
+     - One direct child dataset per site; child order is retained.
+   * - Direct ``Dataset``
+     - Unsupported
+     - Wrap one or more site-local datasets in an ordered mapping or a
+       direct-child ``DataTree``. Load an already canonical artifact with
+       ``RhimePreparedInputs.load``.
+   * - Dense ``Dataset(site, time)``
+     - Unsupported
+     - No trimming or interpretation of padded rows is attempted. Split it
+       into per-site datasets first.
+   * - Padded dense arrays
+     - Unsupported
+     - Every row in a site-local dataset is active; padding has no MVP
+       semantics.
+   * - Pre-stacked ``nmeasure`` data
+     - Unsupported
+     - Pass per-site data to the adapter. Load an already canonical prepared
+       artifact with ``RhimePreparedInputs.load`` instead.
+
+This matches the cached verification-games workflow: sites may have unequal or
+disjoint time axes, and the existing ragged gather path creates ``nmeasure``
+only after per-site validation and basis projection. The following first block
+is illustrative application code adapted from verification-games. OpenGHG
+Inversions does not define its cache paths, acquire its observations, or choose
+its numerical unit conversion.
+
+Application-specific input assembly:
+
+.. code-block:: python
+
+   from collections import OrderedDict
+
+   import numpy as np
+   import xarray as xr
+
+   sources = ["ocean", "FF", "GPP", "TER"]  # meaningful, non-alphabetical order
+
+   site_times = OrderedDict(
+       TAC=np.array(
+           ["2021-01-01T12:00", "2021-01-02T12:00"],
+           dtype="datetime64[ns]",
+       ),
+       MHD=np.array(
+           ["2021-01-01T15:00", "2021-01-03T15:00", "2021-01-04T15:00"],
+           dtype="datetime64[ns]",
+       ),
+   )
+   site_data = OrderedDict()
+   for site, times in site_times.items():
+       cache = xr.open_zarr(f"{site.lower()}-base-fp-x-flux.zarr")[
+           "fp_x_flux_sectoral"
+       ].sel(source=sources, time=times)
+       # Current verification-games caches store mole fractions with units
+       # "1". Numerically convert them in that consumer before adaptation;
+       # changing metadata alone would be scientifically incorrect.
+       if cache.attrs.get("units") == "1":
+           cache = (cache * 1e6).assign_attrs({**cache.attrs, "units": "ppm"})
+       if cache.attrs.get("units") != "ppm":
+           raise ValueError("Normalize this cache numerically to ppm first.")
+       # Schematic placeholder for application-owned observation loading.
+       observation = xr.DataArray(
+           np.zeros(times.size),
+           dims="time",
+           coords={"time": times},
+           attrs={"units": "ppm"},
+       )
+       site_data[site] = xr.Dataset(
+           {
+               "mf": observation,
+               "mf_error": xr.ones_like(observation).assign_attrs(units="ppm"),
+               "mf_repeatability": xr.ones_like(observation).assign_attrs(units="ppm"),
+               "mf_variability": xr.zeros_like(observation).assign_attrs(units="ppm"),
+               "fp_x_flux_sectoral": cache,
+           }
+       )
+
+The public OpenGHG Inversions adapter begins here. It validates and projects
+the supplied site datasets; it does not acquire or normalize the upstream data.
+
+Adapt the application data with OpenGHG Inversions:
+
+.. code-block:: python
+
+   from openghg_inversions.basis.basis_functions import BasisFunctions
+   from openghg_inversions.inversion_data import prepare_rhime_inputs_from_xarray
+
+   # This retained artifact owns the basis operator, source-resolved reference
+   # flux, state labels, and source order used for later reconstruction.
+   basis_functions = BasisFunctions.load("base-country-basis.zarr")
+   prepared = prepare_rhime_inputs_from_xarray(
+       site_data,
+       basis_functions=basis_functions,
+       averaging_period="1h",
+       min_error=0.0,
+       start_date="2021-01-01",
+   )
+
+Optionally save a durable checkpoint so projection is not repeated when the
+prepared artifact is reopened:
+
+.. code-block:: python
+
+   from openghg_inversions.inversion_data import RhimePreparedInputs
+
+   prepared.save("base-prepared-inputs.zarr")
+   prepared = RhimePreparedInputs.load("base-prepared-inputs.zarr")
+
+Finally, construct and execute the OpenGHG Inversions run from the canonical
+prepared object:
+
+.. code-block:: python
+
+   from openghg_inversions.models import RhimeModelSpec, SectorSpec
+   from openghg_inversions.rhime import (
+       RhimeOutputSpec,
+       RhimeRunSpec,
+       RhimeSampler,
+       run_rhime_from_prepared_inputs,
+   )
+
+   sources = ["ocean", "FF", "GPP", "TER"]
+   sectors = tuple(
+       SectorSpec(
+           name=source,
+           flux_source=source,
+           x_prior={"pdf": "lognormal", "mean": 1.0, "stdev": 1.0},
+           variable_suffix=source.lower(),
+       )
+       for source in sources
+   )
+   run_spec = RhimeRunSpec(
+       start_date="2021-01-01",
+       end_date="2021-01-05",
+       sites=prepared.sites,
+       averaging_period=prepared.averaging_period,
+       model=RhimeModelSpec(
+           species="co2",
+           domain="EUROPE",
+           sectors=sectors,
+           sigma_freq="monthly",
+       ),
+       output=RhimeOutputSpec(output_format="none"),
+       split_by_sectors=True,
+   )
+   result = run_rhime_from_prepared_inputs(
+       prepared_inputs=prepared,
+       run_spec=run_spec,
+       sampler=RhimeSampler(draws=1000, tune=1000, chains=4),
+   )
+
+This adapter is an extension boundary for data acquisition and assembly, not a
+plugin interface for alternative RHIME models or likelihood components.
+
+Each site dataset must contain ``mf``, ``mf_error``, ``mf_repeatability``,
+``mf_variability``, and either canonical ``H`` or cached ``fp_x_flux`` /
+``fp_x_flux_sectoral``. Cached fields are projected through the retained basis
+before ragged sites are gathered and are not copied into canonical inputs.
+Other time-aligned extension variables are retained. Non-time-dependent data
+variables are removed at this boundary rather than copied into every
+observation. The retained operator and prior/reference flux are carried into
+postprocessing; artifact provenance may be added to the returned basis value.
+
+The adapter treats every supplied row as an active observation. Each site
+therefore needs a nonempty, explicit, unique ``datetime64`` ``time`` coordinate
+with no ``NaT`` values. Valid non-monotonic input ordering is retained.
+Required observations, projected ``H``, and optional sampled ``H_bc`` values
+must be finite. A site emptied by downstream input preparation is reported as
+an error instead of being silently removed. ``min_error_per_site`` defaults to
+``False``, matching the OpenGHG-backed RHIME preparation route; pass ``True``
+to request per-site minimum errors.
+
+``mf.units`` must be a nonempty string. Every present concentration-valued
+field---observation-error components, canonical ``H`` or the selected cache,
+and ``H_bc``---must declare the same exact unit string at every site. The
+adapter does not perform unit conversion; normalize equivalent spellings before
+calling it. Projected ``H`` inherits the selected cache units.
+
+Canonical ``H`` may use ``(region, time)`` for one source,
+``(region, time, source)`` for multisource data with one shared basis, or a
+gathered state dimension with a ``(source, region_in_source)`` MultiIndex for
+source-specific ragged bases. Multisector inputs must carry source-resolved
+retained prior flux with the same source names and order as ``H``;
+source-specific basis operators must match that order too. The adapter rejects
+a total retained flux for multisector inputs instead of broadcasting it across
+sectors. Labels on explicit ``source`` dimensions must be unique, nonempty
+Python or NumPy strings: bytes, numbers, duplicates, and implicit coercion are
+rejected. Repeated source values within the gathered
+``(source, region_in_source)`` state MultiIndex are valid. Exact source order is
+preserved across the cache, canonical ``H``, retained flux, and operator
+metadata. Ragged state blocks are concatenated with the modern gather helpers;
+the adapter never introduces rectangular zero padding. ``H_bc`` must contain
+exactly ``time`` and ``bc_region`` dimensions in either order.
+
+Release coordinates must be supplied as a pair. Stationary surface or column
+sites may use scalar or singleton ``release_lat`` and ``release_lon`` values;
+the adapter broadcasts them over that site's observations for the PARIS
+template. Mobile platforms must supply both coordinates on exactly the site's
+``time`` dimension, in matching order. Partial, non-finite, or other coordinate
+layouts are rejected rather than flattened or inferred. If any retained site
+supplies release coordinates, every retained site must supply its pair.
+
+Dense padding, pre-stacked layouts, unit conversion, and coercion of source
+labels are intentionally deferred generalizations. They should be added only
+with a concrete consumer and explicit semantics rather than inferred by this
+adapter.
+
+Include ``H_bc`` for the existing sampled boundary-condition contribution. A
+deterministic observation-aligned ``fixed_baseline`` is deliberately rejected
+until a reusable semantic Baseline component defines common likelihood and
+output behavior; this follow-up is tracked in `issue #550
+<https://github.com/openghg/openghg_inversions/issues/550>`_. New prepared-input
+features do not extend legacy HBMCMC model or output paths.
+
 Config Files
 ------------
 

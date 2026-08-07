@@ -384,6 +384,7 @@ def make_inv_inputs(
     min_error: str | dict[str, float] | int | float = 0.0,
     min_error_per_site: bool = True,
     start_date: DatetimeLike | None = None,
+    missing_data_vars: Literal["error", "drop"] = "drop",
 ) -> xr.Dataset:
     """Create backend-neutral observation-aligned inversion inputs.
 
@@ -402,6 +403,10 @@ def make_inv_inputs(
         min_error_per_site: Whether a calculated minimum error varies by site.
         start_date: Optional anchor for fixed-duration boundary-condition
             frequencies.
+        missing_data_vars: Policy for observation-aligned variables that are
+            not present at every site. ``"drop"`` preserves the established
+            OpenGHG/legacy behavior; ``"error"`` prevents extension fields
+            from being discarded.
 
     Returns:
         Canonical inversion inputs aligned along ``nmeasure``.
@@ -409,7 +414,8 @@ def make_inv_inputs(
     Raises:
         ValueError: If no sites can be inferred, the explicit selection is
             empty, a requested site is missing, required input variables are
-            missing, or minimum-error configuration is invalid.
+            missing, the selected missing-variable policy is violated, or
+            minimum-error configuration is invalid.
     """
     if sites is None:
         sites = [key for key in fp_data if not key.startswith(".")]
@@ -435,7 +441,7 @@ def make_inv_inputs(
             key_dim="site",
             ragged_dim="time",
             stack_dim="nmeasure",
-            missing_data_vars="drop",
+            missing_data_vars=missing_data_vars,
             join="exact",
         )
     except xr.AlignmentError as exc:
