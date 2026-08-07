@@ -111,6 +111,18 @@
   now share the same post-preparation execution path.
   [#509](https://github.com/openghg/openghg_inversions/issues/509)
 
+- Added a label-aware active/fixed state-vector contract to the modern RHIME
+  model builders. Exact-zero sensitivity columns are now fixed at scaling one
+  by default while every nonzero column remains active; explicit labelled
+  masks and ``basis_group`` freezes can retain other fixed states or sectors.
+  Models sample active states only but retain full ordered deterministic
+  ``x``/``x_<sector>`` vectors, and flux-scaling prior parameters may now be
+  scalar, full array-valued, or labelled xarray values. Programmatic model specs
+  can set per-sector activity, and sampled ``H_bc @ bc`` components can use the
+  same mechanism to fix some or all BC scaling states. Config-file syntax and
+  persisted activity-reason reports remain follow-up work; legacy
+  ``inferpymc`` remains single-sector and retains its full sampled state.
+
 - Made retained `BasisFunctions` / `BasisOperator` metadata the primary basis
   contract for RHIME preparation and modern postprocessing outputs. Derived
   flux, country, PARIS, and legacy-format products now record stable basis

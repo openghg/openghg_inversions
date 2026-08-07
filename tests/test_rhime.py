@@ -40,6 +40,7 @@ from openghg_inversions.flux_sanitization import (
 from openghg_inversions.inversion_data import RhimePreparedInputs, prepare_rhime_inputs
 from openghg_inversions.inversion_inputs import make_inv_inputs
 from openghg_inversions.models import (
+    StateActivity,
     build_rhime_model,
     build_rhime_model_from_spec,
     build_rhime_multisector_model,
@@ -833,6 +834,42 @@ def test_compile_loop_sum_preserves_term_order_independent_of_state_order() -> N
     assert list(compiled.terms) == ["a1", "b1", "a2"]
 
 
+def test_compile_loop_sum_resolves_zero_activity_across_shared_state_terms() -> None:
+    """A shared state is pruned only when every effective term column is zero."""
+    coords = {"region": ["first", "second", "zero"], "nmeasure": [0, 1]}
+    plan = _FluxPlan(
+        states=(_StatePlan("shared", "x_shared", {"pdf": "normal", "mu": 1.0, "sigma": 0.2}),),
+        terms=(
+            _ForwardTermPlan(
+                "first",
+                "shared",
+                xr.DataArray(
+                    [[1.0, 2.0], [0.0, 0.0], [0.0, 0.0]], dims=("region", "nmeasure"), coords=coords
+                ),
+                "h_first",
+                "mu_first",
+            ),
+            _ForwardTermPlan(
+                "second",
+                "shared",
+                xr.DataArray(
+                    [[0.0, 0.0], [3.0, 4.0], [0.0, 0.0]], dims=("region", "nmeasure"), coords=coords
+                ),
+                "h_second",
+                "mu_second",
+            ),
+        ),
+    )
+
+    with pm.Model() as model:
+        attach_coord_registry(model, CoordRegistry())
+        compiled = _compile_loop_sum(plan)
+
+    np.testing.assert_array_equal(model["x_shared_is_active"].eval(), [True, True, False])
+    assert model["x_shared_active"].eval().shape == (2,)
+    assert compiled.latents["shared"] is model["x_shared_active"]
+
+
 def test_build_rhime_model_contains_expected_variables(
     rhime_inv_inputs: xr.Dataset, builder_args: dict
 ) -> None:
@@ -973,15 +1010,42 @@ def test_concrete_and_compiled_multisector_models_accept_gathered_ragged_states(
         coords={
             **xr.Coordinates.from_pandas_multiindex(state_index, "state"),
             "nmeasure": multisector_inv_inputs.coords["nmeasure"],
+            "basis_group": ("state", ["fixed", "active", "fixed", "active", "active"]),
         },
+    )
+    ff_active = xr.DataArray(
+        [False, True],
+        dims="state",
+        coords={"state": ["south", "north"]},
+    )
+    ff_fixed = xr.DataArray(
+        [2.0, 3.0],
+        dims="state",
+        coords={"state": ["south", "north"]},
     )
 
     kwargs = {
         "sectors": ["FF", "ocean"],
         "sector_sources": {"FF": "ff-inventory", "ocean": "ocean-inventory"},
         "sector_priors": {
-            "FF": {"pdf": "normal", "mu": 1.0, "sigma": 0.2},
+            "FF": {
+                "pdf": "uniform",
+                "lower": xr.DataArray(
+                    [20.0, 10.0],
+                    dims="state",
+                    coords={"state": ["south", "north"]},
+                ),
+                "upper": xr.DataArray(
+                    [21.0, 11.0],
+                    dims="state",
+                    coords={"state": ["south", "north"]},
+                ),
+            },
             "ocean": {"pdf": "normal", "mu": 1.0, "sigma": 0.3},
+        },
+        "sector_state_activities": {
+            "FF": StateActivity(active=ff_active, fixed_value=ff_fixed),
+            "ocean": StateActivity(fixed_groups=("fixed",)),
         },
         **builder_args,
     }
@@ -1015,8 +1079,26 @@ def test_concrete_and_compiled_multisector_models_accept_gathered_ragged_states(
         assert list(registry.original_coords["state_ff"]) == ff_labels
         assert list(registry.original_coords["state_ocean"]) == ocean_labels
         assert registry.original_coords["nmeasure"].equals(inv_inputs.indexes["nmeasure"])
+        np.testing.assert_array_equal(registry.auxiliary_coords["basis_group_ff"], ["fixed", "active"])
+        np.testing.assert_array_equal(
+            registry.auxiliary_coords["basis_group_ocean"],
+            ["fixed", "active", "active"],
+        )
+        assert list(registry.original_coords["state_ff_x_ff_active"]) == ["north"]
+        assert list(registry.original_coords["state_ocean_x_ocean_active"]) == [
+            "pacific",
+            "indian",
+        ]
 
-    var_names = ["x_ff", "mu_ff", "x_ocean", "mu_ocean", "mu"]
+    var_names = [
+        "x_ff_active",
+        "x_ff",
+        "mu_ff",
+        "x_ocean_active",
+        "x_ocean",
+        "mu_ocean",
+        "mu",
+    ]
     with model:
         concrete_prior = pm.sample_prior_predictive(
             draws=2,
@@ -1042,6 +1124,10 @@ def test_concrete_and_compiled_multisector_models_accept_gathered_ragged_states(
     xr.testing.assert_allclose(concrete_dataset, compiled_dataset)
     assert list(concrete_dataset["state_ff"].values) == ff_labels
     assert list(concrete_dataset["state_ocean"].values) == ocean_labels
+    assert list(concrete_dataset["state_ff_x_ff_active"].values) == ["north"]
+    assert list(concrete_dataset["state_ocean_x_ocean_active"].values) == ["pacific", "indian"]
+    assert np.all((concrete_dataset["x_ff_active"] >= 10.0) & (concrete_dataset["x_ff_active"] <= 11.0))
+    np.testing.assert_allclose(concrete_dataset["x_ff"].sel(state_ff="south"), 2.0)
     assert concrete_dataset.indexes["nmeasure"].equals(inv_inputs.indexes["nmeasure"])
     xr.testing.assert_allclose(
         concrete_dataset["mu"],
@@ -1390,6 +1476,135 @@ def test_concrete_and_compiled_standard_models_are_equivalent(
         concrete_dataset["mu"],
         expected_mu.transpose(*concrete_dataset["mu"].dims).rename("mu"),
     )
+
+
+def test_concrete_and_compiled_standard_models_prune_exact_zero_states(
+    rhime_inv_inputs: xr.Dataset,
+    builder_args: dict,
+) -> None:
+    """Concrete and compiled graphs retain full state around an active prior."""
+    inv_inputs = rhime_inv_inputs.copy(deep=True)
+    first_region = inv_inputs["H"].coords["region"][0]
+    inv_inputs["H"].loc[{"region": first_region}] = 0.0
+    kwargs = {
+        **builder_args,
+        "use_bc": False,
+        "no_model_error": True,
+        "state_activity": StateActivity(),
+    }
+
+    concrete = build_rhime_model(inv_inputs, **kwargs)
+    compiled = rhime_models_module._build_compiled_rhime_model(inv_inputs, **kwargs)
+
+    assert set(concrete.named_vars) == set(compiled.named_vars)
+    assert concrete.named_vars_to_dims == compiled.named_vars_to_dims
+    np.testing.assert_array_equal(
+        concrete["x_is_active"].eval(),
+        compiled["x_is_active"].eval(),
+    )
+    assert not bool(concrete["x_is_active"].eval()[0])
+    assert concrete["x_active"] in concrete.free_RVs
+    assert compiled["x_active"] in compiled.free_RVs
+    with concrete:
+        concrete_prior = pm.sample_prior_predictive(
+            draws=2,
+            var_names=["x_active", "x", "mu"],
+            random_seed=417,
+        )
+    with compiled:
+        compiled_prior = pm.sample_prior_predictive(
+            draws=2,
+            var_names=["x_active", "x", "mu"],
+            random_seed=417,
+        )
+    xr.testing.assert_allclose(
+        cast(Any, concrete_prior).prior,
+        cast(Any, compiled_prior).prior,
+    )
+
+
+def test_concrete_and_compiled_models_support_all_fixed_flux_and_bc(
+    rhime_inv_inputs: xr.Dataset,
+    builder_args: dict,
+) -> None:
+    """All-fixed flux and BC states retain full deterministic contributions."""
+    kwargs = {
+        **builder_args,
+        "no_model_error": True,
+        "state_activity": StateActivity(active=False, fixed_value=2.0),
+        "bc_state_activity": StateActivity(active=False, fixed_value=1.5),
+    }
+
+    concrete = build_rhime_model(rhime_inv_inputs, **kwargs)
+    compiled = rhime_models_module._build_compiled_rhime_model(rhime_inv_inputs, **kwargs)
+
+    assert set(concrete.named_vars) == set(compiled.named_vars)
+    assert concrete.named_vars_to_dims == compiled.named_vars_to_dims
+    for model in (concrete, compiled):
+        assert model["x"] not in model.free_RVs
+        assert model["bc"] not in model.free_RVs
+        assert "x_active" not in model.named_vars
+        assert "bc_active" not in model.named_vars
+        np.testing.assert_allclose(model["x"].eval(), 2.0)
+        np.testing.assert_allclose(model["bc"].eval(), 1.5)
+        np.testing.assert_allclose(model["mu"].eval(), model["hx"].get_value() @ model["x"].eval())
+        np.testing.assert_allclose(
+            model["mu_bc"].eval(),
+            model["hbc"].get_value() @ model["bc"].eval(),
+        )
+
+
+def test_bc_activity_is_opt_in_and_restores_exact_zero_columns(
+    rhime_inv_inputs: xr.Dataset,
+    builder_args: dict,
+) -> None:
+    """Explicit BC activity prunes zero columns while omission keeps the old graph."""
+    inv_inputs = rhime_inv_inputs.copy(deep=True)
+    first_region = inv_inputs["H_bc"].coords["bc_region"][0]
+    inv_inputs["H_bc"].loc[{"bc_region": first_region}] = 0.0
+    kwargs = {**builder_args, "no_model_error": True}
+
+    default_model = build_rhime_model(inv_inputs, **kwargs)
+    assert default_model["bc"] in default_model.free_RVs
+    assert "bc_active" not in default_model.named_vars
+    assert "bc_is_active" not in default_model.named_vars
+
+    for model in (
+        build_rhime_model(inv_inputs, bc_state_activity=StateActivity(), **kwargs),
+        rhime_models_module._build_compiled_rhime_model(
+            inv_inputs,
+            bc_state_activity=StateActivity(),
+            **kwargs,
+        ),
+    ):
+        assert model["bc_active"] in model.free_RVs
+        assert model["bc"] not in model.free_RVs
+        assert not bool(model["bc_is_active"].eval()[0])
+        assert model["bc"].eval()[0] == 1.0
+        registry = models.get_coord_registry(model)
+        assert registry is not None
+        assert list(registry.original_coords["bc_region_bc_active"]) == list(
+            inv_inputs["H_bc"].indexes["bc_region"][1:]
+        )
+        np.testing.assert_allclose(
+            model["mu_bc"].eval(),
+            model["hbc"].get_value() @ model["bc"].eval(),
+        )
+
+
+def test_compiled_multisector_model_rejects_unknown_state_activity_sector(
+    multisector_inv_inputs: xr.Dataset,
+    builder_args: dict,
+) -> None:
+    """Compiler normalization rejects activity overrides for absent sectors."""
+    with pytest.raises(ValueError, match="unknown sector.*missing"):
+        rhime_models_module._build_compiled_rhime_multisector_model(
+            multisector_inv_inputs,
+            sectors=["FF", "ocean"],
+            sector_sources={"FF": "total-ukghg-edgar7", "ocean": "sector-2"},
+            sector_state_activities={"missing": StateActivity(active=False)},
+            **builder_args,
+        )
 
 
 def test_concrete_and_compiled_multisector_models_are_equivalent(
@@ -2030,9 +2245,11 @@ def test_rhime_normalises_legacy_output_format_aliases(
 def test_build_rhime_model_from_spec_forwards_single_sector_prior(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Forward the sector prior and construct prepared sigma alignment."""
+    """Forward sector activity and priors and construct sigma alignment."""
     sentinel = cast(pm.Model, object())
     seen: dict[str, Any] = {}
+    flux_activity = StateActivity(fixed_groups=("outer",))
+    bc_activity = StateActivity(active=False)
 
     def fake_build_rhime_model(inv_inputs: xr.Dataset, **kwargs: Any) -> pm.Model:
         seen["inv_inputs"] = inv_inputs
@@ -2050,9 +2267,11 @@ def test_build_rhime_model_from_spec_forwards_single_sector_prior(
                 flux_source="ff-inventory",
                 x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.2},
                 variable_suffix="ff",
+                state_activity=flux_activity,
             ),
         ),
         bc_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.1},
+        bc_state_activity=bc_activity,
         sigma_per_site=False,
         sigma_freq="8D",
         sigma_freq_anchor="2019-01-01",
@@ -2064,6 +2283,8 @@ def test_build_rhime_model_from_spec_forwards_single_sector_prior(
     assert seen["inv_inputs"] is inv_inputs
     assert seen["kwargs"]["x_prior"] == {"pdf": "normal", "mu": 1.0, "sigma": 0.2}
     assert seen["kwargs"]["bc_prior"] == {"pdf": "normal", "mu": 1.0, "sigma": 0.1}
+    assert seen["kwargs"]["state_activity"] is flux_activity
+    assert seen["kwargs"]["bc_state_activity"] is bc_activity
     alignment = seen["kwargs"]["sigma_alignment"]
     assert isinstance(alignment, SigmaAlignment)
     assert alignment.nsite == 1
@@ -2129,9 +2350,11 @@ def test_build_rhime_model_from_spec_dispatches_compiled_opt_in(
 def test_build_rhime_multisector_model_from_spec_preserves_sector_source_mapping(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Spec wrapper keeps sector labels separate from OpenGHG source values."""
+    """Spec wrapper preserves source mappings and per-sector activity."""
     sentinel = cast(pm.Model, object())
     seen: dict[str, Any] = {}
+    ff_activity = StateActivity(fixed_groups=("outer",))
+    bc_activity = StateActivity(active=False)
 
     def fake_build_rhime_multisector_model(inv_inputs: xr.Dataset, **kwargs: Any) -> pm.Model:
         seen["inv_inputs"] = inv_inputs
@@ -2153,6 +2376,7 @@ def test_build_rhime_multisector_model_from_spec_preserves_sector_source_mapping
                 flux_source="ff-inventory",
                 x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.2},
                 variable_suffix="ff",
+                state_activity=ff_activity,
             ),
             SectorSpec(
                 name="ocean",
@@ -2161,6 +2385,7 @@ def test_build_rhime_multisector_model_from_spec_preserves_sector_source_mapping
                 variable_suffix="ocean",
             ),
         ),
+        bc_state_activity=bc_activity,
     )
 
     model = build_rhime_multisector_model_from_spec(inv_inputs, model_spec)
@@ -2174,6 +2399,8 @@ def test_build_rhime_multisector_model_from_spec_preserves_sector_source_mapping
         "FF": {"pdf": "normal", "mu": 1.0, "sigma": 0.2},
         "ocean": {"pdf": "normal", "mu": 1.0, "sigma": 0.3},
     }
+    assert seen["kwargs"]["sector_state_activities"] == {"FF": ff_activity}
+    assert seen["kwargs"]["bc_state_activity"] is bc_activity
     assert isinstance(seen["kwargs"]["sigma_alignment"], SigmaAlignment)
 
 
@@ -4958,10 +5185,24 @@ def test_make_multisector_output_bundle_builds_latest_paris_flux(
 def test_modern_inversion_output_save_load_roundtrip(tmp_path: Path) -> None:
     """Modern output preserves January annual flux metadata for a June run."""
     model_spec, output_spec, _ = _minimal_output_specs()
+    sector = model_spec.sectors[0]
+    flux_activity = StateActivity(
+        active=xr.DataArray([False], dims="region", coords={"region": ["r0"]}),
+        fixed_value=np.array([1.25]),
+    )
     model_spec = RhimeModelSpec(
         species=model_spec.species,
         domain=model_spec.domain,
-        sectors=model_spec.sectors,
+        sectors=(
+            SectorSpec(
+                name=sector.name,
+                flux_source=sector.flux_source,
+                x_prior=sector.x_prior,
+                variable_suffix=sector.variable_suffix,
+                state_activity=flux_activity,
+            ),
+        ),
+        bc_state_activity=StateActivity(active=False, fixed_value=np.array(0.75)),
         builder_strategy="compiled",
     )
     run_spec = RhimeRunSpec(
@@ -5010,6 +5251,15 @@ def test_modern_inversion_output_save_load_roundtrip(tmp_path: Path) -> None:
     assert reloaded.provenance["basis_representation"] == "operator-backed"
     assert reloaded.output_metadata["output_format"] == "inv_out"
     assert reloaded.model_metadata["builder_strategy"] == "compiled"
+    saved_activity = reloaded.model_metadata["sectors"][0]["state_activity"]
+    assert saved_activity["active"] == {
+        "dims": ["region"],
+        "coords": {"region": ["r0"]},
+        "values": [False],
+    }
+    assert saved_activity["fixed_value"] == [1.25]
+    assert reloaded.model_metadata["bc_state_activity"]["active"] is False
+    assert reloaded.model_metadata["bc_state_activity"]["fixed_value"] == 0.75
     assert reloaded.trace.attrs["burn"] == 1000
     assert cast(Any, reloaded.trace).posterior.attrs["burn"] == 1000
     xr.testing.assert_identical(reloaded.inv_inputs, prepared.inv_inputs)

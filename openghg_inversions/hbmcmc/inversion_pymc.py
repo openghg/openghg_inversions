@@ -28,6 +28,7 @@ from openghg_inversions.models import build_rhime_model  # noqa: E402
 from openghg_inversions.models.components import resolve_model_variable  # noqa: E402
 from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords  # noqa: E402
 from openghg_inversions.models.priors import PriorArgs  # noqa: E402
+from openghg_inversions.models.state_activity import StateActivity  # noqa: E402
 from openghg_inversions.inversion_inputs import _compact_integer_index  # noqa: E402
 from openghg_inversions.sigma import SigmaAlignment  # noqa: E402
 
@@ -161,6 +162,9 @@ def build_inferpymc_model(
         no_model_error=no_model_error,
         offset_args=offset_args,
         power=power,
+        # Keep fixedbasisMCMC/inferpymc's legacy single-sector state graph.
+        # Modern RHIME model specs opt into exact-zero pruning separately.
+        state_activity=StateActivity(prune_zero=False),
     )
 
 
