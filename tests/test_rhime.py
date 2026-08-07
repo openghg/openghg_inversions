@@ -4524,6 +4524,28 @@ def test_required_parameter_validation_allows_missing_output_path_for_in_memory_
     rhime_params.validate_required_params(args)
 
 
+def test_rhime_runner_setup_forwards_satellite_platform_to_preparation() -> None:
+    """Satellite runs use the public ``platform`` preparation parameter."""
+    setup = rhime_params.make_rhime_runner_setup(
+        params={
+            "species": "co2",
+            "sites": ["OCO2-EASTASIA"],
+            "averaging_period": ["1h"],
+            "platform": ["satellite"],
+            "domain": "EASTASIA",
+            "start_date": "2019-01-01",
+            "end_date": "2019-01-02",
+            "flux_sources": ["test-source"],
+            "output_name": "satellite-test",
+            "output_format": "none",
+        },
+        multisector=False,
+        data_param_names=set(inspect.signature(prepare_rhime_inputs).parameters),
+    )
+
+    assert setup.data_args["platform"] == ["satellite"]
+
+
 @pytest.mark.parametrize(
     ("name", "value"),
     [
