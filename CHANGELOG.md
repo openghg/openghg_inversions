@@ -4,6 +4,13 @@
 
 ## Code changes
 
+- Added a source-neutral inner/outer region-class combinator for constrained
+  basis construction. It tags class provenance, interns repeated composite
+  labels, and normalizes physically equivalent rectilinear and curvilinear
+  grids while rejecting conflicting spatial metadata or CRS definitions. A
+  companion selector handles tuple-valued classes reliably. This advances
+  [#449](https://github.com/openghg/openghg_inversions/issues/449).
+
 - Enforced the class-local `SplitStrategy` label-array contract at the
   constrained-basis boundary while allowing strategies to stop before their
   requested region target. [#455](https://github.com/openghg/openghg_inversions/issues/455)

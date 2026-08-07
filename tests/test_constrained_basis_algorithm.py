@@ -1,6 +1,8 @@
 import json
+from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import pytest
 import xarray as xr
 from scipy import ndimage
@@ -20,8 +22,10 @@ from openghg_inversions.basis.algorithms import (
     MinChildTargetWeightShare,
     MinChildWeightShare,
     allocate_nbasis_by_class,
+    combine_inner_outer_region_classes,
     contrast_tau_from_multiplier_cv,
     intersect_region_class_layers,
+    region_class_mask,
     region_constrained_basis,
     split_contrast_score,
 )
@@ -148,6 +152,246 @@ def test_region_constrained_basis_splits_zero_weight_classes_by_area():
     assert all(len(class_values) == 1 for class_values in _class_values_for_labels(labels, classes).values())
 
 
+def test_combine_inner_outer_region_classes_tags_selected_values():
+    """Only selected values determine tagged classes and unmapped cells."""
+    inner_mask = xr.DataArray(
+        np.array([[True, True], [False, False]]),
+        dims=("lat", "lon"),
+        coords={"lat": [1.0, 2.0], "lon": [10.0, 20.0]},
+    )
+    inner_classes = xr.DataArray(
+        np.array([[1, np.nan], [np.nan, np.nan]], dtype=object),
+        dims=inner_mask.dims,
+        coords=inner_mask.coords,
+    )
+    outer_classes = xr.DataArray(
+        np.array([[np.nan, np.nan], [1, "missing"]], dtype=object),
+        dims=inner_mask.dims,
+        coords=inner_mask.coords,
+    )
+
+    classes = combine_inner_outer_region_classes(
+        inner_mask,
+        inner_classes,
+        outer_classes,
+        unmapped_values={"missing"},
+        name="combined_classes",
+    )
+
+    assert classes.name == "combined_classes"
+    assert classes.sel(lat=1.0, lon=10.0).item() == ("inner", 1)
+    assert classes.sel(lat=2.0, lon=10.0).item() == ("outer", 1)
+    assert np.isnan(classes.sel(lat=1.0, lon=20.0).item())
+    assert np.isnan(classes.sel(lat=2.0, lon=20.0).item())
+
+
+def test_region_class_mask_supports_interned_tuple_labels():
+    """Public tuple masks work with ``where`` and composed labels are interned."""
+    inner_mask = xr.DataArray([[True, True, False]], dims=("lat", "lon"))
+    class_values = xr.DataArray(
+        np.full(inner_mask.shape, "shared", dtype=object),
+        dims=inner_mask.dims,
+    )
+    classes = combine_inner_outer_region_classes(inner_mask, class_values, class_values)
+
+    mask = region_class_mask(classes, ("inner", "shared"))
+    selected = classes.where(mask)
+
+    assert mask.dtype == np.bool_
+    assert selected.isel(lat=0, lon=0).item() == ("inner", "shared")
+    assert selected.isel(lat=0, lon=1).item() == ("inner", "shared")
+    assert np.isnan(selected.isel(lat=0, lon=2).item())
+    assert classes.values[0, 0] is classes.values[0, 1]
+
+
+def test_region_class_mask_handles_scalar_classes_with_pandas_missing_values():
+    """Missing object scalars compare false instead of raising an ambiguous truth error."""
+    classes = xr.DataArray(np.array([["x", pd.NA]], dtype=object), dims=("lat", "lon"))
+
+    mask = region_class_mask(classes, "x")
+
+    np.testing.assert_array_equal(mask.values, [[True, False]])
+
+
+def test_combine_inner_outer_region_classes_aligns_transposed_inputs():
+    """Class fields may transpose the mask dimensions but must align exactly."""
+    inner_mask = xr.DataArray(
+        np.array([[True, False], [False, True]]),
+        dims=("lat", "lon"),
+        coords={"lat": [1.0, 2.0], "lon": [10.0, 20.0]},
+    )
+    inner_classes = xr.DataArray(
+        np.array([["northwest", "ignored"], ["ignored", "southeast"]], dtype=object).T,
+        dims=("lon", "lat"),
+        coords={"lon": [10.0, 20.0], "lat": [1.0, 2.0]},
+    )
+    outer_classes = xr.DataArray(
+        np.array([["ignored", "northeast"], ["southwest", "ignored"]], dtype=object),
+        dims=inner_mask.dims,
+        coords=inner_mask.coords,
+    )
+
+    classes = combine_inner_outer_region_classes(inner_mask, inner_classes, outer_classes)
+
+    assert classes.dims == inner_mask.dims
+    assert classes.sel(lat=1.0, lon=10.0).item() == ("inner", "northwest")
+    assert classes.sel(lat=1.0, lon=20.0).item() == ("outer", "northeast")
+    assert classes.sel(lat=2.0, lon=10.0).item() == ("outer", "southwest")
+    assert classes.sel(lat=2.0, lon=20.0).item() == ("inner", "southeast")
+
+    misaligned_outer = outer_classes.assign_coords(lon=[10.0, 21.0])
+    with pytest.raises(xr.AlignmentError):
+        combine_inner_outer_region_classes(inner_mask, inner_classes, misaligned_outer)
+
+
+def test_combine_inner_outer_region_classes_requires_matching_auxiliary_coordinates():
+    """Curvilinear grid coordinates cannot disagree or be present on only one input."""
+    auxiliary_coordinates = {
+        "latitude": (("y", "x"), [[50.0, 50.1], [51.0, 51.1]]),
+        "longitude": (("y", "x"), [[-2.0, -1.0], [-2.1, -1.1]]),
+    }
+    inner_mask = xr.DataArray(
+        [[True, False], [False, True]],
+        dims=("y", "x"),
+        coords=auxiliary_coordinates,
+    )
+    inner_classes = xr.DataArray(
+        np.full((2, 2), "inner", dtype=object),
+        dims=inner_mask.dims,
+        coords=auxiliary_coordinates,
+    )
+    outer_classes = xr.DataArray(
+        np.full((2, 2), "outer", dtype=object),
+        dims=inner_mask.dims,
+        coords=auxiliary_coordinates,
+    )
+
+    conflicting_outer = outer_classes.assign_coords(longitude=(("y", "x"), [[-2.0, -1.0], [-2.1, -0.9]]))
+    with pytest.raises(xr.AlignmentError, match="longitude"):
+        combine_inner_outer_region_classes(inner_mask, inner_classes, conflicting_outer)
+
+    missing_coordinate = outer_classes.drop_vars("longitude")
+    with pytest.raises(xr.AlignmentError, match="same spatial grid coordinates"):
+        combine_inner_outer_region_classes(inner_mask, inner_classes, missing_coordinate)
+
+
+def test_region_constrained_basis_requires_matching_curvilinear_coordinates():
+    """Combined classes reject weights whose curvilinear grid coordinates differ."""
+    coordinates = {
+        "latitude": (("y", "x"), [[50.0, 50.1], [51.0, 51.1]]),
+        "longitude": (("y", "x"), [[-2.0, -1.0], [-2.1, -1.1]]),
+    }
+    inner_mask = xr.DataArray([[True, True], [False, False]], dims=("y", "x"), coords=coordinates)
+    class_values = xr.DataArray(
+        np.full(inner_mask.shape, "shared", dtype=object),
+        dims=inner_mask.dims,
+        coords=coordinates,
+    )
+    classes = combine_inner_outer_region_classes(inner_mask, class_values, class_values)
+    weights = xr.ones_like(inner_mask, dtype=float).assign_coords(
+        longitude=(("y", "x"), [[-2.0, -1.0], [-2.1, -0.9]])
+    )
+
+    with pytest.raises(xr.AlignmentError, match="longitude"):
+        region_constrained_basis(weights, classes, nbasis=2)
+
+
+def test_region_constrained_basis_accepts_transposed_curvilinear_coordinates():
+    """Physical coordinate equality permits transposition and preserves weight layout."""
+    coordinates = {
+        "latitude": (("y", "x"), [[50.0, 50.1], [51.0, 51.1]]),
+        "longitude": (("y", "x"), [[-2.0, -1.0], [-2.1, -1.1]]),
+    }
+    inner_mask = xr.DataArray([[True, True], [False, False]], dims=("y", "x"), coords=coordinates)
+    class_values = xr.DataArray(
+        np.full(inner_mask.shape, "shared", dtype=object),
+        dims=inner_mask.dims,
+        coords=coordinates,
+    )
+    classes = combine_inner_outer_region_classes(inner_mask, class_values, class_values)
+    weights = xr.ones_like(inner_mask, dtype=float).transpose("x", "y")
+
+    labels = region_constrained_basis(weights, classes, nbasis=2)
+
+    assert labels.dims == weights.dims
+    assert set(labels.coords) == set(weights.coords)
+    for coordinate_name in weights.coords:
+        xr.testing.assert_identical(labels.coords[coordinate_name], weights.coords[coordinate_name])
+
+
+def test_combine_inner_outer_region_classes_requires_boolean_mask():
+    """Integer selectors are rejected instead of being coerced to Boolean."""
+    inner_mask = xr.DataArray(np.array([[1, 0]]), dims=("lat", "lon"))
+    classes = xr.DataArray(np.array([["a", "b"]], dtype=object), dims=inner_mask.dims)
+
+    with pytest.raises(ValueError, match="inner_mask must be Boolean"):
+        combine_inner_outer_region_classes(inner_mask, classes, classes)
+
+
+def test_combine_inner_outer_region_classes_rejects_selected_unhashable_values():
+    """Selected class values must be valid keys for constrained allocation."""
+    inner_mask = xr.DataArray(np.array([[True]]), dims=("lat", "lon"))
+    bad_values = np.empty((1, 1), dtype=object)
+    bad_values[0, 0] = ["not", "hashable"]
+    inner_classes = xr.DataArray(bad_values, dims=inner_mask.dims)
+    outer_classes = xr.DataArray(np.array([["outer"]], dtype=object), dims=inner_mask.dims)
+
+    with pytest.raises(ValueError, match="not hashable"):
+        combine_inner_outer_region_classes(inner_mask, inner_classes, outer_classes)
+
+
+def test_combined_inner_outer_classes_integrate_with_region_constrained_basis():
+    """Fixed outer IDs and inner classes receive disjoint core basis labels."""
+    weights = xr.DataArray(np.ones((3, 5)), dims=("lat", "lon"))
+    inner_mask = xr.DataArray(
+        np.array(
+            [
+                [False, False, False, False, False],
+                [False, True, True, True, False],
+                [False, False, False, False, False],
+            ]
+        ),
+        dims=weights.dims,
+    )
+    inner_classes = xr.DataArray(
+        np.array(
+            [
+                ["land", "land", "sea", "sea", "sea"],
+                ["land", "land", "land", "sea", "sea"],
+                ["land", "land", "sea", "sea", "sea"],
+            ],
+            dtype=object,
+        ),
+        dims=weights.dims,
+    )
+    outer_classes = xr.DataArray(
+        np.array([[10, 10, 20, 20, 20]] * 3),
+        dims=weights.dims,
+    )
+    classes = combine_inner_outer_region_classes(inner_mask, inner_classes, outer_classes)
+
+    labels = region_constrained_basis(
+        weights,
+        classes,
+        nbasis={
+            ("inner", "land"): 2,
+            ("inner", "sea"): 1,
+            ("outer", 10): 1,
+            ("outer", 20): 1,
+        },
+    )
+
+    inner_labels = set(np.unique(labels.where(inner_mask, 0))) - {0}
+    outer_labels = set(np.unique(labels.where(~inner_mask, 0))) - {0}
+    assert len(inner_labels) == 3
+    assert len(outer_labels) == 2
+    assert inner_labels.isdisjoint(outer_labels)
+    assert all(len(values) == 1 for values in _class_values_for_labels(labels, classes).values())
+    for outer_value in (10, 20):
+        class_mask = region_class_mask(classes, ("outer", outer_value))
+        assert len(set(np.unique(labels.where(class_mask, 0))) - {0}) == 1
+
+
 def test_intersect_region_class_layers_creates_composite_classes():
     """Layered masks can be crossed into class labels for constrained splitting."""
     weights = xr.DataArray(
@@ -213,6 +457,210 @@ def test_intersect_region_class_layers_aligns_transposed_layers():
     assert classes.dims == landsea.dims
     assert classes.sel(lat=1.0, lon=10.0).item() == ("land", "inner")
     assert classes.sel(lat=2.0, lon=10.0).item() == ("land", "outer")
+
+
+def test_intersect_region_class_layers_interns_equal_tuple_labels():
+    """Repeated equal intersection labels share one canonical tuple object."""
+    surface = xr.DataArray(np.full((1, 3), "land", dtype=object), dims=("lat", "lon"))
+    window = xr.DataArray(np.full((1, 3), "inner", dtype=object), dims=surface.dims)
+
+    classes = intersect_region_class_layers({"surface": surface, "window": window})
+
+    assert classes.values[0, 0] == ("land", "inner")
+    assert classes.values[0, 0] is classes.values[0, 1]
+    assert classes.values[0, 1] is classes.values[0, 2]
+
+
+def _physical_grid_test_fields() -> tuple[xr.DataArray, xr.DataArray]:
+    """Return equivalent grids with benign storage and metadata differences."""
+    coordinates = {
+        "y": np.array([0, 1], dtype=np.int64),
+        "x": np.array([10.0, 20.0], dtype=np.float64),
+        "latitude": (("y", "x"), [[50.0, 50.1], [51.0, 51.1]], {"units": "degrees_north"}),
+        "longitude": (("y", "x"), [[-2.0, -1.0], [-2.1, -1.1]], {"units": "degrees_east"}),
+        "crs": ((), 0, {"grid_mapping_name": "latitude_longitude"}),
+    }
+    reference = xr.DataArray(
+        np.full((2, 2), "reference", dtype=object),
+        dims=("y", "x"),
+        coords=coordinates,
+    )
+    candidate = xr.DataArray(
+        np.full((2, 2), "candidate", dtype=object),
+        dims=reference.dims,
+        coords=coordinates,
+    )
+    candidate = candidate.assign_coords(
+        x=candidate.coords["x"].astype(np.float32),
+        latitude=candidate.coords["latitude"].assign_attrs(longname="latitude"),
+        longitude=candidate.coords["longitude"] + 1.0e-6,
+        source="packaged-file",
+    )
+    reference.coords["crs"].attrs["standard_parallel"] = np.array([30.0, 60.0])
+    candidate.coords["crs"].attrs["standard_parallel"] = np.array([30.0, 60.0])
+    candidate.coords["crs"].attrs["long_name"] = "coordinate reference system"
+    return reference, candidate
+
+
+@pytest.mark.parametrize("composer", ["combine", "intersect"])
+def test_region_class_composition_normalizes_physically_matching_coordinates(composer: str):
+    """Benign dtype, quantisation, metadata, and scalar provenance differences are accepted."""
+    reference, candidate = _physical_grid_test_fields()
+
+    if composer == "combine":
+        inner_mask = xr.ones_like(reference, dtype=bool)
+        result = combine_inner_outer_region_classes(inner_mask, reference, candidate)
+    else:
+        result = intersect_region_class_layers({"reference": reference, "candidate": candidate})
+
+    assert result.coords["x"].variable.identical(reference.coords["x"].variable)
+    assert result.coords["longitude"].variable.identical(reference.coords["longitude"].variable)
+    assert result.coords["latitude"].attrs["units"] == "degrees_north"
+    assert "source" not in result.coords
+
+
+@pytest.mark.parametrize("composer", ["combine", "intersect"])
+@pytest.mark.parametrize("candidate_unit", ["Degrees_north", "Degree_N"])
+def test_region_class_composition_accepts_openghg_unit_aliases(composer: str, candidate_unit: str):
+    """OpenGHG's CF-aware Pint aliases normalize known angular-unit spellings."""
+    reference, candidate = _physical_grid_test_fields()
+    candidate = candidate.assign_coords(
+        latitude=candidate.coords["latitude"].assign_attrs(units=candidate_unit),
+        longitude=candidate.coords["longitude"].assign_attrs(units="Degrees_east"),
+    )
+
+    if composer == "combine":
+        result = combine_inner_outer_region_classes(xr.ones_like(reference, dtype=bool), reference, candidate)
+    else:
+        result = intersect_region_class_layers({"reference": reference, "candidate": candidate})
+
+    assert result.coords["latitude"].attrs["units"] == "degrees_north"
+    assert result.coords["longitude"].attrs["units"] == "degrees_east"
+
+
+@pytest.mark.parametrize("composer", ["combine", "intersect"])
+@pytest.mark.parametrize(
+    ("mismatch", "coordinate_name"),
+    [
+        ("values", "longitude"),
+        ("units", "latitude"),
+        ("scalar_value", "crs"),
+        ("scalar_attrs", "crs"),
+    ],
+)
+def test_region_class_composition_rejects_physical_grid_conflicts(
+    composer: str,
+    mismatch: str,
+    coordinate_name: str,
+):
+    """Composition rejects real spatial, units, and scalar-CRS conflicts."""
+    reference, candidate = _physical_grid_test_fields()
+    if mismatch == "values":
+        candidate = candidate.assign_coords(longitude=candidate.coords["longitude"] + 1.0e-3)
+    elif mismatch == "units":
+        candidate = candidate.assign_coords(
+            latitude=candidate.coords["latitude"].assign_attrs(units="radians")
+        )
+    elif mismatch == "scalar_value":
+        candidate = candidate.assign_coords(
+            crs=xr.DataArray(1, attrs={"grid_mapping_name": "latitude_longitude"})
+        )
+    else:
+        candidate = candidate.assign_coords(
+            crs=xr.DataArray(0, attrs={"grid_mapping_name": "rotated_latitude_longitude"})
+        )
+
+    with pytest.raises(xr.AlignmentError, match=coordinate_name):
+        if composer == "combine":
+            inner_mask = xr.ones_like(reference, dtype=bool)
+            combine_inner_outer_region_classes(inner_mask, reference, candidate)
+        else:
+            intersect_region_class_layers({"reference": reference, "candidate": candidate})
+
+
+@pytest.mark.parametrize(
+    ("units", "offset"),
+    [("radians", 1.9e-5), ("metres", 1.0e-2)],
+)
+def test_region_class_composition_does_not_apply_degree_tolerance_to_other_units(
+    units: str,
+    offset: float,
+):
+    """Angular-degree quantisation must not hide distinct radian or projected grids."""
+    reference = xr.DataArray(
+        np.full((2, 2), "reference", dtype=object),
+        dims=("y", "x"),
+        coords={"y": [0.0, 1.0], "x": ("x", [10.0, 20.0], {"units": units})},
+    )
+    candidate = reference.copy().assign_coords(x=reference.coords["x"] + offset)
+    candidate.coords["x"].attrs["units"] = units
+
+    with pytest.raises(xr.AlignmentError, match="x"):
+        intersect_region_class_layers({"reference": reference, "candidate": candidate})
+
+
+def test_region_class_composition_rejects_one_cell_shift_on_large_float32_projected_grid():
+    """Float32 scale tolerance cannot absorb a full projected-grid cell."""
+    x_values = np.array([10_000_000.0, 10_000_001.0], dtype=np.float32)
+    reference = xr.DataArray(
+        np.full((2, 2), "reference", dtype=object),
+        dims=("y", "x"),
+        coords={
+            "y": np.array([0.0, 1.0], dtype=np.float32),
+            "x": ("x", x_values, {"units": "metres"}),
+        },
+    )
+    candidate = reference.copy().assign_coords(x=("x", x_values + np.float32(1.0), {"units": "metres"}))
+
+    with pytest.raises(xr.AlignmentError, match="x"):
+        intersect_region_class_layers({"reference": reference, "candidate": candidate})
+
+
+def test_region_class_composition_rejects_unresolved_grid_mapping_reference():
+    """Dataset grid mappings must be attached as coordinates before alignment."""
+    dataset = xr.Dataset(
+        {
+            "classes": (("y", "x"), np.full((2, 2), "candidate", dtype=object)),
+            "crs": xr.DataArray(0, attrs={"grid_mapping_name": "latitude_longitude"}),
+        },
+        coords={"y": [0.0, 1.0], "x": [10.0, 20.0]},
+    )
+    candidate = dataset["classes"]
+    candidate.attrs["grid_mapping"] = "crs"
+    reference = xr.full_like(candidate, "reference")
+    reference.attrs.pop("grid_mapping", None)
+
+    with pytest.raises(xr.AlignmentError, match="not an attached coordinate"):
+        intersect_region_class_layers({"reference": reference, "candidate": candidate})
+
+
+@pytest.mark.parametrize("domain", ["EUROPE", "EASTASIA", "SAUSSIE", "WESTUSA"])
+def test_packaged_inner_outer_fields_run_through_core_on_one_physical_grid(domain: str):
+    """Independently stored packaged grids normalize before core basis generation."""
+    basis_directory = Path(__file__).parents[1] / "openghg_inversions" / "basis"
+    land_sea_name = (
+        "country-EUROPE-UKMO-landsea-2023.nc" if domain == "EUROPE" else f"country-land-sea_{domain}.nc"
+    )
+    with xr.open_dataset(basis_directory / f"outer_region_definition_{domain}.nc") as dataset:
+        outer_regions = dataset["region"].load()
+    with xr.open_dataset(basis_directory / "algorithms" / land_sea_name) as dataset:
+        inner_classes = xr.where(dataset["country"].load() > 0, "land", "sea")
+
+    inner_mask = outer_regions == outer_regions.max()
+    classes = combine_inner_outer_region_classes(inner_mask, inner_classes, outer_regions)
+    weights = xr.ones_like(inner_classes, dtype=np.float64)
+    targets = {value: 1 for value in np.unique(classes.values) if isinstance(value, tuple)}
+
+    labels = region_constrained_basis(weights, classes, nbasis=targets)
+
+    assert targets
+    assert len(set(np.unique(labels.values)) - {0}) == len(targets)
+    assert bool((labels > 0).all())
+    assert labels.dims == weights.dims
+    for dimension in weights.dims:
+        np.testing.assert_array_equal(labels.coords[dimension], weights.coords[dimension])
+        assert labels.coords[dimension].dtype == weights.coords[dimension].dtype
+    assert all(len(values) == 1 for values in _class_values_for_labels(labels, classes).values())
 
 
 def test_tuple_class_masks_work_when_last_dimension_matches_tuple_length():
