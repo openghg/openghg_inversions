@@ -12,6 +12,7 @@ import pandas as pd
 import pymc as pm
 import pytest
 import xarray as xr
+from pytensor.compile.mode import Mode
 
 import openghg_inversions.hbmcmc.inversion_pymc as legacy_mcmc
 import openghg_inversions.inversion_data.preparation as prep_module
@@ -673,6 +674,7 @@ def test_compile_loop_sum_reuses_state_and_sums_named_terms() -> None:
             draws=3,
             var_names=["x_shared", "mu_a", "mu_b", "mu"],
             random_seed=402,
+            compile_kwargs={"mode": Mode(linker="py", optimizer="fast_run")},
         )
 
     assert [rv.name for rv in model.free_RVs].count("x_shared") == 1
