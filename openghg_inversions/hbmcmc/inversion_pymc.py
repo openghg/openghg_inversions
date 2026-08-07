@@ -28,7 +28,9 @@ from openghg_inversions.models import build_rhime_model  # noqa: E402
 from openghg_inversions.models.components import resolve_model_variable  # noqa: E402
 from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords  # noqa: E402
 from openghg_inversions.models.priors import PriorArgs  # noqa: E402
+from openghg_inversions.models.state_activity import StateActivity  # noqa: E402
 from openghg_inversions.inversion_inputs import _compact_integer_index  # noqa: E402
+from openghg_inversions.sigma import SigmaAlignment  # noqa: E402
 
 # ----------------------------------------
 # Model building code
@@ -73,7 +75,7 @@ def _prepare_builder_priors(
     if reparameterise_log_normal:
         warnings.warn(
             "`reparameterise_log_normal` is deprecated. Set `reparameterise=True` in the relevant prior args instead.",
-            DeprecationWarning,
+            FutureWarning,
             stacklevel=2,
         )
         if str(prepared_xprior.get("pdf", "")).lower() == "lognormal":
@@ -103,12 +105,13 @@ def build_inferpymc_model(
     """Compatibility adapter for the standard RHIME model builder.
 
     Args:
-        inv_inputs: Canonical inversion-input dataset, usually produced by
-            ``make_inv_inputs(...)``. This dataset must contain the observation
-            and model variables required by the current component-based model,
-            including at minimum ``H``, ``mf``, ``mf_error``,
-            ``site_indicator``, ``sigma_freq_index``, and ``min_error``. When
-            ``use_bc`` is ``True``, it must also contain ``H_bc``.
+        inv_inputs: Legacy dataset produced by
+            ``prepare_fixedbasis_inversion_data`` or an equivalent adapter.
+            It must contain the observation and model variables required by
+            the component-based model, including at minimum ``H``, ``mf``,
+            ``mf_error``, ``site_indicator``, ``sigma_freq_index``, and
+            ``min_error``. When ``use_bc`` is true, it must also contain
+            ``H_bc``.
         xprior: Prior specification for emissions scaling factors.
         bcprior: Prior specification for boundary-condition scaling factors.
         sigprior: Prior specification for model-error terms.
@@ -116,8 +119,9 @@ def build_inferpymc_model(
         offsetprior: Prior specification for optional offsets.
         add_offset: Whether to include an offset term in the model.
         use_bc: Whether to include boundary-condition terms in the model.
-        reparameterise_log_normal: Whether to request lognormal
-            reparameterisation for supported priors.
+        reparameterise_log_normal: Deprecated compatibility flag for lognormal
+            reparameterisation. Set ``reparameterise=True`` in the relevant
+            prior mapping instead.
         pollution_events_from_obs: Whether to derive pollution-event scaling
             from observations rather than modelled concentrations.
         no_model_error: Whether to suppress the explicit model-error term.
@@ -128,6 +132,9 @@ def build_inferpymc_model(
 
     Returns:
         Built PyMC model for the current inferpymc compatibility path.
+
+    Warns:
+        FutureWarning: If ``reparameterise_log_normal`` is enabled.
     """
     xprior, bcprior, sigprior, offsetprior = _prepare_builder_priors(
         xprior=xprior,
@@ -136,13 +143,18 @@ def build_inferpymc_model(
         offsetprior=offsetprior,
         reparameterise_log_normal=reparameterise_log_normal,
     )
+    sigma_alignment = SigmaAlignment.from_indices(
+        inv_inputs["site_indicator"],
+        inv_inputs["sigma_freq_index"],
+        per_site=sigma_per_site,
+    )
 
     return build_rhime_model(
         inv_inputs,
+        sigma_alignment=sigma_alignment,
         x_prior=xprior,
         bc_prior=bcprior,
         sigma_prior=sigprior,
-        sigma_per_site=sigma_per_site,
         offset_prior=offsetprior,
         add_offset=add_offset,
         use_bc=use_bc,
@@ -150,6 +162,9 @@ def build_inferpymc_model(
         no_model_error=no_model_error,
         offset_args=offset_args,
         power=power,
+        # Keep fixedbasisMCMC/inferpymc's legacy single-sector state graph.
+        # Modern RHIME model specs opt into exact-zero pruning separately.
+        state_activity=StateActivity(prune_zero=False),
     )
 
 
@@ -410,12 +425,14 @@ def inferpymc(
     """Perform Bayesian inference with PyMC for emissions, BCs, and model error.
 
     This routine is the compatibility entrypoint for the current PyMC path.
-    It builds the component-based model from ``make_inv_inputs`` output, runs
-    sampling, and adapts the result into the legacy return structure used by
-    downstream postprocessing.
+    It builds the component-based model from a legacy inversion-input dataset,
+    runs sampling, and adapts the result into the return structure used by
+    downstream fixedbasis postprocessing. The input must include
+    ``sigma_freq_index``; modern RHIME inputs intentionally do not.
 
     Args:
-        inv_inputs: xarray.Dataset produced by ``make_inv_inputs``.
+        inv_inputs: Legacy fixedbasis inversion inputs including an
+            observation-aligned ``sigma_freq_index``.
         xprior: Dictionary describing the prior PDF for emissions. The entry "pdf"
             is the name of the analytical PDF used; other entries are shape
             parameters (e.g., {'pdf': 'lognormal', 'stdev': 1.0}).
@@ -433,7 +450,9 @@ def inferpymc(
         add_offset: If True, include an offset term in the model.
         verbose: If True, print additional diagnostic information.
         use_bc: If True, include boundary condition terms in the model.
-        reparameterise_log_normal: If True, reparameterise log-normal priors for numerical stability.
+        reparameterise_log_normal: Deprecated compatibility flag for lognormal
+            reparameterisation. Set ``reparameterise=True`` in the relevant
+            prior mapping instead.
         pollution_events_from_obs: If True, derive pollution event terms from observations.
         no_model_error: If True, do not include an explicit model-error term.
         offset_args: Additional arguments used when constructing offsets.
@@ -452,9 +471,12 @@ def inferpymc(
         - ``"OFFSETtrace"`` when offsets are enabled
         - ``"trace"``, ``"model"``, and convergence metadata
 
-        Raises:
-            ValueError: If the model cannot be built from the supplied
-                ``inv_inputs`` and configuration.
+    Raises:
+        ValueError: If the model cannot be built from the supplied
+            ``inv_inputs`` and configuration.
+
+    Warns:
+        FutureWarning: If ``reparameterise_log_normal`` is enabled.
     """
     burn = int(burn)
     nit = int(nit)
@@ -757,8 +779,8 @@ def inferpymc_postprocessouts(
         bfds = fp_data[".basis"]
 
     # Calculate mean  and mode posterior scale map and flux field
-    scalemap_mu = np.zeros_like(bfds.values)
-    scalemap_mode = np.zeros_like(bfds.values)
+    scalemap_mu = np.zeros_like(bfds.values, dtype=float)
+    scalemap_mode = np.zeros_like(bfds.values, dtype=float)
 
     for npm in nparam:
         scalemap_mu[bfds.values == (npm + 1)] = np.mean(xouts[:, npm])

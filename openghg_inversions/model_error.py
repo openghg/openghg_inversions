@@ -1,7 +1,41 @@
-"""Functions for computing estimates of model error."""
+"""Normalize, calculate, and align minimum model-error values."""
+
+from collections.abc import Mapping
+from typing import Any
 
 import numpy as np
 import xarray as xr
+
+
+def normalise_min_error_options(options: Mapping[str, Any] | None) -> dict[str, bool]:
+    """Validate options supported by calculated minimum-error methods.
+
+    Args:
+        options: Optional minimum-error configuration mapping.
+
+    Returns:
+        A normalized mapping containing a boolean ``by_site`` value.
+
+    Raises:
+        ValueError: If the value is not a mapping, contains unsupported keys,
+            or supplies a non-boolean ``by_site`` value.
+    """
+    if options is None:
+        return {"by_site": False}
+    if not isinstance(options, Mapping):
+        raise ValueError(f"`min_error_options` must be a mapping/dict or None, got {type(options).__name__}.")
+
+    unsupported = sorted(str(key) for key in options if key != "by_site")
+    if unsupported:
+        raise ValueError(
+            "`min_error_options` contains unsupported option(s): "
+            f"{unsupported!r}. The only supported option is `by_site`."
+        )
+
+    by_site = options.get("by_site", False)
+    if not isinstance(by_site, bool):
+        raise ValueError(f"`min_error_options['by_site']` must be a boolean, got {type(by_site).__name__}.")
+    return {"by_site": by_site}
 
 
 def residual_error_method(

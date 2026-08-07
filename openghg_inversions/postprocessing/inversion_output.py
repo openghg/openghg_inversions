@@ -16,9 +16,8 @@ small bridge until the project decides whether to use CF metadata via
 ``cf_xarray`` or a custom accessor.
 
 Serialization is DataTree-based: object-specific ``to_datatree`` methods own
-their durable representation, while the local helper functions expand xarray
-MultiIndexes around NetCDF/Zarr limitations. Those generic helpers should move
-to shared utilities once the serialization surface settles.
+their durable representation, while shared helpers expand xarray MultiIndexes
+around NetCDF/Zarr limitations.
 """
 
 from pathlib import Path
@@ -34,10 +33,19 @@ import pandas as pd
 import xarray as xr
 
 from openghg_inversions.basis.basis_functions import BasisFunctions
+from openghg_inversions.serialization import (
+    MULTIINDEX_DIMS_ATTR as _MULTIINDEX_DIMS_ATTR,
+    inferencedata_from_datatree as _inferencedata_from_datatree,
+    inferencedata_to_datatree as _inferencedata_to_datatree,
+    open_datatree_loaded as _open_datatree_loaded,
+    reset_serialisation_multiindexes as _reset_serialisation_multiindexes,
+    restore_serialisation_multiindexes as _restore_serialisation_multiindexes,
+    save_datatree as _save_datatree,
+)
 
 
 MODERN_INVERSION_OUTPUT_SCHEMA = "openghg_inversions.inversion_output"
-MULTIINDEX_DIMS_ATTR = "openghg_inversions:multiindex_dims"
+MULTIINDEX_DIMS_ATTR = _MULTIINDEX_DIMS_ATTR
 
 
 def _json_default(value: object) -> str:
@@ -67,146 +75,6 @@ def _load_json_attr(attrs: dict[Any, Any], key: str) -> dict[str, Any]:
     except json.JSONDecodeError:
         return {}
     return payload if isinstance(payload, dict) else {}
-
-
-def _save_datatree(
-    dt: xr.DataTree, output_file: str | Path, output_format: Literal["netcdf", "zarr"] | None
-) -> None:
-    """Save a DataTree to NetCDF or Zarr, inferring format from the path when needed."""
-    output_file = Path(output_file)
-
-    if output_format is None:
-        try:
-            output_format = {".nc": "netcdf", ".zarr": "zarr"}[output_file.suffix]  # type: ignore
-        except KeyError:
-            raise ValueError(
-                f"Output file {output_file} does not end in '.nc' or '.zarr'; please specify `output_format`."
-            )
-
-    if output_format == "netcdf":
-        if output_file.suffix != ".nc":
-            output_file = output_file.with_suffix(".nc")
-        dt.to_netcdf(output_file)
-    elif output_format == "zarr":
-        if output_file.suffix != ".zarr":
-            output_file = output_file.with_suffix(".zarr")
-        dt.to_zarr(output_file)
-    else:
-        raise ValueError(f"Unsupported output_format: {output_format!r}")
-
-
-def _open_datatree_loaded(file_path: str | Path) -> xr.DataTree:
-    """Open and load a DataTree artifact with the same engine fallback as legacy outputs."""
-    open_errors: list[Exception] = []
-    for engine in ("h5netcdf", None):
-        try:
-            dt = (
-                xr.open_datatree(file_path, engine=engine)
-                if engine is not None
-                else xr.open_datatree(file_path)
-            )
-        except (OSError, RuntimeError, ValueError) as exc:
-            open_errors.append(exc)
-        else:
-            with dt:
-                return dt.load()
-
-    raise open_errors[-1]
-
-
-def _inferencedata_to_datatree(idata: az.InferenceData) -> xr.DataTree:
-    """Convert inference data to a serialization-safe data tree.
-
-    Args:
-        idata: Inference data whose root attributes and groups should be
-            retained. Group MultiIndexes are expanded before serialization.
-
-    Returns:
-        A data tree whose root contains ``idata.attrs`` and whose children
-        contain the serialization-safe inference-data groups.
-    """
-    return xr.DataTree.from_dict(
-        {
-            "/": xr.Dataset(attrs=dict(idata.attrs)),
-            **{group: _reset_serialisation_multiindexes(idata[group]) for group in idata.groups()},
-        }
-    )
-
-
-def _inferencedata_from_datatree(dt: xr.DataTree) -> az.InferenceData:
-    """Restore inference data from a serialized data tree.
-
-    Args:
-        dt: Data tree whose root attributes and child groups represent an
-            ``InferenceData`` object.
-
-    Returns:
-        Reconstructed inference data with root attributes preserved and group
-        MultiIndexes restored.
-    """
-    return cast(Any, az.InferenceData)(
-        attrs=dict(dt.attrs),
-        **{group: _restore_serialisation_multiindexes(child.to_dataset()) for group, child in dt.items()},
-    )
-
-
-def _reset_serialisation_multiindexes(ds: xr.Dataset) -> xr.Dataset:
-    """Expand xarray MultiIndexes before DataTree serialisation."""
-    result = ds
-    multiindex_dims: list[dict[str, object]] = []
-    for dim, index in ds.indexes.items():
-        if dim in result.dims and isinstance(index, pd.MultiIndex):
-            level_names = list(index.names)
-            if any(name is None for name in level_names):
-                raise ValueError(f"Cannot serialise unnamed MultiIndex levels for dimension {dim!r}.")
-            result = result.reset_index(dim)
-            multiindex_dims.append({"dim": str(dim), "levels": [str(name) for name in level_names]})
-    if multiindex_dims:
-        result = result.copy()
-        result.attrs = dict(result.attrs)
-        result.attrs[MULTIINDEX_DIMS_ATTR] = json.dumps({"dims": multiindex_dims})
-    return result
-
-
-def _restore_serialisation_multiindexes(ds: xr.Dataset) -> xr.Dataset:
-    """Restore MultiIndexes expanded for DataTree serialisation."""
-    raw_multiindex_dims = ds.attrs.get(MULTIINDEX_DIMS_ATTR)
-    if raw_multiindex_dims is None:
-        return ds
-
-    result = ds.copy()
-    result.attrs = dict(result.attrs)
-    del result.attrs[MULTIINDEX_DIMS_ATTR]
-
-    if isinstance(raw_multiindex_dims, bytes):
-        try:
-            raw_multiindex_dims = raw_multiindex_dims.decode()
-        except UnicodeDecodeError:
-            return result
-    if not isinstance(raw_multiindex_dims, str):
-        return result
-
-    try:
-        payload = json.loads(raw_multiindex_dims)
-    except json.JSONDecodeError:
-        return result
-
-    records = payload.get("dims") if isinstance(payload, dict) else None
-    if not isinstance(records, list):
-        return result
-
-    for record in records:
-        if not isinstance(record, dict):
-            continue
-        dim = record.get("dim")
-        levels = record.get("levels")
-        if not isinstance(dim, str) or not isinstance(levels, list):
-            continue
-        if not all(isinstance(level, str) for level in levels):
-            continue
-        if dim in result.dims and all(level in result and result[level].dims == (dim,) for level in levels):
-            result = result.set_index({dim: levels})
-    return result
 
 
 def filter_data_vars_by_prefix(

@@ -19,13 +19,15 @@ from openghg_inversions.postprocessing.make_outputs import (
     make_flux_outputs,
     observation_inputs_for_outputs,
 )
-
 from openghg_inversions.postprocessing.make_paris_outputs import (
     DEFAULT_PARIS_TEMPLATE_VERSION,
+    _assign_flux_time_bounds,
     _flux_interval_midpoints,
+    infer_flux_frequency,
     make_paris_outputs,
-    paris_template_files,
+    paris_concentration_outputs,
     paris_flux_output,
+    paris_template_files,
 )
 
 
@@ -108,6 +110,151 @@ def _minimal_fixedbasis_prepared_data(**overrides):
     return hbmcmc_module.FixedBasisPreparedData(**defaults)
 
 
+def _deterministic_inferpymc_results(
+    inv_inputs: xr.Dataset,
+    *,
+    use_bc: bool,
+    reparameterise_log_normal: bool,
+) -> dict[str, object]:
+    """Build fresh realistic traces from prepared inputs without sampling.
+
+    Args:
+        inv_inputs: Fully prepared fixedbasis model inputs.
+        use_bc: Whether boundary-condition variables should be included.
+        reparameterise_log_normal: Whether to include the sampler's latent
+            lognormal variable alongside the public scaling factor.
+
+    Returns:
+        A legacy ``inferpymc`` result mapping containing deterministic prior,
+        posterior, and predictive traces suitable for real postprocessing and
+        serialization.
+    """
+    draw_count = 8
+    nregion = inv_inputs.sizes["region"]
+    draw_offsets = np.linspace(-0.1, 0.1, draw_count)
+    x_posterior = 1.0 + draw_offsets[:, None] + 0.01 * np.arange(nregion)[None, :]
+    x_prior = 1.0 + 2 * draw_offsets[:, None] + 0.01 * np.arange(nregion)[None, :]
+    h_matrix = inv_inputs["H"].transpose("region", "nmeasure").values
+    mu_posterior = x_posterior @ h_matrix
+    mu_prior = x_prior @ h_matrix
+
+    site_index = np.asarray(inv_inputs["site_indicator"].values, dtype=int)
+    sigma_index = np.asarray(inv_inputs["sigma_freq_index"].values, dtype=int)
+    nsite = int(site_index.max(initial=0)) + 1
+    nsigma_time = int(sigma_index.max(initial=0)) + 1
+    sigma_posterior = np.broadcast_to(
+        1.0 + draw_offsets[:, None, None],
+        (draw_count, nsite, nsigma_time),
+    ).copy()
+    sigma_prior = np.broadcast_to(
+        1.2 + draw_offsets[:, None, None],
+        (draw_count, nsite, nsigma_time),
+    ).copy()
+    observation_error = np.asarray(inv_inputs["mf_error"].values)
+    epsilon_posterior = np.sqrt(
+        observation_error[None, :] ** 2 + sigma_posterior[:, site_index, sigma_index] ** 2
+    )
+    epsilon_prior = np.sqrt(observation_error[None, :] ** 2 + sigma_prior[:, site_index, sigma_index] ** 2)
+
+    posterior = {
+        "x": x_posterior[None, ...],
+        "sigma": sigma_posterior[None, ...],
+        "mu": mu_posterior[None, ...],
+        "epsilon": epsilon_posterior[None, ...],
+    }
+    prior = {
+        "x": x_prior[None, ...],
+        "sigma": sigma_prior[None, ...],
+        "mu": mu_prior[None, ...],
+        "epsilon": epsilon_prior[None, ...],
+    }
+    dims = {
+        "x": ["nx"],
+        "sigma": ["nsigma_site", "nsigma_time"],
+        "mu": ["nmeasure"],
+        "epsilon": ["nmeasure"],
+        "y": ["nmeasure"],
+    }
+    if reparameterise_log_normal:
+        posterior["x_latent"] = np.log(x_posterior)[None, ...]
+        prior["x_latent"] = np.log(x_prior)[None, ...]
+        dims["x_latent"] = ["nx"]
+    coords = {
+        "nx": inv_inputs["region"].values,
+        "nsigma_site": np.arange(nsite),
+        "nsigma_time": np.arange(nsigma_time),
+        "nmeasure": np.arange(inv_inputs.sizes["nmeasure"]),
+    }
+
+    if use_bc:
+        h_bc = inv_inputs["H_bc"].transpose("bc_region", "nmeasure").values
+        nbc = h_bc.shape[0]
+        bc_posterior = 1.0 + 0.5 * draw_offsets[:, None] + 0.01 * np.arange(nbc)[None, :]
+        bc_prior = 1.0 + draw_offsets[:, None] + 0.01 * np.arange(nbc)[None, :]
+        mu_bc_posterior = bc_posterior @ h_bc
+        mu_bc_prior = bc_prior @ h_bc
+        posterior.update({"bc": bc_posterior[None, ...], "mu_bc": mu_bc_posterior[None, ...]})
+        prior.update({"bc": bc_prior[None, ...], "mu_bc": mu_bc_prior[None, ...]})
+        dims.update({"bc": ["nbc"], "mu_bc": ["nmeasure"]})
+        coords["nbc"] = np.arange(nbc)
+    else:
+        mu_bc_posterior = np.zeros_like(mu_posterior)
+        mu_bc_prior = np.zeros_like(mu_prior)
+
+    y_posterior = mu_posterior + mu_bc_posterior
+    y_prior = mu_prior + mu_bc_prior
+    trace = az.from_dict(
+        posterior=posterior,
+        prior=prior,
+        posterior_predictive={"y": y_posterior[None, ...]},
+        prior_predictive={"y": y_prior[None, ...]},
+        coords=coords,
+        dims=dims,
+    )
+    trace_groups: dict[str, xr.Dataset] = {}
+    nmeasure_index = inv_inputs.indexes["nmeasure"]
+    for group in trace.groups():
+        dataset = trace[group]
+        if "nmeasure" in dataset.dims:
+            level_names = list(nmeasure_index.names)
+            dataset = dataset.assign_coords(
+                {name: ("nmeasure", nmeasure_index.get_level_values(name)) for name in level_names}
+            ).set_index(nmeasure=level_names)
+        if "nbc" in dataset.dims:
+            bc_index = inv_inputs.indexes["bc_region"]
+            level_names = list(bc_index.names)
+            dataset = dataset.assign_coords(
+                {name: ("nbc", bc_index.get_level_values(name)) for name in level_names}
+            ).set_index(nbc=level_names)
+        trace_groups[group] = dataset
+    trace = az.InferenceData(**trace_groups)
+    return {
+        "trace": trace,
+        "model": object(),
+        "xouts": x_posterior,
+    }
+
+
+@pytest.fixture
+def deterministic_sampler(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, object]]:
+    """Replace only ``inferpymc`` and expose the fully prepared call arguments."""
+    calls: list[dict[str, object]] = []
+
+    def fake_inferpymc(**kwargs: object) -> dict[str, object]:
+        """Return independent deterministic results for each fixedbasis call."""
+        calls.append(dict(kwargs))
+        inv_inputs = kwargs["inv_inputs"]
+        assert isinstance(inv_inputs, xr.Dataset)
+        return _deterministic_inferpymc_results(
+            inv_inputs,
+            use_bc=bool(kwargs["use_bc"]),
+            reparameterise_log_normal=bool(kwargs.get("reparameterise_log_normal", False)),
+        )
+
+    monkeypatch.setattr(hbmcmc_module.mcmc, "inferpymc", fake_inferpymc)
+    return calls
+
+
 @pytest.fixture
 def mcmc_args(
     tmp_path,
@@ -149,7 +296,7 @@ def slow_mcmc_args(mcmc_args):
 
 
 @pytest.fixture
-def inv_out(mcmc_args):
+def inv_out(mcmc_args, deterministic_sampler):
     """Return a modern fixedbasis inversion output for postprocessing tests."""
     mcmc_args["output_format"] = "inv_out"
     result = fixedbasisMCMC(**mcmc_args)
@@ -630,6 +777,164 @@ def test_flux_interval_midpoints_with_non_overlapping_times():
     assert midpoints[0] == expected_midpoint
 
 
+def test_paris_flux_interval_keeps_january_annual_prior_for_june_inversion():
+    """PARIS retains and clips a January annual interval for June observations."""
+    midpoints, valid_indices = _flux_interval_midpoints(
+        [pd.Timestamp("2019-01-01")],
+        pd.DateOffset(years=1),
+        pd.Timestamp("2019-06-01"),
+        pd.Timestamp("2019-07-01"),
+    )
+
+    assert midpoints == [pd.Timestamp("2019-06-16")]
+    assert valid_indices == [0]
+
+
+@pytest.mark.parametrize(
+    ("time_period", "expected"),
+    [
+        ("annual", "yearly"),
+        ("ANNUAL", "yearly"),
+        ("1 Year", "yearly"),
+        ("1 YEAR", "yearly"),
+        ("monthly", "monthly"),
+        ("MONTHLY", "monthly"),
+        ("1 Month", "monthly"),
+    ],
+)
+def test_infer_flux_frequency_normalizes_authoritative_period_spellings(time_period, expected):
+    """Authoritative period spellings are normalized case-insensitively."""
+    flux = xr.DataArray([1.0], dims="flux_time", attrs={"time_period": time_period})
+
+    assert infer_flux_frequency(flux) == expected
+
+
+def test_infer_flux_frequency_recognizes_calendar_annual_period_without_attrs():
+    """January starts spanning a leap year identify an annual calendar period."""
+    flux = xr.DataArray(
+        np.ones(3),
+        dims="flux_time",
+        coords={"flux_time": pd.to_datetime(["2019-01-01", "2020-01-01", "2021-01-01"])},
+    )
+
+    assert infer_flux_frequency(flux) == "yearly"
+
+
+def test_infer_flux_frequency_recognizes_unequal_calendar_month_period_without_attrs():
+    """Unequal month-start gaps identify a monthly calendar period."""
+    flux = xr.DataArray(
+        np.ones(3),
+        dims="flux_time",
+        coords={"flux_time": pd.to_datetime(["2020-01-01", "2020-02-01", "2020-03-01"])},
+    )
+
+    assert infer_flux_frequency(flux) == "monthly"
+
+
+def test_infer_flux_frequency_defaults_metadata_free_singleton_to_yearly():
+    """A metadata-free singleton retains the historical yearly default."""
+    flux = xr.DataArray(
+        [1.0],
+        dims="flux_time",
+        coords={"flux_time": pd.to_datetime(["2019-01-01"])},
+    )
+
+    assert infer_flux_frequency(flux) == "yearly"
+
+
+@pytest.mark.parametrize("time_period", ["", "NaT", np.nan])
+def test_infer_flux_frequency_treats_missing_period_attrs_as_absent(time_period):
+    """Missing-valued period attributes fall back to calendar timestamps."""
+    flux = xr.DataArray(
+        np.ones(3),
+        dims="flux_time",
+        coords={"flux_time": pd.to_datetime(["2019-01-01", "2020-01-01", "2021-01-01"])},
+        attrs={"time_period": time_period},
+    )
+
+    assert infer_flux_frequency(flux) == "yearly"
+
+
+def test_infer_flux_frequency_preserves_positive_fixed_period():
+    """A positive fixed period remains available to PARIS interval logic."""
+    flux = xr.DataArray(
+        [1.0],
+        dims="flux_time",
+        attrs={"time_period": "36h"},
+    )
+
+    assert infer_flux_frequency(flux) == "36h"
+
+
+@pytest.mark.parametrize("time_period", ["2 years", "3 months", "0 days", "-1 day"])
+def test_infer_flux_frequency_rejects_unsupported_or_nonpositive_period(time_period):
+    """Unsupported calendar multiples and non-positive fixed periods are rejected."""
+    flux = xr.DataArray(
+        [1.0],
+        dims="flux_time",
+        attrs={"time_period": time_period},
+    )
+
+    with pytest.raises(ValueError, match="Flux period"):
+        infer_flux_frequency(flux)
+
+
+def test_assign_flux_time_bounds_reports_non_overlapping_period_bounds():
+    """No overlapping period reports flux and inversion bounds with the frequency."""
+    flux = xr.Dataset(coords={"time": pd.to_datetime(["2019-01-01"])})
+
+    with pytest.raises(ValueError) as exc_info:
+        _assign_flux_time_bounds(
+            flux,
+            flux_frequency="yearly",
+            inv_start=pd.Timestamp("2021-01-01"),
+            inv_end=pd.Timestamp("2021-02-01"),
+        )
+
+    message = str(exc_info.value).lower()
+    assert "flux" in message
+    assert "inversion" in message
+    assert "frequency" in message
+    assert "yearly" in message
+    assert "2019-01-01" in message
+    assert "2020-01-01" in message
+    assert "2021-01-01" in message
+    assert "2021-02-01" in message
+
+
+def test_assign_flux_time_bounds_reports_empty_flux_times():
+    """An empty flux coordinate raises the same contextual overlap error."""
+    flux = xr.Dataset(coords={"time": pd.DatetimeIndex([])})
+
+    with pytest.raises(ValueError) as exc_info:
+        _assign_flux_time_bounds(
+            flux,
+            flux_frequency="yearly",
+            inv_start=pd.Timestamp("2021-01-01"),
+            inv_end=pd.Timestamp("2021-02-01"),
+        )
+
+    message = str(exc_info.value)
+    assert "yearly" in message
+    assert "no flux timestamps" in message
+    assert "2021-01-01" in message
+    assert "2021-02-01" in message
+
+
+@pytest.mark.parametrize("flux_frequency", ["NaT", "0 days", "-1 day"])
+def test_assign_flux_time_bounds_rejects_nonpositive_explicit_period(flux_frequency):
+    """Explicit PARIS periods must be finite and positive."""
+    flux = xr.Dataset(coords={"time": pd.to_datetime(["2021-01-01"])})
+
+    with pytest.raises(ValueError, match="positive fixed duration"):
+        _assign_flux_time_bounds(
+            flux,
+            flux_frequency=flux_frequency,
+            inv_start=pd.Timestamp("2021-01-01"),
+            inv_end=pd.Timestamp("2021-02-01"),
+        )
+
+
 def test_paris_flux_output_timestamp(inv_out, europe_country_file):
     """Check that the flux output time coordinate is the midpoint of the inversion period.
 
@@ -645,6 +950,77 @@ def test_paris_flux_output_timestamp(inv_out, europe_country_file):
     expected = inv_out.period_midpoint
 
     assert actual == expected
+
+
+def test_paris_flux_output_uses_january_annual_period_for_june_run(inv_out, europe_country_file):
+    """Public PARIS output clips a retained January annual period to a June run."""
+    inv_out.run_metadata["start_date"] = "2019-06-01"
+    inv_out.run_metadata["end_date"] = "2019-07-01"
+
+    assert infer_flux_frequency(inv_out.flux) == "yearly"
+    flux_outs = paris_flux_output(
+        inv_out,
+        country_file=europe_country_file,
+        flux_frequency=infer_flux_frequency(inv_out.flux),
+    )
+
+    assert flux_outs.sizes["time"] == 1
+    actual = pd.Timestamp("1970-01-01") + pd.Timedelta(days=float(flux_outs.time.values[0]))
+    assert actual == pd.Timestamp("2019-06-16")
+
+
+def test_latest_paris_flux_output_reports_clipped_annual_midpoint_and_bounds(inv_out, europe_country_file):
+    """Latest PARIS flux reports the exact midpoint and bounds of a clipped annual prior."""
+    inv_out.run_metadata["start_date"] = "2019-06-01"
+    inv_out.run_metadata["end_date"] = "2019-07-01"
+
+    flux_outs = paris_flux_output(
+        inv_out,
+        country_file=europe_country_file,
+        inversion_grid=False,
+        flux_frequency=infer_flux_frequency(inv_out.flux),
+        template_version="latest",
+    )
+
+    epoch = pd.Timestamp("1970-01-01")
+    actual = epoch + pd.Timedelta(days=float(flux_outs.time.values[0]))
+    bounds = epoch + pd.to_timedelta(flux_outs.time_bnds.values[0], unit="D")
+
+    assert flux_outs.sizes["time"] == 1
+    assert actual == pd.Timestamp("2019-06-16")
+    assert list(bounds) == [pd.Timestamp("2019-06-01"), pd.Timestamp("2019-07-01")]
+
+
+def test_legacy_paris_concentration_shifts_hourly_observations_to_midpoints(inv_out):
+    """Legacy PARIS concentration shifts hourly observation starts by 30 minutes."""
+    observation_starts = pd.DatetimeIndex(observation_inputs_for_outputs(inv_out).time.values).unique()
+    expected = (observation_starts + pd.Timedelta(minutes=30) - pd.Timestamp("1970-01-01")) / pd.Timedelta(
+        days=1
+    )
+
+    result = paris_concentration_outputs(inv_out, obs_avg_period="1h")
+
+    assert result.time.dims == ("time",)
+    np.testing.assert_array_equal(result.time.values, expected.to_numpy())
+
+
+def test_latest_paris_concentration_reports_hourly_midpoints_and_bounds(inv_out):
+    """Latest PARIS concentration reports hourly midpoints and exact start/end bounds."""
+    epoch = pd.Timestamp("1970-01-01")
+    starts = pd.DatetimeIndex(observation_inputs_for_outputs(inv_out).time.values)
+    expected_starts = (starts - epoch) / pd.Timedelta(days=1)
+    expected_ends = (starts + pd.Timedelta(hours=1) - epoch) / pd.Timedelta(days=1)
+    expected_midpoints = (starts + pd.Timedelta(minutes=30) - epoch) / pd.Timedelta(days=1)
+
+    result = paris_concentration_outputs(inv_out, obs_avg_period="1h", template_version="latest")
+
+    assert result.time.dims == ("index",)
+    assert result.time_bnds.dims == ("index", "nbnds")
+    np.testing.assert_array_equal(result.time.values, expected_midpoints.to_numpy())
+    np.testing.assert_array_equal(
+        result.time_bnds.values,
+        np.column_stack([expected_starts.to_numpy(), expected_ends.to_numpy()]),
+    )
 
 
 def test_basic_outputs(inv_out, europe_country_file):
@@ -719,7 +1095,7 @@ def test_paris_template_registry_requires_explicit_latest():
     assert latest.flux.exists()
 
 
-def test_save_inversion_output(mcmc_args, tmpdir):
+def test_save_inversion_output(mcmc_args, tmpdir, deterministic_sampler):
     """Check that we can save and reload inversion outputs"""
     mcmc_args["save_inversion_output"] = str(tmpdir / "inv_out.nc")
     mcmc_args["output_format"] = "inv_out"
@@ -734,7 +1110,11 @@ def test_save_inversion_output(mcmc_args, tmpdir):
     xr.testing.assert_identical(inv_out_reloaded.inv_inputs, inv_out.inv_inputs)
 
 
-def test_country_outputs_lognormal_reparam_conflict(mcmc_args, europe_country_file):
+def test_country_outputs_lognormal_reparam_conflict(
+    mcmc_args,
+    europe_country_file,
+    deterministic_sampler,
+):
     """Check country outputs ignore reparameterized latent-only traces."""
     mcmc_args["output_format"] = "inv_out"
     mcmc_args["reparameterise_log_normal"] = True
@@ -742,6 +1122,9 @@ def test_country_outputs_lognormal_reparam_conflict(mcmc_args, europe_country_fi
 
     inv_out = fixedbasisMCMC(**mcmc_args)
     assert isinstance(inv_out, InversionOutput)
+    assert deterministic_sampler[0]["reparameterise_log_normal"] is True
+    assert deterministic_sampler[0]["xprior"] == mcmc_args["xprior"]
+    assert "x_latent" in inv_out.trace.posterior
     trace_ds = inv_out.trace_dataset(var_roles="flux_scale")
     assert "x_prior" in trace_ds
     assert "x_posterior" in trace_ds
@@ -753,7 +1136,7 @@ def test_country_outputs_lognormal_reparam_conflict(mcmc_args, europe_country_fi
     assert "country_posterior_mean" in country_outs
 
 
-def test_hbmcmc_postprocessing_saves_legacy_output(mcmc_args, tmpdir):
+def test_hbmcmc_postprocessing_saves_legacy_output(mcmc_args, tmpdir, deterministic_sampler):
     """Legacy postprocessing output can still be saved and reloaded."""
     mcmc_args["output_format"] = "hbmcmc_postprocessing"
     mcmc_args["outputpath"] = str(tmpdir)
@@ -788,7 +1171,89 @@ def test_resolve_output_format_rejects_column_legacy_output():
         _resolve_output_format("hbmcmc", paris_postprocessing=False, is_column=True)
 
 
-def test_paris_postprocessing_compatibility_matches_paris_output_format(mcmc_args):
+def test_fixedbasis_mcmc_detects_scalar_column_inlet(mcmc_args):
+    """A scalar column inlet rejects legacy output before data preparation."""
+    mcmc_args["inlet"] = "column"
+    mcmc_args["output_format"] = "hbmcmc"
+
+    with pytest.raises(ValueError, match="column observations"):
+        fixedbasisMCMC(**mcmc_args)
+
+
+def test_fixedbasis_mcmc_detects_platform_only_satellite(
+    mcmc_args,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A scalar satellite platform rejects legacy output before retrieval."""
+
+    def fail_preparation(**kwargs: object) -> None:
+        """Fail if an unambiguous satellite request reaches retrieval."""
+        raise AssertionError("Satellite legacy output should fail before preparation.")
+
+    monkeypatch.setattr(
+        hbmcmc_module,
+        "prepare_fixedbasis_inversion_data",
+        fail_preparation,
+    )
+    mcmc_args["inlet"] = None
+    mcmc_args["platform"] = "satellite"
+    mcmc_args["output_format"] = "legacy"
+
+    with pytest.raises(ValueError, match="column observations"):
+        fixedbasisMCMC(**mcmc_args)
+
+
+def test_fixedbasis_mcmc_uses_retained_column_status_after_mixed_site_drop(
+    mcmc_args,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A dropped column site does not block legacy output for retained surface data."""
+
+    monkeypatch.setattr(
+        hbmcmc_module,
+        "prepare_fixedbasis_inversion_data",
+        lambda **kwargs: _minimal_fixedbasis_prepared_data(is_column=False),
+    )
+
+    def stop_at_sampling(**kwargs: object) -> None:
+        """Prove output validation passed without running a sampler."""
+        raise RuntimeError("sampling reached")
+
+    monkeypatch.setattr(hbmcmc_module.mcmc, "inferpymc", stop_at_sampling)
+    mcmc_args["sites"] = ["TAC", "GOSAT-BRAZIL"]
+    mcmc_args["averaging_period"] = ["1H", "1H"]
+    mcmc_args["inlet"] = ["100m", "column"]
+    mcmc_args["platform"] = ["surface", "satellite"]
+    mcmc_args["output_format"] = "legacy"
+
+    with pytest.raises(RuntimeError, match="sampling reached"):
+        fixedbasisMCMC(**mcmc_args)
+
+
+def test_fixedbasis_mcmc_rejects_retained_column_from_mixed_request(
+    mcmc_args,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Post-preparation validation rejects a retained mixed column site."""
+    monkeypatch.setattr(
+        hbmcmc_module,
+        "prepare_fixedbasis_inversion_data",
+        lambda **kwargs: _minimal_fixedbasis_prepared_data(is_column=True),
+    )
+    mcmc_args["sites"] = ["TAC", "GOSAT-BRAZIL"]
+    mcmc_args["averaging_period"] = ["1H", "1H"]
+    mcmc_args["inlet"] = ["100m", None]
+    mcmc_args["platform"] = ["surface", "satellite"]
+    mcmc_args["output_format"] = "legacy"
+
+    with pytest.raises(ValueError, match="column observations"):
+        fixedbasisMCMC(**mcmc_args)
+
+
+def test_paris_postprocessing_compatibility_matches_paris_output_format(
+    mcmc_args,
+    deterministic_sampler,
+):
     """Compatibility PARIS output matches the explicit canonical format."""
     explicit_args = mcmc_args.copy()
     explicit_args["output_format"] = "paris"
@@ -809,7 +1274,11 @@ def test_paris_postprocessing_compatibility_matches_paris_output_format(mcmc_arg
     assert explicit["Yapost"].dims == compat["Yapost"].dims
 
 
-def test_hbmcmc_postprocessing_preserves_expected_vars_attrs_and_coords(mcmc_args, tmpdir):
+def test_hbmcmc_postprocessing_preserves_expected_vars_attrs_and_coords(
+    mcmc_args,
+    tmpdir,
+    deterministic_sampler,
+):
     """Legacy-style postprocessing keeps its core vars, attrs, and coords."""
     mcmc_args["output_format"] = "hbmcmc_postprocessing"
     mcmc_args["outputpath"] = str(tmpdir)
@@ -841,7 +1310,11 @@ def test_hbmcmc_postprocessing_preserves_expected_vars_attrs_and_coords(mcmc_arg
     assert "countrynames" in outputs.coords
 
 
-def test_inv_out_and_trace_outputs_preserve_downstream_dims_and_custom_paths(mcmc_args, tmpdir):
+def test_inv_out_and_trace_outputs_preserve_downstream_dims_and_custom_paths(
+    mcmc_args,
+    tmpdir,
+    deterministic_sampler,
+):
     """Saved trace and inversion output files preserve downstream-facing dims."""
     trace_path = Path(tmpdir) / "custom_trace.nc"
     inv_out_path = Path(tmpdir) / "custom_inv_out.nc"

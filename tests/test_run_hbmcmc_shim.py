@@ -77,6 +77,7 @@ def test_fixedbasis_params_to_rhime_translates_legacy_names(tmp_path: Path) -> N
 
 
 def test_fixedbasis_params_to_rhime_translates_reparameterise_log_normal(tmp_path: Path) -> None:
+    """Legacy lognormal translation warns visibly and updates both priors."""
     config_file = tmp_path / "hbmcmc.ini"
     _fixedbasis_config(config_file)
     params = run_hbmcmc.hbmcmc_extract_param(str(config_file), print_param=False)
@@ -84,7 +85,7 @@ def test_fixedbasis_params_to_rhime_translates_reparameterise_log_normal(tmp_pat
     params["xprior"] = {"pdf": "lognormal", "mean": 1.0, "stdev": 2.0}
     params["bcprior"] = {"pdf": "lognormal", "mean": 1.0, "stdev": 1.0}
 
-    with pytest.warns(DeprecationWarning, match="reparameterise_log_normal"):
+    with pytest.warns(FutureWarning, match="reparameterise_log_normal"):
         translated = run_hbmcmc.fixedbasis_params_to_rhime(params)
 
     assert translated["x_prior"]["reparameterise"] is True
@@ -255,3 +256,29 @@ def test_run_hbmcmc_main_validates_rhime_params_before_copying_config(
                 '{"unknown_rhime_option": true}',
             ]
         )
+
+
+def test_run_hbmcmc_main_checks_country_file_before_copying_or_running(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A configured missing country file fails before output side effects."""
+    config_file = tmp_path / "hbmcmc.ini"
+    missing_country_file = tmp_path / "missing_country_file.nc"
+    _fixedbasis_config(config_file)
+    config_file.write_text(
+        config_file.read_text(encoding="utf-8")
+        + f'\n[INPUT.BASIS_CASE]\ncountry_file = "{missing_country_file}"\n',
+        encoding="utf-8",
+    )
+
+    def fail_copy_config_file(*args: Any, **kwargs: Any) -> None:
+        raise AssertionError("Config copy should happen only after country-file validation.")
+
+    def fail_run_rhime(**kwargs: Any) -> None:
+        raise AssertionError("RHIME should run only after country-file validation.")
+
+    monkeypatch.setattr(run_hbmcmc.output, "copy_config_file", fail_copy_config_file)
+    monkeypatch.setattr(run_hbmcmc, "run_rhime", fail_run_rhime)
+
+    with pytest.raises(FileNotFoundError, match="country_file"):
+        run_hbmcmc.main(["-c", str(config_file)])
