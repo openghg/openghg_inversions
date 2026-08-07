@@ -939,6 +939,70 @@ def _warn_for_nan_inputs(inv_inputs: xr.Dataset, *, use_bc: bool) -> None:
         warnings.warn(f"H_bc matrix contains {np.isnan(inv_inputs.H_bc.values).flatten().sum()} NaN values")
 
 
+def _platform_by_site(sites: Sequence[str], platform: Any) -> dict[str, str | None]:
+    """Return platform values keyed by site name."""
+    if isinstance(platform, str) or platform is None:
+        return {site: platform for site in sites}
+    try:
+        values = list(platform)
+    except TypeError:
+        return {site: None for site in sites}
+    if len(values) != len(sites):
+        return {site: None for site in sites}
+    return {site: None if value is None else str(value) for site, value in zip(sites, values, strict=True)}
+
+
+def _scale_satellite_bc_sensitivity_to_column_signal(
+    inv_inputs: xr.Dataset,
+    *,
+    sites: Sequence[str],
+    platform: Any,
+) -> xr.Dataset:
+    """Scale satellite BC sensitivity into the same corrected column space as ``mf``.
+
+    OpenGHG column retrieval subtracts OCO prior-factor terms from XCO2 before
+    inversion. Boundary-condition sensitivities arrive as a full-column baseline
+    contribution, so satellite rows must be reduced before the model sees them.
+    """
+    required_vars = {"H_bc", "mf", "mf_prior_factor", "mf_prior_upper_level_factor", "site"}
+    if not required_vars <= set(inv_inputs.variables):
+        return inv_inputs
+
+    platform_lookup = _platform_by_site(sites, platform)
+    satellite_sites = {
+        site for site, value in platform_lookup.items() if value is not None and "satellite" in value.lower()
+    }
+    if not satellite_sites:
+        return inv_inputs
+
+    site_values = inv_inputs["site"].astype(str)
+    satellite_mask = site_values.isin(list(satellite_sites))
+    if not bool(satellite_mask.any()):
+        return inv_inputs
+
+    with xr.set_options(keep_attrs="default"):
+        raw_column = (
+            inv_inputs["mf"]
+            + inv_inputs["mf_prior_factor"]
+            + inv_inputs["mf_prior_upper_level_factor"]
+        )
+        # TODO(#553): This is a deliberate BC-scaling workaround while the
+        # retrieval information needed for an exact corrected-column transform
+        # is unavailable. It is not a resolution of the underlying
+        # mathematical limitation; replace it with retrieval-aware handling.
+        scale = xr.where(raw_column > 0, inv_inputs["mf"] / raw_column, 1.0)
+        scale = scale.clip(min=0.0, max=1.0).where(satellite_mask, 1.0)
+
+    result = inv_inputs.copy()
+    attrs = dict(result["H_bc"].attrs)
+    result["H_bc"] = result["H_bc"] * scale
+    result["H_bc"].attrs = attrs
+    result["H_bc"].attrs["satellite_column_bc_scale"] = (
+        "Applied to satellite rows using mf / (mf + mf_prior_factor + mf_prior_upper_level_factor)."
+    )
+    return result
+
+
 def _prepare_merged_data(
     *,
     species: str,
@@ -1467,6 +1531,11 @@ def prepare_fixedbasis_inversion_data(
         calculate_min_error=calculate_min_error,
         min_error_per_site=min_error_options["by_site"],
     )
+    inv_inputs = _scale_satellite_bc_sensitivity_to_column_signal(
+        inv_inputs,
+        sites=prepared_sites,
+        platform=prepared_site_options.platform,
+    )
     sigma_alignment = SigmaAlignment.from_frequency(
         inv_inputs["site_indicator"],
         frequency=sigma_freq,
@@ -1674,6 +1743,11 @@ def prepare_rhime_inputs(
             calculate_min_error=None,
             min_error_per_site=min_error_options["by_site"],
         )
+    inv_inputs = _scale_satellite_bc_sensitivity_to_column_signal(
+        inv_inputs,
+        sites=filtered_merged.sites,
+        platform=filtered_merged.site_options.platform,
+    )
     _warn_for_nan_inputs(inv_inputs, use_bc=use_bc)
     log_timing(
         "rhime.prepare_inputs.prepared_dims",

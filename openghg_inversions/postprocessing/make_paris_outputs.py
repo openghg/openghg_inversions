@@ -616,14 +616,12 @@ def paris_concentration_outputs(
     if "Yobs_prior_factor" in result.data_vars and "Yobs_prior_upper_level_factor" in result.data_vars:
         with xr.set_options(keep_attrs="default"):
             factor = result["Yobs_prior_factor"] + result["Yobs_prior_upper_level_factor"]
+        # Column prior factors are part of the total column mole fraction, not the BC-only term.
         result["Yobs"] += factor
         result["Yapost"] += factor
         result["Yapriori"] += factor
         result["qYapost"] += factor
         result["qYapriori"] += factor
-        if "YapostBC" in result.data_vars:
-            result["YapostBC"] += factor
-            result["YaprioriBC"] += factor
 
     result.sitenames.attrs["long_name"] = "identifier of site"
 
@@ -706,14 +704,13 @@ def paris_concentration_outputs_latest(
             factor = (
                 obs_and_errs_raw["y_obs_prior_factor"] + obs_and_errs_raw["y_obs_prior_upper_level_factor"]
             )
+        # Column prior factors are part of the total column mole fraction, not the BC-only term.
         for name in (
             "mf_observed",
             "mf_prior",
             "mf_posterior",
             "percentile_mf_prior",
             "percentile_mf_posterior",
-            "mf_bc_prior",
-            "mf_bc_posterior",
         ):
             if name in result:
                 result[name] = result[name] + factor
