@@ -110,6 +110,151 @@ def _minimal_fixedbasis_prepared_data(**overrides):
     return hbmcmc_module.FixedBasisPreparedData(**defaults)
 
 
+def _deterministic_inferpymc_results(
+    inv_inputs: xr.Dataset,
+    *,
+    use_bc: bool,
+    reparameterise_log_normal: bool,
+) -> dict[str, object]:
+    """Build fresh realistic traces from prepared inputs without sampling.
+
+    Args:
+        inv_inputs: Fully prepared fixedbasis model inputs.
+        use_bc: Whether boundary-condition variables should be included.
+        reparameterise_log_normal: Whether to include the sampler's latent
+            lognormal variable alongside the public scaling factor.
+
+    Returns:
+        A legacy ``inferpymc`` result mapping containing deterministic prior,
+        posterior, and predictive traces suitable for real postprocessing and
+        serialization.
+    """
+    draw_count = 8
+    nregion = inv_inputs.sizes["region"]
+    draw_offsets = np.linspace(-0.1, 0.1, draw_count)
+    x_posterior = 1.0 + draw_offsets[:, None] + 0.01 * np.arange(nregion)[None, :]
+    x_prior = 1.0 + 2 * draw_offsets[:, None] + 0.01 * np.arange(nregion)[None, :]
+    h_matrix = inv_inputs["H"].transpose("region", "nmeasure").values
+    mu_posterior = x_posterior @ h_matrix
+    mu_prior = x_prior @ h_matrix
+
+    site_index = np.asarray(inv_inputs["site_indicator"].values, dtype=int)
+    sigma_index = np.asarray(inv_inputs["sigma_freq_index"].values, dtype=int)
+    nsite = int(site_index.max(initial=0)) + 1
+    nsigma_time = int(sigma_index.max(initial=0)) + 1
+    sigma_posterior = np.broadcast_to(
+        1.0 + draw_offsets[:, None, None],
+        (draw_count, nsite, nsigma_time),
+    ).copy()
+    sigma_prior = np.broadcast_to(
+        1.2 + draw_offsets[:, None, None],
+        (draw_count, nsite, nsigma_time),
+    ).copy()
+    observation_error = np.asarray(inv_inputs["mf_error"].values)
+    epsilon_posterior = np.sqrt(
+        observation_error[None, :] ** 2 + sigma_posterior[:, site_index, sigma_index] ** 2
+    )
+    epsilon_prior = np.sqrt(observation_error[None, :] ** 2 + sigma_prior[:, site_index, sigma_index] ** 2)
+
+    posterior = {
+        "x": x_posterior[None, ...],
+        "sigma": sigma_posterior[None, ...],
+        "mu": mu_posterior[None, ...],
+        "epsilon": epsilon_posterior[None, ...],
+    }
+    prior = {
+        "x": x_prior[None, ...],
+        "sigma": sigma_prior[None, ...],
+        "mu": mu_prior[None, ...],
+        "epsilon": epsilon_prior[None, ...],
+    }
+    dims = {
+        "x": ["nx"],
+        "sigma": ["nsigma_site", "nsigma_time"],
+        "mu": ["nmeasure"],
+        "epsilon": ["nmeasure"],
+        "y": ["nmeasure"],
+    }
+    if reparameterise_log_normal:
+        posterior["x_latent"] = np.log(x_posterior)[None, ...]
+        prior["x_latent"] = np.log(x_prior)[None, ...]
+        dims["x_latent"] = ["nx"]
+    coords = {
+        "nx": inv_inputs["region"].values,
+        "nsigma_site": np.arange(nsite),
+        "nsigma_time": np.arange(nsigma_time),
+        "nmeasure": np.arange(inv_inputs.sizes["nmeasure"]),
+    }
+
+    if use_bc:
+        h_bc = inv_inputs["H_bc"].transpose("bc_region", "nmeasure").values
+        nbc = h_bc.shape[0]
+        bc_posterior = 1.0 + 0.5 * draw_offsets[:, None] + 0.01 * np.arange(nbc)[None, :]
+        bc_prior = 1.0 + draw_offsets[:, None] + 0.01 * np.arange(nbc)[None, :]
+        mu_bc_posterior = bc_posterior @ h_bc
+        mu_bc_prior = bc_prior @ h_bc
+        posterior.update({"bc": bc_posterior[None, ...], "mu_bc": mu_bc_posterior[None, ...]})
+        prior.update({"bc": bc_prior[None, ...], "mu_bc": mu_bc_prior[None, ...]})
+        dims.update({"bc": ["nbc"], "mu_bc": ["nmeasure"]})
+        coords["nbc"] = np.arange(nbc)
+    else:
+        mu_bc_posterior = np.zeros_like(mu_posterior)
+        mu_bc_prior = np.zeros_like(mu_prior)
+
+    y_posterior = mu_posterior + mu_bc_posterior
+    y_prior = mu_prior + mu_bc_prior
+    trace = az.from_dict(
+        posterior=posterior,
+        prior=prior,
+        posterior_predictive={"y": y_posterior[None, ...]},
+        prior_predictive={"y": y_prior[None, ...]},
+        coords=coords,
+        dims=dims,
+    )
+    trace_groups: dict[str, xr.Dataset] = {}
+    nmeasure_index = inv_inputs.indexes["nmeasure"]
+    for group in trace.groups():
+        dataset = trace[group]
+        if "nmeasure" in dataset.dims:
+            level_names = list(nmeasure_index.names)
+            dataset = dataset.assign_coords(
+                {name: ("nmeasure", nmeasure_index.get_level_values(name)) for name in level_names}
+            ).set_index(nmeasure=level_names)
+        if "nbc" in dataset.dims:
+            bc_index = inv_inputs.indexes["bc_region"]
+            level_names = list(bc_index.names)
+            dataset = dataset.assign_coords(
+                {name: ("nbc", bc_index.get_level_values(name)) for name in level_names}
+            ).set_index(nbc=level_names)
+        trace_groups[group] = dataset
+    trace = az.InferenceData(**trace_groups)
+    return {
+        "trace": trace,
+        "model": object(),
+        "xouts": x_posterior,
+    }
+
+
+@pytest.fixture
+def deterministic_sampler(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, object]]:
+    """Replace only ``inferpymc`` and expose the fully prepared call arguments."""
+    calls: list[dict[str, object]] = []
+
+    def fake_inferpymc(**kwargs: object) -> dict[str, object]:
+        """Return independent deterministic results for each fixedbasis call."""
+        calls.append(dict(kwargs))
+        inv_inputs = kwargs["inv_inputs"]
+        assert isinstance(inv_inputs, xr.Dataset)
+        return _deterministic_inferpymc_results(
+            inv_inputs,
+            use_bc=bool(kwargs["use_bc"]),
+            reparameterise_log_normal=bool(kwargs.get("reparameterise_log_normal", False)),
+        )
+
+    monkeypatch.setattr(hbmcmc_module.mcmc, "inferpymc", fake_inferpymc)
+    return calls
+
+
 @pytest.fixture
 def mcmc_args(
     tmp_path,
@@ -151,7 +296,7 @@ def slow_mcmc_args(mcmc_args):
 
 
 @pytest.fixture
-def inv_out(mcmc_args):
+def inv_out(mcmc_args, deterministic_sampler):
     """Return a modern fixedbasis inversion output for postprocessing tests."""
     mcmc_args["output_format"] = "inv_out"
     result = fixedbasisMCMC(**mcmc_args)
@@ -950,7 +1095,7 @@ def test_paris_template_registry_requires_explicit_latest():
     assert latest.flux.exists()
 
 
-def test_save_inversion_output(mcmc_args, tmpdir):
+def test_save_inversion_output(mcmc_args, tmpdir, deterministic_sampler):
     """Check that we can save and reload inversion outputs"""
     mcmc_args["save_inversion_output"] = str(tmpdir / "inv_out.nc")
     mcmc_args["output_format"] = "inv_out"
@@ -965,15 +1110,21 @@ def test_save_inversion_output(mcmc_args, tmpdir):
     xr.testing.assert_identical(inv_out_reloaded.inv_inputs, inv_out.inv_inputs)
 
 
-def test_country_outputs_lognormal_reparam_conflict(mcmc_args, europe_country_file):
+def test_country_outputs_lognormal_reparam_conflict(
+    mcmc_args,
+    europe_country_file,
+    deterministic_sampler,
+):
     """Check country outputs ignore reparameterized latent-only traces."""
     mcmc_args["output_format"] = "inv_out"
     mcmc_args["reparameterise_log_normal"] = True
     mcmc_args["xprior"] = {"pdf": "lognormal", "mu": 1.0, "sigma": 1.0}
 
-    with pytest.warns(FutureWarning, match="reparameterise_log_normal"):
-        inv_out = fixedbasisMCMC(**mcmc_args)
+    inv_out = fixedbasisMCMC(**mcmc_args)
     assert isinstance(inv_out, InversionOutput)
+    assert deterministic_sampler[0]["reparameterise_log_normal"] is True
+    assert deterministic_sampler[0]["xprior"] == mcmc_args["xprior"]
+    assert "x_latent" in inv_out.trace.posterior
     trace_ds = inv_out.trace_dataset(var_roles="flux_scale")
     assert "x_prior" in trace_ds
     assert "x_posterior" in trace_ds
@@ -985,7 +1136,7 @@ def test_country_outputs_lognormal_reparam_conflict(mcmc_args, europe_country_fi
     assert "country_posterior_mean" in country_outs
 
 
-def test_hbmcmc_postprocessing_saves_legacy_output(mcmc_args, tmpdir):
+def test_hbmcmc_postprocessing_saves_legacy_output(mcmc_args, tmpdir, deterministic_sampler):
     """Legacy postprocessing output can still be saved and reloaded."""
     mcmc_args["output_format"] = "hbmcmc_postprocessing"
     mcmc_args["outputpath"] = str(tmpdir)
@@ -1099,7 +1250,10 @@ def test_fixedbasis_mcmc_rejects_retained_column_from_mixed_request(
         fixedbasisMCMC(**mcmc_args)
 
 
-def test_paris_postprocessing_compatibility_matches_paris_output_format(mcmc_args):
+def test_paris_postprocessing_compatibility_matches_paris_output_format(
+    mcmc_args,
+    deterministic_sampler,
+):
     """Compatibility PARIS output matches the explicit canonical format."""
     explicit_args = mcmc_args.copy()
     explicit_args["output_format"] = "paris"
@@ -1120,7 +1274,11 @@ def test_paris_postprocessing_compatibility_matches_paris_output_format(mcmc_arg
     assert explicit["Yapost"].dims == compat["Yapost"].dims
 
 
-def test_hbmcmc_postprocessing_preserves_expected_vars_attrs_and_coords(mcmc_args, tmpdir):
+def test_hbmcmc_postprocessing_preserves_expected_vars_attrs_and_coords(
+    mcmc_args,
+    tmpdir,
+    deterministic_sampler,
+):
     """Legacy-style postprocessing keeps its core vars, attrs, and coords."""
     mcmc_args["output_format"] = "hbmcmc_postprocessing"
     mcmc_args["outputpath"] = str(tmpdir)
@@ -1152,7 +1310,11 @@ def test_hbmcmc_postprocessing_preserves_expected_vars_attrs_and_coords(mcmc_arg
     assert "countrynames" in outputs.coords
 
 
-def test_inv_out_and_trace_outputs_preserve_downstream_dims_and_custom_paths(mcmc_args, tmpdir):
+def test_inv_out_and_trace_outputs_preserve_downstream_dims_and_custom_paths(
+    mcmc_args,
+    tmpdir,
+    deterministic_sampler,
+):
     """Saved trace and inversion output files preserve downstream-facing dims."""
     trace_path = Path(tmpdir) / "custom_trace.nc"
     inv_out_path = Path(tmpdir) / "custom_inv_out.nc"

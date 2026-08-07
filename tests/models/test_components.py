@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import pymc as pm
 import xarray as xr
+from pytensor.compile.mode import Mode
 
 from openghg_inversions.models.components import (
     LinearComponentResult,
@@ -291,7 +292,7 @@ def test_likelihood_pollution_events_from_obs_can_run_without_boundary_condition
             power=2.0,
         )
 
-    epsilon = model.named_vars["epsilon"].eval()
+    epsilon = model.named_vars["epsilon"].eval(mode=Mode(linker="py", optimizer="fast_run"))
     assert np.all(np.diff(epsilon) > 0)
     assert "y" in model.named_vars
 

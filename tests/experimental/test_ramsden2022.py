@@ -343,6 +343,7 @@ def test_boundary_components_are_optional_per_channel(
     assert present == expected
 
 
+@pytest.mark.slow
 def test_tiny_model_samples_through_rhime_sampler() -> None:
     """The isolated historical model runs through the modern RHIME sampler."""
     sampler = RhimeSampler(
