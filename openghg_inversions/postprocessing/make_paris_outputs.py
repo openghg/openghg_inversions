@@ -1,34 +1,35 @@
-from pathlib import Path
 import getpass
 import json
 import math
 import re
-from collections.abc import Hashable, Iterable, Mapping
 import warnings
+from collections.abc import Hashable, Iterable, Mapping
+from pathlib import Path
 from typing import Any, Literal, NamedTuple, cast
 
 import numpy as np
 import pandas as pd
 import xarray as xr
-
 from openghg.util import timestamp_now  # pyright: ignore[reportPrivateImportUsage]
+
+from openghg_inversions import utils
 from openghg_inversions.array_ops import align_sparse_lat_lon
 from openghg_inversions.config.version import code_version
 from openghg_inversions.flux_sanitization import copy_flux_nonfinite_attrs
+from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
 from openghg_inversions.postprocessing._basis_products import add_basis_reconstruction_metadata
 from openghg_inversions.postprocessing.countries import Countries
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.postprocessing.make_outputs import (
     OutputSector,
     make_concentration_outputs,
-    make_flux_outputs,
     make_country_outputs,
+    make_flux_outputs,
     make_multisector_country_trace_outputs,
     make_multisector_flux_trace_outputs,
     observation_and_error_outputs,
 )
 from openghg_inversions.postprocessing.stats import calculate_stats, stats_functions
-
 
 # path to `paris_formatting` submodule
 paris_formatting_path = Path(__file__).parent
@@ -595,7 +596,10 @@ def paris_concentration_outputs(
     template_files = paris_template_files(template_version)
     conc_attrs = get_data_var_attrs(template_files.concentration)
 
-    units = float(obs_and_errs_raw["y_obs"].attrs["units"].split(" ")[0])
+    units = mole_fraction_unit_scale(
+        obs_and_errs_raw["y_obs"].attrs["units"],
+        context="PARIS observation units",
+    )
 
     common_rename_dict = {"site": "nsite"}
 
@@ -731,7 +735,10 @@ def paris_concentration_outputs_latest(
 
     template_files = paris_template_files("latest")
     conc_attrs = get_data_var_attrs(template_files.concentration, species)
-    units = float(obs_and_errs_raw["y_obs"].attrs["units"].split(" ")[0])
+    units = mole_fraction_unit_scale(
+        obs_and_errs_raw["y_obs"].attrs["units"],
+        context="PARIS observation units",
+    )
 
     result = (
         xr.merge([result, platform_metadata])
@@ -749,12 +756,17 @@ def paris_concentration_outputs_latest(
 
 def _flux_frequency_to_offset(flux_frequency: str) -> pd.DateOffset | pd.Timedelta:
     """Convert a flux frequency string to a calendar-aware pandas offset."""
-    if flux_frequency == "monthly":
+    normalized_period = utils._normalize_flux_period(flux_frequency)
+    if normalized_period == "monthly":
         return pd.DateOffset(months=1)
-    elif flux_frequency == "yearly":
+    if normalized_period == "yearly":
         return pd.DateOffset(years=1)
-    else:
-        return pd.to_timedelta(flux_frequency)
+    if normalized_period is None:
+        raise ValueError(
+            f"Flux period {flux_frequency!r} is not a recognized calendar period "
+            "or a positive fixed duration."
+        )
+    return pd.to_timedelta(normalized_period)
 
 
 def _flux_interval_midpoints(
@@ -762,6 +774,7 @@ def _flux_interval_midpoints(
     flux_period: pd.DateOffset | pd.Timedelta,
     inv_start: pd.Timestamp,
     inv_end: pd.Timestamp,
+    flux_frequency: str | None = None,
 ) -> tuple[list[pd.Timestamp], list[int]]:
     """Compute output timestamps as midpoints of each flux interval clipped to the inversion period.
 
@@ -779,21 +792,22 @@ def _flux_interval_midpoints(
         flux_period: Duration of a single flux interval.
         inv_start: Start of the inversion period.
         inv_end: End of the inversion period.
+        flux_frequency: User-facing frequency name used in overlap errors.
 
     Returns:
         Tuple of (midpoint_timestamps, valid_time_indices). Both lists contain
         one entry per flux interval that overlaps the inversion period.
+
+    Raises:
+        ValueError: If no flux interval overlaps the inversion period.
     """
-    midpoints = []
-    valid_indices = []
-    for i, ft in enumerate(flux_times):
-        overlap_start = max(ft, inv_start)
-        overlap_end = min(ft + flux_period, inv_end)
-        # Only include if there is valid overlap
-        if overlap_end > overlap_start:
-            midpoint = overlap_start + (overlap_end - overlap_start) / 2
-            midpoints.append(midpoint)
-            valid_indices.append(i)
+    midpoints, _, valid_indices = _flux_interval_midpoints_and_bounds(
+        flux_times,
+        flux_period,
+        inv_start,
+        inv_end,
+        flux_frequency,
+    )
     return midpoints, valid_indices
 
 
@@ -802,8 +816,30 @@ def _flux_interval_midpoints_and_bounds(
     flux_period: pd.DateOffset | pd.Timedelta,
     inv_start: pd.Timestamp,
     inv_end: pd.Timestamp,
+    flux_frequency: str | None = None,
 ) -> tuple[list[pd.Timestamp], list[tuple[pd.Timestamp, pd.Timestamp]], list[int]]:
-    """Compute clipped flux interval midpoints, bounds, and retained indices."""
+    """Compute clipped flux interval midpoints, bounds, and retained indices.
+
+    Args:
+        flux_times: Start timestamps for available flux periods.
+        flux_period: Duration of each flux period.
+        inv_start: Start of the inversion period.
+        inv_end: End of the inversion period.
+        flux_frequency: User-facing frequency name used in overlap errors.
+
+    Returns:
+        Midpoints, clipped bounds, and source indices for overlapping periods.
+
+    Raises:
+        ValueError: If no flux interval overlaps the inversion period.
+    """
+    frequency = flux_frequency or str(flux_period)
+    if len(flux_times) == 0:
+        raise ValueError(
+            f"No flux interval overlaps the inversion period for frequency {frequency!r}: "
+            f"no flux timestamps are available; inversion start={inv_start}, end={inv_end}."
+        )
+
     midpoints = []
     bounds = []
     valid_indices = []
@@ -814,6 +850,16 @@ def _flux_interval_midpoints_and_bounds(
             midpoints.append(overlap_start + (overlap_end - overlap_start) / 2)
             bounds.append((overlap_start, overlap_end))
             valid_indices.append(i)
+
+    if not valid_indices:
+        flux_start = min(flux_times)
+        flux_end = max(flux_time + flux_period for flux_time in flux_times)
+        raise ValueError(
+            f"No flux interval overlaps the inversion period for frequency {frequency!r}: "
+            f"flux interval start={flux_start}, end={flux_end}; "
+            f"inversion start={inv_start}, end={inv_end}."
+        )
+
     return midpoints, bounds, valid_indices
 
 
@@ -823,7 +869,23 @@ def _assign_flux_time_bounds(
     inv_start: pd.Timestamp,
     inv_end: pd.Timestamp,
 ) -> xr.Dataset:
-    """Assign midpoint flux times and clipped interval bounds for latest PARIS flux output."""
+    """Assign midpoint times and clipped bounds to overlapping flux periods.
+
+    Args:
+        ds: Flux output with period starts on its ``time`` coordinate.
+        flux_frequency: Calendar alias or positive fixed duration for each
+            source period.
+        inv_start: Start of the inversion period.
+        inv_end: End of the inversion period.
+
+    Returns:
+        The subset of flux periods overlapping the inversion, with midpoint
+        ``time`` values and a ``time_bnds`` variable.
+
+    Raises:
+        ValueError: If the flux coordinate is empty or no period overlaps the
+            inversion.
+    """
     flux_period = _flux_frequency_to_offset(flux_frequency)
     flux_times = list(pd.to_datetime(ds.time.values))
     midpoints, bounds, valid_indices = _flux_interval_midpoints_and_bounds(
@@ -831,6 +893,7 @@ def _assign_flux_time_bounds(
         flux_period,
         inv_start,
         inv_end,
+        flux_frequency,
     )
     time_bnds = np.asarray(bounds, dtype="datetime64[ns]")
     return (
@@ -1054,6 +1117,7 @@ def _country_posterior_covariance_kg(
         flux_period,
         inv_out.start_time,
         inv_out.end_time,
+        flux_frequency,
     )
 
     posterior = posterior.isel(flux_time=valid_indices).dropna("draw", how="all")
@@ -1112,6 +1176,7 @@ def _sector_country_posterior_covariances_kg(
         flux_period,
         inv_out.start_time,
         inv_out.end_time,
+        flux_frequency,
     )
 
     sector_posteriors = [
@@ -1314,7 +1379,13 @@ def paris_flux_output(
 
         def time_func(ds):
             flux_times = pd.to_datetime(ds.time.values)
-            midpoints, valid_indices = _flux_interval_midpoints(flux_times, flux_period, inv_start, inv_end)
+            midpoints, valid_indices = _flux_interval_midpoints(
+                flux_times,
+                flux_period,
+                inv_start,
+                inv_end,
+                flux_frequency,
+            )
             return ds.isel(time=valid_indices).assign_coords(time=midpoints)
     else:
 
@@ -1387,8 +1458,9 @@ def paris_flux_output_latest(
             estimates.
         inversion_grid: If true, include the optional reduced inversion-grid
             variables.
-        flux_frequency: Frequency used to construct output intervals. Supported
-            values are ``"monthly"`` and ``"yearly"``.
+        flux_frequency: Period used to construct output intervals. Calendar
+            values ``"monthly"`` and ``"yearly"`` and positive fixed pandas
+            duration strings are supported.
         country_selections: Optional country names or codes to include. The
             default emits the canonical 22-country EUROPE v03 product; pass
             ``None`` to include every country from another domain file.
@@ -1617,50 +1689,48 @@ def infer_flux_frequency(flux: xr.DataArray) -> str:
         frequency string that can be parsed by pd.to_timedelta, or is "yearly" or "monthly"
 
     Raises:
-        ValueError: if inferred frequency is not "yearly" or "monthly", and cannot be parsed by pd.to_timedelta
+        ValueError: If source metadata is neither a recognized calendar period
+            nor a positive fixed duration.
 
     """
     if "time_period" in flux.attrs:
         time_period = flux.attrs["time_period"]
-        if "year" in time_period:
-            return "yearly"
-        if "month" in time_period:
-            return "monthly"
+        normalized_period = utils._normalize_flux_period(time_period)
+        if normalized_period is not None:
+            return normalized_period
+        if not utils._flux_period_is_missing(time_period):
+            raise ValueError(
+                f"Flux period {time_period!r} from flux.attrs['time_period'] is not a recognized "
+                "calendar period or a positive fixed duration."
+            )
 
-        # check if the result can be parsed by pd.to_timedelta
+    calendar_period = utils._infer_calendar_flux_period(flux.flux_time.values)
+    if calendar_period is not None:
+        return calendar_period
+
+    # take most frequent gap between times
+    try:
+        flux_frequency_delta = pd.Series(flux.flux_time.values).diff().mode()[0]
+    except KeyError:
+        # only one time value
+        return "yearly"
+    else:
+        flux_frequency = pd.tseries.frequencies.to_offset(flux_frequency_delta).freqstr  # type: ignore
+
+        # "1 days" will be converted to "D" by the previous two lines, so we need to add a "1" in front
+        if not flux_frequency[0].isdigit():
+            flux_frequency = "1" + flux_frequency
+
+        # check if the result can be parsed
         try:
-            pd.to_timedelta(time_period)
+            pd.to_timedelta(flux_frequency)
         except ValueError as e:
             raise ValueError(
-                f"Flux frequency {time_period} from flux.attrs['time_period'] cannot be parsed by pd.to_timedelta."
+                f"Flux frequency {flux_frequency} inferred from gaps in flux.time cannot be parsed by pd.to_timedelta"
+                "(and flux.attrs['time_period'] is not set)."
             ) from e
         else:
-            return time_period
-
-    else:
-        # take most frequent gap between times
-        try:
-            flux_frequency_delta = pd.Series(flux.flux_time.values).diff().mode()[0]
-        except KeyError:
-            # only one time value
-            return "yearly"
-        else:
-            flux_frequency = pd.tseries.frequencies.to_offset(flux_frequency_delta).freqstr  # type: ignore
-
-            # "1 days" will be converted to "D" by the previous two lines, so we need to add a "1" in front
-            if not flux_frequency[0].isdigit():
-                flux_frequency = "1" + flux_frequency
-
-            # check if the result can be parsed
-            try:
-                pd.to_timedelta(flux_frequency)
-            except ValueError as e:
-                raise ValueError(
-                    f"Flux frequency {flux_frequency} inferred from gaps in flux.time cannot be parsed by pd.to_timedelta"
-                    "(and flux.attrs['time_period'] is not set)."
-                ) from e
-            else:
-                return flux_frequency
+            return flux_frequency
 
 
 def make_paris_outputs(

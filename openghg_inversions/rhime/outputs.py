@@ -12,12 +12,10 @@ import xarray as xr
 from openghg_inversions._timing import timed
 from openghg_inversions.inversion_data import RhimePreparedInputs
 from openghg_inversions.models import RhimeModelSpec
-from openghg_inversions.postprocessing.inversion_output import (
-    InversionOutput,
-    _reset_serialisation_multiindexes,
-)
+from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.rhime.sampling import RhimeSampler
 from openghg_inversions.rhime.specs import OutputFilenameConvention, RhimeOutputSpec, RhimeRunSpec
+from openghg_inversions.serialization import reset_serialisation_multiindexes
 from openghg_inversions.utils import ncdf_encoding, write_netcdf_preserving_bounds_attrs
 
 
@@ -101,7 +99,7 @@ def _save_inferencedata(idata: az.InferenceData, path: str | Path) -> None:
     if isinstance(idata, az.InferenceData):
         idata = cast(Any, az.InferenceData)(
             attrs=dict(idata.attrs),
-            **{group: _reset_serialisation_multiindexes(idata[group]) for group in idata.groups()},
+            **{group: reset_serialisation_multiindexes(idata[group]) for group in idata.groups()},
         )
 
     failures = []
@@ -145,8 +143,6 @@ def _make_inversion_output(
             "split_by_sectors": run_spec.split_by_sectors,
             "basis_artifact_source": prepared.basis_artifact_source,
             "basis_artifact_path": prepared.basis_artifact_path,
-            "site_lats": list(prepared.site_lats) if prepared.site_lats is not None else None,
-            "site_lons": list(prepared.site_lons) if prepared.site_lons is not None else None,
         },
         model_metadata=asdict(model_spec),
         output_metadata={

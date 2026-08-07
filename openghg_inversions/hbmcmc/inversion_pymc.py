@@ -74,7 +74,7 @@ def _prepare_builder_priors(
     if reparameterise_log_normal:
         warnings.warn(
             "`reparameterise_log_normal` is deprecated. Set `reparameterise=True` in the relevant prior args instead.",
-            DeprecationWarning,
+            FutureWarning,
             stacklevel=2,
         )
         if str(prepared_xprior.get("pdf", "")).lower() == "lognormal":
@@ -118,8 +118,9 @@ def build_inferpymc_model(
         offsetprior: Prior specification for optional offsets.
         add_offset: Whether to include an offset term in the model.
         use_bc: Whether to include boundary-condition terms in the model.
-        reparameterise_log_normal: Whether to request lognormal
-            reparameterisation for supported priors.
+        reparameterise_log_normal: Deprecated compatibility flag for lognormal
+            reparameterisation. Set ``reparameterise=True`` in the relevant
+            prior mapping instead.
         pollution_events_from_obs: Whether to derive pollution-event scaling
             from observations rather than modelled concentrations.
         no_model_error: Whether to suppress the explicit model-error term.
@@ -130,6 +131,9 @@ def build_inferpymc_model(
 
     Returns:
         Built PyMC model for the current inferpymc compatibility path.
+
+    Warns:
+        FutureWarning: If ``reparameterise_log_normal`` is enabled.
     """
     xprior, bcprior, sigprior, offsetprior = _prepare_builder_priors(
         xprior=xprior,
@@ -442,7 +446,9 @@ def inferpymc(
         add_offset: If True, include an offset term in the model.
         verbose: If True, print additional diagnostic information.
         use_bc: If True, include boundary condition terms in the model.
-        reparameterise_log_normal: If True, reparameterise log-normal priors for numerical stability.
+        reparameterise_log_normal: Deprecated compatibility flag for lognormal
+            reparameterisation. Set ``reparameterise=True`` in the relevant
+            prior mapping instead.
         pollution_events_from_obs: If True, derive pollution event terms from observations.
         no_model_error: If True, do not include an explicit model-error term.
         offset_args: Additional arguments used when constructing offsets.
@@ -461,9 +467,12 @@ def inferpymc(
         - ``"OFFSETtrace"`` when offsets are enabled
         - ``"trace"``, ``"model"``, and convergence metadata
 
-        Raises:
-            ValueError: If the model cannot be built from the supplied
-                ``inv_inputs`` and configuration.
+    Raises:
+        ValueError: If the model cannot be built from the supplied
+            ``inv_inputs`` and configuration.
+
+    Warns:
+        FutureWarning: If ``reparameterise_log_normal`` is enabled.
     """
     burn = int(burn)
     nit = int(nit)

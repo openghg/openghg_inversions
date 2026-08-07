@@ -77,6 +77,7 @@ def test_fixedbasis_params_to_rhime_translates_legacy_names(tmp_path: Path) -> N
 
 
 def test_fixedbasis_params_to_rhime_translates_reparameterise_log_normal(tmp_path: Path) -> None:
+    """Legacy lognormal translation warns visibly and updates both priors."""
     config_file = tmp_path / "hbmcmc.ini"
     _fixedbasis_config(config_file)
     params = run_hbmcmc.hbmcmc_extract_param(str(config_file), print_param=False)
@@ -84,7 +85,7 @@ def test_fixedbasis_params_to_rhime_translates_reparameterise_log_normal(tmp_pat
     params["xprior"] = {"pdf": "lognormal", "mean": 1.0, "stdev": 2.0}
     params["bcprior"] = {"pdf": "lognormal", "mean": 1.0, "stdev": 1.0}
 
-    with pytest.warns(DeprecationWarning, match="reparameterise_log_normal"):
+    with pytest.warns(FutureWarning, match="reparameterise_log_normal"):
         translated = run_hbmcmc.fixedbasis_params_to_rhime(params)
 
     assert translated["x_prior"]["reparameterise"] is True

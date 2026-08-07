@@ -159,6 +159,11 @@ be tested without committing to config syntax.
   weighted definitions as future optimizer/weight-builder work. They are useful
   sources from `~/Documents/basis_functions`, but they should not block the
   first usable region-source options.
+- See `docs/plans/ogi_051_basis_weight_definitions.md` for the OGI-051 weight
+  builder design. The short version is that alternative observation-aware
+  weights belong before partitioning, must use retained observations only, and
+  should not be routed through public config until filter-before-basis behavior
+  and focused tests have landed on `devel`.
 - Start tracking partition/group metadata alongside labels. Inner/outer regions,
   land/sea, country groups, and future layered masks should be represented as
   basis groups or coordinates so priors and posterior summaries can be applied
@@ -302,6 +307,11 @@ be tested without committing to config syntax.
   geometry. The narrow API adds `LatLonGridGeometry` as an opt-in geometry
   object for axis-parallel and inertial split steps, while keeping weights,
   split stopping, allocation, and public config routing unchanged.
+- 2026-07-05: Added the OGI-051 basis-weight design note. The decision is to
+  keep the current `mean_fp_times_mean_flux` builder as the only
+  production-routed default for now, prototype alternative builders at the
+  weight-first helper layer, and defer public config routing until retained
+  observation filtering and focused tests are merged.
 - 2026-07-05: Documented OGI-060 split-stopping semantics in the user-facing
   basis notes. The docs now state that parent-relative and equal-target
   thresholds are not interchangeable, that requested region counts become upper
