@@ -133,6 +133,20 @@ def builder_args(rhime_inv_inputs: xr.Dataset) -> dict:
     }
 
 
+def _assert_model_dot_matches_numpy(
+    model: pm.Model,
+    *,
+    output_name: str,
+    design_name: str,
+    state_name: str,
+) -> None:
+    """Compare compiled and NumPy matrix products at dtype-aware precision."""
+    actual = model[output_name].eval()
+    expected = model[design_name].get_value() @ model[state_name].eval()
+    tolerance = 100 * max(np.finfo(actual.dtype).eps, np.finfo(expected.dtype).eps)
+    np.testing.assert_allclose(actual, expected, rtol=tolerance, atol=tolerance)
+
+
 def _fake_basis_functions(*, artifact_source: str = "generated") -> BasisFunctions:
     """Build a minimal one-cell basis artifact for RHIME tests."""
     basis = xr.DataArray(
@@ -1575,10 +1589,17 @@ def test_concrete_and_compiled_models_support_all_fixed_flux_and_bc(
         assert "bc_active" not in model.named_vars
         np.testing.assert_allclose(model["x"].eval(), 2.0)
         np.testing.assert_allclose(model["bc"].eval(), 1.5)
-        np.testing.assert_allclose(model["mu"].eval(), model["hx"].get_value() @ model["x"].eval())
-        np.testing.assert_allclose(
-            model["mu_bc"].eval(),
-            model["hbc"].get_value() @ model["bc"].eval(),
+        _assert_model_dot_matches_numpy(
+            model,
+            output_name="mu",
+            design_name="hx",
+            state_name="x",
+        )
+        _assert_model_dot_matches_numpy(
+            model,
+            output_name="mu_bc",
+            design_name="hbc",
+            state_name="bc",
         )
 
 
@@ -1614,9 +1635,11 @@ def test_bc_activity_is_opt_in_and_restores_exact_zero_columns(
         assert list(registry.original_coords["bc_region_bc_active"]) == list(
             inv_inputs["H_bc"].indexes["bc_region"][1:]
         )
-        np.testing.assert_allclose(
-            model["mu_bc"].eval(),
-            model["hbc"].get_value() @ model["bc"].eval(),
+        _assert_model_dot_matches_numpy(
+            model,
+            output_name="mu_bc",
+            design_name="hbc",
+            state_name="bc",
         )
 
 
