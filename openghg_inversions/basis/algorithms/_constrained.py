@@ -78,8 +78,10 @@ class SplitStrategy(Protocol):
             target_regions: Requested number of local labels for this class.
 
         Returns:
-            Integer label array with positive labels inside ``class_mask`` and
-            zero outside it.
+            Integer, non-Boolean array with the same shape as ``class_mask``.
+            Every selected cell has a positive label and every unselected cell
+            is zero. Positive label values need not be contiguous, and the
+            result may contain fewer regions than ``target_regions``.
         """
         ...
 
@@ -1126,12 +1128,18 @@ class ConnectedComponentSplitStrategy:
 
 @dataclass(frozen=True)
 class AxisAlignedWeightedSplitStrategy:
-    """Compatibility strategy based on the existing recursive weighted basis.
+    """Class-local strategy derived from recursive weighted bucket splitting.
 
-    This keeps the current weighted basis shape available for comparison:
-    recursively split rectangles along the longer axis until each rectangle is
-    below a searched threshold. New constrained code defaults to
-    :class:`GreedyAxisParallelSplitStrategy` instead.
+    This applies the existing bucket splitter independently to the masked
+    weights for one class. It recursively splits rectangles along the longer
+    axis until each rectangle is below a searched threshold. It is not a
+    compatibility implementation of the legacy weighted land/sea pipeline,
+    which optimizes the bucket layout before applying the land/sea split. New
+    constrained code defaults to :class:`GreedyAxisParallelSplitStrategy`
+    instead.
+
+    Attributes:
+        max_iter: Maximum number of threshold-search iterations.
     """
 
     max_iter: int = 32
@@ -1148,11 +1156,14 @@ class AxisAlignedWeightedSplitStrategy:
             weights: Non-negative weight field for the full grid.
             class_mask: Boolean mask selecting the cells in the class being
                 split.
-            target_regions: Requested number of local labels for this class.
+            target_regions: Target number of local labels for this class.
 
         Returns:
             Integer label array with positive class-local labels inside
             ``class_mask`` and zero outside it.
+
+        Raises:
+            ValueError: If ``target_regions`` is less than one.
         """
         if target_regions < 1:
             raise ValueError("target_regions must be at least 1.")
@@ -1230,6 +1241,11 @@ def region_constrained_basis(
         ``weights``. Mapped cells receive globally unique positive integer
         labels; unmapped cells receive ``0``.
 
+    Raises:
+        ValueError: If a split strategy result has the wrong shape or dtype,
+            has a non-positive label inside its class mask, or has a nonzero
+            label outside its class mask.
+
     Notes:
         Labels are guaranteed not to cross class boundaries because each class is
         split independently and relabelled with a global offset. The default
@@ -1241,7 +1257,7 @@ def region_constrained_basis(
     weight_values = _validate_weights(weights)
     class_values = region_classes.to_numpy()
     mapped_classes = _mapped_classes(class_values, unmapped_values)
-    strategy = split_strategy or GreedyAxisParallelSplitStrategy()
+    strategy = split_strategy if split_strategy is not None else GreedyAxisParallelSplitStrategy()
 
     labels = np.zeros(weight_values.shape, dtype=np.int64)
     if not mapped_classes:
@@ -1260,7 +1276,10 @@ def region_constrained_basis(
     for class_value in mapped_classes:
         target_regions = targets[class_value]
         class_mask = _class_value_mask(class_values, class_value)
-        local_labels = strategy(weight_values, class_mask, target_regions)
+        local_labels = _validate_split_strategy_labels(
+            strategy(weight_values, class_mask, target_regions),
+            class_mask,
+        )
         for local_label in _positive_labels(local_labels):
             labels[(local_labels == local_label) & class_mask] = next_label
             next_label += 1
@@ -2280,6 +2299,36 @@ def _labels_for_bucket(weights: np.ndarray, class_mask: np.ndarray, bucket: floa
 def _count_positive_labels(labels: np.ndarray) -> int:
     """Return the number of positive labels in an integer label array."""
     return len(_positive_labels(labels))
+
+
+def _validate_split_strategy_labels(labels: np.ndarray, class_mask: np.ndarray) -> np.ndarray:
+    """Validate a class-local split-strategy result against its class mask.
+
+    Args:
+        labels: Strategy result to convert to a NumPy array and validate.
+        class_mask: Boolean mask for the class passed to the strategy.
+
+    Returns:
+        NumPy-converted integer label array.
+
+    Raises:
+        ValueError: If the shape differs from ``class_mask``, the dtype is not
+            a non-Boolean integer dtype, any class cell is non-positive, or any
+            cell outside the class is nonzero.
+    """
+    label_values = np.asarray(labels)
+    if label_values.shape != class_mask.shape:
+        raise ValueError(
+            "Split strategy labels must have the same shape as the class grid; "
+            f"got {label_values.shape}, expected {class_mask.shape}."
+        )
+    if np.issubdtype(label_values.dtype, np.bool_) or not np.issubdtype(label_values.dtype, np.integer):
+        raise ValueError("Split strategy labels must have an integer, non-boolean dtype.")
+    if not np.all(label_values[class_mask] > 0):
+        raise ValueError("Split strategy labels must be strictly positive on every class-mask cell.")
+    if not np.all(label_values[~class_mask] == 0):
+        raise ValueError("Split strategy labels must be exactly zero outside the class mask.")
+    return label_values
 
 
 def _positive_labels(labels: np.ndarray) -> np.ndarray:

@@ -4,6 +4,10 @@
 
 ## Code changes
 
+- Enforced the class-local `SplitStrategy` label-array contract at the
+  constrained-basis boundary while allowing strategies to stop before their
+  requested region target. [#455](https://github.com/openghg/openghg_inversions/issues/455)
+
 - Hardened satellite-column preparation and PARIS outputs: footprint timestamps
   are aligned to observations at nanosecond precision, and filtered site
   metadata now retains the correct satellite platform for boundary-condition

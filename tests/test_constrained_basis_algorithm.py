@@ -1780,15 +1780,15 @@ def test_region_constrained_basis_rejects_explicit_over_allocation():
 
 
 def test_region_constrained_basis_accepts_custom_split_strategy():
-    """The strategy boundary allows future inertial or quadtree-style splitters."""
+    """A valid strategy may return fewer, non-contiguous local labels."""
     weights = xr.DataArray(np.ones((2, 4)), dims=("lat", "lon"))
     classes = xr.DataArray(
         np.array([["left", "left", "right", "right"], ["left", "left", "right", "right"]]),
         dims=weights.dims,
     )
 
-    class OneRegionPerClass:
-        """Custom test splitter that ignores requested region count."""
+    class TwoRegionStrategy:
+        """Return two non-contiguous labels regardless of the larger target."""
 
         def __call__(
             self,
@@ -1796,16 +1796,121 @@ def test_region_constrained_basis_accepts_custom_split_strategy():
             class_mask: np.ndarray,
             target_regions: int,
         ) -> np.ndarray:
-            labels = np.zeros(weights.shape, dtype=np.int64)
-            labels[class_mask] = 1
+            labels = np.zeros(weights.shape, dtype=np.int16)
+            labels[0, class_mask[0]] = 3
+            labels[1, class_mask[1]] = 11
             return labels
 
     labels = region_constrained_basis(
         weights,
         classes,
-        nbasis=4,
-        split_strategy=OneRegionPerClass(),
+        nbasis=6,
+        split_strategy=TwoRegionStrategy(),
     )
 
-    assert set(np.unique(labels.values)) == {1, 2}
+    assert set(np.unique(labels.values)) == {1, 2, 3, 4}
     assert all(len(class_values) == 1 for class_values in _class_values_for_labels(labels, classes).values())
+
+
+def test_region_constrained_basis_preserves_falsy_split_strategy():
+    """An explicitly supplied callable is used even when it is falsy."""
+    weights = xr.DataArray(np.ones((2, 2)), dims=("lat", "lon"))
+    classes = xr.DataArray(np.full(weights.shape, "class"), dims=weights.dims)
+
+    class FalsyOneRegionStrategy:
+        """Return one region and report false in truth-value testing."""
+
+        def __init__(self) -> None:
+            self.called = False
+
+        def __bool__(self) -> bool:
+            return False
+
+        def __call__(
+            self,
+            weights: np.ndarray,
+            class_mask: np.ndarray,
+            target_regions: int,
+        ) -> np.ndarray:
+            self.called = True
+            labels = np.zeros(weights.shape, dtype=np.int64)
+            labels[class_mask] = 7
+            return labels
+
+    strategy = FalsyOneRegionStrategy()
+    labels = region_constrained_basis(
+        weights,
+        classes,
+        nbasis=2,
+        split_strategy=strategy,
+    )
+
+    assert strategy.called
+    assert set(np.unique(labels.values)) == {1}
+
+
+@pytest.mark.parametrize(
+    ("local_labels", "message"),
+    [
+        pytest.param(np.ones((1, 2), dtype=np.int64), "same shape", id="wrong-shape"),
+        pytest.param(
+            np.array([[1.0, 1.0], [0.0, 0.0]]),
+            "integer, non-boolean dtype",
+            id="floating-dtype",
+        ),
+        pytest.param(
+            np.array([[1.0, np.nan], [0.0, 0.0]]),
+            "integer, non-boolean dtype",
+            id="nan",
+        ),
+        pytest.param(
+            np.array([[True, True], [False, False]]),
+            "integer, non-boolean dtype",
+            id="boolean-dtype",
+        ),
+        pytest.param(
+            np.array([[1, 0], [0, 0]], dtype=np.int64),
+            "strictly positive",
+            id="zero-inside-class",
+        ),
+        pytest.param(
+            np.array([[1, -1], [0, 0]], dtype=np.int64),
+            "strictly positive",
+            id="negative-inside-class",
+        ),
+        pytest.param(
+            np.array([[1, 1], [0, 2]], dtype=np.int64),
+            "exactly zero outside",
+            id="nonzero-outside-class",
+        ),
+    ],
+)
+def test_region_constrained_basis_validates_custom_strategy_output(
+    local_labels: np.ndarray,
+    message: str,
+):
+    """Malformed custom strategy outputs fail at the class-local boundary."""
+    weights = xr.DataArray(np.ones((2, 2)), dims=("lat", "lon"))
+    classes = xr.DataArray(
+        np.array([["class", "class"], [np.nan, np.nan]], dtype=object),
+        dims=weights.dims,
+    )
+
+    class StaticStrategy:
+        """Return the parametrized labels without modification."""
+
+        def __call__(
+            self,
+            weights: np.ndarray,
+            class_mask: np.ndarray,
+            target_regions: int,
+        ) -> np.ndarray:
+            return local_labels
+
+    with pytest.raises(ValueError, match=message):
+        region_constrained_basis(
+            weights,
+            classes,
+            nbasis={"class": 2},
+            split_strategy=StaticStrategy(),
+        )
