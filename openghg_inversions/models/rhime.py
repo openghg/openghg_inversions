@@ -127,6 +127,11 @@ class RhimeModelSpec:
             sampled BC graph without zero pruning. Supplying a policy opts into
             active/fixed BC construction; when all states are fixed, ``mu_bc``
             remains without a boundary-condition RV.
+        state_activity: Optional labelled active/fixed state policy shared by
+            flux sectors. The default retains exact-zero pruning.
+        sector_state_activities: Optional activity-policy overrides keyed by
+            sector name for multi-sector models. A policy stored directly on a
+            ``SectorSpec`` takes precedence over this compatibility mapping.
         builder_strategy: Public model-construction strategy. ``"concrete"``
             directly composes the default, readable reference model.
             ``"compiled"`` opts into the private semantic-plan compiler for
@@ -150,6 +155,8 @@ class RhimeModelSpec:
     offset_prior: dict[str, Any] | None = None
     offset_args: dict[str, Any] | None = None
     bc_state_activity: StateActivity | None = field(default=None, kw_only=True)
+    state_activity: StateActivity | None = field(default=None, kw_only=True)
+    sector_state_activities: dict[str, StateActivity] | None = field(default=None, kw_only=True)
     builder_strategy: RhimeBuilderStrategy = field(default="concrete", kw_only=True)
 
     def __post_init__(self) -> None:
@@ -497,11 +504,16 @@ def build_rhime_model_from_spec(inv_inputs: xr.Dataset, model_spec: RhimeModelSp
         anchor_time=model_spec.sigma_freq_anchor,
     )
     builder = build_rhime_model if model_spec.builder_strategy == "concrete" else _build_compiled_rhime_model
+    state_activity = model_spec.state_activity
+    if model_spec.sector_state_activities is not None:
+        state_activity = model_spec.sector_state_activities.get(sector.name, state_activity)
+    if sector.state_activity is not None:
+        state_activity = sector.state_activity
     return builder(
         inv_inputs,
         sigma_alignment=sigma_alignment,
         x_prior=dict(sector.x_prior),
-        state_activity=sector.state_activity,
+        state_activity=state_activity,
         bc_prior=model_spec.bc_prior,
         bc_state_activity=model_spec.bc_state_activity,
         sigma_prior=model_spec.sigma_prior,
@@ -754,6 +766,14 @@ def build_rhime_multisector_model_from_spec(
         if model_spec.builder_strategy == "concrete"
         else _build_compiled_rhime_multisector_model
     )
+    sector_state_activities = dict(model_spec.sector_state_activities or {})
+    sector_state_activities.update(
+        {
+            sector.name: sector.state_activity
+            for sector in model_spec.sectors
+            if sector.state_activity is not None
+        }
+    )
     return builder(
         inv_inputs,
         sigma_alignment=sigma_alignment,
@@ -761,11 +781,6 @@ def build_rhime_multisector_model_from_spec(
         sector_sources={sector.name: sector.flux_source for sector in model_spec.sectors},
         sector_variable_suffixes={sector.name: sector.variable_suffix for sector in model_spec.sectors},
         sector_priors={sector.name: dict(sector.x_prior) for sector in model_spec.sectors},
-        sector_state_activities={
-            sector.name: sector.state_activity
-            for sector in model_spec.sectors
-            if sector.state_activity is not None
-        },
         bc_prior=model_spec.bc_prior,
         bc_state_activity=model_spec.bc_state_activity,
         sigma_prior=model_spec.sigma_prior,
@@ -776,4 +791,6 @@ def build_rhime_multisector_model_from_spec(
         no_model_error=model_spec.no_model_error,
         offset_args=model_spec.offset_args,
         power=model_spec.power,
+        state_activity=model_spec.state_activity,
+        sector_state_activities=sector_state_activities or None,
     )
