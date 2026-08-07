@@ -9,7 +9,7 @@
   metadata now retains the correct satellite platform for boundary-condition
   scaling. PARIS column prior factors are applied to total columns rather than
   boundary-condition-only values.
-  [PR #541](https://github.com/openghg/openghg_inversions/pull/475)
+  [PR #541](https://github.com/openghg/openghg_inversions/pull/541)
 - Preserve retrieved flux periods instead of inferring them from inversion
   duration, including annual priors used by mid-year monthly inversions.
   Calendar-aware PARIS postprocessing and legacy merged-data round trips now
