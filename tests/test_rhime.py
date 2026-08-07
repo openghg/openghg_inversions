@@ -436,6 +436,32 @@ def _minimal_output_idata() -> az.InferenceData:
     )
 
 
+def _posterior_only_idata(model: pm.Model, variable_names: tuple[str, ...]) -> az.InferenceData:
+    """Build deterministic posterior variables using a PyMC model's coordinates.
+
+    Args:
+        model: Built model defining the requested variables and their dimensions.
+        variable_names: Posterior variable names to include.
+
+    Returns:
+        One-chain, one-draw inference data containing only the requested
+        posterior variables.
+    """
+    coords = {"chain": np.arange(1), "draw": np.arange(1)}
+    posterior_vars: dict[str, tuple[tuple[str, ...], np.ndarray]] = {}
+    for variable_name in variable_names:
+        model_dims = model.named_vars_to_dims[variable_name]
+        for dim in model_dims:
+            coord = model.coords[dim]
+            assert coord is not None
+            coords[dim] = np.asarray(coord)
+        dims = ("chain", "draw", *model_dims)
+        shape = tuple(len(coords[dim]) for dim in dims)
+        posterior_vars[variable_name] = (dims, np.ones(shape))
+
+    return az.InferenceData(posterior=xr.Dataset(posterior_vars, coords=coords))
+
+
 def _postprocessing_output_idata(nregion: int = 1) -> az.InferenceData:
     """Build a small complete trace for modern postprocessing smoke tests."""
     region = np.arange(nregion)
@@ -6174,7 +6200,13 @@ def test_run_rhime_multisector_rejects_single_flux_source(tac_ch4_data_args, tmp
         run_rhime_multisector(**args)
 
 
-def test_run_rhime_api_smoke(tac_ch4_data_args, tmp_path: Path, default_bc_basis_directory) -> None:
+def test_run_rhime_api_smoke(
+    monkeypatch: pytest.MonkeyPatch,
+    tac_ch4_data_args: dict[str, Any],
+    tmp_path: Path,
+    default_bc_basis_directory: Path,
+) -> None:
+    """Run the single-sector API with real preparation, outputs, and mocked sampling."""
     args = tac_ch4_data_args.copy()
     args.update(
         {
@@ -6196,6 +6228,13 @@ def test_run_rhime_api_smoke(tac_ch4_data_args, tmp_path: Path, default_bc_basis
             "sample_kwargs": {"random_seed": 123, "compute_convergence_checks": False},
         }
     )
+
+    def fake_sample(self: RhimeSampler, model: pm.Model) -> az.InferenceData:
+        """Return deterministic scale and modeled-concentration posteriors."""
+        assert self.draws == 1
+        return _posterior_only_idata(model, ("x", "mu"))
+
+    monkeypatch.setattr(RhimeSampler, "sample", fake_sample)
 
     result = run_rhime(**args)
 
@@ -6233,8 +6272,12 @@ def test_run_rhime_api_smoke(tac_ch4_data_args, tmp_path: Path, default_bc_basis
 
 
 def test_run_rhime_multisector_api_smoke(
-    tac_ch4_data_args, tmp_path: Path, default_bc_basis_directory
+    monkeypatch: pytest.MonkeyPatch,
+    tac_ch4_data_args: dict[str, Any],
+    tmp_path: Path,
+    default_bc_basis_directory: Path,
 ) -> None:
+    """Run the multisector API with real diagnostics and mocked sampling."""
     args = tac_ch4_data_args.copy()
     args.update(
         {
@@ -6265,6 +6308,13 @@ def test_run_rhime_multisector_api_smoke(
         }
     )
     args.pop("emissions_name")
+
+    def fake_sample(self: RhimeSampler, model: pm.Model) -> az.InferenceData:
+        """Return deterministic posterior scale factors for both sectors."""
+        assert self.draws == 1
+        return _posterior_only_idata(model, ("x_ff", "x_ocean"))
+
+    monkeypatch.setattr(RhimeSampler, "sample", fake_sample)
 
     result = run_rhime_multisector(**args)
 
