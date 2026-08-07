@@ -26,6 +26,9 @@ part of #340.
   as adapters.
 - `codex/ogi-043-fixed-outer-layout`: design note for preserving legacy InTEM
   fixed outer regions while exposing them as grouped constrained partitions.
+- `codex/ogi-041-filter-before-basis`: RHIME-only bugfix branch with one
+  observation-filter stage before basis loading or generation and sensitivity
+  construction.
 
 ## Design Notes
 
@@ -156,6 +159,11 @@ be tested without committing to config syntax.
   weighted definitions as future optimizer/weight-builder work. They are useful
   sources from `~/Documents/basis_functions`, but they should not block the
   first usable region-source options.
+- See `docs/plans/ogi_051_basis_weight_definitions.md` for the OGI-051 weight
+  builder design. The short version is that alternative observation-aware
+  weights belong before partitioning, must use retained observations only, and
+  should not be routed through public config until filter-before-basis behavior
+  and focused tests have landed on `devel`.
 - Start tracking partition/group metadata alongside labels. Inner/outer regions,
   land/sea, country groups, and future layered masks should be represented as
   basis groups or coordinates so priors and posterior summaries can be applied
@@ -281,6 +289,12 @@ be tested without committing to config syntax.
   route while defining the grouped RHIME path as a constrained allocation:
   fixed outer classes get one basis region each and the inner class receives the
   requested generated regions.
+- 2026-07-05: Started OGI-041 on `codex/ogi-041-filter-before-basis`.
+  Modern RHIME preparation now applies observation filters once, before either
+  loading or generating the basis and before sensitivity construction. The same
+  filtered merged data, sites, and averaging metadata flow through both stages.
+  The legacy fixedbasis preparation path remains unchanged and should be handled
+  by a separate task if that behavior needs to move.
 - 2026-06-21: Added greedy split stopping through a lower-level
   `SplitAcceptancePolicy` hook and `MinChildWeightShare` policy. Rejected
   splits freeze the selected parent partition, so the requested class-local
@@ -293,6 +307,11 @@ be tested without committing to config syntax.
   geometry. The narrow API adds `LatLonGridGeometry` as an opt-in geometry
   object for axis-parallel and inertial split steps, while keeping weights,
   split stopping, allocation, and public config routing unchanged.
+- 2026-07-05: Added the OGI-051 basis-weight design note. The decision is to
+  keep the current `mean_fp_times_mean_flux` builder as the only
+  production-routed default for now, prototype alternative builders at the
+  weight-first helper layer, and defer public config routing until retained
+  observation filtering and focused tests are merged.
 - 2026-07-05: Documented OGI-060 split-stopping semantics in the user-facing
   basis notes. The docs now state that parent-relative and equal-target
   thresholds are not interchangeable, that requested region counts become upper

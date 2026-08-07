@@ -37,6 +37,7 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 import xarray as xr
+from scipy import ndimage
 
 from ._weighted import bucket_value_split
 
@@ -82,6 +83,18 @@ class SplitStrategy(Protocol):
             is zero. Positive label values need not be contiguous, and the
             result may contain fewer regions than ``target_regions``.
         """
+        ...
+
+
+class ComponentConsolidationPolicy(Protocol):
+    """Policy protocol for optional post-construction region consolidation."""
+
+    def __call__(
+        self,
+        labels: xr.DataArray,
+        region_classes: xr.DataArray,
+    ) -> xr.DataArray:
+        """Return labels after optional class-safe region consolidation."""
         ...
 
 
@@ -456,18 +469,31 @@ class MaxChildPCAEccentricity:
     eccentricity ``1`` because they have no resolvable long axis. Multi-cell
     rank-one children have infinite eccentricity and are rejected by any finite
     threshold.
+
+    By default, every child is subject to the eccentricity limit. Setting
+    ``min_child_target_weight_share`` exempts children whose weight is below
+    that share of one class/source-local equal-weight target region,
+    ``weights.sum() / target_regions``. This target-aware exception is used
+    only through :meth:`accept_split`; the conservative three-argument call
+    remains strict.
+
+    The exception affects split acceptance only. It does not reconnect, freeze,
+    prune, or marginalize an exempt child after the split is accepted.
     """
 
     max_child_pca_eccentricity: float
     geometry: SplitGeometry | None = None
     tolerance: float = _INERTIAL_TOLERANCE
+    min_child_target_weight_share: float = 0.0
 
     def __post_init__(self) -> None:
-        """Validate the eccentricity threshold and tolerance."""
+        """Validate the eccentricity, tolerance, and materiality thresholds."""
         if self.max_child_pca_eccentricity < 1.0 or not np.isfinite(self.max_child_pca_eccentricity):
             raise ValueError("max_child_pca_eccentricity must be at least 1 and finite.")
         if self.tolerance < 0.0 or not np.isfinite(self.tolerance):
             raise ValueError("tolerance must be non-negative and finite.")
+        if not 0.0 <= self.min_child_target_weight_share <= 1.0:
+            raise ValueError("min_child_target_weight_share must be between 0 and 1.")
 
     def __call__(
         self,
@@ -482,6 +508,52 @@ class MaxChildPCAEccentricity:
             <= self.max_child_pca_eccentricity
             for child in children
         )
+
+    def accept_split(
+        self,
+        parent: GridPartition,
+        children: list[GridPartition],
+        weights: np.ndarray,
+        target_regions: int,
+    ) -> bool:
+        """Return true when every materially weighted child meets the limit.
+
+        ``weights`` is the class/source-local field passed to greedy
+        partitioning, so ``weights.sum() / target_regions`` is the equal-weight
+        target region weight. Children strictly below
+        ``min_child_target_weight_share`` times that reference weight are
+        exempt from the eccentricity veto.
+
+        If the total weight is zero, cell counts provide the same direct-call
+        fallback used by :class:`MinChildTargetWeightShare`; the default greedy
+        strategy already converts all-zero classes to an area surrogate before
+        policies are evaluated. If every child is below the materiality
+        threshold, the strict guard is retained rather than accepting
+        vacuously.
+        """
+        if target_regions < 1:
+            raise ValueError("target_regions must be at least 1.")
+        if self.min_child_target_weight_share == 0.0:
+            return self(parent, children, weights)
+
+        total_weight = float(weights.sum())
+        if total_weight <= 0.0:
+            total_weight = float(weights.size)
+            child_weights = [float(len(child)) for child in children]
+        else:
+            child_weights = [_node_weight(child, weights) for child in children]
+
+        if total_weight <= 0.0:
+            return False
+        minimum_material_weight = self.min_child_target_weight_share * total_weight / target_regions
+        material_children = [
+            child
+            for child, child_weight in zip(children, child_weights, strict=True)
+            if child_weight >= minimum_material_weight
+        ]
+        if not material_children:
+            material_children = children
+        return self(parent, material_children, weights)
 
 
 @dataclass(frozen=True, init=False)
@@ -619,6 +691,284 @@ class InertialSplitStep:
         return [left, right]
 
 
+def _connected_node_components(
+    nodes: GridPartition,
+    shape: tuple[int, int],
+    *,
+    connectivity: int,
+) -> list[GridPartition]:
+    """Return deterministic connected components for grid nodes."""
+    if not nodes:
+        return []
+    if connectivity not in (1, 2):
+        raise ValueError("connectivity must be 1 (edge) or 2 (edge and corner).")
+
+    mask = np.zeros(shape, dtype=bool)
+    rows, columns = zip(*nodes, strict=True)
+    mask[np.asarray(rows), np.asarray(columns)] = True
+    labels, count = ndimage.label(
+        mask,
+        structure=ndimage.generate_binary_structure(2, connectivity),
+    )
+    return [list(zip(*np.where(labels == component), strict=True)) for component in range(1, int(count) + 1)]
+
+
+def _decompose_connected_children(
+    children: list[GridPartition],
+    shape: tuple[int, int],
+    *,
+    connectivity: int,
+) -> list[GridPartition]:
+    """Return the connected-component decomposition of child partitions."""
+    return [
+        component
+        for child in children
+        for component in _connected_node_components(
+            child,
+            shape,
+            connectivity=connectivity,
+        )
+    ]
+
+
+@dataclass(frozen=True)
+class ConnectedComponentPartitionStep:
+    """Make every child from another partition step spatially connected.
+
+    This wrapper is useful for partition steps such as
+    :class:`InertialSplitStep`, whose one-dimensional projection can assign
+    spatially disconnected cells to the same child. Each proposed child is
+    decomposed into deterministic connected components before the greedy
+    orchestrator accepts it.
+
+    Attributes:
+        split_step: Partition step whose children should be made connected.
+        connectivity: Two-dimensional neighbourhood definition. ``1`` uses
+            edge-sharing (four-neighbour) connectivity and ``2`` additionally
+            includes corner-sharing (eight-neighbour) connectivity.
+    """
+
+    split_step: PartitionStep
+    connectivity: int = 1
+
+    def __post_init__(self) -> None:
+        """Validate the requested two-dimensional connectivity."""
+        if self.connectivity not in (1, 2):
+            raise ValueError("connectivity must be 1 (edge) or 2 (edge and corner).")
+
+    def __call__(
+        self,
+        nodes: GridPartition,
+        weights: np.ndarray,
+    ) -> list[GridPartition]:
+        """Split once, then separate disconnected pieces of every child."""
+        children = self.split_step(nodes, weights)
+        return _decompose_connected_children(
+            children,
+            weights.shape,
+            connectivity=self.connectivity,
+        )
+
+
+def _component_adjacencies(
+    left_components: list[GridPartition],
+    right_components: list[GridPartition],
+    shape: tuple[int, int],
+    *,
+    connectivity: int,
+) -> tuple[list[set[int]], list[set[int]]]:
+    """Return cross-side adjacency sets for two component collections."""
+    right_labels = np.zeros(shape, dtype=np.int64)
+    for component_index, component in enumerate(right_components, start=1):
+        rows, columns = _node_indices(component)
+        right_labels[rows, columns] = component_index
+
+    if connectivity == 1:
+        offsets = ((-1, 0), (0, -1), (0, 1), (1, 0))
+    else:
+        offsets = tuple(
+            (row_offset, column_offset)
+            for row_offset in (-1, 0, 1)
+            for column_offset in (-1, 0, 1)
+            if row_offset != 0 or column_offset != 0
+        )
+
+    left_adjacencies = [set() for _component in left_components]
+    right_adjacencies = [set() for _component in right_components]
+    nrows, ncolumns = shape
+    for left_index, component in enumerate(left_components):
+        for row, column in component:
+            for row_offset, column_offset in offsets:
+                adjacent_row = row + row_offset
+                adjacent_column = column + column_offset
+                if not (0 <= adjacent_row < nrows and 0 <= adjacent_column < ncolumns):
+                    continue
+                right_index = int(right_labels[adjacent_row, adjacent_column]) - 1
+                if right_index >= 0:
+                    left_adjacencies[left_index].add(right_index)
+                    right_adjacencies[right_index].add(left_index)
+
+    return left_adjacencies, right_adjacencies
+
+
+def _repair_binary_connected_children(
+    parent: GridPartition,
+    children: list[GridPartition],
+    weights: np.ndarray,
+    *,
+    connectivity: int,
+) -> list[GridPartition] | None:
+    """Return a deterministic connected binary repair when one exists."""
+    if len(children) != 2 or not all(children):
+        return None
+
+    parent_nodes = set(parent)
+    left_nodes = set(children[0])
+    right_nodes = set(children[1])
+    if (
+        len(parent_nodes) != len(parent)
+        or len(left_nodes) != len(children[0])
+        or len(right_nodes) != len(children[1])
+        or left_nodes & right_nodes
+        or left_nodes | right_nodes != parent_nodes
+    ):
+        return None
+
+    left_components = _connected_node_components(
+        children[0],
+        weights.shape,
+        connectivity=connectivity,
+    )
+    right_components = _connected_node_components(
+        children[1],
+        weights.shape,
+        connectivity=connectivity,
+    )
+    if not left_components or not right_components:
+        return None
+
+    left_adjacencies, right_adjacencies = _component_adjacencies(
+        left_components,
+        right_components,
+        weights.shape,
+        connectivity=connectivity,
+    )
+    left_weights = [_node_weight(component, weights) for component in left_components]
+    right_weights = [_node_weight(component, weights) for component in right_components]
+    total_left_weight = sum(left_weights)
+    total_right_weight = sum(right_weights)
+
+    best_key: tuple[float, float, int, int] | None = None
+    best_primary_indices: tuple[int, int] | None = None
+    for left_index, adjacent_right in enumerate(left_adjacencies):
+        if len(right_components) - len(adjacent_right) > 1:
+            continue
+        for right_index, adjacent_left in enumerate(right_adjacencies):
+            if len(left_components) - len(adjacent_left) > 1:
+                continue
+            if len(adjacent_right) - int(right_index in adjacent_right) != len(right_components) - 1:
+                continue
+            if len(adjacent_left) - int(left_index in adjacent_left) != len(left_components) - 1:
+                continue
+
+            moved_weight = (
+                total_left_weight
+                - left_weights[left_index]
+                + total_right_weight
+                - right_weights[right_index]
+            )
+            repaired_left_weight = left_weights[left_index] + total_right_weight - right_weights[right_index]
+            repaired_right_weight = right_weights[right_index] + total_left_weight - left_weights[left_index]
+            key = (
+                moved_weight,
+                abs(repaired_left_weight - repaired_right_weight),
+                left_index,
+                right_index,
+            )
+            if best_key is None or key < best_key:
+                best_key = key
+                best_primary_indices = (left_index, right_index)
+
+    if best_primary_indices is None:
+        return None
+
+    left_primary, right_primary = best_primary_indices
+    repaired_left = sorted(
+        left_components[left_primary]
+        + [
+            node
+            for component_index, component in enumerate(right_components)
+            if component_index != right_primary
+            for node in component
+        ]
+    )
+    repaired_right = sorted(
+        right_components[right_primary]
+        + [
+            node
+            for component_index, component in enumerate(left_components)
+            if component_index != left_primary
+            for node in component
+        ]
+    )
+    return [repaired_left, repaired_right]
+
+
+@dataclass(frozen=True)
+class ConnectedBinaryPartitionStep:
+    """Repair a provisional binary split into two connected child partitions.
+
+    This opt-in wrapper preserves binary arity when disconnected cut fragments
+    can be reassigned safely. It labels the connected components on both sides,
+    retains one primary component on each original side, and moves every
+    secondary component to the opposite side. Candidates are valid only when
+    both resulting children are connected.
+
+    Valid candidates are selected deterministically by minimum moved fitting
+    weight, then minimum absolute child-weight imbalance, then row-major
+    component order. If the wrapped step does not return a valid binary
+    partition, or no connected binary reassignment exists, the result falls
+    back to the same multi-child component decomposition as
+    :class:`ConnectedComponentPartitionStep`.
+
+    Attributes:
+        split_step: Partition step whose provisional binary children should be
+            repaired.
+        connectivity: Two-dimensional neighbourhood definition. ``1`` uses
+            edge-sharing (four-neighbour) connectivity and ``2`` additionally
+            includes corner-sharing (eight-neighbour) connectivity.
+    """
+
+    split_step: PartitionStep
+    connectivity: int = 1
+
+    def __post_init__(self) -> None:
+        """Validate the requested two-dimensional connectivity."""
+        if self.connectivity not in (1, 2):
+            raise ValueError("connectivity must be 1 (edge) or 2 (edge and corner).")
+
+    def __call__(
+        self,
+        nodes: GridPartition,
+        weights: np.ndarray,
+    ) -> list[GridPartition]:
+        """Return two repaired connected children or the component fallback."""
+        children = self.split_step(nodes, weights)
+        repaired = _repair_binary_connected_children(
+            nodes,
+            children,
+            weights,
+            connectivity=self.connectivity,
+        )
+        if repaired is not None:
+            return repaired
+        return _decompose_connected_children(
+            children,
+            weights.shape,
+            connectivity=self.connectivity,
+        )
+
+
 @dataclass(frozen=True)
 class GreedyAxisParallelSplitStrategy:
     """Class-local greedy repeated-bisection strategy.
@@ -675,6 +1025,105 @@ class GreedyAxisParallelSplitStrategy:
             split_acceptance=self.split_acceptance,
         )
         return _labels_from_node_partition(partition, weights.shape)
+
+
+@dataclass
+class ConnectedComponentSplitStrategy:
+    """Allocate and split each connected piece of a class independently.
+
+    A disconnected class requires at least one label per connected component.
+    If ``target_regions`` is below that geographic minimum, the effective
+    target is raised rather than assigning one label to disconnected cells.
+    Targets above the minimum are allocated across components by weight, with
+    the existing area fallback for all-zero weights.
+
+    Attributes:
+        split_strategy: Class-local strategy applied separately to each
+            connected component.
+        connectivity: Two-dimensional neighbourhood definition. ``1`` uses
+            edge-sharing (four-neighbour) connectivity and ``2`` additionally
+            includes corner-sharing (eight-neighbour) connectivity.
+        diagnostics: Per-call requested, minimum, effective, and actual region
+            counts.
+    """
+
+    split_strategy: SplitStrategy
+    connectivity: int = 1
+    diagnostics: list[dict[str, int]] = field(default_factory=list, init=False)
+
+    def __post_init__(self) -> None:
+        """Validate the requested two-dimensional connectivity."""
+        if self.connectivity not in (1, 2):
+            raise ValueError("connectivity must be 1 (edge) or 2 (edge and corner).")
+
+    def __call__(
+        self,
+        weights: np.ndarray,
+        class_mask: np.ndarray,
+        target_regions: int,
+    ) -> np.ndarray:
+        """Return connected labels, raising the target to the geographic minimum."""
+        if target_regions < 1:
+            raise ValueError("target_regions must be at least 1.")
+        if weights.shape != class_mask.shape or weights.ndim != 2:
+            raise ValueError("weights and class_mask must be aligned two-dimensional arrays.")
+        if not class_mask.any():
+            return np.zeros(weights.shape, dtype=np.int64)
+
+        component_labels, component_count = ndimage.label(
+            class_mask,
+            structure=ndimage.generate_binary_structure(2, self.connectivity),
+        )
+        effective_target = min(
+            max(int(target_regions), int(component_count)),
+            int(class_mask.sum()),
+        )
+        dims = ("row", "column")
+        coordinates = {
+            "row": np.arange(weights.shape[0]),
+            "column": np.arange(weights.shape[1]),
+        }
+        allocation = allocate_nbasis_by_class(
+            xr.DataArray(weights, dims=dims, coords=coordinates),
+            xr.DataArray(component_labels, dims=dims, coords=coordinates),
+            effective_target,
+            allocation="weight",
+            min_regions_per_class=1,
+            unmapped_values=(0,),
+        )
+
+        labels = np.zeros(weights.shape, dtype=np.int64)
+        next_region = 1
+        for component in range(1, int(component_count) + 1):
+            component_mask = component_labels == component
+            local_labels = self.split_strategy(
+                weights,
+                component_mask,
+                allocation[component],
+            )
+            if not np.array_equal(local_labels > 0, component_mask):
+                raise RuntimeError("Connected split strategy did not preserve class coverage.")
+            for local_region in _positive_labels(local_labels):
+                region_mask = local_labels == local_region
+                _component_labels, region_component_count = ndimage.label(
+                    region_mask,
+                    structure=ndimage.generate_binary_structure(2, self.connectivity),
+                )
+                if int(region_component_count) != 1:
+                    raise RuntimeError("Connected split strategy produced a disconnected label.")
+                labels[region_mask] = next_region
+                next_region += 1
+
+        actual_regions = next_region - 1
+        self.diagnostics.append(
+            {
+                "requested_target": int(target_regions),
+                "connected_component_minimum": int(component_count),
+                "effective_target": int(effective_target),
+                "actual_regions": int(actual_regions),
+            }
+        )
+        return labels
 
 
 @dataclass(frozen=True)
@@ -759,6 +1208,7 @@ def region_constrained_basis(
     allocation: AllocationMode = "weight",
     min_regions_per_class: int = 1,
     split_strategy: SplitStrategy | None = None,
+    component_consolidation: ComponentConsolidationPolicy | None = None,
     unmapped_values: Iterable[Hashable] = (),
 ) -> xr.DataArray:
     """Generate basis labels independently inside each mask/region class.
@@ -780,6 +1230,10 @@ def region_constrained_basis(
             requires, a ``ValueError`` is raised.
         split_strategy: Class-local splitting strategy. Defaults to
             :class:`GreedyAxisParallelSplitStrategy`.
+        component_consolidation: Optional policy applied to the globally
+            relabelled basis after class-local construction. Policies that
+            deliberately combine disconnected components must preserve class
+            boundaries and report that strict connectivity no longer holds.
         unmapped_values: Additional class values to leave as output label ``0``.
 
     Returns:
@@ -830,7 +1284,10 @@ def region_constrained_basis(
             labels[(local_labels == local_label) & class_mask] = next_label
             next_label += 1
 
-    return _labels_dataarray(labels, weights)
+    result = _labels_dataarray(labels, weights)
+    if component_consolidation is not None:
+        result = component_consolidation(result, region_classes)
+    return result
 
 
 def intersect_region_class_layers(
@@ -1886,16 +2343,20 @@ def _labels_dataarray(labels: np.ndarray, weights: xr.DataArray) -> xr.DataArray
 
 
 __all__ = [
-    "AllocationMode",
     "AllSplitAcceptancePolicies",
-    "AxisParallelSplitStep",
+    "AllocationMode",
     "AxisAlignedWeightedSplitStrategy",
+    "AxisParallelSplitStep",
+    "ComponentConsolidationPolicy",
+    "ConnectedBinaryPartitionStep",
+    "ConnectedComponentPartitionStep",
+    "ConnectedComponentSplitStrategy",
     "GreedyAxisParallelSplitStrategy",
     "InertialSplitStep",
     "LatLonGridGeometry",
     "MaxChildPCAEccentricity",
-    "MinChildWeightShare",
     "MinChildTargetWeightShare",
+    "MinChildWeightShare",
     "NbasisAllocation",
     "PartitionStep",
     "SplitAcceptance",

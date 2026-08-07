@@ -1,10 +1,17 @@
+import json
+
 import numpy as np
 import pytest
 import xarray as xr
+from scipy import ndimage
 
 from openghg_inversions.basis.algorithms import (
     AllSplitAcceptancePolicies,
     AxisParallelSplitStep,
+    ConnectedBinaryPartitionStep,
+    ConnectedComponentPartitionStep,
+    ConnectedComponentSplitStrategy,
+    ContrastProximityComponentConsolidation,
     ContrastScoreSplitAcceptance,
     GreedyAxisParallelSplitStrategy,
     InertialSplitStep,
@@ -37,6 +44,15 @@ def _partition_weight(nodes: list[tuple[int, int]], weights: np.ndarray) -> floa
         return 0.0
     rows, cols = zip(*nodes)
     return float(weights[list(rows), list(cols)].sum())
+
+
+def _mask_from_nodes(nodes: list[tuple[int, int]], shape: tuple[int, int]) -> np.ndarray:
+    """Return a boolean grid mask for a node partition."""
+    mask = np.zeros(shape, dtype=bool)
+    if nodes:
+        rows, columns = zip(*nodes, strict=True)
+        mask[list(rows), list(columns)] = True
+    return mask
 
 
 def test_region_constrained_basis_labels_do_not_cross_classes():
@@ -282,6 +298,521 @@ def test_greedy_axis_parallel_strategy_hits_target_region_count():
     labels = GreedyAxisParallelSplitStrategy()(weights, class_mask, target_regions=5)
 
     assert set(np.unique(labels)) == {1, 2, 3, 4, 5}
+
+
+class CheckerboardSplitStep:
+    """Split nodes into parity groups that are disconnected by edges."""
+
+    def __call__(
+        self,
+        nodes: list[tuple[int, int]],
+        _weights: np.ndarray,
+    ) -> list[list[tuple[int, int]]]:
+        even = [node for node in nodes if sum(node) % 2 == 0]
+        odd = [node for node in nodes if sum(node) % 2 == 1]
+        return [even, odd]
+
+
+def _coastline_like_binary_case() -> tuple[np.ndarray, np.ndarray, list[tuple[int, int]]]:
+    """Return a connected mask whose balanced cut has a small detached fragment."""
+    weights = np.zeros((5, 8), dtype=float)
+    class_mask = np.zeros(weights.shape, dtype=bool)
+    class_mask[:, :2] = True
+    class_mask[2:, 2:] = True
+    class_mask[0, 2:4] = True
+
+    weights[:, :2] = 1.0
+    weights[2:, 2:] = 9.8 / 18.0
+    weights[0, 2:4] = 0.1
+    nodes = [(int(row), int(column)) for row, column in zip(*np.where(class_mask), strict=True)]
+    return weights, class_mask, nodes
+
+
+def test_connected_component_partition_step_splits_disconnected_children():
+    """Partition-step children are decomposed into deterministic components."""
+    nodes = [(0, 0), (0, 1), (1, 0), (1, 1)]
+    step = ConnectedComponentPartitionStep(
+        CheckerboardSplitStep(),
+        connectivity=1,
+    )
+
+    children = step(nodes, np.ones((2, 2), dtype=float))
+
+    assert children == [[(0, 0)], [(1, 1)], [(0, 1)], [(1, 0)]]
+
+
+def test_connected_binary_partition_step_repairs_coastline_fragment():
+    """A detached cut fragment moves across the cut to preserve binary arity."""
+    weights, _class_mask, nodes = _coastline_like_binary_case()
+    split_step = ConnectedBinaryPartitionStep(
+        AxisParallelSplitStep(balanced=True, clean_splits=True),
+        connectivity=1,
+    )
+
+    children = split_step(nodes, weights)
+
+    assert children == split_step(nodes, weights)
+    assert [len(child) for child in children] == [12, 18]
+    assert len(children) == 2
+    assert set(children[0]).isdisjoint(children[1])
+    assert set(children[0]) | set(children[1]) == set(nodes)
+    assert all(ndimage.label(_mask_from_nodes(child, weights.shape))[1] == 1 for child in children)
+    child_weights = [_partition_weight(child, weights) for child in children]
+    assert abs(child_weights[0] - child_weights[1]) / sum(child_weights) < 0.03
+
+
+def test_connected_binary_partition_step_uses_stable_component_tie_break():
+    """Equal repair objectives retain the first row-major component on each side."""
+    nodes = [(0, 0), (0, 1), (1, 0), (1, 1)]
+    split_step = ConnectedBinaryPartitionStep(
+        CheckerboardSplitStep(),
+        connectivity=1,
+    )
+
+    children = split_step(nodes, np.ones((2, 2), dtype=float))
+
+    assert children == [
+        [(0, 0), (1, 0)],
+        [(0, 1), (1, 1)],
+    ]
+
+
+def test_connected_binary_partition_step_breaks_moved_weight_tie_by_balance():
+    """Child-weight balance breaks a tie between minimum-moved-weight repairs."""
+    nodes = [(row, column) for row in range(2) for column in range(3)]
+    weights = np.asarray(
+        [
+            [5.0, 1.5, 4.0],
+            [2.0, 0.5, 1.0],
+        ]
+    )
+    split_step = ConnectedBinaryPartitionStep(
+        CheckerboardSplitStep(),
+        connectivity=1,
+    )
+
+    children = split_step(nodes, weights)
+
+    assert children == [
+        [(0, 1), (0, 2), (1, 2)],
+        [(0, 0), (1, 0), (1, 1)],
+    ]
+    assert [_partition_weight(child, weights) for child in children] == [6.5, 7.5]
+
+
+def test_connected_binary_partition_step_falls_back_when_repair_is_impossible():
+    """An unrepairable binary split uses the historical component decomposition."""
+    nodes = [(0, column) for column in range(8)]
+    weights = np.ones((1, 8), dtype=float)
+    historical_step = ConnectedComponentPartitionStep(CheckerboardSplitStep(), connectivity=1)
+    binary_step = ConnectedBinaryPartitionStep(CheckerboardSplitStep(), connectivity=1)
+
+    children = binary_step(nodes, weights)
+
+    assert children == historical_step(nodes, weights)
+    assert children == [[(0, column)] for column in (0, 2, 4, 6, 1, 3, 5, 7)]
+
+
+def test_connected_binary_repair_avoids_eccentricity_rejection_and_target_overshoot():
+    """Repaired material children pass the guard and fit a binary target."""
+    weights, class_mask, nodes = _coastline_like_binary_case()
+    axis_split = AxisParallelSplitStep(balanced=True, clean_splits=True)
+    historical_step = ConnectedComponentPartitionStep(axis_split, connectivity=1)
+    binary_step = ConnectedBinaryPartitionStep(axis_split, connectivity=1)
+    eccentricity_guard = MaxChildPCAEccentricity(max_child_pca_eccentricity=10.0)
+
+    historical_children = historical_step(nodes, weights)
+    repaired_children = binary_step(nodes, weights)
+    historical_labels = GreedyAxisParallelSplitStrategy(
+        split_step=historical_step,
+        split_acceptance=eccentricity_guard,
+    )(weights, class_mask, target_regions=3)
+    repaired_labels = GreedyAxisParallelSplitStrategy(
+        split_step=binary_step,
+        split_acceptance=eccentricity_guard,
+    )(weights, class_mask, target_regions=2)
+
+    assert len(historical_children) == 3
+    assert not eccentricity_guard(nodes, historical_children, weights)
+    assert eccentricity_guard(nodes, repaired_children, weights)
+    assert set(np.unique(historical_labels)) == {0, 1}
+    assert set(np.unique(repaired_labels)) == {0, 1, 2}
+    assert all(ndimage.label(repaired_labels == label)[1] == 1 for label in (1, 2))
+
+
+def test_influence_aware_eccentricity_accepts_connected_component_fragment():
+    """A low-weight eccentric component no longer vetoes material children."""
+    weights, class_mask, nodes = _coastline_like_binary_case()
+    split_step = ConnectedComponentPartitionStep(
+        AxisParallelSplitStep(balanced=True, clean_splits=True),
+        connectivity=1,
+    )
+    children = split_step(nodes, weights)
+    strict_guard = MaxChildPCAEccentricity(max_child_pca_eccentricity=10.0)
+    influence_aware_guard = MaxChildPCAEccentricity(
+        max_child_pca_eccentricity=10.0,
+        min_child_target_weight_share=0.1,
+    )
+
+    labels = GreedyAxisParallelSplitStrategy(
+        split_step=split_step,
+        split_acceptance=influence_aware_guard,
+    )(weights, class_mask, target_regions=3)
+
+    assert not strict_guard.accept_split(nodes, children, weights, target_regions=3)
+    assert influence_aware_guard.accept_split(nodes, children, weights, target_regions=3)
+    assert set(np.unique(labels)) == {0, 1, 2, 3}
+    assert all(ndimage.label(labels == label)[1] == 1 for label in (1, 2, 3))
+
+
+def test_influence_aware_eccentricity_preserves_connected_binary_result():
+    """Selecting connected-binary repair retains its existing guarded result."""
+    weights, class_mask, _nodes = _coastline_like_binary_case()
+    split_step = ConnectedBinaryPartitionStep(
+        AxisParallelSplitStep(balanced=True, clean_splits=True),
+        connectivity=1,
+    )
+    strict_labels = GreedyAxisParallelSplitStrategy(
+        split_step=split_step,
+        split_acceptance=MaxChildPCAEccentricity(max_child_pca_eccentricity=10.0),
+    )(weights, class_mask, target_regions=2)
+    influence_aware_labels = GreedyAxisParallelSplitStrategy(
+        split_step=split_step,
+        split_acceptance=MaxChildPCAEccentricity(
+            max_child_pca_eccentricity=10.0,
+            min_child_target_weight_share=0.1,
+        ),
+    )(weights, class_mask, target_regions=2)
+
+    assert np.array_equal(influence_aware_labels, strict_labels)
+    assert set(np.unique(influence_aware_labels)) == {0, 1, 2}
+
+
+def test_connected_strategy_raises_target_to_disconnected_class_minimum():
+    """Disconnected class pieces receive distinct labels below the minimum target."""
+    weights = np.asarray(
+        [
+            [1.0, 0.0, 0.0],
+            [1.0, 0.0, 2.0],
+            [0.0, 0.0, 2.0],
+        ]
+    )
+    class_mask = weights > 0
+    strategy = ConnectedComponentSplitStrategy(
+        GreedyAxisParallelSplitStrategy(),
+        connectivity=1,
+    )
+
+    labels = strategy(weights, class_mask, target_regions=1)
+
+    np.testing.assert_array_equal(labels > 0, class_mask)
+    assert set(np.unique(labels)) == {0, 1, 2}
+    assert strategy.diagnostics == [
+        {
+            "requested_target": 1,
+            "connected_component_minimum": 2,
+            "effective_target": 2,
+            "actual_regions": 2,
+        }
+    ]
+
+
+def test_connected_strategy_four_and_eight_neighbour_diagonal_adjacency():
+    """Connectivity controls whether diagonally adjacent cells share a label."""
+    weights = np.eye(2, dtype=float)
+    class_mask = weights > 0
+    four_neighbour = ConnectedComponentSplitStrategy(
+        GreedyAxisParallelSplitStrategy(),
+        connectivity=1,
+    )
+    eight_neighbour = ConnectedComponentSplitStrategy(
+        GreedyAxisParallelSplitStrategy(),
+        connectivity=2,
+    )
+
+    four_labels = four_neighbour(weights, class_mask, target_regions=1)
+    eight_labels = eight_neighbour(weights, class_mask, target_regions=1)
+
+    assert int(four_labels.max()) == 2
+    assert int(eight_labels.max()) == 1
+
+
+def test_connected_strategy_zero_weight_components_use_area_fallback():
+    """All-zero component weights still receive the requested allocation."""
+    weights = np.zeros((2, 4), dtype=float)
+    class_mask = np.asarray(
+        [
+            [True, True, False, True],
+            [True, True, False, True],
+        ]
+    )
+    strategy = ConnectedComponentSplitStrategy(
+        GreedyAxisParallelSplitStrategy(),
+        connectivity=1,
+    )
+
+    labels = strategy(weights, class_mask, target_regions=3)
+
+    np.testing.assert_array_equal(labels > 0, class_mask)
+    assert np.array_equal(np.unique(labels), np.asarray([0, 1, 2, 3]))
+    for region in (1, 2, 3):
+        assert ndimage.label(labels == region)[1] == 1
+
+
+def _component_consolidation_policy(
+    labels: xr.DataArray,
+    *,
+    contribution: np.ndarray,
+    cell_weight: np.ndarray | None = None,
+    source_classes: xr.DataArray | None = None,
+    max_merge_distance_km: float = 100.0,
+    max_merge_lambda: float = 0.0,
+    inactive_component_policy: str = "keep",
+    min_regions: int | None = None,
+) -> ContrastProximityComponentConsolidation:
+    """Return a consolidation policy aligned to a small test grid."""
+    return ContrastProximityComponentConsolidation(
+        contribution=contribution,
+        cell_weight=np.ones(labels.shape) if cell_weight is None else cell_weight,
+        geometry=LatLonGridGeometry.from_dataarray(labels),
+        max_merge_distance_km=max_merge_distance_km,
+        max_merge_lambda=max_merge_lambda,
+        source_classes=source_classes,
+        inactive_component_policy=inactive_component_policy,
+        min_regions=min_regions,
+    )
+
+
+def test_component_consolidation_merges_whole_secondary_not_refined_singleton():
+    """A refined one-cell region in the primary component is not a forced island."""
+    labels = xr.DataArray(
+        np.array([[1, 2, 2, 0, 3]]),
+        dims=("lat", "lon"),
+        coords={"lat": [50.0], "lon": [0.0, 0.1, 0.2, 0.3, 0.4]},
+    )
+    classes = xr.full_like(labels, "land", dtype=object)
+    contribution = np.array([[[10.0, 1.0, 1.0, 0.0, 1.0]]])
+    policy = _component_consolidation_policy(
+        labels,
+        contribution=contribution,
+        max_merge_distance_km=30.0,
+    )
+
+    consolidated = policy(labels, classes)
+
+    np.testing.assert_array_equal(
+        consolidated.values,
+        np.array([[1, 2, 2, 0, 2]]),
+    )
+    diagnostics = policy.diagnostics[-1]
+    assert diagnostics["component_forced_original_labels"] == [3]
+    assert diagnostics["resulting_regions"] == 2
+    assert diagnostics["strict_connected_input"] is True
+    assert diagnostics["strict_connected_output"] is False
+    assert diagnostics["deliberately_disconnected_regions"] == [
+        {
+            "label": 2,
+            "original_labels": [2, 3],
+            "component_count": 2,
+        }
+    ]
+    assert json.loads(consolidated.attrs["component_consolidation_diagnostics"]) == diagnostics
+
+
+def test_component_consolidation_rejects_high_contrast_nearby_component():
+    """Proximity alone cannot merge a component with a strong reverse-split score."""
+    labels = xr.DataArray(
+        np.array([[1, 1, 0, 2]]),
+        dims=("lat", "lon"),
+        coords={"lat": [50.0], "lon": [0.0, 0.1, 0.2, 0.3]},
+    )
+    classes = xr.full_like(labels, "land", dtype=object)
+    policy = _component_consolidation_policy(
+        labels,
+        contribution=np.array([[[0.0, 0.0, 0.0, 10.0]]]),
+    )
+
+    consolidated = policy(labels, classes)
+
+    np.testing.assert_array_equal(consolidated.values, labels.values)
+    assert policy.diagnostics[-1]["merges"] == []
+    assert policy.diagnostics[-1]["unmerged_component_forced_original_labels"] == [2]
+    [evaluation] = policy.diagnostics[-1]["initial_candidate_evaluations"]
+    assert evaluation["first_original_label"] == 1
+    assert evaluation["second_original_label"] == 2
+    assert evaluation["source_class"] == "'__all_sources__'"
+    assert evaluation["region_class"] == "'land'"
+    assert evaluation["distance_km"] == pytest.approx(14.29496)
+    assert evaluation["first_mass"] == 2.0
+    assert evaluation["second_mass"] == 1.0
+    assert evaluation["lambda"] == pytest.approx(400.0 / 9.0)
+    assert evaluation["delta_dfs"] == pytest.approx((400.0 / 9.0) / (1.0 + 400.0 / 9.0))
+    assert evaluation["delta_eig"] == pytest.approx(0.5 * np.log1p(400.0 / 9.0))
+    assert evaluation["accepted"] is False
+    assert evaluation["reason"] == "contrast_threshold"
+
+
+@pytest.mark.parametrize("boundary", ["class", "source"])
+def test_component_consolidation_never_crosses_class_or_source_boundary(boundary: str):
+    """A closer region in another class or source is never a candidate target."""
+    labels = xr.DataArray(
+        np.array([[1, 0, 0, 2, 3]]),
+        dims=("lat", "lon"),
+        coords={"lat": [50.0], "lon": [0.0, 0.1, 0.2, 0.3, 0.4]},
+    )
+    classes = xr.DataArray(
+        np.array([["a", "a", "a", "b", "a"]], dtype=object),
+        dims=labels.dims,
+        coords=labels.coords,
+    )
+    sources = None
+    if boundary == "source":
+        classes = xr.full_like(labels, "a", dtype=object)
+        sources = xr.DataArray(
+            np.array([["one", "one", "one", "two", "one"]], dtype=object),
+            dims=labels.dims,
+            coords=labels.coords,
+        )
+    policy = _component_consolidation_policy(
+        labels,
+        contribution=np.zeros((1, *labels.shape)),
+        source_classes=sources,
+        max_merge_distance_km=20.0,
+    )
+
+    consolidated = policy(labels, classes)
+
+    np.testing.assert_array_equal(consolidated.values, labels.values)
+    assert policy.diagnostics[-1]["candidate_edges"] == 0
+
+
+def test_component_consolidation_zero_mass_policy_is_explicit():
+    """Inactive components are either retained or proximity-merged by policy."""
+    labels = xr.DataArray(
+        np.array([[1, 1, 0, 2]]),
+        dims=("lat", "lon"),
+        coords={"lat": [50.0], "lon": [0.0, 0.1, 0.2, 0.3]},
+    )
+    classes = xr.full_like(labels, "land", dtype=object)
+    cell_weight = np.array([[1.0, 1.0, 0.0, 0.0]])
+    contribution = np.zeros((1, *labels.shape))
+    keep = _component_consolidation_policy(
+        labels,
+        contribution=contribution,
+        cell_weight=cell_weight,
+        inactive_component_policy="keep",
+    )
+    merge = _component_consolidation_policy(
+        labels,
+        contribution=contribution,
+        cell_weight=cell_weight,
+        inactive_component_policy="merge_nearest",
+    )
+
+    kept = keep(labels, classes)
+    merged = merge(labels, classes)
+
+    assert int(kept.max()) == 2
+    assert int(merged.max()) == 1
+    assert keep.diagnostics[-1]["unmerged_component_forced_original_labels"] == [2]
+    assert keep.diagnostics[-1]["initial_candidate_evaluations"][0]["reason"] == "inactive_kept"
+    assert keep.diagnostics[-1]["initial_candidate_evaluations"][0]["accepted"] is False
+    assert merge.diagnostics[-1]["merges"][0]["reason"] == "inactive_nearest"
+
+
+def test_component_consolidation_is_deterministic():
+    """Tied candidate scores and distances produce repeatable labels and provenance."""
+    labels = xr.DataArray(
+        np.array([[1, 0, 2, 0, 3]]),
+        dims=("lat", "lon"),
+        coords={"lat": [50.0], "lon": [0.0, 0.1, 0.2, 0.3, 0.4]},
+    )
+    classes = xr.full_like(labels, "land", dtype=object)
+
+    first_policy = _component_consolidation_policy(
+        labels,
+        contribution=np.zeros((1, *labels.shape)),
+    )
+    second_policy = _component_consolidation_policy(
+        labels,
+        contribution=np.zeros((1, *labels.shape)),
+    )
+
+    first = first_policy(labels, classes)
+    second = second_policy(labels, classes)
+
+    xr.testing.assert_identical(first, second)
+    assert first_policy.diagnostics == second_policy.diagnostics
+
+
+def test_component_consolidation_respects_region_floor():
+    """A configured region floor limits otherwise acceptable merges."""
+    labels = xr.DataArray(
+        np.array([[1, 0, 2, 0, 3]]),
+        dims=("lat", "lon"),
+        coords={"lat": [50.0], "lon": [0.0, 0.1, 0.2, 0.3, 0.4]},
+    )
+    classes = xr.full_like(labels, "land", dtype=object)
+    policy = _component_consolidation_policy(
+        labels,
+        contribution=np.zeros((1, *labels.shape)),
+        min_regions=2,
+    )
+
+    consolidated = policy(labels, classes)
+
+    assert len(set(np.unique(consolidated.values)) - {0}) == 2
+    assert len(policy.diagnostics[-1]["merges"]) == 1
+
+
+def test_component_consolidation_requires_connected_input_labels():
+    """The policy cannot silently reinterpret an already disconnected label."""
+    labels = xr.DataArray(
+        np.array([[1, 0, 1]]),
+        dims=("lat", "lon"),
+        coords={"lat": [50.0], "lon": [0.0, 0.1, 0.2]},
+    )
+    classes = xr.full_like(labels, "land", dtype=object)
+    policy = _component_consolidation_policy(
+        labels,
+        contribution=np.zeros((1, *labels.shape)),
+    )
+
+    with pytest.raises(ValueError, match="requires strictly connected input labels"):
+        policy(labels, classes)
+
+
+def test_region_constrained_basis_applies_component_consolidation_policy():
+    """The low-level basis API can opt into post-construction consolidation."""
+    weights = xr.DataArray(
+        np.ones((1, 5)),
+        dims=("lat", "lon"),
+        coords={"lat": [50.0], "lon": [0.0, 0.1, 0.2, 0.3, 0.4]},
+    )
+    classes = xr.DataArray(
+        np.array([["land", "land", "land", np.nan, "land"]], dtype=object),
+        dims=weights.dims,
+        coords=weights.coords,
+    )
+    policy = _component_consolidation_policy(
+        weights,
+        contribution=np.ones((1, *weights.shape)),
+        max_merge_distance_km=30.0,
+    )
+
+    consolidated = region_constrained_basis(
+        weights,
+        classes,
+        nbasis=1,
+        split_strategy=ConnectedComponentSplitStrategy(
+            GreedyAxisParallelSplitStrategy(),
+        ),
+        component_consolidation=policy,
+    )
+
+    assert int(consolidated.max()) == 1
+    assert policy.diagnostics[-1]["original_regions"] == 2
+    assert policy.diagnostics[-1]["resulting_regions"] == 1
 
 
 def test_axis_parallel_split_uses_lat_lon_geometry_for_axis_choice():
@@ -825,6 +1356,91 @@ def test_max_child_pca_eccentricity_accepts_compact_and_single_cell_children():
     assert MaxChildPCAEccentricity(max_child_pca_eccentricity=2.0)(parent, children, weights)
 
 
+def test_max_child_pca_eccentricity_default_and_direct_calls_remain_strict():
+    """The default and target-free calls retain the strict all-child guard."""
+    weights = np.zeros((3, 5))
+    weights[0, :3] = 0.01
+    weights[1:, 3:] = 1.0
+    elongated = [(0, 0), (0, 1), (0, 2)]
+    compact = [(1, 3), (1, 4), (2, 3), (2, 4)]
+    parent = elongated + compact
+    children = [elongated, compact]
+    strict = MaxChildPCAEccentricity(max_child_pca_eccentricity=2.0)
+    target_aware = MaxChildPCAEccentricity(
+        max_child_pca_eccentricity=2.0,
+        min_child_target_weight_share=0.1,
+    )
+
+    assert not strict(parent, children, weights)
+    assert not strict.accept_split(parent, children, weights, target_regions=2)
+    assert not target_aware(parent, children, weights)
+
+
+def test_max_child_pca_eccentricity_exempts_immaterial_elongated_child():
+    """An eccentric child below the equal-target weight threshold is exempt."""
+    weights = np.zeros((3, 5))
+    weights[0, :3] = 0.01
+    weights[1:, 3:] = 1.0
+    elongated = [(0, 0), (0, 1), (0, 2)]
+    compact = [(1, 3), (1, 4), (2, 3), (2, 4)]
+    parent = elongated + compact
+    policy = MaxChildPCAEccentricity(
+        max_child_pca_eccentricity=2.0,
+        min_child_target_weight_share=0.1,
+    )
+
+    assert policy.accept_split(parent, [elongated, compact], weights, target_regions=2)
+
+
+def test_max_child_pca_eccentricity_rejects_material_elongated_child():
+    """An eccentric child at or above the materiality threshold still vetoes."""
+    weights = np.zeros((3, 5))
+    weights[0, :3] = 0.25
+    weights[1:, 3:] = 1.0
+    elongated = [(0, 0), (0, 1), (0, 2)]
+    compact = [(1, 3), (1, 4), (2, 3), (2, 4)]
+    parent = elongated + compact
+    policy = MaxChildPCAEccentricity(
+        max_child_pca_eccentricity=2.0,
+        min_child_target_weight_share=0.1,
+    )
+
+    assert not policy.accept_split(parent, [elongated, compact], weights, target_regions=2)
+
+
+def test_max_child_pca_eccentricity_zero_weight_falls_back_to_cell_target():
+    """Zero total weight uses cell counts to decide child materiality."""
+    weights = np.zeros((2, 4))
+    elongated = [(0, 0), (0, 1)]
+    compact = [(0, 2), (0, 3), (1, 2), (1, 3)]
+    parent = elongated + compact
+    children = [elongated, compact]
+
+    assert MaxChildPCAEccentricity(
+        max_child_pca_eccentricity=2.0,
+        min_child_target_weight_share=0.75,
+    ).accept_split(parent, children, weights, target_regions=2)
+    assert not MaxChildPCAEccentricity(
+        max_child_pca_eccentricity=2.0,
+        min_child_target_weight_share=0.5,
+    ).accept_split(parent, children, weights, target_regions=2)
+
+
+def test_max_child_pca_eccentricity_avoids_vacuous_immaterial_acceptance():
+    """If no child is material, the policy falls back to the strict guard."""
+    weights = np.zeros((2, 8))
+    weights[0, :4] = 0.01
+    weights[1, 7] = 100.0
+    children = [[(0, 0), (0, 1)], [(0, 2), (0, 3)]]
+    parent = children[0] + children[1]
+    policy = MaxChildPCAEccentricity(
+        max_child_pca_eccentricity=2.0,
+        min_child_target_weight_share=1.0,
+    )
+
+    assert not policy.accept_split(parent, children, weights, target_regions=2)
+
+
 def test_greedy_strategy_pca_eccentricity_stopping_freezes_rejected_partition():
     """Shape stopping can reject an otherwise valid split."""
     weights = np.ones((1, 4))
@@ -887,6 +1503,25 @@ def test_max_child_pca_eccentricity_composes_with_target_weight_policy():
     assert set(np.unique(labels)) == {1}
 
 
+def test_influence_aware_eccentricity_composes_with_balance_policy():
+    """An eccentricity exemption does not bypass another acceptance policy."""
+    weights = np.zeros((3, 5))
+    weights[0, :3] = 0.01
+    weights[1:, 3:] = 1.0
+    elongated = [(0, 0), (0, 1), (0, 2)]
+    compact = [(1, 3), (1, 4), (2, 3), (2, 4)]
+    parent = elongated + compact
+    policy = AllSplitAcceptancePolicies(
+        MaxChildPCAEccentricity(
+            max_child_pca_eccentricity=2.0,
+            min_child_target_weight_share=0.1,
+        ),
+        MinChildWeightShare(min_child_weight_share=0.1),
+    )
+
+    assert not policy(parent, [elongated, compact], weights, target_regions=2)
+
+
 @pytest.mark.parametrize("threshold", [0.0, 0.999, -1.0, np.inf, np.nan])
 def test_max_child_pca_eccentricity_validates_threshold(threshold: float):
     """PCA eccentricity thresholds must be positive and finite."""
@@ -899,6 +1534,16 @@ def test_max_child_pca_eccentricity_validates_tolerance(tolerance: float):
     """PCA eccentricity tolerance must be non-negative and finite."""
     with pytest.raises(ValueError, match="tolerance must be non-negative and finite"):
         MaxChildPCAEccentricity(max_child_pca_eccentricity=10.0, tolerance=tolerance)
+
+
+@pytest.mark.parametrize("threshold", [-0.1, 1.1, np.inf, np.nan])
+def test_max_child_pca_eccentricity_validates_materiality_threshold(threshold: float):
+    """PCA materiality thresholds must be finite shares from zero to one."""
+    with pytest.raises(ValueError, match="min_child_target_weight_share must be between 0 and 1"):
+        MaxChildPCAEccentricity(
+            max_child_pca_eccentricity=10.0,
+            min_child_target_weight_share=threshold,
+        )
 
 
 def test_split_contrast_score_is_zero_for_equal_mass_weighted_mean_contribution():

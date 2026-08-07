@@ -38,6 +38,9 @@ pixi run -e dev typecheck
 pixi run -e dev tox
 ```
 
+The `tox` Pixi task runs the fast default tox set (current OpenGHG plus Ruff)
+in parallel without an interactive spinner.
+
 To run the optional real country-file HDF5 smoke check on a machine that
 can access the ACRG country files, set the country directory and run the
 Pixi task:
@@ -211,8 +214,9 @@ RHIME terminology:
 - `species`: primary gas or tracer name used for object-store lookup and output naming.
 - `source`: OpenGHG metadata key used to retrieve flux data.
 - `flux_sources`: RHIME field containing requested OpenGHG flux `source` values.
-- `sector_sources`: optional mapping from RHIME sector names to OpenGHG flux `source` values.
-- `sector`: model component optimized separately, usually backed by one flux `source`.
+- `sector_sources`: optional one-to-one mapping from RHIME sector names to unique OpenGHG flux `source` values.
+- `sector_priors`: optional complete mapping from RHIME sector names to flux-scaling priors; omit it to use a shared `x_prior`.
+- `sector`: model component optimized separately, currently backed by one unique flux `source`.
 - `tracer`: additional species used to constrain the primary species through linked forward models.
 - `emissions_name`: legacy compatibility spelling only; use `flux_sources` in new RHIME configs.
 
@@ -322,12 +326,12 @@ Arguments affecting the inverse model:
   - Default value is `False`
   - If `True`, the "outer regions" of the (`EUROPE`) domain use basis regions specified by a file provided by the Met Office (from their "InTem" model), and the "inner region", which includes the UK, is fit using our basis algorithms.
   - This option is only available for the `EUROPE` domain currently.
-- `calculate_min_error`: calculate min_error (see below) on the fly using the "residual error method" or a method based on percentiles of observations. Available arguments:
-  - `residual`: use "residual error method"
-  - `percentile`: use method based on percentiles
-  - `None`: in this case, you should pass in a value directly using (for instance) `min_error = 12.3`
-- `min_error_options`: additional parameters to pass to the function that compute min error. This should be a dictionary, and the available options depend on the function used. (The functions to compute min. model error are in `model_error.py`).
-  - If `calculate_min_error = "residual"`, then, for instance, you could use `min_error_options = {"robust": False, "by_site": True}`. (By default, `robust` is `False`, this is just to show the possibilities.)
+- `min_error`: set a numeric lower bound directly, or calculate one by passing
+  `"residual"` or `"percentile"`. The legacy `calculate_min_error` spelling is
+  deprecated and is translated only by the `run_hbmcmc` compatibility shim.
+- `min_error_options`: options for calculated minimum error. The only supported key is the boolean `by_site`.
+  - With `min_error = "residual"`, `min_error_options = {"by_site": True}` calculates a separate residual error for each retained site. The default is `False`.
+  - Unsupported keys and non-boolean `by_site` values raise a configuration error rather than being ignored.
 - `filters`: filters to apply to data (after it is resampled and aligned)
   - `filters = None` will skip filtering
   - if `filters` is a list of filters (or a string containing a single filter name), those filters will be applied to all sites.
@@ -357,7 +361,8 @@ Historical inferpymc-era parameters included:
   - the measured enhancement above the modelled baseline (if `True`)
   - the prior modelled enhancement (if `False`)
 - `no_model_error`: if `True`, only use obs error in likelihood (omitting min. model error and model error from scaling pollution events).
-- `reparameterise_log_normal`: if `True`, then log normal priors will be sampled by transforming samples from standard normal random variable to samples from the appropriate log normal distribution.
+- `reparameterise_log_normal`: deprecated compatibility flag. Set
+  `reparameterise=True` in the relevant lognormal prior mapping instead.
 
 
 ### The output from inversions
@@ -415,7 +420,72 @@ uv tool install tox --with tox-uv
 ```
 or, within a virtual environment, install `tox` and `tox-uv`.
 
-Calling `tox -p` will run tests against OpenGHG devel and the last two releases of OpenGHG, and run Ruff lint checks.
+The fast default checks the current OpenGHG release and runs Ruff:
+
+```bash
+tox -p --parallel-no-spinner
+```
+
+This is the required local check before pushing a draft pull request. GitHub
+Actions runs current, previous, and devel OpenGHG test jobs independently.
+
+Before pytest starts, each tox test environment checks the effective
+`pytensor.config.cxx` value. If it is empty on Rocky Linux or Blue Pebble, the
+test launcher tries to load the `gcc/12.3.0-sknc` environment module in the
+same shell that starts pytest, then checks PyTensor again. The launcher exits
+quickly with setup guidance if PyTensor still has no configured compiler,
+avoiding extremely slow C++-free PyMC test runs.
+
+Override the compiler module or module initialization script when a cluster
+uses different names. The defaults are `gcc/12.3.0-sknc` and
+`/etc/profile.d/modules.sh`, respectively:
+
+```bash
+PYTENSOR_COMPILER_MODULE=gcc/13.2.0 tox -e py310-openghgCur
+PYTENSOR_MODULE_INIT=/path/to/modules/init/bash tox -e py310-openghgCur
+```
+
+`PYTENSOR_COMPILER_BOOTSTRAP=auto` is the default: it attempts module loading
+on Rocky Linux or recognized Blue Pebble hostnames. Set it to `always` to try
+module loading on another host, or to `never` to disable automatic module
+loading while retaining the compiler preflight. A compiler can also be selected
+directly, for example:
+
+```bash
+PYTENSOR_FLAGS='cxx=/path/to/g++' tox -e py310-openghgCur
+```
+
+On a cluster compute node, a writable node-local PyTensor compilation cache
+also avoids shared-filesystem contention. Preserve any existing
+comma-separated `PYTENSOR_FLAGS` entries when adding it:
+
+```bash
+PYTENSOR_FLAGS="${PYTENSOR_FLAGS:+${PYTENSOR_FLAGS},}base_compiledir=${TMPDIR:-/tmp}/pytensor-${USER}" \
+  tox -e py310-openghgCur
+```
+
+If `PYTENSOR_FLAGS` already defines `base_compiledir`, update that entry
+instead of adding the same key twice.
+
+For final review or release-sensitive dependency changes, run the full
+compatibility matrix:
+
+```bash
+tox -p --parallel-no-spinner -e py310-openghgCur,py310-openghgPrev,py310-openghgDev,lint
+```
+
+The previous-release environment defaults to `openghg==0.18.0`. Override it
+with a deterministic package spec when needed, for example:
+
+```bash
+OPENGHG_PREV_SPEC='openghg==0.17.1' tox -e py310-openghgPrev
+```
+
+When a new OpenGHG minor release is published, update the default
+`OPENGHG_PREV_SPEC` value in `tox.ini` to the release that has just become the
+previous minor. GitHub Actions discovers current and previous releases
+automatically, but the local tox pin is deliberately maintained explicitly so
+tox configuration does not require network access.
 
 To specify individual jobs, you can use, e.g.:
 
