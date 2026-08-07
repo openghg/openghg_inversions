@@ -241,7 +241,20 @@ def _select_sector_design(
         ragged_dim=ragged_levels[0],
         stack_dim=state_dim,
     )
-    return selected.rename({state_dim: f"{state_dim}_{variable_suffix}"})
+    selected_state_dim = f"{state_dim}_{variable_suffix}"
+    selected = selected.rename({state_dim: selected_state_dim})
+
+    # A gathered design can retain state-aligned provenance coordinates after
+    # source selection. Each source is registered on its own model dimension,
+    # so give those auxiliary coordinates the same sector-specific namespace.
+    # Otherwise unequal source blocks attempt to register one coordinate name
+    # with incompatible dimensions and shapes in the model CoordRegistry.
+    auxiliary_renames = {
+        str(name): f"{name}_{variable_suffix}"
+        for name, coord in selected.coords.items()
+        if name != selected_state_dim and selected_state_dim in coord.dims
+    }
+    return selected.rename(auxiliary_renames)
 
 
 def _normalize_standard_flux_plan(inv_inputs: xr.Dataset, x_prior: Mapping[str, Any]) -> _FluxPlan:

@@ -2830,7 +2830,7 @@ def test_rhime_prepared_inputs_contract_exposes_only_modern_fields() -> None:
 def test_prepared_multisector_runner_accepts_gathered_source_specific_basis_layout(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Prepared-input validation accepts exact ragged source/state coordinates."""
+    """Prepared runner accepts unequal gathered blocks with sector provenance."""
     basis_ff = xr.DataArray(
         [[0, 0], [1, 1]],
         dims=("lat", "lon"),
@@ -2881,10 +2881,14 @@ def test_prepared_multisector_runner_accepts_gathered_source_specific_basis_layo
     )
     inv_inputs = _minimal_output_inv_inputs().drop_dims("region")
     inv_inputs["min_error"] = xr.zeros_like(inv_inputs["mf"])
-    inv_inputs["H"] = (
+    sensitivity = (
         basis_functions.sensitivity(fp_x_flux)
         .rename(time="nmeasure")
         .assign_coords(nmeasure=inv_inputs.coords["nmeasure"])
+    )
+    state_dim = next(dim for dim in sensitivity.dims if dim != "nmeasure")
+    inv_inputs["H"] = sensitivity.assign_coords(
+        sector=(state_dim, sensitivity.coords["source"].values),
     )
 
     prepared = RhimePreparedInputs(
@@ -2918,6 +2922,10 @@ def test_prepared_multisector_runner_accepts_gathered_source_specific_basis_layo
 
     assert result.model.named_vars_to_dims["x_ff"] == ("region_ff",)
     assert result.model.named_vars_to_dims["x_ocean"] == ("region_ocean",)
+    registry = models.get_coord_registry(result.model)
+    assert registry is not None
+    assert registry.auxiliary_coords["sector_ff"].values.tolist() == ["ff-inventory"] * 2
+    assert registry.auxiliary_coords["sector_ocean"].values.tolist() == ["ocean-inventory"] * 3
 
 
 def test_multisector_runner_rejects_shared_basis_h_layout_mismatch() -> None:
