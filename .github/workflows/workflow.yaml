@@ -75,7 +75,7 @@ jobs:
       - name: Prime ArviZ cache
         run: python -c "import arviz"
       - name: Run tests
-        run: pytest tests/ -n 2 --dist=loadscope
+        run: pytest tests/ -n 2 --dist=worksteal
 
   lint:
     name: Run lint

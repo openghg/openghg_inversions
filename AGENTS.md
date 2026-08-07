@@ -33,7 +33,7 @@ This adds Python 3.10 test environments for the previous OpenGHG minor
 release and OpenGHG `devel`. The previous-release environment defaults to
 `openghg==0.18.0`; set `OPENGHG_PREV_SPEC` to test another deterministic
 package spec. The tox test environments use `pytest-xdist` with
-`--dist=loadscope`, matching the main CI pytest invocation. The `type` tox
+`--dist=worksteal`, matching the main CI pytest invocation. The `type` tox
 environment is available for focused type-checking, but it is not part of
 either tox set.
 
