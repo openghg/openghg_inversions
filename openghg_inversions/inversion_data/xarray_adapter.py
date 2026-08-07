@@ -14,10 +14,7 @@ observation variables required by
 also contain either canonical ``H`` or one of ``fp_x_flux`` and
 ``fp_x_flux_sectoral``. When both cache variables are present, the explicitly
 sector-resolved ``fp_x_flux_sectoral`` is used. Optional ``H_bc`` retains the
-existing sampled boundary-condition contribution. Optional
-``fixed_baseline(time)`` is retained as a fixed, observation-aligned model
-contribution in the same units as ``mf``; it may be supplied alone or together
-with ``H_bc``.
+existing sampled boundary-condition contribution.
 
 Site data must be supplied as an ordered site-to-Dataset mapping or a root
 DataTree with one direct child node per site, each holding a site-local Dataset
@@ -37,14 +34,16 @@ sectors because that would corrupt flux reconstruction.
 The adapter is pure: it never mutates the supplied xarray objects or retained
 basis functions. Known footprint-times-flux caches and non-time-dependent data
 variables are excluded from the returned canonical inputs; other
-observation-aligned extension variables are retained.
+observation-aligned extension variables are retained. The reserved
+``fixed_baseline`` extension is rejected until a reusable semantic Baseline
+component defines its likelihood and output behavior.
 
 Every supplied row is active. Each site therefore needs an explicit, nonempty,
 unique ``datetime64`` time coordinate without ``NaT``. Observation, projected
-sensitivity, and optional baseline values must be finite. Required observation
-and error fields, selected ``H`` or cache, and optional ``H_bc`` and
-``fixed_baseline`` must declare the same exact nonempty unit string; the
-adapter performs no conversion. Labels on explicit ``source`` dimensions must
+sensitivity, and optional ``H_bc`` values must be finite. Required observation
+and error fields, selected ``H`` or cache, and optional ``H_bc`` must declare
+the same exact nonempty unit string; the adapter performs no conversion.
+Labels on explicit ``source`` dimensions must
 be nonempty, unique Python or NumPy strings in their intended order, and
 non-string labels are not coerced. Repeated source values inside a gathered
 ``(source, region_in_source)`` state MultiIndex are valid.
@@ -690,13 +689,6 @@ def _validate_and_prepare_sites(
             "Release coordinates must be supplied as a pair for every retained site; "
             f"missing both release_lat and release_lon for {missing!r}."
         )
-    fixed_baseline_sites = [site for site, dataset in site_data.items() if "fixed_baseline" in dataset]
-    if fixed_baseline_sites and len(fixed_baseline_sites) != len(site_data):
-        missing = [site for site in site_data if site not in fixed_baseline_sites]
-        raise ValueError(
-            f"Fixed baseline data must be supplied for every retained site; missing {missing!r}."
-        )
-
     expected_sources: list[str] | None = None
     expected_units: str | None = None
     source_layout_set = False
@@ -723,8 +715,9 @@ def _validate_and_prepare_sites(
         concentration_names = [
             *_REQUIRED_OBSERVATION_VARIABLES,
             selected_sensitivity_name,
-            *(name for name in ("H_bc", "fixed_baseline") if name in dataset),
         ]
+        if "H_bc" in dataset:
+            concentration_names.append("H_bc")
         mf_units = _require_concentration_units(
             dataset["mf"],
             context=f"Site {site!r} mf",
@@ -747,13 +740,6 @@ def _validate_and_prepare_sites(
                     f"{expected_units!r}; the adapter does not convert units."
                 )
 
-        if "fixed_baseline" in dataset:
-            fixed_baseline = dataset["fixed_baseline"]
-            if fixed_baseline.dims != ("time",):
-                raise ValueError(
-                    f"Site {site!r} fixed_baseline must have exactly the observation dimension ('time',)."
-                )
-            _require_finite(fixed_baseline, context=f"Site {site!r} fixed_baseline")
         if "H_bc" in dataset and dataset["H_bc"].dims not in {
             ("time", "bc_region"),
             ("bc_region", "time"),
@@ -904,11 +890,10 @@ def prepare_rhime_inputs_from_xarray(
     nonempty, unique ``datetime64`` values without ``NaT``; valid
     non-monotonic order is preserved. Observation variables must have exactly
     dimension ``("time",)``. Required observations, projected ``H``, and
-    optional baseline fields must be finite. Required observation and error
-    fields, selected ``H`` or cache, and optional ``H_bc`` and
-    ``fixed_baseline`` must have the same exact nonempty unit string as ``mf``
-    across all sites; no conversion is performed. Release-coordinate pairs and
-    ``fixed_baseline`` are each all-or-none across retained sites. Labels on an
+    optional ``H_bc`` must be finite. Required observation and error fields,
+    selected ``H`` or cache, and optional ``H_bc`` must have the same exact
+    nonempty unit string as ``mf`` across all sites; no conversion is performed.
+    Release-coordinate pairs are all-or-none across retained sites. Labels on an
     explicit ``source`` dimension are nonempty, unique Python or NumPy strings
     and are never coerced from bytes or numbers. Repeated source values in a
     gathered source-specific state MultiIndex remain valid.
@@ -919,6 +904,8 @@ def prepare_rhime_inputs_from_xarray(
     and
     :meth:`~openghg_inversions.inversion_data.preparation.RhimePreparedInputs.load`;
     do not pass serialized ``nmeasure`` data back to this adapter.
+    The reserved ``fixed_baseline`` input is rejected until a reusable
+    semantic Baseline component is available; use sampled ``H_bc`` or omit it.
 
     Args:
         data: Site data as a DataTree or site-to-Dataset mapping.
@@ -944,12 +931,18 @@ def prepare_rhime_inputs_from_xarray(
         TypeError: If the input container or mapping values are unsupported,
             or ``basis_functions`` is not a ``BasisFunctions`` object.
         ValueError: If site data violate the documented variable, dimension,
-            source-order, or site-alignment contract.
+            source-order, or site-alignment contract, or contain the deferred
+            ``fixed_baseline`` extension.
     """
     if not isinstance(basis_functions, BasisFunctions):
         raise TypeError("`basis_functions` must be a self-contained BasisFunctions object.")
 
     per_site = _sites_from_container(data, sites)
+    if any("fixed_baseline" in dataset.data_vars for dataset in per_site.values()):
+        raise ValueError(
+            "The 'fixed_baseline' input is deferred until a reusable semantic Baseline component "
+            "is available; use sampled 'H_bc' or omit the field."
+        )
     prepared_sites = _validate_and_prepare_sites(per_site, basis_functions)
     site_order = list(prepared_sites)
     inv_inputs = make_inv_inputs(

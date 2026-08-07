@@ -8,16 +8,12 @@ from pathlib import Path
 import arviz as az
 import numpy as np
 import pandas as pd
-import pymc as pm
-import pytensor.tensor as pt
 import pytest
 import xarray as xr
 
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.inversion_data import prepare_rhime_inputs_from_xarray
-from openghg_inversions.models import components as model_components
-from openghg_inversions.models.coords import CoordRegistry, attach_coord_registry
-from openghg_inversions.models.rhime import RhimeModelSpec, SectorSpec, build_rhime_model
+from openghg_inversions.models.rhime import RhimeModelSpec, SectorSpec
 from openghg_inversions.rhime import (
     RhimeOutputSpec,
     RhimeRunSpec,
@@ -25,7 +21,6 @@ from openghg_inversions.rhime import (
     run_rhime_from_prepared_inputs,
 )
 from openghg_inversions.rhime.outputs import RhimeOutputBundle
-from openghg_inversions.sigma import SigmaAlignment
 
 
 def _basis_functions(source_order: list[str] | None = None) -> BasisFunctions:
@@ -91,7 +86,6 @@ def _site_dataset(
     *,
     cache_name: str = "fp_x_flux",
     source_order: list[str] | None = None,
-    fixed_baseline: bool = False,
     sampled_baseline: bool = False,
 ) -> xr.Dataset:
     """Build a minimal site-time dataset following the adapter contract."""
@@ -132,9 +126,6 @@ def _site_dataset(
     )
     for name in ("mf", "mf_error", "mf_repeatability", "mf_variability"):
         dataset[name].attrs["units"] = "ppm"
-    if fixed_baseline:
-        dataset["fixed_baseline"] = xr.full_like(obs, 390.0)
-        dataset["fixed_baseline"].attrs["units"] = "ppm"
     if sampled_baseline:
         dataset["H_bc"] = xr.DataArray(
             np.full((2, len(time)), 0.5),
@@ -153,7 +144,6 @@ def _unequal_source_site_dataset(site: str, times: list[str]) -> xr.Dataset:
         times,
         cache_name="fp_x_flux_sectoral",
         source_order=source_order,
-        fixed_baseline=True,
         sampled_baseline=True,
     ).drop_dims(("lat", "lon"))
     time = np.asarray(times, dtype="datetime64[ns]")
@@ -231,6 +221,25 @@ def test_nested_datatree_is_rejected() -> None:
 
     with pytest.raises(ValueError, match="direct child|nested"):
         prepare_rhime_inputs_from_xarray(tree, basis_functions=_basis_functions())
+
+
+@pytest.mark.parametrize("container_kind", ["mapping", "datatree"])
+@pytest.mark.parametrize("unsupported_dim", ["site", "nmeasure"])
+def test_container_children_must_be_site_local(
+    container_kind: str,
+    unsupported_dim: str,
+) -> None:
+    """Mapping and DataTree children reject dense or pre-stacked site layouts."""
+    site_data = _site_dataset("TAC", ["2021-01-01"])
+    if unsupported_dim == "site":
+        site_data = site_data.expand_dims(site=["TAC"])
+    else:
+        site_data = site_data.stack(nmeasure=("time",))
+    data = {"TAC": site_data}
+    container = xr.DataTree.from_dict(data) if container_kind == "datatree" else data
+
+    with pytest.raises(ValueError, match="site-local|Dense|Pre-stacked"):
+        prepare_rhime_inputs_from_xarray(container, basis_functions=_basis_functions())
 
 
 @pytest.mark.parametrize("site", [1, b"TAC", ""], ids=["numeric", "bytes", "empty"])
@@ -384,7 +393,6 @@ def test_invalid_release_coordinate_pairs_are_rejected(case: str) -> None:
         "mf_repeatability",
         "mf_variability",
         "fp_x_flux",
-        "fixed_baseline",
         "H_bc",
     ],
 )
@@ -393,7 +401,6 @@ def test_every_concentration_field_requires_units(variable: str) -> None:
     site_data = _site_dataset(
         "TAC",
         ["2021-01-01"],
-        fixed_baseline=True,
         sampled_baseline=True,
     )
     site_data[variable].attrs.pop("units")
@@ -412,13 +419,12 @@ def test_mf_units_must_be_a_nonempty_string(invalid_units: object) -> None:
         prepare_rhime_inputs_from_xarray({"TAC": site_data}, basis_functions=_basis_functions())
 
 
-@pytest.mark.parametrize("variable", ["mf_error", "fp_x_flux", "fixed_baseline", "H_bc"])
+@pytest.mark.parametrize("variable", ["mf_error", "fp_x_flux", "H_bc"])
 def test_concentration_units_must_match_mf_exactly(variable: str) -> None:
     """The adapter rejects exact-string unit mismatches instead of converting them."""
     site_data = _site_dataset(
         "TAC",
         ["2021-01-01"],
-        fixed_baseline=True,
         sampled_baseline=True,
     )
     site_data[variable].attrs["units"] = "ppb"
@@ -483,14 +489,13 @@ def test_invalid_source_labels_are_rejected(
 
 @pytest.mark.parametrize(
     "variable",
-    ["mf", "mf_error", "mf_repeatability", "mf_variability", "fixed_baseline", "H_bc"],
+    ["mf", "mf_error", "mf_repeatability", "mf_variability", "H_bc"],
 )
 def test_nonfinite_required_values_are_rejected(variable: str) -> None:
     """Required observation and optional baseline values must be finite."""
     site_data = _site_dataset(
         "TAC",
         ["2021-01-01"],
-        fixed_baseline=True,
         sampled_baseline=True,
     )
     site_data[variable].data.reshape(-1)[0] = np.nan
@@ -769,110 +774,17 @@ def test_h_bc_requires_exact_dimensions() -> None:
         prepare_rhime_inputs_from_xarray({"TAC": site_data}, basis_functions=basis_functions)
 
 
-@pytest.mark.parametrize(
-    ("fixed_values", "fixed_units", "mf_units", "message"),
-    [
-        ([np.inf], None, None, "only finite values"),
-        ([390.0], "ppm", "ppb", "do not match mf units"),
-    ],
-)
-def test_fixed_baseline_rejects_nonfinite_values_and_unit_mismatch(
-    fixed_values: list[float],
-    fixed_units: str | None,
-    mf_units: str | None,
-    message: str,
-) -> None:
-    """Fixed baselines are finite and use declared observation units without conversion."""
-    basis_functions = _basis_functions()
-    site_data = _site_dataset("TAC", ["2021-01-01"], fixed_baseline=True)
-    site_data["fixed_baseline"][:] = fixed_values
-    if fixed_units is not None:
-        site_data["fixed_baseline"].attrs["units"] = fixed_units
-    if mf_units is not None:
-        for name in ("mf", "mf_error", "mf_repeatability", "mf_variability"):
-            site_data[name].attrs["units"] = mf_units
+def test_fixed_baseline_is_deferred_to_a_semantic_baseline_component() -> None:
+    """Any fixed baseline input is rejected until semantic Baseline support exists."""
+    site_data = _site_dataset("TAC", ["2021-01-01"])
+    site_data["fixed_baseline"] = xr.full_like(site_data["mf"], 390.0)
+    site_data["fixed_baseline"].attrs["units"] = "ppm"
 
-    with pytest.raises(ValueError, match=message):
-        prepare_rhime_inputs_from_xarray({"TAC": site_data}, basis_functions=basis_functions)
-
-
-def _likelihood_data(*, fixed: bool) -> xr.Dataset:
-    """Create one-observation canonical data for baseline model-mean tests."""
-    dataset = xr.Dataset(
-        {
-            "mf": ("nmeasure", np.asarray([10.0], dtype=np.float32)),
-            "mf_error": ("nmeasure", np.asarray([1.0], dtype=np.float32)),
-            "min_error": ("nmeasure", np.asarray([0.0], dtype=np.float32)),
-            "site_indicator": ("nmeasure", [0]),
-            "sigma_freq_index": ("nmeasure", [0]),
-        },
-        coords={"nmeasure": [0]},
-    )
-    if fixed:
-        dataset["fixed_baseline"] = ("nmeasure", np.asarray([3.0], dtype=np.float32))
-    return dataset
-
-
-@pytest.mark.parametrize(
-    ("fixed", "sampled", "expected_mean"),
-    [(True, False, 4.0), (False, True, 3.0), (True, True, 6.0)],
-)
-def test_fixed_and_sampled_baselines_are_independent_additive_terms(
-    monkeypatch: pytest.MonkeyPatch,
-    fixed: bool,
-    sampled: bool,
-    expected_mean: float,
-) -> None:
-    """Fixed, sampled, and combined baselines add directly to the observation mean."""
-    captured: dict[str, object] = {}
-
-    def capture_normal(name: str, *args: object, **kwargs: object) -> None:
-        """Capture the composed likelihood mean without creating a random variable."""
-        captured["name"] = name
-        captured["mu"] = kwargs["mu"]
-
-    monkeypatch.setattr(model_components.pm, "Normal", capture_normal)
-    with pm.Model() as model:
-        attach_coord_registry(model, CoordRegistry())
-        model_components.add_inferpymc_likelihood_component(
-            _likelihood_data(fixed=fixed),
-            mu=pt.as_tensor_variable(np.asarray([1.0], dtype=np.float32)),
-            mu_bc=(pt.as_tensor_variable(np.asarray([2.0], dtype=np.float32)) if sampled else None),
-            sigprior={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
-            sigma_alignment=SigmaAlignment.from_frequency(_likelihood_data(fixed=fixed)["site_indicator"]),
-            no_model_error=True,
+    with pytest.raises(ValueError, match=r"fixed_baseline.*deferred.*semantic Baseline component"):
+        prepare_rhime_inputs_from_xarray(
+            {"TAC": site_data},
+            basis_functions=_basis_functions(),
         )
-
-    assert captured["name"] == "y"
-    np.testing.assert_allclose(captured["mu"].eval(), [expected_mean])  # type: ignore[union-attr]
-
-
-def test_adapter_fixed_and_sampled_baselines_build_together() -> None:
-    """Adapter output can build a model with both baseline modes and no fake sector."""
-    basis_functions = _basis_functions()
-    prepared = prepare_rhime_inputs_from_xarray(
-        {
-            "TAC": _site_dataset(
-                "TAC",
-                ["2021-01-01", "2021-01-02"],
-                fixed_baseline=True,
-                sampled_baseline=True,
-            )
-        },
-        basis_functions=basis_functions,
-    )
-
-    model = build_rhime_model(
-        prepared.inv_inputs,
-        sigma_alignment=SigmaAlignment.from_frequency(prepared.inv_inputs["site_indicator"]),
-        x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.2},
-        bc_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.1},
-        sigma_prior={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
-        use_bc=True,
-    )
-
-    assert {"x", "bc", "mu_bc", "fixed_baseline", "y"}.issubset(model.named_vars)
-    assert all("baseline" not in name for name in model.named_vars if name.startswith("x_"))
 
 
 def test_adapter_output_executes_through_prepared_runner_without_openghg(
@@ -881,7 +793,7 @@ def test_adapter_output_executes_through_prepared_runner_without_openghg(
     """Adapted inputs execute through the prepared runner without data preparation."""
     basis_functions = _basis_functions()
     prepared = prepare_rhime_inputs_from_xarray(
-        {"TAC": _site_dataset("TAC", ["2021-01-01"], fixed_baseline=True)},
+        {"TAC": _site_dataset("TAC", ["2021-01-01"])},
         basis_functions=basis_functions,
         averaging_period="1h",
     )
@@ -920,7 +832,7 @@ def test_adapter_output_executes_through_prepared_runner_without_openghg(
     xr.testing.assert_identical(result.inv_inputs, prepared.inv_inputs)
     assert result.run_spec.sites == ("TAC",)
     assert result.model is not None
-    assert "fixed_baseline" in result.model.named_vars
+    assert {"x", "y"}.issubset(result.model.named_vars)
 
 
 @pytest.mark.parametrize("suffix", [".nc", ".zarr"])
@@ -940,6 +852,7 @@ def test_unequal_source_regions_round_trip_and_execute(
         site_data,
         basis_functions=basis_functions,
         averaging_period={"TAC": "2h", "MHD": "1h"},
+        bc_freq="monthly",
     )
 
     artifact = tmp_path / f"verification-games-inputs{suffix}"
@@ -964,6 +877,12 @@ def test_unequal_source_regions_round_trip_and_execute(
     ]
     assert loaded.inv_inputs["H"].dims == ("region", "nmeasure")
     assert loaded.inv_inputs["H"].attrs["units"] == "ppm"
+    assert loaded.inv_inputs["H_bc"].dims == ("bc_region", "nmeasure")
+    bc_region_index = loaded.inv_inputs["H_bc"].indexes["bc_region"]
+    assert isinstance(bc_region_index, pd.MultiIndex)
+    assert bc_region_index.names == ["bc_curtain", "bc_period"]
+    assert bc_region_index.tolist() == [("north", 0), ("south", 0)]
+    np.testing.assert_allclose(loaded.inv_inputs["H_bc"], 0.5)
     assert not {"fp_x_flux", "fp_x_flux_sectoral"} & set(loaded.inv_inputs)
     np.testing.assert_array_equal(loaded.inv_inputs["quality_flag"], [1, 2, 1])
     xr.testing.assert_identical(loaded.basis_functions.flux, basis_functions.flux)
@@ -1022,5 +941,5 @@ def test_unequal_source_regions_round_trip_and_execute(
     xr.testing.assert_identical(result.inv_inputs, loaded.inv_inputs)
     assert result.run_spec.sites == ("TAC", "MHD")
     assert result.model is not None
-    assert {"x_ocean", "x_ff", "bc", "fixed_baseline", "y"}.issubset(result.model.named_vars)
+    assert {"x_ocean", "x_ff", "bc", "mu_bc", "y"}.issubset(result.model.named_vars)
     assert result.outputs == {"executed": True}

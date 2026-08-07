@@ -519,53 +519,6 @@ def _modern_postprocessing_inv_out(
     )
 
 
-def _with_fixed_baseline(inv_out: InversionOutput, *, sampled_baseline: bool) -> InversionOutput:
-    """Return a modern output whose predictive traces include a fixed baseline."""
-    fixed_value = 0.4
-    sampled_by_group = {"prior": 0.05, "posterior": 0.1}
-    groups: dict[str, xr.Dataset] = {}
-    for group in inv_out.trace.groups():
-        dataset = inv_out.trace[group].copy()
-        if not sampled_baseline:
-            dataset = dataset.drop_vars(["mu_bc", "bc", "hbc"], errors="ignore")
-        if "y" in dataset:
-            when = "posterior" if group == "posterior_predictive" else "prior"
-            if not sampled_baseline:
-                dataset["y"] = dataset["y"] - sampled_by_group[when]
-            dataset["y"] = dataset["y"] + fixed_value
-        groups[group] = dataset
-
-    posterior = groups["posterior"]
-    posterior["sigma"] = xr.full_like(posterior["epsilon"].isel(nmeasure=0, drop=True), 0.2)
-    if sampled_baseline:
-        posterior["bc"] = xr.full_like(posterior["x"].isel(region=0, drop=True), 1.0)
-    if "constant_data" in groups:
-        groups["constant_data"] = groups["constant_data"].drop_vars(["hx", "hbc"], errors="ignore")
-
-    inv_inputs = inv_out.inv_inputs.copy()
-    inv_inputs["fixed_baseline"] = xr.full_like(inv_inputs["mf"], fixed_value)
-    inv_inputs["fixed_baseline"].attrs["units"] = inv_inputs["mf"].attrs["units"]
-    inv_inputs["sigma_freq_index"] = xr.zeros_like(inv_inputs["mf"], dtype=int)
-    if sampled_baseline:
-        inv_inputs["H_bc"] = xr.DataArray(
-            [[0.2]],
-            dims=("bc_region", "nmeasure"),
-            coords={"bc_region": [0], "nmeasure": inv_inputs.nmeasure},
-        )
-    else:
-        inv_inputs = inv_inputs.drop_vars("H_bc", errors="ignore")
-
-    return InversionOutput(
-        trace=cast(Any, az.InferenceData)(**groups),
-        inv_inputs=inv_inputs,
-        basis_functions=inv_out.basis_functions,
-        run_metadata=inv_out.run_metadata,
-        model_metadata={**inv_out.model_metadata, "use_bc": sampled_baseline},
-        output_metadata=inv_out.output_metadata,
-        provenance=inv_out.provenance,
-    )
-
-
 class _SpyBasisFunctions:
     """BasisFunctions test double that records direct sensitivity calls."""
 
@@ -5231,36 +5184,6 @@ def test_basic_output_processes_modern_output(europe_country_file: Path) -> None
     assert "country_posterior_mean" in outputs
 
 
-@pytest.mark.parametrize("sampled_baseline", [False, True])
-def test_generic_concentration_outputs_include_fixed_baseline(
-    europe_country_file: Path,
-    sampled_baseline: bool,
-) -> None:
-    """Generic baseline stats include fixed-only and fixed-plus-sampled terms."""
-    from openghg_inversions.postprocessing.make_outputs import make_concentration_outputs
-
-    inv_out = _with_fixed_baseline(
-        _modern_postprocessing_inv_out(europe_country_file),
-        sampled_baseline=sampled_baseline,
-    )
-    outputs = make_concentration_outputs(inv_out, stats=["mean"])
-
-    sampled_prior = 0.05 if sampled_baseline else 0.0
-    sampled_posterior = 0.1 if sampled_baseline else 0.0
-    np.testing.assert_allclose(outputs["mu_bc_prior_mean"], 0.4 + sampled_prior)
-    np.testing.assert_allclose(outputs["mu_bc_posterior_mean"], 0.4 + sampled_posterior)
-    np.testing.assert_allclose(
-        outputs["y_prior_predictive_mean"] - outputs["mu_bc_prior_mean"],
-        9.0 - 0.05,
-    )
-    np.testing.assert_allclose(
-        outputs["y_posterior_predictive_mean"] - outputs["mu_bc_posterior_mean"],
-        10.0 - 0.1,
-    )
-    if sampled_baseline:
-        np.testing.assert_allclose(inv_out.trace.posterior["mu_bc"], 0.1)
-
-
 def test_basic_output_uses_variable_roles_for_renamed_model_variables(
     europe_country_file: Path,
 ) -> None:
@@ -5411,59 +5334,6 @@ def test_latest_paris_output_processes_modern_output(europe_country_file: Path, 
         assert reloaded_flux["flux_total_posterior"].dtype == np.dtype("float32")
         assert reloaded_flux["covariance_flux_total_posterior_country"].dtype == np.dtype("float32")
         assert reloaded_flux["time_bnds"].dtype == np.dtype("float64")
-
-
-@pytest.mark.parametrize("sampled_baseline", [False, True])
-def test_latest_paris_concentration_includes_fixed_baseline(
-    europe_country_file: Path,
-    sampled_baseline: bool,
-) -> None:
-    """Latest PARIS totals retain regional-plus-effective-baseline identity."""
-    from openghg_inversions.postprocessing.make_paris_outputs import paris_concentration_outputs
-
-    inv_out = _with_fixed_baseline(
-        _modern_postprocessing_inv_out(europe_country_file),
-        sampled_baseline=sampled_baseline,
-    )
-    outputs = paris_concentration_outputs(
-        inv_out,
-        obs_avg_period="1h",
-        template_version="latest",
-    )
-
-    scale = 1e-9
-    sampled_prior = 0.05 if sampled_baseline else 0.0
-    sampled_posterior = 0.1 if sampled_baseline else 0.0
-    np.testing.assert_allclose(outputs["mf_bc_prior"], (0.4 + sampled_prior) * scale)
-    np.testing.assert_allclose(outputs["mf_bc_posterior"], (0.4 + sampled_posterior) * scale)
-    np.testing.assert_allclose(outputs["mf_prior"] - outputs["mf_bc_prior"], (9.0 - 0.05) * scale)
-    np.testing.assert_allclose(
-        outputs["mf_posterior"] - outputs["mf_bc_posterior"],
-        (10.0 - 0.1) * scale,
-    )
-
-
-@pytest.mark.parametrize("sampled_baseline", [False, True])
-def test_legacy_paris_concentration_includes_fixed_baseline(
-    europe_country_file: Path,
-    sampled_baseline: bool,
-) -> None:
-    """Legacy PARIS totals retain regional-plus-effective-baseline identity."""
-    from openghg_inversions.postprocessing.make_paris_outputs import paris_concentration_outputs
-
-    inv_out = _with_fixed_baseline(
-        _modern_postprocessing_inv_out(europe_country_file),
-        sampled_baseline=sampled_baseline,
-    )
-    outputs = paris_concentration_outputs(inv_out, obs_avg_period="1h")
-
-    scale = 1e-9
-    sampled_prior = 0.05 if sampled_baseline else 0.0
-    sampled_posterior = 0.1 if sampled_baseline else 0.0
-    np.testing.assert_allclose(outputs["YaprioriBC"], (0.4 + sampled_prior) * scale)
-    np.testing.assert_allclose(outputs["YapostBC"], (0.4 + sampled_posterior) * scale)
-    np.testing.assert_allclose(outputs["Yapriori"] - outputs["YaprioriBC"], (9.0 - 0.05) * scale)
-    np.testing.assert_allclose(outputs["Yapost"] - outputs["YapostBC"], (10.0 - 0.1) * scale)
 
 
 def test_latest_paris_concentration_fills_missing_bc_with_nan(europe_country_file: Path) -> None:

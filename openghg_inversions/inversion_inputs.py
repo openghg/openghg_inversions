@@ -266,15 +266,13 @@ def transform_bc(
 
 # INVERSION INPUTS PIPELINE
 def _drop_nan_and_compute(
-    ds: xr.Dataset,
-    drop_nan_from: Iterable[str] = ("H", "H_bc", "fixed_baseline", "mf", "mf_error"),
+    ds: xr.Dataset, drop_nan_from: Iterable[str] = ("H", "H_bc", "mf", "mf_error")
 ) -> xr.Dataset:
     """Drop NaNs in required inversion variables and materialize core variables.
 
     This centralizes the dataset cleanup that was previously duplicated in
     hbmcmc.make_inv_inputs. It:
-      - drops nmeasure rows with NaNs in selected inversion variables when
-        present (including H, H_bc, fixed_baseline, mf, and mf_error)
+      - drops nmeasure rows with NaNs in required variables (H, H_bc, mf, mf_error)
       - triggers computation for a selected set of variables so returned dataset
         is ready for immediate consumption (avoids repeated dask computations)
 
@@ -287,7 +285,7 @@ def _drop_nan_and_compute(
         xarray.Dataset with NaNs dropped along `nmeasure` based on selected variables,
             and with certain variables computed.
     """
-    # Selected variables, when present, must not contain NaNs along nmeasure.
+    # Variables that must not contain NaNs along the nmeasure dim
     drop_subset: list[str] = [v for v in drop_nan_from if v in ds]
     if drop_subset:
         ds = ds.dropna(dim="nmeasure", how="any", subset=drop_subset)
@@ -296,7 +294,6 @@ def _drop_nan_and_compute(
     to_compute: list[str] = [
         "H",
         "H_bc",
-        "fixed_baseline",
         "mf",
         "mf_error",
         "mf_repeatability",
@@ -332,8 +329,6 @@ def _check_required_inv_input_vars(
 
     if any("H_bc" in fp_data[site] for site in sites) and "H_bc" not in ds:
         missing_required.append("H_bc")
-    if any("fixed_baseline" in fp_data[site] for site in sites) and "fixed_baseline" not in ds:
-        missing_required.append("fixed_baseline")
 
     if missing_required:
         raise ValueError(

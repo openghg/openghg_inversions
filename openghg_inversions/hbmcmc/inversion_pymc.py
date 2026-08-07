@@ -132,19 +132,9 @@ def build_inferpymc_model(
     Returns:
         Built PyMC model for the current inferpymc compatibility path.
 
-    Raises:
-        ValueError: If modern ``fixed_baseline`` data are supplied to this
-            legacy compatibility builder.
-
     Warns:
         FutureWarning: If ``reparameterise_log_normal`` is enabled.
     """
-    if "fixed_baseline" in inv_inputs:
-        raise ValueError(
-            "The legacy HBMCMC model builder does not support fixed_baseline; "
-            "use the modern RHIME model builder instead."
-        )
-
     xprior, bcprior, sigprior, offsetprior = _prepare_builder_priors(
         xprior=xprior,
         bcprior=bcprior,

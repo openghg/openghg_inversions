@@ -209,6 +209,9 @@ they are stacked on ``source``. Inputs with different native frequencies, such
 as hourly and monthly fluxes, require an explicit resampling policy rather than
 implicit xarray alignment.
 
+Source-neutral xarray preparation
+---------------------------------
+
 Source-neutral xarray inputs can be adapted at this boundary without OpenGHG
 data acquisition. The supported container boundary is deliberately narrow:
 
@@ -246,7 +249,12 @@ data acquisition. The supported container boundary is deliberately narrow:
 
 This matches the cached verification-games workflow: sites may have unequal or
 disjoint time axes, and the existing ragged gather path creates ``nmeasure``
-only after per-site validation and basis projection. For example:
+only after per-site validation and basis projection. The following first block
+is illustrative application code adapted from verification-games. OpenGHG
+Inversions does not define its cache paths, acquire its observations, or choose
+its numerical unit conversion.
+
+Application-specific input assembly:
 
 .. code-block:: python
 
@@ -255,22 +263,6 @@ only after per-site validation and basis projection. For example:
    import numpy as np
    import xarray as xr
 
-   from openghg_inversions.basis.basis_functions import BasisFunctions
-   from openghg_inversions.inversion_data import (
-       RhimePreparedInputs,
-       prepare_rhime_inputs_from_xarray,
-   )
-   from openghg_inversions.models import RhimeModelSpec, SectorSpec
-   from openghg_inversions.rhime import (
-       RhimeOutputSpec,
-       RhimeRunSpec,
-       RhimeSampler,
-       run_rhime_from_prepared_inputs,
-   )
-
-   # This retained artifact owns the basis operator, source-resolved reference
-   # flux, state labels, and source order used for later reconstruction.
-   basis_functions = BasisFunctions.load("base-country-basis.zarr")
    sources = ["ocean", "FF", "GPP", "TER"]  # meaningful, non-alphabetical order
 
    site_times = OrderedDict(
@@ -295,6 +287,7 @@ only after per-site validation and basis projection. For example:
            cache = (cache * 1e6).assign_attrs({**cache.attrs, "units": "ppm"})
        if cache.attrs.get("units") != "ppm":
            raise ValueError("Normalize this cache numerically to ppm first.")
+       # Schematic placeholder for application-owned observation loading.
        observation = xr.DataArray(
            np.zeros(times.size),
            dims="time",
@@ -311,6 +304,19 @@ only after per-site validation and basis projection. For example:
            }
        )
 
+The public OpenGHG Inversions adapter begins here. It validates and projects
+the supplied site datasets; it does not acquire or normalize the upstream data.
+
+Adapt the application data with OpenGHG Inversions:
+
+.. code-block:: python
+
+   from openghg_inversions.basis.basis_functions import BasisFunctions
+   from openghg_inversions.inversion_data import prepare_rhime_inputs_from_xarray
+
+   # This retained artifact owns the basis operator, source-resolved reference
+   # flux, state labels, and source order used for later reconstruction.
+   basis_functions = BasisFunctions.load("base-country-basis.zarr")
    prepared = prepare_rhime_inputs_from_xarray(
        site_data,
        basis_functions=basis_functions,
@@ -319,11 +325,30 @@ only after per-site validation and basis projection. For example:
        start_date="2021-01-01",
    )
 
-   # Optional durable checkpoint: no OpenGHG retrieval or adapter projection is
-   # repeated when the prepared artifact is loaded.
+Optionally save a durable checkpoint so projection is not repeated when the
+prepared artifact is reopened:
+
+.. code-block:: python
+
+   from openghg_inversions.inversion_data import RhimePreparedInputs
+
    prepared.save("base-prepared-inputs.zarr")
    prepared = RhimePreparedInputs.load("base-prepared-inputs.zarr")
 
+Finally, construct and execute the OpenGHG Inversions run from the canonical
+prepared object:
+
+.. code-block:: python
+
+   from openghg_inversions.models import RhimeModelSpec, SectorSpec
+   from openghg_inversions.rhime import (
+       RhimeOutputSpec,
+       RhimeRunSpec,
+       RhimeSampler,
+       run_rhime_from_prepared_inputs,
+   )
+
+   sources = ["ocean", "FF", "GPP", "TER"]
    sectors = tuple(
        SectorSpec(
            name=source,
@@ -353,6 +378,9 @@ only after per-site validation and basis projection. For example:
        sampler=RhimeSampler(draws=1000, tune=1000, chains=4),
    )
 
+This adapter is an extension boundary for data acquisition and assembly, not a
+plugin interface for alternative RHIME models or likelihood components.
+
 Each site dataset must contain ``mf``, ``mf_error``, ``mf_repeatability``,
 ``mf_variability``, and either canonical ``H`` or cached ``fp_x_flux`` /
 ``fp_x_flux_sectoral``. Cached fields are projected through the retained basis
@@ -365,7 +393,7 @@ postprocessing; artifact provenance may be added to the returned basis value.
 The adapter treats every supplied row as an active observation. Each site
 therefore needs a nonempty, explicit, unique ``datetime64`` ``time`` coordinate
 with no ``NaT`` values. Valid non-monotonic input ordering is retained.
-Required observations, projected ``H``, and optional baseline contributions
+Required observations, projected ``H``, and optional sampled ``H_bc`` values
 must be finite. A site emptied by downstream input preparation is reported as
 an error instead of being silently removed. ``min_error_per_site`` defaults to
 ``False``, matching the OpenGHG-backed RHIME preparation route; pass ``True``
@@ -373,9 +401,9 @@ to request per-site minimum errors.
 
 ``mf.units`` must be a nonempty string. Every present concentration-valued
 field---observation-error components, canonical ``H`` or the selected cache,
-``H_bc``, and ``fixed_baseline``---must declare the same exact unit string at
-every site. The adapter does not perform unit conversion; normalize equivalent
-spellings before calling it. Projected ``H`` inherits the selected cache units.
+and ``H_bc``---must declare the same exact unit string at every site. The
+adapter does not perform unit conversion; normalize equivalent spellings before
+calling it. Projected ``H`` inherits the selected cache units.
 
 Canonical ``H`` may use ``(region, time)`` for one source,
 ``(region, time, source)`` for multisource data with one shared basis, or a
@@ -406,22 +434,12 @@ labels are intentionally deferred generalizations. They should be added only
 with a concrete consumer and explicit semantics rather than inferred by this
 adapter.
 
-Two independent baseline modes are supported at this prepared-input boundary.
-Include ``H_bc`` for the existing sampled boundary-condition contribution.
-Include ``fixed_baseline(time)`` for a supplied observation-aligned contribution
-in the same units as ``mf`` that is added directly to the model mean. Both
-variables may be present. If any retained site supplies ``fixed_baseline``, all
-retained sites must supply it. The fixed term is not represented as a flux
-sector. The existing INI/OpenGHG configuration wrappers do not yet synthesize
-``fixed_baseline``; callers using that mode should use this xarray adapter and
-``run_rhime_from_prepared_inputs``.
-
-Generic concentration statistics and PARIS concentration products treat the
-effective baseline as fixed plus sampled contributions. The sampled ``mu_bc``
-trace remains unchanged; the fixed contribution is composed only in the model
-mean and output views. The temporary HBMCMC-compatible ``legacy`` output does
-not accept fixed baselines, and neither does the legacy HBMCMC model builder;
-new prepared-input features do not extend those compatibility paths.
+Include ``H_bc`` for the existing sampled boundary-condition contribution. A
+deterministic observation-aligned ``fixed_baseline`` is deliberately rejected
+until a reusable semantic Baseline component defines common likelihood and
+output behavior; this follow-up is tracked in `issue #550
+<https://github.com/openghg/openghg_inversions/issues/550>`_. New prepared-input
+features do not extend legacy HBMCMC model or output paths.
 
 Config Files
 ------------

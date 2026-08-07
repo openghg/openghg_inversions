@@ -681,85 +681,13 @@ def sort_data_vars(ds: xr.Dataset) -> xr.Dataset:
     return ds[dv_sorted]  # type: ignore
 
 
-def _fixed_baseline_for_outputs(inv_out: InversionOutput) -> xr.DataArray | None:
-    """Return the observation-aligned fixed baseline, if one was prepared.
-
-    Args:
-        inv_out: Inversion output carrying canonical prepared inputs.
-
-    Returns:
-        The one-dimensional fixed baseline, or ``None`` when absent.
-
-    Raises:
-        ValueError: If ``fixed_baseline`` is not one-dimensional on
-            ``nmeasure``.
-    """
-    if "fixed_baseline" not in inv_out.inv_inputs:
-        return None
-    fixed_baseline = inv_out.inv_inputs["fixed_baseline"]
-    if fixed_baseline.dims != ("nmeasure",):
-        raise ValueError(
-            "Canonical fixed_baseline must have exactly dimension ('nmeasure',) for postprocessing."
-        )
-    return fixed_baseline
-
-
-def _add_fixed_baseline_to_concentration_trace(
-    trace: xr.Dataset,
-    inv_out: InversionOutput,
-) -> xr.Dataset:
-    """Return a shallow copy with fixed baseline composed into trace views.
-
-    Existing sampled baseline variables are incremented. If they are absent,
-    the fixed contribution is broadcast from the corresponding predictive
-    concentration variable. The input trace is not mutated.
-
-    Args:
-        trace: Prior/posterior concentration trace view.
-        inv_out: Inversion output carrying canonical prepared inputs.
-
-    Returns:
-        Trace view with the fixed contribution composed into baseline
-        variables across predictive chain/draw dimensions.
-
-    Raises:
-        ValueError: If a prepared fixed baseline is not exactly on
-            ``nmeasure``.
-    """
-    fixed_baseline = _fixed_baseline_for_outputs(inv_out)
-    if fixed_baseline is None:
-        return trace
-
-    result = trace.copy(deep=False)
-    for when, reference_name in (
-        ("prior", "y_prior_predictive"),
-        ("posterior", "y_posterior_predictive"),
-    ):
-        baseline_name = f"mu_bc_{when}"
-        if baseline_name in result:
-            result[baseline_name] = result[baseline_name] + fixed_baseline
-        elif reference_name in result:
-            result[baseline_name] = fixed_baseline.broadcast_like(result[reference_name]).transpose(
-                *result[reference_name].dims
-            )
-        else:
-            continue
-        result[baseline_name].attrs["long_name"] = f"{when}_modelled_baseline_including_fixed"
-        if "units" in fixed_baseline.attrs:
-            result[baseline_name].attrs["units"] = fixed_baseline.attrs["units"]
-    return result
-
-
 def make_concentration_outputs(
     inv_out: InversionOutput,
     stats: list[str] | None = None,
     stats_args: dict | None = None,
     combine_bc_and_offset: bool = False,
 ) -> xr.Dataset:
-    """Return summary statistics for modelled concentrations.
-
-    A prepared ``fixed_baseline`` is composed with sampled baseline traces for
-    output statistics without changing the stored posterior trace.
+    """Return dataset of stats for concentrations.
 
     Args:
         inv_out: Inversion output containing MCMC traces.
@@ -777,11 +705,7 @@ def make_concentration_outputs(
             are calculated).
 
     Returns:
-        Dataset with computed concentration statistics.
-
-    Raises:
-        ValueError: If a prepared ``fixed_baseline`` is not exactly on
-            ``nmeasure``.
+        xr.Dataset with computed flux stats.
 
     """
     posterior = cast(Any, inv_out.trace).posterior
@@ -803,7 +727,6 @@ def make_concentration_outputs(
         inv_out,
         {concentration_role: "y", baseline_role: "mu_bc", offset_role: "offset"},
     )
-    trace = _add_fixed_baseline_to_concentration_trace(trace, inv_out)
 
     if combine_bc_and_offset and offset_role in conc_roles:
         for dv in trace.data_vars:
