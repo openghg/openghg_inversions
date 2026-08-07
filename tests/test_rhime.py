@@ -3234,6 +3234,116 @@ def test_fixedbasis_preparation_adds_anchored_legacy_sigma_index(
     np.testing.assert_array_equal(prepared.inv_inputs["sigma_freq_index"], [0, 1, 1])
 
 
+def test_fixedbasis_preparation_uses_platform_for_sites_retained_after_filtering(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Satellite BC scaling receives platform metadata after a surface site is dropped."""
+    fp_data = {"OCO2-EASTASIA": _site_dataset([2.0])}
+    merged = prep_module._MergedInversionData(
+        fp_all={"TAC": _site_dataset([]), **fp_data},
+        site_options=_site_options(
+            ["TAC", "OCO2-EASTASIA"],
+            averaging_period=["1H", "1H"],
+            platform=["surface", "satellite"],
+        ),
+    )
+    retained_options = merged.site_options.select_indices([1])
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(prep_module, "_prepare_merged_data", lambda **kwargs: merged)
+    monkeypatch.setattr(
+        prep_module,
+        "basis_functions_wrapper",
+        lambda **kwargs: (fp_data, {"emissions": _fake_basis_functions()}),
+    )
+    monkeypatch.setattr(
+        prep_module,
+        "_apply_filters_and_drop_empty_sites",
+        lambda **kwargs: (fp_data, retained_options),
+    )
+    monkeypatch.setattr(prep_module, "_set_domain_attrs", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        prep_module,
+        "_make_inv_inputs",
+        lambda **kwargs: _minimal_prepared_inv_inputs(sites=("OCO2-EASTASIA",)),
+    )
+
+    def capture_scaling(inv_inputs: xr.Dataset, **kwargs: object) -> xr.Dataset:
+        captured.update(kwargs)
+        return inv_inputs
+
+    monkeypatch.setattr(prep_module, "_scale_satellite_bc_sensitivity_to_column_signal", capture_scaling)
+
+    prep_module.prepare_fixedbasis_inversion_data(
+        species="co2",
+        sites=["TAC", "OCO2-EASTASIA"],
+        domain="EASTASIA",
+        averaging_period=["1H", "1H"],
+        platform=["surface", "satellite"],
+        start_date="2019-01-01",
+        end_date="2019-02-01",
+        output_name="filtered_satellite",
+        flux_sources=["test-source"],
+        use_bc=False,
+    )
+
+    assert captured == {"sites": ["OCO2-EASTASIA"], "platform": ("satellite",)}
+
+
+def test_rhime_preparation_uses_platform_for_sites_retained_after_filtering(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """RHIME satellite BC scaling receives the filtered mixed-platform metadata."""
+    merged = prep_module._MergedInversionData(
+        fp_all={"TAC": _site_dataset([]), "OCO2-EASTASIA": _site_dataset([2.0])},
+        site_options=_site_options(
+            ["TAC", "OCO2-EASTASIA"],
+            averaging_period=["1H", "1H"],
+            platform=["surface", "satellite"],
+        ),
+    )
+    filtered_merged = prep_module._MergedInversionData(
+        fp_all={"OCO2-EASTASIA": _site_dataset([2.0])},
+        site_options=merged.site_options.select_indices([1]),
+    )
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(prep_module, "_prepare_merged_data", lambda **kwargs: merged)
+    monkeypatch.setattr(prep_module, "_filter_merged_inversion_data", lambda **kwargs: filtered_merged)
+    monkeypatch.setattr(prep_module, "make_basis_functions", lambda **kwargs: _fake_basis_functions())
+    monkeypatch.setattr(
+        prep_module,
+        "_rhime_site_data_from_basis_functions",
+        lambda **kwargs: {"OCO2-EASTASIA": _site_dataset([2.0])},
+    )
+    monkeypatch.setattr(
+        prep_module,
+        "_make_inv_inputs",
+        lambda **kwargs: _minimal_prepared_inv_inputs(sites=("OCO2-EASTASIA",)),
+    )
+
+    def capture_scaling(inv_inputs: xr.Dataset, **kwargs: object) -> xr.Dataset:
+        captured.update(kwargs)
+        return inv_inputs
+
+    monkeypatch.setattr(prep_module, "_scale_satellite_bc_sensitivity_to_column_signal", capture_scaling)
+
+    prepare_rhime_inputs(
+        species="co2",
+        sites=["TAC", "OCO2-EASTASIA"],
+        domain="EASTASIA",
+        averaging_period=["1H", "1H"],
+        platform=["surface", "satellite"],
+        start_date="2019-01-01",
+        end_date="2019-02-01",
+        output_name="filtered_satellite",
+        flux_sources=["test-source"],
+        use_bc=False,
+    )
+
+    assert captured == {"sites": ("OCO2-EASTASIA",), "platform": ("satellite",)}
+
+
 def test_prepare_rhime_inputs_uses_basis_sensitivity_without_legacy_side_channels(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

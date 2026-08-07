@@ -49,8 +49,12 @@ def _snap_footprint_times_to_obs(
     if not positions_to_snap:
         return
 
-    snapped_times = fp_time.values.copy()
-    snapped_times[positions_to_snap] = obs_time.values[indexer[positions_to_snap]]
+    # ``fp_time`` may use a coarse datetime dtype (for example ``datetime64[us]``).
+    # Promote both sides before assignment so an observation's nanosecond
+    # timestamp is not silently truncated back to the footprint resolution.
+    snapped_times = np.asarray(fp_time.values, dtype="datetime64[ns]").copy()
+    obs_times = np.asarray(obs_time.values, dtype="datetime64[ns]")
+    snapped_times[positions_to_snap] = obs_times[indexer[positions_to_snap]]
     if pd.Index(snapped_times).has_duplicates:
         logger.warning("Skipping satellite timestamp snapping because it would create duplicate footprint times.")
         return

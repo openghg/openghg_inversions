@@ -1530,7 +1530,7 @@ def prepare_fixedbasis_inversion_data(
     inv_inputs = _scale_satellite_bc_sensitivity_to_column_signal(
         inv_inputs,
         sites=prepared_sites,
-        platform=platform,
+        platform=prepared_site_options.platform,
     )
     sigma_alignment = SigmaAlignment.from_frequency(
         inv_inputs["site_indicator"],
@@ -1742,7 +1742,7 @@ def prepare_rhime_inputs(
     inv_inputs = _scale_satellite_bc_sensitivity_to_column_signal(
         inv_inputs,
         sites=filtered_merged.sites,
-        platform=platform,
+        platform=filtered_merged.site_options.platform,
     )
     _warn_for_nan_inputs(inv_inputs, use_bc=use_bc)
     log_timing(
