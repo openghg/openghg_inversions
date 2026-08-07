@@ -838,6 +838,50 @@ class boundaries, but RHIME config and <code class="docutils literal notranslate
 <code class="docutils literal notranslate"><span class="pre">region_classes</span></code> from files. For RHIME runs that need these masks today,
 build and save the basis through the Python basis API, then load it as a saved
 basis case.</p>
+<p>At the core Python API, use <code class="docutils literal notranslate"><span class="pre">combine_inner_outer_region_classes</span></code> to build one
+transient class field from already-loaded inner and outer classifications
+without embedding a project mask or region names in the library:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.basis.algorithms</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">combine_inner_outer_region_classes</span><span class="p">,</span>
+    <span class="n">region_constrained_basis</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">region_classes</span> <span class="o">=</span> <span class="n">combine_inner_outer_region_classes</span><span class="p">(</span>
+    <span class="n">inner_mask</span><span class="p">,</span>
+    <span class="n">whole_domain_land_sea_classes</span><span class="p">,</span>
+    <span class="n">intem_outer_regions</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">outer_values</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="n">intem_outer_regions</span><span class="o">.</span><span class="n">values</span><span class="p">[</span><span class="o">~</span><span class="n">inner_mask</span><span class="o">.</span><span class="n">values</span><span class="p">])</span>
+<span class="n">targets</span> <span class="o">=</span> <span class="p">{(</span><span class="s2">&quot;outer&quot;</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span> <span class="mi">1</span> <span class="k">for</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">outer_values</span><span class="p">}</span>
+<span class="n">targets</span><span class="o">.</span><span class="n">update</span><span class="p">({(</span><span class="s2">&quot;inner&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">):</span> <span class="mi">75</span><span class="p">,</span> <span class="p">(</span><span class="s2">&quot;inner&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">):</span> <span class="mi">75</span><span class="p">})</span>
+<span class="n">basis</span> <span class="o">=</span> <span class="n">region_constrained_basis</span><span class="p">(</span>
+    <span class="n">weights</span><span class="p">,</span>
+    <span class="n">region_classes</span><span class="p">,</span>
+    <span class="n">nbasis</span><span class="o">=</span><span class="n">targets</span><span class="p">,</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p>Only the mask-selected side is inspected, so both class inputs may cover the
+whole domain. Selected null or explicitly unmapped values remain unmapped;
+values on the unselected side are ignored. Domain tags keep equal raw inner and
+outer labels distinct. Physically equivalent coordinates are normalized to the
+first input’s grid, while incompatible coordinate values, units, or CRS
+definitions are rejected. Use <code class="docutils literal notranslate"><span class="pre">region_class_mask</span></code> to select a tagged tuple
+label because ordinary NumPy/xarray comparison treats a tuple as a sequence
+instead of one object-valued class.</p>
+<p>An integer <code class="docutils literal notranslate"><span class="pre">nbasis</span></code> in the generic call is a total distributed across every
+selected inner and outer class. Use an explicit mapping when outer classes must
+remain fixed at one region each. This generic constrained layout does not
+replace or reproduce the legacy weighted fixed-outer algorithm. Loading
+packaged fields and routing this composition through fixed-outer and RHIME
+wrappers remain follow-up work in issue #452.</p>
+<p>The helper only selects and tags classes on a shared grid. The downstream
+algorithm still receives one weight field. Separate source weights,
+sensitivities, and <code class="docutils literal notranslate"><span class="pre">basis_group</span></code> metadata remain distinct inputs and are not
+created by this combinator.</p>
 <p>Region-constrained algorithms have split-stopping policies at the lower-level
 strategy boundary. <code class="docutils literal notranslate"><span class="pre">MinChildWeightShare</span></code> is a parent-relative balance guard:
 it compares the lightest proposed child with the current parent partition.

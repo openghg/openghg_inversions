@@ -443,7 +443,10 @@
                   
   <section id="module-openghg_inversions.basis.algorithms">
 <span id="openghg-inversions-basis-algorithms"></span><h1>openghg_inversions.basis.algorithms<a class="headerlink" href="#module-openghg_inversions.basis.algorithms" title="Link to this heading">#</a></h1>
-<p>Algorithms for computing basis functions.</p>
+<p>Public algorithms for computing basis functions.</p>
+<p>This package re-exports weighted and quadtree algorithms alongside constrained
+basis generation, class composition, allocation, and tuple-safe class masking
+helpers.</p>
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.basis.algorithms.AllSplitAcceptancePolicies">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">openghg_inversions.basis.algorithms.</span></span><span class="sig-name descname"><span class="pre">AllSplitAcceptancePolicies</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">policies</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#openghg_inversions.basis.algorithms.SplitAcceptancePolicy" title="openghg_inversions.basis.algorithms._constrained.SplitAcceptancePolicy"><span class="pre">SplitAcceptancePolicy</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference internal" href="#openghg_inversions.basis.algorithms.TargetSplitAcceptancePolicy" title="openghg_inversions.basis.algorithms._constrained.TargetSplitAcceptancePolicy"><span class="pre">TargetSplitAcceptancePolicy</span></a></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.algorithms.AllSplitAcceptancePolicies" title="Link to this definition">#</a></dt>
@@ -466,11 +469,19 @@
 <dt class="sig sig-object py" id="openghg_inversions.basis.algorithms.AxisAlignedWeightedSplitStrategy">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">openghg_inversions.basis.algorithms.</span></span><span class="sig-name descname"><span class="pre">AxisAlignedWeightedSplitStrategy</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">max_iter</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">32</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.algorithms.AxisAlignedWeightedSplitStrategy" title="Link to this definition">#</a></dt>
 <dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
-<p>Compatibility strategy based on the existing recursive weighted basis.</p>
-<p>This keeps the current weighted basis shape available for comparison:
-recursively split rectangles along the longer axis until each rectangle is
-below a searched threshold. New constrained code defaults to
-<a class="reference internal" href="#openghg_inversions.basis.algorithms.GreedyAxisParallelSplitStrategy" title="openghg_inversions.basis.algorithms.GreedyAxisParallelSplitStrategy"><code class="xref py py-class docutils literal notranslate"><span class="pre">GreedyAxisParallelSplitStrategy</span></code></a> instead.</p>
+<p>Class-local strategy derived from recursive weighted bucket splitting.</p>
+<p>This applies the existing bucket splitter independently to the masked
+weights for one class. It recursively splits rectangles along the longer
+axis until each rectangle is below a searched threshold. It is not a
+compatibility implementation of the legacy weighted land/sea pipeline,
+which optimizes the bucket layout before applying the land/sea split. New
+constrained code defaults to <a class="reference internal" href="#openghg_inversions.basis.algorithms.GreedyAxisParallelSplitStrategy" title="openghg_inversions.basis.algorithms.GreedyAxisParallelSplitStrategy"><code class="xref py py-class docutils literal notranslate"><span class="pre">GreedyAxisParallelSplitStrategy</span></code></a>
+instead.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Variables<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>max_iter</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a>) – Maximum number of threshold-search iterations.</p>
+</dd>
+</dl>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="openghg_inversions.basis.algorithms.AxisAlignedWeightedSplitStrategy.max_iter">
 <span class="sig-name descname"><span class="pre">max_iter</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">32</span></span><a class="headerlink" href="#openghg_inversions.basis.algorithms.AxisAlignedWeightedSplitStrategy.max_iter" title="Link to this definition">#</a></dt>
@@ -1247,10 +1258,54 @@ mapped class.</p></li>
 <dd class="field-even"><p>Mapping from mapped class value to target number of local regions.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If inputs cannot be aligned, weights are invalid, or the
-    requested allocation is impossible.</p>
+<dd class="field-odd"><ul class="simple">
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If either input is not two-dimensional, the dimension names
+    differ, weights are invalid, or the requested allocation is
+    impossible.</p></li>
+<li><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.AlignmentError.html#xarray.AlignmentError" title="(in xarray v2026.7.0)"><strong>xarray.AlignmentError</strong></a> – If the inputs do not describe physically
+    compatible spatial grids after transposition.</p></li>
+</ul>
 </dd>
 </dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.basis.algorithms.combine_inner_outer_region_classes">
+<span class="sig-prename descclassname"><span class="pre">openghg_inversions.basis.algorithms.</span></span><span class="sig-name descname"><span class="pre">combine_inner_outer_region_classes</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">inner_mask</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">inner_classes</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">outer_classes</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">unmapped_values</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Iterable" title="(in Python v3.14)"><span class="pre">Iterable</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Hashable" title="(in Python v3.14)"><span class="pre">Hashable</span></a><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">()</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'region_classes'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></span><a class="headerlink" href="#openghg_inversions.basis.algorithms.combine_inner_outer_region_classes" title="Link to this definition">#</a></dt>
+<dd><p>Select and tag aligned inner- and outer-domain region classes.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>inner_mask</strong> – Two-dimensional Boolean field selecting cells from
+<code class="docutils literal notranslate"><span class="pre">inner_classes</span></code>. False cells select from <code class="docutils literal notranslate"><span class="pre">outer_classes</span></code>.</p></li>
+<li><p><strong>inner_classes</strong> – Two-dimensional class field for inner-domain cells.</p></li>
+<li><p><strong>outer_classes</strong> – Two-dimensional class field for outer-domain cells.</p></li>
+<li><p><strong>unmapped_values</strong> – Selected class values that should leave the output
+cell unmapped. Selected null values are always unmapped.</p></li>
+<li><p><strong>name</strong> – Name for the returned <code class="docutils literal notranslate"><span class="pre">DataArray</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Object-valued <code class="docutils literal notranslate"><span class="pre">DataArray</span></code> with the same dimensions and coordinates as
+<code class="docutils literal notranslate"><span class="pre">inner_mask</span></code>. Mapped cells contain <code class="docutils literal notranslate"><span class="pre">(&quot;inner&quot;,</span> <span class="pre">value)</span></code> or
+<code class="docutils literal notranslate"><span class="pre">(&quot;outer&quot;,</span> <span class="pre">value)</span></code> tuples. Unmapped cells contain <code class="docutils literal notranslate"><span class="pre">NaN</span></code>.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If any input is not two-dimensional, dimension-name sets
+    differ, <code class="docutils literal notranslate"><span class="pre">inner_mask</span></code> is not Boolean, or a selected class value is
+    not hashable.</p></li>
+<li><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.AlignmentError.html#xarray.AlignmentError" title="(in xarray v2026.7.0)"><strong>xarray.AlignmentError</strong></a> – If, after transposition to <code class="docutils literal notranslate"><span class="pre">inner_mask</span></code>
+    dimension order, an input does not describe a physically compatible
+    spatial grid.</p></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Notes</p>
+<p>Values on the unselected side do not affect the result, including null
+values. Domain tags prevent equal inner and outer class values from
+colliding when passed to <a class="reference internal" href="#openghg_inversions.basis.algorithms.region_constrained_basis" title="openghg_inversions.basis.algorithms.region_constrained_basis"><code class="xref py py-func docutils literal notranslate"><span class="pre">region_constrained_basis()</span></code></a>.</p>
+<p>This source-neutral composition helper advances <a class="reference external" href="https://github.com/openghg/openghg_inversions/issues/449">issue #449</a>.</p>
 </dd></dl>
 
 <dl class="py function">
@@ -1281,14 +1336,17 @@ unmapped. Null values in any layer are always unmapped.</p></li>
 <dd class="field-even"><p>Object-valued <code class="docutils literal notranslate"><span class="pre">DataArray</span></code> with the same dimensions and coordinates as
 the first layer. Mapped cells contain tuples of layer values, while
 cells that are null or explicitly unmapped in any layer contain
-<code class="docutils literal notranslate"><span class="pre">NaN</span></code>.</p>
+<code class="docutils literal notranslate"><span class="pre">NaN</span></code>. Its <code class="docutils literal notranslate"><span class="pre">region_class_layers</span></code> attribute records the string form
+of each layer name in mapping insertion order.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If no layers are supplied, any layer is not two-dimensional,
     layer dimension names differ, or a mapped layer value is not
     hashable.</p></li>
-<li><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.AlignmentError.html#xarray.AlignmentError" title="(in xarray v2026.7.0)"><strong>xarray.AlignmentError</strong></a> – If layer coordinates do not align exactly.</p></li>
+<li><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.AlignmentError.html#xarray.AlignmentError" title="(in xarray v2026.7.0)"><strong>xarray.AlignmentError</strong></a> – If, after transposition to the first layer’s
+    dimension order, any layer does not describe a physically
+    compatible spatial grid.</p></li>
 </ul>
 </dd>
 </dl>
@@ -1296,7 +1354,8 @@ cells that are null or explicitly unmapped in any layer contain
 <p>The tuple labels can be passed directly to
 <a class="reference internal" href="#openghg_inversions.basis.algorithms.region_constrained_basis" title="openghg_inversions.basis.algorithms.region_constrained_basis"><code class="xref py py-func docutils literal notranslate"><span class="pre">region_constrained_basis()</span></code></a>. This is the small lattice-style
 construction needed for layered masks such as land/sea crossed with an
-inner/outer rectangle.</p>
+inner/outer rectangle. Use <a class="reference internal" href="#openghg_inversions.basis.algorithms.region_class_mask" title="openghg_inversions.basis.algorithms.region_class_mask"><code class="xref py py-func docutils literal notranslate"><span class="pre">region_class_mask()</span></code></a> rather than raw
+xarray equality when selecting a tuple label.</p>
 </dd></dl>
 
 <dl class="py function">
@@ -1316,6 +1375,35 @@ the quadtree algorithm.</p>
 <dd class="field-even"><p>2D numpy array with positive integer values representing basis regions.</p>
 </dd>
 </dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.basis.algorithms.region_class_mask">
+<span class="sig-prename descclassname"><span class="pre">openghg_inversions.basis.algorithms.</span></span><span class="sig-name descname"><span class="pre">region_class_mask</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">region_classes</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">class_value</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Hashable" title="(in Python v3.14)"><span class="pre">Hashable</span></a></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'region_class_mask'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></span><a class="headerlink" href="#openghg_inversions.basis.algorithms.region_class_mask" title="Link to this definition">#</a></dt>
+<dd><p>Select one scalar or tuple-valued region class reliably.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>region_classes</strong> – Region-class values to compare with <code class="docutils literal notranslate"><span class="pre">class_value</span></code>.
+Dimensions and all attached coordinates are preserved on the
+returned mask.</p></li>
+<li><p><strong>class_value</strong> – Scalar or tuple-valued class label to select.</p></li>
+<li><p><strong>name</strong> – Name for the returned Boolean <code class="docutils literal notranslate"><span class="pre">DataArray</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Boolean <code class="docutils literal notranslate"><span class="pre">DataArray</span></code> that is true exactly where <code class="docutils literal notranslate"><span class="pre">region_classes</span></code>
+contains <code class="docutils literal notranslate"><span class="pre">class_value</span></code>.</p>
+</dd>
+</dl>
+<p class="rubric">Notes</p>
+<p>Raw expressions such as <code class="docutils literal notranslate"><span class="pre">region_classes</span> <span class="pre">==</span> <span class="pre">(&quot;land&quot;,</span> <span class="pre">&quot;inner&quot;)</span></code> are
+unreliable for object arrays because NumPy may treat the tuple as an
+array-like operand and broadcast its elements instead of comparing the
+tuple as one value. This helper performs elementwise tuple comparison
+through the same path used by constrained allocation and splitting.
+Object values are materialized eagerly; dask chunks are not preserved
+in the returned mask.</p>
 </dd></dl>
 
 <dl class="py function">
@@ -1352,6 +1440,17 @@ boundaries and report that strict connectivity no longer holds.</p></li>
 <dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">xarray.DataArray</span></code> with the same dimensions and coordinates as
 <code class="docutils literal notranslate"><span class="pre">weights</span></code>. Mapped cells receive globally unique positive integer
 labels; unmapped cells receive <code class="docutils literal notranslate"><span class="pre">0</span></code>.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If either input is not two-dimensional, the dimension names
+    differ, weights are invalid, or the requested allocation is
+    impossible, or a split strategy returns labels with the wrong shape
+    or dtype, non-positive labels inside its class mask, or nonzero
+    labels outside its class mask.</p></li>
+<li><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.AlignmentError.html#xarray.AlignmentError" title="(in xarray v2026.7.0)"><strong>xarray.AlignmentError</strong></a> – If the inputs do not describe physically
+    compatible spatial grids after transposition.</p></li>
+</ul>
 </dd>
 </dl>
 <p class="rubric">Notes</p>
@@ -1575,9 +1674,11 @@ Defaults to 1</p></li>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.algorithms.allocate_nbasis_by_class"><code class="docutils literal notranslate"><span class="pre">allocate_nbasis_by_class()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.algorithms.combine_inner_outer_region_classes"><code class="docutils literal notranslate"><span class="pre">combine_inner_outer_region_classes()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.algorithms.contrast_tau_from_multiplier_cv"><code class="docutils literal notranslate"><span class="pre">contrast_tau_from_multiplier_cv()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.algorithms.intersect_region_class_layers"><code class="docutils literal notranslate"><span class="pre">intersect_region_class_layers()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.algorithms.quadtree_algorithm"><code class="docutils literal notranslate"><span class="pre">quadtree_algorithm()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.algorithms.region_class_mask"><code class="docutils literal notranslate"><span class="pre">region_class_mask()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.algorithms.region_constrained_basis"><code class="docutils literal notranslate"><span class="pre">region_constrained_basis()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.algorithms.split_contrast_score"><code class="docutils literal notranslate"><span class="pre">split_contrast_score()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.algorithms.weighted_algorithm"><code class="docutils literal notranslate"><span class="pre">weighted_algorithm()</span></code></a></li>
