@@ -332,6 +332,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.preparation.html">openghg_inversions.inversion_data.preparation</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.scenario.html">openghg_inversions.inversion_data.scenario</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.serialise.html">openghg_inversions.inversion_data.serialise</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.xarray_adapter.html">openghg_inversions.inversion_data.xarray_adapter</a></li>
 </ul>
 </details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.models.html">openghg_inversions.models</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
@@ -368,6 +369,7 @@
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.flux_sanitization.html">openghg_inversions.flux_sanitization</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.inversion_inputs.html">openghg_inversions.inversion_inputs</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.model_error.html">openghg_inversions.model_error</a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.serialization.html">openghg_inversions.serialization</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.sigma.html">openghg_inversions.sigma</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.utils.html">openghg_inversions.utils</a></li>
 </ul>
@@ -513,7 +515,8 @@ default value of “yearly” is returned.</p>
 <dd class="field-even"><p>frequency string that can be parsed by pd.to_timedelta, or is “yearly” or “monthly”</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – if inferred frequency is not “yearly” or “monthly”, and cannot be parsed by pd.to_timedelta</p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If source metadata is neither a recognized calendar period
+    nor a positive fixed duration.</p>
 </dd>
 </dl>
 </dd></dl>
@@ -625,8 +628,9 @@ domain.</p></li>
 estimates.</p></li>
 <li><p><strong>inversion_grid</strong> – If true, include the optional reduced inversion-grid
 variables.</p></li>
-<li><p><strong>flux_frequency</strong> – Frequency used to construct output intervals. Supported
-values are <code class="docutils literal notranslate"><span class="pre">&quot;monthly&quot;</span></code> and <code class="docutils literal notranslate"><span class="pre">&quot;yearly&quot;</span></code>.</p></li>
+<li><p><strong>flux_frequency</strong> – Period used to construct output intervals. Calendar
+values <code class="docutils literal notranslate"><span class="pre">&quot;monthly&quot;</span></code> and <code class="docutils literal notranslate"><span class="pre">&quot;yearly&quot;</span></code> and positive fixed pandas
+duration strings are supported.</p></li>
 <li><p><strong>country_selections</strong> – Optional country names or codes to include. The
 default emits the canonical 22-country EUROPE v03 product; pass
 <code class="docutils literal notranslate"><span class="pre">None</span></code> to include every country from another domain file.</p></li>

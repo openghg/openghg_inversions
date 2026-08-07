@@ -459,6 +459,7 @@ acquisition and run them without repeating OpenGHG-backed preparation. Supply
 the retained <code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code> together with the existing public run,
 model, output, and sampler specifications:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">RhimeModelSpec</span><span class="p">,</span> <span class="n">SectorSpec</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.inversion_data</span><span class="w"> </span><span class="kn">import</span> <span class="n">RhimePreparedInputs</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
     <span class="n">RhimeOutputSpec</span><span class="p">,</span>
     <span class="n">RhimeRunSpec</span><span class="p">,</span>
@@ -469,6 +470,8 @@ model, output, and sampler specifications:</p>
 <span class="c1"># Produced by prepare_rhime_inputs or by another source adapter that</span>
 <span class="c1"># satisfies the same canonical contract.</span>
 <span class="n">prepared</span> <span class="o">=</span> <span class="n">prepare_inputs_elsewhere</span><span class="p">()</span>
+<span class="n">prepared</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="s2">&quot;prepared-inputs.nc&quot;</span><span class="p">)</span>
+<span class="n">prepared</span> <span class="o">=</span> <span class="n">RhimePreparedInputs</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="s2">&quot;prepared-inputs.nc&quot;</span><span class="p">)</span>
 <span class="n">model_spec</span> <span class="o">=</span> <span class="n">RhimeModelSpec</span><span class="p">(</span>
     <span class="n">species</span><span class="o">=</span><span class="s2">&quot;ch4&quot;</span><span class="p">,</span>
     <span class="n">domain</span><span class="o">=</span><span class="s2">&quot;EUROPE&quot;</span><span class="p">,</span>
@@ -524,6 +527,256 @@ extension path and must preserve the externally meaningful graph contract for
 components it does not intentionally change. See
 <a class="reference internal" href="concrete_rhime_model.html#rhime-builder-stability"><span class="std std-ref">the concrete model stability contract</span></a> for the
 full contract.</p>
+<p><code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs.save</span></code> accepts NetCDF paths ending in <code class="docutils literal notranslate"><span class="pre">.nc</span></code> and Zarr
+paths ending in <code class="docutils literal notranslate"><span class="pre">.zarr</span></code>. Each artifact contains the canonical inversion
+inputs and the retained operator-backed basis, including its reference flux;
+<code class="docutils literal notranslate"><span class="pre">basis_artifact_path</span></code> is recorded only as provenance and is not needed to
+reload or run the prepared inputs. Prepared-input artifacts use a versioned
+schema, CF compression-by-gathering for MultiIndexes, and a labeled
+<code class="docutils literal notranslate"><span class="pre">site_metadata(site)</span></code> dataset. Integer <code class="docutils literal notranslate"><span class="pre">site_indicator</span></code> values are derived
+from the <code class="docutils literal notranslate"><span class="pre">nmeasure</span></code> site level as zero-based positions into that separate
+site coordinate:
+<code class="docutils literal notranslate"><span class="pre">site_metadata.site[site_indicator]</span></code> must equal the <code class="docutils literal notranslate"><span class="pre">site</span></code> level of
+<code class="docutils literal notranslate"><span class="pre">nmeasure</span></code>. The indicator itself is not the CF gathering coordinate, and
+callers do not need to keep a second positional decoder synchronized. Site
+metadata also aligns averaging periods, with exactly one value per site.
+Metadata that is genuinely constant per site may be stored there too. Release
+locations that vary within a site, as they do for satellite or aircraft
+observations, are instead arrays aligned with the observations and must not be
+reduced to site scalars. These metadata arrays may be carried alongside the
+inversion arrays without implying that the model consumes them. Static
+multisource bases store their order on an xarray <code class="docutils literal notranslate"><span class="pre">source</span></code> coordinate. Saving
+to an existing artifact path replaces that artifact.</p>
+<p>Source-specific retained fluxes must already share an exact time index before
+they are stacked on <code class="docutils literal notranslate"><span class="pre">source</span></code>. Inputs with different native frequencies, such
+as hourly and monthly fluxes, require an explicit resampling policy rather than
+implicit xarray alignment.</p>
+</section>
+<section id="source-neutral-xarray-preparation">
+<h2>Source-neutral xarray preparation<a class="headerlink" href="#source-neutral-xarray-preparation" title="Link to this heading">#</a></h2>
+<p>Source-neutral xarray inputs can be adapted at this boundary without OpenGHG
+data acquisition. The supported container boundary is deliberately narrow:</p>
+<div class="pst-scrollable-table-container"><table class="table">
+<colgroup>
+<col style="width: 25.0%" />
+<col style="width: 15.0%" />
+<col style="width: 60.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Container</p></th>
+<th class="head"><p>Support</p></th>
+<th class="head"><p>Contract</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Ordered <code class="docutils literal notranslate"><span class="pre">Mapping[str,</span> <span class="pre">Dataset]</span></code></p></td>
+<td><p>Supported</p></td>
+<td><p>One active-observation dataset per site; mapping insertion order is
+retained.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">DataTree</span></code></p></td>
+<td><p>Supported</p></td>
+<td><p>One direct child dataset per site; child order is retained.</p></td>
+</tr>
+<tr class="row-even"><td><p>Direct <code class="docutils literal notranslate"><span class="pre">Dataset</span></code></p></td>
+<td><p>Unsupported</p></td>
+<td><p>Wrap one or more site-local datasets in an ordered mapping or a
+direct-child <code class="docutils literal notranslate"><span class="pre">DataTree</span></code>. Load an already canonical artifact with
+<code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs.load</span></code>.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Dense <code class="docutils literal notranslate"><span class="pre">Dataset(site,</span> <span class="pre">time)</span></code></p></td>
+<td><p>Unsupported</p></td>
+<td><p>No trimming or interpretation of padded rows is attempted. Split it
+into per-site datasets first.</p></td>
+</tr>
+<tr class="row-even"><td><p>Padded dense arrays</p></td>
+<td><p>Unsupported</p></td>
+<td><p>Every row in a site-local dataset is active; padding has no MVP
+semantics.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Pre-stacked <code class="docutils literal notranslate"><span class="pre">nmeasure</span></code> data</p></td>
+<td><p>Unsupported</p></td>
+<td><p>Pass per-site data to the adapter. Load an already canonical prepared
+artifact with <code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs.load</span></code> instead.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>This matches the cached verification-games workflow: sites may have unequal or
+disjoint time axes, and the existing ragged gather path creates <code class="docutils literal notranslate"><span class="pre">nmeasure</span></code>
+only after per-site validation and basis projection. The following first block
+is illustrative application code adapted from verification-games. OpenGHG
+Inversions does not define its cache paths, acquire its observations, or choose
+its numerical unit conversion.</p>
+<p>Application-specific input assembly:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">collections</span><span class="w"> </span><span class="kn">import</span> <span class="n">OrderedDict</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">xarray</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">xr</span>
+
+<span class="n">sources</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;ocean&quot;</span><span class="p">,</span> <span class="s2">&quot;FF&quot;</span><span class="p">,</span> <span class="s2">&quot;GPP&quot;</span><span class="p">,</span> <span class="s2">&quot;TER&quot;</span><span class="p">]</span>  <span class="c1"># meaningful, non-alphabetical order</span>
+
+<span class="n">site_times</span> <span class="o">=</span> <span class="n">OrderedDict</span><span class="p">(</span>
+    <span class="n">TAC</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span>
+        <span class="p">[</span><span class="s2">&quot;2021-01-01T12:00&quot;</span><span class="p">,</span> <span class="s2">&quot;2021-01-02T12:00&quot;</span><span class="p">],</span>
+        <span class="n">dtype</span><span class="o">=</span><span class="s2">&quot;datetime64[ns]&quot;</span><span class="p">,</span>
+    <span class="p">),</span>
+    <span class="n">MHD</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span>
+        <span class="p">[</span><span class="s2">&quot;2021-01-01T15:00&quot;</span><span class="p">,</span> <span class="s2">&quot;2021-01-03T15:00&quot;</span><span class="p">,</span> <span class="s2">&quot;2021-01-04T15:00&quot;</span><span class="p">],</span>
+        <span class="n">dtype</span><span class="o">=</span><span class="s2">&quot;datetime64[ns]&quot;</span><span class="p">,</span>
+    <span class="p">),</span>
+<span class="p">)</span>
+<span class="n">site_data</span> <span class="o">=</span> <span class="n">OrderedDict</span><span class="p">()</span>
+<span class="k">for</span> <span class="n">site</span><span class="p">,</span> <span class="n">times</span> <span class="ow">in</span> <span class="n">site_times</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+    <span class="n">cache</span> <span class="o">=</span> <span class="n">xr</span><span class="o">.</span><span class="n">open_zarr</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">site</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span><span class="si">}</span><span class="s2">-base-fp-x-flux.zarr&quot;</span><span class="p">)[</span>
+        <span class="s2">&quot;fp_x_flux_sectoral&quot;</span>
+    <span class="p">]</span><span class="o">.</span><span class="n">sel</span><span class="p">(</span><span class="n">source</span><span class="o">=</span><span class="n">sources</span><span class="p">,</span> <span class="n">time</span><span class="o">=</span><span class="n">times</span><span class="p">)</span>
+    <span class="c1"># Current verification-games caches store mole fractions with units</span>
+    <span class="c1"># &quot;1&quot;. Numerically convert them in that consumer before adaptation;</span>
+    <span class="c1"># changing metadata alone would be scientifically incorrect.</span>
+    <span class="k">if</span> <span class="n">cache</span><span class="o">.</span><span class="n">attrs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;units&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="s2">&quot;1&quot;</span><span class="p">:</span>
+        <span class="n">cache</span> <span class="o">=</span> <span class="p">(</span><span class="n">cache</span> <span class="o">*</span> <span class="mf">1e6</span><span class="p">)</span><span class="o">.</span><span class="n">assign_attrs</span><span class="p">({</span><span class="o">**</span><span class="n">cache</span><span class="o">.</span><span class="n">attrs</span><span class="p">,</span> <span class="s2">&quot;units&quot;</span><span class="p">:</span> <span class="s2">&quot;ppm&quot;</span><span class="p">})</span>
+    <span class="k">if</span> <span class="n">cache</span><span class="o">.</span><span class="n">attrs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;units&quot;</span><span class="p">)</span> <span class="o">!=</span> <span class="s2">&quot;ppm&quot;</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Normalize this cache numerically to ppm first.&quot;</span><span class="p">)</span>
+    <span class="c1"># Schematic placeholder for application-owned observation loading.</span>
+    <span class="n">observation</span> <span class="o">=</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">(</span>
+        <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">times</span><span class="o">.</span><span class="n">size</span><span class="p">),</span>
+        <span class="n">dims</span><span class="o">=</span><span class="s2">&quot;time&quot;</span><span class="p">,</span>
+        <span class="n">coords</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;time&quot;</span><span class="p">:</span> <span class="n">times</span><span class="p">},</span>
+        <span class="n">attrs</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;units&quot;</span><span class="p">:</span> <span class="s2">&quot;ppm&quot;</span><span class="p">},</span>
+    <span class="p">)</span>
+    <span class="n">site_data</span><span class="p">[</span><span class="n">site</span><span class="p">]</span> <span class="o">=</span> <span class="n">xr</span><span class="o">.</span><span class="n">Dataset</span><span class="p">(</span>
+        <span class="p">{</span>
+            <span class="s2">&quot;mf&quot;</span><span class="p">:</span> <span class="n">observation</span><span class="p">,</span>
+            <span class="s2">&quot;mf_error&quot;</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">ones_like</span><span class="p">(</span><span class="n">observation</span><span class="p">)</span><span class="o">.</span><span class="n">assign_attrs</span><span class="p">(</span><span class="n">units</span><span class="o">=</span><span class="s2">&quot;ppm&quot;</span><span class="p">),</span>
+            <span class="s2">&quot;mf_repeatability&quot;</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">ones_like</span><span class="p">(</span><span class="n">observation</span><span class="p">)</span><span class="o">.</span><span class="n">assign_attrs</span><span class="p">(</span><span class="n">units</span><span class="o">=</span><span class="s2">&quot;ppm&quot;</span><span class="p">),</span>
+            <span class="s2">&quot;mf_variability&quot;</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">observation</span><span class="p">)</span><span class="o">.</span><span class="n">assign_attrs</span><span class="p">(</span><span class="n">units</span><span class="o">=</span><span class="s2">&quot;ppm&quot;</span><span class="p">),</span>
+            <span class="s2">&quot;fp_x_flux_sectoral&quot;</span><span class="p">:</span> <span class="n">cache</span><span class="p">,</span>
+        <span class="p">}</span>
+    <span class="p">)</span>
+</pre></div>
+</div>
+<p>The public OpenGHG Inversions adapter begins here. It validates and projects
+the supplied site datasets; it does not acquire or normalize the upstream data.</p>
+<p>Adapt the application data with OpenGHG Inversions:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.basis.basis_functions</span><span class="w"> </span><span class="kn">import</span> <span class="n">BasisFunctions</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.inversion_data</span><span class="w"> </span><span class="kn">import</span> <span class="n">prepare_rhime_inputs_from_xarray</span>
+
+<span class="c1"># This retained artifact owns the basis operator, source-resolved reference</span>
+<span class="c1"># flux, state labels, and source order used for later reconstruction.</span>
+<span class="n">basis_functions</span> <span class="o">=</span> <span class="n">BasisFunctions</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="s2">&quot;base-country-basis.zarr&quot;</span><span class="p">)</span>
+<span class="n">prepared</span> <span class="o">=</span> <span class="n">prepare_rhime_inputs_from_xarray</span><span class="p">(</span>
+    <span class="n">site_data</span><span class="p">,</span>
+    <span class="n">basis_functions</span><span class="o">=</span><span class="n">basis_functions</span><span class="p">,</span>
+    <span class="n">averaging_period</span><span class="o">=</span><span class="s2">&quot;1h&quot;</span><span class="p">,</span>
+    <span class="n">min_error</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span>
+    <span class="n">start_date</span><span class="o">=</span><span class="s2">&quot;2021-01-01&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p>Optionally save a durable checkpoint so projection is not repeated when the
+prepared artifact is reopened:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.inversion_data</span><span class="w"> </span><span class="kn">import</span> <span class="n">RhimePreparedInputs</span>
+
+<span class="n">prepared</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="s2">&quot;base-prepared-inputs.zarr&quot;</span><span class="p">)</span>
+<span class="n">prepared</span> <span class="o">=</span> <span class="n">RhimePreparedInputs</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="s2">&quot;base-prepared-inputs.zarr&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Finally, construct and execute the OpenGHG Inversions run from the canonical
+prepared object:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">RhimeModelSpec</span><span class="p">,</span> <span class="n">SectorSpec</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">RhimeOutputSpec</span><span class="p">,</span>
+    <span class="n">RhimeRunSpec</span><span class="p">,</span>
+    <span class="n">RhimeSampler</span><span class="p">,</span>
+    <span class="n">run_rhime_from_prepared_inputs</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">sources</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;ocean&quot;</span><span class="p">,</span> <span class="s2">&quot;FF&quot;</span><span class="p">,</span> <span class="s2">&quot;GPP&quot;</span><span class="p">,</span> <span class="s2">&quot;TER&quot;</span><span class="p">]</span>
+<span class="n">sectors</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span>
+    <span class="n">SectorSpec</span><span class="p">(</span>
+        <span class="n">name</span><span class="o">=</span><span class="n">source</span><span class="p">,</span>
+        <span class="n">flux_source</span><span class="o">=</span><span class="n">source</span><span class="p">,</span>
+        <span class="n">x_prior</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;pdf&quot;</span><span class="p">:</span> <span class="s2">&quot;lognormal&quot;</span><span class="p">,</span> <span class="s2">&quot;mean&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> <span class="s2">&quot;stdev&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">},</span>
+        <span class="n">variable_suffix</span><span class="o">=</span><span class="n">source</span><span class="o">.</span><span class="n">lower</span><span class="p">(),</span>
+    <span class="p">)</span>
+    <span class="k">for</span> <span class="n">source</span> <span class="ow">in</span> <span class="n">sources</span>
+<span class="p">)</span>
+<span class="n">run_spec</span> <span class="o">=</span> <span class="n">RhimeRunSpec</span><span class="p">(</span>
+    <span class="n">start_date</span><span class="o">=</span><span class="s2">&quot;2021-01-01&quot;</span><span class="p">,</span>
+    <span class="n">end_date</span><span class="o">=</span><span class="s2">&quot;2021-01-05&quot;</span><span class="p">,</span>
+    <span class="n">sites</span><span class="o">=</span><span class="n">prepared</span><span class="o">.</span><span class="n">sites</span><span class="p">,</span>
+    <span class="n">averaging_period</span><span class="o">=</span><span class="n">prepared</span><span class="o">.</span><span class="n">averaging_period</span><span class="p">,</span>
+    <span class="n">model</span><span class="o">=</span><span class="n">RhimeModelSpec</span><span class="p">(</span>
+        <span class="n">species</span><span class="o">=</span><span class="s2">&quot;co2&quot;</span><span class="p">,</span>
+        <span class="n">domain</span><span class="o">=</span><span class="s2">&quot;EUROPE&quot;</span><span class="p">,</span>
+        <span class="n">sectors</span><span class="o">=</span><span class="n">sectors</span><span class="p">,</span>
+        <span class="n">sigma_freq</span><span class="o">=</span><span class="s2">&quot;monthly&quot;</span><span class="p">,</span>
+    <span class="p">),</span>
+    <span class="n">output</span><span class="o">=</span><span class="n">RhimeOutputSpec</span><span class="p">(</span><span class="n">output_format</span><span class="o">=</span><span class="s2">&quot;none&quot;</span><span class="p">),</span>
+    <span class="n">split_by_sectors</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">run_rhime_from_prepared_inputs</span><span class="p">(</span>
+    <span class="n">prepared_inputs</span><span class="o">=</span><span class="n">prepared</span><span class="p">,</span>
+    <span class="n">run_spec</span><span class="o">=</span><span class="n">run_spec</span><span class="p">,</span>
+    <span class="n">sampler</span><span class="o">=</span><span class="n">RhimeSampler</span><span class="p">(</span><span class="n">draws</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span> <span class="n">tune</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span> <span class="n">chains</span><span class="o">=</span><span class="mi">4</span><span class="p">),</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p>This adapter is an extension boundary for data acquisition and assembly, not a
+plugin interface for alternative RHIME models or likelihood components.</p>
+<p>Each site dataset must contain <code class="docutils literal notranslate"><span class="pre">mf</span></code>, <code class="docutils literal notranslate"><span class="pre">mf_error</span></code>, <code class="docutils literal notranslate"><span class="pre">mf_repeatability</span></code>,
+<code class="docutils literal notranslate"><span class="pre">mf_variability</span></code>, and either canonical <code class="docutils literal notranslate"><span class="pre">H</span></code> or cached <code class="docutils literal notranslate"><span class="pre">fp_x_flux</span></code> /
+<code class="docutils literal notranslate"><span class="pre">fp_x_flux_sectoral</span></code>. Cached fields are projected through the retained basis
+before ragged sites are gathered and are not copied into canonical inputs.
+Other time-aligned extension variables are retained. Non-time-dependent data
+variables are removed at this boundary rather than copied into every
+observation. The retained operator and prior/reference flux are carried into
+postprocessing; artifact provenance may be added to the returned basis value.</p>
+<p>The adapter treats every supplied row as an active observation. Each site
+therefore needs a nonempty, explicit, unique <code class="docutils literal notranslate"><span class="pre">datetime64</span></code> <code class="docutils literal notranslate"><span class="pre">time</span></code> coordinate
+with no <code class="docutils literal notranslate"><span class="pre">NaT</span></code> values. Valid non-monotonic input ordering is retained.
+Required observations, projected <code class="docutils literal notranslate"><span class="pre">H</span></code>, and optional sampled <code class="docutils literal notranslate"><span class="pre">H_bc</span></code> values
+must be finite. A site emptied by downstream input preparation is reported as
+an error instead of being silently removed. <code class="docutils literal notranslate"><span class="pre">min_error_per_site</span></code> defaults to
+<code class="docutils literal notranslate"><span class="pre">False</span></code>, matching the OpenGHG-backed RHIME preparation route; pass <code class="docutils literal notranslate"><span class="pre">True</span></code>
+to request per-site minimum errors.</p>
+<p><code class="docutils literal notranslate"><span class="pre">mf.units</span></code> must be a nonempty string. Every present concentration-valued
+field—observation-error components, canonical <code class="docutils literal notranslate"><span class="pre">H</span></code> or the selected cache,
+and <code class="docutils literal notranslate"><span class="pre">H_bc</span></code>—must declare the same exact unit string at every site. The
+adapter does not perform unit conversion; normalize equivalent spellings before
+calling it. Projected <code class="docutils literal notranslate"><span class="pre">H</span></code> inherits the selected cache units.</p>
+<p>Canonical <code class="docutils literal notranslate"><span class="pre">H</span></code> may use <code class="docutils literal notranslate"><span class="pre">(region,</span> <span class="pre">time)</span></code> for one source,
+<code class="docutils literal notranslate"><span class="pre">(region,</span> <span class="pre">time,</span> <span class="pre">source)</span></code> for multisource data with one shared basis, or a
+gathered state dimension with a <code class="docutils literal notranslate"><span class="pre">(source,</span> <span class="pre">region_in_source)</span></code> MultiIndex for
+source-specific ragged bases. Multisector inputs must carry source-resolved
+retained prior flux with the same source names and order as <code class="docutils literal notranslate"><span class="pre">H</span></code>;
+source-specific basis operators must match that order too. The adapter rejects
+a total retained flux for multisector inputs instead of broadcasting it across
+sectors. Labels on explicit <code class="docutils literal notranslate"><span class="pre">source</span></code> dimensions must be unique, nonempty
+Python or NumPy strings: bytes, numbers, duplicates, and implicit coercion are
+rejected. Repeated source values within the gathered
+<code class="docutils literal notranslate"><span class="pre">(source,</span> <span class="pre">region_in_source)</span></code> state MultiIndex are valid. Exact source order is
+preserved across the cache, canonical <code class="docutils literal notranslate"><span class="pre">H</span></code>, retained flux, and operator
+metadata. Ragged state blocks are concatenated with the modern gather helpers;
+the adapter never introduces rectangular zero padding. <code class="docutils literal notranslate"><span class="pre">H_bc</span></code> must contain
+exactly <code class="docutils literal notranslate"><span class="pre">time</span></code> and <code class="docutils literal notranslate"><span class="pre">bc_region</span></code> dimensions in either order.</p>
+<p>Release coordinates must be supplied as a pair. Stationary surface or column
+sites may use scalar or singleton <code class="docutils literal notranslate"><span class="pre">release_lat</span></code> and <code class="docutils literal notranslate"><span class="pre">release_lon</span></code> values;
+the adapter broadcasts them over that site’s observations for the PARIS
+template. Mobile platforms must supply both coordinates on exactly the site’s
+<code class="docutils literal notranslate"><span class="pre">time</span></code> dimension, in matching order. Partial, non-finite, or other coordinate
+layouts are rejected rather than flattened or inferred. If any retained site
+supplies release coordinates, every retained site must supply its pair.</p>
+<p>Dense padding, pre-stacked layouts, unit conversion, and coercion of source
+labels are intentionally deferred generalizations. They should be added only
+with a concrete consumer and explicit semantics rather than inferred by this
+adapter.</p>
+<p>Include <code class="docutils literal notranslate"><span class="pre">H_bc</span></code> for the existing sampled boundary-condition contribution. A
+deterministic observation-aligned <code class="docutils literal notranslate"><span class="pre">fixed_baseline</span></code> is deliberately rejected
+until a reusable semantic Baseline component defines common likelihood and
+output behavior; this follow-up is tracked in <a class="reference external" href="https://github.com/openghg/openghg_inversions/issues/550">issue #550</a>. New prepared-input
+features do not extend legacy HBMCMC model or output paths.</p>
 </section>
 <section id="config-files">
 <h2>Config Files<a class="headerlink" href="#config-files" title="Link to this heading">#</a></h2>
@@ -680,6 +933,7 @@ wrapper around <code class="docutils literal notranslate"><span class="pre">run_
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#python-api">Python API</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#running-prepared-inputs">Running Prepared Inputs</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#model-construction">Model Construction</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#source-neutral-xarray-preparation">Source-neutral xarray preparation</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#config-files">Config Files</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#generated-basis-functions">Generated Basis Functions</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#output-formats">Output Formats</a></li>

@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>openghg_inversions.sigma &#8212; openghg_inversions  documentation</title>
+    <title>openghg_inversions.serialization &#8212; openghg_inversions  documentation</title>
   
   
   
@@ -41,12 +41,12 @@
     <script src="../_static/documentation_options.js?v=5929fcd5"></script>
     <script src="../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
-    <script>DOCUMENTATION_OPTIONS.pagename = 'reference/openghg_inversions.sigma';</script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'reference/openghg_inversions.serialization';</script>
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="openghg_inversions.utils" href="openghg_inversions.utils.html" />
-    <link rel="prev" title="openghg_inversions.serialization" href="openghg_inversions.serialization.html" />
+    <link rel="next" title="openghg_inversions.sigma" href="openghg_inversions.sigma.html" />
+    <link rel="prev" title="openghg_inversions.model_error" href="openghg_inversions.model_error.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="" />
@@ -369,8 +369,8 @@
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.flux_sanitization.html">openghg_inversions.flux_sanitization</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.inversion_inputs.html">openghg_inversions.inversion_inputs</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.model_error.html">openghg_inversions.model_error</a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.serialization.html">openghg_inversions.serialization</a></li>
-<li class="toctree-l2 current active"><a class="current reference internal" href="#">openghg_inversions.sigma</a></li>
+<li class="toctree-l2 current active"><a class="current reference internal" href="#">openghg_inversions.serialization</a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.sigma.html">openghg_inversions.sigma</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.utils.html">openghg_inversions.utils</a></li>
 </ul>
 </details></li>
@@ -420,7 +420,7 @@
     
     <li class="breadcrumb-item"><a href="openghg_inversions.html" class="nav-link">openghg_inversions</a></li>
     
-    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">openghg_inversions.sigma</span></li>
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">openghg_inversions.serialization</span></li>
   </ul>
 </nav>
 </div>
@@ -437,140 +437,200 @@
 <div id="searchbox"></div>
                 <article class="bd-article">
                   
-  <section id="module-openghg_inversions.sigma">
-<span id="openghg-inversions-sigma"></span><h1>openghg_inversions.sigma<a class="headerlink" href="#module-openghg_inversions.sigma" title="Link to this heading">#</a></h1>
-<p>Represent observation-to-sigma alignment independently of model backends.</p>
-<p>The canonical site and period indexes are eager, non-negative integer vectors
-on <code class="docutils literal notranslate"><span class="pre">nmeasure</span></code>. They can be prepared once and consumed by PyMC or another
-inversion backend.</p>
-<dl class="py class">
-<dt class="sig sig-object py" id="openghg_inversions.sigma.SigmaAlignment">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">openghg_inversions.sigma.</span></span><span class="sig-name descname"><span class="pre">SigmaAlignment</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">site_index</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">period_index</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.sigma.SigmaAlignment" title="Link to this definition">#</a></dt>
-<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
-<p>Backend-neutral indexes mapping latent sigma values to observations.</p>
+  <section id="module-openghg_inversions.serialization">
+<span id="openghg-inversions-serialization"></span><h1>openghg_inversions.serialization<a class="headerlink" href="#module-openghg_inversions.serialization" title="Link to this heading">#</a></h1>
+<p>Shared serialization helpers for modern OpenGHG inversion artifacts.</p>
+<p>This module contains the storage mechanics shared by modern artifact
+containers. It saves and eagerly loads xarray <code class="docutils literal notranslate"><span class="pre">DataTree</span></code> objects, converts
+ArviZ <code class="docutils literal notranslate"><span class="pre">InferenceData</span></code> groups to and from trees, and expands pandas
+<code class="docutils literal notranslate"><span class="pre">MultiIndex</span></code> coordinates into representations supported by NetCDF and Zarr.</p>
+<p>Object-specific modules remain responsible for schema names, schema versions,
+required child nodes, and metadata validation. Prepared artifacts can use the
+CF compression-by-gathering convention through explicit encoding and decoding
+helpers. The older project-specific MultiIndex restoration remains deliberately
+forgiving so existing or partially malformed inversion-output artifacts remain
+loadable without reintroducing invalid indexes. Versioned schemas may request
+strict restoration, which rejects missing, malformed, empty, or inapplicable
+restoration metadata.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.serialization.decode_cf_multiindexes">
+<span class="sig-prename descclassname"><span class="pre">openghg_inversions.serialization.</span></span><span class="sig-name descname"><span class="pre">decode_cf_multiindexes</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ds</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">index_names</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Iterable" title="(in Python v3.14)"><span class="pre">Iterable</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></span><a class="headerlink" href="#openghg_inversions.serialization.decode_cf_multiindexes" title="Link to this definition">#</a></dt>
+<dd><p>Decode named CF gathering coordinates into pandas MultiIndexes.</p>
+<p>The requested coordinates and their <code class="docutils literal notranslate"><span class="pre">compress</span></code> metadata are validated
+before calling <code class="docutils literal notranslate"><span class="pre">cf_xarray</span></code>. Names are always explicit: this deliberately
+avoids <code class="docutils literal notranslate"><span class="pre">cf_xarray</span></code>’s auto-detection path, which can drop unrelated
+coordinates when no compressed indexes are present.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>site_index</strong> – Observation-aligned site positions.</p></li>
-<li><p><strong>period_index</strong> – Observation-aligned sigma-period positions.</p></li>
+<li><p><strong>ds</strong> – Dataset containing CF compression-by-gathering coordinates.</p></li>
+<li><p><strong>index_names</strong> – Explicit gathered-coordinate name or names to decode.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A new Dataset with the requested coordinates decoded as MultiIndexes.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If no names are supplied or a requested coordinate has
+    missing, malformed, ambiguous, or inapplicable CF <code class="docutils literal notranslate"><span class="pre">compress</span></code>
+    metadata.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.serialization.encode_cf_multiindexes">
+<span class="sig-prename descclassname"><span class="pre">openghg_inversions.serialization.</span></span><span class="sig-name descname"><span class="pre">encode_cf_multiindexes</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ds</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">index_names</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Iterable" title="(in Python v3.14)"><span class="pre">Iterable</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></span><a class="headerlink" href="#openghg_inversions.serialization.encode_cf_multiindexes" title="Link to this definition">#</a></dt>
+<dd><p>Encode named MultiIndexes using CF compression by gathering.</p>
+<p>This codec is intended for versioned prepared-input artifacts. Unlike
+<a class="reference internal" href="#openghg_inversions.serialization.reset_serialisation_multiindexes" title="openghg_inversions.serialization.reset_serialisation_multiindexes"><code class="xref py py-func docutils literal notranslate"><span class="pre">reset_serialisation_multiindexes()</span></code></a>, it emits the interoperable CF
+<code class="docutils literal notranslate"><span class="pre">compress</span></code> attribute and requires callers to name every index they intend
+to encode.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ds</strong> – Dataset containing the MultiIndex dimensions.</p></li>
+<li><p><strong>index_names</strong> – Explicit dimension name or names to encode.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A new Dataset with the requested MultiIndexes encoded as integer
+gathering coordinates.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If no names are supplied, a requested dimension is not a
+    named MultiIndex, level names are invalid or ambiguous, or existing
+    <code class="docutils literal notranslate"><span class="pre">compress</span></code> metadata would be overwritten.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.serialization.inferencedata_from_datatree">
+<span class="sig-prename descclassname"><span class="pre">openghg_inversions.serialization.</span></span><span class="sig-name descname"><span class="pre">inferencedata_from_datatree</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dt</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.7.0)"><span class="pre">DataTree</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">InferenceData</span></span></span><a class="headerlink" href="#openghg_inversions.serialization.inferencedata_from_datatree" title="Link to this definition">#</a></dt>
+<dd><p>Reconstruct ArviZ InferenceData from a group DataTree.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>dt</strong> – DataTree containing root attributes and one child dataset per
+InferenceData group.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Reconstructed InferenceData with root attributes and valid serialized
+MultiIndexes restored.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.serialization.inferencedata_to_datatree">
+<span class="sig-prename descclassname"><span class="pre">openghg_inversions.serialization.</span></span><span class="sig-name descname"><span class="pre">inferencedata_to_datatree</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">idata</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">InferenceData</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.7.0)"><span class="pre">DataTree</span></a></span></span><a class="headerlink" href="#openghg_inversions.serialization.inferencedata_to_datatree" title="Link to this definition">#</a></dt>
+<dd><p>Convert ArviZ InferenceData groups to a serializable DataTree.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>idata</strong> – InferenceData whose root attributes and groups should become
+the tree root and child nodes.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>DataTree containing the InferenceData root attributes and one child
+dataset per group.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.serialization.open_datatree_loaded">
+<span class="sig-prename descclassname"><span class="pre">openghg_inversions.serialization.</span></span><span class="sig-name descname"><span class="pre">open_datatree_loaded</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">file_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><span class="pre">Path</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.7.0)"><span class="pre">DataTree</span></a></span></span><a class="headerlink" href="#openghg_inversions.serialization.open_datatree_loaded" title="Link to this definition">#</a></dt>
+<dd><p>Open and eagerly load a DataTree artifact.</p>
+<p>NetCDF is first attempted with <code class="docutils literal notranslate"><span class="pre">h5netcdf</span></code> for compatibility with modern
+inversion outputs, then with xarray’s default engine. Loading happens while
+the file context is open, so the returned tree owns its data and does not
+retain references to closed file handles.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>file_path</strong> – NetCDF or Zarr DataTree artifact to load.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Fully loaded DataTree.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#OSError" title="(in Python v3.14)"><strong>OSError</strong></a> – If no backend can open the artifact.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#RuntimeError" title="(in Python v3.14)"><strong>RuntimeError</strong></a> – If opening fails due to a backend runtime error.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If no backend can interpret the artifact.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.serialization.reset_serialisation_multiindexes">
+<span class="sig-prename descclassname"><span class="pre">openghg_inversions.serialization.</span></span><span class="sig-name descname"><span class="pre">reset_serialisation_multiindexes</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ds</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></span><a class="headerlink" href="#openghg_inversions.serialization.reset_serialisation_multiindexes" title="Link to this definition">#</a></dt>
+<dd><p>Expand xarray MultiIndexes before DataTree serialization.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>ds</strong> – Dataset that may contain pandas MultiIndex dimensions.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Dataset with MultiIndexes reset and restoration metadata stored in an
+attribute. The input dataset is not modified.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If a MultiIndex level is unnamed and cannot be restored
+    unambiguously.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.serialization.restore_serialisation_multiindexes">
+<span class="sig-prename descclassname"><span class="pre">openghg_inversions.serialization.</span></span><span class="sig-name descname"><span class="pre">restore_serialisation_multiindexes</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ds</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">strict</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></span><a class="headerlink" href="#openghg_inversions.serialization.restore_serialisation_multiindexes" title="Link to this definition">#</a></dt>
+<dd><p>Restore valid MultiIndexes expanded during DataTree serialization.</p>
+<p>In the default non-strict mode, malformed restoration metadata is discarded
+instead of raising. This is a compatibility guarantee for existing
+<code class="docutils literal notranslate"><span class="pre">InversionOutput</span></code> artifacts: valid index records are restored, while
+invalid records leave their level coordinates expanded. Strict mode raises
+for missing, empty, malformed, or inapplicable records.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ds</strong> – Dataset that may carry <code class="docutils literal notranslate"><span class="pre">MULTIINDEX_DIMS_ATTR</span></code> metadata.</p></li>
+<li><p><strong>strict</strong> – Raise for malformed restoration metadata instead of leaving
+index levels expanded. Strict restoration also requires at least
+one recorded MultiIndex dimension. The default preserves forgiving
+historical inversion-output loading.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Dataset with valid recorded MultiIndexes restored and the private
+serialization attribute removed. The input dataset is not modified.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If <code class="docutils literal notranslate"><span class="pre">strict</span></code> is true and restoration metadata is malformed
+    or cannot be applied to the dataset.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.serialization.save_datatree">
+<span class="sig-prename descclassname"><span class="pre">openghg_inversions.serialization.</span></span><span class="sig-name descname"><span class="pre">save_datatree</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dt</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.7.0)"><span class="pre">DataTree</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_file</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><span class="pre">Path</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_format</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><span class="pre">Literal</span></a><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'netcdf'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'zarr'</span></span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span></span><a class="headerlink" href="#openghg_inversions.serialization.save_datatree" title="Link to this definition">#</a></dt>
+<dd><p>Save a DataTree to NetCDF or Zarr.</p>
+<p>This writes the tree, replacing an existing destination artifact.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>dt</strong> – DataTree to persist.</p></li>
+<li><p><strong>output_file</strong> – Requested artifact path. When <code class="docutils literal notranslate"><span class="pre">output_format</span></code> is
+supplied, the matching <code class="docutils literal notranslate"><span class="pre">.nc</span></code> or <code class="docutils literal notranslate"><span class="pre">.zarr</span></code> suffix is added or
+replaces an existing suffix as needed.</p></li>
+<li><p><strong>output_format</strong> – Storage format. When omitted, infer the format from an
+existing <code class="docutils literal notranslate"><span class="pre">.nc</span></code> or <code class="docutils literal notranslate"><span class="pre">.zarr</span></code> suffix.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Raises<span class="colon">:</span></dt>
-<dd class="field-even"><ul class="simple">
-<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#TypeError" title="(in Python v3.14)"><strong>TypeError</strong></a> – If an index is not an xarray DataArray.</p></li>
-<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If indexes are invalid or have incompatible coordinates.</p></li>
-</ul>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If the format cannot be inferred or is unsupported.</p>
 </dd>
 </dl>
-<dl class="py method">
-<dt class="sig sig-object py" id="openghg_inversions.sigma.SigmaAlignment.align">
-<span class="sig-name descname"><span class="pre">align</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sigma</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></span><a class="headerlink" href="#openghg_inversions.sigma.SigmaAlignment.align" title="Link to this definition">#</a></dt>
-<dd><p>Index latent sigma values onto observations.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>sigma</strong> – Values with <code class="docutils literal notranslate"><span class="pre">nsigma_site</span></code> and <code class="docutils literal notranslate"><span class="pre">nsigma_time</span></code> dimensions.</p>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">sigma_aligned</span></code> with latent dimensions replaced by <code class="docutils literal notranslate"><span class="pre">nmeasure</span></code>.</p>
-</dd>
-<dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If a required latent dimension is absent.</p></li>
-<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#IndexError" title="(in Python v3.14)"><strong>IndexError</strong></a> – If an alignment position is outside the latent array.</p></li>
-</ul>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="openghg_inversions.sigma.SigmaAlignment.from_frequency">
-<span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">from_frequency</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">site_indicator</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">frequency</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">per_site</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">anchor_time</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/datetime.html#datetime.datetime" title="(in Python v3.14)"><span class="pre">datetime</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://numpy.org/doc/stable/reference/arrays.scalars.html#numpy.datetime64" title="(in NumPy v2.5)"><span class="pre">datetime64</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Timestamp</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#openghg_inversions.sigma.SigmaAlignment" title="openghg_inversions.sigma.SigmaAlignment"><span class="pre">SigmaAlignment</span></a></span></span><a class="headerlink" href="#openghg_inversions.sigma.SigmaAlignment.from_frequency" title="Link to this definition">#</a></dt>
-<dd><p>Derive sigma alignment from site positions and observation times.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>site_indicator</strong> – Observation-aligned site positions.</p></li>
-<li><p><strong>frequency</strong> – Sigma period frequency. <code class="docutils literal notranslate"><span class="pre">None</span></code> creates one period.</p></li>
-<li><p><strong>per_site</strong> – Whether sigma varies by site.</p></li>
-<li><p><strong>anchor_time</strong> – Optional fixed-duration period anchor.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Canonical sigma alignment.</p>
-</dd>
-<dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If indexes or observation timestamps are invalid.</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="openghg_inversions.sigma.SigmaAlignment.from_indices">
-<span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">from_indices</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">site_index</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">period_index</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">per_site</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#openghg_inversions.sigma.SigmaAlignment" title="openghg_inversions.sigma.SigmaAlignment"><span class="pre">SigmaAlignment</span></a></span></span><a class="headerlink" href="#openghg_inversions.sigma.SigmaAlignment.from_indices" title="Link to this definition">#</a></dt>
-<dd><p>Build sigma alignment from explicit observation indexes.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>site_index</strong> – Observation-aligned site positions.</p></li>
-<li><p><strong>period_index</strong> – Observation-aligned sigma-period positions.</p></li>
-<li><p><strong>per_site</strong> – Whether sigma varies by site.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Canonical sigma alignment.</p>
-</dd>
-<dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#TypeError" title="(in Python v3.14)"><strong>TypeError</strong></a> – If an index is not an xarray DataArray.</p></li>
-<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If indexes are invalid or incompatible.</p></li>
-</ul>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="openghg_inversions.sigma.SigmaAlignment.from_model_data">
-<span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">from_model_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model_data</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#openghg_inversions.sigma.SigmaAlignment" title="openghg_inversions.sigma.SigmaAlignment"><span class="pre">SigmaAlignment</span></a></span></span><a class="headerlink" href="#openghg_inversions.sigma.SigmaAlignment.from_model_data" title="Link to this definition">#</a></dt>
-<dd><p>Restore alignment from canonical registered model data.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>model_data</strong> – Dataset containing <code class="docutils literal notranslate"><span class="pre">sigma_site_index</span></code> and
-<code class="docutils literal notranslate"><span class="pre">sigma_period_index</span></code>.</p>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Canonical sigma alignment.</p>
-</dd>
-<dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#KeyError" title="(in Python v3.14)"><strong>KeyError</strong></a> – If a required index variable is absent.</p></li>
-<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If stored indexes are invalid or incompatible.</p></li>
-</ul>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py property">
-<dt class="sig sig-object py" id="openghg_inversions.sigma.SigmaAlignment.nperiod">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">nperiod</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><a class="headerlink" href="#openghg_inversions.sigma.SigmaAlignment.nperiod" title="Link to this definition">#</a></dt>
-<dd><p>Number of latent period positions.</p>
-</dd></dl>
-
-<dl class="py property">
-<dt class="sig sig-object py" id="openghg_inversions.sigma.SigmaAlignment.nsite">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">nsite</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><a class="headerlink" href="#openghg_inversions.sigma.SigmaAlignment.nsite" title="Link to this definition">#</a></dt>
-<dd><p>Number of latent site positions.</p>
-</dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.sigma.SigmaAlignment.period_index">
-<span class="sig-name descname"><span class="pre">period_index</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span><a class="headerlink" href="#openghg_inversions.sigma.SigmaAlignment.period_index" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.sigma.SigmaAlignment.site_index">
-<span class="sig-name descname"><span class="pre">site_index</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span><a class="headerlink" href="#openghg_inversions.sigma.SigmaAlignment.site_index" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
 </dd></dl>
 
 </section>
@@ -586,20 +646,20 @@ inversion backend.</p>
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="openghg_inversions.serialization.html"
+       href="openghg_inversions.model_error.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">openghg_inversions.serialization</p>
+        <p class="prev-next-title">openghg_inversions.model_error</p>
       </div>
     </a>
     <a class="right-next"
-       href="openghg_inversions.utils.html"
+       href="openghg_inversions.sigma.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">openghg_inversions.utils</p>
+        <p class="prev-next-title">openghg_inversions.sigma</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -622,24 +682,21 @@ inversion backend.</p>
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.sigma.SigmaAlignment"><code class="docutils literal notranslate"><span class="pre">SigmaAlignment</span></code></a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.sigma.SigmaAlignment.align"><code class="docutils literal notranslate"><span class="pre">SigmaAlignment.align()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.sigma.SigmaAlignment.from_frequency"><code class="docutils literal notranslate"><span class="pre">SigmaAlignment.from_frequency()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.sigma.SigmaAlignment.from_indices"><code class="docutils literal notranslate"><span class="pre">SigmaAlignment.from_indices()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.sigma.SigmaAlignment.from_model_data"><code class="docutils literal notranslate"><span class="pre">SigmaAlignment.from_model_data()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.sigma.SigmaAlignment.nperiod"><code class="docutils literal notranslate"><span class="pre">SigmaAlignment.nperiod</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.sigma.SigmaAlignment.nsite"><code class="docutils literal notranslate"><span class="pre">SigmaAlignment.nsite</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.sigma.SigmaAlignment.period_index"><code class="docutils literal notranslate"><span class="pre">SigmaAlignment.period_index</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.sigma.SigmaAlignment.site_index"><code class="docutils literal notranslate"><span class="pre">SigmaAlignment.site_index</span></code></a></li>
-</ul>
-</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.serialization.decode_cf_multiindexes"><code class="docutils literal notranslate"><span class="pre">decode_cf_multiindexes()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.serialization.encode_cf_multiindexes"><code class="docutils literal notranslate"><span class="pre">encode_cf_multiindexes()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.serialization.inferencedata_from_datatree"><code class="docutils literal notranslate"><span class="pre">inferencedata_from_datatree()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.serialization.inferencedata_to_datatree"><code class="docutils literal notranslate"><span class="pre">inferencedata_to_datatree()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.serialization.open_datatree_loaded"><code class="docutils literal notranslate"><span class="pre">open_datatree_loaded()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.serialization.reset_serialisation_multiindexes"><code class="docutils literal notranslate"><span class="pre">reset_serialisation_multiindexes()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.serialization.restore_serialisation_multiindexes"><code class="docutils literal notranslate"><span class="pre">restore_serialisation_multiindexes()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.serialization.save_datatree"><code class="docutils literal notranslate"><span class="pre">save_datatree()</span></code></a></li>
 </ul>
   </nav></div>
 
   <div class="sidebar-secondary-item">
 
   <div class="tocsection sourcelink">
-    <a href="../_sources/reference/openghg_inversions.sigma.rst.txt">
+    <a href="../_sources/reference/openghg_inversions.serialization.rst.txt">
       <i class="fa-solid fa-file-lines"></i> Show Source
     </a>
   </div>

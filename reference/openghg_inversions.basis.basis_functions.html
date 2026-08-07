@@ -332,6 +332,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.preparation.html">openghg_inversions.inversion_data.preparation</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.scenario.html">openghg_inversions.inversion_data.scenario</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.serialise.html">openghg_inversions.inversion_data.serialise</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.xarray_adapter.html">openghg_inversions.inversion_data.xarray_adapter</a></li>
 </ul>
 </details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.models.html">openghg_inversions.models</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
@@ -368,6 +369,7 @@
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.flux_sanitization.html">openghg_inversions.flux_sanitization</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.inversion_inputs.html">openghg_inversions.inversion_inputs</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.model_error.html">openghg_inversions.model_error</a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.serialization.html">openghg_inversions.serialization</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.sigma.html">openghg_inversions.sigma</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.utils.html">openghg_inversions.utils</a></li>
 </ul>
@@ -440,12 +442,27 @@
                   
   <section id="module-openghg_inversions.basis.basis_functions">
 <span id="openghg-inversions-basis-basis-functions"></span><h1>openghg_inversions.basis.basis_functions<a class="headerlink" href="#module-openghg_inversions.basis.basis_functions" title="Link to this heading">#</a></h1>
-<p>BasisFunctions object to encapsulate representation of basis.</p>
-<p>Example usage:</p>
-<p>&gt;&gt; def apply_basis_functions(ds: xr.Dataset, bf: BasisFunctions) -&gt; xr.Dataset:
-&gt;&gt;     if “fp_x_flux” not in ds:
-&gt;&gt;         return ds
-&gt;&gt;     return bf.sensitivity(ds.fp_x_flux).rename(“H”).to_dataset()</p>
+<p>Flux-weighted basis objects and their durable representation.</p>
+<p><code class="docutils literal notranslate"><span class="pre">FluxWeightedBasis</span></code> (also exported as <code class="docutils literal notranslate"><span class="pre">BasisFunctions</span></code>) pairs a retained
+flux field with a basis operator. The operator owns the grid-to-state mapping,
+including region and optional source ordering; the flux remains separate so
+the same object can project sensitivities and reconstruct gridded fluxes.</p>
+<p>NetCDF and Zarr persistence uses a versioned DataTree with separate <code class="docutils literal notranslate"><span class="pre">basis</span></code>
+and <code class="docutils literal notranslate"><span class="pre">flux</span></code> children. Only namespaced OpenGHG Inversions metadata is retained.
+Loading reconstructs the operator and preserves its grid, state, region, and
+source coordinates. A shared flux may omit the source dimension; when source
+labels are present, they must exactly match the operator’s labels.
+Source-specific flux arrays are stacked only when their native time indexes
+match exactly; callers must explicitly resample heterogeneous frequencies
+first.</p>
+<p class="rubric">Example</p>
+<p>Project a cached footprint-times-flux field into state space:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">apply_basis_functions</span><span class="p">(</span><span class="n">ds</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">Dataset</span><span class="p">,</span> <span class="n">bf</span><span class="p">:</span> <span class="n">BasisFunctions</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">xr</span><span class="o">.</span><span class="n">Dataset</span><span class="p">:</span>
+    <span class="k">if</span> <span class="s2">&quot;fp_x_flux&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">ds</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">ds</span>
+    <span class="k">return</span> <span class="n">bf</span><span class="o">.</span><span class="n">sensitivity</span><span class="p">(</span><span class="n">ds</span><span class="o">.</span><span class="n">fp_x_flux</span><span class="p">)</span><span class="o">.</span><span class="n">rename</span><span class="p">(</span><span class="s2">&quot;H&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">to_dataset</span><span class="p">()</span>
+</pre></div>
+</div>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="openghg_inversions.basis.basis_functions.BasisFunctions">
 <span class="sig-prename descclassname"><span class="pre">openghg_inversions.basis.basis_functions.</span></span><span class="sig-name descname"><span class="pre">BasisFunctions</span></span><a class="headerlink" href="#openghg_inversions.basis.basis_functions.BasisFunctions" title="Link to this definition">#</a></dt>
@@ -539,7 +556,9 @@ operator.</p>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#KeyError" title="(in Python v3.14)"><strong>KeyError</strong></a> – If required groups are missing.</p></li>
-<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If schema/version mismatch or flux variable missing.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If the schema/version is unsupported, the flux
+    variable is missing, or stored multi-source flux labels do not
+    match the basis operator.</p></li>
 </ul>
 </dd>
 </dl>
@@ -579,14 +598,21 @@ as <cite>time</cite> or <cite>source</cite>; these will be carried along by down
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>basis_flat</strong> – Mapping from source name to that source’s flattened basis labels on the grid.
 Each value should be a DataArray on the inversion grid (e.g. dims like (lat, lon)).</p></li>
-<li><p><strong>flux</strong> – Flux on the inversion grid. Commonly has a <cite>source</cite> dimension coordinate matching
-the keys of <cite>basis_flat</cite>, but this is not required at construction time.</p></li>
+<li><p><strong>flux</strong> – Flux on the inversion grid. A shared DataArray may omit the
+<code class="docutils literal notranslate"><span class="pre">source</span></code> dimension. When <code class="docutils literal notranslate"><span class="pre">source</span></code> is present, its unique
+labels must match <code class="docutils literal notranslate"><span class="pre">basis_flat</span></code>. A mapping is stacked along
+<code class="docutils literal notranslate"><span class="pre">source</span></code> after requiring identical time indexes.</p></li>
 <li><p><strong>operator_kwargs</strong> – Optional kwargs forwarded to <cite>MultiSourceBucketBasisOperator</cite>.</p></li>
 <li><p><strong>metadata</strong> – Optional namespaced metadata to carry on the basis object.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>A FluxWeightedBasis pairing a MultiSourceBucketBasisOperator with the provided flux.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If present flux source labels are duplicated or do not
+    match the basis operator, or mapped fluxes have incompatible
+    time indexes.</p>
 </dd>
 </dl>
 </dd></dl>
@@ -622,6 +648,15 @@ file handles.</p>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>The reconstructed basis object.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#OSError" title="(in Python v3.14)"><strong>OSError</strong></a> – If the artifact cannot be opened.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#KeyError" title="(in Python v3.14)"><strong>KeyError</strong></a> – If a required DataTree group or basis variable is
+    missing.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If the serialized schema, metadata, labels, or
+    operator state is invalid.</p></li>
+</ul>
 </dd>
 </dl>
 </dd></dl>
@@ -715,6 +750,21 @@ May contain extra dims (e.g. time, site, source).</p></li>
 </dl>
 </dd></dl>
 
+<dl class="py property">
+<dt class="sig sig-object py" id="openghg_inversions.basis.basis_functions.FluxWeightedBasis.source_labels">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">source_labels</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><a class="headerlink" href="#openghg_inversions.basis.basis_functions.FluxWeightedBasis.source_labels" title="Link to this definition">#</a></dt>
+<dd><p>Return the authoritative source labels when this basis is source-aware.</p>
+<p>Source-specific operators own their source order. A shared operator may
+instead obtain source labels from its retained flux. A completely
+source-independent basis returns <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Ordered source labels, or <code class="docutils literal notranslate"><span class="pre">None</span></code> when neither the operator nor
+flux is source-indexed.</p>
+</dd>
+</dl>
+</dd></dl>
+
 <dl class="py method">
 <dt class="sig sig-object py" id="openghg_inversions.basis.basis_functions.FluxWeightedBasis.to_datatree">
 <span class="sig-name descname"><span class="pre">to_datatree</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.7.0)"><span class="pre">DataTree</span></a></span></span><a class="headerlink" href="#openghg_inversions.basis.basis_functions.FluxWeightedBasis.to_datatree" title="Link to this definition">#</a></dt>
@@ -730,8 +780,17 @@ May contain extra dims (e.g. time, site, source).</p></li>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p>A DataTree with</p>
 </dd>
-<dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#KeyError" title="(in Python v3.14)"><strong>KeyError</strong></a> – If serialisation would overwrite an existing group name.</p>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.basis.basis_functions.FluxWeightedBasis.validated">
+<span class="sig-name descname"><span class="pre">validated</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Self" title="(in Python v3.14)"><span class="pre">Self</span></a></span></span><a class="headerlink" href="#openghg_inversions.basis.basis_functions.FluxWeightedBasis.validated" title="Link to this definition">#</a></dt>
+<dd><p>Return a copy that revalidates mutable xarray-backed state.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>A basis object reconstructed from the current operator, flux, and
+metadata values.</p>
 </dd>
 </dl>
 </dd></dl>
@@ -788,11 +847,14 @@ optional <code class="docutils literal notranslate"><span class="pre">fp_all[&qu
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>A combined flux array for non-sectoral workflows, or a source-stacked
-flux array for sectoral workflows.</p>
+flux array for sectoral workflows. Source-stacked output follows the
+insertion order of <code class="docutils literal notranslate"><span class="pre">fp_all[&quot;.flux&quot;]</span></code>.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If <code class="docutils literal notranslate"><span class="pre">fp_all[&quot;.flux&quot;]</span></code> is missing or empty.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If <code class="docutils literal notranslate"><span class="pre">fp_all[&quot;.flux&quot;]</span></code> is missing or empty, or a sectoral
+    source mapping mixes timed and timeless arrays or contains unequal,
+    missing, or duplicate native time coordinates.</p></li>
 <li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#TypeError" title="(in Python v3.14)"><strong>TypeError</strong></a> – If a flux entry cannot be converted to a <code class="docutils literal notranslate"><span class="pre">DataArray</span></code>.</p></li>
 </ul>
 </dd>
@@ -866,7 +928,9 @@ flux array for sectoral workflows.</p>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.basis_functions.FluxWeightedBasis.save"><code class="docutils literal notranslate"><span class="pre">FluxWeightedBasis.save()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.basis_functions.FluxWeightedBasis.select_sources"><code class="docutils literal notranslate"><span class="pre">FluxWeightedBasis.select_sources()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.basis_functions.FluxWeightedBasis.sensitivity"><code class="docutils literal notranslate"><span class="pre">FluxWeightedBasis.sensitivity()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.basis_functions.FluxWeightedBasis.source_labels"><code class="docutils literal notranslate"><span class="pre">FluxWeightedBasis.source_labels</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.basis_functions.FluxWeightedBasis.to_datatree"><code class="docutils literal notranslate"><span class="pre">FluxWeightedBasis.to_datatree()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.basis_functions.FluxWeightedBasis.validated"><code class="docutils literal notranslate"><span class="pre">FluxWeightedBasis.validated()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.basis_functions.FluxWeightedBasis.with_flux"><code class="docutils literal notranslate"><span class="pre">FluxWeightedBasis.with_flux()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.basis_functions.FluxWeightedBasis.with_metadata"><code class="docutils literal notranslate"><span class="pre">FluxWeightedBasis.with_metadata()</span></code></a></li>
 </ul>

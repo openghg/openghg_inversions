@@ -45,7 +45,7 @@
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="openghg_inversions.models" href="openghg_inversions.models.html" />
+    <link rel="next" title="openghg_inversions.inversion_data.xarray_adapter" href="openghg_inversions.inversion_data.xarray_adapter.html" />
     <link rel="prev" title="openghg_inversions.inversion_data.scenario" href="openghg_inversions.inversion_data.scenario.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
@@ -332,6 +332,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.preparation.html">openghg_inversions.inversion_data.preparation</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.scenario.html">openghg_inversions.inversion_data.scenario</a></li>
 <li class="toctree-l3 current active"><a class="current reference internal" href="#">openghg_inversions.inversion_data.serialise</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.xarray_adapter.html">openghg_inversions.inversion_data.xarray_adapter</a></li>
 </ul>
 </details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.models.html">openghg_inversions.models</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
@@ -368,6 +369,7 @@
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.flux_sanitization.html">openghg_inversions.flux_sanitization</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.inversion_inputs.html">openghg_inversions.inversion_inputs</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.model_error.html">openghg_inversions.model_error</a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.serialization.html">openghg_inversions.serialization</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.sigma.html">openghg_inversions.sigma</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.utils.html">openghg_inversions.utils</a></li>
 </ul>
@@ -530,7 +532,10 @@ the data variable attributes differently.</p>
 <span class="sig-prename descclassname"><span class="pre">openghg_inversions.inversion_data.serialise.</span></span><span class="sig-name descname"><span class="pre">fp_all_from_dataset</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ds</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a></span></span><a class="headerlink" href="#openghg_inversions.inversion_data.serialise.fp_all_from_dataset" title="Link to this definition">#</a></dt>
 <dd><p>Recover “fp_all” dictionary from “combined scenario” dataset.</p>
 <p>This is the inverse of <cite>make_combined_scenario</cite>, except that the attributes of the
-scenarios, fluxes, and boundary conditions may be different.</p>
+scenarios, fluxes, and boundary conditions may be different. New datasets
+retain source timestamps on <code class="docutils literal notranslate"><span class="pre">flux_time</span></code> with explicit source presence;
+older datasets without that metadata use value-based padding removal or
+fall back to the first observation time for compatibility.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><p><strong>ds</strong> – dataset created by <cite>make_combined_scenario</cite></p>
@@ -582,10 +587,20 @@ loaded before the zip file is closed.</p>
 <dt class="sig sig-object py" id="openghg_inversions.inversion_data.serialise.make_combined_scenario">
 <span class="sig-prename descclassname"><span class="pre">openghg_inversions.inversion_data.serialise.</span></span><span class="sig-name descname"><span class="pre">make_combined_scenario</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fp_all</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></span><a class="headerlink" href="#openghg_inversions.inversion_data.serialise.make_combined_scenario" title="Link to this definition">#</a></dt>
 <dd><p>Combine scenarios and merge in fluxes and boundary conditions.</p>
-<p>If fluxes and boundary conditions only have one coordinate for their
-“time” dimension, then “time” will be dropped.</p>
-<p>Otherwise, it is assumed that the time axis for fluxes and boundary conditions
-have the same length as the time axis for the model scenarios.</p>
+<p>Flux time coordinates are stored on a separate <code class="docutils literal notranslate"><span class="pre">flux_time</span></code> dimension,
+with explicit per-source timestamp presence, so that source periods
+beginning before the observations and all-NaN slices are preserved.
+Singleton boundary-condition time dimensions are still dropped.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>fp_all</strong> – Inversion data keyed by site, with flux sources under
+<code class="docutils literal notranslate"><span class="pre">&quot;.flux&quot;</span></code> and optional boundary conditions under <code class="docutils literal notranslate"><span class="pre">&quot;.bc&quot;</span></code>.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A combined dataset containing site scenarios, source-specific flux
+periods, and optional boundary conditions.</p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py function">
@@ -615,11 +630,11 @@ have the same length as the time axis for the model scenarios.</p>
       </div>
     </a>
     <a class="right-next"
-       href="openghg_inversions.models.html"
+       href="openghg_inversions.inversion_data.xarray_adapter.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">openghg_inversions.models</p>
+        <p class="prev-next-title">openghg_inversions.inversion_data.xarray_adapter</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>

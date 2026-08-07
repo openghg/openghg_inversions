@@ -332,6 +332,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.preparation.html">openghg_inversions.inversion_data.preparation</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.scenario.html">openghg_inversions.inversion_data.scenario</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.serialise.html">openghg_inversions.inversion_data.serialise</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.xarray_adapter.html">openghg_inversions.inversion_data.xarray_adapter</a></li>
 </ul>
 </details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.models.html">openghg_inversions.models</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
@@ -368,6 +369,7 @@
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.flux_sanitization.html">openghg_inversions.flux_sanitization</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.inversion_inputs.html">openghg_inversions.inversion_inputs</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.model_error.html">openghg_inversions.model_error</a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.serialization.html">openghg_inversions.serialization</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.sigma.html">openghg_inversions.sigma</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.utils.html">openghg_inversions.utils</a></li>
 </ul>
@@ -449,7 +451,7 @@
 - Flux weighting (multiplying by flux on the grid, interpolation to maps, covariance transforms)</p>
 <blockquote>
 <div><dl class="simple">
-<dt>is handled by a separate wrapper class (planned: FluxWeightedBasis) so that:</dt><dd><ul class="simple">
+<dt>is handled by <code class="docutils literal notranslate"><span class="pre">FluxWeightedBasis</span></code> so that:</dt><dd><ul class="simple">
 <li><p>sensitivity(fp_x_flux) does not require flux (since fp_x_flux is already precomputed),</p></li>
 <li><p>but flux-aware operations remain available when needed.</p></li>
 </ul>
@@ -461,18 +463,22 @@
 - Operators expose a single state dimension (default name: “state”).
 - In multisource/multisector cases with ragged per-source region counts, the state coordinate</p>
 <blockquote>
-<div><p>becomes a MultiIndex over (source, region_in_source). This avoids padding with zeros.</p>
+<div><p>becomes a ragged MultiIndex over (source, region_in_source). This avoids padding with zeros.</p>
 </div></blockquote>
 </li>
 <li><p>Minimal metadata (BasisMeta).
 - We only need to know which dims to dot over (grid_dims) and the state_dim name.
-- Any special alignment hacks are implemented in concrete subclasses rather than inferred from metadata.</p></li>
+- Source-labeled arrays are aligned against the state MultiIndex by concrete</p>
+<blockquote>
+<div><p>subclasses rather than inferred from metadata.</p>
+</div></blockquote>
+</li>
 <li><p>Serialization via xarray.DataTree.
 - BasisOperator.to_datatree() returns a self-describing DataTree with schema/kind/version attrs.
 - BasisOperator.decode_datatree(dt) dispatches to the correct registered subclass based on dt.attrs[“kind”].
-- For multisource operators, the canonical serialized representation stores per-source flat basis arrays</p>
+- For multisource operators, the canonical serialized representation stores one source-labelled</p>
 <blockquote>
-<div><p>under dt[“basis_flat”][&lt;source&gt;], keeping storage compact and natural.</p>
+<div><p><cite>basis_flat</cite> array. Readers retain compatibility with the earlier per-source child layout.</p>
 </div></blockquote>
 </li>
 </ol>
@@ -491,9 +497,9 @@ op = MultiSourceBucketBasisOperator({“a”: bf_a, “b”: bf_b})   # ragged m
 </dd>
 </dl>
 <p>where fp_x_flux is an xarray.DataArray with at least the grid dims (lat, lon), and typically time.
-In multisource workflows, fp_x_flux often has a separate dimension “source”. The multisource operator
-implements an alignment/broadcast hack so that the fp_x_flux source dimension can be matched against
-the MultiIndex level “source” stored on the state coordinate.</p>
+In multisource workflows, fp_x_flux often has a separate dimension “source”.
+The multisource operator aligns those labels against the “source” level of
+the state MultiIndex.</p>
 </li>
 <li><dl class="simple">
 <dt>Serialize/deserialize:</dt><dd><p>dt = op.to_datatree()
@@ -705,6 +711,13 @@ information to allow round-tripping via <cite>BasisOperator.decode_datatree()</c
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>A reconstructed <cite>BucketBasisOperator</cite>.</p>
 </dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#KeyError" title="(in Python v3.14)"><strong>KeyError</strong></a> – If the serialized <code class="docutils literal notranslate"><span class="pre">basis_flat</span></code> variable is missing.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If serialized labels, metadata, or state coordinates
+    are invalid.</p></li>
+</ul>
+</dd>
 </dl>
 </dd></dl>
 
@@ -751,7 +764,8 @@ to reconstruct the operator.</p>
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">openghg_inversions.basis.operators.</span></span><span class="sig-name descname"><span class="pre">MultiSourceBucketBasisOperator</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">basis_flat</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">meta</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#openghg_inversions.basis.operators.BasisMeta" title="openghg_inversions.basis.operators.BasisMeta"><span class="pre">BasisMeta</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">source_dim</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'source'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">region_in_source_dim</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'region_in_source'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">state_dim</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">chunks</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator" title="Link to this definition">#</a></dt>
 <dd><p>Bases: <a class="reference internal" href="#openghg_inversions.basis.operators.BasisOperator" title="openghg_inversions.basis.operators.BasisOperator"><code class="xref py py-class docutils literal notranslate"><span class="pre">BasisOperator</span></code></a></p>
 <p>Multiple flat bases keyed by source, with potentially ragged region counts.</p>
-<p>Canonical state_dim is a gathered MultiIndex over (source, region_in_source).</p>
+<p>The canonical state dimension is a ragged MultiIndex over
+<code class="docutils literal notranslate"><span class="pre">(source,</span> <span class="pre">region_in_source)</span></code>.</p>
 <dl class="py property">
 <dt class="sig sig-object py" id="openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.basis_matrix">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">basis_matrix</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span><a class="headerlink" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.basis_matrix" title="Link to this definition">#</a></dt>
@@ -767,7 +781,16 @@ to reconstruct the operator.</p>
 <dd class="field-odd"><p><strong>dt</strong> – DataTree produced by <cite>MultiSourceBucketBasisOperator.to_datatree()</cite>.</p>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>A reconstructed <cite>MultiSourceBucketBasisOperator</cite>.</p>
+<dd class="field-even"><p>A reconstructed <cite>MultiSourceBucketBasisOperator</cite>. The canonical
+representation obtains order from the <code class="docutils literal notranslate"><span class="pre">source</span></code> coordinate.
+Earlier per-source child artifacts remain readable; for those,
+legacy <code class="docutils literal notranslate"><span class="pre">source_order</span></code> metadata controls insertion/state order
+when present.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If required basis data or source coordinates are
+    missing, or legacy source-order metadata is malformed or
+    inconsistent with stored source children.</p>
 </dd>
 </dl>
 </dd></dl>
@@ -839,15 +862,31 @@ operator. If omitted, the per-source region dimension is used.</p></li>
 <p>Overrides base method to broadcast the fp_x_flux <cite>source</cite> dim onto the gathered <cite>state</cite> dim.</p>
 </dd></dl>
 
+<dl class="py property">
+<dt class="sig sig-object py" id="openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.source_labels">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">source_labels</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.source_labels" title="Link to this definition">#</a></dt>
+<dd><p>Return canonical source labels in operator/state insertion order.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Source labels in the same order used by <code class="docutils literal notranslate"><span class="pre">basis_flat</span></code> and the
+ragged state MultiIndex.</p>
+</dd>
+</dl>
+</dd></dl>
+
 <dl class="py method">
 <dt class="sig sig-object py" id="openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.to_datatree">
 <span class="sig-name descname"><span class="pre">to_datatree</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.7.0)"><span class="pre">DataTree</span></a></span></span><a class="headerlink" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.to_datatree" title="Link to this definition">#</a></dt>
 <dd><p>Serialises the multisource operator to a DataTree.</p>
-<p>The returned DataTree stores per-source <cite>basis_flat</cite> arrays as children under
-<cite>dt[“basis_flat”][&lt;source&gt;]</cite>.</p>
+<p>The returned DataTree stores one source-labelled <code class="docutils literal notranslate"><span class="pre">basis_flat</span></code> array.
+Its source coordinate is the sole source-order representation, avoiding
+source names in storage paths and redundant JSON metadata.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Returns<span class="colon">:</span></dt>
 <dd class="field-odd"><p>DataTree representation of the operator.</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If source bases do not have compatible labeled grids.</p>
 </dd>
 </dl>
 </dd></dl>
@@ -1001,6 +1040,7 @@ string (stored in <cite>dt.attrs[“kind”]</cite>) to a concrete <cite>BasisOp
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.meta"><code class="docutils literal notranslate"><span class="pre">MultiSourceBucketBasisOperator.meta</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.operator_for_source"><code class="docutils literal notranslate"><span class="pre">MultiSourceBucketBasisOperator.operator_for_source()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.sensitivity"><code class="docutils literal notranslate"><span class="pre">MultiSourceBucketBasisOperator.sensitivity()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.source_labels"><code class="docutils literal notranslate"><span class="pre">MultiSourceBucketBasisOperator.source_labels</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator.to_datatree"><code class="docutils literal notranslate"><span class="pre">MultiSourceBucketBasisOperator.to_datatree()</span></code></a></li>
 </ul>
 </li>

@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>openghg_inversions.inversion_data.scenario &#8212; openghg_inversions  documentation</title>
+    <title>openghg_inversions.inversion_data.xarray_adapter &#8212; openghg_inversions  documentation</title>
   
   
   
@@ -41,12 +41,12 @@
     <script src="../_static/documentation_options.js?v=5929fcd5"></script>
     <script src="../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
-    <script>DOCUMENTATION_OPTIONS.pagename = 'reference/openghg_inversions.inversion_data.scenario';</script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'reference/openghg_inversions.inversion_data.xarray_adapter';</script>
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="openghg_inversions.inversion_data.serialise" href="openghg_inversions.inversion_data.serialise.html" />
-    <link rel="prev" title="openghg_inversions.inversion_data.preparation" href="openghg_inversions.inversion_data.preparation.html" />
+    <link rel="next" title="openghg_inversions.models" href="openghg_inversions.models.html" />
+    <link rel="prev" title="openghg_inversions.inversion_data.serialise" href="openghg_inversions.inversion_data.serialise.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="" />
@@ -330,9 +330,9 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.get_data.html">openghg_inversions.inversion_data.get_data</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.getters.html">openghg_inversions.inversion_data.getters</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.preparation.html">openghg_inversions.inversion_data.preparation</a></li>
-<li class="toctree-l3 current active"><a class="current reference internal" href="#">openghg_inversions.inversion_data.scenario</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.scenario.html">openghg_inversions.inversion_data.scenario</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.serialise.html">openghg_inversions.inversion_data.serialise</a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.xarray_adapter.html">openghg_inversions.inversion_data.xarray_adapter</a></li>
+<li class="toctree-l3 current active"><a class="current reference internal" href="#">openghg_inversions.inversion_data.xarray_adapter</a></li>
 </ul>
 </details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.models.html">openghg_inversions.models</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
@@ -423,7 +423,7 @@
     
     <li class="breadcrumb-item"><a href="openghg_inversions.inversion_data.html" class="nav-link">openghg_inversions.inversion_data</a></li>
     
-    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">openghg_inversions.inversion_data.scenario</span></li>
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">openghg_inversions.inversion_data.xarray_adapter</span></li>
   </ul>
 </nav>
 </div>
@@ -440,31 +440,118 @@
 <div id="searchbox"></div>
                 <article class="bd-article">
                   
-  <section id="module-openghg_inversions.inversion_data.scenario">
-<span id="openghg-inversions-inversion-data-scenario"></span><h1>openghg_inversions.inversion_data.scenario<a class="headerlink" href="#module-openghg_inversions.inversion_data.scenario" title="Link to this heading">#</a></h1>
-<p>Build one surface or column OpenGHG model scenario.</p>
-<p><code class="docutils literal notranslate"><span class="pre">merged_scenario_data</span></code> forwards a shared <code class="docutils literal notranslate"><span class="pre">output_units</span></code> target so fresh
-multi-site retrieval delegates unit conversion to OpenGHG itself.</p>
+  <section id="module-openghg_inversions.inversion_data.xarray_adapter">
+<span id="openghg-inversions-inversion-data-xarray-adapter"></span><h1>openghg_inversions.inversion_data.xarray_adapter<a class="headerlink" href="#module-openghg_inversions.inversion_data.xarray_adapter" title="Link to this heading">#</a></h1>
+<p>Adapt source-neutral xarray data to the canonical RHIME input contract.</p>
+<p>The public <a class="reference internal" href="#openghg_inversions.inversion_data.xarray_adapter.prepare_rhime_inputs_from_xarray" title="openghg_inversions.inversion_data.xarray_adapter.prepare_rhime_inputs_from_xarray"><code class="xref py py-func docutils literal notranslate"><span class="pre">prepare_rhime_inputs_from_xarray()</span></code></a> adapter starts after data
+acquisition. It accepts site data already held in xarray objects, applies a
+retained <a class="reference internal" href="openghg_inversions.basis.basis_functions.html#openghg_inversions.basis.basis_functions.BasisFunctions" title="openghg_inversions.basis.basis_functions.BasisFunctions"><code class="xref py py-class docutils literal notranslate"><span class="pre">BasisFunctions</span></code></a>
+object when only footprint-times-flux caches are available, and returns the
+same <a class="reference internal" href="openghg_inversions.inversion_data.preparation.html#openghg_inversions.inversion_data.preparation.RhimePreparedInputs" title="openghg_inversions.inversion_data.preparation.RhimePreparedInputs"><code class="xref py py-class docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code></a>
+contract used by the OpenGHG-backed preparation path.</p>
+<p>Each site-local input dataset must contain a <code class="docutils literal notranslate"><span class="pre">time</span></code> dimension and the
+observation variables required by
+<a class="reference internal" href="openghg_inversions.inversion_inputs.html#openghg_inversions.inversion_inputs.make_inv_inputs" title="openghg_inversions.inversion_inputs.make_inv_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.inversion_inputs.make_inv_inputs()</span></code></a>:
+<code class="docutils literal notranslate"><span class="pre">mf</span></code>, <code class="docutils literal notranslate"><span class="pre">mf_error</span></code>, <code class="docutils literal notranslate"><span class="pre">mf_repeatability</span></code>, and <code class="docutils literal notranslate"><span class="pre">mf_variability</span></code>. They must
+also contain either canonical <code class="docutils literal notranslate"><span class="pre">H</span></code> or one of <code class="docutils literal notranslate"><span class="pre">fp_x_flux</span></code> and
+<code class="docutils literal notranslate"><span class="pre">fp_x_flux_sectoral</span></code>. When both cache variables are present, the explicitly
+sector-resolved <code class="docutils literal notranslate"><span class="pre">fp_x_flux_sectoral</span></code> is used. Optional <code class="docutils literal notranslate"><span class="pre">H_bc</span></code> retains the
+existing sampled boundary-condition contribution.</p>
+<p>Site data must be supplied as an ordered site-to-Dataset mapping or a root
+DataTree with one direct child node per site, each holding a site-local Dataset
+and no nested children. Direct Dataset, dense
+<code class="docutils literal notranslate"><span class="pre">Dataset(site,</span> <span class="pre">time)</span></code>, and pre-stacked <code class="docutils literal notranslate"><span class="pre">nmeasure</span></code> layouts are deliberately
+outside this adapter’s contract.</p>
+<p>Canonical <code class="docutils literal notranslate"><span class="pre">H</span></code> uses dimensions <code class="docutils literal notranslate"><span class="pre">(region,</span> <span class="pre">time)</span></code> for single-source and
+source-specific gathered state, or <code class="docutils literal notranslate"><span class="pre">(region,</span> <span class="pre">time,</span> <span class="pre">source)</span></code> for a shared
+rectangular state. A gathered source-specific <code class="docutils literal notranslate"><span class="pre">region</span></code> coordinate is a unique
+MultiIndex over <code class="docutils literal notranslate"><span class="pre">(source,</span> <span class="pre">region_in_source)</span></code> and must exactly match the
+retained operator state. Multisector inputs additionally require
+source-resolved retained prior flux with exactly the same source names and
+order. The adapter rejects broadcasting one total prior flux across multiple
+sectors because that would corrupt flux reconstruction.</p>
+<p>The adapter is pure: it never mutates the supplied xarray objects or retained
+basis functions. Known footprint-times-flux caches and non-time-dependent data
+variables are excluded from the returned canonical inputs; other
+observation-aligned extension variables are retained. The reserved
+<code class="docutils literal notranslate"><span class="pre">fixed_baseline</span></code> extension is rejected until a reusable semantic Baseline
+component defines its likelihood and output behavior.</p>
+<p>Every supplied row is active. Each site therefore needs an explicit, nonempty,
+unique <code class="docutils literal notranslate"><span class="pre">datetime64</span></code> time coordinate without <code class="docutils literal notranslate"><span class="pre">NaT</span></code>. Observation, projected
+sensitivity, and optional <code class="docutils literal notranslate"><span class="pre">H_bc</span></code> values must be finite. Required observation
+and error fields, selected <code class="docutils literal notranslate"><span class="pre">H</span></code> or cache, and optional <code class="docutils literal notranslate"><span class="pre">H_bc</span></code> must declare
+the same exact nonempty unit string; the adapter performs no conversion.
+Labels on explicit <code class="docutils literal notranslate"><span class="pre">source</span></code> dimensions must
+be nonempty, unique Python or NumPy strings in their intended order, and
+non-string labels are not coerced. Repeated source values inside a gathered
+<code class="docutils literal notranslate"><span class="pre">(source,</span> <span class="pre">region_in_source)</span></code> state MultiIndex are valid.</p>
+<p>Use <a class="reference internal" href="openghg_inversions.inversion_data.preparation.html#openghg_inversions.inversion_data.preparation.RhimePreparedInputs.save" title="openghg_inversions.inversion_data.preparation.RhimePreparedInputs.save"><code class="xref py py-meth docutils literal notranslate"><span class="pre">RhimePreparedInputs.save</span></code></a> and
+<a class="reference internal" href="openghg_inversions.inversion_data.preparation.html#openghg_inversions.inversion_data.preparation.RhimePreparedInputs.load" title="openghg_inversions.inversion_data.preparation.RhimePreparedInputs.load"><code class="xref py py-meth docutils literal notranslate"><span class="pre">load()</span></code></a>
+for durable canonical artifacts. Serialized or otherwise pre-stacked
+<code class="docutils literal notranslate"><span class="pre">nmeasure</span></code> data should not be passed back through this adapter.</p>
 <dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.inversion_data.scenario.merged_scenario_data">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.inversion_data.scenario.</span></span><span class="sig-name descname"><span class="pre">merged_scenario_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">obs_data</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.openghg.org/api/devapi_dataobjects.html#openghg.dataobjects.ObsData" title="(in OpenGHG v0.19.0)"><span class="pre">ObsData</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">footprint_data</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.openghg.org/api/devapi_dataobjects.html#openghg.dataobjects.FootprintData" title="(in OpenGHG v0.19.0)"><span class="pre">FootprintData</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">flux_dict</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.openghg.org/api/devapi_dataobjects.html#openghg.dataobjects.FluxData" title="(in OpenGHG v0.19.0)"><span class="pre">FluxData</span></a><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bc_data</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.openghg.org/api/api_dataobjects.html#openghg.dataobjects.BoundaryConditionsData" title="(in OpenGHG v0.19.0)"><span class="pre">BoundaryConditionsData</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">platform</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_level</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">split_by_sectors</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_units</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></span><a class="headerlink" href="#openghg_inversions.inversion_data.scenario.merged_scenario_data" title="Link to this definition">#</a></dt>
-<dd><p>Create a <code class="docutils literal notranslate"><span class="pre">ModelScenario</span></code> and return its merged, unit-aligned data.</p>
+<dt class="sig sig-object py" id="openghg_inversions.inversion_data.xarray_adapter.prepare_rhime_inputs_from_xarray">
+<span class="sig-prename descclassname"><span class="pre">openghg_inversions.inversion_data.xarray_adapter.</span></span><span class="sig-name descname"><span class="pre">prepare_rhime_inputs_from_xarray</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.7.0)"><span class="pre">DataTree</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.14)"><span class="pre">Mapping</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">basis_functions</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.basis.basis_functions.html#openghg_inversions.basis.basis_functions.FluxWeightedBasis" title="openghg_inversions.basis.basis_functions.FluxWeightedBasis"><span class="pre">FluxWeightedBasis</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">sites</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.14)"><span class="pre">Sequence</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">averaging_period</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.14)"><span class="pre">Sequence</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.14)"><span class="pre">Mapping</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bc_freq</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_error</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_error_per_site</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">start_date</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/datetime.html#datetime.datetime" title="(in Python v3.14)"><span class="pre">datetime</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://numpy.org/doc/stable/reference/arrays.scalars.html#numpy.datetime64" title="(in NumPy v2.5)"><span class="pre">datetime64</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Timestamp</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="openghg_inversions.inversion_data.preparation.html#openghg_inversions.inversion_data.preparation.RhimePreparedInputs" title="openghg_inversions.inversion_data.preparation.RhimePreparedInputs"><span class="pre">RhimePreparedInputs</span></a></span></span><a class="headerlink" href="#openghg_inversions.inversion_data.xarray_adapter.prepare_rhime_inputs_from_xarray" title="Link to this definition">#</a></dt>
+<dd><p>Create canonical RHIME inputs from source-neutral xarray site data.</p>
+<p>Input must be an ordered mapping or a DataTree with one direct child
+Dataset per site. Mapping keys and DataTree child names define site order
+unless <code class="docutils literal notranslate"><span class="pre">sites</span></code> explicitly selects and orders them. Direct Dataset, dense
+<code class="docutils literal notranslate"><span class="pre">Dataset(site,</span> <span class="pre">time)</span></code>, and pre-stacked <code class="docutils literal notranslate"><span class="pre">nmeasure</span></code> layouts are rejected.</p>
+<p>Each site dataset must follow the module-level variable contract. Cached
+<code class="docutils literal notranslate"><span class="pre">fp_x_flux</span></code> or <code class="docutils literal notranslate"><span class="pre">fp_x_flux_sectoral</span></code> is projected through
+<code class="docutils literal notranslate"><span class="pre">basis_functions.sensitivity</span></code> before site-time observations are gathered
+to <code class="docutils literal notranslate"><span class="pre">nmeasure</span></code>. Existing <code class="docutils literal notranslate"><span class="pre">H</span></code> is accepted directly. The retained
+operator and prior flux are preserved; artifact provenance may be added to
+a new <code class="docutils literal notranslate"><span class="pre">BasisFunctions</span></code> value in the returned prepared inputs.</p>
+<p>Every row is active. Per-site <code class="docutils literal notranslate"><span class="pre">time</span></code> coordinates must be explicit,
+nonempty, unique <code class="docutils literal notranslate"><span class="pre">datetime64</span></code> values without <code class="docutils literal notranslate"><span class="pre">NaT</span></code>; valid
+non-monotonic order is preserved. Observation variables must have exactly
+dimension <code class="docutils literal notranslate"><span class="pre">(&quot;time&quot;,)</span></code>. Required observations, projected <code class="docutils literal notranslate"><span class="pre">H</span></code>, and
+optional <code class="docutils literal notranslate"><span class="pre">H_bc</span></code> must be finite. Required observation and error fields,
+selected <code class="docutils literal notranslate"><span class="pre">H</span></code> or cache, and optional <code class="docutils literal notranslate"><span class="pre">H_bc</span></code> must have the same exact
+nonempty unit string as <code class="docutils literal notranslate"><span class="pre">mf</span></code> across all sites; no conversion is performed.
+Release-coordinate pairs are all-or-none across retained sites. Labels on an
+explicit <code class="docutils literal notranslate"><span class="pre">source</span></code> dimension are nonempty, unique Python or NumPy strings
+and are never coerced from bytes or numbers. Repeated source values in a
+gathered source-specific state MultiIndex remain valid.</p>
+<p>Persist and reopen canonical artifacts with
+<a class="reference internal" href="openghg_inversions.inversion_data.preparation.html#openghg_inversions.inversion_data.preparation.RhimePreparedInputs.save" title="openghg_inversions.inversion_data.preparation.RhimePreparedInputs.save"><code class="xref py py-meth docutils literal notranslate"><span class="pre">RhimePreparedInputs.save</span></code></a>
+and
+<a class="reference internal" href="openghg_inversions.inversion_data.preparation.html#openghg_inversions.inversion_data.preparation.RhimePreparedInputs.load" title="openghg_inversions.inversion_data.preparation.RhimePreparedInputs.load"><code class="xref py py-meth docutils literal notranslate"><span class="pre">load()</span></code></a>;
+do not pass serialized <code class="docutils literal notranslate"><span class="pre">nmeasure</span></code> data back to this adapter.
+The reserved <code class="docutils literal notranslate"><span class="pre">fixed_baseline</span></code> input is rejected until a reusable
+semantic Baseline component is available; use sampled <code class="docutils literal notranslate"><span class="pre">H_bc</span></code> or omit it.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>obs_data</strong> – Surface or column observation data.</p></li>
-<li><p><strong>footprint_data</strong> – Footprint data paired with the observations.</p></li>
-<li><p><strong>flux_dict</strong> – Flux data keyed by source.</p></li>
-<li><p><strong>bc_data</strong> – Optional boundary-condition data.</p></li>
-<li><p><strong>platform</strong> – Observation platform used for column handling.</p></li>
-<li><p><strong>max_level</strong> – Maximum vertical level for column observations.</p></li>
-<li><p><strong>split_by_sectors</strong> – Preserve sector-resolved modelled concentrations.</p></li>
-<li><p><strong>output_units</strong> – Shared unit target. <code class="docutils literal notranslate"><span class="pre">None</span></code> uses this scenario’s
-observation units; later sites receive the first retained target.</p></li>
+<li><p><strong>data</strong> – Site data as a DataTree or site-to-Dataset mapping.</p></li>
+<li><p><strong>basis_functions</strong> – Self-contained retained basis object, including the
+prior/reference flux used for posterior reconstruction. Multisector
+data require matching ordered <code class="docutils literal notranslate"><span class="pre">source</span></code> coordinates on retained
+flux and any source-specific operator.</p></li>
+<li><p><strong>sites</strong> – Optional site selection and order.</p></li>
+<li><p><strong>averaging_period</strong> – One common period, a site-aligned sequence or
+mapping, or <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p></li>
+<li><p><strong>bc_freq</strong> – Frequency used to expand sampled <code class="docutils literal notranslate"><span class="pre">H_bc</span></code> contributions.</p></li>
+<li><p><strong>min_error</strong> – Minimum model error accepted by <code class="docutils literal notranslate"><span class="pre">make_inv_inputs</span></code>.</p></li>
+<li><p><strong>min_error_per_site</strong> – Whether calculated minimum errors vary by site.
+Defaults to <code class="docutils literal notranslate"><span class="pre">False</span></code>, matching the OpenGHG-backed RHIME
+preparation route.</p></li>
+<li><p><strong>start_date</strong> – Optional frequency anchor passed to <code class="docutils literal notranslate"><span class="pre">make_inv_inputs</span></code>.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>The merged OpenGHG scenario dataset.</p>
+<dd class="field-even"><p>Canonical prepared inputs accepted by
+<a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.run_rhime_from_prepared_inputs" title="openghg_inversions.rhime.run_rhime_from_prepared_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.run_rhime_from_prepared_inputs()</span></code></a>.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#TypeError" title="(in Python v3.14)"><strong>TypeError</strong></a> – If the input container or mapping values are unsupported,
+    or <code class="docutils literal notranslate"><span class="pre">basis_functions</span></code> is not a <code class="docutils literal notranslate"><span class="pre">BasisFunctions</span></code> object.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If site data violate the documented variable, dimension,
+    source-order, or site-alignment contract, or contain the deferred
+    <code class="docutils literal notranslate"><span class="pre">fixed_baseline</span></code> extension.</p></li>
+</ul>
 </dd>
 </dl>
 </dd></dl>
@@ -482,20 +569,20 @@ observation units; later sites receive the first retained target.</p></li>
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="openghg_inversions.inversion_data.preparation.html"
+       href="openghg_inversions.inversion_data.serialise.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">openghg_inversions.inversion_data.preparation</p>
+        <p class="prev-next-title">openghg_inversions.inversion_data.serialise</p>
       </div>
     </a>
     <a class="right-next"
-       href="openghg_inversions.inversion_data.serialise.html"
+       href="openghg_inversions.models.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">openghg_inversions.inversion_data.serialise</p>
+        <p class="prev-next-title">openghg_inversions.models</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -518,14 +605,14 @@ observation units; later sites receive the first retained target.</p></li>
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.scenario.merged_scenario_data"><code class="docutils literal notranslate"><span class="pre">merged_scenario_data()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.xarray_adapter.prepare_rhime_inputs_from_xarray"><code class="docutils literal notranslate"><span class="pre">prepare_rhime_inputs_from_xarray()</span></code></a></li>
 </ul>
   </nav></div>
 
   <div class="sidebar-secondary-item">
 
   <div class="tocsection sourcelink">
-    <a href="../_sources/reference/openghg_inversions.inversion_data.scenario.rst.txt">
+    <a href="../_sources/reference/openghg_inversions.inversion_data.xarray_adapter.rst.txt">
       <i class="fa-solid fa-file-lines"></i> Show Source
     </a>
   </div>
