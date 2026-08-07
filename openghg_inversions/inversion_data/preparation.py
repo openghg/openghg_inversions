@@ -986,6 +986,10 @@ def _scale_satellite_bc_sensitivity_to_column_signal(
             + inv_inputs["mf_prior_factor"]
             + inv_inputs["mf_prior_upper_level_factor"]
         )
+        # TODO(#553): This is a deliberate BC-scaling workaround while the
+        # retrieval information needed for an exact corrected-column transform
+        # is unavailable. It is not a resolution of the underlying
+        # mathematical limitation; replace it with retrieval-aware handling.
         scale = xr.where(raw_column > 0, inv_inputs["mf"] / raw_column, 1.0)
         scale = scale.clip(min=0.0, max=1.0).where(satellite_mask, 1.0)
 
