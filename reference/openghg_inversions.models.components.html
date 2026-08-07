@@ -340,6 +340,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.coords.html">openghg_inversions.models.coords</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.priors.html">openghg_inversions.models.priors</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.rhime.html">openghg_inversions.models.rhime</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.state_activity.html">openghg_inversions.models.state_activity</a></li>
 </ul>
 </details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.postprocessing.html">openghg_inversions.postprocessing</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
@@ -447,15 +448,18 @@
 xarray-first. They return PyTensor/PyMC tensors and should not implement their
 own coordinate sanitization policy; coordinate handling lives in
 <code class="docutils literal notranslate"><span class="pre">openghg_inversions.models.coords</span></code>.</p>
-<p>All component helpers operate inside an active PyMC model context.</p>
-<p>Naming conventions:
-- <code class="docutils literal notranslate"><span class="pre">data_name</span></code>: name for registered <code class="docutils literal notranslate"><span class="pre">pm.Data</span></code>
-- <code class="docutils literal notranslate"><span class="pre">var_name</span></code>: name for the latent random variable
-- <code class="docutils literal notranslate"><span class="pre">output_name</span></code>: name for the aligned deterministic output
-- plain <code class="docutils literal notranslate"><span class="pre">name</span></code> is reserved for helpers that truly create only one semantic</p>
-<blockquote>
-<div><p>object or where a base name is the clearest API</p>
-</div></blockquote>
+<p>All component helpers operate inside an active PyMC model context.
+<code class="docutils literal notranslate"><span class="pre">add_state_vector</span></code> consumes an already resolved activity contract;
+<code class="docutils literal notranslate"><span class="pre">add_state_linear_component</span></code> performs design inspection and policy resolution
+before constructing that graph.</p>
+<p>Naming conventions:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">data_name</span></code>: name for registered <code class="docutils literal notranslate"><span class="pre">pm.Data</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">var_name</span></code>: name for the latent random variable</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">output_name</span></code>: name for the aligned deterministic output</p></li>
+<li><p>plain <code class="docutils literal notranslate"><span class="pre">name</span></code> is reserved for helpers that truly create only one semantic
+object or where a base name is the clearest API</p></li>
+</ul>
 <p>Frequency indicators may be supplied explicitly or derived from observation
 coordinates using shared helper logic based on
 <code class="docutils literal notranslate"><span class="pre">openghg_inversions.inversion_inputs.make_freq_indicator</span></code>.</p>
@@ -477,6 +481,83 @@ coordinates using shared helper logic based on
 <dl class="py attribute">
 <dt class="sig sig-object py" id="openghg_inversions.models.components.LinearComponentResult.output">
 <span class="sig-name descname"><span class="pre">output</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">TensorVariable</span></span><a class="headerlink" href="#openghg_inversions.models.components.LinearComponentResult.output" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="openghg_inversions.models.components.StateLinearComponentResult">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">openghg_inversions.models.components.</span></span><span class="sig-name descname"><span class="pre">StateLinearComponentResult</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">TensorVariable</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">latent</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">TensorVariable</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">state</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">TensorVariable</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">TensorVariable</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">activity</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.ResolvedStateActivity" title="openghg_inversions.models.state_activity.ResolvedStateActivity"><span class="pre">ResolvedStateActivity</span></a></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.components.StateLinearComponentResult" title="Link to this definition">#</a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>Objects created by <code class="docutils literal notranslate"><span class="pre">add_state_linear_component</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Variables<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>data</strong> (<em>pytensor.tensor.variable.TensorVariable</em>) – Full sensitivity matrix registered with PyMC.</p></li>
+<li><p><strong>latent</strong> (<em>pytensor.tensor.variable.TensorVariable</em><em> | </em><em>None</em>) – Effective active-state latent variable, or <code class="docutils literal notranslate"><span class="pre">None</span></code> when no
+states are active.</p></li>
+<li><p><strong>state</strong> (<em>pytensor.tensor.variable.TensorVariable</em>) – Full ordered state vector. This is the ordinary user-facing
+prior when all states are active and a deterministic otherwise.</p></li>
+<li><p><strong>output</strong> (<em>pytensor.tensor.variable.TensorVariable</em>) – Forward-model contribution from active and fixed states.</p></li>
+<li><p><strong>activity</strong> (<a class="reference internal" href="openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.ResolvedStateActivity" title="openghg_inversions.models.state_activity.ResolvedStateActivity"><em>openghg_inversions.models.state_activity.ResolvedStateActivity</em></a>) – Resolved state-activity contract in canonical state order.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="openghg_inversions.models.components.StateLinearComponentResult.activity">
+<span class="sig-name descname"><span class="pre">activity</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.ResolvedStateActivity" title="openghg_inversions.models.state_activity.ResolvedStateActivity"><span class="pre">ResolvedStateActivity</span></a></span><a class="headerlink" href="#openghg_inversions.models.components.StateLinearComponentResult.activity" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="openghg_inversions.models.components.StateLinearComponentResult.data">
+<span class="sig-name descname"><span class="pre">data</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">TensorVariable</span></span><a class="headerlink" href="#openghg_inversions.models.components.StateLinearComponentResult.data" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="openghg_inversions.models.components.StateLinearComponentResult.latent">
+<span class="sig-name descname"><span class="pre">latent</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">TensorVariable</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><a class="headerlink" href="#openghg_inversions.models.components.StateLinearComponentResult.latent" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="openghg_inversions.models.components.StateLinearComponentResult.output">
+<span class="sig-name descname"><span class="pre">output</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">TensorVariable</span></span><a class="headerlink" href="#openghg_inversions.models.components.StateLinearComponentResult.output" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="openghg_inversions.models.components.StateLinearComponentResult.state">
+<span class="sig-name descname"><span class="pre">state</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">TensorVariable</span></span><a class="headerlink" href="#openghg_inversions.models.components.StateLinearComponentResult.state" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="openghg_inversions.models.components.StateVectorResult">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">openghg_inversions.models.components.</span></span><span class="sig-name descname"><span class="pre">StateVectorResult</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">latent</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">TensorVariable</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">state</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">TensorVariable</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">activity</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.ResolvedStateActivity" title="openghg_inversions.models.state_activity.ResolvedStateActivity"><span class="pre">ResolvedStateActivity</span></a></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.components.StateVectorResult" title="Link to this definition">#</a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>Objects created by <code class="docutils literal notranslate"><span class="pre">add_state_vector</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Variables<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>latent</strong> (<em>pytensor.tensor.variable.TensorVariable</em><em> | </em><em>None</em>) – Effective sampled latent variable, or <code class="docutils literal notranslate"><span class="pre">None</span></code> when every
+state is fixed.</p></li>
+<li><p><strong>state</strong> (<em>pytensor.tensor.variable.TensorVariable</em>) – Full ordered state vector, including fixed values.</p></li>
+<li><p><strong>activity</strong> (<a class="reference internal" href="openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.ResolvedStateActivity" title="openghg_inversions.models.state_activity.ResolvedStateActivity"><em>openghg_inversions.models.state_activity.ResolvedStateActivity</em></a>) – Resolved state-activity contract in canonical state order.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="openghg_inversions.models.components.StateVectorResult.activity">
+<span class="sig-name descname"><span class="pre">activity</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.ResolvedStateActivity" title="openghg_inversions.models.state_activity.ResolvedStateActivity"><span class="pre">ResolvedStateActivity</span></a></span><a class="headerlink" href="#openghg_inversions.models.components.StateVectorResult.activity" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="openghg_inversions.models.components.StateVectorResult.latent">
+<span class="sig-name descname"><span class="pre">latent</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">TensorVariable</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><a class="headerlink" href="#openghg_inversions.models.components.StateVectorResult.latent" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="openghg_inversions.models.components.StateVectorResult.state">
+<span class="sig-name descname"><span class="pre">state</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">TensorVariable</span></span><a class="headerlink" href="#openghg_inversions.models.components.StateVectorResult.state" title="Link to this definition">#</a></dt>
 <dd></dd></dl>
 
 </dd></dl>
@@ -599,6 +680,86 @@ deterministic variable.</p></li>
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.models.components.add_state_linear_component">
+<span class="sig-prename descclassname"><span class="pre">openghg_inversions.models.components.</span></span><span class="sig-name descname"><span class="pre">add_state_linear_component</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="positional-only-separator o"><abbr title="Positional-only parameter separator (PEP 570)"><span class="pre">/</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">prior_args</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">var_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">state_activity</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.StateActivity" title="openghg_inversions.models.state_activity.StateActivity"><span class="pre">StateActivity</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_dim</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'nmeasure'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">compute_deterministic</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#openghg_inversions.models.components.StateLinearComponentResult" title="openghg_inversions.models.components.StateLinearComponentResult"><span class="pre">StateLinearComponentResult</span></a></span></span><a class="headerlink" href="#openghg_inversions.models.components.add_state_linear_component" title="Link to this definition">#</a></dt>
+<dd><p>Add a linear component that samples only active labelled states.</p>
+<p>The public <code class="docutils literal notranslate"><span class="pre">var_name</span></code> is always a full ordered vector. When every state
+is active, it retains the ordinary prior graph produced by
+<code class="docutils literal notranslate"><span class="pre">add_linear_component</span></code>. Otherwise, active states are sampled in
+<code class="docutils literal notranslate"><span class="pre">{var_name}_active</span></code> and restored with inactive fixed values into a full
+deterministic state. The forward contribution is always <code class="docutils literal notranslate"><span class="pre">H</span> <span class="pre">&#64;</span> <span class="pre">state</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>data</strong> – Finite sensitivity matrix containing <code class="docutils literal notranslate"><span class="pre">output_dim</span></code> and exactly
+one other dimension with a unique labelled state coordinate. The
+explicit legacy all-active policy may synthesize positional labels.</p></li>
+<li><p><strong>data_name</strong> – Name used when registering the full matrix as <code class="docutils literal notranslate"><span class="pre">pm.Data</span></code>.</p></li>
+<li><p><strong>prior_args</strong> – Prior specification. Distribution parameters may be scalar,
+full-state arrays, or labelled state <code class="docutils literal notranslate"><span class="pre">DataArray</span></code> objects.</p></li>
+<li><p><strong>var_name</strong> – Name of the full deterministic state vector.</p></li>
+<li><p><strong>output_name</strong> – Name for the aligned forward-model contribution.</p></li>
+<li><p><strong>state_activity</strong> – Optional active/fixed policy. The default prunes only
+exactly-zero sensitivity columns and fixes them to one.</p></li>
+<li><p><strong>output_dim</strong> – Observation/output dimension name.</p></li>
+<li><p><strong>compute_deterministic</strong> – Whether to wrap the output in a named
+<code class="docutils literal notranslate"><span class="pre">pm.Deterministic</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Registered data, optional active latent, full state, output, and the
+resolved activity contract.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If the sensitivity layout, state policy, labels, fixed
+    values, or state-valued prior parameters are invalid.</p>
+</dd>
+</dl>
+<p class="rubric">Notes</p>
+<p>This helper mutates the active <code class="docutils literal notranslate"><span class="pre">pm.Model</span></code> by registering coordinates,
+the full design, state variables, and optionally the named output.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.models.components.add_state_vector">
+<span class="sig-prename descclassname"><span class="pre">openghg_inversions.models.components.</span></span><span class="sig-name descname"><span class="pre">add_state_vector</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">activity</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.ResolvedStateActivity" title="openghg_inversions.models.state_activity.ResolvedStateActivity"><span class="pre">ResolvedStateActivity</span></a></span></em>, <em class="sig-param"><span class="positional-only-separator o"><abbr title="Positional-only parameter separator (PEP 570)"><span class="pre">/</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">prior_args</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><span class="pre">Any</span></a><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">var_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#openghg_inversions.models.components.StateVectorResult" title="openghg_inversions.models.components.StateVectorResult"><span class="pre">StateVectorResult</span></a></span></span><a class="headerlink" href="#openghg_inversions.models.components.add_state_vector" title="Link to this definition">#</a></dt>
+<dd><p>Construct an active/fixed state graph from a resolved activity contract.</p>
+<p>When every state is active, this creates the same base prior graph as
+<code class="docutils literal notranslate"><span class="pre">add_linear_component</span></code>. Partial activity creates an active-only prior and
+restores it into a full deterministic state vector. An all-fixed policy
+creates no random variable and exposes the fixed values as the full
+deterministic state.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>activity</strong> – Resolved activity and state-coordinate contract. Linear
+design inspection must be completed before calling this helper.</p></li>
+<li><p><strong>prior_args</strong> – Prior specification. Distribution parameters may be scalar,
+full-state arrays, or labelled state <code class="docutils literal notranslate"><span class="pre">DataArray</span></code> objects.</p></li>
+<li><p><strong>var_name</strong> – Name of the full user-facing state vector.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The effective latent, full state vector, and supplied activity.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#KeyError" title="(in Python v3.14)"><strong>KeyError</strong></a> – If the prior specification omits a required parameter.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#TypeError" title="(in Python v3.14)"><strong>TypeError</strong></a> – If the prior specification contains an unsupported value.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If state-valued prior parameters are invalid.</p></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Notes</p>
+<p>This helper registers state variables and state coordinates, but it
+does not inspect or register a linear design and does not construct a
+forward-model output. The registered activity mask is immutable
+build-time metadata in semantic terms; changing it with <code class="docutils literal notranslate"><span class="pre">pm.set_data</span></code>
+would not rebuild the latent state layout. Call this helper inside an
+active <code class="docutils literal notranslate"><span class="pre">pm.Model</span></code> context.</p>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.models.components.get_model_latent">
 <span class="sig-prename descclassname"><span class="pre">openghg_inversions.models.components.</span></span><span class="sig-name descname"><span class="pre">get_model_latent</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">variable</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">TensorVariable</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">base_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">TensorVariable</span></span></span><a class="headerlink" href="#openghg_inversions.models.components.get_model_latent" title="Link to this definition">#</a></dt>
 <dd><p>Return the effective latent variable for a named model component.</p>
@@ -691,11 +852,27 @@ present on <code class="docutils literal notranslate"><span class="pre">model</s
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.components.LinearComponentResult.output"><code class="docutils literal notranslate"><span class="pre">LinearComponentResult.output</span></code></a></li>
 </ul>
 </li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.components.StateLinearComponentResult"><code class="docutils literal notranslate"><span class="pre">StateLinearComponentResult</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.components.StateLinearComponentResult.activity"><code class="docutils literal notranslate"><span class="pre">StateLinearComponentResult.activity</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.components.StateLinearComponentResult.data"><code class="docutils literal notranslate"><span class="pre">StateLinearComponentResult.data</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.components.StateLinearComponentResult.latent"><code class="docutils literal notranslate"><span class="pre">StateLinearComponentResult.latent</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.components.StateLinearComponentResult.output"><code class="docutils literal notranslate"><span class="pre">StateLinearComponentResult.output</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.components.StateLinearComponentResult.state"><code class="docutils literal notranslate"><span class="pre">StateLinearComponentResult.state</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.components.StateVectorResult"><code class="docutils literal notranslate"><span class="pre">StateVectorResult</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.components.StateVectorResult.activity"><code class="docutils literal notranslate"><span class="pre">StateVectorResult.activity</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.components.StateVectorResult.latent"><code class="docutils literal notranslate"><span class="pre">StateVectorResult.latent</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.components.StateVectorResult.state"><code class="docutils literal notranslate"><span class="pre">StateVectorResult.state</span></code></a></li>
+</ul>
+</li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.components.add_inferpymc_likelihood_component"><code class="docutils literal notranslate"><span class="pre">add_inferpymc_likelihood_component()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.components.add_linear_component"><code class="docutils literal notranslate"><span class="pre">add_linear_component()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.components.add_model_data"><code class="docutils literal notranslate"><span class="pre">add_model_data()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.components.add_offset_component"><code class="docutils literal notranslate"><span class="pre">add_offset_component()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.components.add_sigma_component"><code class="docutils literal notranslate"><span class="pre">add_sigma_component()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.components.add_state_linear_component"><code class="docutils literal notranslate"><span class="pre">add_state_linear_component()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.components.add_state_vector"><code class="docutils literal notranslate"><span class="pre">add_state_vector()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.components.get_model_latent"><code class="docutils literal notranslate"><span class="pre">get_model_latent()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.components.resolve_model_variable"><code class="docutils literal notranslate"><span class="pre">resolve_model_variable()</span></code></a></li>
 </ul>

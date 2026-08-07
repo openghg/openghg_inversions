@@ -15,3 +15,4 @@ openghg\_inversions.models
    openghg_inversions.models.coords
    openghg_inversions.models.priors
    openghg_inversions.models.rhime
+   openghg_inversions.models.state_activity

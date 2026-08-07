@@ -856,6 +856,63 @@ The exception changes split acceptance only: it does not reconnect, freeze,
 prune, or marginalize the resulting small region. A direct three-argument
 policy call has no target-region context and therefore remains strict.</p>
 </section>
+<section id="active-and-fixed-states">
+<h2>Active And Fixed States<a class="headerlink" href="#active-and-fixed-states" title="Link to this heading">#</a></h2>
+<p>The modern model builders sample only active flux-scaling states. Inactive
+columns are removed from the sampled vector and restored into the full ordered
+<code class="docutils literal notranslate"><span class="pre">x</span></code> (or <code class="docutils literal notranslate"><span class="pre">x_&lt;sector&gt;</span></code>) model variable before the forward calculation and
+postprocessing. By default, a sensitivity column is inactive only when every
+value in that column is exactly zero. No tolerance is applied, so a near-zero
+nonzero column remains active. Inactive multiplicative scaling states default
+to one.</p>
+<p><code class="docutils literal notranslate"><span class="pre">StateActivity</span></code> can also freeze labelled states, <code class="docutils literal notranslate"><span class="pre">basis_group</span></code> values, or a
+complete sector. Labelled masks and fixed values are aligned to the state
+coordinate rather than interpreted as numeric state ranges. Prior distribution
+parameters may likewise be scalars, full one-dimensional arrays, or labelled
+<code class="docutils literal notranslate"><span class="pre">DataArray</span></code> objects. Given canonical <code class="docutils literal notranslate"><span class="pre">inv_inputs</span></code>, the following example
+assumes that <code class="docutils literal notranslate"><span class="pre">inv_inputs[&quot;H&quot;]</span></code> carries a state-aligned <code class="docutils literal notranslate"><span class="pre">basis_group</span></code>
+coordinate containing the value <code class="docutils literal notranslate"><span class="pre">&quot;outer&quot;</span></code>:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">StateActivity</span><span class="p">,</span> <span class="n">build_rhime_model</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.sigma</span><span class="w"> </span><span class="kn">import</span> <span class="n">SigmaAlignment</span>
+
+<span class="n">state_policy</span> <span class="o">=</span> <span class="n">StateActivity</span><span class="p">(</span>
+    <span class="n">fixed_groups</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;outer&quot;</span><span class="p">,),</span>
+    <span class="n">fixed_value</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">sigma_alignment</span> <span class="o">=</span> <span class="n">SigmaAlignment</span><span class="o">.</span><span class="n">from_frequency</span><span class="p">(</span>
+    <span class="n">inv_inputs</span><span class="p">[</span><span class="s2">&quot;site_indicator&quot;</span><span class="p">],</span>
+<span class="p">)</span>
+<span class="n">model</span> <span class="o">=</span> <span class="n">build_rhime_model</span><span class="p">(</span>
+    <span class="n">inv_inputs</span><span class="p">,</span>
+    <span class="n">sigma_alignment</span><span class="o">=</span><span class="n">sigma_alignment</span><span class="p">,</span>
+    <span class="n">x_prior</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;pdf&quot;</span><span class="p">:</span> <span class="s2">&quot;normal&quot;</span><span class="p">,</span> <span class="s2">&quot;mu&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> <span class="s2">&quot;sigma&quot;</span><span class="p">:</span> <span class="mf">0.5</span><span class="p">},</span>
+    <span class="n">state_activity</span><span class="o">=</span><span class="n">state_policy</span><span class="p">,</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p>For multisector builders, use <code class="docutils literal notranslate"><span class="pre">state_activity</span></code> as a shared policy or
+<code class="docutils literal notranslate"><span class="pre">sector_state_activities</span></code> for sector-name overrides;
+<code class="docutils literal notranslate"><span class="pre">StateActivity(active=False)</span></code> freezes a complete sector. Programmatic
+prepared-input runs set the canonical per-sector policy with
+<code class="docutils literal notranslate"><span class="pre">SectorSpec(state_activity=...)</span></code>. RHIME config-file syntax and persisted
+activity-reason tables remain follow-up work.
+Each prior dictionary in <code class="docutils literal notranslate"><span class="pre">sector_priors</span></code> supports the same scalar,
+full-state array, and labelled <code class="docutils literal notranslate"><span class="pre">DataArray</span></code> parameter forms; labelled values
+must match the selected sector’s state coordinate exactly.</p>
+<p>For low-level model construction, first inspect a labelled design with
+<code class="docutils literal notranslate"><span class="pre">detect_zero_sensitivity</span></code>, then combine the returned mask with a
+<code class="docutils literal notranslate"><span class="pre">StateActivity</span></code> using <code class="docutils literal notranslate"><span class="pre">resolve_state_activity</span></code>. State-vector graph helpers
+consume the resulting <code class="docutils literal notranslate"><span class="pre">ResolvedStateActivity</span></code>; they do not inspect <code class="docutils literal notranslate"><span class="pre">H</span></code> or
+infer its output dimension.</p>
+<p>Boundary-condition scaling states can be handled the same way. Set
+<code class="docutils literal notranslate"><span class="pre">RhimeModelSpec(bc_state_activity=StateActivity(active=False))</span></code> (or the
+equivalent low-level builder argument) to retain <code class="docutils literal notranslate"><span class="pre">mu_bc</span> <span class="pre">=</span> <span class="pre">H_bc</span> <span class="pre">&#64;</span> <span class="pre">bc</span></code> with a
+fixed <code class="docutils literal notranslate"><span class="pre">bc</span></code> vector and no boundary-condition random variable. This is distinct
+from supplying a standalone baseline time series, which belongs to a separate
+baseline component.</p>
+<p>The legacy single-sector <code class="docutils literal notranslate"><span class="pre">inferpymc</span></code> / <code class="docutils literal notranslate"><span class="pre">fixedbasisMCMC</span></code> compatibility path
+continues to sample its full flux state and does not gain multisector behavior.</p>
+</section>
 <section id="output-formats">
 <h2>Output Formats<a class="headerlink" href="#output-formats" title="Link to this heading">#</a></h2>
 <p>Standard single-sector RHIME supports <code class="docutils literal notranslate"><span class="pre">inv_out</span></code>, <code class="docutils literal notranslate"><span class="pre">basic</span></code>, <code class="docutils literal notranslate"><span class="pre">paris</span></code>, and
@@ -936,6 +993,7 @@ wrapper around <code class="docutils literal notranslate"><span class="pre">run_
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#source-neutral-xarray-preparation">Source-neutral xarray preparation</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#config-files">Config Files</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#generated-basis-functions">Generated Basis Functions</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#active-and-fixed-states">Active And Fixed States</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#output-formats">Output Formats</a></li>
 </ul>
   </nav></div>
