@@ -168,6 +168,7 @@ def mcmc_args(
             "basis_algorithm": "quadtree",
             "basis_output_path": str(tmp_path),
             "nbasis": 4,
+            "xprior": {"pdf": "lognormal", "stdev": 1.0},
             "nit": 1,
             "burn": 0,
             "tune": 0,
@@ -240,7 +241,9 @@ def test_full_satellite_inversion(satellite_mcmc_args):
 
 
 def test_full_inversion(mcmc_args):
+    """Run one real fixed-basis integration with current priors and NumPyro."""
     mcmc_args["reload_merged_data"] = False
+    mcmc_args["nuts_sampler"] = "numpyro"
     out = fixedbasisMCMC(**mcmc_args)
 
     assert "Yerror_repeatability" in out
