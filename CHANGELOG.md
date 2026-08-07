@@ -4,6 +4,36 @@
 
 ## Code changes
 
+- Hardened satellite-column preparation and PARIS outputs: footprint timestamps
+  are aligned to observations at nanosecond precision, and filtered site
+  metadata now retains the correct satellite platform for boundary-condition
+  scaling. PARIS column prior factors are applied to total columns rather than
+  boundary-condition-only values.
+  [PR #541](https://github.com/openghg/openghg_inversions/pull/541)
+- Preserve retrieved flux periods instead of inferring them from inversion
+  duration, including annual priors used by mid-year monthly inversions.
+  Calendar-aware PARIS postprocessing and legacy merged-data round trips now
+  retain the original flux timestamps and per-source period metadata.
+  [#539](https://github.com/openghg/openghg_inversions/issues/539)
+- Kept all site-aligned retrieval options paired with retained sites across
+  merged-data reloads, retrieval failures, and observation filtering. Explicit
+  empty site selections now fail instead of expanding to every loaded site,
+  calculated minimum-error options have a validated ``{"by_site": bool}``
+  schema, and legacy migration warnings remain visible under default warning
+  filters. Retained calibration scales now follow site pruning, and
+  fresh scenarios delegate common-unit conversion to OpenGHG
+  ``ModelScenario``; saved merged datasets already carry those common units.
+  Explicit site order is preserved during input assembly, and mixed
+  surface/column inputs retain their column correction factors.
+  [#427](https://github.com/openghg/openghg_inversions/issues/427)
+- Extended `MaxChildPCAEccentricity` with an optional
+  `min_child_target_weight_share` materiality threshold. The default zero keeps
+  the strict all-child eccentricity veto. Positive values allow only children
+  below that share of the class/source-local equal-target weight,
+  `weights.sum() / target_regions`, to bypass the veto; material children remain
+  guarded. This affects split acceptance only and does not reconnect, freeze,
+  prune, or marginalize the accepted low-weight child.
+  [PR #546](https://github.com/openghg/openghg_inversions/pull/546)
 - Added the opt-in `ConnectedBinaryPartitionStep` for repairing provisional
   binary cuts whose sides contain disconnected components. Repair candidates
   preserve the parent exactly, return two connected children, and are selected
@@ -36,6 +66,22 @@
   [#403](https://github.com/openghg/openghg_inversions/issues/403),
   [PR #529](https://github.com/openghg/openghg_inversions/pull/529)
 
+- Added a source-neutral xarray adapter that creates retained-basis RHIME
+  prepared inputs from direct-child DataTrees and ordered per-site mappings.
+  It projects cached footprint-times-flux fields before
+  gathering unequal per-site time axes, excludes large caches from canonical
+  inputs, and retains the existing sampled ``H_bc`` boundary-condition path.
+  Multisector inputs require source-compatible retained prior flux and basis
+  metadata rather than silently broadcasting a total flux across sectors;
+  source-specific ragged states retain their gathered
+  ``(source, region_in_source)`` layout. Direct and dense Datasets, padded
+  arrays, pre-stacked ``nmeasure`` layouts, unit conversion, source-label
+  coercion are intentionally deferred until a concrete consumer establishes
+  their semantics; canonical prepared artifacts should instead be reopened
+  with ``RhimePreparedInputs.load``. Deterministic fixed-baseline ingress is
+  deferred until a reusable semantic Baseline component is available; legacy
+  HBMCMC model/output behavior is unchanged.
+
 - Reset retained posterior draw labels after burn-in before attaching predictive
   groups in both modern RHIME and fixed-basis sampling, and preserve the
   discarded burn count through trace and `InversionOutput` round trips.
@@ -46,11 +92,36 @@
   and uncertainty statistics are calculated, then cast at the template
   boundary, keeping posterior stdev and covariance calculations consistent.
 
+- Added versioned NetCDF and Zarr persistence for ``RhimePreparedInputs``,
+  including CF compression-by-gathering for canonical MultiIndex inversion
+  inputs, labeled site metadata decoded by integer site indicators, and the
+  retained operator-backed basis and reference flux. Static multisource bases
+  now use an ordered xarray ``source`` coordinate; basis provenance remains
+  owned by ``BasisFunctions``. Site indicators are regenerated from labeled
+  measurement sites, avoiding a second user-maintained source of site truth.
+  Observation-varying release locations remain aligned to measurements rather
+  than being reduced to site scalars. Repeated Zarr saves replace the previous
+  artifact rather than retaining stale groups.
+  Generic DataTree, InferenceData, and MultiIndex serialization helpers now
+  have shared ownership outside postprocessing.
+
 - Added `run_rhime_from_prepared_inputs` so modern standard and multisector
   RHIME models can run from an existing `RhimePreparedInputs` object without
   repeating OpenGHG-backed data preparation. Existing `run_rhime` entry points
   now share the same post-preparation execution path.
   [#509](https://github.com/openghg/openghg_inversions/issues/509)
+
+- Added a label-aware active/fixed state-vector contract to the modern RHIME
+  model builders. Exact-zero sensitivity columns are now fixed at scaling one
+  by default while every nonzero column remains active; explicit labelled
+  masks and ``basis_group`` freezes can retain other fixed states or sectors.
+  Models sample active states only but retain full ordered deterministic
+  ``x``/``x_<sector>`` vectors, and flux-scaling prior parameters may now be
+  scalar, full array-valued, or labelled xarray values. Programmatic model specs
+  can set per-sector activity, and sampled ``H_bc @ bc`` components can use the
+  same mechanism to fix some or all BC scaling states. Config-file syntax and
+  persisted activity-reason reports remain follow-up work; legacy
+  ``inferpymc`` remains single-sector and retains its full sampled state.
 
 - Made retained `BasisFunctions` / `BasisOperator` metadata the primary basis
   contract for RHIME preparation and modern postprocessing outputs. Derived

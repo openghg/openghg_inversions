@@ -453,16 +453,16 @@ def load_basis_functions(
         basis_functions = BasisFunctions.load(datatree_files[0])
         print(f"Loaded DataTree basis artifact: {datatree_files[0]}")
         current_flux = flux_from_fp_all(fp_all)
+        if "source" in current_flux.dims:
+            basis_functions = basis_functions.select_sources(
+                [str(source) for source in current_flux.source.values]
+            )
         basis_functions = basis_functions.with_flux(current_flux).with_metadata(
             {
                 BASIS_ARTIFACT_SOURCE_ATTR: "datatree",
                 BASIS_ARTIFACT_PATH_ATTR: str(datatree_files[0]),
             }
         )
-        if "source" in current_flux.dims:
-            basis_functions = basis_functions.select_sources(
-                [str(source) for source in current_flux.source.values]
-            )
         return basis_functions
 
     basis_data_array = basis(

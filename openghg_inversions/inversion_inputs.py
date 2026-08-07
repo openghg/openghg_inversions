@@ -1,4 +1,11 @@
-"""Create backend-neutral observations and sensitivities for inversions."""
+"""Create backend-neutral, observation-aligned inversion inputs.
+
+``make_inv_inputs`` gathers selected per-site datasets into one ragged
+``nmeasure`` dataset, validates shared state layouts, adds site/minimum-error
+metadata, transforms boundary-condition periods, drops unusable rows, and
+materializes core arrays. ``sites=None`` infers non-metadata entries; an
+explicit empty selection is an error.
+"""
 
 import datetime as dt
 import numbers
@@ -10,7 +17,14 @@ import pandas as pd
 import xarray as xr
 
 from openghg_inversions.array_ops import concat_gather_datasets, get_xr_dummies
-from openghg_inversions.model_error import percentile_error_method, residual_error_method, xr_setup_min_error
+from openghg_inversions.model_error import (
+    normalise_min_error_options as normalise_min_error_options,  # noqa: PLC0414
+)
+from openghg_inversions.model_error import (
+    percentile_error_method,
+    residual_error_method,
+    xr_setup_min_error,
+)
 
 DatetimeLike = str | dt.datetime | np.datetime64 | pd.Timestamp
 
@@ -323,6 +337,46 @@ def _check_required_inv_input_vars(
         )
 
 
+def _fill_missing_optional_observation_factors(
+    site_data: dict[str, xr.Dataset],
+) -> dict[str, xr.Dataset]:
+    """Validate column-factor pairs and zero-fill them on surface-only sites.
+
+    Raises:
+        ValueError: If a site defines only one of the two column prior-factor
+            variables.
+    """
+    factor_names = ("mf_prior_factor", "mf_prior_upper_level_factor")
+    partial_sites = {
+        site: [name for name in factor_names if name in dataset]
+        for site, dataset in site_data.items()
+        if sum(name in dataset for name in factor_names) == 1
+    }
+    if partial_sites:
+        raise ValueError(
+            "Column observation datasets must define both `mf_prior_factor` and "
+            f"`mf_prior_upper_level_factor`; partial definitions: {partial_sites!r}."
+        )
+
+    result = dict(site_data)
+    for name in factor_names:
+        template = next((dataset[name] for dataset in site_data.values() if name in dataset), None)
+        if template is None:
+            continue
+
+        for site, dataset in result.items():
+            if name in dataset:
+                continue
+            if "mf" not in dataset:
+                continue
+            updated = dataset.copy()
+            factor = xr.zeros_like(updated["mf"]).astype(template.dtype).rename(name)
+            factor.attrs = template.attrs.copy()
+            updated[name] = factor
+            result[site] = updated
+    return result
+
+
 def make_inv_inputs(
     fp_data: dict[str, Any],
     sites: list[str] | None = None,
@@ -330,6 +384,7 @@ def make_inv_inputs(
     min_error: str | dict[str, float] | int | float = 0.0,
     min_error_per_site: bool = True,
     start_date: DatetimeLike | None = None,
+    missing_data_vars: Literal["error", "drop"] = "drop",
 ) -> xr.Dataset:
     """Create backend-neutral observation-aligned inversion inputs.
 
@@ -339,23 +394,45 @@ def make_inv_inputs(
 
     Args:
         fp_data: Per-site merged observations and sensitivity data.
-        sites: Sites to retain. Defaults to all non-metadata entries.
+        sites: Sites to retain. ``None`` infers all non-metadata ``fp_data``
+            keys in insertion order. An explicit empty list is invalid, and
+            every named site must exist in ``fp_data``.
         bc_freq: Optional frequency used to transform boundary-condition
             sensitivities.
         min_error: Minimum-error value or calculation configuration.
         min_error_per_site: Whether a calculated minimum error varies by site.
         start_date: Optional anchor for fixed-duration boundary-condition
             frequencies.
+        missing_data_vars: Policy for observation-aligned variables that are
+            not present at every site. ``"drop"`` preserves the established
+            OpenGHG/legacy behavior; ``"error"`` prevents extension fields
+            from being discarded.
 
     Returns:
         Canonical inversion inputs aligned along ``nmeasure``.
 
     Raises:
-        ValueError: If required input variables are missing or minimum-error
-            configuration is invalid.
+        ValueError: If no sites can be inferred, the explicit selection is
+            empty, a requested site is missing, required input variables are
+            missing, the selected missing-variable policy is violated, or
+            minimum-error configuration is invalid.
     """
-    sites = sites or [k for k in fp_data if not k.startswith(".")]
-    site_data = {k: v for k, v in fp_data.items() if k in sites}
+    if sites is None:
+        sites = [key for key in fp_data if not key.startswith(".")]
+        if not sites:
+            raise ValueError("`fp_data` does not contain any non-metadata site entries.")
+    elif not sites:
+        raise ValueError(
+            "`sites` must contain at least one site. Pass `sites=None` to infer all "
+            "non-metadata sites from `fp_data`."
+        )
+
+    missing_sites = [site for site in sites if site not in fp_data]
+    if missing_sites:
+        raise ValueError(f"`fp_data` is missing requested site(s): {missing_sites!r}.")
+
+    site_data = {site: fp_data[site] for site in sites}
+    site_data = _fill_missing_optional_observation_factors(site_data)
     _validate_per_site_dimension_names(site_data, ragged_dim="time")
 
     try:
@@ -364,7 +441,7 @@ def make_inv_inputs(
             key_dim="site",
             ragged_dim="time",
             stack_dim="nmeasure",
-            missing_data_vars="drop",
+            missing_data_vars=missing_data_vars,
             join="exact",
         )
     except xr.AlignmentError as exc:

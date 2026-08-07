@@ -7,17 +7,16 @@ from pathlib import Path
 from typing import Any, cast
 
 import arviz as az
+import numpy as np
 import xarray as xr
 
 from openghg_inversions._timing import timed
 from openghg_inversions.inversion_data import RhimePreparedInputs
 from openghg_inversions.models import RhimeModelSpec
-from openghg_inversions.postprocessing.inversion_output import (
-    InversionOutput,
-    _reset_serialisation_multiindexes,
-)
+from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.rhime.sampling import RhimeSampler
 from openghg_inversions.rhime.specs import OutputFilenameConvention, RhimeOutputSpec, RhimeRunSpec
+from openghg_inversions.serialization import reset_serialisation_multiindexes
 from openghg_inversions.utils import ncdf_encoding, write_netcdf_preserving_bounds_attrs
 
 
@@ -28,6 +27,40 @@ class RhimeOutputBundle:
     inv_out: InversionOutput | None = None
     outputs: dict[str, Any] = field(default_factory=dict)
     output_metadata: dict[str, Any] = field(default_factory=dict)
+
+
+def _structured_metadata(value: Any) -> Any:
+    """Convert array-backed spec values to lossless JSON-compatible metadata.
+
+    Args:
+        value: Nested metadata value, possibly backed by NumPy or xarray.
+
+    Returns:
+        Scalars and recursively structured dictionaries/lists. DataArrays keep
+        explicit dimensions, dimension coordinates, and values.
+    """
+    if isinstance(value, xr.DataArray):
+        materialized = value.compute()
+        return {
+            "dims": [str(dim) for dim in materialized.dims],
+            "coords": {
+                str(dim): _structured_metadata(materialized.coords[dim].to_numpy())
+                for dim in materialized.dims
+                if dim in materialized.coords
+            },
+            "values": _structured_metadata(materialized.to_numpy()),
+        }
+    if isinstance(value, np.ndarray):
+        if value.ndim == 0:
+            return _structured_metadata(value.item())
+        return [_structured_metadata(item) for item in value.tolist()]
+    if isinstance(value, np.generic):
+        return value.item()
+    if isinstance(value, dict):
+        return {str(key): _structured_metadata(item) for key, item in value.items()}
+    if isinstance(value, tuple | list):
+        return [_structured_metadata(item) for item in value]
+    return value
 
 
 def _resolve_output_path(
@@ -101,7 +134,7 @@ def _save_inferencedata(idata: az.InferenceData, path: str | Path) -> None:
     if isinstance(idata, az.InferenceData):
         idata = cast(Any, az.InferenceData)(
             attrs=dict(idata.attrs),
-            **{group: _reset_serialisation_multiindexes(idata[group]) for group in idata.groups()},
+            **{group: reset_serialisation_multiindexes(idata[group]) for group in idata.groups()},
         )
 
     failures = []
@@ -145,10 +178,8 @@ def _make_inversion_output(
             "split_by_sectors": run_spec.split_by_sectors,
             "basis_artifact_source": prepared.basis_artifact_source,
             "basis_artifact_path": prepared.basis_artifact_path,
-            "site_lats": list(prepared.site_lats) if prepared.site_lats is not None else None,
-            "site_lons": list(prepared.site_lons) if prepared.site_lons is not None else None,
         },
-        model_metadata=asdict(model_spec),
+        model_metadata=cast(dict[str, Any], _structured_metadata(asdict(model_spec))),
         output_metadata={
             "output_format": output_spec.output_format,
             "output_path": output_spec.output_path,

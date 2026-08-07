@@ -1,10 +1,17 @@
-"""Resolve RHIME flux declarations for concrete builders and compiler plans."""
+"""Normalize RHIME flux declarations for concrete builders and compiler plans.
+
+Semantic sector names remain separate from OpenGHG source labels and backend
+variable suffixes. Rectangular shared-basis and gathered source-specific layouts
+use the same entry points. Priors follow per-sector, shared, then default
+precedence; activity follows per-sector override, then shared policy. Scientific
+labels are resolved before backend namespacing and graph mutation.
+"""
 
 from __future__ import annotations
 
 import re
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 import pandas as pd
@@ -15,6 +22,12 @@ from openghg_inversions.models._rhime_compiler import (
     _FluxPlan,
     _ForwardTermPlan,
     _StatePlan,
+)
+from openghg_inversions.models.state_activity import (
+    StateActivity,
+    active_prior_args,
+    detect_zero_sensitivity,
+    resolve_state_activity,
 )
 
 
@@ -36,6 +49,7 @@ class _ResolvedSectorComponent:
     variable_suffix: str
     design: xr.DataArray
     prior_args: Mapping[str, Any]
+    state_activity: StateActivity
 
 
 def safe_pymc_name(value: str) -> str:
@@ -205,6 +219,7 @@ def _select_sector_design(
     source: str,
     variable_suffix: str,
     observation_dim: str = "nmeasure",
+    namespace_state_dim: bool = True,
 ) -> xr.DataArray:
     """Select one source design from rectangular or gathered sensitivity."""
     available_sources = _prepared_sources(design, observation_dim=observation_dim)
@@ -241,24 +256,78 @@ def _select_sector_design(
         ragged_dim=ragged_levels[0],
         stack_dim=state_dim,
     )
-    selected_state_dim = f"{state_dim}_{variable_suffix}"
-    selected = selected.rename({state_dim: selected_state_dim})
-
-    # A gathered design can retain state-aligned provenance coordinates after
-    # source selection. Each source is registered on its own model dimension,
-    # so give those auxiliary coordinates the same sector-specific namespace.
-    # Otherwise unequal source blocks attempt to register one coordinate name
-    # with incompatible dimensions and shapes in the model CoordRegistry.
-    auxiliary_renames = {
-        str(name): f"{name}_{variable_suffix}"
-        for name, coord in selected.coords.items()
-        if name != selected_state_dim and selected_state_dim in coord.dims
-    }
-    return selected.rename(auxiliary_renames)
+    if namespace_state_dim:
+        return selected.rename({state_dim: f"{state_dim}_{variable_suffix}"})
+    return selected
 
 
-def _normalize_standard_flux_plan(inv_inputs: xr.Dataset, x_prior: Mapping[str, Any]) -> _FluxPlan:
-    """Normalize the standard flux component into a one-state linear plan."""
+def _namespace_sector_state_coords(
+    design: xr.DataArray,
+    *,
+    variable_suffix: str,
+    observation_dim: str = "nmeasure",
+    namespace_state_dim: bool = False,
+) -> xr.DataArray:
+    """Namespace sector-local auxiliary coordinates for backend registration.
+
+    Semantic policies are resolved before this transformation so a shared
+    policy can continue to refer to scientific coordinate names such as
+    ``basis_group``. Non-scalar auxiliary coordinates spanning a sector-local
+    state dimension receive the backend ``variable_suffix``, including
+    coordinates that also span the shared observation dimension. Gathered
+    layouts also namespace the state dimension so sectors with different
+    lengths can coexist.
+
+    Args:
+        design: Selected two-dimensional sector sensitivity.
+        variable_suffix: Validated backend suffix for the sector.
+        observation_dim: Name of the shared observation dimension.
+        namespace_state_dim: Whether to suffix the state dimension itself.
+
+    Returns:
+        Design with sector-local auxiliary coordinate names namespaced.
+
+    Raises:
+        ValueError: If a generated coordinate name already exists.
+    """
+    state_dims = {str(dim) for dim in design.dims if dim != observation_dim}
+    rename: dict[str, str] = {}
+    if namespace_state_dim:
+        rename.update({dim: f"{dim}_{variable_suffix}" for dim in state_dims})
+    for name, coord in design.coords.items():
+        coord_name = str(name)
+        if coord_name in design.dims or not coord.dims:
+            continue
+        if state_dims.intersection(map(str, coord.dims)):
+            namespaced = f"{coord_name}_{variable_suffix}"
+            if namespaced in design.coords and namespaced != coord_name:
+                raise ValueError(
+                    f"Cannot namespace sector coordinate {coord_name!r}: "
+                    f"coordinate {namespaced!r} already exists."
+                )
+            rename[coord_name] = namespaced
+    return design.rename(rename)
+
+
+def _normalize_standard_flux_plan(
+    inv_inputs: xr.Dataset,
+    x_prior: Mapping[str, Any],
+    *,
+    state_activity: StateActivity | None = None,
+) -> _FluxPlan:
+    """Normalize the standard flux component into a one-state linear plan.
+
+    Args:
+        inv_inputs: Canonical inputs containing the required ``H`` design.
+        x_prior: Flux-scaling prior specification.
+        state_activity: Optional activity policy, resolved during compilation.
+
+    Returns:
+        A single-state, single-forward-term compiler plan.
+
+    Raises:
+        KeyError: If ``inv_inputs`` does not contain ``H``.
+    """
     state_id = "flux"
     return _FluxPlan(
         states=(
@@ -266,6 +335,7 @@ def _normalize_standard_flux_plan(inv_inputs: xr.Dataset, x_prior: Mapping[str, 
                 state_id=state_id,
                 variable_name="x",
                 prior_args=x_prior,
+                state_activity=state_activity,
             ),
         ),
         terms=(
@@ -288,6 +358,8 @@ def _resolve_multisector_components(
     sector_priors: Mapping[str, Mapping[str, Any]] | None,
     x_prior: Mapping[str, Any] | None,
     default_x_prior: Mapping[str, Any],
+    state_activity: StateActivity | None = None,
+    sector_state_activities: Mapping[str, StateActivity] | None = None,
 ) -> tuple[_ResolvedSectorComponent, ...]:
     """Resolve multisector designs and priors independently of graph construction.
 
@@ -315,6 +387,9 @@ def _resolve_multisector_components(
             are absent.
         default_x_prior: Final shared prior used when neither explicit prior
             option is supplied.
+        state_activity: Optional activity policy shared by every sector.
+        sector_state_activities: Optional activity-policy overrides keyed by
+            semantic sector name.
 
     Returns:
         Ordered resolved components containing each sector identity, selected
@@ -337,6 +412,11 @@ def _resolve_multisector_components(
                 f"unused sector prior key(s): {unused_priors!r}."
             )
 
+    sector_state_activities = dict(sector_state_activities or {})
+    unknown_activity_sectors = sorted(set(sector_state_activities) - set(sector_names))
+    if unknown_activity_sectors:
+        raise ValueError(f"State activity supplied for unknown sector(s) {unknown_activity_sectors!r}.")
+
     components = []
     for binding in sector_bindings:
         if sector_priors is not None:
@@ -345,18 +425,47 @@ def _resolve_multisector_components(
             prior = x_prior
         else:
             prior = default_x_prior
+        gathered_layout = "source" not in inv_inputs["H"].dims
+        design = _select_sector_design(
+            inv_inputs["H"],
+            sector=binding.name,
+            source=binding.flux_source,
+            variable_suffix=binding.variable_suffix,
+            namespace_state_dim=False,
+        )
+        semantic_policy = sector_state_activities.get(binding.name, state_activity)
+        resolved_activity = resolve_state_activity(
+            detect_zero_sensitivity(design),
+            semantic_policy,
+        )
+        all_active = replace(
+            resolved_activity,
+            active=xr.ones_like(resolved_activity.active, dtype=bool),
+        )
+        normalized_prior = active_prior_args(dict(prior), all_active)
+        backend_design = _namespace_sector_state_coords(
+            design,
+            variable_suffix=binding.variable_suffix,
+            namespace_state_dim=gathered_layout,
+        )
+        backend_state_dim = next(str(dim) for dim in backend_design.dims if dim != "nmeasure")
+        semantic_state_dim = resolved_activity.state_dim
+        rename_state = (
+            {semantic_state_dim: backend_state_dim} if semantic_state_dim != backend_state_dim else {}
+        )
+        resolved_policy = StateActivity(
+            active=resolved_activity.active.rename(rename_state),
+            fixed_value=resolved_activity.fixed_value.rename(rename_state),
+            prune_zero=False,
+        )
         components.append(
             _ResolvedSectorComponent(
                 name=binding.name,
                 flux_source=binding.flux_source,
                 variable_suffix=binding.variable_suffix,
-                design=_select_sector_design(
-                    inv_inputs["H"],
-                    sector=binding.name,
-                    source=binding.flux_source,
-                    variable_suffix=binding.variable_suffix,
-                ),
-                prior_args=dict(prior),
+                design=backend_design,
+                prior_args=normalized_prior,
+                state_activity=resolved_policy,
             )
         )
     return tuple(components)
@@ -369,8 +478,30 @@ def _normalize_multisector_flux_plan(
     sector_priors: Mapping[str, Mapping[str, Any]] | None,
     x_prior: Mapping[str, Any] | None,
     default_x_prior: Mapping[str, Any],
+    state_activity: StateActivity | None = None,
+    sector_state_activities: Mapping[str, StateActivity] | None = None,
 ) -> _FluxPlan:
-    """Normalize selected sector designs into separate state and term plans."""
+    """Normalize selected sector designs into separate state and term plans.
+
+    Per-sector priors and activity policies override shared equivalents;
+    gathered scientific labels are resolved before backend namespacing.
+
+    Args:
+        inv_inputs: Canonical source-resolved inversion inputs.
+        sector_bindings: Ordered validated sector/source/backend bindings.
+        sector_priors: Optional complete per-sector prior mapping.
+        x_prior: Optional prior shared by all sectors.
+        default_x_prior: Fallback prior when explicit priors are absent.
+        state_activity: Optional policy shared by all sectors.
+        sector_state_activities: Optional per-sector policy overrides.
+
+    Returns:
+        One compiler state and forward term per sector.
+
+    Raises:
+        KeyError: If required sensitivity input ``H`` is absent.
+        ValueError: If layouts or sector/prior/activity mappings are invalid.
+    """
     states: list[_StatePlan] = []
     terms: list[_ForwardTermPlan] = []
     components = _resolve_multisector_components(
@@ -379,6 +510,8 @@ def _normalize_multisector_flux_plan(
         sector_priors=sector_priors,
         x_prior=x_prior,
         default_x_prior=default_x_prior,
+        state_activity=state_activity,
+        sector_state_activities=sector_state_activities,
     )
     for component in components:
         states.append(
@@ -386,6 +519,7 @@ def _normalize_multisector_flux_plan(
                 state_id=component.name,
                 variable_name=f"x_{component.variable_suffix}",
                 prior_args=component.prior_args,
+                state_activity=component.state_activity,
             )
         )
         terms.append(

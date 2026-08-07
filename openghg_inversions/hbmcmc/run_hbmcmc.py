@@ -176,7 +176,7 @@ def _translate_reparameterise_log_normal(params: dict[str, Any]) -> None:
     warnings.warn(
         "`reparameterise_log_normal` is deprecated. The run_hbmcmc compatibility shim is setting "
         "`reparameterise=True` in lognormal emissions and BC prior dictionaries.",
-        DeprecationWarning,
+        FutureWarning,
         stacklevel=3,
     )
     for name in _LOGNORMAL_PRIOR_NAMES:
