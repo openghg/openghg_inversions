@@ -893,9 +893,11 @@ coordinate containing the value <code class="docutils literal notranslate"><span
 <p>For multisector builders, use <code class="docutils literal notranslate"><span class="pre">state_activity</span></code> as a shared policy or
 <code class="docutils literal notranslate"><span class="pre">sector_state_activities</span></code> for sector-name overrides;
 <code class="docutils literal notranslate"><span class="pre">StateActivity(active=False)</span></code> freezes a complete sector. Programmatic
-prepared-input runs set the canonical per-sector policy with
-<code class="docutils literal notranslate"><span class="pre">SectorSpec(state_activity=...)</span></code>. RHIME config-file syntax and persisted
-activity-reason tables remain follow-up work.
+prepared-input runs may set a shared policy on <code class="docutils literal notranslate"><span class="pre">RhimeModelSpec</span></code> and use its
+<code class="docutils literal notranslate"><span class="pre">sector_state_activities</span></code> mapping for overrides. The canonical per-sector
+policy is <code class="docutils literal notranslate"><span class="pre">SectorSpec(state_activity=...)</span></code> and takes precedence over that
+mapping. RHIME config-file syntax and persisted activity-reason tables remain
+follow-up work.
 Each prior dictionary in <code class="docutils literal notranslate"><span class="pre">sector_priors</span></code> supports the same scalar,
 full-state array, and labelled <code class="docutils literal notranslate"><span class="pre">DataArray</span></code> parameter forms; labelled values
 must match the selected sector’s state coordinate exactly.</p>
