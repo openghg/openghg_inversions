@@ -272,9 +272,11 @@ def _namespace_sector_state_coords(
 
     Semantic policies are resolved before this transformation so a shared
     policy can continue to refer to scientific coordinate names such as
-    ``basis_group``. Auxiliary coordinates attached exclusively to the state
-    dimension receive the sector suffix. Gathered layouts also namespace the
-    state dimension so sectors with different lengths can coexist.
+    ``basis_group``. Non-scalar auxiliary coordinates spanning a sector-local
+    state dimension receive the backend ``variable_suffix``, including
+    coordinates that also span the shared observation dimension. Gathered
+    layouts also namespace the state dimension so sectors with different
+    lengths can coexist.
 
     Args:
         design: Selected two-dimensional sector sensitivity.
@@ -296,7 +298,7 @@ def _namespace_sector_state_coords(
         coord_name = str(name)
         if coord_name in design.dims or not coord.dims:
             continue
-        if set(map(str, coord.dims)).issubset(state_dims):
+        if state_dims.intersection(map(str, coord.dims)):
             namespaced = f"{coord_name}_{variable_suffix}"
             if namespaced in design.coords and namespaced != coord_name:
                 raise ValueError(

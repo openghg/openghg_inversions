@@ -3136,8 +3136,16 @@ def test_rhime_prepared_inputs_contract_exposes_only_modern_fields() -> None:
 
 def test_prepared_multisector_runner_accepts_gathered_source_specific_basis_layout(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
-    """Prepared-input validation accepts exact ragged source/state coordinates."""
+    """Legacy source-valued ``sector`` provenance survives load and execution.
+
+    The auxiliary ``sector`` coordinate records the OpenGHG flux source for
+    each gathered state; it is not the semantic ``SectorSpec.name``. Reloading
+    preserves this coordinate, while model lowering namespaces auxiliaries
+    spanning state and observation and leaves observation-only coordinates
+    shared.
+    """
     basis_ff = xr.DataArray(
         [[0, 0], [1, 1]],
         dims=("lat", "lon"),
@@ -3188,17 +3196,42 @@ def test_prepared_multisector_runner_accepts_gathered_source_specific_basis_layo
     )
     inv_inputs = _minimal_output_inv_inputs().drop_dims("region")
     inv_inputs["min_error"] = xr.zeros_like(inv_inputs["mf"])
-    inv_inputs["H"] = (
+    sensitivity = (
         basis_functions.sensitivity(fp_x_flux)
         .rename(time="nmeasure")
         .assign_coords(nmeasure=inv_inputs.coords["nmeasure"])
     )
+    state_dim = next(dim for dim in sensitivity.dims if dim != "nmeasure")
+    state_measurement_code = np.arange(sensitivity.size).reshape(sensitivity.shape)
+    inv_inputs["H"] = sensitivity.assign_coords(
+        sector=(state_dim, sensitivity.coords["source"].values),
+        state_measurement_code=(sensitivity.dims, state_measurement_code),
+        observation_label=("nmeasure", ["shared-observation"]),
+    )
+    expected_state_index = inv_inputs.indexes[state_dim].copy()
+    expected_sector = inv_inputs["sector"].copy(deep=True)
+    expected_state_measurement_code = inv_inputs["state_measurement_code"].copy(deep=True)
 
     prepared = RhimePreparedInputs(
         inv_inputs=inv_inputs,
         basis_functions=basis_functions,
         site_metadata=_prepared_site_metadata(averaging_period=("1H",)),
     )
+    artifact_path = tmp_path / "gathered-multisector-prepared.nc"
+    prepared.save(artifact_path)
+    loaded = RhimePreparedInputs.load(artifact_path)
+    loaded_before_run = loaded.inv_inputs.copy(deep=True)
+
+    loaded_state_index = loaded.inv_inputs.indexes[state_dim]
+    assert isinstance(loaded_state_index, pd.MultiIndex)
+    assert loaded_state_index.names == ["source", "region_in_source"]
+    assert loaded_state_index.equals(expected_state_index)
+    xr.testing.assert_identical(loaded.inv_inputs["sector"], expected_sector)
+    xr.testing.assert_identical(
+        loaded.inv_inputs["state_measurement_code"],
+        expected_state_measurement_code,
+    )
+
     run_spec = RhimeRunSpec(
         start_date="2019-01-01",
         end_date="2019-01-02",
@@ -3219,10 +3252,42 @@ def test_prepared_multisector_runner_accepts_gathered_source_specific_basis_layo
         lambda **kwargs: rhime_outputs.RhimeOutputBundle(),
     )
 
-    result = run_rhime_from_prepared_inputs(prepared_inputs=prepared, run_spec=run_spec)
+    result = run_rhime_from_prepared_inputs(prepared_inputs=loaded, run_spec=run_spec)
 
+    xr.testing.assert_identical(loaded.inv_inputs, loaded_before_run)
     assert result.model.named_vars_to_dims["x_ff"] == ("region_ff",)
     assert result.model.named_vars_to_dims["x_ocean"] == ("region_ocean",)
+    registry = models.get_coord_registry(result.model)
+    assert registry is not None
+    assert registry.auxiliary_coords["sector_ff"].values.tolist() == ["ff-inventory"] * 2
+    assert registry.auxiliary_coords["sector_ocean"].values.tolist() == ["ocean-inventory"] * 3
+    ff_states = expected_sector.values == "ff-inventory"
+    ocean_states = expected_sector.values == "ocean-inventory"
+    ff_codes = registry.auxiliary_coords["state_measurement_code_ff"]
+    ocean_codes = registry.auxiliary_coords["state_measurement_code_ocean"]
+    assert ff_codes.dims == ("nmeasure", "region_ff")
+    assert ocean_codes.dims == ("nmeasure", "region_ocean")
+    expected_ff_codes = (
+        expected_state_measurement_code.isel({state_dim: np.flatnonzero(ff_states)})
+        .rename({state_dim: "region_ff"})
+        .transpose(*ff_codes.dims)
+    )
+    expected_ocean_codes = (
+        expected_state_measurement_code.isel({state_dim: np.flatnonzero(ocean_states)})
+        .rename({state_dim: "region_ocean"})
+        .transpose(*ocean_codes.dims)
+    )
+    np.testing.assert_array_equal(
+        ff_codes,
+        expected_ff_codes,
+    )
+    np.testing.assert_array_equal(
+        ocean_codes,
+        expected_ocean_codes,
+    )
+    observation_label = registry.auxiliary_coords["observation_label"]
+    assert observation_label.dims == ("nmeasure",)
+    assert observation_label.values.tolist() == ["shared-observation"]
 
 
 def test_multisector_runner_rejects_shared_basis_h_layout_mismatch() -> None:
