@@ -6,7 +6,6 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, cast
 
-import arviz as az
 import numpy as np
 import xarray as xr
 
@@ -16,7 +15,7 @@ from openghg_inversions.models import RhimeModelSpec
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.rhime.sampling import RhimeSampler
 from openghg_inversions.rhime.specs import OutputFilenameConvention, RhimeOutputSpec, RhimeRunSpec
-from openghg_inversions.serialization import reset_serialisation_multiindexes
+from openghg_inversions.serialization import inferencedata_to_datatree
 from openghg_inversions.utils import ncdf_encoding, write_netcdf_preserving_bounds_attrs
 
 
@@ -117,11 +116,11 @@ def _define_derived_output_filename(
     )
 
 
-def _save_inferencedata(idata: az.InferenceData, path: str | Path) -> None:
+def _save_inferencedata(idata: xr.DataTree, path: str | Path) -> None:
     """Save inference data while preserving metadata and serializable coords.
 
     Root and group attributes are preserved while group MultiIndexes are reset
-    on a serialization copy. The h5netcdf, ArviZ-default, and netcdf4 backends
+    on a serialization copy. The h5netcdf, xarray-default, and netcdf4 backends
     are attempted in that order.
 
     Args:
@@ -131,35 +130,31 @@ def _save_inferencedata(idata: az.InferenceData, path: str | Path) -> None:
     Raises:
         RuntimeError: If every supported NetCDF backend fails.
     """
-    if isinstance(idata, az.InferenceData):
-        idata = cast(Any, az.InferenceData)(
-            attrs=dict(idata.attrs),
-            **{group: reset_serialisation_multiindexes(idata[group]) for group in idata.groups()},
-        )
+    idata = inferencedata_to_datatree(idata)
 
     failures = []
     for engine in ("h5netcdf", None, "netcdf4"):
         try:
             if engine is None:
-                idata.to_netcdf(str(path), compress=True)
+                idata.to_netcdf(str(path))
             else:
-                idata.to_netcdf(str(path), engine=engine, compress=True)
+                idata.to_netcdf(str(path), engine=engine)
         except Exception as exc:
-            engine_name = "arviz-default" if engine is None else engine
+            engine_name = "xarray-default" if engine is None else engine
             failures.append(f"{engine_name}: {exc}")
         else:
             return
 
     joined_failures = "\n".join(failures)
     raise RuntimeError(
-        f"Could not save RHIME trace to {path}. Tried h5netcdf, ArviZ default, and netcdf4:\n{joined_failures}"
+        f"Could not save RHIME trace to {path}. Tried h5netcdf, xarray default, and netcdf4:\n{joined_failures}"
     )
 
 
 def _make_inversion_output(
     *,
     prepared: RhimePreparedInputs,
-    idata: az.InferenceData,
+    idata: xr.DataTree,
     run_spec: RhimeRunSpec,
     model_spec: RhimeModelSpec,
     output_spec: RhimeOutputSpec,
@@ -214,7 +209,7 @@ def make_standard_output_bundle(
     output_spec: RhimeOutputSpec,
     run_spec: RhimeRunSpec,
     model_spec: RhimeModelSpec,
-    idata: az.InferenceData,
+    idata: xr.DataTree,
     prepared: RhimePreparedInputs,
     country_file: str | None,
     sampler: RhimeSampler | None = None,
@@ -354,7 +349,7 @@ def make_multisector_output_bundle(
     output_spec: RhimeOutputSpec,
     run_spec: RhimeRunSpec,
     model_spec: RhimeModelSpec,
-    idata: az.InferenceData,
+    idata: xr.DataTree,
     prepared: RhimePreparedInputs,
     country_file: str | None,
 ) -> RhimeOutputBundle:

@@ -33,7 +33,6 @@ import inspect
 from pathlib import Path
 from typing import Any
 
-import arviz as az
 import pandas as pd
 import pymc as pm
 import xarray as xr
@@ -92,7 +91,7 @@ class RhimeResult:
         model_spec: Model specification used to build the PyMC model.
         output_spec: Output settings used by the run.
         inv_inputs: Canonical xarray inversion inputs consumed by the model.
-        idata: ArviZ ``InferenceData`` returned by sampling.
+        idata: xarray ``DataTree`` returned by sampling.
         output_metadata: Paths and notes for generated outputs.
         outputs: In-memory derived outputs keyed by output kind.
         model: Built PyMC model.
@@ -105,7 +104,7 @@ class RhimeResult:
     model_spec: RhimeModelSpec
     output_spec: RhimeOutputSpec
     inv_inputs: xr.Dataset
-    idata: az.InferenceData
+    idata: xr.DataTree
     output_metadata: dict[str, Any] = field(default_factory=dict)
     outputs: dict[str, Any] = field(default_factory=dict)
     basis_functions: BasisFunctions | None = None
@@ -405,7 +404,7 @@ def run_rhime(
             absent.
 
     Returns:
-        Modern RHIME result containing canonical inputs, InferenceData, specs,
+        Modern RHIME result containing canonical inputs, trace DataTree, specs,
         output metadata, and generated outputs.
 
     Raises:
@@ -436,7 +435,7 @@ def run_rhime_multisector(
             absent.
 
     Returns:
-        Modern RHIME result containing canonical inputs, InferenceData, specs,
+        Modern RHIME result containing canonical inputs, trace DataTree, specs,
         output metadata, and sector diagnostics.
 
     Raises:

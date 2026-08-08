@@ -33,7 +33,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, cast
 
-import arviz as az
 import numpy as np
 import xarray as xr
 
@@ -46,7 +45,7 @@ from openghg_inversions.inversion_data._site_options import (
 )
 from openghg_inversions.models.priors import lognormal_mu_sigma
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
-from openghg_inversions.serialization import reset_serialisation_multiindexes
+from openghg_inversions.serialization import inferencedata_to_datatree
 from openghg_inversions.utils import ncdf_encoding, write_netcdf_preserving_bounds_attrs
 
 
@@ -137,7 +136,7 @@ def _require_fixedbasis_emissions_basis(prepared: FixedBasisPreparedData) -> Bas
 
 def _canonicalize_fixedbasis_trace(trace: object, basis_functions: BasisFunctions) -> object:
     """Rename legacy fixedbasis trace dims back to modern model dims."""
-    if not isinstance(trace, az.InferenceData):
+    if not isinstance(trace, xr.DataTree):
         return trace
 
     rename_map = {
@@ -146,8 +145,8 @@ def _canonicalize_fixedbasis_trace(trace: object, basis_functions: BasisFunction
     }
     renamed_groups: dict[str, xr.Dataset] = {}
 
-    for group in trace.groups():
-        ds = trace[group]
+    for group, node in trace.children.items():
+        ds = node.to_dataset()
         applicable = {
             old: new
             for old, new in rename_map.items()
@@ -158,7 +157,7 @@ def _canonicalize_fixedbasis_trace(trace: object, basis_functions: BasisFunction
         }
         renamed_groups[group] = ds.rename(applicable) if applicable else ds.copy()
 
-    return cast(Any, az.InferenceData)(attrs=dict(trace.attrs), **renamed_groups)
+    return xr.DataTree.from_dict({"/": xr.Dataset(attrs=dict(trace.attrs)), **renamed_groups})
 
 
 def _inv_inputs_from_rerun_arrays(
@@ -509,12 +508,9 @@ def _handle_core_output_artifacts(context: _OutputContext) -> None:
     trace_path = context.paths.get("trace")
     if trace_path is not None:
         trace = context.mcmc_results["trace"]
-        if isinstance(trace, az.InferenceData):
-            trace = cast(Any, az.InferenceData)(
-                attrs=dict(trace.attrs),
-                **{group: reset_serialisation_multiindexes(trace[group]) for group in trace.groups()},
-            )
-        trace.to_netcdf(str(trace_path), engine="netcdf4", compress=True)
+        if isinstance(trace, xr.DataTree):
+            trace = inferencedata_to_datatree(trace)
+        trace.to_netcdf(str(trace_path), engine="netcdf4")
 
     inversion_output_path = context.paths.get("inversion_output")
     if inversion_output_path is not None:
@@ -815,7 +811,7 @@ def fixedbasisMCMC(
         merged_data_dir: Path to a directory of merged data objects. For saving to or reading from.
         merged_data_name: Name of files in which are the merged data objects. For saving to or reading from.
         basis_output_path: If set, save the basis functions to this path. Used for testing.
-        save_trace: If True, save arviz `InferenceData` trace to `outputpath`. Alternatively,
+        save_trace: If True, save the trace DataTree to `outputpath`. Alternatively,
             a file path (including file name and extension) can be passed, and the trace will be
             saved there.
         save_inversion_output: If true, save the modern ``InversionOutput`` to

@@ -2,7 +2,7 @@ Installation and Setup
 ======================
 
 As OpenGHG Inversions is dependent on OpenGHG, please ensure that when
-running locally you are using Python 3.10 or later on Linux or MacOS.
+running locally you are using Python 3.12 or later on Linux or MacOS.
 Please see the `OpenGHG project <https://github.com/openghg/openghg/>`__
 for further installation instructions of OpenGHG and setting up an
 object store.
@@ -69,7 +69,7 @@ that Pixi is intended to avoid.
 Setup a virtual environment
 ---------------------------
 
-Check that you have Python 3.10 or greater:
+Check that you have Python 3.12 or greater:
 
 .. code:: bash
 
@@ -78,7 +78,6 @@ Check that you have Python 3.10 or greater:
 (Note for Bristol ACRG group: If you are on Blue Pebble, the default
 anaconda module ``lang/python/anaconda`` is Python 3.9. Use
 ``module avail`` to list other options;
-``lang/python/miniconda/3.10.10.cuda-12`` or
 ``lang/python/miniconda/3.12.2.inc-perl-5.30.0`` will work.)
 
 Make a virtual environment

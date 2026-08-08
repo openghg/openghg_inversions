@@ -4,14 +4,13 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-import arviz as az
 import xarray as xr
 
 from openghg_inversions.sigma import SigmaAlignment
 
 
 def reconstruct_sigma_aligned(
-    trace: az.InferenceData,
+    trace: xr.DataTree,
     *,
     model_data: xr.Dataset | None = None,
 ) -> xr.DataArray:

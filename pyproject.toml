@@ -22,13 +22,14 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 dependencies = [
     "numpy>=2.0",
     # Explicit lower bound: prevents uv backtracking to numba 0.53 / llvmlite 0.36
     # due to NumPy 2.x + sparse metadata lag
     "numba>=0.59",
-    "pymc",
+    "pymc>=6,<7",
+    "arviz>=1,<2",
     "numpyro[cpu]",
     "xarray>=2025.06.0",
     "pandas<3.0",
@@ -72,16 +73,16 @@ platforms = ["linux-64", "osx-64", "osx-arm64"]
 
 [tool.pixi.dependencies]
 # Use the CI Python version for the reproducible Pixi development environment.
-python = "3.10.*"
+python = "3.12.*"
 pip = "*"
 
 # Keep the compiled scientific and HDF5/NetCDF stack on conda-forge. These
 # entries override matching PyPI dependencies from this project and OpenGHG.
 numpy = ">=2.0"
 numba = ">=0.59"
-pymc = "*"
+pymc = ">=6,<7"
 pytensor = "*"
-arviz = "*"
+arviz = ">=1,<2"
 xarray = ">=2025.06.0"
 pandas = "<3.0"
 matplotlib = "*"
