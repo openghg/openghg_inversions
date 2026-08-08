@@ -8,6 +8,7 @@ import xarray as xr
 
 import openghg_inversions.basis as basis_package
 import openghg_inversions.basis._functions as basis_module
+from openghg_inversions.basis.algorithms import ConnectedComponentSplitStrategy
 from openghg_inversions.basis._functions import (
     basis,
     basis_functions,
@@ -20,8 +21,9 @@ from openghg_inversions.basis import (
     bucket_basis_from_weights,
     bucket_basis_function,
     fixed_outer_regions_basis,
+    load_country_region_classes,
     load_intem_outer_regions,
-    load_landsea_region_classes,
+    paired_abs_response_weights,
     quadtree_basis_from_weights,
     quadtree_basis_function,
     region_constrained_basis_from_weights,
@@ -45,7 +47,11 @@ from openghg_inversions.basis.operators import (
     BucketBasisOperator,
     MultiSourceBucketBasisOperator,
 )
-from openghg_inversions.basis._helpers import apply_fp_basis_functions, fp_sensitivity
+from openghg_inversions.basis._helpers import (
+    _legacy_multisource_h_if_needed,
+    apply_fp_basis_functions,
+    fp_sensitivity,
+)
 from openghg_inversions.flux_sanitization import (
     FluxNonFiniteMetadata,
     NONFINITE_CHECKED_COMPUTED,
@@ -156,6 +162,146 @@ def test_basis_weights_from_fp_all_applies_abs_flux_and_mask():
 
     expected = flux.mean("time").where(mask, drop=True)
     xr.testing.assert_allclose(weights, expected)
+
+
+def test_paired_abs_response_weights_use_retained_footprint_times_only():
+    """Paired response weights use only the footprint observations supplied."""
+    times = pd.to_datetime(["2020-01-01", "2020-01-02"])
+    coords = {"time": times, "lat": [0.0], "lon": [10.0, 20.0]}
+    flux = xr.DataArray(
+        np.array([[[1.0, -4.0]], [[100.0, 200.0]]]),
+        dims=("time", "lat", "lon"),
+        coords=coords,
+        name="flux",
+    )
+    retained_footprint = xr.DataArray(
+        np.array([[[2.0, 3.0]]]),
+        dims=("time", "lat", "lon"),
+        coords={"time": [times[0]], "lat": coords["lat"], "lon": coords["lon"]},
+        name="fp",
+    )
+
+    weights = paired_abs_response_weights(flux, [retained_footprint])
+
+    expected = abs(retained_footprint.isel(time=0, drop=True) * flux.isel(time=0, drop=True))
+    xr.testing.assert_allclose(weights, expected)
+    mean_product = _mean_fp_times_mean_flux(flux, [retained_footprint])
+    assert not np.allclose(weights.values, mean_product.values)
+
+
+def test_paired_abs_response_weights_applies_mask():
+    """Paired response weights preserve the lower-level mask convention."""
+    fp_all = _simple_fp_all_for_basis_weights()
+    flux = fp_all[".flux"]["test-source"].data.flux
+    footprint = fp_all["TAC"].fp
+    mask = xr.DataArray(
+        np.array([[True, False], [False, True]]),
+        dims=("lat", "lon"),
+        coords={"lat": flux.lat, "lon": flux.lon},
+    )
+
+    weights = paired_abs_response_weights(flux, [footprint], mask=mask)
+
+    expected = abs(footprint * flux).sum("time") / footprint.sizes["time"]
+    xr.testing.assert_allclose(weights, expected.where(mask, drop=True))
+
+
+def test_paired_abs_response_weights_weights_sites_by_retained_observation_count():
+    """Paired response weights average over retained observations, not sites."""
+    times = pd.to_datetime(["2020-01-01", "2020-01-02", "2020-01-03"])
+    coords = {"time": times, "lat": [0.0], "lon": [10.0, 20.0]}
+    flux = xr.DataArray(
+        np.array([[[1.0, 2.0]], [[10.0, 20.0]], [[100.0, 200.0]]]),
+        dims=("time", "lat", "lon"),
+        coords=coords,
+        name="flux",
+    )
+    one_observation_site = xr.DataArray(
+        np.array([[[2.0, 3.0]]]),
+        dims=("time", "lat", "lon"),
+        coords={"time": [times[0]], "lat": coords["lat"], "lon": coords["lon"]},
+        name="fp",
+    )
+    two_observation_site = xr.DataArray(
+        np.array([[[1.0, 2.0]], [[3.0, 4.0]]]),
+        dims=("time", "lat", "lon"),
+        coords={"time": times[1:], "lat": coords["lat"], "lon": coords["lon"]},
+        name="fp",
+    )
+
+    weights = paired_abs_response_weights(flux, [one_observation_site, two_observation_site])
+
+    expected = (
+        abs(one_observation_site * flux.sel(time=one_observation_site.time)).sum("time")
+        + abs(two_observation_site * flux.sel(time=two_observation_site.time)).sum("time")
+    ) / 3
+    xr.testing.assert_allclose(weights, expected)
+
+
+def test_paired_abs_response_weights_rejects_unpaired_times():
+    """Paired response weights fail fast when retained observations lack flux."""
+    fp_all = _simple_fp_all_for_basis_weights()
+    flux = fp_all[".flux"]["test-source"].data.flux
+    footprint = fp_all["TAC"].fp.assign_coords(time=pd.to_datetime(["2021-01-01", "2021-01-02"]))
+
+    with pytest.raises(ValueError, match="footprint times must be present"):
+        paired_abs_response_weights(flux, [footprint])
+
+
+def test_paired_abs_response_weights_rejects_reordered_spatial_coordinates():
+    """Paired response weights fail fast instead of multiplying grids positionally."""
+    fp_all = _simple_fp_all_for_basis_weights()
+    flux = fp_all[".flux"]["test-source"].data.flux
+    footprint = fp_all["TAC"].fp.sortby("lon", ascending=False)
+
+    with pytest.raises(ValueError, match="exact time and spatial coordinates"):
+        paired_abs_response_weights(flux, [footprint])
+
+
+def test_paired_abs_response_weights_rejects_reordered_mask_coordinates():
+    """Paired response masks must be on the same coordinate grid."""
+    fp_all = _simple_fp_all_for_basis_weights()
+    flux = fp_all[".flux"]["test-source"].data.flux
+    footprint = fp_all["TAC"].fp
+    mask = xr.DataArray(
+        np.array([[False, True], [True, False]]),
+        dims=("lat", "lon"),
+        coords={"lat": flux.lat, "lon": list(reversed(flux.lon.values))},
+    )
+
+    with pytest.raises(ValueError, match="mask must share exact spatial coordinates"):
+        paired_abs_response_weights(flux, [footprint], mask=mask)
+
+
+def test_paired_abs_response_weights_rejects_mismatched_spatial_dimensions():
+    """Paired responses reject arrays that would broadcast across renamed dimensions."""
+    fp_all = _simple_fp_all_for_basis_weights()
+    flux = fp_all[".flux"]["test-source"].data.flux
+    footprint = fp_all["TAC"].fp.rename(lat="latitude", lon="longitude")
+
+    with pytest.raises(ValueError, match="same time and spatial dimensions"):
+        paired_abs_response_weights(flux, [footprint])
+
+
+def test_paired_abs_response_weights_rejects_extra_flux_dimensions():
+    """Paired responses remain two-dimensional when callers pass source-stacked flux."""
+    fp_all = _simple_fp_all_for_basis_weights()
+    flux = fp_all[".flux"]["test-source"].data.flux.expand_dims(source=["test-source"])
+    footprint = fp_all["TAC"].fp
+
+    with pytest.raises(ValueError, match="exactly two spatial dimensions"):
+        paired_abs_response_weights(flux, [footprint])
+
+
+def test_paired_abs_response_weights_rejects_non_boolean_mask():
+    """Paired response masks reject numeric values with ambiguous truth semantics."""
+    fp_all = _simple_fp_all_for_basis_weights()
+    flux = fp_all[".flux"]["test-source"].data.flux
+    footprint = fp_all["TAC"].fp
+    mask = xr.ones_like(flux.isel(time=0), dtype=float)
+
+    with pytest.raises(ValueError, match="mask must be Boolean"):
+        paired_abs_response_weights(flux, [footprint], mask=mask)
 
 
 def test_flux_from_fp_all_sanitizes_nonfinite_single_source():
@@ -503,6 +649,35 @@ def test_region_constrained_basis_from_weights_subsets_full_domain_classes():
         assert len(set(selected_classes.values[labels.values == label])) == 1
     xr.testing.assert_equal(labels.lat, weights.lat)
     xr.testing.assert_equal(labels.lon, weights.lon)
+
+
+def test_region_constrained_basis_from_weights_reindexes_reversed_equal_sized_coordinates():
+    """Equal-sized descending class coordinates are reordered onto physical weight cells."""
+    weights = xr.DataArray(
+        np.ones((2, 2)),
+        dims=("lat", "lon"),
+        coords={"lat": [50.0, 51.0], "lon": [-2.0, -1.0]},
+    )
+    region_classes = xr.DataArray(
+        np.array([["north", "north"], ["south", "south"]], dtype=object),
+        dims=weights.dims,
+        coords={"lat": [51.0, 50.0], "lon": weights.lon},
+    )
+
+    labels = region_constrained_basis_from_weights(
+        weights,
+        "2020-01-01",
+        "TEST",
+        region_classes=region_classes,
+        nbasis=2,
+        allocation="area",
+    ).squeeze("time", drop=True)
+
+    south_label = labels.sel(lat=50.0).item(0)
+    north_label = labels.sel(lat=51.0).item(0)
+    assert south_label != north_label
+    assert np.all(labels.sel(lat=50.0) == south_label)
+    assert np.all(labels.sel(lat=51.0) == north_label)
 
 
 @pytest.mark.parametrize(
@@ -907,7 +1082,7 @@ def test_fixed_outer_regions_can_use_region_constrained_algorithm(tmp_path):
     )
 
     labels = basis_func.squeeze("time", drop=True)
-    inner_mask = outer_values == outer_values.max()
+    inner_mask = outer_values == np.nanmax(outer_values)
     inner_labels = np.unique(labels.values[inner_mask])
     assert len(inner_labels) == 4
     for label in inner_labels:
@@ -927,11 +1102,12 @@ def test_region_constrained_fixed_outer_basis_from_weights_allocates_inner_only(
     )
     outer_values = np.array(
         [
-            [0, 0, 0, 1, 1],
+            [np.nan, 0, 0, 1, 1],
             [0, 2, 2, 2, 1],
             [0, 2, 2, 2, 1],
             [0, 0, 0, 1, 1],
-        ]
+        ],
+        dtype=float,
     )
     outer_regions = xr.DataArray(
         outer_values.T,
@@ -962,7 +1138,7 @@ def test_region_constrained_fixed_outer_basis_from_weights_allocates_inner_only(
     )
 
     labels = basis_func.squeeze("time", drop=True)
-    inner_mask = outer_values == outer_values.max()
+    inner_mask = outer_values == np.nanmax(outer_values)
     outer_zero_labels = np.unique(labels.values[outer_values == 0])
     outer_one_labels = np.unique(labels.values[outer_values == 1])
     inner_labels = np.unique(labels.values[inner_mask])
@@ -973,12 +1149,92 @@ def test_region_constrained_fixed_outer_basis_from_weights_allocates_inner_only(
     assert set(inner_labels).isdisjoint(set(outer_zero_labels) | set(outer_one_labels))
     for label in inner_labels:
         assert len(set(inner_classes.values[inner_mask & (labels.values == label)])) == 1
-    assert set(np.unique(labels)) == set(range(1, 6))
+    assert labels.values[0, 0] == 0
+    assert set(np.unique(labels)) == set(range(6))
     assert basis_func.dims == ("lat", "lon", "time")
     assert basis_func.name == "basis"
     assert basis_func.attrs["domain"] == "TEST"
     xr.testing.assert_equal(basis_func.lat, weights.lat)
     xr.testing.assert_equal(basis_func.lon, weights.lon)
+
+
+def test_region_constrained_fixed_outer_basis_forwards_custom_split_strategy():
+    """Fixed-outer layout targets are independent from the selected class-local generator."""
+    coords = {"lat": np.arange(4.0), "lon": np.arange(5.0)}
+    weights = xr.DataArray(np.arange(1, 21, dtype=float).reshape(4, 5), dims=("lat", "lon"), coords=coords)
+    outer_values = np.array(
+        [
+            [0, 1, 1, 1, 0],
+            [1, 2, 2, 2, 1],
+            [1, 2, 2, 2, 1],
+            [0, 1, 1, 1, 0],
+        ]
+    )
+    outer_regions = xr.DataArray(outer_values, dims=weights.dims, coords=coords)
+    inner_classes = xr.DataArray(np.tile([10, 10, 10, 20, 20], (4, 1)), dims=weights.dims, coords=coords)
+    calls: list[tuple[int, np.ndarray]] = []
+
+    class SequentialCellStrategy:
+        """Assign selected cells cyclically across the requested local target."""
+
+        def __call__(
+            self,
+            weights: np.ndarray,
+            class_mask: np.ndarray,
+            target_regions: int,
+        ) -> np.ndarray:
+            calls.append((target_regions, class_mask.copy()))
+            local_labels = np.zeros(weights.shape, dtype=np.int64)
+            selected = np.argwhere(class_mask)
+            for offset, index in enumerate(selected):
+                local_labels[tuple(index)] = offset % target_regions + 1
+            return local_labels
+
+    labels = region_constrained_fixed_outer_basis_from_weights(
+        weights,
+        "2020-01-01",
+        "TEST",
+        nbasis=3,
+        outer_regions=outer_regions,
+        region_classes=inner_classes,
+        allocation="area",
+        split_strategy=ConnectedComponentSplitStrategy(SequentialCellStrategy()),
+    ).squeeze("time", drop=True)
+
+    inner_mask = outer_values == outer_values.max()
+    assert all(np.all(~mask | inner_mask) for _, mask in calls)
+    assert sum(target for target, _ in calls) == 3
+    assert len(np.unique(labels.values[outer_values == 0])) == 1
+    assert len(np.unique(labels.values[outer_values == 1])) == 1
+    assert set(np.unique(labels)) == set(range(1, 6))
+
+
+def test_region_constrained_basis_from_weights_rejects_strategy_and_acceptance_policy():
+    """A direct generator cannot be combined with contrast-configured greedy splitting."""
+    weights = xr.DataArray(np.ones((2, 2)), dims=("lat", "lon"))
+    classes = xr.DataArray(np.ones((2, 2), dtype=int), dims=weights.dims)
+
+    class OneRegionStrategy:
+        """Return one valid local label."""
+
+        def __call__(
+            self,
+            weights: np.ndarray,
+            class_mask: np.ndarray,
+            target_regions: int,
+        ) -> np.ndarray:
+            return class_mask.astype(np.int64)
+
+    with pytest.raises(ValueError, match="cannot be combined"):
+        region_constrained_basis_from_weights(
+            weights,
+            "2020-01-01",
+            "TEST",
+            region_classes=classes,
+            nbasis=1,
+            split_strategy=OneRegionStrategy(),
+            split_acceptance="contrast_score",
+        )
 
 
 def test_region_constrained_fixed_outer_basis_from_weights_computes_dask_outer_max():
@@ -1034,11 +1290,47 @@ def test_region_constrained_fixed_outer_basis_from_weights_rejects_non_integral_
         )
 
 
+def test_load_country_region_classes_preserves_multiclass_integer_map(tmp_path):
+    """Caller-supplied country maps retain every distinct integer class."""
+    coords = {"lat": [50.0, 51.0, 52.0], "lon": [-2.0, -1.0, 0.0]}
+    class_values = np.array(
+        [[99, 99, 99], [99, 10, 20], [99, 30, 20]],
+        dtype=np.int16,
+    )
+    xr.DataArray(
+        class_values,
+        dims=("lat", "lon"),
+        coords=coords,
+        name="country",
+    ).to_dataset().to_netcdf(tmp_path / "country-land-sea_TEST.nc")
+
+    region_classes = load_country_region_classes("TEST", tmp_path)
+
+    assert region_classes.dtype == np.int16
+    assert set(np.unique(region_classes)) == {10, 20, 30, 99}
+
+    outer_values = np.array([[0, 0, 0], [0, 2, 2], [0, 2, 2]])
+    outer_regions = xr.DataArray(outer_values, dims=region_classes.dims, coords=coords)
+    weights = xr.ones_like(region_classes, dtype=float)
+    labels = region_constrained_fixed_outer_basis_from_weights(
+        weights,
+        "2020-01-01",
+        "TEST",
+        nbasis=3,
+        outer_regions=outer_regions,
+        region_classes=region_classes,
+        allocation="area",
+    ).squeeze("time", drop=True)
+    inner_mask = outer_values == outer_values.max()
+    for label in np.unique(labels.values[inner_mask]):
+        assert len(set(region_classes.values[inner_mask & (labels.values == label)])) == 1
+
+
 @pytest.mark.parametrize("domain", ["EUROPE", "EASTASIA", "SAUSSIE", "WESTUSA"])
 def test_packaged_fixed_outer_and_landsea_fields_compose_on_weights_grid(domain):
     """Packaged outer and land/sea fields retain coordinates and compose for each supported domain."""
     outer_regions = load_intem_outer_regions(domain)
-    landsea_classes = load_landsea_region_classes(domain)
+    landsea_classes = load_country_region_classes(domain)
     weights = xr.ones_like(landsea_classes, dtype=float)
 
     basis_func = region_constrained_fixed_outer_basis_from_weights(
@@ -1526,12 +1818,13 @@ def test_basisfunctions_roundtrip_datatree_multisource_flux_mapping():
     # Exercise the mapping->concat codepath
     flux_a = xr.ones_like(basis_a, dtype=float) * 1.0
     flux_b = xr.ones_like(basis_b, dtype=float) * 2.0
-    flux = {"A": flux_a.rename("flux"), "B": flux_b.rename("flux")}
+    flux = {"B": flux_b.rename("flux"), "A": flux_a.rename("flux")}
 
     bf = BasisFunctions.from_multi_source_flat_basis(
         basis_flat=basis, flux=flux, operator_kwargs={"state_dim": "region"}
     )
     assert "source" in bf.flux.dims
+    assert bf.flux.source.values.tolist() == ["A", "B"]
     xr.testing.assert_allclose(bf.flux.sel(source="A", drop=True), flux_a)
     xr.testing.assert_allclose(bf.flux.sel(source="B", drop=True), flux_b)
 
@@ -1544,6 +1837,69 @@ def test_basisfunctions_roundtrip_datatree_multisource_flux_mapping():
     xr.testing.assert_identical(bf2.operator.basis_matrix, bf.operator.basis_matrix)
     for k in bf.operator.basis_flat:
         xr.testing.assert_identical(bf2.operator.basis_flat[k], bf.operator.basis_flat[k])
+
+
+def test_basisfunctions_rejects_flux_source_mismatch() -> None:
+    """Multisource flux labels must describe the same sources as the operator."""
+    basis = make_basis_flat_from_blocks([[1, 1], [2, 2]])
+    flux = xr.ones_like(basis, dtype=float).expand_dims(source=["A", "C"])
+
+    with pytest.raises(ValueError, match="flux labels must exactly match basis"):
+        BasisFunctions.from_multi_source_flat_basis(
+            basis_flat={"A": basis, "B": basis},
+            flux=flux,
+            operator_kwargs={"state_dim": "region"},
+        )
+
+
+def test_basisfunctions_enforces_sources_for_direct_construction_and_replacement() -> None:
+    """Every construction route keeps operator and retained-flux sources consistent."""
+    basis = make_basis_flat_from_blocks([[1, 1], [2, 2]])
+    operator = MultiSourceBucketBasisOperator(
+        {"A": basis, "B": basis},
+        state_dim="region",
+    )
+    valid_flux = xr.ones_like(basis, dtype=float).expand_dims(source=["B", "A"])
+    invalid_flux = xr.ones_like(basis, dtype=float).expand_dims(source=["A", "C"])
+
+    normalized = BasisFunctions(operator=operator, flux=valid_flux)
+    assert normalized.flux.source.values.tolist() == ["A", "B"]
+
+    with pytest.raises(ValueError, match="flux labels must exactly match basis"):
+        BasisFunctions(operator=operator, flux=invalid_flux)
+    with pytest.raises(ValueError, match="flux labels must exactly match basis"):
+        normalized.with_flux(invalid_flux)
+
+
+def test_basisfunctions_allows_shared_flux_for_multisource_operator() -> None:
+    """A source-independent flux may be shared by every multisource basis."""
+    basis = make_basis_flat_from_blocks([[1, 1], [2, 2]])
+    shared_flux = xr.ones_like(basis, dtype=float)
+
+    basis_functions = BasisFunctions.from_multi_source_flat_basis(
+        basis_flat={"A": basis, "B": basis},
+        flux=shared_flux,
+        operator_kwargs={"state_dim": "region"},
+    )
+
+    assert "source" not in basis_functions.flux.dims
+    xr.testing.assert_allclose(basis_functions.flux, shared_flux)
+    replaced = basis_functions.with_flux(2.0 * shared_flux)
+    assert "source" not in replaced.flux.dims
+    xr.testing.assert_allclose(replaced.flux, 2.0 * shared_flux)
+
+
+def test_basisfunctions_rejects_duplicate_labels_on_shared_basis_flux() -> None:
+    """A shared spatial basis still requires an unambiguous source coordinate."""
+    basis = make_basis_flat_from_blocks([[1, 1], [2, 2]])
+    duplicate_flux = xr.ones_like(basis, dtype=float).expand_dims(source=["A", "A"])
+
+    with pytest.raises(ValueError, match="flux labels must be unique"):
+        BasisFunctions.from_flat_basis(
+            basis_flat=basis,
+            flux=duplicate_flux,
+            operator_kwargs={"state_dim": "region"},
+        )
 
 
 # --------------------------------------------------------------------------------------
@@ -1650,6 +2006,42 @@ def test_basisfunctions_interpolate_trace_with_chain_dim():
 # --------------------------------------------------------------------------------------
 # Multi-source equivalence: gathered MultiIndex vs legacy padded H conversion
 # --------------------------------------------------------------------------------------
+@pytest.mark.parametrize("use_multiindex", [True, False], ids=["multiindex", "auxiliary-coordinates"])
+def test_legacy_multisource_adapter_only_zero_fills_structural_padding(use_multiindex: bool) -> None:
+    """Legacy rectangularization must preserve NaNs in represented state cells."""
+    state_index = pd.MultiIndex.from_tuples(
+        [("ff", 0), ("ff", 1), ("ocean", 0)],
+        names=["source", "region_in_source"],
+    )
+    state_coords: dict = (
+        dict(xr.Coordinates.from_pandas_multiindex(state_index, "state"))
+        if use_multiindex
+        else {
+            "state": [0, 1, 2],
+            "source": ("state", ["ff", "ff", "ocean"]),
+            "region_in_source": ("state", [0, 1, 0]),
+        }
+    )
+    sensitivity = xr.DataArray(
+        [[1.0, 2.0], [np.nan, 4.0], [5.0, 6.0]],
+        dims=("state", "time"),
+        coords={
+            **state_coords,
+            "time": [0, 1],
+        },
+    )
+
+    result = _legacy_multisource_h_if_needed(
+        sensitivity,
+        state_dim="state",
+        flux_sources=["ff", "ocean"],
+    )
+
+    assert np.isnan(result.sel(source="ff", region=1, time=0))
+    assert result.sel(source="ocean", region=1, time=0).item() == 0.0
+    assert result.coords["source_region_count"].to_dict()["data"] == [2, 1]
+
+
 def test_multisource_sensitivity_matches_legacy_padded_conversion_smoke():
     """Smoke test: gathered multi-source sensitivity matches legacy padded->gathered conversion.
 
@@ -1782,6 +2174,141 @@ def test_basis_functions_from_fp_all_stacks_fluxes_sectoral():
         dim="source",
     )
     xr.testing.assert_allclose(bf.flux, expected)
+
+
+def test_basis_functions_from_fp_all_selects_runtime_basis_sources():
+    """A legacy basis mapping may contain more sources than the current run."""
+    basis_flat = make_basis_flat_from_blocks([[1, 1], [2, 2]])
+    fp_all = {
+        ".flux": {
+            "B": xr.ones_like(basis_flat, dtype=float).rename("flux"),
+            "A": (2.0 * xr.ones_like(basis_flat, dtype=float)).rename("flux"),
+        },
+        ".split_by_sectors": True,
+    }
+
+    bf = basis_functions_from_fp_all_flat_basis(
+        fp_all=fp_all,
+        basis_flat={"EXTRA": basis_flat, "A": basis_flat, "B": basis_flat},
+    )
+
+    assert isinstance(bf.operator, MultiSourceBucketBasisOperator)
+    assert bf.operator.source_labels == ("B", "A")
+    assert bf.flux.source.values.tolist() == ["B", "A"]
+
+
+def test_flux_from_fp_all_stacks_sources_with_equal_time_coordinates():
+    """Sector fluxes sharing an exact time index stack without temporal expansion."""
+    time = pd.date_range("2019-01-01", periods=2, freq="h")
+    flux_a = xr.DataArray(
+        np.ones((2, 1, 2)),
+        dims=("time", "lat", "lon"),
+        coords={"time": time, "lat": [51.0], "lon": [-2.0, -1.0]},
+        name="flux",
+    )
+    flux_b = (2.0 * flux_a).rename("flux")
+
+    stacked = flux_from_fp_all(
+        {
+            ".flux": {"a": flux_a, "b": flux_b},
+            ".split_by_sectors": True,
+        }
+    )
+
+    assert stacked.dims == ("source", "time", "lat", "lon")
+    assert stacked.source.values.tolist() == ["a", "b"]
+    xr.testing.assert_identical(stacked.time, flux_a.time)
+
+
+def test_flux_from_fp_all_rejects_sources_with_different_time_coordinates():
+    """Mixed source frequencies require explicit resampling before source stacking."""
+    hourly = xr.DataArray(
+        np.ones((2, 1, 1)),
+        dims=("time", "lat", "lon"),
+        coords={
+            "time": pd.date_range("2019-01-01", periods=2, freq="h"),
+            "lat": [51.0],
+            "lon": [-2.0],
+        },
+        name="flux",
+    )
+    monthly = xr.DataArray(
+        np.ones((2, 1, 1)),
+        dims=("time", "lat", "lon"),
+        coords={
+            "time": pd.date_range("2019-01-01", periods=2, freq="MS"),
+            "lat": [51.0],
+            "lon": [-2.0],
+        },
+        name="flux",
+    )
+
+    with pytest.raises(ValueError):
+        flux_from_fp_all(
+            {
+                ".flux": {"hourly": hourly, "monthly": monthly},
+                ".split_by_sectors": True,
+            }
+        )
+
+
+def test_flux_from_fp_all_rejects_mixed_timed_and_timeless_sources():
+    """Timed and timeless source fluxes cannot be stacked without a time policy."""
+    timed = xr.DataArray(
+        np.ones((1, 1, 1)),
+        dims=("time", "lat", "lon"),
+        coords={"time": [np.datetime64("2019-01-01")], "lat": [51.0], "lon": [-2.0]},
+        name="flux",
+    )
+    timeless = timed.isel(time=0, drop=True)
+
+    with pytest.raises(ValueError):
+        flux_from_fp_all(
+            {
+                ".flux": {"timed": timed, "timeless": timeless},
+                ".split_by_sectors": True,
+            }
+        )
+
+
+def test_flux_from_fp_all_rejects_unlabeled_or_duplicate_time_coordinates():
+    """A positional or duplicate time axis cannot define source alignment semantics."""
+    unlabeled = xr.DataArray(
+        np.ones((2, 1, 1)),
+        dims=("time", "lat", "lon"),
+        coords={"lat": [51.0], "lon": [-2.0]},
+        name="flux",
+    )
+    duplicate = unlabeled.assign_coords(time=[np.datetime64("2019-01-01"), np.datetime64("2019-01-01")])
+
+    for invalid in (unlabeled, duplicate):
+        with pytest.raises(ValueError, match="time coordinate"):
+            flux_from_fp_all(
+                {
+                    ".flux": {"a": invalid, "b": invalid.copy()},
+                    ".split_by_sectors": True,
+                }
+            )
+
+
+def test_flux_from_fp_all_rejects_source_only_extra_dimension():
+    """An extra dimension on one source is rejected instead of broadcast."""
+    time = pd.date_range("2019-01-01", periods=2, freq="h")
+    reference = xr.DataArray(
+        np.ones((2, 1, 1)),
+        dims=("time", "lat", "lon"),
+        coords={"time": time, "lat": [51.0], "lon": [-2.0]},
+        name="flux",
+    )
+    with_ensemble = reference.expand_dims(ensemble=[0, 1])
+
+    with pytest.raises(ValueError, match="different dimensions"):
+        flux_from_fp_all(
+            {
+                ".flux": {"a": reference, "b": with_ensemble},
+                ".split_by_sectors": True,
+            }
+        )
 
 
 def test_basis_functions_from_fp_all_uses_legacy_multisource_fallback():
@@ -2002,6 +2529,9 @@ def test_multisource_datatree_basis_artifact_keeps_legacy_h_shape(tmp_path):
         source: xr.ones_like(basis, dtype=float).rename("flux")
         for source, basis in expected_basis_by_source.items()
     }
+    artifact_flux_by_source = {
+        source: xr.ones_like(basis, dtype=float).rename("flux") for source, basis in basis_by_source.items()
+    }
     fp_x_flux_sectoral = make_fp_x_flux_sectoral(sources=sources, nlat=2, nlon=2, ntime=3)
     fp_all = {
         "TAC": xr.Dataset({"fp_x_flux_sectoral": fp_x_flux_sectoral}),
@@ -2010,7 +2540,7 @@ def test_multisource_datatree_basis_artifact_keeps_legacy_h_shape(tmp_path):
     }
     bf = BasisFunctions.from_multi_source_flat_basis(
         basis_flat=basis_by_source,
-        flux=flux_by_source,
+        flux=artifact_flux_by_source,
         operator_kwargs={"state_dim": "region"},
     )
 

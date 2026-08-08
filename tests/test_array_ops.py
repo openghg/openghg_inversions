@@ -6,8 +6,10 @@ import xarray as xr
 
 from openghg_inversions.array_ops import (
     align_to_multi_index_level_values,
+    concat_gather_data_arrays,
     concat_gather_datatree,
     concat_gather_datasets,
+    select_gathered_data_array,
 )
 
 
@@ -154,6 +156,44 @@ def test_align_to_multi_index_level_values_with_other_level_as_dim_warns():
         )
 
     xr.testing.assert_equal(da_stack.a, da_aligned.a)
+
+
+def test_select_gathered_data_array_restores_ragged_labels_and_values() -> None:
+    """Selecting a gathered key should retain represented values, including NaNs."""
+    time = pd.date_range("2020-01-01", periods=2, freq="1h")
+    gathered = concat_gather_data_arrays(
+        {
+            "ff": xr.DataArray(
+                [[1.0, np.nan], [2.0, 3.0]],
+                dims=("region", "time"),
+                coords={"region": [10, 11], "time": time},
+            ),
+            "ocean": xr.DataArray(
+                [[4.0, 5.0]],
+                dims=("region", "time"),
+                coords={"region": [20], "time": time},
+            ),
+        },
+        key_dim="source",
+        ragged_dim="region",
+        stack_dim="state",
+        join="exact",
+    )
+
+    selected = select_gathered_data_array(
+        gathered,
+        key="ff",
+        key_dim="source",
+        ragged_dim="region",
+        stack_dim="state",
+    )
+
+    expected = xr.DataArray(
+        [[1.0, np.nan], [2.0, 3.0]],
+        dims=("state", "time"),
+        coords={"state": [10, 11], "time": time},
+    )
+    xr.testing.assert_identical(selected, expected)
 
 
 @pytest.mark.parametrize("use_datatree", [False, True], ids=["datasets", "datatree"])

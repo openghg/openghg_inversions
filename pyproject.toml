@@ -35,6 +35,7 @@ dependencies = [
     "matplotlib",
     "scipy",
     "openghg",
+    "cf_xarray>=0.10.6",
     "sparse",
     "flox",
     "opt_einsum",
@@ -48,7 +49,7 @@ jupyter = [
 dev = [
   "pytest",
   "pytest-xdist",
-  "ruff",
+  "ruff==0.16.0",
   "pyright",
   "mypy",
 ]
@@ -104,11 +105,11 @@ dev = { features = ["dev", "jupyter"], solve-group = "default" }
 
 [tool.pixi.feature.dev.tasks]
 test = "pytest"
-test-xdist = "pytest -n 2 --dist=loadscope tests"
+test-xdist = "pytest -n 2 --dist=worksteal tests"
 country-file-smoke = "pytest -s tests/postprocessing/test_country_file_smoke.py"
 lint = "ruff check ."
 typecheck = "pyright"
-tox = "tox -p"
+tox = "tox -p --parallel-no-spinner"
 
 [tool.pixi.feature.dev.pypi-dependencies]
 tox = ">=4.24"
@@ -133,6 +134,10 @@ default-groups = ["uv_dev"]
 
 [tool.ruff]
 line-length = 110
+
+[tool.ruff.lint]
+# Preserve the pre-0.16 baseline by preventing default rule expansion; adopt broader rules separately.
+select = ["E4", "E7", "E9", "F"]
 
 [tool.pytest.ini_options]
 minversion = "6.0"

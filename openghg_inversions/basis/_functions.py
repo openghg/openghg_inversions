@@ -1,26 +1,26 @@
 """Functions to create basis datasets from fluxes and footprints."""
 
+import getpass
+import logging
 import os
 import warnings
-
-import getpass
-from collections.abc import Hashable
 from collections import namedtuple
+from collections.abc import Hashable
 from functools import partial
 from numbers import Integral
 from pathlib import Path
 from typing import Literal, cast
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 import xarray as xr
-import logging
 
 from .algorithms import (
     AllocationMode,
     ContrastScoreSplitAcceptance,
     GreedyAxisParallelSplitStrategy,
     NbasisAllocation,
+    SplitStrategy,
     allocate_nbasis_by_class,
     combine_inner_outer_region_classes,
     normalize_spatial_grid,
@@ -220,6 +220,108 @@ def _mean_fp_times_mean_flux(
     return mean_fp * mean_flux
 
 
+def paired_abs_response_weights(
+    flux: xr.DataArray,
+    footprints: list[xr.DataArray],
+    *,
+    mask: xr.DataArray | None = None,
+) -> xr.DataArray:
+    """Build weights from retained footprint observations paired with prior flux.
+
+    Each retained footprint time is multiplied by the prior flux at the same
+    timestamp, and absolute responses are averaged over retained observations:
+    ``mean_o(abs(fp_o * flux_at_o))``. This helper is intentionally pure and
+    lower-level; callers are responsible for passing footprints after any
+    observation filters have been applied.
+
+    Args:
+        flux: Prior flux field with ``time`` plus spatial dimensions.
+        footprints: Retained footprint fields for each site.
+        mask: Optional Boolean spatial mask. When supplied, weights outside the
+            mask are dropped from the returned field.
+
+    Returns:
+        Two-dimensional response weight field with spatial coordinates
+        preserved.
+
+    Raises:
+        ValueError: If no footprints are supplied, required ``time`` dimensions
+            are absent, or a retained footprint time cannot be paired with a
+            flux time. Also raised when paired arrays do not have exactly two
+            matching spatial dimensions and coordinates, or when a mask is not
+            Boolean and defined on those spatial dimensions.
+    """
+    if "time" not in flux.dims:
+        raise ValueError("flux must have a time dimension for paired response weights.")
+    spatial_dims = tuple(dim for dim in flux.dims if dim != "time")
+    if len(spatial_dims) != 2:
+        raise ValueError("flux must have exactly two spatial dimensions for paired response weights.")
+    if any(dim not in flux.indexes for dim in spatial_dims):
+        raise ValueError("flux spatial dimensions must have coordinates for paired response weights.")
+    if not footprints:
+        raise ValueError("at least one retained footprint is required for paired response weights.")
+
+    response_sums: list[xr.DataArray] = []
+    n_measure = 0
+    flux_times = flux.get_index("time")
+
+    for footprint in footprints:
+        if "time" not in footprint.dims:
+            raise ValueError("footprints must have a time dimension for paired response weights.")
+        if set(footprint.dims) != set(flux.dims):
+            raise ValueError(
+                "footprints and flux must have the same time and spatial dimensions "
+                "for paired response weights."
+            )
+        if any(dim not in footprint.indexes for dim in spatial_dims):
+            raise ValueError(
+                "footprint spatial dimensions must have coordinates for paired response weights."
+            )
+        footprint = footprint.transpose(*flux.dims)
+        missing_times = footprint.get_index("time").difference(flux_times)
+        if not missing_times.empty:
+            raise ValueError(
+                "footprint times must be present in flux time coordinates for paired response weights."
+            )
+
+        paired_flux = flux.sel(time=footprint.time)
+        try:
+            footprint, paired_flux = xr.align(footprint, paired_flux, join="exact")
+        except xr.AlignmentError as exc:
+            raise ValueError(
+                "footprints and flux must share exact time and spatial coordinates for paired response weights."
+            ) from exc
+        response_sums.append(abs(footprint * paired_flux).sum("time"))
+        n_measure += footprint.sizes["time"]
+
+    if n_measure == 0:
+        raise ValueError("at least one retained footprint time is required for paired response weights.")
+
+    try:
+        response_sums = list(xr.align(*response_sums, join="exact"))
+    except xr.AlignmentError as exc:
+        raise ValueError(
+            "retained footprints must share exact spatial coordinates for paired response weights."
+        ) from exc
+    weights = cast(xr.DataArray, sum(response_sums)) / n_measure
+
+    if mask is not None:
+        if set(mask.dims) != set(spatial_dims):
+            raise ValueError("mask must have the same spatial dimensions as paired response weights.")
+        if mask.dtype.kind != "b":
+            raise ValueError("mask must be Boolean for paired response weights.")
+        mask = mask.transpose(*spatial_dims)
+        try:
+            weights, mask = xr.align(weights, mask, join="exact")
+        except xr.AlignmentError as exc:
+            raise ValueError(
+                "mask must share exact spatial coordinates with paired response weights."
+            ) from exc
+        return weights.where(mask, drop=True)
+
+    return weights
+
+
 def basis_weights_from_fp_all(
     fp_all: dict,
     emissions_name: list[str] | None = None,
@@ -281,45 +383,47 @@ def load_intem_outer_regions(
         return dataset["region"].load()
 
 
-def load_landsea_region_classes(
+def load_country_region_classes(
     domain: str,
     country_directory: str | Path | None = None,
 ) -> xr.DataArray:
-    """Load coordinate-preserving binary land/sea region classes.
+    """Load a coordinate-preserving country or land/sea class map.
 
     The path-selection behavior matches the legacy weighted-basis loader. A
     caller-supplied directory uses ``country-land-sea_{domain}.nc``. Packaged
     EUROPE data use ``country-EUROPE-UKMO-landsea-2023.nc``; other packaged
     domains use ``country-land-sea_{domain}.nc`` and fall back to the EUROPE
-    file when that domain file is unavailable.
+    file when that domain file is unavailable. Values are returned unchanged:
+    every distinct non-null value can be used as a separate region class, so a
+    caller-supplied multi-country integer map is not coerced to binary.
 
     Args:
-        domain: Domain used to select the land/sea file.
-        country_directory: Optional directory containing the land/sea file.
+        domain: Domain used to select the country/land-sea file.
+        country_directory: Optional directory containing the class-map file.
 
     Returns:
-        Loaded two-dimensional ``country`` field, including its spatial
-        coordinates and metadata.
+        Loaded two-dimensional ``country`` field with its original values,
+        spatial coordinates, and metadata.
 
     Raises:
-        FileNotFoundError: If a caller-selected file does not exist.
+        FileNotFoundError: If the selected file does not exist.
         KeyError: If the selected dataset does not contain ``country``.
     """
     default_directory = Path(__file__).parent / "algorithms"
     if country_directory is not None:
-        landsea_path = Path(country_directory) / f"country-land-sea_{domain}.nc"
+        class_map_path = Path(country_directory) / f"country-land-sea_{domain}.nc"
     elif domain == "EUROPE":
-        landsea_path = default_directory / "country-EUROPE-UKMO-landsea-2023.nc"
+        class_map_path = default_directory / "country-EUROPE-UKMO-landsea-2023.nc"
     else:
-        landsea_path = default_directory / f"country-land-sea_{domain}.nc"
-        if not landsea_path.exists():
+        class_map_path = default_directory / f"country-land-sea_{domain}.nc"
+        if not class_map_path.exists():
             logger.warning(
                 f"No land-sea file found for domain {domain}. Defaulting to EUROPE "
                 "(country-EUROPE-UKMO-landsea-2023.nc)"
             )
-            landsea_path = default_directory / "country-EUROPE-UKMO-landsea-2023.nc"
+            class_map_path = default_directory / "country-EUROPE-UKMO-landsea-2023.nc"
 
-    with xr.open_dataset(landsea_path, decode_coords="all") as dataset:
+    with xr.open_dataset(class_map_path, decode_coords="all") as dataset:
         return dataset["country"].load()
 
 
@@ -451,6 +555,7 @@ def region_constrained_basis_from_weights(
     nbasis: NbasisAllocation = 100,
     allocation: AllocationMode = "weight",
     min_regions_per_class: int = 1,
+    split_strategy: SplitStrategy | None = None,
     split_acceptance: Literal["none", "contrast_score"] = "none",
     contrast_contribution: xr.DataArray | None = None,
     contrast_cell_weight: xr.DataArray | None = None,
@@ -480,6 +585,9 @@ def region_constrained_basis_from_weights(
             allocates by mapped cell count.
         min_regions_per_class: Minimum automatic allocation for each non-empty
             mapped class.
+        split_strategy: Optional class-local label generator. When omitted, the
+            default greedy generator is used, optionally configured by
+            ``split_acceptance``.
         split_acceptance: Optional split-acceptance criterion. The default
             ``"none"`` preserves existing behavior. ``"contrast_score"`` uses
             a mass-preserving observation-space contrast gate.
@@ -499,20 +607,27 @@ def region_constrained_basis_from_weights(
     Returns:
         Basis field with globally unique integer labels that do not cross
         ``region_classes`` values.
+
+    Raises:
+        ValueError: If both ``split_strategy`` and a non-default
+            ``split_acceptance`` are supplied.
     """
     raw_weights = _sanitize_generated_basis_weights(weights, algorithm="region-constrained")
     weights = _normalise_weights_by_max(raw_weights)
     region_classes = _region_classes_on_weights_grid(weights, region_classes)
-    split_strategy = _region_constrained_split_strategy(
-        split_acceptance=split_acceptance,
-        contrast_contribution=contrast_contribution,
-        contrast_cell_weight=contrast_cell_weight if contrast_cell_weight is not None else raw_weights,
-        min_contrast_delta_eig=min_contrast_delta_eig,
-        min_contrast_lambda=min_contrast_lambda,
-        contrast_tau=contrast_tau,
-        contrast_sigma_design=contrast_sigma_design,
-        contrast_s_diag=contrast_s_diag,
-    )
+    if split_strategy is not None and split_acceptance != "none":
+        raise ValueError("split_strategy cannot be combined with a non-default split_acceptance.")
+    if split_strategy is None:
+        split_strategy = _region_constrained_split_strategy(
+            split_acceptance=split_acceptance,
+            contrast_contribution=contrast_contribution,
+            contrast_cell_weight=contrast_cell_weight if contrast_cell_weight is not None else raw_weights,
+            min_contrast_delta_eig=min_contrast_delta_eig,
+            min_contrast_lambda=min_contrast_lambda,
+            contrast_tau=contrast_tau,
+            contrast_sigma_design=contrast_sigma_design,
+            contrast_s_diag=contrast_s_diag,
+        )
 
     constrained_basis = region_constrained_basis(
         weights,
@@ -541,8 +656,6 @@ def _region_classes_on_weights_grid(
     region_classes = region_classes.transpose(*weights.dims)
     indexers: dict[Hashable, np.ndarray] = {}
     for dimension in weights.dims:
-        if weights.sizes[dimension] == region_classes.sizes[dimension]:
-            continue
         if weights.sizes[dimension] > region_classes.sizes[dimension]:
             break
         if dimension not in weights.coords or dimension not in region_classes.coords:
@@ -586,17 +699,45 @@ def _region_classes_on_weights_grid(
     )
 
 
+class _FixedOuterSplitStrategy:
+    """Keep outer class maps fixed while dispatching an inner generator."""
+
+    def __init__(
+        self,
+        inner_mask: np.ndarray,
+        inner_strategy: SplitStrategy | None,
+    ) -> None:
+        self.inner_mask = np.asarray(inner_mask, dtype=bool)
+        self.inner_strategy = (
+            inner_strategy if inner_strategy is not None else GreedyAxisParallelSplitStrategy()
+        )
+
+    def __call__(
+        self,
+        weights: np.ndarray,
+        class_mask: np.ndarray,
+        target_regions: int,
+    ) -> np.ndarray:
+        """Return one fixed label for outer IDs or dispatch an inner class."""
+        if np.any(class_mask & ~self.inner_mask):
+            labels = np.zeros(class_mask.shape, dtype=np.int64)
+            labels[class_mask] = 1
+            return labels
+        return self.inner_strategy(weights, class_mask, target_regions)
+
+
 def region_constrained_fixed_outer_basis_from_weights(
     weights: xr.DataArray,
     start_date: str,
     domain: str,
     *,
-    nbasis: int = 100,
+    nbasis: int | np.integer = 100,
     outer_regions: xr.DataArray | None = None,
     region_classes: xr.DataArray | None = None,
     country_directory: str | Path | None = None,
     allocation: AllocationMode = "weight",
     min_regions_per_class: int = 1,
+    split_strategy: SplitStrategy | None = None,
 ) -> xr.DataArray:
     """Create a constrained fixed-outer basis from precomputed weights.
 
@@ -607,32 +748,45 @@ def region_constrained_fixed_outer_basis_from_weights(
     final positive integer labels are globally disjoint.
 
     Args:
-        weights: Two-dimensional basis weight field whose grid defines the
-            output coordinates.
+        weights: Two-dimensional whole-domain basis weight field whose grid
+            defines the output coordinates. Unlike
+            :func:`region_constrained_basis_from_weights`, this fixed-outer
+            adapter does not accept cropped weights because it emits the outer
+            states as well as the bounded inner states.
         start_date: Start date of the inversion period.
         domain: Domain used for output metadata and default file loading.
         nbasis: Total number of requested inner-region basis labels.
         outer_regions: Optional already-loaded InTEM outer-region map. When
             omitted, :func:`load_intem_outer_regions` is used.
         region_classes: Optional already-loaded inner classification, such as
-            binary land/sea classes. When omitted,
-            :func:`load_landsea_region_classes` is used.
+            a binary land/sea or multi-country integer map. Each distinct
+            non-null selected value is a class. When omitted,
+            :func:`load_country_region_classes` is used.
         country_directory: Optional directory used by both default loaders.
         allocation: Mode used to distribute ``nbasis`` across selected inner
             classes.
         min_regions_per_class: Minimum automatic allocation for each non-empty
             selected inner class.
+        split_strategy: Optional class-local label generator applied only to
+            bounded inner classes after layout composition. Outer IDs remain
+            fixed maps even when they are disconnected. The inner default is
+            the greedy axis-parallel generator.
 
     Returns:
         Basis field on the weights grid with a singleton ``time`` dimension,
-        standard generated-basis metadata, one state per outer class, and
-        ``nbasis`` states allocated across the inner classes.
+        standard generated-basis metadata, one target per non-null outer class,
+        and ``nbasis`` targets allocated across the inner classes. Null outer
+        cells remain label ``0``.
 
     Raises:
         TypeError: If ``nbasis`` is not a non-Boolean integral value.
         ValueError: If the outer map has no finite maximum, the maximum-valued
             region contains no mapped inner classes, or the requested inner
             allocation is impossible.
+        FileNotFoundError: If a required default or caller-selected map file is
+            missing.
+        KeyError: If a selected outer map lacks ``region`` or a selected class
+            map lacks ``country``.
         xarray.AlignmentError: If the supplied or loaded fields are not on
             physically compatible spatial grids.
     """
@@ -644,7 +798,7 @@ def region_constrained_fixed_outer_basis_from_weights(
         load_intem_outer_regions(domain, country_directory) if outer_regions is None else outer_regions
     )
     loaded_region_classes = (
-        load_landsea_region_classes(domain, country_directory) if region_classes is None else region_classes
+        load_country_region_classes(domain, country_directory) if region_classes is None else region_classes
     )
 
     loaded_outer_regions = normalize_spatial_grid(
@@ -670,33 +824,32 @@ def region_constrained_fixed_outer_basis_from_weights(
         raise ValueError("outer_regions must contain a finite maximum region value.")
 
     inner_mask = loaded_outer_regions == inner_region_value
-    composed_classes = combine_inner_outer_region_classes(
-        inner_mask,
-        loaded_region_classes,
-        loaded_outer_regions,
-    )
-    inner_classes = composed_classes.where(inner_mask)
+    inner_classes = loaded_region_classes.where(inner_mask)
     raw_weights = _sanitize_generated_basis_weights(weights, algorithm="fixed-outer region-constrained")
-    inner_targets = allocate_nbasis_by_class(
+    raw_inner_targets = allocate_nbasis_by_class(
         raw_weights,
         inner_classes,
         nbasis,
         allocation=allocation,
         min_regions_per_class=min_regions_per_class,
     )
-    if not inner_targets:
+    if not raw_inner_targets:
         raise ValueError("The maximum-valued outer region contains no mapped inner classes.")
 
-    combined_values = composed_classes.to_numpy().ravel()
-    outer_classes: list[Hashable] = []
-    for value in combined_values:
-        if isinstance(value, tuple) and len(value) == 2 and value[0] == "outer":
-            class_value = cast(Hashable, value)
-            if class_value not in outer_classes:
-                outer_classes.append(class_value)
+    targets: dict[Hashable, int] = {}
+    outer_values = loaded_outer_regions.where(~inner_mask).to_numpy().ravel()
+    for value in pd.unique(outer_values):
+        if bool(pd.isna(value)):
+            continue
+        targets[("outer", cast(Hashable, value))] = 1
+    targets.update({("inner", class_value): target for class_value, target in raw_inner_targets.items()})
 
-    targets: dict[Hashable, int] = {class_value: 1 for class_value in outer_classes}
-    targets.update(inner_targets)
+    composed_classes = combine_inner_outer_region_classes(
+        inner_mask,
+        loaded_region_classes,
+        loaded_outer_regions,
+    )
+    fixed_outer_strategy = _FixedOuterSplitStrategy(inner_mask.to_numpy(), split_strategy)
     return region_constrained_basis_from_weights(
         raw_weights,
         start_date,
@@ -705,6 +858,7 @@ def region_constrained_fixed_outer_basis_from_weights(
         nbasis=targets,
         allocation=allocation,
         min_regions_per_class=min_regions_per_class,
+        split_strategy=fixed_outer_strategy,
     )
 
 

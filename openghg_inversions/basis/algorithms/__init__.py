@@ -5,17 +5,19 @@ basis generation, class composition, allocation, and tuple-safe class masking
 helpers.
 """
 
-from ._contrast import (
-    ContrastScoreSplitAcceptance,
-    SplitContrastScore,
-    contrast_tau_from_multiplier_cv,
-    split_contrast_score,
+from ._consolidation import (
+    ContrastProximityComponentConsolidation,
+    InactiveComponentPolicy,
 )
 from ._constrained import (
     AllocationMode,
     AllSplitAcceptancePolicies,
-    AxisParallelSplitStep,
     AxisAlignedWeightedSplitStrategy,
+    AxisParallelSplitStep,
+    ComponentConsolidationPolicy,
+    ConnectedBinaryPartitionStep,
+    ConnectedComponentPartitionStep,
+    ConnectedComponentSplitStrategy,
     GreedyAxisParallelSplitStrategy,
     InertialSplitStep,
     LatLonGridGeometry,
@@ -36,27 +38,40 @@ from ._constrained import (
     region_class_mask,
     region_constrained_basis,
 )
+from ._contrast import (
+    ContrastScoreSplitAcceptance,
+    SplitContrastScore,
+    contrast_tau_from_multiplier_cv,
+    split_contrast_score,
+)
 from ._quadtree import get_quadtree_basis as quadtree_algorithm
 from ._weighted import nregion_landsea_basis as weighted_algorithm
 
 __all__ = [
-    "AllocationMode",
     "AllSplitAcceptancePolicies",
-    "AxisParallelSplitStep",
+    "AllocationMode",
     "AxisAlignedWeightedSplitStrategy",
+    "AxisParallelSplitStep",
+    "ComponentConsolidationPolicy",
+    "ConnectedBinaryPartitionStep",
+    "ConnectedComponentPartitionStep",
+    "ConnectedComponentSplitStrategy",
+    "ContrastProximityComponentConsolidation",
     "ContrastScoreSplitAcceptance",
     "GreedyAxisParallelSplitStrategy",
+    "InactiveComponentPolicy",
     "InertialSplitStep",
     "LatLonGridGeometry",
     "MaxChildPCAEccentricity",
     "MinChildTargetWeightShare",
     "MinChildWeightShare",
     "NbasisAllocation",
-    "SplitAcceptance",
-    "SplitStrategy",
     "PartitionStep",
+    "SplitAcceptance",
     "SplitAcceptancePolicy",
+    "SplitContrastScore",
     "SplitGeometry",
+    "SplitStrategy",
     "TargetSplitAcceptancePolicy",
     "allocate_nbasis_by_class",
     "combine_inner_outer_region_classes",
@@ -67,6 +82,5 @@ __all__ = [
     "region_class_mask",
     "region_constrained_basis",
     "split_contrast_score",
-    "SplitContrastScore",
     "weighted_algorithm",
 ]
