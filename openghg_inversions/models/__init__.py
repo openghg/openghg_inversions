@@ -53,6 +53,8 @@ from openghg_inversions.models.rhime import (
     build_rhime_multisector_model_from_spec,
     safe_pymc_name,
 )
+from openghg_inversions.models.rhime_likelihood import add_rhime_likelihood_component
+from openghg_inversions.observation_error import AggregationErrorMode
 
 __all__ = [
     "CoordRegistry",
@@ -60,6 +62,7 @@ __all__ = [
     "DEFAULT_OFFSET_PRIOR",
     "DEFAULT_SIGMA_PRIOR",
     "DEFAULT_X_PRIOR",
+    "AggregationErrorMode",
     "RhimeBuilderStrategy",
     "RhimeModelSpec",
     "ResolvedStateActivity",
@@ -78,6 +81,7 @@ __all__ = [
     "add_sigma_component",
     "add_offset_component",
     "add_inferpymc_likelihood_component",
+    "add_rhime_likelihood_component",
     "build_rhime_model",
     "build_rhime_model_from_spec",
     "build_rhime_multisector_model",

@@ -165,6 +165,37 @@ multisector layout. The sector count, prepared ``H`` layout, layout flag, and
 output settings are validated before model construction or sampling. Output
 side effects are still controlled by ``RhimeOutputSpec``.
 
+Aggregation-error covariance
+-----------------------------
+
+Modern RHIME can add fixed aggregation error to the observation covariance
+without changing the raw ``mf_error`` values. Attach these arrays only after
+observation filtering, averaging, global site gathering, and basis projection,
+so both covariance axes match the final ``nmeasure`` ordering. Prepared inputs
+may contain one of:
+
+* ``aggregation_error_covariance(nmeasure, nmeasure_cov)`` for the exact dense
+  covariance;
+* ``low_rank_factor(nmeasure, agg_rank)`` together with
+  ``diagonal_residual_variance(nmeasure)`` for a low-rank-plus-diagonal
+  approximation;
+* ``aggregation_error_sd(nmeasure)`` for an independent diagonal
+  approximation or diagnostic.
+
+Dense and low-rank forms are the primary representations. If a matching
+``aggregation_error_sd`` diagnostic is present beside either one, RHIME
+validates it against the structured covariance diagonal but does not replace
+the structured likelihood with it. ``aggregation_error_mode="auto"`` selects
+the available structured form first; set ``"dense"``, ``"low_rank"``,
+``"diagonal"``, or ``"none"`` for an explicit comparison run.
+
+The minimum-error setting remains a floor on total marginal standard
+deviation, including aggregation error, while off-diagonal covariance is left
+unchanged. Legacy HBMCMC model and replay paths are not extended. Until the
+derived-error reconstruction follow-up lands, aggregation-error runs support
+``output_format="inv_out"`` and ``"none"``; ``"basic"``, ``"paris"``, and
+``"legacy"`` are rejected rather than producing lossy error fields.
+
 Model Construction
 ------------------
 

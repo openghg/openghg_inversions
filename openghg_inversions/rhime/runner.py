@@ -66,6 +66,7 @@ from openghg_inversions.models import (
     build_rhime_multisector_model_from_spec,
 )
 from openghg_inversions.models._rhime_flux import _select_sector_design
+from openghg_inversions.observation_error import resolve_aggregation_error
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 
 __all__ = [
@@ -369,6 +370,20 @@ def run_rhime_from_prepared_inputs(
 
     output_spec = run_spec.output
     validate_output_format(output_spec.output_format)
+    aggregation_error = resolve_aggregation_error(
+        prepared_inputs.inv_inputs,
+        run_spec.model.aggregation_error_mode,
+    )
+    if aggregation_error.mode != "none" and output_spec.output_format in {
+        "basic",
+        "paris",
+        "legacy",
+    }:
+        raise ValueError(
+            "RHIME aggregation-error covariance is not yet supported by derived "
+            f"output_format={output_spec.output_format!r}; use 'inv_out' or 'none' until "
+            "the postprocessing reconstruction follow-up lands."
+        )
     validate_output_filename_convention(output_spec.output_filename_convention)
     validate_output_path_settings(
         output_format=output_spec.output_format,

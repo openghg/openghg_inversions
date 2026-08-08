@@ -4,6 +4,14 @@
 
 ## Code changes
 
+- Added modern RHIME likelihood support for fixed aggregation-error covariance
+  supplied after input preparation: exact dense, low-rank-plus-diagonal, and
+  independent diagonal representations. Structured likelihoods retain the
+  observed ``y`` variable and predictive sampling, preserve the total-marginal
+  minimum-error floor, and leave legacy HBMCMC paths unchanged. Derived basic,
+  PARIS, and legacy products reject these inputs pending representation-neutral
+  postprocessing reconstruction. [PR #516](https://github.com/openghg/openghg_inversions/pull/516)
+
 - Added coordinate-preserving loaders and a weights-first region-constrained
   fixed-outer adapter. Packaged InTEM and raw country/land-sea class maps are
   normalized to the weights grid, outer classes retain one target each, and
