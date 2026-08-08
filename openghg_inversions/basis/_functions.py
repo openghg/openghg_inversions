@@ -354,15 +354,17 @@ def basis_weights_from_fp_all(
 
 def load_intem_outer_regions(
     domain: str,
-    country_directory: str | Path | None = None,
+    outer_regions_path: str | Path | None = None,
 ) -> xr.DataArray:
     """Load a coordinate-preserving InTEM fixed-outer region map.
 
     Args:
-        domain: Domain suffix used in ``outer_region_definition_{domain}.nc``.
-        country_directory: Optional directory containing the region file. When
-            omitted, the packaged file in :mod:`openghg_inversions.basis` is
-            used.
+        domain: Domain suffix used to select
+            ``outer_region_definition_{domain}.nc`` when
+            ``outer_regions_path`` is omitted.
+        outer_regions_path: Optional direct path to an outer-region NetCDF
+            file. When omitted, the packaged file for ``domain`` in
+            :mod:`openghg_inversions.basis` is used.
 
     Returns:
         Loaded two-dimensional ``region`` field, including its spatial
@@ -372,12 +374,12 @@ def load_intem_outer_regions(
         FileNotFoundError: If the selected region file does not exist.
         KeyError: If the selected dataset does not contain ``region``.
     """
-    if country_directory is None:
+    if outer_regions_path is None:
         logger.info(f"Loading default InTEM outer region file for domain {domain}.")
         outer_regions_path = Path(__file__).parent / f"outer_region_definition_{domain}.nc"
     else:
-        logger.info(f"Loading InTEM outer region file for domain {domain} from {country_directory}.")
-        outer_regions_path = Path(country_directory) / f"outer_region_definition_{domain}.nc"
+        outer_regions_path = Path(outer_regions_path)
+        logger.info(f"Loading InTEM outer region file for domain {domain} from {outer_regions_path}.")
 
     with xr.open_dataset(outer_regions_path, decode_coords="all") as dataset:
         return dataset["region"].load()
@@ -644,7 +646,28 @@ def _region_classes_on_weights_grid(
     weights: xr.DataArray,
     region_classes: xr.DataArray,
 ) -> xr.DataArray:
-    """Subset a full-domain class field before physical-grid normalization."""
+    """Subset a full-domain class field before physical-grid normalization.
+
+    When both inputs have matching one-dimensional dimension coordinates and
+    the class grid is at least as large, each weights coordinate selects its
+    unique nearest numeric class coordinate or unique exact nonnumeric match.
+    Physical-coordinate tolerances, metadata, and CRS compatibility are then
+    validated by :func:`normalize_spatial_grid`.
+
+    Args:
+        weights: Two-dimensional weight field defining the target grid.
+        region_classes: Two-dimensional class field on the target grid or a
+            larger grid containing it.
+
+    Returns:
+        Class field subset, transposed, and normalized to the weights grid.
+
+    Raises:
+        ValueError: If either input is not two-dimensional or their dimension
+            names differ.
+        xarray.AlignmentError: If the class field cannot be normalized to the
+            physical weights grid.
+    """
     if weights.ndim != 2 or region_classes.ndim != 2 or set(weights.dims) != set(region_classes.dims):
         return normalize_spatial_grid(
             weights,
@@ -707,6 +730,14 @@ class _FixedOuterSplitStrategy:
         inner_mask: np.ndarray,
         inner_strategy: SplitStrategy | None,
     ) -> None:
+        """Initialize fixed-outer dispatch.
+
+        Args:
+            inner_mask: Boolean mask selecting cells handled by the inner
+                splitting strategy.
+            inner_strategy: Optional strategy for inner cells. When omitted,
+                the greedy axis-parallel strategy is used.
+        """
         self.inner_mask = np.asarray(inner_mask, dtype=bool)
         self.inner_strategy = (
             inner_strategy if inner_strategy is not None else GreedyAxisParallelSplitStrategy()
@@ -718,7 +749,21 @@ class _FixedOuterSplitStrategy:
         class_mask: np.ndarray,
         target_regions: int,
     ) -> np.ndarray:
-        """Return one fixed label for outer IDs or dispatch an inner class."""
+        """Return one fixed label for outer IDs or dispatch an inner class.
+
+        Args:
+            weights: Non-negative spatial weights passed to the inner strategy.
+            class_mask: Boolean mask selecting the current class.
+            target_regions: Requested label count for the current class.
+
+        Returns:
+            Integer labels with the same shape as ``class_mask``, positive
+            inside the selected class and zero outside. Outer classes receive
+            one fixed label; inner classes use the configured strategy.
+
+        Raises:
+            ValueError: Propagated if the inner strategy rejects the request.
+        """
         if np.any(class_mask & ~self.inner_mask):
             labels = np.zeros(class_mask.shape, dtype=np.int64)
             labels[class_mask] = 1
@@ -735,6 +780,7 @@ def region_constrained_fixed_outer_basis_from_weights(
     outer_regions: xr.DataArray | None = None,
     region_classes: xr.DataArray | None = None,
     country_directory: str | Path | None = None,
+    outer_regions_path: str | Path | None = None,
     allocation: AllocationMode = "weight",
     min_regions_per_class: int = 1,
     split_strategy: SplitStrategy | None = None,
@@ -743,13 +789,15 @@ def region_constrained_fixed_outer_basis_from_weights(
 
     The largest value in the InTEM outer-region map selects the bounded inner
     domain. ``nbasis`` is distributed only among the inner ``region_classes``;
-    every distinct selected outer-region value receives one basis label. Inner
-    and outer class values are tagged before constrained splitting, so their
-    final positive integer labels are globally disjoint.
+    each distinct non-null outer-region value outside that maximum-valued inner
+    domain receives one fixed basis label. Inner and outer class values are
+    tagged before constrained splitting, so their final positive integer labels
+    are globally disjoint.
 
     Args:
-        weights: Two-dimensional whole-domain basis weight field whose grid
-            defines the output coordinates. Unlike
+        weights: Non-negative, two-dimensional whole-domain basis weight field
+            whose grid defines the output coordinates. Non-finite cells are
+            replaced by zero, but at least one finite cell is required. Unlike
             :func:`region_constrained_basis_from_weights`, this fixed-outer
             adapter does not accept cropped weights because it emits the outer
             states as well as the bounded inner states.
@@ -757,12 +805,18 @@ def region_constrained_fixed_outer_basis_from_weights(
         domain: Domain used for output metadata and default file loading.
         nbasis: Total number of requested inner-region basis labels.
         outer_regions: Optional already-loaded InTEM outer-region map. When
-            omitted, :func:`load_intem_outer_regions` is used.
+            omitted, :func:`load_intem_outer_regions` is used. Supplying this
+            field takes precedence over ``outer_regions_path``.
         region_classes: Optional already-loaded inner classification, such as
             a binary land/sea or multi-country integer map. Each distinct
             non-null selected value is a class. When omitted,
             :func:`load_country_region_classes` is used.
-        country_directory: Optional directory used by both default loaders.
+        country_directory: Optional directory containing the country or
+            land/sea class-map file. Used only when ``region_classes`` is
+            omitted.
+        outer_regions_path: Optional direct path to an outer-region NetCDF
+            file. Used only when ``outer_regions`` is omitted. When both are
+            omitted, the packaged file for ``domain`` is used.
         allocation: Mode used to distribute ``nbasis`` across selected inner
             classes.
         min_regions_per_class: Minimum automatic allocation for each non-empty
@@ -775,14 +829,14 @@ def region_constrained_fixed_outer_basis_from_weights(
     Returns:
         Basis field on the weights grid with a singleton ``time`` dimension,
         standard generated-basis metadata, one target per non-null outer class,
-        and ``nbasis`` targets allocated across the inner classes. Null outer
-        cells remain label ``0``.
+        outside the maximum-valued inner domain, and ``nbasis`` targets
+        allocated across the inner classes. Null outer cells remain label
+        ``0``.
 
     Raises:
         TypeError: If ``nbasis`` is not a non-Boolean integral value.
-        ValueError: If the outer map has no finite maximum, the maximum-valued
-            region contains no mapped inner classes, or the requested inner
-            allocation is impossible.
+        ValueError: If weights, dimensions, dimension names, outer-map values,
+            inner classes, allocation, or split-strategy labels are invalid.
         FileNotFoundError: If a required default or caller-selected map file is
             missing.
         KeyError: If a selected outer map lacks ``region`` or a selected class
@@ -795,7 +849,7 @@ def region_constrained_fixed_outer_basis_from_weights(
     nbasis = int(nbasis)
 
     loaded_outer_regions = (
-        load_intem_outer_regions(domain, country_directory) if outer_regions is None else outer_regions
+        load_intem_outer_regions(domain, outer_regions_path) if outer_regions is None else outer_regions
     )
     loaded_region_classes = (
         load_country_region_classes(domain, country_directory) if region_classes is None else region_classes

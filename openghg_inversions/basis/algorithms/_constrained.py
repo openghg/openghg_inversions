@@ -886,10 +886,7 @@ def _repair_binary_connected_children(
                 continue
 
             moved_weight = (
-                total_left_weight
-                - left_weights[left_index]
-                + total_right_weight
-                - right_weights[right_index]
+                total_left_weight - left_weights[left_index] + total_right_weight - right_weights[right_index]
             )
             repaired_left_weight = left_weights[left_index] + total_right_weight - right_weights[right_index]
             repaired_right_weight = right_weights[right_index] + total_left_weight - left_weights[left_index]
@@ -1788,7 +1785,18 @@ def _is_spatial_coordinate(
     coordinate: xr.DataArray,
     grid_dimensions: set[Hashable],
 ) -> bool:
-    """Return whether a coordinate participates in horizontal grid identity."""
+    """Return whether a coordinate participates in horizontal grid identity.
+
+    Args:
+        name: Coordinate name.
+        coordinate: Coordinate array whose dimensions and CF metadata are
+            inspected.
+        grid_dimensions: Dimension names defining the horizontal grid.
+
+    Returns:
+        True when the coordinate is a dimension index or is identified as a
+        horizontal coordinate by its name or CF metadata.
+    """
     if name in grid_dimensions and coordinate.dims == (name,):
         return True
     if str(name).lower() in _SPATIAL_COORDINATE_NAMES:
@@ -1998,7 +2006,31 @@ def _allocate_nbasis_by_code(
     allocation: AllocationMode,
     min_regions_per_class: int,
 ) -> dict[Hashable, int]:
-    """Allocate class targets using already-factorized integer class codes."""
+    """Allocate class targets using already-factorized integer class codes.
+
+    Args:
+        weight_values: Non-negative spatial weights aligned with
+            ``class_codes``.
+        mapped_classes: Class values in the order represented by non-negative
+            codes.
+        class_codes: Integer class codes aligned with ``weight_values``.
+            Mapped codes are contiguous from zero; ``-1`` marks unmapped cells.
+        nbasis: Total requested region count or an explicit per-class
+            allocation.
+        allocation: ``"weight"`` to allocate by summed weight or ``"area"``
+            to allocate by mapped cell count.
+        min_regions_per_class: Minimum automatic allocation for each non-empty
+            mapped class.
+
+    Returns:
+        Mapping from each mapped class to its allocated region count.
+
+    Raises:
+        ValueError: If the minimum or requested total is negative, allocation
+            is requested without mapped classes, the request exceeds mapped
+            capacity or required minima, the explicit allocation is invalid,
+            or ``allocation`` is unsupported.
+    """
     if min_regions_per_class < 0:
         raise ValueError("min_regions_per_class must be non-negative.")
     if not mapped_classes:

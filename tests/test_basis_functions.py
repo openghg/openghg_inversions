@@ -1290,6 +1290,45 @@ def test_region_constrained_fixed_outer_basis_from_weights_rejects_non_integral_
         )
 
 
+def test_fixed_outer_loaders_use_separate_custom_paths(tmp_path):
+    """Custom outer maps use a direct file path independent of the country directory."""
+    coords = {"lat": [50.0, 51.0, 52.0], "lon": [-2.0, -1.0, 0.0]}
+    outer_values = np.array([[0, 0, 0], [0, 2, 2], [0, 2, 2]], dtype=np.int16)
+    outer_regions_path = tmp_path / "custom-fixed-outer-map.nc"
+    expected_outer_regions = xr.DataArray(
+        outer_values,
+        dims=("lat", "lon"),
+        coords=coords,
+        name="region",
+    )
+    expected_outer_regions.to_dataset().to_netcdf(outer_regions_path)
+
+    country_directory = tmp_path / "countries"
+    country_directory.mkdir()
+    xr.DataArray(
+        np.array([[0, 0, 0], [0, 1, 2], [0, 1, 2]], dtype=np.int16),
+        dims=("lat", "lon"),
+        coords=coords,
+        name="country",
+    ).to_dataset().to_netcdf(country_directory / "country-land-sea_TEST.nc")
+
+    loaded_outer_regions = load_intem_outer_regions("TEST", outer_regions_path=outer_regions_path)
+    xr.testing.assert_equal(loaded_outer_regions, expected_outer_regions)
+
+    labels = region_constrained_fixed_outer_basis_from_weights(
+        xr.ones_like(loaded_outer_regions, dtype=float),
+        "2020-01-01",
+        "TEST",
+        nbasis=2,
+        country_directory=country_directory,
+        outer_regions_path=outer_regions_path,
+        allocation="area",
+    ).squeeze("time", drop=True)
+
+    assert set(np.unique(labels)) == {1, 2, 3}
+    assert len(np.unique(labels.values[outer_values == 0])) == 1
+
+
 def test_load_country_region_classes_preserves_multiclass_integer_map(tmp_path):
     """Caller-supplied country maps retain every distinct integer class."""
     coords = {"lat": [50.0, 51.0, 52.0], "lon": [-2.0, -1.0, 0.0]}

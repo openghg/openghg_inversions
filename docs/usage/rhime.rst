@@ -542,9 +542,12 @@ boundary before global relabelling.
 
 ``weights`` must cover the whole fixed-outer grid because the result includes
 the outer states; the general constrained weights-first adapter separately
-supports cropped weights. Omit ``outer_regions`` and ``region_classes`` to let
-the adapter load both packaged fields directly. Already-loaded custom fields
-are also accepted and normalized to the authoritative weights grid. Distinct
+supports cropped weights. When neither loaded maps nor path arguments are
+supplied, the adapter loads both packaged fields. When ``outer_regions`` is
+omitted, ``outer_regions_path`` selects a direct NetCDF file; when
+``region_classes`` is omitted, ``country_directory`` selects the country or
+land/sea class-map directory. Already-loaded custom fields are also accepted
+and normalized to the authoritative weights grid. Distinct
 non-null values in a custom country map remain distinct classes. Small float
 storage differences are accepted; incompatible coordinate values, units, or
 CRS definitions are rejected, and null outer cells remain label ``0``. This
