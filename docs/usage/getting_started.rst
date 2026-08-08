@@ -415,7 +415,7 @@ The following file, ``my_hbmcmc_inputs.ini`` can be used to run an
    ;                observations.
    ; nuts_sampler (str): defaults to "pymc". The other option is "numpyro", which will the JAX accelerated sampler
    ;                     from Numpyro; this tends to be significantly faster than the NUTS sampler built into PyMC.
-   ; save_trace (bool): If True, the arviz InferenceData output from sampling will be saved to the output path of
+   ; save_trace (bool): If True, the inference DataTree output from sampling will be saved to the output path of
    ;                    the inversion, with a file name of the form f"{outputname}{start_data}_trace.nc.
    ;                    Alternatively, you can pass a path (including filename), and that path will be used.
    ; calculate_min_error: deprecated legacy spelling. The run_hbmcmc compatibility shim translates

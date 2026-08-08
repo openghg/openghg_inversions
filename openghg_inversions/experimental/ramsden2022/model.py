@@ -33,7 +33,6 @@ from dataclasses import dataclass
 import math
 from typing import Any, Literal
 
-import arviz as az
 import numpy as np
 import pandas as pd
 import pymc as pm
@@ -195,7 +194,7 @@ class RamsdenResult:
     prepared_inputs: RamsdenPreparedInputs
     model_spec: RamsdenModelSpec
     model: pm.Model
-    idata: az.InferenceData
+    idata: xr.DataTree
     sampler: RhimeSampler
 
 

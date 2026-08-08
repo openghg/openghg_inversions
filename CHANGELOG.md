@@ -4,6 +4,11 @@
 
 ## Code changes
 
+- Prototyped the PyMC 6 and ArviZ 1 migration using ``xarray.DataTree`` as the
+  runtime trace representation, added a standalone legacy trace loader, and
+  raised the minimum Python version to 3.12. Existing NetCDF and Zarr trace
+  layouts remain unchanged. [#443](https://github.com/openghg/openghg_inversions/issues/443)
+
 - Added a source-neutral inner/outer region-class combinator for constrained
   basis construction. It tags class provenance, interns repeated composite
   labels, and normalizes physically equivalent rectilinear and curvilinear

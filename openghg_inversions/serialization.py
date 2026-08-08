@@ -1,8 +1,8 @@
 """Shared serialization helpers for modern OpenGHG inversion artifacts.
 
 This module contains the storage mechanics shared by modern artifact
-containers. It saves and eagerly loads xarray ``DataTree`` objects, converts
-ArviZ ``InferenceData`` groups to and from trees, and expands pandas
+containers. It saves and eagerly loads xarray ``DataTree`` objects, prepares
+inference trace groups for storage, and expands pandas
 ``MultiIndex`` coordinates into representations supported by NetCDF and Zarr.
 
 Object-specific modules remain responsible for schema names, schema versions,
@@ -19,9 +19,8 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Iterable, Literal, cast
+from typing import Iterable, Literal
 
-import arviz as az
 from cf_xarray.coding import decode_compress_to_multi_index, encode_multi_index_as_compress
 import pandas as pd
 import xarray as xr
@@ -219,7 +218,7 @@ def save_datatree(
     elif output_format == "zarr":
         if output_path.suffix != ".zarr":
             output_path = output_path.with_suffix(".zarr")
-        dt.to_zarr(output_path, mode="w")
+        dt.to_zarr(str(output_path), mode="w")  # pyright: ignore[reportArgumentType]
     else:
         raise ValueError(f"Unsupported output_format: {output_format!r}")
 
@@ -251,7 +250,7 @@ def open_datatree_loaded(file_path: str | Path) -> xr.DataTree:
                 if engine is not None
                 else xr.open_datatree(file_path)
             )
-        except (OSError, RuntimeError, ValueError) as exc:
+        except (ImportError, OSError, RuntimeError, ValueError) as exc:
             open_errors.append(exc)
         else:
             with dt:
@@ -260,40 +259,77 @@ def open_datatree_loaded(file_path: str | Path) -> xr.DataTree:
     raise open_errors[-1]
 
 
-def inferencedata_to_datatree(idata: az.InferenceData) -> xr.DataTree:
-    """Convert ArviZ InferenceData groups to a serializable DataTree.
+def inferencedata_to_datatree(trace: xr.DataTree) -> xr.DataTree:
+    """Prepare inference trace groups as a serializable DataTree.
 
     Args:
-        idata: InferenceData whose root attributes and groups should become
-            the tree root and child nodes.
+        trace: DataTree whose direct children are inference groups.
 
     Returns:
-        DataTree containing the InferenceData root attributes and one child
-        dataset per group.
+        DataTree containing the trace root attributes and one child dataset per
+        group, with MultiIndexes expanded for storage.
     """
     return xr.DataTree.from_dict(
         {
-            "/": xr.Dataset(attrs=dict(idata.attrs)),
-            **{group: reset_serialisation_multiindexes(idata[group]) for group in idata.groups()},
+            "/": xr.Dataset(attrs=dict(trace.attrs)),
+            **{
+                group: reset_serialisation_multiindexes(child.to_dataset())
+                for group, child in trace.children.items()
+            },
         }
     )
 
 
-def inferencedata_from_datatree(dt: xr.DataTree) -> az.InferenceData:
-    """Reconstruct ArviZ InferenceData from a group DataTree.
+def inferencedata_from_datatree(dt: xr.DataTree) -> xr.DataTree:
+    """Restore an inference trace from a serialized group DataTree.
 
     Args:
         dt: DataTree containing root attributes and one child dataset per
             InferenceData group.
 
     Returns:
-        Reconstructed InferenceData with root attributes and valid serialized
-        MultiIndexes restored.
+        Reconstructed DataTree with root attributes and valid serialized
+        MultiIndexes restored in each direct child.
     """
-    return cast(Any, az.InferenceData)(
-        attrs=dict(dt.attrs),
-        **{group: restore_serialisation_multiindexes(child.to_dataset()) for group, child in dt.items()},
+    return xr.DataTree.from_dict(
+        {
+            "/": xr.Dataset(attrs=dict(dt.attrs)),
+            **{
+                group: restore_serialisation_multiindexes(child.to_dataset())
+                for group, child in dt.children.items()
+            },
+        }
     )
+
+
+def load_trace(file_path: str | Path) -> xr.DataTree:
+    """Load a standalone inference trace written by ArviZ or xarray.
+
+    Legacy ``InferenceData.to_netcdf`` files and DataTree-native trace files
+    share the same root-group layout. Complete ``InversionOutput`` artifacts
+    must instead be opened with ``InversionOutput.load``.
+
+    Args:
+        file_path: Standalone trace NetCDF or Zarr path.
+
+    Returns:
+        Eagerly loaded DataTree with serialized MultiIndexes restored.
+
+    Raises:
+        ValueError: If the path contains a complete inversion artifact rather
+            than a standalone trace.
+    """
+    dt = open_datatree_loaded(file_path)
+    if dt.attrs.get("schema") == "openghg_inversions.InversionOutput" or {
+        "trace",
+        "inv_inputs",
+        "basis_functions",
+    }.issubset(dt.children):
+        raise ValueError(
+            "Expected a standalone trace artifact; use InversionOutput.load() "
+            "for a complete inversion output."
+        )
+    return inferencedata_from_datatree(dt)
 
 
 def reset_serialisation_multiindexes(ds: xr.Dataset) -> xr.Dataset:

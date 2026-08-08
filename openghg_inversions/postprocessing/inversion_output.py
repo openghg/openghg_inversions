@@ -27,7 +27,6 @@ from dataclasses import dataclass, field
 from typing import Any, Hashable, Literal, cast
 import json
 
-import arviz as az
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -140,13 +139,13 @@ def _filter_trace_data_vars_by_name(ds: xr.Dataset, var_names: str | list[str]) 
 
 
 def convert_idata_to_dataset(
-    idata: az.InferenceData, group_filters=["prior", "posterior"], add_suffix=True
+    idata: xr.DataTree, group_filters=["prior", "posterior"], add_suffix=True
 ) -> xr.Dataset:
-    """Merge all groups in an arviz InferenceData object into a single xr.Dataset.
+    """Merge selected inference DataTree groups into a single Dataset.
 
     Args:
-        idata: arviz InferenceData containing traces (and other data)
-        group_filters: Filters for the groups of the InferenceData. A group will
+        idata: DataTree containing trace groups and related inference data.
+        group_filters: Filters for the groups of the DataTree. A group will
           be selected if a filter is a substring of the group name. So the groups
           "prior" and "prior_predictive" will both match the filter "prior". The
           default filters select the "prior", "prior_predictive", "posterior", and
@@ -156,13 +155,13 @@ def convert_idata_to_dataset(
 
     Returns:
         xr.Dataset containing all data variables in the selected groups of the
-        InferenceData
+        DataTree.
 
     """
-    traces = []
-    for group in idata.groups():
+    traces: list[xr.Dataset] = []
+    for group, child in idata.children.items():
         if any(filt in group for filt in group_filters):
-            trace = idata[group]
+            trace = child.to_dataset()
             if add_suffix:
                 rename_dict = {dv: f"{dv}_{group}" for dv in trace.data_vars}
                 trace = trace.rename_vars(rename_dict)
@@ -246,7 +245,7 @@ class InversionOutput:
     ``inferpymc_postprocessouts`` dictionaries.
     """
 
-    trace: az.InferenceData
+    trace: xr.DataTree
     inv_inputs: xr.Dataset
     basis_functions: BasisFunctions
     run_metadata: dict[str, Any] = field(default_factory=dict)
@@ -389,7 +388,7 @@ class InversionOutput:
         return result
 
     def model_data(self, var_roles: Iterable[str] | str | None = None) -> xr.Dataset:
-        """Return model input data from the ``InferenceData`` constant groups."""
+        """Return model input data from the trace's constant groups."""
         result = convert_idata_to_dataset(self.trace, group_filters=["data"], add_suffix=False)
         if var_roles is not None:
             result = filter_data_vars_by_prefix(result, self._variable_names_for_roles(var_roles), sep="")

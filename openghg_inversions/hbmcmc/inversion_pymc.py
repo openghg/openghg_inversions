@@ -174,15 +174,15 @@ def build_inferpymc_model(
 
 
 def extend_inferencedata_predictive(
-    trace: az.InferenceData,
+    trace: xr.DataTree,
     *,
     model: pm.Model,
     sample_prior_predictive: bool | int = False,
     sample_posterior_predictive: bool | list[str] = False,
-) -> az.InferenceData:
-    """Extend an InferenceData trace with optional predictive groups.
+) -> xr.DataTree:
+    """Extend a trace DataTree with optional predictive groups.
 
-    Updates InferenceData in-place with requested groups and returns the
+    Updates the DataTree in-place with requested groups and returns the
     result for convenience.
 
     Args:
@@ -200,17 +200,19 @@ def extend_inferencedata_predictive(
     """
     if sample_prior_predictive:
         prior_draws = (
-            trace.posterior.sizes["draw"] if sample_prior_predictive is True else int(sample_prior_predictive)
+            trace["posterior"].sizes["draw"]
+            if sample_prior_predictive is True
+            else int(sample_prior_predictive)
         )
         with model:
-            trace.extend(pm.sample_prior_predictive(prior_draws, model))
+            trace.update(pm.sample_prior_predictive(prior_draws, model))
 
     if sample_posterior_predictive:
         posterior_var_names = (
             None if sample_posterior_predictive is True else list(sample_posterior_predictive)
         )
         with model:
-            trace.extend(pm.sample_posterior_predictive(trace, model=model, var_names=posterior_var_names))
+            trace.update(pm.sample_posterior_predictive(trace, model=model, var_names=posterior_var_names))
 
     return trace
 
@@ -225,7 +227,7 @@ def sample(
     sample_prior_predictive: bool | int = False,
     sample_posterior_predictive: bool | list[str] = False,
     **kwargs: Any,
-) -> az.InferenceData:
+) -> xr.DataTree:
     """Sample from a built inferpymc model.
 
     Args:
@@ -235,7 +237,7 @@ def sample(
         tune: Number of tuning draws passed to ``pm.sample``.
         chains: Number of MCMC chains to run.
         burn: Number of posterior draws to discard from the returned
-            ``InferenceData``.
+            trace DataTree.
         sample_prior_predictive: Optional prior predictive sampling request.
             If an integer, use that many draws; if ``True``, reuse the
             posterior draw count.
@@ -246,7 +248,7 @@ def sample(
             ``idata_kwargs["log_likelihood"]`` is always enabled.
 
     Returns:
-        Burn-sliced ``InferenceData`` for the requested model, optionally
+        Burn-sliced trace DataTree for the requested model, optionally
         extended with predictive groups. Retained draw coordinates are reset
         to consecutive zero-based integers, and ``burn`` is stored on the root
         and draw-bearing group attributes.
@@ -267,7 +269,7 @@ def sample(
         )
 
     burned_trace = raw_trace.isel(draw=slice(burn, None))
-    burned_trace = _reset_retained_draws(cast(az.InferenceData, burned_trace), burn=burn)
+    burned_trace = _reset_retained_draws(cast(xr.DataTree, burned_trace), burn=burn)
     burned_trace = extend_inferencedata_predictive(
         burned_trace,
         model=model,
@@ -280,8 +282,12 @@ def sample(
 
     nuts_sampler = sample_kwargs.get("nuts_sampler", "pymc")
     if nuts_sampler != "pymc" and sample_kwargs.get("compute_convergence_checks", True):
-        if "sample_stats" in burned_trace and "diverging" in burned_trace.sample_stats:
-            divergences = np.sum(burned_trace.sample_stats.diverging).values
+        if "sample_stats" in burned_trace.children:
+            sample_stats = burned_trace["sample_stats"].to_dataset()
+        else:
+            sample_stats = xr.Dataset()
+        if "diverging" in sample_stats:
+            divergences = np.sum(sample_stats.diverging).values
             if divergences > 0:
                 warnings.warn(
                     f"There were {divergences} divergences. Try increasing target accept or reparameterise.",
@@ -297,7 +303,7 @@ def sample(
 # ------------------------------------------------------------
 
 
-def _rename_trace_for_legacy_inferpymc(trace: az.InferenceData) -> az.InferenceData:
+def _rename_trace_for_legacy_inferpymc(trace: xr.DataTree) -> xr.DataTree:
     """Return a legacy-compatible trace view with inferpymc dim names.
 
     Note:
@@ -306,28 +312,28 @@ def _rename_trace_for_legacy_inferpymc(trace: az.InferenceData) -> az.InferenceD
         downstream compatibility code.
 
     Args:
-        trace: Canonical ``InferenceData`` returned by the modern sampling
+        trace: Canonical trace DataTree returned by the modern sampling
             path.
 
     Returns:
-        A copied ``InferenceData`` whose groups use the legacy inferpymc
+        A copied DataTree whose groups use the legacy inferpymc
         dimension names where required. Root and group attributes are
         preserved.
     """
     rename_map = {"region": "nx", "bc_region": "nbc"}
     renamed_groups: dict[str, xr.Dataset] = {}
 
-    for group in trace.groups():
-        ds = trace[group]
+    for group, node in trace.children.items():
+        ds = node.to_dataset()
         applicable = {old: new for old, new in rename_map.items() if old in ds.dims or old in ds.coords}
         renamed_groups[group] = ds.rename(applicable) if applicable else ds.copy()
 
-    return cast(Any, az.InferenceData)(attrs=dict(trace.attrs), **renamed_groups)
+    return xr.DataTree.from_dict({"/": xr.Dataset(attrs=dict(trace.attrs)), **renamed_groups})
 
 
 def _adapt_legacy_inferpymc_results(
     *,
-    trace: az.InferenceData,
+    trace: xr.DataTree,
     model: pm.Model,
     use_bc: bool,
     add_offset: bool,
@@ -337,11 +343,11 @@ def _adapt_legacy_inferpymc_results(
 
     Note:
         Legacy adapter code. This helper is the compatibility boundary between
-        the modern ``InferenceData``-first sampling path and the legacy
+        the modern DataTree-first sampling path and the legacy
         inferpymc dict-of-arrays return contract.
 
     Args:
-        trace: Canonical ``InferenceData`` returned by the modern sampling
+        trace: Canonical trace DataTree returned by the modern sampling
             path.
         model: Built PyMC model used for sampling.
         use_bc: Whether boundary-condition terms are enabled.

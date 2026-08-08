@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any, Literal, cast
 
-import arviz as az
 import numpy as np
 import pymc as pm
 import xarray as xr
@@ -56,11 +55,11 @@ def _sample_stat_sum(sample_stats: xr.Dataset, name: str) -> int | None:
     return int(values.sum())
 
 
-def _log_sample_stats(trace: az.InferenceData, *, label: str) -> None:
-    """Log compact sampler diagnostics from an ``InferenceData`` object."""
-    sample_stats = getattr(trace, "sample_stats", None)
-    if not isinstance(sample_stats, xr.Dataset):
+def _log_sample_stats(trace: xr.DataTree, *, label: str) -> None:
+    """Log compact sampler diagnostics from an inference DataTree."""
+    if "sample_stats" not in trace.children:
         return
+    sample_stats = trace["sample_stats"].to_dataset()
 
     fields: dict[str, float | int | None] = {
         "n_steps_mean": _sample_stat_mean(sample_stats, "n_steps"),
@@ -75,7 +74,7 @@ def _log_sample_stats(trace: az.InferenceData, *, label: str) -> None:
         log_timing(label, 0.0, **fields)
 
 
-def _reset_retained_draws(trace: az.InferenceData, *, burn: int) -> az.InferenceData:
+def _reset_retained_draws(trace: xr.DataTree, *, burn: int) -> xr.DataTree:
     """Relabel retained draws and preserve the discarded burn-in count.
 
     Args:
@@ -188,7 +187,7 @@ class RhimeSampler:
         args = ", ".join(f"{name}={getattr(self, name)!r}" for name in self.__slots__)
         return f"{type(self).__name__}({args})"
 
-    def sample(self, model: pm.Model) -> az.InferenceData:
+    def sample(self, model: pm.Model) -> xr.DataTree:
         """Sample a built RHIME model and append requested predictive groups."""
         sample_kwargs = dict(self.sample_kwargs or {})
         sample_kwargs.pop("return_inferencedata", None)
@@ -200,7 +199,7 @@ class RhimeSampler:
         timing_start = timer_start()
         with model:
             raw_trace = cast(
-                az.InferenceData,
+                xr.DataTree,
                 pm.sample(
                     draws=self.draws,
                     tune=self.tune,
@@ -222,7 +221,7 @@ class RhimeSampler:
         _log_sample_stats(raw_trace, label="rhime.sampler.sample_stats")
 
         timing_start = timer_start()
-        trace = cast(az.InferenceData, raw_trace.isel(draw=slice(self.burn, None)))
+        trace = cast(xr.DataTree, raw_trace.isel(draw=slice(self.burn, None)))
         trace = _reset_retained_draws(trace, burn=self.burn)
         log_timing("rhime.sampler.burn_slicing", timer_seconds(timing_start), burn=self.burn)
 
@@ -238,17 +237,17 @@ class RhimeSampler:
         )
         return trace
 
-    def _extend_predictive(self, trace: az.InferenceData, *, model: pm.Model) -> az.InferenceData:
+    def _extend_predictive(self, trace: xr.DataTree, *, model: pm.Model) -> xr.DataTree:
         """Extend sampled trace with configured predictive groups."""
         if self.sample_prior_predictive:
             prior_draws = (
-                cast(Any, trace).posterior.sizes["draw"]
+                trace["posterior"].sizes["draw"]
                 if self.sample_prior_predictive is True
                 else int(self.sample_prior_predictive)
             )
             timing_start = timer_start()
             with model:
-                trace.extend(pm.sample_prior_predictive(prior_draws, model))
+                trace.update(pm.sample_prior_predictive(prior_draws, model))
             log_timing(
                 "rhime.sampler.prior_predictive",
                 timer_seconds(timing_start),
@@ -265,7 +264,7 @@ class RhimeSampler:
                 posterior_predictive_kwargs.setdefault("var_names", posterior_var_names)
             timing_start = timer_start()
             with model:
-                trace.extend(pm.sample_posterior_predictive(trace, **posterior_predictive_kwargs))
+                trace.update(pm.sample_posterior_predictive(trace, **posterior_predictive_kwargs))
             log_timing(
                 "rhime.sampler.posterior_predictive",
                 timer_seconds(timing_start),
