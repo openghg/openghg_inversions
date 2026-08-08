@@ -4,6 +4,11 @@
 
 ## Code changes
 
+- Temporarily constrained PyMC to versions below 6 and ArviZ to versions below
+  1 while the runtime trace representation migrates from ``InferenceData`` to
+  ``xarray.DataTree``. ArviZ is now declared directly because it is imported by
+  the package. [#443](https://github.com/openghg/openghg_inversions/issues/443)
+
 - Added a source-neutral inner/outer region-class combinator for constrained
   basis construction. It tags class provenance, interns repeated composite
   labels, and normalizes physically equivalent rectilinear and curvilinear
