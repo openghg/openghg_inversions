@@ -512,6 +512,35 @@ multisector layout. The sector count, prepared <code class="docutils literal not
 output settings are validated before model construction or sampling. Output
 side effects are still controlled by <code class="docutils literal notranslate"><span class="pre">RhimeOutputSpec</span></code>.</p>
 </section>
+<section id="aggregation-error-covariance">
+<h2>Aggregation-error covariance<a class="headerlink" href="#aggregation-error-covariance" title="Link to this heading">#</a></h2>
+<p>Modern RHIME can add fixed aggregation error to the observation covariance
+without changing the raw <code class="docutils literal notranslate"><span class="pre">mf_error</span></code> values. Attach these arrays only after
+observation filtering, averaging, global site gathering, and basis projection,
+so both covariance axes match the final <code class="docutils literal notranslate"><span class="pre">nmeasure</span></code> ordering. Prepared inputs
+may contain one of:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">aggregation_error_covariance(nmeasure,</span> <span class="pre">nmeasure_cov)</span></code> for the exact dense
+covariance;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">low_rank_factor(nmeasure,</span> <span class="pre">agg_rank)</span></code> together with
+<code class="docutils literal notranslate"><span class="pre">diagonal_residual_variance(nmeasure)</span></code> for a low-rank-plus-diagonal
+approximation;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">aggregation_error_sd(nmeasure)</span></code> for an independent diagonal
+approximation or diagnostic.</p></li>
+</ul>
+<p>Dense and low-rank forms are the primary representations. If a matching
+<code class="docutils literal notranslate"><span class="pre">aggregation_error_sd</span></code> diagnostic is present beside either one, RHIME
+validates it against the structured covariance diagonal but does not replace
+the structured likelihood with it. <code class="docutils literal notranslate"><span class="pre">aggregation_error_mode=&quot;auto&quot;</span></code> selects
+the available structured form first; set <code class="docutils literal notranslate"><span class="pre">&quot;dense&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;low_rank&quot;</span></code>,
+<code class="docutils literal notranslate"><span class="pre">&quot;diagonal&quot;</span></code>, or <code class="docutils literal notranslate"><span class="pre">&quot;none&quot;</span></code> for an explicit comparison run.</p>
+<p>The minimum-error setting remains a floor on total marginal standard
+deviation, including aggregation error, while off-diagonal covariance is left
+unchanged. Legacy HBMCMC model and replay paths are not extended. Until the
+derived-error reconstruction follow-up lands, aggregation-error runs support
+<code class="docutils literal notranslate"><span class="pre">output_format=&quot;inv_out&quot;</span></code> and <code class="docutils literal notranslate"><span class="pre">&quot;none&quot;</span></code>; <code class="docutils literal notranslate"><span class="pre">&quot;basic&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;paris&quot;</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">&quot;legacy&quot;</span></code> are rejected rather than producing lossy error fields.</p>
+</section>
 <section id="model-construction">
 <h2>Model Construction<a class="headerlink" href="#model-construction" title="Link to this heading">#</a></h2>
 <p>The concrete PyMC graph, its variable names, an equivalent construction from
@@ -1038,6 +1067,7 @@ wrapper around <code class="docutils literal notranslate"><span class="pre">run_
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#terminology">Terminology</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#python-api">Python API</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#running-prepared-inputs">Running Prepared Inputs</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#aggregation-error-covariance">Aggregation-error covariance</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#model-construction">Model Construction</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#source-neutral-xarray-preparation">Source-neutral xarray preparation</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#config-files">Config Files</a></li>

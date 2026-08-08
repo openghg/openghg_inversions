@@ -31,6 +31,7 @@ openghg\_inversions
    openghg_inversions.flux_sanitization
    openghg_inversions.inversion_inputs
    openghg_inversions.model_error
+   openghg_inversions.observation_error
    openghg_inversions.serialization
    openghg_inversions.sigma
    openghg_inversions.utils
