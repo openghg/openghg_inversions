@@ -40,14 +40,15 @@ from openghg_inversions.models._rhime_flux import (
     safe_pymc_name as _safe_pymc_name,
 )
 from openghg_inversions.models.components import (
-    add_inferpymc_likelihood_component,
     add_linear_component,
     add_offset_component,
     add_state_linear_component,
 )
 from openghg_inversions.models.coords import CoordRegistry, attach_coord_registry
 from openghg_inversions.models.priors import PriorArgs
+from openghg_inversions.models.rhime_likelihood import add_rhime_likelihood_component
 from openghg_inversions.models.state_activity import StateActivity
+from openghg_inversions.observation_error import AggregationErrorMode
 from openghg_inversions.sigma import SigmaAlignment
 
 DEFAULT_X_PRIOR: PriorArgs = {"pdf": "lognormal", "mean": 1.0, "stdev": 1.0, "reparameterise": True}
@@ -117,6 +118,8 @@ class RhimeModelSpec:
         pollution_events_from_obs: Whether model error scales with observed
             enhancements instead of modelled enhancements.
         no_model_error: Whether explicit model-error terms are disabled.
+        aggregation_error_mode: Fixed aggregation-error covariance
+            representation. ``"auto"`` selects from prepared inputs.
         power: Exponent or prior specification used in likelihood error scaling.
         bc_prior: Prior specification for boundary-condition scaling factors.
         sigma_prior: Prior specification for model-error terms.
@@ -149,6 +152,7 @@ class RhimeModelSpec:
     add_offset: bool = False
     pollution_events_from_obs: bool = False
     no_model_error: bool = False
+    aggregation_error_mode: AggregationErrorMode = field(default="auto", kw_only=True)
     power: dict[str, Any] | float = 1.99
     bc_prior: dict[str, Any] | None = None
     sigma_prior: dict[str, Any] | None = None
@@ -164,6 +168,11 @@ class RhimeModelSpec:
         if self.builder_strategy not in ("concrete", "compiled"):
             raise ValueError(
                 f"`builder_strategy` must be either 'concrete' or 'compiled'; got {self.builder_strategy!r}."
+            )
+        if self.aggregation_error_mode not in ("auto", "none", "dense", "low_rank", "diagonal"):
+            raise ValueError(
+                "`aggregation_error_mode` must be one of 'auto', 'none', 'dense', "
+                f"'low_rank', or 'diagonal'; got {self.aggregation_error_mode!r}."
             )
 
 
@@ -195,6 +204,7 @@ def _add_rhime_observation_components(
     bc_state_activity: StateActivity | None,
     pollution_events_from_obs: bool,
     no_model_error: bool,
+    aggregation_error_mode: AggregationErrorMode,
     offset_args: dict | None,
     power: dict | float,
 ) -> None:
@@ -213,6 +223,7 @@ def _add_rhime_observation_components(
             scaling states.
         pollution_events_from_obs: Whether error scaling uses observations.
         no_model_error: Whether to suppress explicit model error.
+        aggregation_error_mode: Aggregation-error representation to use.
         offset_args: Extra offset-component arguments.
         power: Likelihood error-scaling exponent or prior.
 
@@ -254,7 +265,7 @@ def _add_rhime_observation_components(
             **(offset_args or {}),
         )
 
-    add_inferpymc_likelihood_component(
+    add_rhime_likelihood_component(
         inv_inputs,
         mu=mu,
         mu_bc=mu_bc,
@@ -264,6 +275,7 @@ def _add_rhime_observation_components(
         power=power,
         pollution_events_from_obs=pollution_events_from_obs,
         no_model_error=no_model_error,
+        aggregation_error_mode=aggregation_error_mode,
         output_dim="nmeasure",
     )
 
@@ -281,6 +293,7 @@ def _assemble_compiled_rhime_model(
     bc_state_activity: StateActivity | None,
     pollution_events_from_obs: bool,
     no_model_error: bool,
+    aggregation_error_mode: AggregationErrorMode,
     offset_args: dict | None,
     power: dict | float,
 ) -> pm.Model:
@@ -299,6 +312,7 @@ def _assemble_compiled_rhime_model(
             scaling states.
         pollution_events_from_obs: Whether error scaling uses observations.
         no_model_error: Whether to suppress explicit model error.
+        aggregation_error_mode: Aggregation-error representation to use.
         offset_args: Extra offset-component arguments.
         power: Likelihood error-scaling exponent or prior.
 
@@ -320,6 +334,7 @@ def _assemble_compiled_rhime_model(
             bc_state_activity=bc_state_activity,
             pollution_events_from_obs=pollution_events_from_obs,
             no_model_error=no_model_error,
+            aggregation_error_mode=aggregation_error_mode,
             offset_args=offset_args,
             power=power,
         )
@@ -339,6 +354,7 @@ def build_rhime_model(
     use_bc: bool = True,
     pollution_events_from_obs: bool = False,
     no_model_error: bool = False,
+    aggregation_error_mode: AggregationErrorMode = "auto",
     offset_args: dict | None = None,
     power: dict | float = 1.99,
     state_activity: StateActivity | None = None,
@@ -359,6 +375,7 @@ def build_rhime_model(
         pollution_events_from_obs: Whether to derive pollution-event scaling
             from observations rather than modelled concentrations.
         no_model_error: Whether to suppress the explicit model-error term.
+        aggregation_error_mode: Aggregation-error representation to use.
         offset_args: Extra keyword arguments forwarded to the offset component.
         power: Exponent or prior specification used in likelihood error scaling.
         state_activity: Optional labelled active/fixed state policy. By
@@ -407,6 +424,7 @@ def build_rhime_model(
             bc_state_activity=bc_state_activity,
             pollution_events_from_obs=pollution_events_from_obs,
             no_model_error=no_model_error,
+            aggregation_error_mode=aggregation_error_mode,
             offset_args=offset_args,
             power=power,
         )
@@ -426,6 +444,7 @@ def _build_compiled_rhime_model(
     use_bc: bool = True,
     pollution_events_from_obs: bool = False,
     no_model_error: bool = False,
+    aggregation_error_mode: AggregationErrorMode = "auto",
     offset_args: dict | None = None,
     power: dict | float = 1.99,
     state_activity: StateActivity | None = None,
@@ -447,6 +466,7 @@ def _build_compiled_rhime_model(
         use_bc: Whether to include boundary-condition terms.
         pollution_events_from_obs: Whether pollution scaling uses observations.
         no_model_error: Whether to suppress the explicit model-error term.
+        aggregation_error_mode: Aggregation-error representation to use.
         offset_args: Extra keyword arguments forwarded to the offset component.
         power: Exponent or prior specification used in likelihood error scaling.
         state_activity: Optional labelled active/fixed flux-state policy.
@@ -474,6 +494,7 @@ def _build_compiled_rhime_model(
         bc_state_activity=bc_state_activity,
         pollution_events_from_obs=pollution_events_from_obs,
         no_model_error=no_model_error,
+        aggregation_error_mode=aggregation_error_mode,
         offset_args=offset_args,
         power=power,
     )
@@ -522,6 +543,7 @@ def build_rhime_model_from_spec(inv_inputs: xr.Dataset, model_spec: RhimeModelSp
         use_bc=model_spec.use_bc,
         pollution_events_from_obs=model_spec.pollution_events_from_obs,
         no_model_error=model_spec.no_model_error,
+        aggregation_error_mode=model_spec.aggregation_error_mode,
         offset_args=model_spec.offset_args,
         power=model_spec.power,
     )
@@ -543,6 +565,7 @@ def build_rhime_multisector_model(
     use_bc: bool = True,
     pollution_events_from_obs: bool = False,
     no_model_error: bool = False,
+    aggregation_error_mode: AggregationErrorMode = "auto",
     offset_args: dict | None = None,
     power: dict | float = 1.99,
     state_activity: StateActivity | None = None,
@@ -581,6 +604,7 @@ def build_rhime_multisector_model(
         pollution_events_from_obs: Whether to derive pollution-event scaling
             from observations rather than modelled concentrations.
         no_model_error: Whether to suppress explicit model-error terms.
+        aggregation_error_mode: Aggregation-error representation to use.
         offset_args: Extra keyword arguments forwarded to the offset component.
         power: Exponent or prior specification used in likelihood error scaling.
         state_activity: Policy shared by sectors without an explicit override.
@@ -651,6 +675,7 @@ def build_rhime_multisector_model(
             bc_state_activity=bc_state_activity,
             pollution_events_from_obs=pollution_events_from_obs,
             no_model_error=no_model_error,
+            aggregation_error_mode=aggregation_error_mode,
             offset_args=offset_args,
             power=power,
         )
@@ -674,6 +699,7 @@ def _build_compiled_rhime_multisector_model(
     use_bc: bool = True,
     pollution_events_from_obs: bool = False,
     no_model_error: bool = False,
+    aggregation_error_mode: AggregationErrorMode = "auto",
     offset_args: dict | None = None,
     power: dict | float = 1.99,
     state_activity: StateActivity | None = None,
@@ -697,6 +723,7 @@ def _build_compiled_rhime_multisector_model(
         use_bc: Whether to include boundary-condition terms.
         pollution_events_from_obs: Whether pollution scaling uses observations.
         no_model_error: Whether to suppress explicit model-error terms.
+        aggregation_error_mode: Aggregation-error representation to use.
         offset_args: Extra keyword arguments forwarded to the offset component.
         power: Exponent or prior specification used in likelihood error scaling.
         state_activity: Optional activity policy shared by all flux sectors.
@@ -736,6 +763,7 @@ def _build_compiled_rhime_multisector_model(
         bc_state_activity=bc_state_activity,
         pollution_events_from_obs=pollution_events_from_obs,
         no_model_error=no_model_error,
+        aggregation_error_mode=aggregation_error_mode,
         offset_args=offset_args,
         power=power,
     )
@@ -789,6 +817,7 @@ def build_rhime_multisector_model_from_spec(
         use_bc=model_spec.use_bc,
         pollution_events_from_obs=model_spec.pollution_events_from_obs,
         no_model_error=model_spec.no_model_error,
+        aggregation_error_mode=model_spec.aggregation_error_mode,
         offset_args=model_spec.offset_args,
         power=model_spec.power,
         state_activity=model_spec.state_activity,
