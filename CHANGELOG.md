@@ -4,6 +4,15 @@
 
 ## Code changes
 
+- Added coordinate-preserving loaders and a weights-first region-constrained
+  fixed-outer adapter. Packaged InTEM and raw country/land-sea class maps are
+  normalized to the weights grid, outer classes retain one target each, and
+  the requested basis count is allocated only across bounded inner classes.
+  Class values are factorized once before splitting, and callers may select a
+  class-local generator. The legacy weighted fixed-outer output is unchanged.
+  This advances
+  [#452](https://github.com/openghg/openghg_inversions/issues/452).
+
 - Added a source-neutral inner/outer region-class combinator for constrained
   basis construction. It tags class provenance, interns repeated composite
   labels, and normalizes physically equivalent rectilinear and curvilinear

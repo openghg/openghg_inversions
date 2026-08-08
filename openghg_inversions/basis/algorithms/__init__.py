@@ -34,6 +34,7 @@ from ._constrained import (
     allocate_nbasis_by_class,
     combine_inner_outer_region_classes,
     intersect_region_class_layers,
+    normalize_spatial_grid,
     region_class_mask,
     region_constrained_basis,
 )
@@ -76,6 +77,7 @@ __all__ = [
     "combine_inner_outer_region_classes",
     "contrast_tau_from_multiplier_cv",
     "intersect_region_class_layers",
+    "normalize_spatial_grid",
     "quadtree_algorithm",
     "region_class_mask",
     "region_constrained_basis",

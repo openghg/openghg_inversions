@@ -55,6 +55,13 @@ _GRID_COORDINATE_DEGREE_ATOL = 2.0e-5
 _GRID_METADATA_KEYS = ("units", "calendar", "axis", "standard_name", "positive")
 _DESCRIPTIVE_COORDINATE_ATTRS = {"comment", "history", "long_name", "longname", "source"}
 _CRS_ATTRIBUTE_MARKERS = {"crs_wkt", "grid_mapping_name", "spatial_ref"}
+_SPATIAL_COORDINATE_NAMES = {"lat", "latitude", "lon", "longitude", "x", "y"}
+_SPATIAL_STANDARD_NAMES = {
+    "latitude",
+    "longitude",
+    "projection_x_coordinate",
+    "projection_y_coordinate",
+}
 
 
 @dataclass(frozen=True)
@@ -713,9 +720,12 @@ def _connected_node_components(
     mask = np.zeros(shape, dtype=bool)
     rows, columns = zip(*nodes, strict=True)
     mask[np.asarray(rows), np.asarray(columns)] = True
-    labels, count = ndimage.label(
-        mask,
-        structure=ndimage.generate_binary_structure(2, connectivity),
+    labels, count = cast(
+        tuple[np.ndarray, int],
+        ndimage.label(
+            mask,
+            structure=ndimage.generate_binary_structure(2, connectivity),
+        ),
     )
     return [list(zip(*np.where(labels == component), strict=True)) for component in range(1, int(count) + 1)]
 
@@ -879,10 +889,7 @@ def _repair_binary_connected_children(
                 continue
 
             moved_weight = (
-                total_left_weight
-                - left_weights[left_index]
-                + total_right_weight
-                - right_weights[right_index]
+                total_left_weight - left_weights[left_index] + total_right_weight - right_weights[right_index]
             )
             repaired_left_weight = left_weights[left_index] + total_right_weight - right_weights[right_index]
             repaired_right_weight = right_weights[right_index] + total_left_weight - left_weights[left_index]
@@ -1077,9 +1084,12 @@ class ConnectedComponentSplitStrategy:
         if not class_mask.any():
             return np.zeros(weights.shape, dtype=np.int64)
 
-        component_labels, component_count = ndimage.label(
-            class_mask,
-            structure=ndimage.generate_binary_structure(2, self.connectivity),
+        component_labels, component_count = cast(
+            tuple[np.ndarray, int],
+            ndimage.label(
+                class_mask,
+                structure=ndimage.generate_binary_structure(2, self.connectivity),
+            ),
         )
         effective_target = min(
             max(int(target_regions), int(component_count)),
@@ -1112,9 +1122,12 @@ class ConnectedComponentSplitStrategy:
                 raise RuntimeError("Connected split strategy did not preserve class coverage.")
             for local_region in _positive_labels(local_labels):
                 region_mask = local_labels == local_region
-                _component_labels, region_component_count = ndimage.label(
-                    region_mask,
-                    structure=ndimage.generate_binary_structure(2, self.connectivity),
+                _component_labels, region_component_count = cast(
+                    tuple[np.ndarray, int],
+                    ndimage.label(
+                        region_mask,
+                        structure=ndimage.generate_binary_structure(2, self.connectivity),
+                    ),
                 )
                 if int(region_component_count) != 1:
                     raise RuntimeError("Connected split strategy produced a disconnected label.")
@@ -1272,26 +1285,26 @@ def region_constrained_basis(
     )
     weight_values = _validate_weights(weights)
     class_values = region_classes.to_numpy()
-    mapped_classes = _mapped_classes(class_values, unmapped_values)
+    mapped_classes, class_codes = _factorize_mapped_classes(class_values, unmapped_values)
     strategy = split_strategy if split_strategy is not None else GreedyAxisParallelSplitStrategy()
 
     labels = np.zeros(weight_values.shape, dtype=np.int64)
     if not mapped_classes:
         return _labels_dataarray(labels, weights)
 
-    targets = allocate_nbasis_by_class(
-        weights,
-        region_classes,
+    targets = _allocate_nbasis_by_code(
+        weight_values,
+        mapped_classes,
+        class_codes,
         nbasis,
         allocation=allocation,
         min_regions_per_class=min_regions_per_class,
-        unmapped_values=unmapped_values,
     )
 
     next_label = 1
-    for class_value in mapped_classes:
+    for class_code, class_value in enumerate(mapped_classes):
         target_regions = targets[class_value]
-        class_mask = _class_value_mask(class_values, class_value)
+        class_mask = class_codes == class_code
         local_labels = _validate_split_strategy_labels(
             strategy(weight_values, class_mask, target_regions),
             class_mask,
@@ -1544,41 +1557,18 @@ def allocate_nbasis_by_class(
         candidate_name="region_classes",
     )
     weight_values = _validate_weights(weights)
-    class_values = region_classes.to_numpy()
-    mapped_classes = _mapped_classes(class_values, unmapped_values)
-
-    if not mapped_classes:
-        if not isinstance(nbasis, Mapping) and nbasis != 0:
-            raise ValueError("Cannot allocate basis regions without mapped classes.")
-        return {}
-
-    capacities = {
-        class_value: int(np.count_nonzero(_class_value_mask(class_values, class_value)))
-        for class_value in mapped_classes
-    }
-
-    if isinstance(nbasis, Mapping):
-        return _explicit_allocation(mapped_classes, nbasis, capacities)
-
-    if nbasis < 0:
-        raise ValueError("nbasis must be non-negative.")
-
-    minima = {
-        class_value: min(min_regions_per_class, capacity) for class_value, capacity in capacities.items()
-    }
-
-    min_total = sum(minima.values())
-    max_total = sum(capacities.values())
-    if nbasis < min_total:
-        raise ValueError(
-            f"nbasis={nbasis} is smaller than the minimum {min_total} required "
-            f"for {len(mapped_classes)} mapped classes."
-        )
-    if nbasis > max_total:
-        raise ValueError(f"nbasis={nbasis} exceeds the {max_total} mapped cells available for splitting.")
-
-    scores = _allocation_scores(weight_values, class_values, mapped_classes, allocation)
-    return _distribute_regions(mapped_classes, scores, minima, capacities, nbasis)
+    mapped_classes, class_codes = _factorize_mapped_classes(
+        region_classes.to_numpy(),
+        unmapped_values,
+    )
+    return _allocate_nbasis_by_code(
+        weight_values,
+        mapped_classes,
+        class_codes,
+        nbasis,
+        allocation=allocation,
+        min_regions_per_class=min_regions_per_class,
+    )
 
 
 def _align_2d_inputs(
@@ -1629,6 +1619,48 @@ def _align_2d_inputs(
             f"{candidate_name} cannot be aligned exactly with {reference_name}: {exc}"
         ) from exc
     return reference, candidate
+
+
+def normalize_spatial_grid(
+    reference: xr.DataArray,
+    candidate: xr.DataArray,
+    *,
+    reference_name: str = "reference",
+    candidate_name: str = "candidate",
+) -> xr.DataArray:
+    """Normalize a physically compatible two-dimensional field to a reference grid.
+
+    Args:
+        reference: Two-dimensional field whose dimension order, coordinate
+            values, and nonconflicting metadata define the output grid.
+        candidate: Two-dimensional field to validate and normalize.
+        reference_name: Name used for ``reference`` in validation errors.
+        candidate_name: Name used for ``candidate`` in validation errors.
+
+    Returns:
+        ``candidate`` transposed to the reference dimension order and assigned
+        the reference grid coordinates, with nonconflicting coordinate metadata
+        retained from both fields.
+
+    Raises:
+        ValueError: If either field is not two-dimensional or their dimension
+            names differ.
+        xarray.AlignmentError: If grid coordinates, grid-defining metadata, or
+            CRS definitions are physically incompatible.
+
+    Notes:
+        This aligns to an arbitrary reference grid. OpenGHG's
+        ``openghg.util.align_lat_lon`` instead canonicalizes one field against
+        a named OpenGHG domain and does not validate arbitrary curvilinear grids,
+        units, or CRS metadata.
+    """
+    _, normalized_candidate = _align_2d_inputs(
+        reference,
+        candidate,
+        reference_name=reference_name,
+        candidate_name=candidate_name,
+    )
+    return normalized_candidate
 
 
 def _normalize_matching_grid_coordinates(
@@ -1746,13 +1778,41 @@ def _coordinate_with_merged_metadata(
 
 
 def _spatial_coordinate_names(array: xr.DataArray) -> set[Hashable]:
-    """Return non-scalar coordinates attached only to the two grid dimensions."""
+    """Return dimension indexes and recognized CF horizontal coordinates."""
     grid_dimensions = set(array.dims)
     return {
         name
         for name, coordinate in array.coords.items()
-        if coordinate.dims and set(coordinate.dims).issubset(grid_dimensions)
+        if coordinate.dims
+        and set(coordinate.dims).issubset(grid_dimensions)
+        and _is_spatial_coordinate(name, coordinate, grid_dimensions)
     }
+
+
+def _is_spatial_coordinate(
+    name: Hashable,
+    coordinate: xr.DataArray,
+    grid_dimensions: set[Hashable],
+) -> bool:
+    """Return whether a coordinate participates in horizontal grid identity.
+
+    Args:
+        name: Coordinate name.
+        coordinate: Coordinate array whose dimensions and CF metadata are
+            inspected.
+        grid_dimensions: Dimension names defining the horizontal grid.
+
+    Returns:
+        True when the coordinate is a dimension index or is identified as a
+        horizontal coordinate by its name or CF metadata.
+    """
+    if name in grid_dimensions and coordinate.dims == (name,):
+        return True
+    if str(name).lower() in _SPATIAL_COORDINATE_NAMES:
+        return True
+    if str(coordinate.attrs.get("standard_name", "")).lower() in _SPATIAL_STANDARD_NAMES:
+        return True
+    return str(coordinate.attrs.get("axis", "")).upper() in {"X", "Y"}
 
 
 def _crs_coordinate_names(array: xr.DataArray, *, array_name: str) -> set[Hashable]:
@@ -1902,11 +1962,11 @@ def _validate_weights(weights: xr.DataArray) -> np.ndarray:
     return values
 
 
-def _mapped_classes(
+def _factorize_mapped_classes(
     class_values: npt.NDArray[np.object_] | np.ndarray,
     unmapped_values: Iterable[Hashable],
-) -> list[Hashable]:
-    """Return unique class values that should receive basis labels.
+) -> tuple[list[Hashable], np.ndarray]:
+    """Factor mapped class values once into first-seen integer codes.
 
     Args:
         class_values: Raw class array from the aligned ``region_classes`` input.
@@ -1914,16 +1974,104 @@ def _mapped_classes(
             ``0``.
 
     Returns:
-        Unique class values in first-seen order, excluding nulls and explicitly
-        unmapped values.
+        Unique mapped class values in first-seen order and a same-shaped integer
+        code array. Mapped codes are contiguous from zero; null and explicitly
+        unmapped cells use ``-1``.
+
+    Raises:
+        ValueError: If a mapped class value is not hashable.
     """
     unmapped = set(unmapped_values)
+    try:
+        raw_codes, unique_values = pd.factorize(
+            class_values.ravel(),
+            sort=False,
+            use_na_sentinel=True,
+        )
+    except TypeError as exc:
+        raise ValueError("Region-class values must be hashable.") from exc
+
     classes: list[Hashable] = []
-    for value in pd.unique(class_values.ravel()):
-        if _is_unmapped_layer_value(cast(Hashable, value), unmapped):
+    raw_to_mapped = np.full(len(unique_values), -1, dtype=np.intp)
+    for raw_code, value in enumerate(unique_values):
+        class_value = cast(Hashable, value)
+        if _is_unmapped_layer_value(class_value, unmapped):
             continue
-        classes.append(cast(Hashable, value))
-    return classes
+        raw_to_mapped[raw_code] = len(classes)
+        classes.append(class_value)
+
+    class_codes = np.full(raw_codes.shape, -1, dtype=np.intp)
+    present = raw_codes >= 0
+    class_codes[present] = raw_to_mapped[raw_codes[present]]
+    return classes, class_codes.reshape(class_values.shape)
+
+
+def _allocate_nbasis_by_code(
+    weight_values: np.ndarray,
+    mapped_classes: list[Hashable],
+    class_codes: np.ndarray,
+    nbasis: NbasisAllocation,
+    *,
+    allocation: AllocationMode,
+    min_regions_per_class: int,
+) -> dict[Hashable, int]:
+    """Allocate class targets using already-factorized integer class codes.
+
+    Args:
+        weight_values: Non-negative spatial weights aligned with
+            ``class_codes``.
+        mapped_classes: Class values in the order represented by non-negative
+            codes.
+        class_codes: Integer class codes aligned with ``weight_values``.
+            Mapped codes are contiguous from zero; ``-1`` marks unmapped cells.
+        nbasis: Total requested region count or an explicit per-class
+            allocation.
+        allocation: ``"weight"`` to allocate by summed weight or ``"area"``
+            to allocate by mapped cell count.
+        min_regions_per_class: Minimum automatic allocation for each non-empty
+            mapped class.
+
+    Returns:
+        Mapping from each mapped class to its allocated region count.
+
+    Raises:
+        ValueError: If the minimum or requested total is negative, allocation
+            is requested without mapped classes, the request exceeds mapped
+            capacity or required minima, the explicit allocation is invalid,
+            or ``allocation`` is unsupported.
+    """
+    if min_regions_per_class < 0:
+        raise ValueError("min_regions_per_class must be non-negative.")
+    if not mapped_classes:
+        if not isinstance(nbasis, Mapping) and nbasis != 0:
+            raise ValueError("Cannot allocate basis regions without mapped classes.")
+        return {}
+
+    present_codes = class_codes[class_codes >= 0]
+    capacity_values = np.bincount(present_codes, minlength=len(mapped_classes))
+    capacities = {
+        class_value: int(capacity_values[class_code]) for class_code, class_value in enumerate(mapped_classes)
+    }
+    if isinstance(nbasis, Mapping):
+        return _explicit_allocation(mapped_classes, nbasis, capacities)
+    if nbasis < 0:
+        raise ValueError("nbasis must be non-negative.")
+
+    minima = {
+        class_value: min(min_regions_per_class, capacity) for class_value, capacity in capacities.items()
+    }
+    min_total = sum(minima.values())
+    max_total = sum(capacities.values())
+    if nbasis < min_total:
+        raise ValueError(
+            f"nbasis={nbasis} is smaller than the minimum {min_total} required "
+            f"for {len(mapped_classes)} mapped classes."
+        )
+    if nbasis > max_total:
+        raise ValueError(f"nbasis={nbasis} exceeds the {max_total} mapped cells available for splitting.")
+
+    scores = _allocation_scores(weight_values, class_codes, mapped_classes, allocation)
+    return _distribute_regions(mapped_classes, scores, minima, capacities, nbasis)
 
 
 def _is_unmapped_layer_value(value: Hashable, unmapped_values: set[Hashable]) -> bool:
@@ -2002,15 +2150,15 @@ def _explicit_allocation(
 
 def _allocation_scores(
     weights: np.ndarray,
-    class_values: np.ndarray,
+    class_codes: np.ndarray,
     mapped_classes: list[Hashable],
     allocation: AllocationMode,
 ) -> dict[Hashable, float]:
     """Compute proportional allocation scores for each mapped class.
 
     Args:
-        weights: Non-negative weight values aligned to ``class_values``.
-        class_values: Raw class values aligned to ``weights``.
+        weights: Non-negative weight values aligned to ``class_codes``.
+        class_codes: Factorized integer class codes aligned to ``weights``.
         mapped_classes: Class values eligible for allocation.
         allocation: ``"weight"`` to score by total class weight, or ``"area"``
             to score by mapped cell count.
@@ -2022,19 +2170,24 @@ def _allocation_scores(
         ValueError: If ``allocation`` is not supported.
     """
     if allocation == "area":
+        counts = np.bincount(class_codes[class_codes >= 0], minlength=len(mapped_classes))
         return {
-            class_value: float(np.count_nonzero(_class_value_mask(class_values, class_value)))
-            for class_value in mapped_classes
+            class_value: float(counts[class_code]) for class_code, class_value in enumerate(mapped_classes)
         }
     if allocation != "weight":
         raise ValueError("allocation must be 'weight' or 'area'.")
 
+    present = class_codes >= 0
+    weight_sums = np.bincount(
+        class_codes[present],
+        weights=weights[present],
+        minlength=len(mapped_classes),
+    )
     scores = {
-        class_value: float(weights[_class_value_mask(class_values, class_value)].sum())
-        for class_value in mapped_classes
+        class_value: float(weight_sums[class_code]) for class_code, class_value in enumerate(mapped_classes)
     }
     if sum(scores.values()) == 0.0:
-        return _allocation_scores(weights, class_values, mapped_classes, "area")
+        return _allocation_scores(weights, class_codes, mapped_classes, "area")
     return scores
 
 
@@ -2798,6 +2951,7 @@ __all__ = [
     "allocate_nbasis_by_class",
     "combine_inner_outer_region_classes",
     "intersect_region_class_layers",
+    "normalize_spatial_grid",
     "region_class_mask",
     "region_constrained_basis",
 ]

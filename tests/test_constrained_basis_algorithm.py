@@ -7,6 +7,7 @@ import pytest
 import xarray as xr
 from scipy import ndimage
 
+import openghg_inversions.basis.algorithms._constrained as constrained_module
 from openghg_inversions.basis.algorithms import (
     AllSplitAcceptancePolicies,
     AxisParallelSplitStep,
@@ -500,6 +501,72 @@ def _physical_grid_test_fields() -> tuple[xr.DataArray, xr.DataArray]:
     candidate.coords["crs"].attrs["standard_parallel"] = np.array([30.0, 60.0])
     candidate.coords["crs"].attrs["long_name"] = "coordinate reference system"
     return reference, candidate
+
+
+def test_region_constrained_basis_ignores_unshared_auxiliary_grid_coordinates():
+    """Grid-shaped measures are preserved but do not define physical grid identity."""
+    weights = xr.DataArray(
+        np.ones((2, 2)),
+        dims=("lat", "lon"),
+        coords={
+            "lat": [50.0, 51.0],
+            "lon": [-2.0, -1.0],
+            "cell_area": (("lat", "lon"), [[10.0, 11.0], [12.0, 13.0]]),
+        },
+    )
+    classes = xr.DataArray(
+        np.full(weights.shape, "class", dtype=object),
+        dims=weights.dims,
+        coords={"lat": weights.lat, "lon": weights.lon},
+    )
+
+    labels = region_constrained_basis(weights, classes, nbasis=1)
+
+    assert "cell_area" in labels.coords
+    assert set(np.unique(labels)) == {1}
+
+
+def test_constrained_core_factorizes_tuple_classes_before_allocation_and_splitting(monkeypatch):
+    """Tuple classes use first-seen integer codes while null and explicit omissions stay unmapped."""
+    weights = xr.DataArray(np.ones((2, 4)), dims=("lat", "lon"))
+    class_values = np.empty(weights.shape, dtype=object)
+    for flat_index, value in enumerate(
+        [
+            ("beta", 2),
+            ("alpha", 1),
+            np.nan,
+            ("skip", 0),
+            ("beta", 2),
+            ("alpha", 1),
+            ("alpha", 1),
+            ("beta", 2),
+        ]
+    ):
+        class_values.flat[flat_index] = value
+    classes = xr.DataArray(class_values, dims=weights.dims)
+
+    def fail_python_mask_path(*args, **kwargs):
+        raise AssertionError("core allocation/splitting should use factorized integer codes")
+
+    monkeypatch.setattr(constrained_module, "_class_value_mask", fail_python_mask_path)
+    allocation = allocate_nbasis_by_class(
+        weights,
+        classes,
+        nbasis=4,
+        allocation="area",
+        unmapped_values={("skip", 0)},
+    )
+    labels = region_constrained_basis(
+        weights,
+        classes,
+        nbasis=allocation,
+        unmapped_values={("skip", 0)},
+    )
+
+    assert list(allocation) == [("beta", 2), ("alpha", 1)]
+    assert labels.values[0, 2] == 0
+    assert labels.values[0, 3] == 0
+    assert all(len(values) == 1 for values in _class_values_for_labels(labels, classes).values())
 
 
 @pytest.mark.parametrize("composer", ["combine", "intersect"])
