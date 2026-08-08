@@ -720,9 +720,12 @@ def _connected_node_components(
     mask = np.zeros(shape, dtype=bool)
     rows, columns = zip(*nodes, strict=True)
     mask[np.asarray(rows), np.asarray(columns)] = True
-    labels, count = ndimage.label(
-        mask,
-        structure=ndimage.generate_binary_structure(2, connectivity),
+    labels, count = cast(
+        tuple[np.ndarray, int],
+        ndimage.label(
+            mask,
+            structure=ndimage.generate_binary_structure(2, connectivity),
+        ),
     )
     return [list(zip(*np.where(labels == component), strict=True)) for component in range(1, int(count) + 1)]
 
@@ -1081,9 +1084,12 @@ class ConnectedComponentSplitStrategy:
         if not class_mask.any():
             return np.zeros(weights.shape, dtype=np.int64)
 
-        component_labels, component_count = ndimage.label(
-            class_mask,
-            structure=ndimage.generate_binary_structure(2, self.connectivity),
+        component_labels, component_count = cast(
+            tuple[np.ndarray, int],
+            ndimage.label(
+                class_mask,
+                structure=ndimage.generate_binary_structure(2, self.connectivity),
+            ),
         )
         effective_target = min(
             max(int(target_regions), int(component_count)),
@@ -1116,9 +1122,12 @@ class ConnectedComponentSplitStrategy:
                 raise RuntimeError("Connected split strategy did not preserve class coverage.")
             for local_region in _positive_labels(local_labels):
                 region_mask = local_labels == local_region
-                _component_labels, region_component_count = ndimage.label(
-                    region_mask,
-                    structure=ndimage.generate_binary_structure(2, self.connectivity),
+                _component_labels, region_component_count = cast(
+                    tuple[np.ndarray, int],
+                    ndimage.label(
+                        region_mask,
+                        structure=ndimage.generate_binary_structure(2, self.connectivity),
+                    ),
                 )
                 if int(region_component_count) != 1:
                     raise RuntimeError("Connected split strategy produced a disconnected label.")
