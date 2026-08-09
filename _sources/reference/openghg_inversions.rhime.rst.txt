@@ -11,6 +11,7 @@ openghg\_inversions.rhime
 .. toctree::
    :maxdepth: 4
 
+   openghg_inversions.rhime.builders
    openghg_inversions.rhime.outputs
    openghg_inversions.rhime.params
    openghg_inversions.rhime.runner
