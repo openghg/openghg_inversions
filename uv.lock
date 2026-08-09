@@ -2962,6 +2962,7 @@ name = "openghg-inversions"
 version = "0.6.0"
 source = { editable = "." }
 dependencies = [
+    { name = "arviz" },
     { name = "cf-xarray", version = "0.10.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "cf-xarray", version = "0.10.10", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "flox", version = "0.10.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
@@ -3002,6 +3003,7 @@ uv-dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "arviz", specifier = "<1" },
     { name = "cf-xarray", specifier = ">=0.10.6" },
     { name = "flox" },
     { name = "ipykernel", marker = "extra == 'jupyter'" },
@@ -3014,7 +3016,7 @@ requires-dist = [
     { name = "openghg" },
     { name = "opt-einsum" },
     { name = "pandas", specifier = "<3.0" },
-    { name = "pymc" },
+    { name = "pymc", specifier = "<6" },
     { name = "pyright", marker = "extra == 'dev'" },
     { name = "pytest", marker = "extra == 'dev'" },
     { name = "pytest-xdist", marker = "extra == 'dev'" },
