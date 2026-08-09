@@ -9,6 +9,23 @@
   ``xarray.DataTree``. ArviZ is now declared directly because it is imported by
   the package. [#443](https://github.com/openghg/openghg_inversions/issues/443)
 
+- Added modern RHIME likelihood support for fixed aggregation-error covariance
+  supplied after input preparation: exact dense, low-rank-plus-diagonal, and
+  independent diagonal representations. Structured likelihoods retain the
+  observed ``y`` variable and predictive sampling, preserve the total-marginal
+  minimum-error floor, and leave legacy HBMCMC paths unchanged. Derived basic,
+  PARIS, and legacy products reject these inputs pending representation-neutral
+  postprocessing reconstruction. [PR #516](https://github.com/openghg/openghg_inversions/pull/516)
+
+- Added coordinate-preserving loaders and a weights-first region-constrained
+  fixed-outer adapter. Packaged InTEM and raw country/land-sea class maps are
+  normalized to the weights grid, outer classes retain one target each, and
+  the requested basis count is allocated only across bounded inner classes.
+  Class values are factorized once before splitting, and callers may select a
+  class-local generator. The legacy weighted fixed-outer output is unchanged.
+  This advances
+  [#452](https://github.com/openghg/openghg_inversions/issues/452).
+
 - Added a source-neutral inner/outer region-class combinator for constrained
   basis construction. It tags class provenance, interns repeated composite
   labels, and normalizes physically equivalent rectilinear and curvilinear

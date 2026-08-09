@@ -8,6 +8,7 @@ import xarray as xr
 
 import openghg_inversions.basis as basis_package
 import openghg_inversions.basis._functions as basis_module
+from openghg_inversions.basis.algorithms import ConnectedComponentSplitStrategy
 from openghg_inversions.basis._functions import (
     basis,
     basis_functions,
@@ -20,10 +21,13 @@ from openghg_inversions.basis import (
     bucket_basis_from_weights,
     bucket_basis_function,
     fixed_outer_regions_basis,
+    load_country_region_classes,
+    load_intem_outer_regions,
     paired_abs_response_weights,
     quadtree_basis_from_weights,
     quadtree_basis_function,
     region_constrained_basis_from_weights,
+    region_constrained_fixed_outer_basis_from_weights,
     region_constrained_basis_function,
 )
 from openghg_inversions.basis._wrapper import (
@@ -576,6 +580,106 @@ def test_region_constrained_basis_from_weights_all_zero_falls_back_to_area():
     _assert_basis_labels_do_not_cross_classes(labels, region_classes)
 
 
+def test_region_constrained_basis_from_weights_normalizes_close_grid_coordinates():
+    """Weight-first constrained generation accepts equivalent float32 coordinates."""
+    weights = xr.DataArray(
+        np.ones((2, 3), dtype=float),
+        dims=("lat", "lon"),
+        coords={"lat": [50.1, 50.2], "lon": [-1.1, -1.0, -0.9]},
+    )
+    region_classes = xr.DataArray(
+        np.array([["west", "west"], ["west", "west"], ["east", "east"]], dtype=object),
+        dims=("lon", "lat"),
+        coords={
+            "lat": np.array(weights.lat, dtype=np.float32),
+            "lon": np.array(weights.lon, dtype=np.float32),
+        },
+    )
+
+    basis_func = region_constrained_basis_from_weights(
+        weights,
+        "2020-01-01",
+        "TEST",
+        region_classes=region_classes,
+        nbasis=2,
+    )
+
+    assert basis_func.dims == ("lat", "lon", "time")
+    xr.testing.assert_equal(basis_func.lat, weights.lat)
+    xr.testing.assert_equal(basis_func.lon, weights.lon)
+    assert set(np.unique(basis_func)) == {1, 2}
+
+
+def test_region_constrained_basis_from_weights_subsets_full_domain_classes():
+    """Cropped weights select the matching physical window from whole-domain classes."""
+    full_lat = np.array([50.0, 50.1, 50.2, 50.3])
+    full_lon = np.array([-1.2, -1.1, -1.0, -0.9, -0.8])
+    weights = xr.DataArray(
+        np.arange(1, 7, dtype=float).reshape(2, 3),
+        dims=("lat", "lon"),
+        coords={"lat": full_lat[1:3], "lon": full_lon[1:4]},
+    )
+    full_classes = xr.DataArray(
+        np.array(
+            [
+                ["west", "west", "west", "east"],
+                ["west", "west", "west", "east"],
+                ["west", "west", "west", "east"],
+                ["west", "west", "west", "east"],
+                ["west", "west", "west", "east"],
+            ],
+            dtype=object,
+        ),
+        dims=("lon", "lat"),
+        coords={"lat": full_lat.astype(np.float32), "lon": full_lon.astype(np.float32)},
+    )
+
+    basis_func = region_constrained_basis_from_weights(
+        weights,
+        "2020-01-01",
+        "TEST",
+        region_classes=full_classes,
+        nbasis=2,
+    )
+
+    labels = basis_func.squeeze("time", drop=True)
+    selected_classes = full_classes.isel(lon=slice(1, 4), lat=slice(1, 3)).transpose("lat", "lon")
+    assert set(np.unique(labels)) == {1, 2}
+    for label in np.unique(labels):
+        assert len(set(selected_classes.values[labels.values == label])) == 1
+    xr.testing.assert_equal(labels.lat, weights.lat)
+    xr.testing.assert_equal(labels.lon, weights.lon)
+
+
+def test_region_constrained_basis_from_weights_reindexes_reversed_equal_sized_coordinates():
+    """Equal-sized descending class coordinates are reordered onto physical weight cells."""
+    weights = xr.DataArray(
+        np.ones((2, 2)),
+        dims=("lat", "lon"),
+        coords={"lat": [50.0, 51.0], "lon": [-2.0, -1.0]},
+    )
+    region_classes = xr.DataArray(
+        np.array([["north", "north"], ["south", "south"]], dtype=object),
+        dims=weights.dims,
+        coords={"lat": [51.0, 50.0], "lon": weights.lon},
+    )
+
+    labels = region_constrained_basis_from_weights(
+        weights,
+        "2020-01-01",
+        "TEST",
+        region_classes=region_classes,
+        nbasis=2,
+        allocation="area",
+    ).squeeze("time", drop=True)
+
+    south_label = labels.sel(lat=50.0).item(0)
+    north_label = labels.sel(lat=51.0).item(0)
+    assert south_label != north_label
+    assert np.all(labels.sel(lat=50.0) == south_label)
+    assert np.all(labels.sel(lat=51.0) == north_label)
+
+
 @pytest.mark.parametrize(
     ("values", "message"),
     [
@@ -944,13 +1048,22 @@ def test_make_basis_functions_accepts_region_constrained_algorithm():
 
 
 def test_fixed_outer_regions_can_use_region_constrained_algorithm(tmp_path):
-    """Fixed outer regions can pass class fields through to the inner basis algorithm."""
+    """Fixed outer regions crop whole-domain classes for the bounded inner maximum."""
     fp_all, region_classes = _tiny_region_constrained_fp_all()
+    outer_values = np.array(
+        [
+            [0, 0, 1, 1],
+            [0, 2, 2, 1],
+            [0, 2, 2, 1],
+            [0, 0, 1, 1],
+        ],
+        dtype=int,
+    )
     outer_regions = xr.Dataset(
         {
             "region": (
                 ("lat", "lon"),
-                np.ones(region_classes.shape, dtype=int),
+                outer_values,
             )
         },
         coords=region_classes.coords,
@@ -969,7 +1082,316 @@ def test_fixed_outer_regions_can_use_region_constrained_algorithm(tmp_path):
     )
 
     labels = basis_func.squeeze("time", drop=True)
-    _assert_basis_labels_do_not_cross_classes(labels, region_classes)
+    inner_mask = outer_values == np.nanmax(outer_values)
+    inner_labels = np.unique(labels.values[inner_mask])
+    assert len(inner_labels) == 4
+    for label in inner_labels:
+        assert len(set(region_classes.values[inner_mask & (labels.values == label)])) == 1
+    assert len(np.unique(labels.values[outer_values == 0])) == 1
+    assert len(np.unique(labels.values[outer_values == 1])) == 1
+
+
+def test_region_constrained_fixed_outer_basis_from_weights_allocates_inner_only():
+    """Fixed-outer composition gives outer classes one state and reserves nbasis for inner classes."""
+    lat = np.array([50.1, 50.2, 50.3, 50.4])
+    lon = np.array([-1.2, -1.1, -1.0, -0.9, -0.8])
+    weights = xr.DataArray(
+        np.arange(1, 21, dtype=float).reshape(4, 5),
+        dims=("lat", "lon"),
+        coords={"lat": lat, "lon": lon},
+    )
+    outer_values = np.array(
+        [
+            [np.nan, 0, 0, 1, 1],
+            [0, 2, 2, 2, 1],
+            [0, 2, 2, 2, 1],
+            [0, 0, 0, 1, 1],
+        ],
+        dtype=float,
+    )
+    outer_regions = xr.DataArray(
+        outer_values.T,
+        dims=("lon", "lat"),
+        coords={"lat": lat.astype(np.float32), "lon": lon.astype(np.float32)},
+    )
+    inner_classes = xr.DataArray(
+        np.array(
+            [
+                [0, 0, 0, 1, 1],
+                [0, 0, 0, 1, 1],
+                [0, 0, 0, 1, 1],
+                [0, 0, 0, 1, 1],
+            ]
+        ),
+        dims=weights.dims,
+        coords={"lat": lat.astype(np.float32), "lon": lon.astype(np.float32)},
+    )
+
+    basis_func = region_constrained_fixed_outer_basis_from_weights(
+        weights,
+        "2020-01-01",
+        "TEST",
+        nbasis=3,
+        outer_regions=outer_regions,
+        region_classes=inner_classes,
+        allocation="area",
+    )
+
+    labels = basis_func.squeeze("time", drop=True)
+    inner_mask = outer_values == np.nanmax(outer_values)
+    outer_zero_labels = np.unique(labels.values[outer_values == 0])
+    outer_one_labels = np.unique(labels.values[outer_values == 1])
+    inner_labels = np.unique(labels.values[inner_mask])
+    assert len(outer_zero_labels) == 1
+    assert len(outer_one_labels) == 1
+    assert len(inner_labels) == 3
+    assert set(outer_zero_labels).isdisjoint(outer_one_labels)
+    assert set(inner_labels).isdisjoint(set(outer_zero_labels) | set(outer_one_labels))
+    for label in inner_labels:
+        assert len(set(inner_classes.values[inner_mask & (labels.values == label)])) == 1
+    assert labels.values[0, 0] == 0
+    assert set(np.unique(labels)) == set(range(6))
+    assert basis_func.dims == ("lat", "lon", "time")
+    assert basis_func.name == "basis"
+    assert basis_func.attrs["domain"] == "TEST"
+    xr.testing.assert_equal(basis_func.lat, weights.lat)
+    xr.testing.assert_equal(basis_func.lon, weights.lon)
+
+
+def test_region_constrained_fixed_outer_basis_forwards_custom_split_strategy():
+    """Fixed-outer layout targets are independent from the selected class-local generator."""
+    coords = {"lat": np.arange(4.0), "lon": np.arange(5.0)}
+    weights = xr.DataArray(np.arange(1, 21, dtype=float).reshape(4, 5), dims=("lat", "lon"), coords=coords)
+    outer_values = np.array(
+        [
+            [0, 1, 1, 1, 0],
+            [1, 2, 2, 2, 1],
+            [1, 2, 2, 2, 1],
+            [0, 1, 1, 1, 0],
+        ]
+    )
+    outer_regions = xr.DataArray(outer_values, dims=weights.dims, coords=coords)
+    inner_classes = xr.DataArray(np.tile([10, 10, 10, 20, 20], (4, 1)), dims=weights.dims, coords=coords)
+    calls: list[tuple[int, np.ndarray]] = []
+
+    class SequentialCellStrategy:
+        """Assign selected cells cyclically across the requested local target."""
+
+        def __call__(
+            self,
+            weights: np.ndarray,
+            class_mask: np.ndarray,
+            target_regions: int,
+        ) -> np.ndarray:
+            calls.append((target_regions, class_mask.copy()))
+            local_labels = np.zeros(weights.shape, dtype=np.int64)
+            selected = np.argwhere(class_mask)
+            for offset, index in enumerate(selected):
+                local_labels[tuple(index)] = offset % target_regions + 1
+            return local_labels
+
+    labels = region_constrained_fixed_outer_basis_from_weights(
+        weights,
+        "2020-01-01",
+        "TEST",
+        nbasis=3,
+        outer_regions=outer_regions,
+        region_classes=inner_classes,
+        allocation="area",
+        split_strategy=ConnectedComponentSplitStrategy(SequentialCellStrategy()),
+    ).squeeze("time", drop=True)
+
+    inner_mask = outer_values == outer_values.max()
+    assert all(np.all(~mask | inner_mask) for _, mask in calls)
+    assert sum(target for target, _ in calls) == 3
+    assert len(np.unique(labels.values[outer_values == 0])) == 1
+    assert len(np.unique(labels.values[outer_values == 1])) == 1
+    assert set(np.unique(labels)) == set(range(1, 6))
+
+
+def test_region_constrained_basis_from_weights_rejects_strategy_and_acceptance_policy():
+    """A direct generator cannot be combined with contrast-configured greedy splitting."""
+    weights = xr.DataArray(np.ones((2, 2)), dims=("lat", "lon"))
+    classes = xr.DataArray(np.ones((2, 2), dtype=int), dims=weights.dims)
+
+    class OneRegionStrategy:
+        """Return one valid local label."""
+
+        def __call__(
+            self,
+            weights: np.ndarray,
+            class_mask: np.ndarray,
+            target_regions: int,
+        ) -> np.ndarray:
+            return class_mask.astype(np.int64)
+
+    with pytest.raises(ValueError, match="cannot be combined"):
+        region_constrained_basis_from_weights(
+            weights,
+            "2020-01-01",
+            "TEST",
+            region_classes=classes,
+            nbasis=1,
+            split_strategy=OneRegionStrategy(),
+            split_acceptance="contrast_score",
+        )
+
+
+def test_region_constrained_fixed_outer_basis_from_weights_computes_dask_outer_max():
+    """The fixed-outer adapter materializes the scalar maximum of a dask-backed map."""
+    coords = {"lat": np.arange(4.0), "lon": np.arange(4.0)}
+    weights = xr.DataArray(np.ones((4, 4)), dims=("lat", "lon"), coords=coords)
+    outer_regions = xr.DataArray(
+        np.array(
+            [
+                [0, 0, 1, 1],
+                [0, 2, 2, 1],
+                [0, 2, 2, 1],
+                [0, 0, 1, 1],
+            ]
+        ),
+        dims=weights.dims,
+        coords=coords,
+    ).chunk({"lat": 2, "lon": 2})
+    inner_classes = xr.DataArray(
+        np.tile([0, 0, 1, 1], (4, 1)),
+        dims=weights.dims,
+        coords=coords,
+    )
+
+    basis_func = region_constrained_fixed_outer_basis_from_weights(
+        weights,
+        "2020-01-01",
+        "TEST",
+        nbasis=np.int64(2),
+        outer_regions=outer_regions,
+        region_classes=inner_classes,
+        allocation="area",
+    )
+
+    assert set(np.unique(basis_func)) == {1, 2, 3, 4}
+
+
+@pytest.mark.parametrize("nbasis", [True, np.bool_(True), 2.5])
+def test_region_constrained_fixed_outer_basis_from_weights_rejects_non_integral_nbasis(nbasis):
+    """The fixed-outer adapter rejects Boolean and non-integral inner targets."""
+    weights = xr.DataArray(
+        np.ones((2, 2)),
+        dims=("lat", "lon"),
+        coords={"lat": [0.0, 1.0], "lon": [0.0, 1.0]},
+    )
+
+    with pytest.raises(TypeError, match="integer inner-region target"):
+        region_constrained_fixed_outer_basis_from_weights(
+            weights,
+            "2020-01-01",
+            "TEST",
+            nbasis=nbasis,
+        )
+
+
+def test_fixed_outer_loaders_use_separate_custom_paths(tmp_path):
+    """Custom outer maps use a direct file path independent of the country directory."""
+    coords = {"lat": [50.0, 51.0, 52.0], "lon": [-2.0, -1.0, 0.0]}
+    outer_values = np.array([[0, 0, 0], [0, 2, 2], [0, 2, 2]], dtype=np.int16)
+    outer_regions_path = tmp_path / "custom-fixed-outer-map.nc"
+    expected_outer_regions = xr.DataArray(
+        outer_values,
+        dims=("lat", "lon"),
+        coords=coords,
+        name="region",
+    )
+    expected_outer_regions.to_dataset().to_netcdf(outer_regions_path)
+
+    country_directory = tmp_path / "countries"
+    country_directory.mkdir()
+    xr.DataArray(
+        np.array([[0, 0, 0], [0, 1, 2], [0, 1, 2]], dtype=np.int16),
+        dims=("lat", "lon"),
+        coords=coords,
+        name="country",
+    ).to_dataset().to_netcdf(country_directory / "country-land-sea_TEST.nc")
+
+    loaded_outer_regions = load_intem_outer_regions("TEST", outer_regions_path=outer_regions_path)
+    xr.testing.assert_equal(loaded_outer_regions, expected_outer_regions)
+
+    labels = region_constrained_fixed_outer_basis_from_weights(
+        xr.ones_like(loaded_outer_regions, dtype=float),
+        "2020-01-01",
+        "TEST",
+        nbasis=2,
+        country_directory=country_directory,
+        outer_regions_path=outer_regions_path,
+        allocation="area",
+    ).squeeze("time", drop=True)
+
+    assert set(np.unique(labels)) == {1, 2, 3}
+    assert len(np.unique(labels.values[outer_values == 0])) == 1
+
+
+def test_load_country_region_classes_preserves_multiclass_integer_map(tmp_path):
+    """Caller-supplied country maps retain every distinct integer class."""
+    coords = {"lat": [50.0, 51.0, 52.0], "lon": [-2.0, -1.0, 0.0]}
+    class_values = np.array(
+        [[99, 99, 99], [99, 10, 20], [99, 30, 20]],
+        dtype=np.int16,
+    )
+    xr.DataArray(
+        class_values,
+        dims=("lat", "lon"),
+        coords=coords,
+        name="country",
+    ).to_dataset().to_netcdf(tmp_path / "country-land-sea_TEST.nc")
+
+    region_classes = load_country_region_classes("TEST", tmp_path)
+
+    assert region_classes.dtype == np.int16
+    assert set(np.unique(region_classes)) == {10, 20, 30, 99}
+
+    outer_values = np.array([[0, 0, 0], [0, 2, 2], [0, 2, 2]])
+    outer_regions = xr.DataArray(outer_values, dims=region_classes.dims, coords=coords)
+    weights = xr.ones_like(region_classes, dtype=float)
+    labels = region_constrained_fixed_outer_basis_from_weights(
+        weights,
+        "2020-01-01",
+        "TEST",
+        nbasis=3,
+        outer_regions=outer_regions,
+        region_classes=region_classes,
+        allocation="area",
+    ).squeeze("time", drop=True)
+    inner_mask = outer_values == outer_values.max()
+    for label in np.unique(labels.values[inner_mask]):
+        assert len(set(region_classes.values[inner_mask & (labels.values == label)])) == 1
+
+
+@pytest.mark.parametrize("domain", ["EUROPE", "EASTASIA", "SAUSSIE", "WESTUSA"])
+def test_packaged_fixed_outer_and_landsea_fields_compose_on_weights_grid(domain):
+    """Packaged outer and land/sea fields retain coordinates and compose for each supported domain."""
+    outer_regions = load_intem_outer_regions(domain)
+    landsea_classes = load_country_region_classes(domain)
+    weights = xr.ones_like(landsea_classes, dtype=float)
+
+    basis_func = region_constrained_fixed_outer_basis_from_weights(
+        weights,
+        "2020-01-01",
+        domain,
+        nbasis=2,
+        outer_regions=outer_regions,
+        region_classes=landsea_classes,
+        allocation="area",
+    )
+
+    labels = basis_func.squeeze("time", drop=True)
+    assert outer_regions.ndim == 2
+    assert landsea_classes.ndim == 2
+    assert outer_regions.name == "region"
+    assert landsea_classes.name == "country"
+    assert set(np.unique(landsea_classes)) == {0.0, 1.0}
+    xr.testing.assert_equal(labels.lat, weights.lat)
+    xr.testing.assert_equal(labels.lon, weights.lon)
+    assert np.count_nonzero(labels.values) == labels.size
+    assert set(np.unique(labels)) == set(range(1, 9))
 
 
 def test_fp_sensitivity_one_flux():

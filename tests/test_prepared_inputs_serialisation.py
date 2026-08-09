@@ -102,6 +102,70 @@ def _prepared_inputs(
     )
 
 
+@pytest.mark.parametrize("suffix", [".nc", ".zarr"])
+@pytest.mark.parametrize("representation", ["dense", "low_rank"])
+def test_structured_aggregation_error_survives_prepared_input_round_trip(
+    tmp_path: Path,
+    suffix: str,
+    representation: str,
+) -> None:
+    prepared = _prepared_inputs()
+    inv_inputs = prepared.inv_inputs.copy()
+    covariance = np.array([[0.5, 0.1], [0.1, 0.4]])
+    if representation == "dense":
+        inv_inputs["aggregation_error_covariance"] = (
+            ("nmeasure", "nmeasure_cov"),
+            covariance,
+        )
+    else:
+        factor = np.array([[0.5], [0.2]])
+        inv_inputs["low_rank_factor"] = (("nmeasure", "agg_rank"), factor)
+        inv_inputs["diagonal_residual_variance"] = (
+            "nmeasure",
+            np.diag(covariance) - np.sum(factor**2, axis=1),
+        )
+    structured = RhimePreparedInputs(
+        inv_inputs=inv_inputs,
+        basis_functions=prepared.basis_functions,
+        site_metadata=prepared.site_metadata,
+    )
+    path = tmp_path / f"structured-{representation}{suffix}"
+
+    structured.save(path)
+    loaded = RhimePreparedInputs.load(path)
+
+    xr.testing.assert_identical(loaded.inv_inputs, structured.inv_inputs)
+
+
+def test_derived_outputs_reject_aggregation_error_until_reconstruction_lands() -> None:
+    prepared = _prepared_inputs()
+    prepared.inv_inputs["aggregation_error_sd"] = ("nmeasure", [0.2, 0.3])
+    model_spec = RhimeModelSpec(
+        species="ch4",
+        domain="EUROPE",
+        sectors=(
+            SectorSpec(
+                name="total",
+                flux_source="total",
+                x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.2},
+                variable_suffix="total",
+            ),
+        ),
+        use_bc=False,
+    )
+    run_spec = RhimeRunSpec(
+        start_date="2019-01-01",
+        end_date="2019-01-02",
+        sites=prepared.sites,
+        averaging_period=prepared.averaging_period,
+        model=model_spec,
+        output=RhimeOutputSpec(output_format="basic", save_inversion_output=False),
+    )
+
+    with pytest.raises(ValueError, match="aggregation-error covariance.*output_format='basic'"):
+        run_rhime_from_prepared_inputs(prepared_inputs=prepared, run_spec=run_spec)
+
+
 def _multisource_prepared_inputs() -> RhimePreparedInputs:
     """Build prepared inputs whose retained basis has source order B, A."""
     coords = {"lat": [51.0], "lon": [-2.0, -1.0]}

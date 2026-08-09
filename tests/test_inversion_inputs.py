@@ -452,6 +452,23 @@ def test_make_inv_inputs_rejects_mismatched_state_dimension_names() -> None:
         make_inv_inputs(fp_data=fp_data, sites=["AAA", "BBB"], min_error=0.0)
 
 
+def test_make_inv_inputs_retains_separate_aggregation_error_component() -> None:
+    """Canonical inputs retain aggregation error without modifying raw mf_error."""
+    fp_data = {
+        "AAA": _make_minimal_fp_site(mf_base=10.0, include_inlet_height=False),
+        "BBB": _make_minimal_fp_site(mf_base=20.0, include_inlet_height=False),
+    }
+    for site, aggregation_error in (("AAA", [0.3, 0.4]), ("BBB", [0.5, 0.6])):
+        fp_data[site]["aggregation_error_sd"] = ("time", aggregation_error)
+    raw_errors = np.concatenate([fp_data[site]["mf_error"].values for site in ("AAA", "BBB")])
+
+    result = make_inv_inputs(fp_data=fp_data, sites=["AAA", "BBB"], min_error=0.2)
+
+    np.testing.assert_allclose(result["mf_error"].values, raw_errors)
+    np.testing.assert_allclose(result["aggregation_error_sd"].values, [0.3, 0.4, 0.5, 0.6])
+    np.testing.assert_allclose(result["min_error"].values, 0.2)
+
+
 def test_make_inv_inputs_raises_if_required_var_would_be_dropped():
     """`make_inv_inputs` should still fail clearly if a required var is not shared."""
     fp_data = {

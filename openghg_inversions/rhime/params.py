@@ -18,6 +18,7 @@ from typing import Any, cast
 from openghg_inversions.config import config
 from openghg_inversions.model_error import normalise_min_error_options
 from openghg_inversions.models import (
+    AggregationErrorMode,
     DEFAULT_X_PRIOR,
     RhimeBuilderStrategy,
     RhimeModelSpec,
@@ -389,6 +390,7 @@ def validate_supported_params(params: Mapping[str, Any], *, data_params: set[str
         "sigma_per_site",
         "sigma_freq",
         "builder_strategy",
+        "aggregation_error_mode",
     }
     supported = data_params | runner_params | required_run_params()
     unsupported = sorted(set(params) - supported)
@@ -460,6 +462,7 @@ def _make_model_spec(
     power: dict[str, Any] | float,
     offset_args: dict[str, Any] | None,
     builder_strategy: RhimeBuilderStrategy,
+    aggregation_error_mode: AggregationErrorMode,
 ) -> RhimeModelSpec:
     """Create a lightweight model spec from normalized run parameters."""
     default_x_prior = DEFAULT_X_PRIOR.copy() if x_prior is None else x_prior.copy()
@@ -516,6 +519,7 @@ def _make_model_spec(
         offset_prior=offset_prior,
         offset_args=offset_args,
         builder_strategy=builder_strategy,
+        aggregation_error_mode=aggregation_error_mode,
     )
 
 
@@ -574,6 +578,10 @@ def make_rhime_runner_setup(
         RhimeBuilderStrategy,
         remaining.pop("builder_strategy", "concrete"),
     )
+    aggregation_error_mode = cast(
+        AggregationErrorMode,
+        remaining.pop("aggregation_error_mode", "auto"),
+    )
 
     sampler = RhimeSampler(
         draws=remaining.pop("draws", 1000),
@@ -622,6 +630,7 @@ def make_rhime_runner_setup(
         power=power,
         offset_args=offset_args,
         builder_strategy=builder_strategy,
+        aggregation_error_mode=aggregation_error_mode,
     )
     run_spec = RhimeRunSpec(
         start_date=start_date,
