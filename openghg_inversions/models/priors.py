@@ -1,4 +1,10 @@
-"""Reusable prior helpers for PyMC model construction."""
+"""Create reusable scalar or array-valued PyMC prior variables.
+
+``parse_prior`` registers continuous distributions on the active model;
+``lognormal_mu_sigma`` converts requested moments, including arrays. Optional
+lognormal reparameterization exposes ``<name>_latent`` and keeps ``<name>`` as
+the user-facing deterministic variable.
+"""
 
 from __future__ import annotations
 
@@ -40,7 +46,12 @@ def lognormal_mu_sigma(
 
 
 def _update_log_normal_prior(prior_params: PriorArgs) -> None:
-    """Rewrite lognormal prior arguments in-place to use ``mu`` and ``sigma``."""
+    """Rewrite requested lognormal moments to PyMC parameters in place.
+
+    Args:
+        prior_params: Mutable mapping. When ``stdev`` is present, it and
+            optional ``mean`` are replaced by ``mu`` and ``sigma``.
+    """
     if "stdev" not in prior_params:
         return
 

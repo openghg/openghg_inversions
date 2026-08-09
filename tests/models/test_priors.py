@@ -1,6 +1,8 @@
 import numpy as np
 import pymc as pm
 import pytest
+import xarray as xr
+from pymc.distributions import continuous
 
 from openghg_inversions.models.priors import lognormal_mu_sigma, parse_prior
 
@@ -42,3 +44,20 @@ def test_parse_prior_rejects_unknown_distribution() -> None:
     with pm.Model():
         with pytest.raises(ValueError, match="continuous distribution"):
             parse_prior("bad", {"pdf": "definitely_not_real"})
+
+
+def test_parse_prior_does_not_globally_strip_xarray_labels(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Leave labelled parameters intact for state-aware callers to process explicitly."""
+    labelled_mu = xr.DataArray([1.0, 2.0], dims="region", coords={"region": ["a", "b"]})
+    captured: dict[str, object] = {}
+
+    def fake_normal(name: str, **kwargs: object) -> object:
+        """Capture arguments that parse_prior forwards to the distribution."""
+        captured["name"] = name
+        captured.update(kwargs)
+        return object()
+
+    monkeypatch.setattr(continuous, "Normal", fake_normal)
+    parse_prior("x", {"pdf": "normal", "mu": labelled_mu, "sigma": 0.2})
+
+    assert captured["mu"] is labelled_mu

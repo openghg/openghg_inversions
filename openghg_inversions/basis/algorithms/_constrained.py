@@ -23,7 +23,8 @@ boundaries are never crossed.
 Layered region-class helpers are also pure. They combine already loaded masks
 into composite class labels so callers can express intersections such as
 land/sea by inner/outer without baking file loading or runner configuration into
-the algorithm.
+the algorithm. Use :func:`region_class_mask` to select their tuple-valued class
+labels without NumPy treating a tuple as an array-like comparison operand.
 """
 
 from __future__ import annotations
@@ -35,8 +36,11 @@ from typing import Literal, Protocol, TypeAlias, cast
 
 import numpy as np
 import numpy.typing as npt
+from openghg.util import cf_ureg  # pyright: ignore[reportPrivateImportUsage]
 import pandas as pd
+from pint.errors import PintError
 import xarray as xr
+from scipy import ndimage
 
 from ._weighted import bucket_value_split
 
@@ -47,6 +51,17 @@ NbasisAllocation: TypeAlias = int | Mapping[Hashable, int]
 GridNode: TypeAlias = tuple[int, int]
 GridPartition: TypeAlias = list[GridNode]
 _INERTIAL_TOLERANCE = 1.0e-12
+_GRID_COORDINATE_DEGREE_ATOL = 2.0e-5
+_GRID_METADATA_KEYS = ("units", "calendar", "axis", "standard_name", "positive")
+_DESCRIPTIVE_COORDINATE_ATTRS = {"comment", "history", "long_name", "longname", "source"}
+_CRS_ATTRIBUTE_MARKERS = {"crs_wkt", "grid_mapping_name", "spatial_ref"}
+_SPATIAL_COORDINATE_NAMES = {"lat", "latitude", "lon", "longitude", "x", "y"}
+_SPATIAL_STANDARD_NAMES = {
+    "latitude",
+    "longitude",
+    "projection_x_coordinate",
+    "projection_y_coordinate",
+}
 
 
 @dataclass(frozen=True)
@@ -77,9 +92,23 @@ class SplitStrategy(Protocol):
             target_regions: Requested number of local labels for this class.
 
         Returns:
-            Integer label array with positive labels inside ``class_mask`` and
-            zero outside it.
+            Integer, non-Boolean array with the same shape as ``class_mask``.
+            Every selected cell has a positive label and every unselected cell
+            is zero. Positive label values need not be contiguous, and the
+            result may contain fewer regions than ``target_regions``.
         """
+        ...
+
+
+class ComponentConsolidationPolicy(Protocol):
+    """Policy protocol for optional post-construction region consolidation."""
+
+    def __call__(
+        self,
+        labels: xr.DataArray,
+        region_classes: xr.DataArray,
+    ) -> xr.DataArray:
+        """Return labels after optional class-safe region consolidation."""
         ...
 
 
@@ -454,18 +483,31 @@ class MaxChildPCAEccentricity:
     eccentricity ``1`` because they have no resolvable long axis. Multi-cell
     rank-one children have infinite eccentricity and are rejected by any finite
     threshold.
+
+    By default, every child is subject to the eccentricity limit. Setting
+    ``min_child_target_weight_share`` exempts children whose weight is below
+    that share of one class/source-local equal-weight target region,
+    ``weights.sum() / target_regions``. This target-aware exception is used
+    only through :meth:`accept_split`; the conservative three-argument call
+    remains strict.
+
+    The exception affects split acceptance only. It does not reconnect, freeze,
+    prune, or marginalize an exempt child after the split is accepted.
     """
 
     max_child_pca_eccentricity: float
     geometry: SplitGeometry | None = None
     tolerance: float = _INERTIAL_TOLERANCE
+    min_child_target_weight_share: float = 0.0
 
     def __post_init__(self) -> None:
-        """Validate the eccentricity threshold and tolerance."""
+        """Validate the eccentricity, tolerance, and materiality thresholds."""
         if self.max_child_pca_eccentricity < 1.0 or not np.isfinite(self.max_child_pca_eccentricity):
             raise ValueError("max_child_pca_eccentricity must be at least 1 and finite.")
         if self.tolerance < 0.0 or not np.isfinite(self.tolerance):
             raise ValueError("tolerance must be non-negative and finite.")
+        if not 0.0 <= self.min_child_target_weight_share <= 1.0:
+            raise ValueError("min_child_target_weight_share must be between 0 and 1.")
 
     def __call__(
         self,
@@ -480,6 +522,52 @@ class MaxChildPCAEccentricity:
             <= self.max_child_pca_eccentricity
             for child in children
         )
+
+    def accept_split(
+        self,
+        parent: GridPartition,
+        children: list[GridPartition],
+        weights: np.ndarray,
+        target_regions: int,
+    ) -> bool:
+        """Return true when every materially weighted child meets the limit.
+
+        ``weights`` is the class/source-local field passed to greedy
+        partitioning, so ``weights.sum() / target_regions`` is the equal-weight
+        target region weight. Children strictly below
+        ``min_child_target_weight_share`` times that reference weight are
+        exempt from the eccentricity veto.
+
+        If the total weight is zero, cell counts provide the same direct-call
+        fallback used by :class:`MinChildTargetWeightShare`; the default greedy
+        strategy already converts all-zero classes to an area surrogate before
+        policies are evaluated. If every child is below the materiality
+        threshold, the strict guard is retained rather than accepting
+        vacuously.
+        """
+        if target_regions < 1:
+            raise ValueError("target_regions must be at least 1.")
+        if self.min_child_target_weight_share == 0.0:
+            return self(parent, children, weights)
+
+        total_weight = float(weights.sum())
+        if total_weight <= 0.0:
+            total_weight = float(weights.size)
+            child_weights = [float(len(child)) for child in children]
+        else:
+            child_weights = [_node_weight(child, weights) for child in children]
+
+        if total_weight <= 0.0:
+            return False
+        minimum_material_weight = self.min_child_target_weight_share * total_weight / target_regions
+        material_children = [
+            child
+            for child, child_weight in zip(children, child_weights, strict=True)
+            if child_weight >= minimum_material_weight
+        ]
+        if not material_children:
+            material_children = children
+        return self(parent, material_children, weights)
 
 
 @dataclass(frozen=True, init=False)
@@ -617,6 +705,284 @@ class InertialSplitStep:
         return [left, right]
 
 
+def _connected_node_components(
+    nodes: GridPartition,
+    shape: tuple[int, int],
+    *,
+    connectivity: int,
+) -> list[GridPartition]:
+    """Return deterministic connected components for grid nodes."""
+    if not nodes:
+        return []
+    if connectivity not in (1, 2):
+        raise ValueError("connectivity must be 1 (edge) or 2 (edge and corner).")
+
+    mask = np.zeros(shape, dtype=bool)
+    rows, columns = zip(*nodes, strict=True)
+    mask[np.asarray(rows), np.asarray(columns)] = True
+    labels, count = cast(
+        tuple[np.ndarray, int],
+        ndimage.label(
+            mask,
+            structure=ndimage.generate_binary_structure(2, connectivity),
+        ),
+    )
+    return [list(zip(*np.where(labels == component), strict=True)) for component in range(1, int(count) + 1)]
+
+
+def _decompose_connected_children(
+    children: list[GridPartition],
+    shape: tuple[int, int],
+    *,
+    connectivity: int,
+) -> list[GridPartition]:
+    """Return the connected-component decomposition of child partitions."""
+    return [
+        component
+        for child in children
+        for component in _connected_node_components(
+            child,
+            shape,
+            connectivity=connectivity,
+        )
+    ]
+
+
+@dataclass(frozen=True)
+class ConnectedComponentPartitionStep:
+    """Make every child from another partition step spatially connected.
+
+    This wrapper is useful for partition steps such as
+    :class:`InertialSplitStep`, whose one-dimensional projection can assign
+    spatially disconnected cells to the same child. Each proposed child is
+    decomposed into deterministic connected components before the greedy
+    orchestrator accepts it.
+
+    Attributes:
+        split_step: Partition step whose children should be made connected.
+        connectivity: Two-dimensional neighbourhood definition. ``1`` uses
+            edge-sharing (four-neighbour) connectivity and ``2`` additionally
+            includes corner-sharing (eight-neighbour) connectivity.
+    """
+
+    split_step: PartitionStep
+    connectivity: int = 1
+
+    def __post_init__(self) -> None:
+        """Validate the requested two-dimensional connectivity."""
+        if self.connectivity not in (1, 2):
+            raise ValueError("connectivity must be 1 (edge) or 2 (edge and corner).")
+
+    def __call__(
+        self,
+        nodes: GridPartition,
+        weights: np.ndarray,
+    ) -> list[GridPartition]:
+        """Split once, then separate disconnected pieces of every child."""
+        children = self.split_step(nodes, weights)
+        return _decompose_connected_children(
+            children,
+            weights.shape,
+            connectivity=self.connectivity,
+        )
+
+
+def _component_adjacencies(
+    left_components: list[GridPartition],
+    right_components: list[GridPartition],
+    shape: tuple[int, int],
+    *,
+    connectivity: int,
+) -> tuple[list[set[int]], list[set[int]]]:
+    """Return cross-side adjacency sets for two component collections."""
+    right_labels = np.zeros(shape, dtype=np.int64)
+    for component_index, component in enumerate(right_components, start=1):
+        rows, columns = _node_indices(component)
+        right_labels[rows, columns] = component_index
+
+    if connectivity == 1:
+        offsets = ((-1, 0), (0, -1), (0, 1), (1, 0))
+    else:
+        offsets = tuple(
+            (row_offset, column_offset)
+            for row_offset in (-1, 0, 1)
+            for column_offset in (-1, 0, 1)
+            if row_offset != 0 or column_offset != 0
+        )
+
+    left_adjacencies = [set() for _component in left_components]
+    right_adjacencies = [set() for _component in right_components]
+    nrows, ncolumns = shape
+    for left_index, component in enumerate(left_components):
+        for row, column in component:
+            for row_offset, column_offset in offsets:
+                adjacent_row = row + row_offset
+                adjacent_column = column + column_offset
+                if not (0 <= adjacent_row < nrows and 0 <= adjacent_column < ncolumns):
+                    continue
+                right_index = int(right_labels[adjacent_row, adjacent_column]) - 1
+                if right_index >= 0:
+                    left_adjacencies[left_index].add(right_index)
+                    right_adjacencies[right_index].add(left_index)
+
+    return left_adjacencies, right_adjacencies
+
+
+def _repair_binary_connected_children(
+    parent: GridPartition,
+    children: list[GridPartition],
+    weights: np.ndarray,
+    *,
+    connectivity: int,
+) -> list[GridPartition] | None:
+    """Return a deterministic connected binary repair when one exists."""
+    if len(children) != 2 or not all(children):
+        return None
+
+    parent_nodes = set(parent)
+    left_nodes = set(children[0])
+    right_nodes = set(children[1])
+    if (
+        len(parent_nodes) != len(parent)
+        or len(left_nodes) != len(children[0])
+        or len(right_nodes) != len(children[1])
+        or left_nodes & right_nodes
+        or left_nodes | right_nodes != parent_nodes
+    ):
+        return None
+
+    left_components = _connected_node_components(
+        children[0],
+        weights.shape,
+        connectivity=connectivity,
+    )
+    right_components = _connected_node_components(
+        children[1],
+        weights.shape,
+        connectivity=connectivity,
+    )
+    if not left_components or not right_components:
+        return None
+
+    left_adjacencies, right_adjacencies = _component_adjacencies(
+        left_components,
+        right_components,
+        weights.shape,
+        connectivity=connectivity,
+    )
+    left_weights = [_node_weight(component, weights) for component in left_components]
+    right_weights = [_node_weight(component, weights) for component in right_components]
+    total_left_weight = sum(left_weights)
+    total_right_weight = sum(right_weights)
+
+    best_key: tuple[float, float, int, int] | None = None
+    best_primary_indices: tuple[int, int] | None = None
+    for left_index, adjacent_right in enumerate(left_adjacencies):
+        if len(right_components) - len(adjacent_right) > 1:
+            continue
+        for right_index, adjacent_left in enumerate(right_adjacencies):
+            if len(left_components) - len(adjacent_left) > 1:
+                continue
+            if len(adjacent_right) - int(right_index in adjacent_right) != len(right_components) - 1:
+                continue
+            if len(adjacent_left) - int(left_index in adjacent_left) != len(left_components) - 1:
+                continue
+
+            moved_weight = (
+                total_left_weight - left_weights[left_index] + total_right_weight - right_weights[right_index]
+            )
+            repaired_left_weight = left_weights[left_index] + total_right_weight - right_weights[right_index]
+            repaired_right_weight = right_weights[right_index] + total_left_weight - left_weights[left_index]
+            key = (
+                moved_weight,
+                abs(repaired_left_weight - repaired_right_weight),
+                left_index,
+                right_index,
+            )
+            if best_key is None or key < best_key:
+                best_key = key
+                best_primary_indices = (left_index, right_index)
+
+    if best_primary_indices is None:
+        return None
+
+    left_primary, right_primary = best_primary_indices
+    repaired_left = sorted(
+        left_components[left_primary]
+        + [
+            node
+            for component_index, component in enumerate(right_components)
+            if component_index != right_primary
+            for node in component
+        ]
+    )
+    repaired_right = sorted(
+        right_components[right_primary]
+        + [
+            node
+            for component_index, component in enumerate(left_components)
+            if component_index != left_primary
+            for node in component
+        ]
+    )
+    return [repaired_left, repaired_right]
+
+
+@dataclass(frozen=True)
+class ConnectedBinaryPartitionStep:
+    """Repair a provisional binary split into two connected child partitions.
+
+    This opt-in wrapper preserves binary arity when disconnected cut fragments
+    can be reassigned safely. It labels the connected components on both sides,
+    retains one primary component on each original side, and moves every
+    secondary component to the opposite side. Candidates are valid only when
+    both resulting children are connected.
+
+    Valid candidates are selected deterministically by minimum moved fitting
+    weight, then minimum absolute child-weight imbalance, then row-major
+    component order. If the wrapped step does not return a valid binary
+    partition, or no connected binary reassignment exists, the result falls
+    back to the same multi-child component decomposition as
+    :class:`ConnectedComponentPartitionStep`.
+
+    Attributes:
+        split_step: Partition step whose provisional binary children should be
+            repaired.
+        connectivity: Two-dimensional neighbourhood definition. ``1`` uses
+            edge-sharing (four-neighbour) connectivity and ``2`` additionally
+            includes corner-sharing (eight-neighbour) connectivity.
+    """
+
+    split_step: PartitionStep
+    connectivity: int = 1
+
+    def __post_init__(self) -> None:
+        """Validate the requested two-dimensional connectivity."""
+        if self.connectivity not in (1, 2):
+            raise ValueError("connectivity must be 1 (edge) or 2 (edge and corner).")
+
+    def __call__(
+        self,
+        nodes: GridPartition,
+        weights: np.ndarray,
+    ) -> list[GridPartition]:
+        """Return two repaired connected children or the component fallback."""
+        children = self.split_step(nodes, weights)
+        repaired = _repair_binary_connected_children(
+            nodes,
+            children,
+            weights,
+            connectivity=self.connectivity,
+        )
+        if repaired is not None:
+            return repaired
+        return _decompose_connected_children(
+            children,
+            weights.shape,
+            connectivity=self.connectivity,
+        )
+
+
 @dataclass(frozen=True)
 class GreedyAxisParallelSplitStrategy:
     """Class-local greedy repeated-bisection strategy.
@@ -675,14 +1041,125 @@ class GreedyAxisParallelSplitStrategy:
         return _labels_from_node_partition(partition, weights.shape)
 
 
+@dataclass
+class ConnectedComponentSplitStrategy:
+    """Allocate and split each connected piece of a class independently.
+
+    A disconnected class requires at least one label per connected component.
+    If ``target_regions`` is below that geographic minimum, the effective
+    target is raised rather than assigning one label to disconnected cells.
+    Targets above the minimum are allocated across components by weight, with
+    the existing area fallback for all-zero weights.
+
+    Attributes:
+        split_strategy: Class-local strategy applied separately to each
+            connected component.
+        connectivity: Two-dimensional neighbourhood definition. ``1`` uses
+            edge-sharing (four-neighbour) connectivity and ``2`` additionally
+            includes corner-sharing (eight-neighbour) connectivity.
+        diagnostics: Per-call requested, minimum, effective, and actual region
+            counts.
+    """
+
+    split_strategy: SplitStrategy
+    connectivity: int = 1
+    diagnostics: list[dict[str, int]] = field(default_factory=list, init=False)
+
+    def __post_init__(self) -> None:
+        """Validate the requested two-dimensional connectivity."""
+        if self.connectivity not in (1, 2):
+            raise ValueError("connectivity must be 1 (edge) or 2 (edge and corner).")
+
+    def __call__(
+        self,
+        weights: np.ndarray,
+        class_mask: np.ndarray,
+        target_regions: int,
+    ) -> np.ndarray:
+        """Return connected labels, raising the target to the geographic minimum."""
+        if target_regions < 1:
+            raise ValueError("target_regions must be at least 1.")
+        if weights.shape != class_mask.shape or weights.ndim != 2:
+            raise ValueError("weights and class_mask must be aligned two-dimensional arrays.")
+        if not class_mask.any():
+            return np.zeros(weights.shape, dtype=np.int64)
+
+        component_labels, component_count = cast(
+            tuple[np.ndarray, int],
+            ndimage.label(
+                class_mask,
+                structure=ndimage.generate_binary_structure(2, self.connectivity),
+            ),
+        )
+        effective_target = min(
+            max(int(target_regions), int(component_count)),
+            int(class_mask.sum()),
+        )
+        dims = ("row", "column")
+        coordinates = {
+            "row": np.arange(weights.shape[0]),
+            "column": np.arange(weights.shape[1]),
+        }
+        allocation = allocate_nbasis_by_class(
+            xr.DataArray(weights, dims=dims, coords=coordinates),
+            xr.DataArray(component_labels, dims=dims, coords=coordinates),
+            effective_target,
+            allocation="weight",
+            min_regions_per_class=1,
+            unmapped_values=(0,),
+        )
+
+        labels = np.zeros(weights.shape, dtype=np.int64)
+        next_region = 1
+        for component in range(1, int(component_count) + 1):
+            component_mask = component_labels == component
+            local_labels = self.split_strategy(
+                weights,
+                component_mask,
+                allocation[component],
+            )
+            if not np.array_equal(local_labels > 0, component_mask):
+                raise RuntimeError("Connected split strategy did not preserve class coverage.")
+            for local_region in _positive_labels(local_labels):
+                region_mask = local_labels == local_region
+                _component_labels, region_component_count = cast(
+                    tuple[np.ndarray, int],
+                    ndimage.label(
+                        region_mask,
+                        structure=ndimage.generate_binary_structure(2, self.connectivity),
+                    ),
+                )
+                if int(region_component_count) != 1:
+                    raise RuntimeError("Connected split strategy produced a disconnected label.")
+                labels[region_mask] = next_region
+                next_region += 1
+
+        actual_regions = next_region - 1
+        self.diagnostics.append(
+            {
+                "requested_target": int(target_regions),
+                "connected_component_minimum": int(component_count),
+                "effective_target": int(effective_target),
+                "actual_regions": int(actual_regions),
+            }
+        )
+        return labels
+
+
 @dataclass(frozen=True)
 class AxisAlignedWeightedSplitStrategy:
-    """Compatibility strategy based on the existing recursive weighted basis.
+    """Class-local strategy derived from recursive weighted bucket splitting.
 
-    This keeps the current weighted basis shape available for comparison:
-    recursively split rectangles along the longer axis until each rectangle is
-    below a searched threshold. New constrained code defaults to
-    :class:`GreedyAxisParallelSplitStrategy` instead.
+    This applies the existing bucket splitter independently to the masked
+    weights for one class. It recursively splits rectangles along the longer
+    axis until each rectangle is below a searched threshold. It is not a
+    compatibility implementation of the legacy weighted land/sea pipeline,
+    which optimizes the bucket layout before applying the land/sea split. New
+    constrained code defaults to :class:`GreedyAxisParallelSplitStrategy`
+    instead.
+
+    Attributes:
+        max_iter: Maximum number of threshold-search iterations.
     """
 
     max_iter: int = 32
@@ -699,11 +1176,14 @@ class AxisAlignedWeightedSplitStrategy:
             weights: Non-negative weight field for the full grid.
             class_mask: Boolean mask selecting the cells in the class being
                 split.
-            target_regions: Requested number of local labels for this class.
+            target_regions: Target number of local labels for this class.
 
         Returns:
             Integer label array with positive class-local labels inside
             ``class_mask`` and zero outside it.
+
+        Raises:
+            ValueError: If ``target_regions`` is less than one.
         """
         if target_regions < 1:
             raise ValueError("target_regions must be at least 1.")
@@ -748,6 +1228,7 @@ def region_constrained_basis(
     allocation: AllocationMode = "weight",
     min_regions_per_class: int = 1,
     split_strategy: SplitStrategy | None = None,
+    component_consolidation: ComponentConsolidationPolicy | None = None,
     unmapped_values: Iterable[Hashable] = (),
 ) -> xr.DataArray:
     """Generate basis labels independently inside each mask/region class.
@@ -769,12 +1250,25 @@ def region_constrained_basis(
             requires, a ``ValueError`` is raised.
         split_strategy: Class-local splitting strategy. Defaults to
             :class:`GreedyAxisParallelSplitStrategy`.
+        component_consolidation: Optional policy applied to the globally
+            relabelled basis after class-local construction. Policies that
+            deliberately combine disconnected components must preserve class
+            boundaries and report that strict connectivity no longer holds.
         unmapped_values: Additional class values to leave as output label ``0``.
 
     Returns:
         ``xarray.DataArray`` with the same dimensions and coordinates as
         ``weights``. Mapped cells receive globally unique positive integer
         labels; unmapped cells receive ``0``.
+
+    Raises:
+        ValueError: If either input is not two-dimensional, the dimension names
+            differ, weights are invalid, or the requested allocation is
+            impossible, or a split strategy returns labels with the wrong shape
+            or dtype, non-positive labels inside its class mask, or nonzero
+            labels outside its class mask.
+        xarray.AlignmentError: If the inputs do not describe physically
+            compatible spatial grids after transposition.
 
     Notes:
         Labels are guaranteed not to cross class boundaries because each class is
@@ -783,35 +1277,125 @@ def region_constrained_basis(
         same class if the class mask itself is disconnected; contiguity is not
         guaranteed by this helper.
     """
-    weights, region_classes = _align_2d_inputs(weights, region_classes)
+    weights, region_classes = _align_2d_inputs(
+        weights,
+        region_classes,
+        reference_name="weights",
+        candidate_name="region_classes",
+    )
     weight_values = _validate_weights(weights)
     class_values = region_classes.to_numpy()
-    mapped_classes = _mapped_classes(class_values, unmapped_values)
-    strategy = split_strategy or GreedyAxisParallelSplitStrategy()
+    mapped_classes, class_codes = _factorize_mapped_classes(class_values, unmapped_values)
+    strategy = split_strategy if split_strategy is not None else GreedyAxisParallelSplitStrategy()
 
     labels = np.zeros(weight_values.shape, dtype=np.int64)
     if not mapped_classes:
         return _labels_dataarray(labels, weights)
 
-    targets = allocate_nbasis_by_class(
-        weights,
-        region_classes,
+    targets = _allocate_nbasis_by_code(
+        weight_values,
+        mapped_classes,
+        class_codes,
         nbasis,
         allocation=allocation,
         min_regions_per_class=min_regions_per_class,
-        unmapped_values=unmapped_values,
     )
 
     next_label = 1
-    for class_value in mapped_classes:
+    for class_code, class_value in enumerate(mapped_classes):
         target_regions = targets[class_value]
-        class_mask = _class_value_mask(class_values, class_value)
-        local_labels = strategy(weight_values, class_mask, target_regions)
+        class_mask = class_codes == class_code
+        local_labels = _validate_split_strategy_labels(
+            strategy(weight_values, class_mask, target_regions),
+            class_mask,
+        )
         for local_label in _positive_labels(local_labels):
             labels[(local_labels == local_label) & class_mask] = next_label
             next_label += 1
 
-    return _labels_dataarray(labels, weights)
+    result = _labels_dataarray(labels, weights)
+    if component_consolidation is not None:
+        result = component_consolidation(result, region_classes)
+    return result
+
+
+def combine_inner_outer_region_classes(
+    inner_mask: xr.DataArray,
+    inner_classes: xr.DataArray,
+    outer_classes: xr.DataArray,
+    *,
+    unmapped_values: Iterable[Hashable] = (),
+    name: str = "region_classes",
+) -> xr.DataArray:
+    """Select and tag aligned inner- and outer-domain region classes.
+
+    Args:
+        inner_mask: Two-dimensional Boolean field selecting cells from
+            ``inner_classes``. False cells select from ``outer_classes``.
+        inner_classes: Two-dimensional class field for inner-domain cells.
+        outer_classes: Two-dimensional class field for outer-domain cells.
+        unmapped_values: Selected class values that should leave the output
+            cell unmapped. Selected null values are always unmapped.
+        name: Name for the returned ``DataArray``.
+
+    Returns:
+        Object-valued ``DataArray`` with the same dimensions and coordinates as
+        ``inner_mask``. Mapped cells contain ``("inner", value)`` or
+        ``("outer", value)`` tuples. Unmapped cells contain ``NaN``.
+
+    Raises:
+        ValueError: If any input is not two-dimensional, dimension-name sets
+            differ, ``inner_mask`` is not Boolean, or a selected class value is
+            not hashable.
+        xarray.AlignmentError: If, after transposition to ``inner_mask``
+            dimension order, an input does not describe a physically compatible
+            spatial grid.
+
+    Notes:
+        Values on the unselected side do not affect the result, including null
+        values. Domain tags prevent equal inner and outer class values from
+        colliding when passed to :func:`region_constrained_basis`.
+
+        This source-neutral composition helper advances `issue #449
+        <https://github.com/openghg/openghg_inversions/issues/449>`_.
+    """
+    inner_mask, inner_classes = _align_2d_inputs(
+        inner_mask,
+        inner_classes,
+        reference_name="inner_mask",
+        candidate_name="inner_classes",
+    )
+    inner_mask, outer_classes = _align_2d_inputs(
+        inner_mask,
+        outer_classes,
+        reference_name="inner_mask",
+        candidate_name="outer_classes",
+    )
+    if not np.issubdtype(inner_mask.dtype, np.bool_):
+        raise ValueError("inner_mask must be Boolean.")
+
+    mask_values = inner_mask.to_numpy()
+    inner_values = inner_classes.to_numpy()
+    outer_values = outer_classes.to_numpy()
+    unmapped = set(unmapped_values)
+    class_values = np.empty(inner_mask.shape, dtype=object)
+    class_values[:] = np.nan
+    retained_labels: dict[tuple[Hashable, Hashable], tuple[Hashable, Hashable]] = {}
+
+    for index in np.ndindex(inner_mask.shape):
+        is_inner = bool(mask_values[index])
+        value = cast(Hashable, inner_values[index] if is_inner else outer_values[index])
+        if _is_unmapped_layer_value(value, unmapped):
+            continue
+        label = ("inner" if is_inner else "outer", value)
+        class_values[index] = retained_labels.setdefault(label, label)
+
+    return xr.DataArray(
+        class_values,
+        dims=inner_mask.dims,
+        coords=inner_mask.coords,
+        name=name,
+    )
 
 
 def intersect_region_class_layers(
@@ -834,19 +1418,23 @@ def intersect_region_class_layers(
         Object-valued ``DataArray`` with the same dimensions and coordinates as
         the first layer. Mapped cells contain tuples of layer values, while
         cells that are null or explicitly unmapped in any layer contain
-        ``NaN``.
+        ``NaN``. Its ``region_class_layers`` attribute records the string form
+        of each layer name in mapping insertion order.
 
     Raises:
         ValueError: If no layers are supplied, any layer is not two-dimensional,
             layer dimension names differ, or a mapped layer value is not
             hashable.
-        xarray.AlignmentError: If layer coordinates do not align exactly.
+        xarray.AlignmentError: If, after transposition to the first layer's
+            dimension order, any layer does not describe a physically
+            compatible spatial grid.
 
     Notes:
         The tuple labels can be passed directly to
         :func:`region_constrained_basis`. This is the small lattice-style
         construction needed for layered masks such as land/sea crossed with an
-        inner/outer rectangle.
+        inner/outer rectangle. Use :func:`region_class_mask` rather than raw
+        xarray equality when selecting a tuple label.
     """
     layer_items = list(layers.items())
     if not layer_items:
@@ -856,19 +1444,22 @@ def intersect_region_class_layers(
     if template.ndim != 2:
         raise ValueError("Region-class layers must be two-dimensional.")
 
+    template_name = f"region-class layer {layer_items[0][0]!r}"
     aligned_layers: list[xr.DataArray] = []
     for layer_name, layer in layer_items:
-        if layer.ndim != 2:
-            raise ValueError(f"Region-class layer {layer_name!r} must be two-dimensional.")
-        if set(layer.dims) != set(template.dims):
-            raise ValueError("Region-class layers must use the same dimensions.")
-        aligned_layers.append(layer.transpose(*template.dims))
+        _, aligned_layer = _align_2d_inputs(
+            template,
+            layer,
+            reference_name=template_name,
+            candidate_name=f"region-class layer {layer_name!r}",
+        )
+        aligned_layers.append(aligned_layer)
 
-    aligned_layers = list(xr.align(*aligned_layers, join="exact"))
     layer_values = [layer.to_numpy() for layer in aligned_layers]
     unmapped = set(unmapped_values)
     class_values = np.empty(template.shape, dtype=object)
     class_values[:] = np.nan
+    retained_labels: dict[tuple[Hashable, ...], tuple[Hashable, ...]] = {}
 
     for index in np.ndindex(template.shape):
         values: list[Hashable] = []
@@ -880,7 +1471,8 @@ def intersect_region_class_layers(
                 break
             values.append(value)
         if mapped:
-            class_values[index] = tuple(values)
+            label = tuple(values)
+            class_values[index] = retained_labels.setdefault(label, label)
 
     return xr.DataArray(
         class_values,
@@ -889,6 +1481,38 @@ def intersect_region_class_layers(
         name=name,
         attrs={"region_class_layers": tuple(str(layer_name) for layer_name, _ in layer_items)},
     )
+
+
+def region_class_mask(
+    region_classes: xr.DataArray,
+    class_value: Hashable,
+    *,
+    name: str = "region_class_mask",
+) -> xr.DataArray:
+    """Select one scalar or tuple-valued region class reliably.
+
+    Args:
+        region_classes: Region-class values to compare with ``class_value``.
+            Dimensions and all attached coordinates are preserved on the
+            returned mask.
+        class_value: Scalar or tuple-valued class label to select.
+        name: Name for the returned Boolean ``DataArray``.
+
+    Returns:
+        Boolean ``DataArray`` that is true exactly where ``region_classes``
+        contains ``class_value``.
+
+    Notes:
+        Raw expressions such as ``region_classes == ("land", "inner")`` are
+        unreliable for object arrays because NumPy may treat the tuple as an
+        array-like operand and broadcast its elements instead of comparing the
+        tuple as one value. This helper performs elementwise tuple comparison
+        through the same path used by constrained allocation and splitting.
+        Object values are materialized eagerly; dask chunks are not preserved
+        in the returned mask.
+    """
+    mask = _class_value_mask(region_classes.to_numpy(), class_value)
+    return xr.DataArray(mask, dims=region_classes.dims, coords=region_classes.coords, name=name)
 
 
 def allocate_nbasis_by_class(
@@ -918,80 +1542,414 @@ def allocate_nbasis_by_class(
         Mapping from mapped class value to target number of local regions.
 
     Raises:
-        ValueError: If inputs cannot be aligned, weights are invalid, or the
-            requested allocation is impossible.
+        ValueError: If either input is not two-dimensional, the dimension names
+            differ, weights are invalid, or the requested allocation is
+            impossible.
+        xarray.AlignmentError: If the inputs do not describe physically
+            compatible spatial grids after transposition.
     """
     if min_regions_per_class < 0:
         raise ValueError("min_regions_per_class must be non-negative.")
-    weights, region_classes = _align_2d_inputs(weights, region_classes)
+    weights, region_classes = _align_2d_inputs(
+        weights,
+        region_classes,
+        reference_name="weights",
+        candidate_name="region_classes",
+    )
     weight_values = _validate_weights(weights)
-    class_values = region_classes.to_numpy()
-    mapped_classes = _mapped_classes(class_values, unmapped_values)
-
-    if not mapped_classes:
-        if not isinstance(nbasis, Mapping) and nbasis != 0:
-            raise ValueError("Cannot allocate basis regions without mapped classes.")
-        return {}
-
-    capacities = {
-        class_value: int(np.count_nonzero(_class_value_mask(class_values, class_value)))
-        for class_value in mapped_classes
-    }
-
-    if isinstance(nbasis, Mapping):
-        return _explicit_allocation(mapped_classes, nbasis, capacities)
-
-    if nbasis < 0:
-        raise ValueError("nbasis must be non-negative.")
-
-    minima = {
-        class_value: min(min_regions_per_class, capacity) for class_value, capacity in capacities.items()
-    }
-
-    min_total = sum(minima.values())
-    max_total = sum(capacities.values())
-    if nbasis < min_total:
-        raise ValueError(
-            f"nbasis={nbasis} is smaller than the minimum {min_total} required "
-            f"for {len(mapped_classes)} mapped classes."
-        )
-    if nbasis > max_total:
-        raise ValueError(f"nbasis={nbasis} exceeds the {max_total} mapped cells available for splitting.")
-
-    scores = _allocation_scores(weight_values, class_values, mapped_classes, allocation)
-    return _distribute_regions(mapped_classes, scores, minima, capacities, nbasis)
+    mapped_classes, class_codes = _factorize_mapped_classes(
+        region_classes.to_numpy(),
+        unmapped_values,
+    )
+    return _allocate_nbasis_by_code(
+        weight_values,
+        mapped_classes,
+        class_codes,
+        nbasis,
+        allocation=allocation,
+        min_regions_per_class=min_regions_per_class,
+    )
 
 
 def _align_2d_inputs(
-    weights: xr.DataArray,
-    region_classes: xr.DataArray,
+    reference: xr.DataArray,
+    candidate: xr.DataArray,
+    *,
+    reference_name: str,
+    candidate_name: str,
 ) -> tuple[xr.DataArray, xr.DataArray]:
-    """Validate, transpose, and exactly align the 2D weight and class fields.
+    """Validate and normalize two physically compatible 2D grids.
 
     Args:
-        weights: Two-dimensional weight field whose dimension order defines the
-            output dimension order.
-        region_classes: Two-dimensional class field using the same dimension
-            names and coordinates as ``weights``.
+        reference: Two-dimensional field whose dimension order and attached
+            coordinates define the output grid.
+        candidate: Two-dimensional field using the same dimension names and a
+            physically compatible grid after transposition.
+        reference_name: Caller-specific name for ``reference`` in errors.
+        candidate_name: Caller-specific name for ``candidate`` in errors.
 
     Returns:
-        ``weights`` and ``region_classes`` with identical coordinates and
-        ``region_classes`` transposed to match ``weights``.
+        ``reference`` and ``candidate`` with ``candidate`` transposed and
+        normalized to the authoritative coordinates from ``reference``.
 
     Raises:
-        ValueError: If either input is not 2D or the dimension names differ.
-        xarray.AlignmentError: If coordinates do not match exactly.
+        ValueError: If either input is not two-dimensional or their dimension
+            names differ.
+        xarray.AlignmentError: If spatial coordinate names, dimensions, values,
+            grid-defining metadata, or CRS definitions are incompatible.
     """
-    if weights.ndim != 2:
-        raise ValueError("weights must be two-dimensional.")
-    if region_classes.ndim != 2:
-        raise ValueError("region_classes must be two-dimensional.")
-    if set(weights.dims) != set(region_classes.dims):
-        raise ValueError("weights and region_classes must use the same dimensions.")
+    if reference.ndim != 2:
+        raise ValueError(f"{reference_name} must be two-dimensional.")
+    if candidate.ndim != 2:
+        raise ValueError(f"{candidate_name} must be two-dimensional.")
+    if set(reference.dims) != set(candidate.dims):
+        raise ValueError(f"{reference_name} and {candidate_name} must use the same dimensions.")
 
-    region_classes = region_classes.transpose(*weights.dims)
-    weights, region_classes = xr.align(weights, region_classes, join="exact")
-    return weights, region_classes
+    candidate = candidate.transpose(*reference.dims)
+    reference, candidate = _normalize_matching_grid_coordinates(
+        reference,
+        candidate,
+        reference_name=reference_name,
+        candidate_name=candidate_name,
+    )
+    try:
+        reference, candidate = xr.align(reference, candidate, join="exact")
+    except xr.AlignmentError as exc:
+        raise xr.AlignmentError(
+            f"{candidate_name} cannot be aligned exactly with {reference_name}: {exc}"
+        ) from exc
+    return reference, candidate
+
+
+def normalize_spatial_grid(
+    reference: xr.DataArray,
+    candidate: xr.DataArray,
+    *,
+    reference_name: str = "reference",
+    candidate_name: str = "candidate",
+) -> xr.DataArray:
+    """Normalize a physically compatible two-dimensional field to a reference grid.
+
+    Args:
+        reference: Two-dimensional field whose dimension order, coordinate
+            values, and nonconflicting metadata define the output grid.
+        candidate: Two-dimensional field to validate and normalize.
+        reference_name: Name used for ``reference`` in validation errors.
+        candidate_name: Name used for ``candidate`` in validation errors.
+
+    Returns:
+        ``candidate`` transposed to the reference dimension order and assigned
+        the reference grid coordinates, with nonconflicting coordinate metadata
+        retained from both fields.
+
+    Raises:
+        ValueError: If either field is not two-dimensional or their dimension
+            names differ.
+        xarray.AlignmentError: If grid coordinates, grid-defining metadata, or
+            CRS definitions are physically incompatible.
+
+    Notes:
+        This aligns to an arbitrary reference grid. OpenGHG's
+        ``openghg.util.align_lat_lon`` instead canonicalizes one field against
+        a named OpenGHG domain and does not validate arbitrary curvilinear grids,
+        units, or CRS metadata.
+    """
+    _, normalized_candidate = _align_2d_inputs(
+        reference,
+        candidate,
+        reference_name=reference_name,
+        candidate_name=candidate_name,
+    )
+    return normalized_candidate
+
+
+def _normalize_matching_grid_coordinates(
+    reference: xr.DataArray,
+    candidate: xr.DataArray,
+    *,
+    reference_name: str,
+    candidate_name: str,
+) -> tuple[xr.DataArray, xr.DataArray]:
+    """Validate a physical grid and adopt the reference coordinates.
+
+    Args:
+        reference: Grid whose spatial coordinates are authoritative.
+        candidate: Transposed grid whose physical coordinates must be
+            compatible with ``reference``.
+        reference_name: Caller-specific name for ``reference`` in errors.
+        candidate_name: Caller-specific name for ``candidate`` in errors.
+
+    Raises:
+        xarray.AlignmentError: If spatial coordinate names, dimensions, values,
+            grid-defining metadata, or scalar CRS definitions conflict.
+
+    Returns:
+        Both arrays normalized to the spatial and CRS coordinate values from
+        ``reference``, with nonconflicting metadata from either input retained.
+        Descriptive coordinate attributes, numeric storage dtype, and unrelated
+        scalar provenance coordinates do not define the physical grid.
+    """
+    reference_coordinates = _spatial_coordinate_names(reference)
+    candidate_coordinates = _spatial_coordinate_names(candidate)
+    if reference_coordinates != candidate_coordinates:
+        missing = sorted(reference_coordinates - candidate_coordinates, key=str)
+        unexpected = sorted(candidate_coordinates - reference_coordinates, key=str)
+        raise xr.AlignmentError(
+            f"{candidate_name} must define the same spatial grid coordinates as {reference_name}; "
+            f"missing {missing!r}, unexpected {unexpected!r}."
+        )
+
+    for coordinate_name in sorted(reference_coordinates, key=str):
+        reference_coordinate = reference.coords[coordinate_name]
+        candidate_coordinate = candidate.coords[coordinate_name]
+        if set(reference_coordinate.dims) != set(candidate_coordinate.dims):
+            raise xr.AlignmentError(
+                f"Coordinate {coordinate_name!r} on {candidate_name} has dimensions "
+                f"{candidate_coordinate.dims!r}, which are incompatible with "
+                f"{reference_coordinate.dims!r} on {reference_name}."
+            )
+        candidate_coordinate = candidate_coordinate.transpose(*reference_coordinate.dims)
+        if not _coordinate_values_compatible(reference_coordinate, candidate_coordinate):
+            raise xr.AlignmentError(
+                f"Coordinate {coordinate_name!r} on {candidate_name} is not physically "
+                f"compatible with {reference_name}."
+            )
+        _validate_grid_metadata(
+            reference_coordinate,
+            candidate_coordinate,
+            coordinate_name=coordinate_name,
+            reference_name=reference_name,
+            candidate_name=candidate_name,
+        )
+
+    reference_crs = _crs_coordinate_names(reference, array_name=reference_name)
+    candidate_crs = _crs_coordinate_names(candidate, array_name=candidate_name)
+    if reference_crs != candidate_crs:
+        raise xr.AlignmentError(
+            f"{candidate_name} must define the same CRS coordinates as {reference_name}; "
+            f"missing {sorted(reference_crs - candidate_crs, key=str)!r}, "
+            f"unexpected {sorted(candidate_crs - reference_crs, key=str)!r}."
+        )
+    for coordinate_name in sorted(reference_crs, key=str):
+        reference_coordinate = reference.coords[coordinate_name]
+        candidate_coordinate = candidate.coords[coordinate_name]
+        if not _coordinate_values_compatible(reference_coordinate, candidate_coordinate):
+            raise xr.AlignmentError(
+                f"CRS coordinate {coordinate_name!r} on {candidate_name} has a different value "
+                f"from {reference_name}."
+            )
+        reference_attrs = {
+            key: value
+            for key, value in reference_coordinate.attrs.items()
+            if key not in _DESCRIPTIVE_COORDINATE_ATTRS
+        }
+        candidate_attrs = {
+            key: value
+            for key, value in candidate_coordinate.attrs.items()
+            if key not in _DESCRIPTIVE_COORDINATE_ATTRS
+        }
+        if reference_attrs.keys() != candidate_attrs.keys() or any(
+            not _metadata_values_equal(reference_attrs[key], candidate_attrs[key]) for key in reference_attrs
+        ):
+            raise xr.AlignmentError(
+                f"CRS coordinate {coordinate_name!r} on {candidate_name} conflicts with {reference_name}."
+            )
+
+    authoritative_coordinates = {
+        name: _coordinate_with_merged_metadata(reference.coords[name], candidate.coords[name])
+        for name in reference_coordinates | reference_crs
+    }
+    return (
+        reference.assign_coords(authoritative_coordinates),
+        candidate.assign_coords(authoritative_coordinates),
+    )
+
+
+def _coordinate_with_merged_metadata(
+    reference: xr.DataArray,
+    candidate: xr.DataArray,
+) -> xr.DataArray:
+    """Keep reference values while retaining nonconflicting metadata from both inputs."""
+    merged_attributes = dict(candidate.attrs)
+    merged_attributes.update(reference.attrs)
+    coordinate = reference.copy(deep=False)
+    coordinate.attrs = merged_attributes
+    return coordinate
+
+
+def _spatial_coordinate_names(array: xr.DataArray) -> set[Hashable]:
+    """Return dimension indexes and recognized CF horizontal coordinates."""
+    grid_dimensions = set(array.dims)
+    return {
+        name
+        for name, coordinate in array.coords.items()
+        if coordinate.dims
+        and set(coordinate.dims).issubset(grid_dimensions)
+        and _is_spatial_coordinate(name, coordinate, grid_dimensions)
+    }
+
+
+def _is_spatial_coordinate(
+    name: Hashable,
+    coordinate: xr.DataArray,
+    grid_dimensions: set[Hashable],
+) -> bool:
+    """Return whether a coordinate participates in horizontal grid identity.
+
+    Args:
+        name: Coordinate name.
+        coordinate: Coordinate array whose dimensions and CF metadata are
+            inspected.
+        grid_dimensions: Dimension names defining the horizontal grid.
+
+    Returns:
+        True when the coordinate is a dimension index or is identified as a
+        horizontal coordinate by its name or CF metadata.
+    """
+    if name in grid_dimensions and coordinate.dims == (name,):
+        return True
+    if str(name).lower() in _SPATIAL_COORDINATE_NAMES:
+        return True
+    if str(coordinate.attrs.get("standard_name", "")).lower() in _SPATIAL_STANDARD_NAMES:
+        return True
+    return str(coordinate.attrs.get("axis", "")).upper() in {"X", "Y"}
+
+
+def _crs_coordinate_names(array: xr.DataArray, *, array_name: str) -> set[Hashable]:
+    """Return recognized CRS coordinates and reject unresolved mappings."""
+    names = {
+        name
+        for name, coordinate in array.coords.items()
+        if not coordinate.dims and _CRS_ATTRIBUTE_MARKERS.intersection(coordinate.attrs)
+    }
+    grid_mapping = array.attrs.get("grid_mapping")
+    if isinstance(grid_mapping, str):
+        referenced_name = grid_mapping.split(":", maxsplit=1)[0].strip()
+        if referenced_name not in array.coords:
+            raise xr.AlignmentError(
+                f"{array_name} references grid mapping {referenced_name!r}, but it is not an "
+                "attached coordinate; load with decode_coords='all' or attach it before alignment."
+            )
+        names.add(referenced_name)
+    return names
+
+
+def _coordinate_values_compatible(reference: xr.DataArray, candidate: xr.DataArray) -> bool:
+    """Return whether coordinate values describe the same physical locations."""
+    if reference.shape != candidate.shape:
+        return False
+    reference_values = reference.to_numpy()
+    candidate_values = candidate.to_numpy()
+    if np.issubdtype(reference_values.dtype, np.number) and np.issubdtype(candidate_values.dtype, np.number):
+        return bool(
+            np.allclose(
+                reference_values,
+                candidate_values,
+                rtol=0.0,
+                atol=_coordinate_absolute_tolerance(reference, candidate),
+                equal_nan=True,
+            )
+        )
+    if np.array_equal(reference_values, candidate_values):
+        return True
+    reference_null = pd.isna(reference_values)
+    candidate_null = pd.isna(candidate_values)
+    return bool(
+        np.array_equal(reference_null, candidate_null)
+        and np.all(reference_null | (reference_values == candidate_values))
+    )
+
+
+def _coordinate_absolute_tolerance(reference: xr.DataArray, candidate: xr.DataArray) -> float:
+    """Return a unit- and storage-precision-aware absolute tolerance."""
+    if reference.ndim == 0:
+        return 0.0
+    values = np.concatenate(
+        [
+            np.asarray(reference.to_numpy(), dtype=np.float64).ravel(),
+            np.asarray(candidate.to_numpy(), dtype=np.float64).ravel(),
+        ]
+    )
+    finite_values = values[np.isfinite(values)]
+    scale = max(1.0, float(np.max(np.abs(finite_values))) if finite_values.size else 1.0)
+    floating_dtypes = [
+        dtype for dtype in (reference.dtype, candidate.dtype) if np.issubdtype(dtype, np.floating)
+    ]
+    precision_tolerance = max(
+        (8.0 * np.finfo(dtype).eps * scale for dtype in floating_dtypes),
+        default=0.0,
+    )
+
+    units = str(reference.attrs.get("units") or candidate.attrs.get("units") or "").lower()
+    if "radian" in units or units == "rad":
+        tolerance = max(precision_tolerance, float(np.deg2rad(_GRID_COORDINATE_DEGREE_ATOL)))
+    elif "degree" in units:
+        tolerance = max(precision_tolerance, _GRID_COORDINATE_DEGREE_ATOL)
+    else:
+        tolerance = precision_tolerance
+
+    grid_spacing = _representative_grid_spacing(reference)
+    if grid_spacing is not None:
+        tolerance = min(tolerance, grid_spacing * 1.0e-3)
+    return float(tolerance)
+
+
+def _representative_grid_spacing(coordinate: xr.DataArray) -> float | None:
+    """Return the smallest median nonzero step across coordinate dimensions."""
+    values = np.asarray(coordinate.to_numpy(), dtype=np.float64)
+    axis_spacings: list[float] = []
+    for axis in range(values.ndim):
+        differences = np.abs(np.diff(values, axis=axis))
+        finite_nonzero = differences[np.isfinite(differences) & (differences > 0.0)]
+        if finite_nonzero.size:
+            axis_spacings.append(float(np.median(finite_nonzero)))
+    return min(axis_spacings) if axis_spacings else None
+
+
+def _metadata_values_equal(reference: object, candidate: object) -> bool:
+    """Compare scalar or array-valued metadata without ambiguous truth values."""
+    reference_values = np.asarray(reference)
+    candidate_values = np.asarray(candidate)
+    if reference_values.shape != candidate_values.shape:
+        return False
+    if np.issubdtype(reference_values.dtype, np.number) and np.issubdtype(candidate_values.dtype, np.number):
+        return bool(np.allclose(reference_values, candidate_values, rtol=0.0, atol=0.0, equal_nan=True))
+    return bool(np.array_equal(reference_values, candidate_values))
+
+
+def _validate_grid_metadata(
+    reference: xr.DataArray,
+    candidate: xr.DataArray,
+    *,
+    coordinate_name: Hashable,
+    reference_name: str,
+    candidate_name: str,
+) -> None:
+    """Reject conflicting grid-defining metadata when both sides provide it."""
+    for attribute_name in _GRID_METADATA_KEYS:
+        reference_value = reference.attrs.get(attribute_name)
+        candidate_value = candidate.attrs.get(attribute_name)
+        if (
+            reference_value is not None
+            and candidate_value is not None
+            and not _grid_metadata_values_equal(attribute_name, reference_value, candidate_value)
+        ):
+            raise xr.AlignmentError(
+                f"Coordinate {coordinate_name!r} on {candidate_name} has conflicting "
+                f"{attribute_name!r} metadata from {reference_name}."
+            )
+
+
+def _grid_metadata_values_equal(attribute_name: str, reference: object, candidate: object) -> bool:
+    """Return whether grid metadata values are physically equivalent."""
+    if attribute_name == "units" and isinstance(reference, str) and isinstance(candidate, str):
+        try:
+            return cf_ureg.parse_units(reference) == cf_ureg.parse_units(candidate)
+        except (PintError, TypeError, ValueError):
+            # Preserve the historical exact-string behavior for unit labels
+            # outside OpenGHG's CF-aware registry.
+            return reference == candidate
+    return _metadata_values_equal(reference, candidate)
 
 
 def _validate_weights(weights: xr.DataArray) -> np.ndarray:
@@ -1004,11 +1962,11 @@ def _validate_weights(weights: xr.DataArray) -> np.ndarray:
     return values
 
 
-def _mapped_classes(
+def _factorize_mapped_classes(
     class_values: npt.NDArray[np.object_] | np.ndarray,
     unmapped_values: Iterable[Hashable],
-) -> list[Hashable]:
-    """Return unique class values that should receive basis labels.
+) -> tuple[list[Hashable], np.ndarray]:
+    """Factor mapped class values once into first-seen integer codes.
 
     Args:
         class_values: Raw class array from the aligned ``region_classes`` input.
@@ -1016,16 +1974,104 @@ def _mapped_classes(
             ``0``.
 
     Returns:
-        Unique class values in first-seen order, excluding nulls and explicitly
-        unmapped values.
+        Unique mapped class values in first-seen order and a same-shaped integer
+        code array. Mapped codes are contiguous from zero; null and explicitly
+        unmapped cells use ``-1``.
+
+    Raises:
+        ValueError: If a mapped class value is not hashable.
     """
     unmapped = set(unmapped_values)
+    try:
+        raw_codes, unique_values = pd.factorize(
+            class_values.ravel(),
+            sort=False,
+            use_na_sentinel=True,
+        )
+    except TypeError as exc:
+        raise ValueError("Region-class values must be hashable.") from exc
+
     classes: list[Hashable] = []
-    for value in pd.unique(class_values.ravel()):
-        if _is_unmapped_layer_value(cast(Hashable, value), unmapped):
+    raw_to_mapped = np.full(len(unique_values), -1, dtype=np.intp)
+    for raw_code, value in enumerate(unique_values):
+        class_value = cast(Hashable, value)
+        if _is_unmapped_layer_value(class_value, unmapped):
             continue
-        classes.append(cast(Hashable, value))
-    return classes
+        raw_to_mapped[raw_code] = len(classes)
+        classes.append(class_value)
+
+    class_codes = np.full(raw_codes.shape, -1, dtype=np.intp)
+    present = raw_codes >= 0
+    class_codes[present] = raw_to_mapped[raw_codes[present]]
+    return classes, class_codes.reshape(class_values.shape)
+
+
+def _allocate_nbasis_by_code(
+    weight_values: np.ndarray,
+    mapped_classes: list[Hashable],
+    class_codes: np.ndarray,
+    nbasis: NbasisAllocation,
+    *,
+    allocation: AllocationMode,
+    min_regions_per_class: int,
+) -> dict[Hashable, int]:
+    """Allocate class targets using already-factorized integer class codes.
+
+    Args:
+        weight_values: Non-negative spatial weights aligned with
+            ``class_codes``.
+        mapped_classes: Class values in the order represented by non-negative
+            codes.
+        class_codes: Integer class codes aligned with ``weight_values``.
+            Mapped codes are contiguous from zero; ``-1`` marks unmapped cells.
+        nbasis: Total requested region count or an explicit per-class
+            allocation.
+        allocation: ``"weight"`` to allocate by summed weight or ``"area"``
+            to allocate by mapped cell count.
+        min_regions_per_class: Minimum automatic allocation for each non-empty
+            mapped class.
+
+    Returns:
+        Mapping from each mapped class to its allocated region count.
+
+    Raises:
+        ValueError: If the minimum or requested total is negative, allocation
+            is requested without mapped classes, the request exceeds mapped
+            capacity or required minima, the explicit allocation is invalid,
+            or ``allocation`` is unsupported.
+    """
+    if min_regions_per_class < 0:
+        raise ValueError("min_regions_per_class must be non-negative.")
+    if not mapped_classes:
+        if not isinstance(nbasis, Mapping) and nbasis != 0:
+            raise ValueError("Cannot allocate basis regions without mapped classes.")
+        return {}
+
+    present_codes = class_codes[class_codes >= 0]
+    capacity_values = np.bincount(present_codes, minlength=len(mapped_classes))
+    capacities = {
+        class_value: int(capacity_values[class_code]) for class_code, class_value in enumerate(mapped_classes)
+    }
+    if isinstance(nbasis, Mapping):
+        return _explicit_allocation(mapped_classes, nbasis, capacities)
+    if nbasis < 0:
+        raise ValueError("nbasis must be non-negative.")
+
+    minima = {
+        class_value: min(min_regions_per_class, capacity) for class_value, capacity in capacities.items()
+    }
+    min_total = sum(minima.values())
+    max_total = sum(capacities.values())
+    if nbasis < min_total:
+        raise ValueError(
+            f"nbasis={nbasis} is smaller than the minimum {min_total} required "
+            f"for {len(mapped_classes)} mapped classes."
+        )
+    if nbasis > max_total:
+        raise ValueError(f"nbasis={nbasis} exceeds the {max_total} mapped cells available for splitting.")
+
+    scores = _allocation_scores(weight_values, class_codes, mapped_classes, allocation)
+    return _distribute_regions(mapped_classes, scores, minima, capacities, nbasis)
 
 
 def _is_unmapped_layer_value(value: Hashable, unmapped_values: set[Hashable]) -> bool:
@@ -1041,19 +2087,28 @@ def _is_unmapped_layer_value(value: Hashable, unmapped_values: set[Hashable]) ->
 
 def _class_value_mask(class_values: np.ndarray, class_value: Hashable) -> np.ndarray:
     """Return a Boolean mask for one class value, including tuple labels."""
-    if isinstance(class_value, tuple):
+    if isinstance(class_value, tuple) or class_values.dtype == object:
         return np.asarray(
-            np.frompyfunc(lambda value: value == class_value, 1, 1)(class_values),
+            np.frompyfunc(lambda value: _class_values_equal(value, class_value), 1, 1)(class_values),
             dtype=bool,
         )
 
     try:
         mask = class_values == class_value
     except ValueError:
-        mask = np.frompyfunc(lambda value: value == class_value, 1, 1)(class_values)
+        mask = np.frompyfunc(lambda value: _class_values_equal(value, class_value), 1, 1)(class_values)
     if not isinstance(mask, np.ndarray) or mask.shape != class_values.shape:
-        mask = np.frompyfunc(lambda value: value == class_value, 1, 1)(class_values)
+        mask = np.frompyfunc(lambda value: _class_values_equal(value, class_value), 1, 1)(class_values)
     return np.asarray(mask, dtype=bool)
+
+
+def _class_values_equal(value: object, class_value: Hashable) -> bool:
+    """Compare one class value without treating missing values as truthy."""
+    try:
+        result = value == class_value
+    except (TypeError, ValueError):
+        return False
+    return bool(result) if isinstance(result, (bool, np.bool_)) else False
 
 
 def _explicit_allocation(
@@ -1095,15 +2150,15 @@ def _explicit_allocation(
 
 def _allocation_scores(
     weights: np.ndarray,
-    class_values: np.ndarray,
+    class_codes: np.ndarray,
     mapped_classes: list[Hashable],
     allocation: AllocationMode,
 ) -> dict[Hashable, float]:
     """Compute proportional allocation scores for each mapped class.
 
     Args:
-        weights: Non-negative weight values aligned to ``class_values``.
-        class_values: Raw class values aligned to ``weights``.
+        weights: Non-negative weight values aligned to ``class_codes``.
+        class_codes: Factorized integer class codes aligned to ``weights``.
         mapped_classes: Class values eligible for allocation.
         allocation: ``"weight"`` to score by total class weight, or ``"area"``
             to score by mapped cell count.
@@ -1115,19 +2170,24 @@ def _allocation_scores(
         ValueError: If ``allocation`` is not supported.
     """
     if allocation == "area":
+        counts = np.bincount(class_codes[class_codes >= 0], minlength=len(mapped_classes))
         return {
-            class_value: float(np.count_nonzero(_class_value_mask(class_values, class_value)))
-            for class_value in mapped_classes
+            class_value: float(counts[class_code]) for class_code, class_value in enumerate(mapped_classes)
         }
     if allocation != "weight":
         raise ValueError("allocation must be 'weight' or 'area'.")
 
+    present = class_codes >= 0
+    weight_sums = np.bincount(
+        class_codes[present],
+        weights=weights[present],
+        minlength=len(mapped_classes),
+    )
     scores = {
-        class_value: float(weights[_class_value_mask(class_values, class_value)].sum())
-        for class_value in mapped_classes
+        class_value: float(weight_sums[class_code]) for class_code, class_value in enumerate(mapped_classes)
     }
     if sum(scores.values()) == 0.0:
-        return _allocation_scores(weights, class_values, mapped_classes, "area")
+        return _allocation_scores(weights, class_codes, mapped_classes, "area")
     return scores
 
 
@@ -1825,6 +2885,36 @@ def _count_positive_labels(labels: np.ndarray) -> int:
     return len(_positive_labels(labels))
 
 
+def _validate_split_strategy_labels(labels: np.ndarray, class_mask: np.ndarray) -> np.ndarray:
+    """Validate a class-local split-strategy result against its class mask.
+
+    Args:
+        labels: Strategy result to convert to a NumPy array and validate.
+        class_mask: Boolean mask for the class passed to the strategy.
+
+    Returns:
+        NumPy-converted integer label array.
+
+    Raises:
+        ValueError: If the shape differs from ``class_mask``, the dtype is not
+            a non-Boolean integer dtype, any class cell is non-positive, or any
+            cell outside the class is nonzero.
+    """
+    label_values = np.asarray(labels)
+    if label_values.shape != class_mask.shape:
+        raise ValueError(
+            "Split strategy labels must have the same shape as the class grid; "
+            f"got {label_values.shape}, expected {class_mask.shape}."
+        )
+    if np.issubdtype(label_values.dtype, np.bool_) or not np.issubdtype(label_values.dtype, np.integer):
+        raise ValueError("Split strategy labels must have an integer, non-boolean dtype.")
+    if not np.all(label_values[class_mask] > 0):
+        raise ValueError("Split strategy labels must be strictly positive on every class-mask cell.")
+    if not np.all(label_values[~class_mask] == 0):
+        raise ValueError("Split strategy labels must be exactly zero outside the class mask.")
+    return label_values
+
+
 def _positive_labels(labels: np.ndarray) -> np.ndarray:
     """Return sorted unique positive labels from an integer label array."""
     unique = np.unique(labels)
@@ -1837,16 +2927,20 @@ def _labels_dataarray(labels: np.ndarray, weights: xr.DataArray) -> xr.DataArray
 
 
 __all__ = [
-    "AllocationMode",
     "AllSplitAcceptancePolicies",
-    "AxisParallelSplitStep",
+    "AllocationMode",
     "AxisAlignedWeightedSplitStrategy",
+    "AxisParallelSplitStep",
+    "ComponentConsolidationPolicy",
+    "ConnectedBinaryPartitionStep",
+    "ConnectedComponentPartitionStep",
+    "ConnectedComponentSplitStrategy",
     "GreedyAxisParallelSplitStrategy",
     "InertialSplitStep",
     "LatLonGridGeometry",
     "MaxChildPCAEccentricity",
-    "MinChildWeightShare",
     "MinChildTargetWeightShare",
+    "MinChildWeightShare",
     "NbasisAllocation",
     "PartitionStep",
     "SplitAcceptance",
@@ -1855,6 +2949,9 @@ __all__ = [
     "SplitStrategy",
     "TargetSplitAcceptancePolicy",
     "allocate_nbasis_by_class",
+    "combine_inner_outer_region_classes",
     "intersect_region_class_layers",
+    "normalize_spatial_grid",
+    "region_class_mask",
     "region_constrained_basis",
 ]

@@ -1,34 +1,35 @@
-from pathlib import Path
 import getpass
 import json
 import math
 import re
-from collections.abc import Hashable, Iterable, Mapping
 import warnings
+from collections.abc import Hashable, Iterable, Mapping
+from pathlib import Path
 from typing import Any, Literal, NamedTuple, cast
 
 import numpy as np
 import pandas as pd
 import xarray as xr
-
 from openghg.util import timestamp_now  # pyright: ignore[reportPrivateImportUsage]
+
+from openghg_inversions import utils
 from openghg_inversions.array_ops import align_sparse_lat_lon
 from openghg_inversions.config.version import code_version
 from openghg_inversions.flux_sanitization import copy_flux_nonfinite_attrs
+from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
 from openghg_inversions.postprocessing._basis_products import add_basis_reconstruction_metadata
 from openghg_inversions.postprocessing.countries import Countries
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.postprocessing.make_outputs import (
     OutputSector,
     make_concentration_outputs,
-    make_flux_outputs,
     make_country_outputs,
+    make_flux_outputs,
     make_multisector_country_trace_outputs,
     make_multisector_flux_trace_outputs,
     observation_and_error_outputs,
 )
 from openghg_inversions.postprocessing.stats import calculate_stats, stats_functions
-
 
 # path to `paris_formatting` submodule
 paris_formatting_path = Path(__file__).parent
@@ -595,7 +596,10 @@ def paris_concentration_outputs(
     template_files = paris_template_files(template_version)
     conc_attrs = get_data_var_attrs(template_files.concentration)
 
-    units = float(obs_and_errs_raw["y_obs"].attrs["units"].split(" ")[0])
+    units = mole_fraction_unit_scale(
+        obs_and_errs_raw["y_obs"].attrs["units"],
+        context="PARIS observation units",
+    )
 
     common_rename_dict = {"site": "nsite"}
 
@@ -612,14 +616,12 @@ def paris_concentration_outputs(
     if "Yobs_prior_factor" in result.data_vars and "Yobs_prior_upper_level_factor" in result.data_vars:
         with xr.set_options(keep_attrs="default"):
             factor = result["Yobs_prior_factor"] + result["Yobs_prior_upper_level_factor"]
+        # Column prior factors are part of the total column mole fraction, not the BC-only term.
         result["Yobs"] += factor
         result["Yapost"] += factor
         result["Yapriori"] += factor
         result["qYapost"] += factor
         result["qYapriori"] += factor
-        if "YapostBC" in result.data_vars:
-            result["YapostBC"] += factor
-            result["YaprioriBC"] += factor
 
     result.sitenames.attrs["long_name"] = "identifier of site"
 
@@ -702,14 +704,13 @@ def paris_concentration_outputs_latest(
             factor = (
                 obs_and_errs_raw["y_obs_prior_factor"] + obs_and_errs_raw["y_obs_prior_upper_level_factor"]
             )
+        # Column prior factors are part of the total column mole fraction, not the BC-only term.
         for name in (
             "mf_observed",
             "mf_prior",
             "mf_posterior",
             "percentile_mf_prior",
             "percentile_mf_posterior",
-            "mf_bc_prior",
-            "mf_bc_posterior",
         ):
             if name in result:
                 result[name] = result[name] + factor
@@ -734,7 +735,10 @@ def paris_concentration_outputs_latest(
 
     template_files = paris_template_files("latest")
     conc_attrs = get_data_var_attrs(template_files.concentration, species)
-    units = float(obs_and_errs_raw["y_obs"].attrs["units"].split(" ")[0])
+    units = mole_fraction_unit_scale(
+        obs_and_errs_raw["y_obs"].attrs["units"],
+        context="PARIS observation units",
+    )
 
     result = (
         xr.merge([result, platform_metadata])
@@ -752,12 +756,17 @@ def paris_concentration_outputs_latest(
 
 def _flux_frequency_to_offset(flux_frequency: str) -> pd.DateOffset | pd.Timedelta:
     """Convert a flux frequency string to a calendar-aware pandas offset."""
-    if flux_frequency == "monthly":
+    normalized_period = utils._normalize_flux_period(flux_frequency)
+    if normalized_period == "monthly":
         return pd.DateOffset(months=1)
-    elif flux_frequency == "yearly":
+    if normalized_period == "yearly":
         return pd.DateOffset(years=1)
-    else:
-        return pd.to_timedelta(flux_frequency)
+    if normalized_period is None:
+        raise ValueError(
+            f"Flux period {flux_frequency!r} is not a recognized calendar period "
+            "or a positive fixed duration."
+        )
+    return pd.to_timedelta(normalized_period)
 
 
 def _flux_interval_midpoints(
@@ -765,6 +774,7 @@ def _flux_interval_midpoints(
     flux_period: pd.DateOffset | pd.Timedelta,
     inv_start: pd.Timestamp,
     inv_end: pd.Timestamp,
+    flux_frequency: str | None = None,
 ) -> tuple[list[pd.Timestamp], list[int]]:
     """Compute output timestamps as midpoints of each flux interval clipped to the inversion period.
 
@@ -782,21 +792,22 @@ def _flux_interval_midpoints(
         flux_period: Duration of a single flux interval.
         inv_start: Start of the inversion period.
         inv_end: End of the inversion period.
+        flux_frequency: User-facing frequency name used in overlap errors.
 
     Returns:
         Tuple of (midpoint_timestamps, valid_time_indices). Both lists contain
         one entry per flux interval that overlaps the inversion period.
+
+    Raises:
+        ValueError: If no flux interval overlaps the inversion period.
     """
-    midpoints = []
-    valid_indices = []
-    for i, ft in enumerate(flux_times):
-        overlap_start = max(ft, inv_start)
-        overlap_end = min(ft + flux_period, inv_end)
-        # Only include if there is valid overlap
-        if overlap_end > overlap_start:
-            midpoint = overlap_start + (overlap_end - overlap_start) / 2
-            midpoints.append(midpoint)
-            valid_indices.append(i)
+    midpoints, _, valid_indices = _flux_interval_midpoints_and_bounds(
+        flux_times,
+        flux_period,
+        inv_start,
+        inv_end,
+        flux_frequency,
+    )
     return midpoints, valid_indices
 
 
@@ -805,8 +816,30 @@ def _flux_interval_midpoints_and_bounds(
     flux_period: pd.DateOffset | pd.Timedelta,
     inv_start: pd.Timestamp,
     inv_end: pd.Timestamp,
+    flux_frequency: str | None = None,
 ) -> tuple[list[pd.Timestamp], list[tuple[pd.Timestamp, pd.Timestamp]], list[int]]:
-    """Compute clipped flux interval midpoints, bounds, and retained indices."""
+    """Compute clipped flux interval midpoints, bounds, and retained indices.
+
+    Args:
+        flux_times: Start timestamps for available flux periods.
+        flux_period: Duration of each flux period.
+        inv_start: Start of the inversion period.
+        inv_end: End of the inversion period.
+        flux_frequency: User-facing frequency name used in overlap errors.
+
+    Returns:
+        Midpoints, clipped bounds, and source indices for overlapping periods.
+
+    Raises:
+        ValueError: If no flux interval overlaps the inversion period.
+    """
+    frequency = flux_frequency or str(flux_period)
+    if len(flux_times) == 0:
+        raise ValueError(
+            f"No flux interval overlaps the inversion period for frequency {frequency!r}: "
+            f"no flux timestamps are available; inversion start={inv_start}, end={inv_end}."
+        )
+
     midpoints = []
     bounds = []
     valid_indices = []
@@ -817,6 +850,16 @@ def _flux_interval_midpoints_and_bounds(
             midpoints.append(overlap_start + (overlap_end - overlap_start) / 2)
             bounds.append((overlap_start, overlap_end))
             valid_indices.append(i)
+
+    if not valid_indices:
+        flux_start = min(flux_times)
+        flux_end = max(flux_time + flux_period for flux_time in flux_times)
+        raise ValueError(
+            f"No flux interval overlaps the inversion period for frequency {frequency!r}: "
+            f"flux interval start={flux_start}, end={flux_end}; "
+            f"inversion start={inv_start}, end={inv_end}."
+        )
+
     return midpoints, bounds, valid_indices
 
 
@@ -826,7 +869,23 @@ def _assign_flux_time_bounds(
     inv_start: pd.Timestamp,
     inv_end: pd.Timestamp,
 ) -> xr.Dataset:
-    """Assign midpoint flux times and clipped interval bounds for latest PARIS flux output."""
+    """Assign midpoint times and clipped bounds to overlapping flux periods.
+
+    Args:
+        ds: Flux output with period starts on its ``time`` coordinate.
+        flux_frequency: Calendar alias or positive fixed duration for each
+            source period.
+        inv_start: Start of the inversion period.
+        inv_end: End of the inversion period.
+
+    Returns:
+        The subset of flux periods overlapping the inversion, with midpoint
+        ``time`` values and a ``time_bnds`` variable.
+
+    Raises:
+        ValueError: If the flux coordinate is empty or no period overlaps the
+            inversion.
+    """
     flux_period = _flux_frequency_to_offset(flux_frequency)
     flux_times = list(pd.to_datetime(ds.time.values))
     midpoints, bounds, valid_indices = _flux_interval_midpoints_and_bounds(
@@ -834,6 +893,7 @@ def _assign_flux_time_bounds(
         flux_period,
         inv_start,
         inv_end,
+        flux_frequency,
     )
     time_bnds = np.asarray(bounds, dtype="datetime64[ns]")
     return (
@@ -912,18 +972,59 @@ def _multisector_country_trace_kg(
         ValueError: If required multisector metadata is missing or retained
             basis, flux, and country grids cannot be aligned.
     """
-    country_trace = make_multisector_country_trace_outputs(inv_out, countries) * 1e-3
-    rename = {
-        "country_total_prior": "country_prior",
-        "country_total_posterior": "country_posterior",
-    }
+    projected_trace = make_multisector_country_trace_outputs(inv_out, countries)
+    rename = {}
     for variable_suffix, sector_name in sector_name_by_suffix.items():
         for when in ("prior", "posterior"):
             source_name = f"country_{variable_suffix}_{when}"
-            if source_name in country_trace:
+            if source_name in projected_trace:
                 rename[source_name] = f"country_{sector_name}_{when}"
 
-    result = country_trace[list(rename)].rename(rename)
+    # Float32 aggregation can incur significant round-off error in high-magnitude
+    # country totals and uncertainty statistics, so promote the projected country
+    # samples before calculating them. Keeping the promotion at country level lets
+    # these calculations share one aligned float64 sector intermediate while the
+    # much larger spatial draw arrays retain their original dtype.
+    sector_trace = projected_trace[list(rename)].rename(rename).astype(np.float64) * 1e-3
+    result = sector_trace.copy(deep=False)
+    for when in ("prior", "posterior"):
+        sector_variables = [
+            f"country_{sector_name}_{when}"
+            for sector_name in sector_name_by_suffix.values()
+            if f"country_{sector_name}_{when}" in sector_trace
+        ]
+        result[f"country_{when}"] = xr.concat(
+            [sector_trace[name] for name in sector_variables],
+            dim="sector",
+        ).sum("sector", min_count=len(sector_name_by_suffix))
+
+    result = result[["country_prior", "country_posterior", *sector_trace.data_vars]]
+    result.attrs = dict(projected_trace.attrs)
+    for name in result.data_vars:
+        result[name].attrs["units"] = "kg/yr"
+    return result
+
+
+def _single_sector_country_trace_kg(
+    inv_out: InversionOutput,
+    countries: Countries,
+) -> xr.Dataset:
+    """Return a float64 single-sector country trace in kilograms per year.
+
+    Args:
+        inv_out: Single-sector inversion output.
+        countries: Country masks and cell areas used for country projection.
+
+    Returns:
+        Projected prior and posterior country traces promoted to float64 before
+        conversion from grams to kilograms per year. Dimensions, coordinates,
+        and dataset attributes are preserved, and every output variable has
+        ``units="kg/yr"``; variables typically have dimensions
+        ``(flux_time, country, draw)``.
+    """
+    projected_trace = countries.get_country_trace(inv_out=inv_out)
+    result = projected_trace.astype(np.float64) * 1e-3
+    result.attrs = dict(projected_trace.attrs)
     for name in result.data_vars:
         result[name].attrs["units"] = "kg/yr"
     return result
@@ -946,27 +1047,26 @@ def _latest_country_outputs(
         stats_args: Additional arguments passed to ``calculate_stats``.
         sector_name_by_suffix: Optional mapping from RHIME sector suffixes to
             normalized PARIS sector names.
-        multisector_country_trace: Optional precomputed multisector country
-            trace in kilograms per year.
+        multisector_country_trace: Optional precomputed single- or multisector
+            country trace in kilograms per year. The historical parameter name
+            is retained for compatibility.
 
     Returns:
         Country statistics in kilograms per year, with ``country`` and
         ``flux_time`` dimensions and total plus per-sector variables where
         applicable.
     """
-    if inv_out.is_multisector:
-        country_trace = multisector_country_trace
-        if country_trace is None:
-            country_trace = _multisector_country_trace_kg(
+    country_trace = multisector_country_trace
+    if country_trace is None:
+        country_trace = (
+            _multisector_country_trace_kg(
                 inv_out,
                 countries,
                 sector_name_by_suffix or _paris_sector_name_by_suffix(inv_out),
             )
-        country_stats_args = dict(stats_args)
-        country_stats_args["stats"] = stats
-        return calculate_stats(country_trace, **country_stats_args)
-
-    country_trace = countries.get_country_trace(inv_out=inv_out) * 1e-3
+            if inv_out.is_multisector
+            else _single_sector_country_trace_kg(inv_out, countries)
+        )
     country_stats_args = dict(stats_args)
     country_stats_args["stats"] = stats
     return calculate_stats(country_trace, **country_stats_args)
@@ -990,25 +1090,26 @@ def _country_posterior_covariance_kg(
         inv_out: Single- or multisector inversion output.
         countries: Country masks and cell areas used for the country projection.
         flux_frequency: Frequency used to select output flux intervals.
-        multisector_country_trace: Optional precomputed multisector country trace
-            in kilograms per year.
+        multisector_country_trace: Optional precomputed single- or multisector
+            country trace in kilograms per year. The historical parameter name
+            is retained for compatibility.
 
     Returns:
         Population covariance for each flux interval with dimensions ordered as
         time, first country, and second country, in kg2 yr-2.
     """
-    if inv_out.is_multisector:
-        country_trace = multisector_country_trace
-        if country_trace is None:
-            country_trace = _multisector_country_trace_kg(
+    country_trace = multisector_country_trace
+    if country_trace is None:
+        country_trace = (
+            _multisector_country_trace_kg(
                 inv_out,
                 countries,
                 _paris_sector_name_by_suffix(inv_out),
             )
-        posterior = country_trace["country_posterior"]
-    else:
-        country_trace = countries.get_country_trace(inv_out=inv_out)
-        posterior = country_trace["country_posterior"] * 1e-3
+            if inv_out.is_multisector
+            else _single_sector_country_trace_kg(inv_out, countries)
+        )
+    posterior = country_trace["country_posterior"]
     flux_period = _flux_frequency_to_offset(flux_frequency)
     flux_times = list(pd.to_datetime(posterior.flux_time.values))
     _, _, valid_indices = _flux_interval_midpoints_and_bounds(
@@ -1016,12 +1117,16 @@ def _country_posterior_covariance_kg(
         flux_period,
         inv_out.start_time,
         inv_out.end_time,
+        flux_frequency,
     )
 
     posterior = posterior.isel(flux_time=valid_indices).dropna("draw", how="all")
-    values = posterior.transpose("flux_time", "country", "draw").values
+    values = np.asarray(
+        posterior.transpose("flux_time", "country", "draw").values,
+        dtype=np.float64,
+    )
     if values.shape[2] == 0:
-        return np.full((values.shape[0], values.shape[1], values.shape[1]), np.nan, dtype="float32")
+        return np.full((values.shape[0], values.shape[1], values.shape[1]), np.nan, dtype=np.float64)
 
     centered = values - values.mean(axis=2, keepdims=True)
     return np.einsum("tcd,ted->tce", centered, centered) / values.shape[2]
@@ -1071,6 +1176,7 @@ def _sector_country_posterior_covariances_kg(
         flux_period,
         inv_out.start_time,
         inv_out.end_time,
+        flux_frequency,
     )
 
     sector_posteriors = [
@@ -1082,9 +1188,13 @@ def _sector_country_posterior_covariances_kg(
     ]
     sector_covariances = {}
     for sector_name, posterior in zip(sector_names, sector_posteriors, strict=True):
-        values = posterior.values
+        values = np.asarray(posterior.values, dtype=np.float64)
         if values.shape[2] == 0:
-            covariance = np.full((values.shape[0], values.shape[1], values.shape[1]), np.nan, dtype="float32")
+            covariance = np.full(
+                (values.shape[0], values.shape[1], values.shape[1]),
+                np.nan,
+                dtype=np.float64,
+            )
         else:
             centered = values - values.mean(axis=2, keepdims=True)
             covariance = np.einsum("tcd,ted->tce", centered, centered) / values.shape[2]
@@ -1097,12 +1207,15 @@ def _sector_country_posterior_covariances_kg(
         ],
         dim="sector",
     )
-    values = posterior_by_sector.transpose("flux_time", "country", "sector", "draw").values
+    values = np.asarray(
+        posterior_by_sector.transpose("flux_time", "country", "sector", "draw").values,
+        dtype=np.float64,
+    )
     if values.shape[3] == 0:
         sector_cross_covariance = np.full(
             (values.shape[0], values.shape[1], values.shape[2], values.shape[2]),
             np.nan,
-            dtype="float32",
+            dtype=np.float64,
         )
     else:
         centered = values - values.mean(axis=3, keepdims=True)
@@ -1266,7 +1379,13 @@ def paris_flux_output(
 
         def time_func(ds):
             flux_times = pd.to_datetime(ds.time.values)
-            midpoints, valid_indices = _flux_interval_midpoints(flux_times, flux_period, inv_start, inv_end)
+            midpoints, valid_indices = _flux_interval_midpoints(
+                flux_times,
+                flux_period,
+                inv_start,
+                inv_end,
+                flux_frequency,
+            )
             return ds.isel(time=valid_indices).assign_coords(time=midpoints)
     else:
 
@@ -1339,8 +1458,9 @@ def paris_flux_output_latest(
             estimates.
         inversion_grid: If true, include the optional reduced inversion-grid
             variables.
-        flux_frequency: Frequency used to construct output intervals. Supported
-            values are ``"monthly"`` and ``"yearly"``.
+        flux_frequency: Period used to construct output intervals. Calendar
+            values ``"monthly"`` and ``"yearly"`` and positive fixed pandas
+            duration strings are supported.
         country_selections: Optional country names or codes to include. The
             default emits the canonical 22-country EUROPE v03 product; pass
             ``None`` to include every country from another domain file.
@@ -1387,14 +1507,14 @@ def paris_flux_output_latest(
         domain=domain,
         country_selections=country_selections,
     )
-    multisector_country_trace = (
+    country_trace = (
         _multisector_country_trace_kg(
             inv_out,
             countries,
             sector_name_by_suffix,
         )
         if inv_out.is_multisector
-        else None
+        else _single_sector_country_trace_kg(inv_out, countries)
     )
     country_outs = _latest_country_outputs(
         inv_out,
@@ -1402,7 +1522,7 @@ def paris_flux_output_latest(
         stats=stats,
         stats_args=stats_args,
         sector_name_by_suffix=sector_name_by_suffix,
-        multisector_country_trace=multisector_country_trace,
+        multisector_country_trace=country_trace,
     )
     country_fraction = countries.matrix.as_numpy().rename("country_fraction")
     cell_area = countries.area_grid.as_numpy().rename("cell_area")
@@ -1410,7 +1530,7 @@ def paris_flux_output_latest(
         inv_out,
         countries=countries,
         flux_frequency=flux_frequency,
-        multisector_country_trace=multisector_country_trace,
+        multisector_country_trace=country_trace,
     )
     sector_covariances, sector_cross_covariance = (
         _sector_country_posterior_covariances_kg(
@@ -1418,7 +1538,7 @@ def paris_flux_output_latest(
             countries=countries,
             flux_frequency=flux_frequency,
             sector_name_by_suffix=sector_name_by_suffix,
-            multisector_country_trace=multisector_country_trace,
+            multisector_country_trace=country_trace,
         )
         if inv_out.is_multisector
         else ({}, None)
@@ -1569,50 +1689,48 @@ def infer_flux_frequency(flux: xr.DataArray) -> str:
         frequency string that can be parsed by pd.to_timedelta, or is "yearly" or "monthly"
 
     Raises:
-        ValueError: if inferred frequency is not "yearly" or "monthly", and cannot be parsed by pd.to_timedelta
+        ValueError: If source metadata is neither a recognized calendar period
+            nor a positive fixed duration.
 
     """
     if "time_period" in flux.attrs:
         time_period = flux.attrs["time_period"]
-        if "year" in time_period:
-            return "yearly"
-        if "month" in time_period:
-            return "monthly"
+        normalized_period = utils._normalize_flux_period(time_period)
+        if normalized_period is not None:
+            return normalized_period
+        if not utils._flux_period_is_missing(time_period):
+            raise ValueError(
+                f"Flux period {time_period!r} from flux.attrs['time_period'] is not a recognized "
+                "calendar period or a positive fixed duration."
+            )
 
-        # check if the result can be parsed by pd.to_timedelta
+    calendar_period = utils._infer_calendar_flux_period(flux.flux_time.values)
+    if calendar_period is not None:
+        return calendar_period
+
+    # take most frequent gap between times
+    try:
+        flux_frequency_delta = pd.Series(flux.flux_time.values).diff().mode()[0]
+    except KeyError:
+        # only one time value
+        return "yearly"
+    else:
+        flux_frequency = pd.tseries.frequencies.to_offset(flux_frequency_delta).freqstr  # type: ignore
+
+        # "1 days" will be converted to "D" by the previous two lines, so we need to add a "1" in front
+        if not flux_frequency[0].isdigit():
+            flux_frequency = "1" + flux_frequency
+
+        # check if the result can be parsed
         try:
-            pd.to_timedelta(time_period)
+            pd.to_timedelta(flux_frequency)
         except ValueError as e:
             raise ValueError(
-                f"Flux frequency {time_period} from flux.attrs['time_period'] cannot be parsed by pd.to_timedelta."
+                f"Flux frequency {flux_frequency} inferred from gaps in flux.time cannot be parsed by pd.to_timedelta"
+                "(and flux.attrs['time_period'] is not set)."
             ) from e
         else:
-            return time_period
-
-    else:
-        # take most frequent gap between times
-        try:
-            flux_frequency_delta = pd.Series(flux.flux_time.values).diff().mode()[0]
-        except KeyError:
-            # only one time value
-            return "yearly"
-        else:
-            flux_frequency = pd.tseries.frequencies.to_offset(flux_frequency_delta).freqstr  # type: ignore
-
-            # "1 days" will be converted to "D" by the previous two lines, so we need to add a "1" in front
-            if not flux_frequency[0].isdigit():
-                flux_frequency = "1" + flux_frequency
-
-            # check if the result can be parsed
-            try:
-                pd.to_timedelta(flux_frequency)
-            except ValueError as e:
-                raise ValueError(
-                    f"Flux frequency {flux_frequency} inferred from gaps in flux.time cannot be parsed by pd.to_timedelta"
-                    "(and flux.attrs['time_period'] is not set)."
-                ) from e
-            else:
-                return flux_frequency
+            return flux_frequency
 
 
 def make_paris_outputs(

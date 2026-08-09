@@ -577,7 +577,7 @@ def _legacy_postprocess_fields(inv_out: InversionOutput, *, use_bc: bool) -> dic
     )
     sigma_freq_index = _model_or_input_var(
         inv_out,
-        model_name="sigma_freq_index",
+        model_name="sigma_period_index",
         input_name="sigma_freq_index",
         description="sigma frequency index",
     )

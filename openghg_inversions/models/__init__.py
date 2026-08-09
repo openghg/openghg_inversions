@@ -1,4 +1,12 @@
-"""Reusable model-building helpers for OpenGHG inversions."""
+"""Public model builders, coordinates, priors, and state-activity APIs.
+
+State activity separates design inspection with ``detect_zero_sensitivity``,
+policy resolution with ``resolve_state_activity``, and graph construction in
+the component helpers.
+
+Importing this package configures PyTensor before re-exporting the supported
+RHIME and reusable component entry points.
+"""
 
 # ruff: noqa: E402
 
@@ -28,6 +36,7 @@ from openghg_inversions.models.state_activity import (
     ResolvedStateActivity,
     StateActivity,
     active_prior_args,
+    detect_zero_sensitivity,
     resolve_state_activity,
 )
 from openghg_inversions.models.rhime import (
@@ -35,6 +44,7 @@ from openghg_inversions.models.rhime import (
     DEFAULT_OFFSET_PRIOR,
     DEFAULT_SIGMA_PRIOR,
     DEFAULT_X_PRIOR,
+    RhimeBuilderStrategy,
     RhimeModelSpec,
     SectorSpec,
     build_rhime_model,
@@ -43,6 +53,8 @@ from openghg_inversions.models.rhime import (
     build_rhime_multisector_model_from_spec,
     safe_pymc_name,
 )
+from openghg_inversions.models.rhime_likelihood import add_rhime_likelihood_component
+from openghg_inversions.observation_error import AggregationErrorMode
 
 __all__ = [
     "CoordRegistry",
@@ -50,6 +62,8 @@ __all__ = [
     "DEFAULT_OFFSET_PRIOR",
     "DEFAULT_SIGMA_PRIOR",
     "DEFAULT_X_PRIOR",
+    "AggregationErrorMode",
+    "RhimeBuilderStrategy",
     "RhimeModelSpec",
     "ResolvedStateActivity",
     "SectorSpec",
@@ -67,11 +81,13 @@ __all__ = [
     "add_sigma_component",
     "add_offset_component",
     "add_inferpymc_likelihood_component",
+    "add_rhime_likelihood_component",
     "build_rhime_model",
     "build_rhime_model_from_spec",
     "build_rhime_multisector_model",
     "build_rhime_multisector_model_from_spec",
     "safe_pymc_name",
     "active_prior_args",
+    "detect_zero_sensitivity",
     "resolve_state_activity",
 ]

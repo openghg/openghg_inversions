@@ -6,8 +6,12 @@ own coordinate sanitization policy; coordinate handling lives in
 ``openghg_inversions.models.coords``.
 
 All component helpers operate inside an active PyMC model context.
+``add_state_vector`` consumes an already resolved activity contract;
+``add_state_linear_component`` performs design inspection and policy resolution
+before constructing that graph.
 
 Naming conventions:
+
 - ``data_name``: name for registered ``pm.Data``
 - ``var_name``: name for the latent random variable
 - ``output_name``: name for the aligned deterministic output
@@ -38,8 +42,10 @@ from openghg_inversions.models.state_activity import (
     ResolvedStateActivity,
     StateActivity,
     active_prior_args,
+    detect_zero_sensitivity,
     resolve_state_activity,
 )
+from openghg_inversions.sigma import SigmaAlignment
 
 
 @dataclass
@@ -52,6 +58,22 @@ class LinearComponentResult:
 
 
 @dataclass
+class StateVectorResult:
+    """Objects created by ``add_state_vector``.
+
+    Attributes:
+        latent: Effective sampled latent variable, or ``None`` when every
+            state is fixed.
+        state: Full ordered state vector, including fixed values.
+        activity: Resolved state-activity contract in canonical state order.
+    """
+
+    latent: TensorVariable | None
+    state: TensorVariable
+    activity: ResolvedStateActivity
+
+
+@dataclass
 class StateLinearComponentResult:
     """Objects created by ``add_state_linear_component``.
 
@@ -59,7 +81,8 @@ class StateLinearComponentResult:
         data: Full sensitivity matrix registered with PyMC.
         latent: Effective active-state latent variable, or ``None`` when no
             states are active.
-        state: Full ordered deterministic state vector.
+        state: Full ordered state vector. This is the ordinary user-facing
+            prior when all states are active and a deterministic otherwise.
         output: Forward-model contribution from active and fixed states.
         activity: Resolved state-activity contract in canonical state order.
     """
@@ -91,27 +114,22 @@ def get_model_latent(variable: TensorVariable, base_name: str) -> TensorVariable
 
 
 def resolve_model_variable(model: pm.Model, base_name: str) -> TensorVariable | None:
-    """Return a free model variable, preferring active/reparameterised forms.
+    """Return a named model variable, preferring the reparameterised latent form.
 
     Args:
         model: PyMC model to inspect.
         base_name: Base variable name to resolve.
 
     Returns:
-        The active reparameterised latent, reparameterised latent, active
-        variable, or base variable when that candidate is a free random
-        variable. Returns ``None`` for an all-fixed component or when no
-        candidate exists.
+        The reparameterised latent variable ``{base_name}_latent`` when it is
+        present on ``model``, otherwise the user-facing variable named
+        ``base_name``. Returns ``None`` if neither variable exists.
     """
-    candidate_names = (
-        f"{base_name}_active_latent",
-        f"{base_name}_latent",
-        f"{base_name}_active",
-        base_name,
-    )
-    for name in candidate_names:
-        if name in model.named_vars and model.named_vars[name] in model.free_RVs:
-            return cast(TensorVariable, model.named_vars[name])
+    latent_name = f"{base_name}_latent"
+    if latent_name in model.named_vars:
+        return cast(TensorVariable, model.named_vars[latent_name])
+    if base_name in model.named_vars:
+        return cast(TensorVariable, model.named_vars[base_name])
     return None
 
 
@@ -163,9 +181,6 @@ def _resolve_freq_indicator(
             f"Cannot derive frequency indicator for {fallback_name!r}: no time coordinate found."
         )
 
-    # TODO: thread sigma_freq/sigma_per_site explicitly through inferpymc model
-    # building so sigma components can derive their own indicator, then remove
-    # sigma_freq_index from make_inv_inputs(...).
     return make_freq_indicator(time_coord, freq).rename(fallback_name)
 
 
@@ -233,6 +248,122 @@ def add_linear_component(
     return LinearComponentResult(data=h, latent=latent, output=output)
 
 
+def _with_legacy_all_active_coord(
+    data: xr.DataArray,
+    state_activity: StateActivity | None,
+    *,
+    output_dim: str,
+) -> xr.DataArray:
+    """Supply a positional state coordinate for the legacy all-active policy.
+
+    Args:
+        data: Candidate sensitivity matrix.
+        state_activity: Optional activity policy.
+        output_dim: Observation/output dimension name.
+
+    Returns:
+        ``data`` unchanged, or with positional labels for its sole state axis.
+    """
+    state_dims = [str(dim) for dim in data.dims if dim != output_dim]
+    legacy_all_active = (
+        state_activity is not None
+        and not state_activity.prune_zero
+        and not state_activity.fixed_groups
+        and isinstance(state_activity.active, (bool, np.bool_))
+        and bool(state_activity.active)
+    )
+    if legacy_all_active and len(state_dims) == 1 and state_dims[0] not in data.coords:
+        state_dim = state_dims[0]
+        return data.assign_coords({state_dim: np.arange(data.sizes[state_dim])})
+    return data
+
+
+def add_state_vector(
+    activity: ResolvedStateActivity,
+    /,
+    prior_args: dict[str, Any],
+    var_name: str,
+) -> StateVectorResult:
+    """Construct an active/fixed state graph from a resolved activity contract.
+
+    When every state is active, this creates the same base prior graph as
+    ``add_linear_component``. Partial activity creates an active-only prior and
+    restores it into a full deterministic state vector. An all-fixed policy
+    creates no random variable and exposes the fixed values as the full
+    deterministic state.
+
+    Args:
+        activity: Resolved activity and state-coordinate contract. Linear
+            design inspection must be completed before calling this helper.
+        prior_args: Prior specification. Distribution parameters may be scalar,
+            full-state arrays, or labelled state ``DataArray`` objects.
+        var_name: Name of the full user-facing state vector.
+
+    Returns:
+        The effective latent, full state vector, and supplied activity.
+
+    Raises:
+        KeyError: If the prior specification omits a required parameter.
+        TypeError: If the prior specification contains an unsupported value.
+        ValueError: If state-valued prior parameters are invalid.
+
+    Notes:
+        This helper registers state variables and state coordinates, but it
+        does not inspect or register a linear design and does not construct a
+        forward-model output. The registered activity mask is immutable
+        build-time metadata in semantic terms; changing it with ``pm.set_data``
+        would not rebuild the latent state layout. Call this helper inside an
+        active ``pm.Model`` context.
+    """
+    state_dim = activity.state_dim
+    state_coord = activity.zero_sensitivity.coords[state_dim]
+    add_coords(activity.zero_sensitivity.coords, model_dims=(state_dim,))
+    parsed_prior_args = active_prior_args(prior_args, activity)
+
+    if activity.n_active == activity.n_state:
+        state = parse_prior(var_name, parsed_prior_args, dims=state_dim)
+        return StateVectorResult(
+            latent=get_model_latent(state, var_name),
+            state=state,
+            activity=activity,
+        )
+
+    add_model_data(
+        activity.active.rename(f"{var_name}_is_active"),
+        f"{var_name}_is_active",
+    )
+    fixed_value = add_model_data(
+        activity.fixed_value.rename(f"{var_name}_fixed_value"),
+        f"{var_name}_fixed_value",
+    )
+    active_indices = activity.active_indices
+    latent: TensorVariable | None = None
+    active_state: TensorVariable | None = None
+    if activity.n_active:
+        active_dim = f"{state_dim}_{var_name}_active"
+        active_index = state_coord.to_index()[active_indices]
+        if isinstance(active_index, pd.MultiIndex):
+            # Keep tuple labels without re-registering the MultiIndex level
+            # names already owned by the full state dimension.
+            active_coord = np.empty(activity.n_active, dtype=object)
+            active_coord[:] = active_index.tolist()
+        else:
+            active_coord = active_index.to_numpy()
+        add_coords({active_dim: active_coord})
+        active_state = parse_prior(
+            f"{var_name}_active",
+            parsed_prior_args,
+            dims=active_dim,
+        )
+        latent = get_model_latent(active_state, f"{var_name}_active")
+
+    full_state = fixed_value
+    if active_state is not None:
+        full_state = pt.set_subtensor(full_state[active_indices], active_state)
+    state = pm.Deterministic(var_name, full_state, dims=state_dim)
+    return StateVectorResult(latent=latent, state=state, activity=activity)
+
+
 def add_state_linear_component(
     data: xr.DataArray,
     /,
@@ -246,14 +377,16 @@ def add_state_linear_component(
 ) -> StateLinearComponentResult:
     """Add a linear component that samples only active labelled states.
 
-    The public ``var_name`` is always a full ordered deterministic vector.
-    Active states are sampled in ``{var_name}_active`` and inactive states use
-    their resolved fixed values. The forward contribution is constructed as
-    ``H_active @ x_active + H_fixed @ fixed_value``. This remains valid when
-    either partition, including the active partition, is empty.
+    The public ``var_name`` is always a full ordered vector. When every state
+    is active, it retains the ordinary prior graph produced by
+    ``add_linear_component``. Otherwise, active states are sampled in
+    ``{var_name}_active`` and restored with inactive fixed values into a full
+    deterministic state. The forward contribution is always ``H @ state``.
 
     Args:
-        data: Labelled sensitivity matrix with one state dimension.
+        data: Finite sensitivity matrix containing ``output_dim`` and exactly
+            one other dimension with a unique labelled state coordinate. The
+            explicit legacy all-active policy may synthesize positional labels.
         data_name: Name used when registering the full matrix as ``pm.Data``.
         prior_args: Prior specification. Distribution parameters may be scalar,
             full-state arrays, or labelled state ``DataArray`` objects.
@@ -268,128 +401,76 @@ def add_state_linear_component(
     Returns:
         Registered data, optional active latent, full state, output, and the
         resolved activity contract.
+
+    Raises:
+        ValueError: If the sensitivity layout, state policy, labels, fixed
+            values, or state-valued prior parameters are invalid.
+
+    Notes:
+        This helper mutates the active ``pm.Model`` by registering coordinates,
+        the full design, state variables, and optionally the named output.
     """
     output_dim = str(output_dim)
-    activity = resolve_state_activity(data, state_activity, output_dim=output_dim)
-    state_dim = activity.state_dim
-    data = data.transpose(output_dim, state_dim)
+    data = _with_legacy_all_active_coord(
+        data.transpose(output_dim, ...),
+        state_activity,
+        output_dim=output_dim,
+    )
+    activity = resolve_state_activity(
+        detect_zero_sensitivity(data, output_dim=output_dim),
+        state_activity,
+    )
     h_full = add_model_data(data, data_name)
-
-    add_model_data(
-        activity.active.rename(f"{var_name}_is_active"),
-        f"{var_name}_is_active",
-    )
-    fixed_value = add_model_data(
-        activity.fixed_value.rename(f"{var_name}_fixed_value"),
-        f"{var_name}_fixed_value",
+    vector = add_state_vector(
+        activity,
+        prior_args=prior_args,
+        var_name=var_name,
     )
 
-    active_indices = activity.active_indices
-    fixed_indices = activity.fixed_indices
-    latent: TensorVariable | None = None
-    active_state: TensorVariable | None = None
-    if activity.n_active:
-        active_dim = f"{state_dim}_{var_name}_active"
-        active_coord = data.coords[state_dim].isel({state_dim: active_indices})
-        add_coords({active_dim: active_coord})
-        user_facing = parse_prior(
-            f"{var_name}_active",
-            active_prior_args(prior_args, activity),
-            dims=active_dim,
-        )
-        latent = get_model_latent(user_facing, f"{var_name}_active")
-        active_state = user_facing
-
-    full_state = fixed_value
-    if active_state is not None:
-        full_state = pt.set_subtensor(full_state[active_indices], active_state)
-    state = pm.Deterministic(var_name, full_state, dims=state_dim)
-
-    output = pt.zeros((data.sizes[output_dim],), dtype=h_full.dtype)
-    if active_state is not None:
-        output = output + pt.dot(h_full[:, active_indices], active_state)
-    if fixed_indices.size:
-        output = output + pt.dot(h_full[:, fixed_indices], fixed_value[fixed_indices])
+    output = pt.dot(h_full, vector.state)
     if compute_deterministic:
         output = pm.Deterministic(output_name, output, dims=output_dim)
 
     return StateLinearComponentResult(
         data=h_full,
-        latent=latent,
-        state=state,
+        latent=vector.latent,
+        state=vector.state,
         output=cast(TensorVariable, output),
-        activity=activity,
+        activity=vector.activity,
     )
 
 
 def add_sigma_component(
-    site_indicator: xr.DataArray,
+    alignment: SigmaAlignment,
     /,
     prior_args: dict,
-    sigma_freq_index: xr.DataArray | None = None,
-    sigma_freq: str | None = None,
-    var_name: str = "sigma",
-    output_name: str | None = None,
-    per_site: bool = True,
-    output_dim: str = "nmeasure",
     compute_deterministic: bool = False,
 ) -> TensorVariable:
-    """Add inferpymc-compatible sigma terms and align them to observations.
+    """Register a latent sigma component and align it to observations.
 
     Args:
-        site_indicator: Observation-aligned site indicator.
+        alignment: Backend-neutral site and period alignment for the component.
         prior_args: Prior specification for the sigma random variable.
-        sigma_freq_index: Optional explicit observation-aligned frequency
-            indicator.
-        sigma_freq: Optional frequency string used to derive an indicator when
-            ``sigma_freq_index`` is not provided.
-        var_name: Name for the latent sigma random variable.
-        output_name: Optional name for an observation-aligned deterministic
-            output.
-        per_site: Whether sigma varies by site.
-        output_dim: Observation/output dimension name.
         compute_deterministic: Whether to register the aligned sigma term as a
             deterministic variable.
 
     Returns:
         The observation-aligned sigma tensor or deterministic variable.
-
-    Raises:
-        ValueError: If no frequency information is available.
     """
-    output_dim = str(output_dim)
-    site_indicator = site_indicator.rename("site_indicator").transpose(output_dim)
-    freq_index = _resolve_freq_indicator(
-        explicit_indicator=sigma_freq_index,
-        freq=sigma_freq,
-        data=site_indicator,
-        output_dim=output_dim,
-        fallback_name="sigma_freq_index" if var_name == "sigma" else f"{var_name}_freq_indicator",
-    )
-    if freq_index is None:
-        raise ValueError(
-            "Sigma frequency information must be provided via `sigma_freq_index` or `sigma_freq`."
-        )
+    site_data_var = add_model_data(alignment.site_index)
+    period_data_var = add_model_data(alignment.period_index)
 
-    site_data = site_indicator if per_site else xr.zeros_like(site_indicator)
-    site_data_name = "site_indicator" if per_site else f"{var_name}_site_indicator"
-    site_data_var = add_model_data(site_data.rename(site_data_name), site_data_name)
-    freq_data = add_model_data(freq_index.transpose(output_dim), str(freq_index.name))
-
-    nsigma_site = int(site_data.max().item()) + 1 if per_site else 1
-    nsigma_time = int(freq_index.max().item()) + 1 if freq_index.size else 0
     add_coords(
         {
-            "nsigma_site": np.arange(nsigma_site),
-            "nsigma_time": np.arange(nsigma_time),
+            "nsigma_site": np.arange(alignment.nsite),
+            "nsigma_time": np.arange(alignment.nperiod),
         }
     )
 
-    sigma = parse_prior(var_name, prior_args, dims=("nsigma_site", "nsigma_time"))
-    aligned = sigma[site_data_var, freq_data]
+    sigma = parse_prior("sigma", prior_args, dims=("nsigma_site", "nsigma_time"))
+    aligned = sigma[site_data_var, period_data_var]
     if compute_deterministic:
-        deterministic_name = output_name or f"{var_name}_aligned"
-        return pm.Deterministic(deterministic_name, aligned, dims=output_dim)
+        return pm.Deterministic("sigma_aligned", aligned, dims="nmeasure")
     return aligned
 
 
@@ -469,11 +550,11 @@ def add_inferpymc_likelihood_component(
     mu: TensorVariable,
     mu_bc: TensorVariable | None,
     sigprior: dict,
+    sigma_alignment: SigmaAlignment,
     offset: TensorVariable | None = None,
     power: dict | float = 1.99,
     pollution_events_from_obs: bool = False,
     no_model_error: bool = False,
-    sigma_per_site: bool = True,
     output_dim: str = "nmeasure",
 ) -> TensorVariable:
     """Add the inferpymc observation model.
@@ -486,13 +567,13 @@ def add_inferpymc_likelihood_component(
         mu: Non-baseline forward-model contribution.
         mu_bc: Baseline contribution, if present.
         sigprior: Prior specification for sigma.
+        sigma_alignment: Backend-neutral site and period alignment for sigma.
         offset: Optional aligned offset term.
         power: Scalar or prior specification controlling pollution-event
             scaling.
         pollution_events_from_obs: Whether to derive pollution events from the
             observations instead of ``mu``.
         no_model_error: Whether to bypass the model-error term.
-        sigma_per_site: Whether sigma varies by site.
         output_dim: Observation/output dimension name.
 
     Returns:
@@ -502,16 +583,9 @@ def add_inferpymc_likelihood_component(
     error_data = add_model_data(data["mf_error"].transpose(output_dim), "error")
     min_error_data = add_model_data(data["min_error"].transpose(output_dim), "min_error")
 
-    # TODO: once inferpymc threads sigma configuration explicitly, let
-    # add_sigma_component(...) derive sigma_freq_index locally and remove this
-    # canonical input dependency from make_inv_inputs(...).
     sigma = add_sigma_component(
-        data["site_indicator"].transpose(output_dim),
+        sigma_alignment,
         prior_args=sigprior,
-        sigma_freq_index=data["sigma_freq_index"].transpose(output_dim),
-        var_name="sigma",
-        per_site=sigma_per_site,
-        output_dim=output_dim,
     )
 
     if pollution_events_from_obs is True:

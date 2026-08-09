@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import pymc as pm
 import xarray as xr
+from pytensor.compile.mode import Mode
 
 from openghg_inversions.models.components import (
     LinearComponentResult,
@@ -13,6 +14,7 @@ from openghg_inversions.models.components import (
     resolve_model_variable,
 )
 from openghg_inversions.models.coords import CoordRegistry, attach_coord_registry
+from openghg_inversions.sigma import SigmaAlignment
 
 
 def _obs_index() -> pd.MultiIndex:
@@ -48,10 +50,23 @@ def _likelihood_dataset() -> xr.Dataset:
             "mf": ("nmeasure", np.array([1.0, 2.0, 3.0, 4.0])),
             "mf_error": ("nmeasure", np.full(4, 0.1)),
             "site_indicator": ("nmeasure", np.array([0, 0, 1, 1])),
-            "sigma_freq_index": ("nmeasure", np.array([0, 0, 1, 1])),
             "min_error": ("nmeasure", np.full(4, 0.01)),
         },
         coords=_obs_coords(),
+    )
+
+
+def _sigma_alignment(data: xr.Dataset, *, per_site: bool = True) -> SigmaAlignment:
+    """Create prepared sigma alignment data for likelihood tests."""
+    period_index = xr.DataArray(
+        np.array([0, 0, 1, 1]),
+        dims=("nmeasure",),
+        coords=data["site_indicator"].coords,
+    )
+    return SigmaAlignment.from_indices(
+        data["site_indicator"],
+        period_index,
+        per_site=per_site,
     )
 
 
@@ -140,33 +155,33 @@ def test_resolve_model_variable_prefers_latent() -> None:
     assert resolve_model_variable(model, "missing") is None
 
 
-def test_add_sigma_component_supports_explicit_and_derived_freq() -> None:
-    """Check sigma accepts explicit or internally derived frequency indicators."""
-    site_indicator = _site_indicator()
-    sigma_freq_index = xr.DataArray([0, 0, 1, 1], dims=("nmeasure",), coords=site_indicator.coords)
+def test_add_sigma_component_uses_prepared_alignment() -> None:
+    """Check the PyMC component only consumes backend-neutral prepared alignment."""
+    data = _likelihood_dataset()
+    alignment = _sigma_alignment(data)
 
     with pm.Model(coords={"nmeasure": np.arange(4)}) as model:
         attach_coord_registry(model, CoordRegistry())
         add_sigma_component(
-            site_indicator,
+            alignment,
             prior_args={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
-            sigma_freq_index=sigma_freq_index,
+            compute_deterministic=True,
         )
         assert "sigma" in model.named_vars
-        assert "sigma_freq_index" in model.named_vars
+        assert "sigma_site_index" in model.named_vars
+        assert "sigma_period_index" in model.named_vars
+        assert "sigma_aligned" in model.named_vars
 
     with pm.Model(coords={"nmeasure": np.arange(4)}) as model:
         attach_coord_registry(model, CoordRegistry())
         add_sigma_component(
-            site_indicator,
+            _sigma_alignment(data, per_site=False),
             prior_args={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
-            sigma_freq="monthly",
-            per_site=False,
         )
         assert model.named_vars["sigma"].eval().shape[0] == 1
         assert "site_indicator" not in model.named_vars
-        assert np.array_equal(model.named_vars["sigma_site_indicator"].eval(), np.zeros(4))
-        assert "sigma_freq_index" in model.named_vars
+        assert np.array_equal(model.named_vars["sigma_site_index"].eval(), np.zeros(4))
+        assert "sigma_period_index" in model.named_vars
 
 
 def test_add_offset_component_supports_manual_and_derived_freq() -> None:
@@ -230,7 +245,7 @@ def test_add_inferpymc_likelihood_component_adds_epsilon_and_y() -> None:
             mu=mu,
             mu_bc=mu_bc,
             sigprior={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
-            sigma_per_site=True,
+            sigma_alignment=_sigma_alignment(ds),
         )
 
     assert {"epsilon", "y", "sigma"}.issubset(model.named_vars)
@@ -250,7 +265,7 @@ def test_likelihood_no_model_error_uses_observation_error() -> None:
             mu_bc=None,
             sigprior={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
             no_model_error=True,
-            sigma_per_site=False,
+            sigma_alignment=_sigma_alignment(ds, per_site=False),
         )
 
     np.testing.assert_allclose(model.named_vars["epsilon"].eval(), ds["mf_error"].values)
@@ -259,7 +274,6 @@ def test_likelihood_no_model_error_uses_observation_error() -> None:
 def test_likelihood_pollution_events_from_obs_can_run_without_boundary_conditions() -> None:
     """Check obs-derived pollution-event scaling does not require BC terms."""
     ds = _likelihood_dataset().copy()
-    ds["sigma_freq_index"] = ("nmeasure", np.zeros(ds.sizes["nmeasure"], dtype=int))
 
     with pm.Model(coords={"nmeasure": np.arange(4)}) as model:
         attach_coord_registry(model, CoordRegistry())
@@ -270,11 +284,15 @@ def test_likelihood_pollution_events_from_obs_can_run_without_boundary_condition
             mu_bc=None,
             sigprior={"pdf": "uniform", "lower": 0.5, "upper": 1.5},
             pollution_events_from_obs=True,
-            sigma_per_site=False,
+            sigma_alignment=SigmaAlignment.from_frequency(
+                ds["site_indicator"],
+                frequency=None,
+                per_site=False,
+            ),
             power=2.0,
         )
 
-    epsilon = model.named_vars["epsilon"].eval()
+    epsilon = model.named_vars["epsilon"].eval(mode=Mode(linker="py", optimizer="fast_run"))
     assert np.all(np.diff(epsilon) > 0)
     assert "y" in model.named_vars
 
@@ -298,7 +316,7 @@ def test_likelihood_samples_prior_predictive_with_shared_sigma_and_registered_si
             mu_bc=mu_bc,
             offset=offset,
             sigprior={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
-            sigma_per_site=False,
+            sigma_alignment=_sigma_alignment(ds, per_site=False),
         )
 
         assert model.named_vars["sigma"].eval().shape[0] == 1
