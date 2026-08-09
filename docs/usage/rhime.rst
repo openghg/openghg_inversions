@@ -700,6 +700,72 @@ baseline component.
 The legacy single-sector ``inferpymc`` / ``fixedbasisMCMC`` compatibility path
 continues to sample its full flux state and does not gain multisector behavior.
 
+Correlated Positive States And Marginalization
+----------------------------------------------
+
+``CorrelatedLognormalPrior`` is the low-level contract for one labelled joint
+positive state. It accepts an arithmetic mean vector ``m`` and covariance
+``C`` and constructs the latent Gaussian moments
+
+.. math::
+
+   \Sigma_{ij} = \log\left(1 + \frac{C_{ij}}{m_i m_j}\right),
+   \qquad
+   \mu_i = \log(m_i) - \frac{1}{2}\Sigma_{ii}.
+
+For a mean-one scale state this reduces to ``Sigma = log1p(C)``. The contract
+validates labelled state order, arithmetic covariance, and positive
+definiteness of the derived latent covariance. ``add_correlated_lognormal_state``
+then creates a whitened standard-normal ``<name>_latent`` and the positive
+public state ``<name>``.
+
+.. code-block:: python
+
+   import pymc as pm
+   import xarray as xr
+
+   from openghg_inversions.models import (
+       CorrelatedLognormalPrior,
+       add_correlated_lognormal_state,
+   )
+
+   mean = xr.DataArray(
+       [1.0, 1.0],
+       dims="state",
+       coords={"state": ["region-a", "region-b"]},
+   )
+   prior = CorrelatedLognormalPrior.from_moments(
+       mean,
+       [[0.16, 0.03], [0.03, 0.09]],
+   )
+
+   with pm.Model():
+       state = add_correlated_lognormal_state(prior, var_name="x")
+
+This component is intentionally separate from ``StateActivity``. An inactive
+``StateActivity`` entry is conditioned on a fixed value and restored into the
+full public state. By contrast, ``prior.select_marginal(retained)`` selects the
+principal marginal distribution and returns only retained states; it has no
+fixed-value reconstruction.
+
+Selecting a prior marginal does **not** reduce ``H`` or construct an unresolved
+aggregation covariance. A coherent reduced model must provide a matching
+retained design and aggregation covariance from the same preparation ledger.
+Do not apply ``select_marginal`` independently to an ordinary full-state RHIME
+design. `Issue #566 <https://github.com/openghg/openghg_inversions/issues/566>`_
+tracks that coherent preparation contract.
+
+The covariance matrix uses a distinct second dimension, named
+``<state_dim>_covariance`` by default. If an xarray covariance supplies column
+labels, they must exactly equal the primary state labels in the same order.
+An unlabelled NumPy covariance is interpreted in the arithmetic mean's state
+order. Reordered inputs are rejected rather than interpreted positionally.
+
+The initial public component is intended for custom model builders. Built-in
+``RhimeModelSpec`` integration for a gathered joint state and compatibility
+per-sector aliases is follow-up work; current ``SectorSpec`` priors remain
+independent.
+
 Basis-Aware Prior Standard Deviations
 -------------------------------------
 

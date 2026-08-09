@@ -35,6 +35,7 @@ import pytensor.tensor as pt
 import xarray as xr
 from pytensor.tensor.variable import TensorVariable
 
+from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.inversion_inputs import make_freq_indicator
 from openghg_inversions.models.coords import add_coords
 from openghg_inversions.models.priors import parse_prior
@@ -71,6 +72,23 @@ class StateVectorResult:
     latent: TensorVariable | None
     state: TensorVariable
     activity: ResolvedStateActivity
+
+
+@dataclass
+class CorrelatedStateResult:
+    """Objects created by ``add_correlated_lognormal_state``.
+
+    Attributes:
+        latent: Standard-normal whitened state used by the sampler.
+        state: Positive user-facing state with the requested arithmetic
+            LogNormal moments.
+        prior: Validated backend-neutral moment contract used to build the
+            graph.
+    """
+
+    latent: TensorVariable
+    state: TensorVariable
+    prior: CorrelatedLognormalPrior
 
 
 @dataclass
@@ -362,6 +380,49 @@ def add_state_vector(
         full_state = pt.set_subtensor(full_state[active_indices], active_state)
     state = pm.Deterministic(var_name, full_state, dims=state_dim)
     return StateVectorResult(latent=latent, state=state, activity=activity)
+
+
+def add_correlated_lognormal_state(
+    prior: CorrelatedLognormalPrior,
+    /,
+    *,
+    var_name: str,
+) -> CorrelatedStateResult:
+    """Add a whitened correlated LogNormal state to the active PyMC model.
+
+    Args:
+        prior: Validated labelled arithmetic and latent moment contract.
+        var_name: Name of the positive user-facing state. The whitened standard
+            normal is named ``{var_name}_latent``.
+
+    Returns:
+        The whitened latent, positive state, and supplied prior contract.
+
+    Notes:
+        Coherent marginalization must be completed before calling this helper,
+        using ``CorrelatedLognormalPrior.select_marginal``. This helper does not
+        accept ``StateActivity`` because fixed-state conditioning and joint-
+        prior marginalization are different statistical operations.
+    """
+    state_dim = prior.state_dim
+    add_coords(prior.mean.coords, model_dims=(state_dim,))
+    latent = pm.Normal(f"{var_name}_latent", 0.0, 1.0, dims=state_dim)
+    backend_latent_mean = np.asarray(pm.floatX(np.asarray(prior.latent_mean.values)))
+    backend_cholesky = np.asarray(pm.floatX(np.asarray(prior.latent_cholesky.values)))
+    if not np.isfinite(backend_latent_mean).all() or not np.isfinite(backend_cholesky).all():
+        raise ValueError("Correlated LogNormal moments must remain finite in the model float dtype.")
+    if (np.diag(backend_cholesky) <= 0).any():
+        raise ValueError(
+            "Correlated LogNormal Cholesky diagonal must remain positive in the model float dtype."
+        )
+    latent_mean = pt.as_tensor_variable(backend_latent_mean)
+    cholesky = pt.as_tensor_variable(backend_cholesky)
+    state = pm.Deterministic(
+        var_name,
+        pt.exp(latent_mean + pt.dot(cholesky, latent)),
+        dims=state_dim,
+    )
+    return CorrelatedStateResult(latent=latent, state=state, prior=prior)
 
 
 def add_state_linear_component(
