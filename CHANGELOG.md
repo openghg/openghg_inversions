@@ -11,6 +11,16 @@
   Public InferenceData save/load helpers preserve these semantics across both
   storage backends. [#555](https://github.com/openghg/openghg_inversions/issues/555)
 
+- Fixed the weights-first fixed-outer adapter to reorder physically equivalent
+  reversed coordinates for both outer-region and inner-class maps before
+  strict grid validation. Genuinely incompatible coordinates still fail.
+  [PR #525 follow-up](https://github.com/openghg/openghg_inversions/pull/525).
+
+- Temporarily constrained PyMC to versions below 6 and ArviZ to versions below
+  1 while the runtime trace representation migrates from ``InferenceData`` to
+  ``xarray.DataTree``. ArviZ is now declared directly because it is imported by
+  the package. [#443](https://github.com/openghg/openghg_inversions/issues/443)
+
 - Added modern RHIME likelihood support for fixed aggregation-error covariance
   supplied after input preparation: exact dense, low-rank-plus-diagonal, and
   independent diagonal representations. Structured likelihoods retain the
