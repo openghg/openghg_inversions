@@ -676,6 +676,71 @@ baseline component.
 The legacy single-sector ``inferpymc`` / ``fixedbasisMCMC`` compatibility path
 continues to sample its full flux state and does not gain multisector behavior.
 
+Basis-Aware Prior Standard Deviations
+-------------------------------------
+
+The lower-level basis API can project independent grid-cell scale-factor
+uncertainty onto the labelled states of a retained ``BasisFunctions`` object.
+For basis membership ``A`` and cell-total weights ``w = flux * area``,
+``project_basis_prior_stdev`` computes
+
+.. math::
+
+   \sigma_{x,k} =
+   \frac{\sqrt{\sum_i A_{ik}(w_i\,\sigma_i)^2}}
+        {\left|\sum_i A_{ik}w_i\right|}.
+
+The grid-cell standard deviation may be scalar, source-labelled, or gridded.
+The retained flux is used unless an explicit replacement is supplied. State
+and source labels come from the retained operator; source-specific ragged bases
+retain their gathered ``(source, region_in_source)`` state coordinate.
+
+.. code-block:: python
+
+   from openghg_inversions.basis import (
+       calibrate_basis_prior_stdev,
+       project_basis_prior_stdev,
+   )
+
+   x_prior_stdev = project_basis_prior_stdev(
+       basis_functions,
+       area_grid=cell_area,
+       grid_cell_prior_stdev=grid_prior_sd,
+   )
+   model = build_rhime_model(
+       inv_inputs,
+       x_prior={"pdf": "normal", "mu": 1.0, "sigma": x_prior_stdev},
+   )
+
+``calibrate_basis_prior_stdev`` accepts a caller-defined target matrix and
+requested relative standard deviation. It projects a unit cell standard
+deviation, then uses linearity independently for each source. The default
+``target_statistic="median-relative"`` matches the median valid target-relative
+SD. ``target_statistic="mean-total"`` instead matches mean target SD divided by
+mean absolute target total. Both reductions work with dask-backed target rows,
+and achieved values for every target are returned for inspection.
+
+Pass the labelled Boolean ``state_is_active`` mask used by the model when some
+states will be fixed, including exact zero-sensitivity states. Calibration then
+sets those state widths to zero and excludes them from achieved target
+uncertainty. The positive widths for active states can be passed directly to
+the prior API; fixed-state zero widths are removed by active-state prior
+slicing. Requested calibration widths must be strictly positive, and negative
+grid-cell standard deviations are rejected.
+
+The result contains ``grid_cell_prior_stdev``,
+``x_prior_stdev``, state and target totals, achieved target SD and relative SD,
+and explicit status variables. ``zero`` identifies a target with no absolute
+weighted flux, while ``cancellation`` identifies nonzero signed weights whose
+target total is zero. No target masks, countries, or relative-SD defaults are
+built into these helpers.
+
+For ragged multisource bases, ``x_prior_stdev`` remains on the operator's
+gathered state coordinate. Source-level calibration diagnostics use the
+``calibration_source`` dimension because xarray cannot store both a gathered
+MultiIndex level named ``source`` and a separate dimension with the same name
+in one ``Dataset``.
+
 Output Formats
 --------------
 
