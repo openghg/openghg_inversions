@@ -726,6 +726,12 @@
 </li>
       <li><a href="reference/openghg_inversions.postprocessing.stats.html#openghg_inversions.postprocessing.stats.calculate_stats">calculate_stats() (in module openghg_inversions.postprocessing.stats)</a>
 </li>
+      <li><a href="reference/openghg_inversions.basis.html#openghg_inversions.basis.calibrate_basis_prior_stdev">calibrate_basis_prior_stdev() (in module openghg_inversions.basis)</a>
+
+      <ul>
+        <li><a href="reference/openghg_inversions.basis.prior_uncertainty.html#openghg_inversions.basis.prior_uncertainty.calibrate_basis_prior_stdev">(in module openghg_inversions.basis.prior_uncertainty)</a>
+</li>
+      </ul></li>
       <li><a href="reference/openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.ContrastProximityComponentConsolidation.cell_weight">cell_weight (openghg_inversions.basis.algorithms.ContrastProximityComponentConsolidation attribute)</a>
 
       <ul>
@@ -991,6 +997,8 @@
       <li><a href="reference/openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.LatLonGridGeometry.earth_radius_m">earth_radius_m (openghg_inversions.basis.algorithms.LatLonGridGeometry attribute)</a>
 </li>
       <li><a href="reference/openghg_inversions.serialization.html#openghg_inversions.serialization.encode_cf_multiindexes">encode_cf_multiindexes() (in module openghg_inversions.serialization)</a>
+</li>
+      <li><a href="reference/openghg_inversions.serialization.html#openghg_inversions.serialization.encode_multiindexes_for_storage">encode_multiindexes_for_storage() (in module openghg_inversions.serialization)</a>
 </li>
       <li><a href="reference/openghg_inversions.postprocessing.inversion_output.html#openghg_inversions.postprocessing.inversion_output.InversionOutput.end_date">end_date (openghg_inversions.postprocessing.inversion_output.InversionOutput property)</a>
 
@@ -1404,10 +1412,10 @@
       </ul></li>
       <li><a href="reference/openghg_inversions.config.config.html#openghg_inversions.config.config.list_check">list_check() (in module openghg_inversions.config.config)</a>
 </li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="reference/openghg_inversions.filters.html#openghg_inversions.filters.list_filters">list_filters() (in module openghg_inversions.filters)</a>
 </li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="reference/openghg_inversions.basis.basis_functions.html#openghg_inversions.basis.basis_functions.FluxWeightedBasis.load">load() (openghg_inversions.basis.basis_functions.FluxWeightedBasis class method)</a>
 
       <ul>
@@ -1421,6 +1429,8 @@
       <li><a href="reference/openghg_inversions.basis.html#openghg_inversions.basis.load_basis_functions">load_basis_functions() (in module openghg_inversions.basis)</a>
 </li>
       <li><a href="reference/openghg_inversions.basis.html#openghg_inversions.basis.load_country_region_classes">load_country_region_classes() (in module openghg_inversions.basis)</a>
+</li>
+      <li><a href="reference/openghg_inversions.serialization.html#openghg_inversions.serialization.load_inferencedata">load_inferencedata() (in module openghg_inversions.serialization)</a>
 </li>
       <li><a href="reference/openghg_inversions.basis.html#openghg_inversions.basis.load_intem_outer_regions">load_intem_outer_regions() (in module openghg_inversions.basis)</a>
 </li>
@@ -1597,6 +1607,8 @@
         <li><a href="reference/openghg_inversions.basis.layout.html#module-openghg_inversions.basis.layout">openghg_inversions.basis.layout</a>
 </li>
         <li><a href="reference/openghg_inversions.basis.operators.html#module-openghg_inversions.basis.operators">openghg_inversions.basis.operators</a>
+</li>
+        <li><a href="reference/openghg_inversions.basis.prior_uncertainty.html#module-openghg_inversions.basis.prior_uncertainty">openghg_inversions.basis.prior_uncertainty</a>
 </li>
         <li><a href="reference/openghg_inversions.cli.html#module-openghg_inversions.cli">openghg_inversions.cli</a>
 </li>
@@ -1783,6 +1795,8 @@
 </li>
       <li><a href="reference/openghg_inversions.filters.html#openghg_inversions.filters.noon">noon() (in module openghg_inversions.filters)</a>
 </li>
+      <li><a href="reference/openghg_inversions.serialization.html#openghg_inversions.serialization.normalise_declared_multiindex">normalise_declared_multiindex() (in module openghg_inversions.serialization)</a>
+</li>
       <li><a href="reference/openghg_inversions.model_error.html#openghg_inversions.model_error.normalise_min_error_options">normalise_min_error_options() (in module openghg_inversions.model_error)</a>
 </li>
       <li><a href="reference/openghg_inversions.rhime.params.html#openghg_inversions.rhime.params.normalise_optional_mapping">normalise_optional_mapping() (in module openghg_inversions.rhime.params)</a>
@@ -1908,6 +1922,13 @@
 
       <ul>
         <li><a href="reference/openghg_inversions.basis.operators.html#module-openghg_inversions.basis.operators">module</a>
+</li>
+      </ul></li>
+      <li>
+    openghg_inversions.basis.prior_uncertainty
+
+      <ul>
+        <li><a href="reference/openghg_inversions.basis.prior_uncertainty.html#module-openghg_inversions.basis.prior_uncertainty">module</a>
 </li>
       </ul></li>
       <li>
@@ -2483,10 +2504,10 @@
 </li>
       <li><a href="reference/openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.AllSplitAcceptancePolicies.policies">policies (openghg_inversions.basis.algorithms.AllSplitAcceptancePolicies attribute)</a>
 </li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="reference/openghg_inversions.flux_sanitization.html#openghg_inversions.flux_sanitization.FluxNonFiniteMetadata.policy">policy (openghg_inversions.flux_sanitization.FluxNonFiniteMetadata attribute)</a>
 </li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="reference/openghg_inversions.models.rhime.html#openghg_inversions.models.rhime.RhimeModelSpec.pollution_events_from_obs">pollution_events_from_obs (openghg_inversions.models.rhime.RhimeModelSpec attribute)</a>
 
       <ul>
@@ -2569,6 +2590,12 @@
         <li><a href="reference/openghg_inversions.rhime.runner.html#openghg_inversions.rhime.runner.RhimeSampler.progressbar">(openghg_inversions.rhime.runner.RhimeSampler attribute)</a>
 </li>
         <li><a href="reference/openghg_inversions.rhime.sampling.html#openghg_inversions.rhime.sampling.RhimeSampler.progressbar">(openghg_inversions.rhime.sampling.RhimeSampler attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="reference/openghg_inversions.basis.html#openghg_inversions.basis.project_basis_prior_stdev">project_basis_prior_stdev() (in module openghg_inversions.basis)</a>
+
+      <ul>
+        <li><a href="reference/openghg_inversions.basis.prior_uncertainty.html#openghg_inversions.basis.prior_uncertainty.project_basis_prior_stdev">(in module openghg_inversions.basis.prior_uncertainty)</a>
 </li>
       </ul></li>
       <li><a href="reference/openghg_inversions.postprocessing.inversion_output.html#openghg_inversions.postprocessing.inversion_output.InversionOutput.provenance">provenance (openghg_inversions.postprocessing.inversion_output.InversionOutput attribute)</a>
@@ -2719,6 +2746,8 @@
         <li><a href="reference/openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.ResolvedStateActivity">(class in openghg_inversions.models.state_activity)</a>
 </li>
       </ul></li>
+      <li><a href="reference/openghg_inversions.serialization.html#openghg_inversions.serialization.restore_declared_multiindexes">restore_declared_multiindexes() (in module openghg_inversions.serialization)</a>
+</li>
       <li><a href="reference/openghg_inversions.models.html#openghg_inversions.models.restore_inferencedata_coords">restore_inferencedata_coords() (in module openghg_inversions.models)</a>
 
       <ul>
@@ -2886,6 +2915,8 @@
 </li>
       </ul></li>
       <li><a href="reference/openghg_inversions.serialization.html#openghg_inversions.serialization.save_datatree">save_datatree() (in module openghg_inversions.serialization)</a>
+</li>
+      <li><a href="reference/openghg_inversions.serialization.html#openghg_inversions.serialization.save_inferencedata">save_inferencedata() (in module openghg_inversions.serialization)</a>
 </li>
       <li><a href="reference/openghg_inversions.rhime.html#openghg_inversions.rhime.RhimeOutputSpec.save_inversion_output">save_inversion_output (openghg_inversions.rhime.RhimeOutputSpec attribute)</a>
 

@@ -300,6 +300,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.basis_functions.html">openghg_inversions.basis.basis_functions</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.layout.html">openghg_inversions.basis.layout</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.operators.html">openghg_inversions.basis.operators</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.prior_uncertainty.html">openghg_inversions.basis.prior_uncertainty</a></li>
 </ul>
 </details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.config.html">openghg_inversions.config</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
@@ -446,12 +447,14 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.bucket_basis_from_weights"><code class="docutils literal notranslate"><span class="pre">bucket_basis_from_weights()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.bucket_basis_function"><code class="docutils literal notranslate"><span class="pre">bucket_basis_function()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.bucketbasisfunction"><code class="docutils literal notranslate"><span class="pre">bucketbasisfunction()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.calibrate_basis_prior_stdev"><code class="docutils literal notranslate"><span class="pre">calibrate_basis_prior_stdev()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.fixed_outer_regions_basis"><code class="docutils literal notranslate"><span class="pre">fixed_outer_regions_basis()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.load_basis_functions"><code class="docutils literal notranslate"><span class="pre">load_basis_functions()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.load_country_region_classes"><code class="docutils literal notranslate"><span class="pre">load_country_region_classes()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.load_intem_outer_regions"><code class="docutils literal notranslate"><span class="pre">load_intem_outer_regions()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.make_basis_functions"><code class="docutils literal notranslate"><span class="pre">make_basis_functions()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.paired_abs_response_weights"><code class="docutils literal notranslate"><span class="pre">paired_abs_response_weights()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.project_basis_prior_stdev"><code class="docutils literal notranslate"><span class="pre">project_basis_prior_stdev()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.quadtree_basis_from_weights"><code class="docutils literal notranslate"><span class="pre">quadtree_basis_from_weights()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.quadtree_basis_function"><code class="docutils literal notranslate"><span class="pre">quadtree_basis_function()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.quadtreebasisfunction"><code class="docutils literal notranslate"><span class="pre">quadtreebasisfunction()</span></code></a></li>
@@ -516,6 +519,11 @@
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.basis.operators.html#openghg_inversions.basis.operators.drop_singleton_time"><code class="docutils literal notranslate"><span class="pre">drop_singleton_time()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.basis.operators.html#openghg_inversions.basis.operators.get_basis_operator_class"><code class="docutils literal notranslate"><span class="pre">get_basis_operator_class()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.basis.operators.html#openghg_inversions.basis.operators.register_basis_operator"><code class="docutils literal notranslate"><span class="pre">register_basis_operator()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.prior_uncertainty.html">openghg_inversions.basis.prior_uncertainty</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.basis.prior_uncertainty.html#openghg_inversions.basis.prior_uncertainty.calibrate_basis_prior_stdev"><code class="docutils literal notranslate"><span class="pre">calibrate_basis_prior_stdev()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.basis.prior_uncertainty.html#openghg_inversions.basis.prior_uncertainty.project_basis_prior_stdev"><code class="docutils literal notranslate"><span class="pre">project_basis_prior_stdev()</span></code></a></li>
 </ul>
 </li>
 </ul>
@@ -1195,12 +1203,17 @@
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.serialization.html">openghg_inversions.serialization</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.serialization.html#openghg_inversions.serialization.decode_cf_multiindexes"><code class="docutils literal notranslate"><span class="pre">decode_cf_multiindexes()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.serialization.html#openghg_inversions.serialization.encode_cf_multiindexes"><code class="docutils literal notranslate"><span class="pre">encode_cf_multiindexes()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.serialization.html#openghg_inversions.serialization.encode_multiindexes_for_storage"><code class="docutils literal notranslate"><span class="pre">encode_multiindexes_for_storage()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.serialization.html#openghg_inversions.serialization.inferencedata_from_datatree"><code class="docutils literal notranslate"><span class="pre">inferencedata_from_datatree()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.serialization.html#openghg_inversions.serialization.inferencedata_to_datatree"><code class="docutils literal notranslate"><span class="pre">inferencedata_to_datatree()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.serialization.html#openghg_inversions.serialization.load_inferencedata"><code class="docutils literal notranslate"><span class="pre">load_inferencedata()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.serialization.html#openghg_inversions.serialization.normalise_declared_multiindex"><code class="docutils literal notranslate"><span class="pre">normalise_declared_multiindex()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.serialization.html#openghg_inversions.serialization.open_datatree_loaded"><code class="docutils literal notranslate"><span class="pre">open_datatree_loaded()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.serialization.html#openghg_inversions.serialization.reset_serialisation_multiindexes"><code class="docutils literal notranslate"><span class="pre">reset_serialisation_multiindexes()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.serialization.html#openghg_inversions.serialization.restore_declared_multiindexes"><code class="docutils literal notranslate"><span class="pre">restore_declared_multiindexes()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.serialization.html#openghg_inversions.serialization.restore_serialisation_multiindexes"><code class="docutils literal notranslate"><span class="pre">restore_serialisation_multiindexes()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.serialization.html#openghg_inversions.serialization.save_datatree"><code class="docutils literal notranslate"><span class="pre">save_datatree()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.serialization.html#openghg_inversions.serialization.save_inferencedata"><code class="docutils literal notranslate"><span class="pre">save_inferencedata()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.sigma.html">openghg_inversions.sigma</a><ul>

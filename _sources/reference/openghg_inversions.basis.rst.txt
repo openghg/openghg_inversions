@@ -20,3 +20,4 @@ openghg\_inversions.basis
    openghg_inversions.basis.basis_functions
    openghg_inversions.basis.layout
    openghg_inversions.basis.operators
+   openghg_inversions.basis.prior_uncertainty

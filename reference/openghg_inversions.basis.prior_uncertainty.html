@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>openghg_inversions.postprocessing.diagnostics &#8212; openghg_inversions  documentation</title>
+    <title>openghg_inversions.basis.prior_uncertainty &#8212; openghg_inversions  documentation</title>
   
   
   
@@ -41,12 +41,12 @@
     <script src="../_static/documentation_options.js?v=5929fcd5"></script>
     <script src="../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
-    <script>DOCUMENTATION_OPTIONS.pagename = 'reference/openghg_inversions.postprocessing.diagnostics';</script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'reference/openghg_inversions.basis.prior_uncertainty';</script>
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="openghg_inversions.postprocessing.inversion_output" href="openghg_inversions.postprocessing.inversion_output.html" />
-    <link rel="prev" title="openghg_inversions.postprocessing.countries" href="openghg_inversions.postprocessing.countries.html" />
+    <link rel="next" title="openghg_inversions.config" href="openghg_inversions.config.html" />
+    <link rel="prev" title="openghg_inversions.basis.operators" href="openghg_inversions.basis.operators.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="" />
@@ -295,12 +295,12 @@
   <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
   <div class="bd-toc-item navbar-nav"><ul class="current nav bd-sidenav">
 <li class="toctree-l1 current active has-children"><a class="reference internal" href="openghg_inversions.html">openghg_inversions</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
-<li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.basis.html">openghg_inversions.basis</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 current active has-children"><a class="reference internal" href="openghg_inversions.basis.html">openghg_inversions.basis</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.algorithms.html">openghg_inversions.basis.algorithms</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.basis_functions.html">openghg_inversions.basis.basis_functions</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.layout.html">openghg_inversions.basis.layout</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.operators.html">openghg_inversions.basis.operators</a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.prior_uncertainty.html">openghg_inversions.basis.prior_uncertainty</a></li>
+<li class="toctree-l3 current active"><a class="current reference internal" href="#">openghg_inversions.basis.prior_uncertainty</a></li>
 </ul>
 </details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.config.html">openghg_inversions.config</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
@@ -346,9 +346,9 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.state_activity.html">openghg_inversions.models.state_activity</a></li>
 </ul>
 </details></li>
-<li class="toctree-l2 current active has-children"><a class="reference internal" href="openghg_inversions.postprocessing.html">openghg_inversions.postprocessing</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
+<li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.postprocessing.html">openghg_inversions.postprocessing</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.countries.html">openghg_inversions.postprocessing.countries</a></li>
-<li class="toctree-l3 current active"><a class="current reference internal" href="#">openghg_inversions.postprocessing.diagnostics</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.diagnostics.html">openghg_inversions.postprocessing.diagnostics</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.inversion_output.html">openghg_inversions.postprocessing.inversion_output</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.legacy_outputs.html">openghg_inversions.postprocessing.legacy_outputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.make_outputs.html">openghg_inversions.postprocessing.make_outputs</a></li>
@@ -426,9 +426,9 @@
     <li class="breadcrumb-item"><a href="openghg_inversions.html" class="nav-link">openghg_inversions</a></li>
     
     
-    <li class="breadcrumb-item"><a href="openghg_inversions.postprocessing.html" class="nav-link">openghg_inversions.postprocessing</a></li>
+    <li class="breadcrumb-item"><a href="openghg_inversions.basis.html" class="nav-link">openghg_inversions.basis</a></li>
     
-    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">openghg_inversions.postprocessing.diagnostics</span></li>
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">openghg_inversions.basis.prior_uncertainty</span></li>
   </ul>
 </nav>
 </div>
@@ -445,130 +445,77 @@
 <div id="searchbox"></div>
                 <article class="bd-article">
                   
-  <section id="module-openghg_inversions.postprocessing.diagnostics">
-<span id="openghg-inversions-postprocessing-diagnostics"></span><h1>openghg_inversions.postprocessing.diagnostics<a class="headerlink" href="#module-openghg_inversions.postprocessing.diagnostics" title="Link to this heading">#</a></h1>
-<dl class="py class">
-<dt class="sig sig-object py" id="openghg_inversions.postprocessing.diagnostics.Diagnostic">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">openghg_inversions.postprocessing.diagnostics.</span></span><span class="sig-name descname"><span class="pre">Diagnostic</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">func</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">params</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.postprocessing.diagnostics.Diagnostic" title="Link to this definition">#</a></dt>
-<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">tuple</span></code></a></p>
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.postprocessing.diagnostics.Diagnostic.func">
-<span class="sig-name descname"><span class="pre">func</span></span><a class="headerlink" href="#openghg_inversions.postprocessing.diagnostics.Diagnostic.func" title="Link to this definition">#</a></dt>
-<dd><p>Alias for field number 0</p>
-</dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.postprocessing.diagnostics.Diagnostic.params">
-<span class="sig-name descname"><span class="pre">params</span></span><a class="headerlink" href="#openghg_inversions.postprocessing.diagnostics.Diagnostic.params" title="Link to this definition">#</a></dt>
-<dd><p>Alias for field number 1</p>
-</dd></dl>
-
-</dd></dl>
-
+  <section id="module-openghg_inversions.basis.prior_uncertainty">
+<span id="openghg-inversions-basis-prior-uncertainty"></span><h1>openghg_inversions.basis.prior_uncertainty<a class="headerlink" href="#module-openghg_inversions.basis.prior_uncertainty" title="Link to this heading">#</a></h1>
+<p>Basis-aware projection and calibration of scale-factor prior uncertainty.</p>
+<p>The public helpers in this module operate on retained <code class="xref py py-class docutils literal notranslate"><span class="pre">BasisFunctions</span></code>
+objects.  They treat grid-cell scale perturbations as independent and project
+their standard deviations onto the operator’s labelled state coordinate.</p>
 <dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.postprocessing.diagnostics.bayes_r2_by_site">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.postprocessing.diagnostics.</span></span><span class="sig-name descname"><span class="pre">bayes_r2_by_site</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">inv_out</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.postprocessing.inversion_output.html#openghg_inversions.postprocessing.inversion_output.InversionOutput" title="openghg_inversions.postprocessing.inversion_output.InversionOutput"><span class="pre">InversionOutput</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">report_prior</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></span><a class="headerlink" href="#openghg_inversions.postprocessing.diagnostics.bayes_r2_by_site" title="Link to this definition">#</a></dt>
-<dd><p>Compute Bayesian R2 scores grouped by site.</p>
-<p>Scores are computed for posterior predictive traces (compared
-against true obs).</p>
-<p>Prior R2 scores also be computed, but they can not necessarily be
-compared with the posterior scores, since Bayesian R2 scores are
-normalised to always fall between 0 and 1.</p>
+<dt class="sig sig-object py" id="openghg_inversions.basis.prior_uncertainty.calibrate_basis_prior_stdev">
+<span class="sig-prename descclassname"><span class="pre">openghg_inversions.basis.prior_uncertainty.</span></span><span class="sig-name descname"><span class="pre">calibrate_basis_prior_stdev</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">basis_functions</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.basis.basis_functions.html#openghg_inversions.basis.basis_functions.FluxWeightedBasis" title="openghg_inversions.basis.basis_functions.FluxWeightedBasis"><span class="pre">FluxWeightedBasis</span></a></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">area_grid</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_matrix</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_relative_stdev</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_statistic</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><span class="pre">Literal</span></a><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'median-relative'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'mean-total'</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'median-relative'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">state_is_active</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">flux</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></span><a class="headerlink" href="#openghg_inversions.basis.prior_uncertainty.calibrate_basis_prior_stdev" title="Link to this definition">#</a></dt>
+<dd><p>Calibrate grid-cell and basis-state prior widths to aggregate targets.</p>
+<p>Calibration first projects a unit grid-cell standard deviation. For each
+source, linearity then gives the cell standard deviation required to match
+either the median target-relative SD or the ratio of mean target SD to mean
+absolute target total. A scalar target request is shared; a source-labelled
+request is selected by label. With one target per source, either statistic
+matches the requested value exactly.</p>
+<p><code class="docutils literal notranslate"><span class="pre">target_matrix</span></code> may contain any caller-defined target dimensions in
+addition to the operator grid.  No countries, masks, or target percentages
+are built into this API.</p>
+<p>The result includes <code class="docutils literal notranslate"><span class="pre">grid_cell_prior_stdev</span></code>, <code class="docutils literal notranslate"><span class="pre">x_prior_stdev</span></code>, state and
+target totals, achieved target standard deviations, achieved relative
+standard deviations, and explicit state/target/calibration status strings.
+Status <code class="docutils literal notranslate"><span class="pre">zero</span></code> means the target contains no absolute weighted flux;
+<code class="docutils literal notranslate"><span class="pre">cancellation</span></code> means nonzero signed weights sum to a zero target total;
+<code class="docutils literal notranslate"><span class="pre">state_cancellation</span></code> means a target depends on a basis state whose own
+signed total cancels to zero.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>inv_out</strong> – Inversion output containing obs and trace</p></li>
-<li><p><strong>report_prior</strong> – if True, return prior R2 in addition to posterior R2</p></li>
+<li><p><strong>basis_functions</strong> – Retained basis artifact and operator.</p></li>
+<li><p><strong>area_grid</strong> – Grid-cell areas on the operator grid.</p></li>
+<li><p><strong>target_matrix</strong> – Caller-defined target masks or weights.</p></li>
+<li><p><strong>target_relative_stdev</strong> – Requested relative standard deviation, scalar or
+source-labelled.</p></li>
+<li><p><strong>target_statistic</strong> – Aggregate calibration statistic, either
+<code class="docutils literal notranslate"><span class="pre">&quot;median-relative&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;mean-total&quot;</span></code>.</p></li>
+<li><p><strong>state_is_active</strong> – Optional labelled Boolean state mask. Inactive state
+widths are set to zero and omitted from target uncertainty, matching
+active-state model sampling.</p></li>
+<li><p><strong>flux</strong> – Optional replacement flux.  The retained flux is used by default.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p><dl class="simple">
-<dt>containing posterior (and optionally, prior) Bayesian R2 values,</dt><dd><p>with uncertainties.</p>
-</dd>
-</dl>
-</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>xr.Dataset</p>
+<dd class="field-even"><p>Dataset containing calibrated widths and projection diagnostics.</p>
 </dd>
 </dl>
 </dd></dl>
 
 <dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.postprocessing.diagnostics.bayes_r2_by_site_resample">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.postprocessing.diagnostics.</span></span><span class="sig-name descname"><span class="pre">bayes_r2_by_site_resample</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">inv_out</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.postprocessing.inversion_output.html#openghg_inversions.postprocessing.inversion_output.InversionOutput" title="openghg_inversions.postprocessing.inversion_output.InversionOutput"><span class="pre">InversionOutput</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">freq</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'MS'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">report_prior</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></span><a class="headerlink" href="#openghg_inversions.postprocessing.diagnostics.bayes_r2_by_site_resample" title="Link to this definition">#</a></dt>
-<dd><p>Compute Bayesian R2 scores grouped by site and time.</p>
-<p>Scores are computed for posterior predictive traces (compared
-against true obs).</p>
-<p>Prior R2 scores also be computed, but they can not necessarily be
-compared with the posterior scores, since Bayesian R2 scores are
-normalised to always fall between 0 and 1.</p>
+<dt class="sig sig-object py" id="openghg_inversions.basis.prior_uncertainty.project_basis_prior_stdev">
+<span class="sig-prename descclassname"><span class="pre">openghg_inversions.basis.prior_uncertainty.</span></span><span class="sig-name descname"><span class="pre">project_basis_prior_stdev</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">basis_functions</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.basis.basis_functions.html#openghg_inversions.basis.basis_functions.FluxWeightedBasis" title="openghg_inversions.basis.basis_functions.FluxWeightedBasis"><span class="pre">FluxWeightedBasis</span></a></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">area_grid</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">grid_cell_prior_stdev</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">flux</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></span><a class="headerlink" href="#openghg_inversions.basis.prior_uncertainty.project_basis_prior_stdev" title="Link to this definition">#</a></dt>
+<dd><p>Project independent grid-cell scale uncertainty onto basis states.</p>
+<p>For membership matrix <code class="docutils literal notranslate"><span class="pre">A</span></code> and cell-total weights <code class="docutils literal notranslate"><span class="pre">w</span> <span class="pre">=</span> <span class="pre">flux</span> <span class="pre">*</span> <span class="pre">area</span></code>,
+the projected standard deviation is</p>
+<p><code class="docutils literal notranslate"><span class="pre">sqrt(sum(A</span> <span class="pre">*</span> <span class="pre">(w</span> <span class="pre">*</span> <span class="pre">s)**2))</span> <span class="pre">/</span> <span class="pre">abs(sum(A</span> <span class="pre">*</span> <span class="pre">w))</span></code>.</p>
+<p><code class="docutils literal notranslate"><span class="pre">s</span></code> may be scalar, source-labelled, or gridded.  A state with no weighted
+flux receives zero standard deviation.  A state whose signed total cancels
+to zero while its numerator is nonzero receives <code class="docutils literal notranslate"><span class="pre">NaN</span></code> because its
+multiplicative scale uncertainty is undefined.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>inv_out</strong> – Inversion output containing obs and trace</p></li>
-<li><p><strong>freq</strong> – frequency to resample to (should be a pandas freq. str that
-can be passed to <cite>xr.Dataset.resample</cite>)</p></li>
-<li><p><strong>report_prior</strong> – if True, return prior R2 in addition to posterior R2</p></li>
+<li><p><strong>basis_functions</strong> – Retained basis artifact and operator.</p></li>
+<li><p><strong>area_grid</strong> – Grid-cell areas on the operator grid.</p></li>
+<li><p><strong>grid_cell_prior_stdev</strong> – Independent grid-cell scale-factor standard
+deviation.</p></li>
+<li><p><strong>flux</strong> – Optional replacement flux.  The retained flux is used by default.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p><dl class="simple">
-<dt>containing posterior (and optionally, prior) Bayesian R2 values,</dt><dd><p>with uncertainties.</p>
-</dd>
-</dl>
-</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>xr.Dataset</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.postprocessing.diagnostics.register_diagnostic">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.postprocessing.diagnostics.</span></span><span class="sig-name descname"><span class="pre">register_diagnostic</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">diagnostic</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Callable" title="(in Python v3.14)"><span class="pre">Callable</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Callable" title="(in Python v3.14)"><span class="pre">Callable</span></a></span></span><a class="headerlink" href="#openghg_inversions.postprocessing.diagnostics.register_diagnostic" title="Link to this definition">#</a></dt>
-<dd><p>Decorator function to register diagnostics functions.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>diagnostic</strong> – diagnostics function to register</p>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>diagnostic, the input function (no modifications made)</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>Callable</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.postprocessing.diagnostics.summary">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.postprocessing.diagnostics.</span></span><span class="sig-name descname"><span class="pre">summary</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">inv_out</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.postprocessing.inversion_output.html#openghg_inversions.postprocessing.inversion_output.InversionOutput" title="openghg_inversions.postprocessing.inversion_output.InversionOutput"><span class="pre">InversionOutput</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></span><a class="headerlink" href="#openghg_inversions.postprocessing.diagnostics.summary" title="Link to this definition">#</a></dt>
-<dd><p>Return diagnostics summary computed by arviz.</p>
-<dl class="simple">
-<dt>Diagnostics reported:</dt><dd><ul class="simple">
-<li><p>mcse_mean: mean Monte Carlo standard error</p></li>
-<li><p>mcse_sd: standard deviation of Monte Carlo standard error</p></li>
-<li><p>ess_bulk: effective sample size (see e.g. Gelman et. al.
-“Bayesian Data Analysis”, equation (11.8)) after “rank normalising”</p></li>
-<li><p>ess_tail: minimum effective sample size for 5% and 95% quantiles.</p></li>
-<li><p>r_hat: the “potential scale reduction”, which compares variance within
-chains to pooled variance across chains. If all chains have converged,
-these will be the same and r_hat will be 1. Otherwise, r_hat will be
-greater than 1. Ideally, all r_hat values should be below 1.01</p></li>
-</ul>
-</dd>
-</dl>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>inv_out</strong> – Inversion output to summarise.</p>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Dataset with diagnostic summary.</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>xr.Dataset</p>
+<dd class="field-even"><p>Labelled state standard deviations named <code class="docutils literal notranslate"><span class="pre">x_prior_stdev</span></code>.</p>
 </dd>
 </dl>
 </dd></dl>
@@ -586,20 +533,20 @@ greater than 1. Ideally, all r_hat values should be below 1.01</p></li>
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="openghg_inversions.postprocessing.countries.html"
+       href="openghg_inversions.basis.operators.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">openghg_inversions.postprocessing.countries</p>
+        <p class="prev-next-title">openghg_inversions.basis.operators</p>
       </div>
     </a>
     <a class="right-next"
-       href="openghg_inversions.postprocessing.inversion_output.html"
+       href="openghg_inversions.config.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">openghg_inversions.postprocessing.inversion_output</p>
+        <p class="prev-next-title">openghg_inversions.config</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -622,22 +569,15 @@ greater than 1. Ideally, all r_hat values should be below 1.01</p></li>
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.postprocessing.diagnostics.Diagnostic"><code class="docutils literal notranslate"><span class="pre">Diagnostic</span></code></a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.postprocessing.diagnostics.Diagnostic.func"><code class="docutils literal notranslate"><span class="pre">Diagnostic.func</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.postprocessing.diagnostics.Diagnostic.params"><code class="docutils literal notranslate"><span class="pre">Diagnostic.params</span></code></a></li>
-</ul>
-</li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.postprocessing.diagnostics.bayes_r2_by_site"><code class="docutils literal notranslate"><span class="pre">bayes_r2_by_site()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.postprocessing.diagnostics.bayes_r2_by_site_resample"><code class="docutils literal notranslate"><span class="pre">bayes_r2_by_site_resample()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.postprocessing.diagnostics.register_diagnostic"><code class="docutils literal notranslate"><span class="pre">register_diagnostic()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.postprocessing.diagnostics.summary"><code class="docutils literal notranslate"><span class="pre">summary()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.prior_uncertainty.calibrate_basis_prior_stdev"><code class="docutils literal notranslate"><span class="pre">calibrate_basis_prior_stdev()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.prior_uncertainty.project_basis_prior_stdev"><code class="docutils literal notranslate"><span class="pre">project_basis_prior_stdev()</span></code></a></li>
 </ul>
   </nav></div>
 
   <div class="sidebar-secondary-item">
 
   <div class="tocsection sourcelink">
-    <a href="../_sources/reference/openghg_inversions.postprocessing.diagnostics.rst.txt">
+    <a href="../_sources/reference/openghg_inversions.basis.prior_uncertainty.rst.txt">
       <i class="fa-solid fa-file-lines"></i> Show Source
     </a>
   </div>

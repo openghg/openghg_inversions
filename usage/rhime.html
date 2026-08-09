@@ -41,6 +41,7 @@
     <script src="../_static/documentation_options.js?v=5929fcd5"></script>
     <script src="../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script defer="defer" src="https://cdn.jsdelivr.net/npm/mathjax@4/tex-mml-chtml.js"></script>
     <script>DOCUMENTATION_OPTIONS.pagename = 'usage/rhime';</script>
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
     <link rel="index" title="Index" href="../genindex.html" />
@@ -991,6 +992,62 @@ baseline component.</p>
 <p>The legacy single-sector <code class="docutils literal notranslate"><span class="pre">inferpymc</span></code> / <code class="docutils literal notranslate"><span class="pre">fixedbasisMCMC</span></code> compatibility path
 continues to sample its full flux state and does not gain multisector behavior.</p>
 </section>
+<section id="basis-aware-prior-standard-deviations">
+<h2>Basis-Aware Prior Standard Deviations<a class="headerlink" href="#basis-aware-prior-standard-deviations" title="Link to this heading">#</a></h2>
+<p>The lower-level basis API can project independent grid-cell scale-factor
+uncertainty onto the labelled states of a retained <code class="docutils literal notranslate"><span class="pre">BasisFunctions</span></code> object.
+For basis membership <code class="docutils literal notranslate"><span class="pre">A</span></code> and cell-total weights <code class="docutils literal notranslate"><span class="pre">w</span> <span class="pre">=</span> <span class="pre">flux</span> <span class="pre">*</span> <span class="pre">area</span></code>,
+<code class="docutils literal notranslate"><span class="pre">project_basis_prior_stdev</span></code> computes</p>
+<div class="math notranslate nohighlight">
+\[\sigma_{x,k} =
+\frac{\sqrt{\sum_i A_{ik}(w_i\,\sigma_i)^2}}
+     {\left|\sum_i A_{ik}w_i\right|}.\]</div>
+<p>The grid-cell standard deviation may be scalar, source-labelled, or gridded.
+The retained flux is used unless an explicit replacement is supplied. State
+and source labels come from the retained operator; source-specific ragged bases
+retain their gathered <code class="docutils literal notranslate"><span class="pre">(source,</span> <span class="pre">region_in_source)</span></code> state coordinate.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.basis</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">calibrate_basis_prior_stdev</span><span class="p">,</span>
+    <span class="n">project_basis_prior_stdev</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">x_prior_stdev</span> <span class="o">=</span> <span class="n">project_basis_prior_stdev</span><span class="p">(</span>
+    <span class="n">basis_functions</span><span class="p">,</span>
+    <span class="n">area_grid</span><span class="o">=</span><span class="n">cell_area</span><span class="p">,</span>
+    <span class="n">grid_cell_prior_stdev</span><span class="o">=</span><span class="n">grid_prior_sd</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">model</span> <span class="o">=</span> <span class="n">build_rhime_model</span><span class="p">(</span>
+    <span class="n">inv_inputs</span><span class="p">,</span>
+    <span class="n">x_prior</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;pdf&quot;</span><span class="p">:</span> <span class="s2">&quot;normal&quot;</span><span class="p">,</span> <span class="s2">&quot;mu&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> <span class="s2">&quot;sigma&quot;</span><span class="p">:</span> <span class="n">x_prior_stdev</span><span class="p">},</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">calibrate_basis_prior_stdev</span></code> accepts a caller-defined target matrix and
+requested relative standard deviation. It projects a unit cell standard
+deviation, then uses linearity independently for each source. The default
+<code class="docutils literal notranslate"><span class="pre">target_statistic=&quot;median-relative&quot;</span></code> matches the median valid target-relative
+SD. <code class="docutils literal notranslate"><span class="pre">target_statistic=&quot;mean-total&quot;</span></code> instead matches mean target SD divided by
+mean absolute target total. Both reductions work with dask-backed target rows,
+and achieved values for every target are returned for inspection.</p>
+<p>Pass the labelled Boolean <code class="docutils literal notranslate"><span class="pre">state_is_active</span></code> mask used by the model when some
+states will be fixed, including exact zero-sensitivity states. Calibration then
+sets those state widths to zero and excludes them from achieved target
+uncertainty. The positive widths for active states can be passed directly to
+the prior API; fixed-state zero widths are removed by active-state prior
+slicing. Requested calibration widths must be strictly positive, and negative
+grid-cell standard deviations are rejected.</p>
+<p>The result contains <code class="docutils literal notranslate"><span class="pre">grid_cell_prior_stdev</span></code>,
+<code class="docutils literal notranslate"><span class="pre">x_prior_stdev</span></code>, state and target totals, achieved target SD and relative SD,
+and explicit status variables. <code class="docutils literal notranslate"><span class="pre">zero</span></code> identifies a target with no absolute
+weighted flux, while <code class="docutils literal notranslate"><span class="pre">cancellation</span></code> identifies nonzero signed weights whose
+target total is zero. No target masks, countries, or relative-SD defaults are
+built into these helpers.</p>
+<p>For ragged multisource bases, <code class="docutils literal notranslate"><span class="pre">x_prior_stdev</span></code> remains on the operator’s
+gathered state coordinate. Source-level calibration diagnostics use the
+<code class="docutils literal notranslate"><span class="pre">calibration_source</span></code> dimension because xarray cannot store both a gathered
+MultiIndex level named <code class="docutils literal notranslate"><span class="pre">source</span></code> and a separate dimension with the same name
+in one <code class="docutils literal notranslate"><span class="pre">Dataset</span></code>.</p>
+</section>
 <section id="output-formats">
 <h2>Output Formats<a class="headerlink" href="#output-formats" title="Link to this heading">#</a></h2>
 <p>Standard single-sector RHIME supports <code class="docutils literal notranslate"><span class="pre">inv_out</span></code>, <code class="docutils literal notranslate"><span class="pre">basic</span></code>, <code class="docutils literal notranslate"><span class="pre">paris</span></code>, and
@@ -1073,6 +1130,7 @@ wrapper around <code class="docutils literal notranslate"><span class="pre">run_
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#config-files">Config Files</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#generated-basis-functions">Generated Basis Functions</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#active-and-fixed-states">Active And Fixed States</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#basis-aware-prior-standard-deviations">Basis-Aware Prior Standard Deviations</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#output-formats">Output Formats</a></li>
 </ul>
   </nav></div>
