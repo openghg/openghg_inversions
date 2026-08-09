@@ -1158,6 +1158,83 @@ def test_region_constrained_fixed_outer_basis_from_weights_allocates_inner_only(
     xr.testing.assert_equal(basis_func.lon, weights.lon)
 
 
+@pytest.mark.parametrize(
+    "reversed_fields",
+    [("outer_regions",), ("region_classes",), ("outer_regions", "region_classes")],
+)
+def test_region_constrained_fixed_outer_basis_reindexes_reversed_coordinates(reversed_fields):
+    """Both fixed-outer inputs are reordered onto matching physical weight cells."""
+    coords = {"lat": [50.0, 51.0, 52.0], "lon": [-2.0, -1.0, 0.0, 1.0]}
+    weights = xr.DataArray(np.ones((3, 4)), dims=("lat", "lon"), coords=coords)
+    outer_regions = xr.DataArray(
+        [[0, 0, 1, 1], [0, 2, 2, 1], [0, 2, 2, 1]],
+        dims=weights.dims,
+        coords=coords,
+    )
+    region_classes = xr.DataArray(
+        np.tile([10, 10, 20, 20], (3, 1)),
+        dims=weights.dims,
+        coords=coords,
+    )
+    expected = region_constrained_fixed_outer_basis_from_weights(
+        weights,
+        "2020-01-01",
+        "TEST",
+        nbasis=2,
+        outer_regions=outer_regions,
+        region_classes=region_classes,
+        allocation="area",
+    )
+    if "outer_regions" in reversed_fields:
+        outer_regions = outer_regions.isel(lat=slice(None, None, -1))
+    if "region_classes" in reversed_fields:
+        region_classes = region_classes.isel(lat=slice(None, None, -1))
+
+    actual = region_constrained_fixed_outer_basis_from_weights(
+        weights,
+        "2020-01-01",
+        "TEST",
+        nbasis=2,
+        outer_regions=outer_regions,
+        region_classes=region_classes,
+        allocation="area",
+    )
+
+    xr.testing.assert_equal(actual, expected)
+
+
+@pytest.mark.parametrize("incompatible_field", ["outer_regions", "region_classes"])
+def test_region_constrained_fixed_outer_basis_rejects_incompatible_coordinates(incompatible_field):
+    """Coordinate reordering does not weaken strict physical-grid validation."""
+    coords = {"lat": [50.0, 51.0, 52.0], "lon": [-2.0, -1.0, 0.0, 1.0]}
+    weights = xr.DataArray(np.ones((3, 4)), dims=("lat", "lon"), coords=coords)
+    outer_regions = xr.DataArray(
+        [[0, 0, 1, 1], [0, 2, 2, 1], [0, 2, 2, 1]],
+        dims=weights.dims,
+        coords=coords,
+    )
+    region_classes = xr.DataArray(
+        np.tile([10, 10, 20, 20], (3, 1)),
+        dims=weights.dims,
+        coords=coords,
+    )
+    if incompatible_field == "outer_regions":
+        outer_regions = outer_regions.assign_coords(lat=[50.0, 51.0, 53.0])
+    else:
+        region_classes = region_classes.assign_coords(lat=[50.0, 51.0, 53.0])
+
+    with pytest.raises(xr.AlignmentError, match=incompatible_field):
+        region_constrained_fixed_outer_basis_from_weights(
+            weights,
+            "2020-01-01",
+            "TEST",
+            nbasis=2,
+            outer_regions=outer_regions,
+            region_classes=region_classes,
+            allocation="area",
+        )
+
+
 def test_region_constrained_fixed_outer_basis_forwards_custom_split_strategy():
     """Fixed-outer layout targets are independent from the selected class-local generator."""
     coords = {"lat": np.arange(4.0), "lon": np.arange(5.0)}
