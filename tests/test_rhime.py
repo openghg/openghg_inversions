@@ -41,8 +41,12 @@ from openghg_inversions.flux_sanitization import (
 from openghg_inversions.inversion_data import RhimePreparedInputs, prepare_rhime_inputs
 from openghg_inversions.inversion_inputs import make_inv_inputs
 from openghg_inversions.models import (
+    RhimeLikelihoodContext,
+    RhimeLikelihoodResult,
     StateActivity,
+    build_absolute_sigma_gaussian_likelihood,
     build_rhime_model,
+    build_rhime_observation_state,
     build_rhime_model_from_spec,
     build_rhime_multisector_model,
     build_rhime_multisector_model_from_spec,
@@ -66,6 +70,8 @@ from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.postprocessing.make_outputs import observation_inputs_for_outputs
 from openghg_inversions.postprocessing.make_paris_outputs import PARIS_LATEST_COUNTRIES
 from openghg_inversions.rhime import (
+    RhimeModelBuilderContext,
+    RhimeModelBuildResult,
     RhimeModelSpec,
     RhimeOutputSpec,
     RhimeResult,
@@ -921,6 +927,61 @@ def test_build_rhime_model_contains_expected_variables(
     assert isinstance(model, pm.Model)
     expected = {"x", "mu", "bc", "mu_bc", "sigma", "epsilon", "y"}
     assert expected.issubset(model.named_vars)
+
+
+def test_build_rhime_model_accepts_student_t_likelihood_builder(
+    rhime_inv_inputs: xr.Dataset,
+    builder_args: dict,
+) -> None:
+    """A user-owned likelihood can reuse RHIME's error scale and rename the observed RV."""
+
+    def student_t_builder(context: RhimeLikelihoodContext) -> RhimeLikelihoodResult:
+        state = build_rhime_observation_state(context)
+        likelihood = pm.StudentT(
+            "student_y",
+            nu=4.0,
+            mu=state.mean,
+            sigma=state.error_scale,
+            observed=state.observed,
+            dims=context.output_dim,
+        )
+        return RhimeLikelihoodResult(
+            likelihood=likelihood,
+            error_scale=state.error_scale,
+            variable_roles={"concentration": "student_y", "model_error": "epsilon"},
+            supported_output_formats=("none", "inv_out", "basic", "paris", "legacy"),
+        )
+
+    model = build_rhime_model(
+        rhime_inv_inputs,
+        **builder_args,
+        likelihood_builder=student_t_builder,
+    )
+
+    assert "student_y" in model.named_vars
+    assert "y" not in model.named_vars
+    assert rhime_models_module.get_rhime_likelihood_result(model).variable_roles == {
+        "concentration": "student_y",
+        "model_error": "epsilon",
+    }
+
+
+def test_build_rhime_model_accepts_global_scalar_offset(
+    rhime_inv_inputs: xr.Dataset,
+    builder_args: dict,
+) -> None:
+    """The built-in graph can broadcast one scalar offset over observations."""
+    model = build_rhime_model(
+        rhime_inv_inputs,
+        **{
+            **builder_args,
+            "add_offset": True,
+            "offset_args": {"per_site": False},
+        },
+    )
+
+    assert model["offset_latent"].ndim == 0
+    assert model["offset"].eval().shape == (rhime_inv_inputs.sizes["nmeasure"],)
 
 
 def test_modern_inv_inputs_omit_component_owned_sigma_index(rhime_inv_inputs: xr.Dataset) -> None:
@@ -1898,6 +1959,155 @@ def test_run_rhime_from_prepared_inputs_routes_without_preparation(
     assert result.run_spec.split_by_sectors is (sector_count > 1)
 
 
+def test_run_rhime_from_prepared_inputs_accepts_complete_model_builder(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A complete user model reuses prepared inputs, RhimeSampler, and result plumbing."""
+    model_spec, _, run_spec = _minimal_output_specs(output_format="inv_out")
+    inv_inputs = _minimal_output_inv_inputs()
+    inv_inputs["H"] = inv_inputs["H"].assign_coords(source=model_spec.sectors[0].flux_source)
+    prepared = RhimePreparedInputs(
+        inv_inputs=inv_inputs,
+        basis_functions=_fake_basis_functions(),
+        site_metadata=_prepared_site_metadata(),
+    )
+    built_contexts: list[RhimeModelBuilderContext] = []
+
+    def custom_model_builder(context: RhimeModelBuilderContext) -> RhimeModelBuildResult:
+        built_contexts.append(context)
+        with pm.Model(coords={"nmeasure": context.prepared_inputs.inv_inputs.nmeasure.values}) as model:
+            pm.Normal(
+                "custom_y",
+                mu=0.0,
+                sigma=1.0,
+                observed=context.prepared_inputs.inv_inputs["mf"].values,
+                dims="nmeasure",
+            )
+        return RhimeModelBuildResult(
+            model=model,
+            variable_roles={"observation": "mf", "concentration": "custom_y"},
+            supported_output_formats=("none", "inv_out"),
+            metadata={"package": "research-models", "version": "1.2.3"},
+        )
+
+    def fake_sample(
+        self: RhimeSampler,
+        model: pm.Model,
+        *,
+        variable_roles: dict[str, str],
+    ) -> az.InferenceData:
+        assert model["custom_y"] is not None
+        assert variable_roles["concentration"] == "custom_y"
+        return _minimal_output_idata()
+
+    monkeypatch.setattr(RhimeSampler, "sample", fake_sample)
+    result = run_rhime_from_prepared_inputs(
+        prepared_inputs=prepared,
+        run_spec=run_spec,
+        sampler=RhimeSampler(sample_prior_predictive=False),
+        model_builder=custom_model_builder,
+    )
+
+    assert len(built_contexts) == 1
+    xr.testing.assert_identical(built_contexts[0].prepared_inputs.inv_inputs, prepared.inv_inputs)
+    assert built_contexts[0].run_spec.model is model_spec
+    assert result.model_build_result is not None
+    assert result.model_build_result.metadata == {"package": "research-models", "version": "1.2.3"}
+    assert result.output_metadata["model_builder"]["qualname"].endswith("custom_model_builder")
+    assert result.inv_out is not None
+    assert result.inv_out.variable_name("concentration") == "custom_y"
+    assert result.inv_out.model_metadata["builder"] == {
+        "package": "research-models",
+        "version": "1.2.3",
+        "model_builder": result.output_metadata["model_builder"],
+    }
+
+
+def test_likelihood_builder_provenance_is_saved_with_result_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Saved output identifies a custom likelihood callable and its declared family."""
+    model_spec, _, run_spec = _minimal_output_specs(output_format="inv_out")
+    model_spec = replace(
+        model_spec,
+        use_bc=False,
+        add_offset=True,
+        offset_args={"per_site": False},
+    )
+    run_spec = replace(run_spec, model=model_spec)
+    inv_inputs = _minimal_output_inv_inputs()
+    inv_inputs["H"] = inv_inputs["H"].assign_coords(source=model_spec.sectors[0].flux_source)
+    inv_inputs["min_error"] = xr.zeros_like(inv_inputs["mf"])
+    prepared = RhimePreparedInputs(
+        inv_inputs=inv_inputs,
+        basis_functions=_fake_basis_functions(),
+        site_metadata=_prepared_site_metadata(),
+    )
+
+    def verification_gaussian(context: RhimeLikelihoodContext) -> RhimeLikelihoodResult:
+        return build_absolute_sigma_gaussian_likelihood(context)
+
+    def fake_sample(
+        self: RhimeSampler,
+        model: pm.Model,
+        *,
+        variable_roles: dict[str, str],
+    ) -> az.InferenceData:
+        assert model["offset_latent"].ndim == 0
+        assert variable_roles["concentration"] == "y"
+        return _minimal_output_idata()
+
+    monkeypatch.setattr(RhimeSampler, "sample", fake_sample)
+    result = run_rhime_from_prepared_inputs(
+        prepared_inputs=prepared,
+        run_spec=run_spec,
+        sampler=RhimeSampler(sample_prior_predictive=False),
+        likelihood_builder=verification_gaussian,
+    )
+
+    assert result.output_metadata["likelihood_builder"]["qualname"].endswith(
+        "verification_gaussian"
+    )
+    assert result.model_build_result is not None
+    assert result.model_build_result.metadata["likelihood"]["family"] == (
+        "absolute_sigma_gaussian"
+    )
+    assert result.inv_out is not None
+    saved_builder = result.inv_out.model_metadata["builder"]
+    assert saved_builder["likelihood_builder"] == result.output_metadata["likelihood_builder"]
+    assert saved_builder["likelihood"]["sigma_interpretation"] == "absolute"
+
+
+def test_custom_model_builder_rejects_undeclared_output_before_sampling(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Custom builders must opt into each RHIME postprocessing contract."""
+    model_spec, _, run_spec = _minimal_output_specs(output_format="inv_out")
+    inv_inputs = _minimal_output_inv_inputs()
+    inv_inputs["H"] = inv_inputs["H"].assign_coords(source=model_spec.sectors[0].flux_source)
+    prepared = RhimePreparedInputs(
+        inv_inputs=inv_inputs,
+        basis_functions=_fake_basis_functions(),
+        site_metadata=_prepared_site_metadata(),
+    )
+
+    def sampling_only_builder(context: RhimeModelBuilderContext) -> RhimeModelBuildResult:
+        with pm.Model() as model:
+            pm.Normal("custom_y", observed=context.prepared_inputs.inv_inputs["mf"].values)
+        return RhimeModelBuildResult(model=model, variable_roles={"concentration": "custom_y"})
+
+    def fail_sample(*args: Any, **kwargs: Any) -> None:
+        raise AssertionError("output compatibility must be checked before sampling")
+
+    monkeypatch.setattr(RhimeSampler, "sample", fail_sample)
+    with pytest.raises(ValueError, match="does not declare output_format='inv_out' compatible"):
+        run_rhime_from_prepared_inputs(
+            prepared_inputs=prepared,
+            run_spec=run_spec,
+            model_builder=sampling_only_builder,
+        )
+
+
 @pytest.mark.parametrize(
     ("sector_count", "split_by_sectors"),
     [(1, True), (2, False)],
@@ -2718,6 +2928,39 @@ def test_rhime_sampler_resets_retained_draws_before_extending_predictive_groups(
     assert inference_data.attrs["burn"] == 1000
     for group_name in ("posterior", "sample_stats", "log_likelihood"):
         assert inference_data[group_name].attrs["burn"] == 1000
+
+
+def test_rhime_sampler_resolves_predictive_name_from_custom_model_roles(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The historical default ``y`` follows the explicit custom concentration role."""
+    seen: dict[str, Any] = {}
+
+    class FakeTrace:
+        def extend(self, other: Any) -> None:
+            seen["extension"] = other
+
+    def fake_posterior_predictive(trace: Any, **kwargs: Any) -> str:
+        seen.update(kwargs)
+        return "posterior"
+
+    monkeypatch.setattr(
+        "openghg_inversions.rhime.sampling.pm.sample_posterior_predictive",
+        fake_posterior_predictive,
+    )
+    with pm.Model() as model:
+        pm.Normal("custom_y", observed=np.array([1.0]))
+
+    sampler = RhimeSampler(sample_prior_predictive=False)
+    sampler._extend_predictive(
+        cast(Any, FakeTrace()),
+        model=model,
+        variable_roles={"concentration": "custom_y"},
+    )
+
+    assert seen["var_names"] == ["custom_y"]
+    assert seen["model"] is model
+    assert seen["extension"] == "posterior"
 
 
 def test_rhime_sampler_restores_registered_coords_after_predictive_steps(

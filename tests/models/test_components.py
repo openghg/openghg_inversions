@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import pymc as pm
+import pytest
 import xarray as xr
 from pytensor.compile.mode import Mode
 
@@ -14,6 +15,10 @@ from openghg_inversions.models.components import (
     resolve_model_variable,
 )
 from openghg_inversions.models.coords import CoordRegistry, attach_coord_registry
+from openghg_inversions.models.rhime_likelihood import (
+    RhimeLikelihoodContext,
+    build_absolute_sigma_gaussian_likelihood,
+)
 from openghg_inversions.sigma import SigmaAlignment
 
 
@@ -212,6 +217,37 @@ def test_add_offset_component_supports_manual_and_derived_freq() -> None:
         assert "offset_freq_indicator" in model.named_vars
 
 
+def test_add_offset_component_supports_one_global_scalar() -> None:
+    """A global offset has one latent value broadcast over observations."""
+    site_indicator = _site_indicator()
+
+    with pm.Model(coords={"nmeasure": np.arange(4)}) as model:
+        attach_coord_registry(model, CoordRegistry())
+        offset = add_offset_component(
+            site_indicator,
+            prior_args={"pdf": "normal", "mu": 0.0, "sigma": 1.0},
+            per_site=False,
+        )
+
+    assert model.named_vars["offset_latent"].ndim == 0
+    assert offset.eval().shape == (4,)
+    assert "offset_design" not in model.named_vars
+
+
+@pytest.mark.parametrize("invalid_args", [{"offset_freq": "monthly"}, {"drop_first": True}])
+def test_global_offset_rejects_site_period_options(invalid_args: dict[str, object]) -> None:
+    """Global offsets reject options that only have site-design semantics."""
+    with pm.Model(coords={"nmeasure": np.arange(4)}) as model:
+        attach_coord_registry(model, CoordRegistry())
+        with pytest.raises(ValueError, match="Global offsets"):
+            add_offset_component(
+                _site_indicator(),
+                prior_args={"pdf": "normal", "mu": 0.0, "sigma": 1.0},
+                per_site=False,
+                **invalid_args,
+            )
+
+
 def test_add_offset_component_drop_first_and_freq_builds_expected_design() -> None:
     """Check drop-first offsets still build the expected site-period design."""
     site_indicator = _site_indicator()
@@ -295,6 +331,42 @@ def test_likelihood_pollution_events_from_obs_can_run_without_boundary_condition
     epsilon = model.named_vars["epsilon"].eval(mode=Mode(linker="py", optimizer="fast_run"))
     assert np.all(np.diff(epsilon) > 0)
     assert "y" in model.named_vars
+
+
+def test_absolute_sigma_gaussian_uses_additive_standard_deviation_terms() -> None:
+    """The opt-in Gaussian matches the verification-games error definition."""
+    data = _likelihood_dataset()
+    data["aggregation_error_sd"] = xr.DataArray(
+        np.full(4, 0.2),
+        dims="nmeasure",
+        coords=data["mf"].coords,
+    )
+    data["min_error"] = data["min_error"].copy(data=np.array([0.01, 1.0, 0.01, 0.01]))
+
+    with pm.Model(coords={"nmeasure": np.arange(4)}) as model:
+        attach_coord_registry(model, CoordRegistry())
+        mu = pm.Data("mu_input", np.ones(4), dims="nmeasure")
+        result = build_absolute_sigma_gaussian_likelihood(
+            RhimeLikelihoodContext(
+                data=data,
+                flux_mean=mu,
+                boundary_mean=None,
+                offset=None,
+                sigma_alignment=_sigma_alignment(data),
+                sigma_prior={"pdf": "uniform", "lower": 0.5, "upper": 0.50000001},
+                power=1.99,
+                pollution_events_from_obs=False,
+                no_model_error=False,
+                aggregation_error_mode="diagonal",
+            )
+        )
+
+    epsilon = model.named_vars["epsilon"].eval(mode=Mode(linker="py", optimizer="fast_run"))
+    expected = np.full(4, np.sqrt(0.1**2 + 0.2**2 + 0.5**2))
+    expected[1] = 1.0
+    np.testing.assert_allclose(epsilon, expected, rtol=1e-7, atol=1e-7)
+    assert result.metadata["family"] == "absolute_sigma_gaussian"
+    assert result.variable_roles == {"concentration": "y", "model_error": "epsilon"}
 
 
 def test_likelihood_samples_prior_predictive_with_shared_sigma_and_registered_site_indicator() -> None:

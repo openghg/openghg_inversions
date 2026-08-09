@@ -103,8 +103,8 @@ When boundary-condition scaling is enabled,
    bc &\sim p_{bc}, \\
    \mu_{bc} &= H_{bc}bc.
 
-An optional site or site-by-period offset contributes ``offset``. The mean of
-the observed distribution is therefore
+An optional global, site, or site-by-period offset contributes ``offset``. The
+mean of the observed distribution is therefore
 
 .. math::
 
@@ -133,6 +133,26 @@ The current observed distribution is
 
    y \sim \mathcal{N}(\mu_{\mathrm{obs}}, \epsilon).
 
+The opt-in ``build_absolute_sigma_gaussian_likelihood`` instead treats sigma
+as an absolute observation-scale standard deviation:
+
+.. math::
+
+   \epsilon_{\mathrm{absolute}} =
+   \max\left(
+     \sqrt{
+       \mathrm{error}^2 +
+       \mathrm{aggregation\_error}^2 +
+       \sigma^2
+     },
+     \mathrm{min\_error}
+   \right).
+
+Diagonal aggregation error uses ``aggregation_error_sd`` directly. Dense and
+low-rank representations retain their full covariance while applying the same
+marginal standard-deviation floor. This alternative is explicit and does not
+change the historical RHIME default.
+
 The default priors are:
 
 .. list-table::
@@ -151,7 +171,7 @@ The default priors are:
    * - Model error
      - Uniform from 0.1 to 3
      - ``sigma``
-   * - Optional offset
+   * - Optional site/global offset
      - Normal with mean 0 and standard deviation 1
      - ``offset_latent`` and ``offset``
 
@@ -316,18 +336,186 @@ component namespaces are not implemented. They are tracked in
 Alternative models and likelihoods
 ----------------------------------
 
-There is currently no likelihood option on ``RhimeModelSpec``. The private flux
-compiler stops at ``mu``, and the shared assembler always installs
-``add_inferpymc_likelihood_component``. Likewise, the prepared-input runner
-selects one of the built-in standard or multisector model builders.
+Direct-Python likelihood and complete-model builders enter only at
+``run_rhime_from_prepared_inputs``. Callables are deliberately not stored on
+``RhimeModelSpec``, so model and run specs remain serializable. There is no
+entry-point or config-file plugin registry.
 
-Public contracts for alternative likelihood builders, complete model builders,
-output roles, and possible later plugin discovery are not implemented. That
-design and its pressure tests are tracked in
-`issue #533 <https://github.com/openghg/openghg_inversions/issues/533>`_.
-The more general semantic model and observation-channel representation is
-tracked in
-`issue #528 <https://github.com/openghg/openghg_inversions/issues/528>`_.
+A likelihood builder owns the complete observation component, including its
+error construction and observed distribution. Its labelled
+``RhimeLikelihoodContext`` contains the prepared observations, flux mean,
+optional boundary and offset means, sigma alignment and prior, the power and
+error policies, aggregation-error mode, and output dimension. This boundary
+avoids a misleading contract in which the runner builds half an error model
+before calling user code.
+
+For the absolute-sigma Gaussian above, no custom modelling function is needed:
+
+.. code-block:: python
+
+   from openghg_inversions.rhime import (
+       build_absolute_sigma_gaussian_likelihood,
+       run_rhime_from_prepared_inputs,
+   )
+
+   result = run_rhime_from_prepared_inputs(
+       prepared_inputs=prepared,
+       run_spec=run_spec,
+       likelihood_builder=build_absolute_sigma_gaussian_likelihood,
+   )
+
+Set ``add_offset=True`` and ``offset_args={"per_site": False}`` on
+``RhimeModelSpec`` to combine it with one global scalar offset. The default
+``per_site=True`` retains the existing site or site-period offset design.
+
+The helper ``build_rhime_observation_state`` is available when only the
+distribution should change. For example, this replaces Normal observations
+with a Student-t distribution while retaining the current RHIME mean and error
+scale:
+
+.. code-block:: python
+
+   import pymc as pm
+
+   from openghg_inversions.rhime import (
+       RhimeLikelihoodContext,
+       RhimeLikelihoodResult,
+       RhimeSampler,
+       build_rhime_observation_state,
+       run_rhime_from_prepared_inputs,
+   )
+
+
+   def student_t_likelihood(
+       context: RhimeLikelihoodContext,
+   ) -> RhimeLikelihoodResult:
+       state = build_rhime_observation_state(context)
+       if state.aggregation_error.mode not in {"none", "diagonal"}:
+           raise ValueError("This Student-t model assumes independent observations.")
+       observed = pm.StudentT(
+           "student_y",
+           nu=4.0,
+           mu=state.mean,
+           sigma=state.error_scale,
+           observed=state.observed,
+           dims=context.output_dim,
+       )
+       return RhimeLikelihoodResult(
+           likelihood=observed,
+           error_scale=state.error_scale,
+           variable_roles={
+               "concentration": "student_y",
+               "model_error": "epsilon",
+           },
+           supported_output_formats=("none", "inv_out"),
+           metadata={"family": "student_t", "degrees_of_freedom": 4.0},
+       )
+
+
+   result = run_rhime_from_prepared_inputs(
+       prepared_inputs=prepared,
+       run_spec=run_spec,
+       sampler=RhimeSampler(draws=1000, tune=1000, chains=4),
+       likelihood_builder=student_t_likelihood,
+   )
+
+``RhimeSampler`` receives the returned role manifest. Posterior-predictive
+settings may use a semantic role such as ``"concentration"``. For backwards
+compatibility, its default ``"y"`` request resolves to the declared
+``concentration`` name when a custom model has no variable named ``y``.
+``RhimeLikelihoodResult.metadata`` must be JSON serializable. The runner saves
+it with the model metadata and automatically records the likelihood builder's
+module and qualified name, so direct-Python likelihoods remain identifiable in
+persisted inversion outputs.
+
+A complete model builder instead receives a ``RhimeModelBuilderContext``. It
+contains the validated ``RhimePreparedInputs``, updated ``RhimeRunSpec``, and
+the validated single- versus multi-sector mode. The builder returns a
+``RhimeModelBuildResult``:
+
+.. code-block:: python
+
+   from importlib.metadata import version
+
+   import pymc as pm
+
+   from openghg_inversions.rhime import (
+       RhimeModelBuilderContext,
+       RhimeModelBuildResult,
+       run_rhime_from_prepared_inputs,
+   )
+   from openghg_inversions.models import (
+       CoordRegistry,
+       add_coords,
+       attach_coord_registry,
+   )
+
+
+   def complete_model(
+       context: RhimeModelBuilderContext,
+   ) -> RhimeModelBuildResult:
+       data = context.prepared_inputs.inv_inputs
+       with pm.Model() as model:
+           attach_coord_registry(model, CoordRegistry())
+           add_coords(data.coords, model_dims=("nmeasure",))
+           mean = pm.Normal("custom_mean", mu=0.0, sigma=10.0)
+           pm.Normal(
+               "custom_y",
+               mu=mean,
+               sigma=data.mf_error.values,
+               observed=data.mf.values,
+               dims="nmeasure",
+           )
+       return RhimeModelBuildResult(
+           model=model,
+           variable_roles={
+               "observation": "mf",
+               "observation_error": "mf_error",
+               "concentration": "custom_y",
+           },
+           supported_output_formats=("none", "inv_out"),
+           metadata={
+               "package": "my-rhime-models",
+               "version": version("my-rhime-models"),
+               "model": "complete_model_v1",
+           },
+       )
+
+
+   result = run_rhime_from_prepared_inputs(
+       prepared_inputs=prepared,
+       run_spec=run_spec,
+       model_builder=complete_model,
+   )
+
+The compatibility rules are explicit:
+
+* a complete builder must return a concrete ``pm.Model`` and a non-empty role
+  manifest; ``concentration`` is required;
+* every declared role name must exist in either the model or prepared inversion
+  inputs;
+* builders that use labelled model dimensions should attach ``CoordRegistry``
+  before calling ``add_coords`` or public model components, so
+  ``RhimeSampler`` can restore MultiIndexes and auxiliary scientific
+  coordinates;
+* builder metadata must be JSON serializable, and external packages should
+  record their package version and stable model identity there;
+* custom builders support only ``output_format="none"`` unless they explicitly
+  declare more formats; declaring a format promises that the trace, roles,
+  basis layout, and variables required by that output really are present;
+* ``model_builder`` and ``likelihood_builder`` are mutually exclusive; and
+* a component that does not exist, such as inferred model error in a fixed-error
+  model, is omitted from the role manifest rather than represented by a magic
+  name.
+
+The built-in standard and multisector builders produce the same
+``RhimeModelBuildResult`` contract on ``RhimeResult.model_build_result``. Their
+sector roles use keys such as ``flux_scale:FF`` and
+``flux_contribution:FF``. Existing builder functions continue returning a
+plain ``pm.Model`` for source compatibility.
+
+The more general semantic model and observation-channel representation remains
+tracked in `issue #528 <https://github.com/openghg/openghg_inversions/issues/528>`_.
 
 Customization boundaries
 ------------------------

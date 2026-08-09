@@ -4,6 +4,20 @@
 
 ## Code changes
 
+- Added direct-Python RHIME likelihood and complete-model builder contracts.
+  Custom builders declare semantic variable roles, supported output formats,
+  and serializable provenance metadata, which are validated before sampling
+  and preserved in inversion outputs. Built-in concrete, compiled, and
+  multisector models use the same result contract, while the sampler resolves
+  posterior predictives by semantic role. Likelihood results now retain
+  serializable metadata and the runner persists custom likelihood-builder
+  identity. An opt-in absolute-sigma Gaussian implements observation variance
+  from measurement, aggregation, and inferred sigma terms with a minimum-error
+  floor, and offsets can use one global scalar as an alternative to the
+  existing site designs. The tox workflow now runs PyTensor tests without
+  requiring or loading a C++ compiler module.
+  [#533](https://github.com/openghg/openghg_inversions/issues/533)
+
 - Added pure-xarray basis prior-uncertainty helpers that project scalar,
   source-labelled, or gridded cell-scale uncertainty through retained
   `BasisFunctions` operators and calibrate caller-defined aggregate targets.

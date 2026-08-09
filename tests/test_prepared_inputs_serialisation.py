@@ -9,6 +9,7 @@ from typing import Any
 import arviz as az
 import numpy as np
 import pandas as pd
+import pymc as pm
 import pytest
 import xarray as xr
 
@@ -530,7 +531,7 @@ def test_real_prepared_inputs_save_load_and_run_without_repreparation(
         model=model_spec,
         output=RhimeOutputSpec(output_format="none", save_inversion_output=False),
     )
-    built_model = object()
+    built_model = pm.Model()
     sampled = az.InferenceData()
     observed: dict[str, object] = {}
 
@@ -876,7 +877,7 @@ def test_loaded_prepared_inputs_run_through_existing_seam(
         model=model_spec,
         output=RhimeOutputSpec(output_format="none", save_inversion_output=False),
     )
-    built_model = object()
+    built_model = pm.Model()
     sampled = az.InferenceData(
         posterior=xr.Dataset(
             {"x": (("chain", "draw", "region"), np.ones((1, 1, 2)))},
@@ -986,7 +987,7 @@ def test_multisource_order_survives_load_run_and_reconstruction(
         output=RhimeOutputSpec(output_format="none", save_inversion_output=False),
         split_by_sectors=True,
     )
-    built_model = object()
+    built_model = pm.Model()
     sampled = az.InferenceData()
     observed: dict[str, object] = {}
 

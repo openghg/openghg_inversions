@@ -12,4 +12,5 @@ openghg\_inversions.models
    :maxdepth: 4
 
    openghg_inversions.models.rhime
+   openghg_inversions.models.rhime_likelihood
    openghg_inversions.models.state_activity

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from collections.abc import Mapping
 from typing import Any, cast
 
 import arviz as az
@@ -164,8 +165,15 @@ def _make_inversion_output(
     model_spec: RhimeModelSpec,
     output_spec: RhimeOutputSpec,
     sampler: RhimeSampler | None = None,
+    variable_roles: Mapping[str, str] | None = None,
+    builder_metadata: Mapping[str, Any] | None = None,
 ) -> InversionOutput:
     """Create the modern RHIME InversionOutput without fixedbasis legacy adapters."""
+    model_metadata = cast(dict[str, Any], _structured_metadata(asdict(model_spec)))
+    if variable_roles is not None:
+        model_metadata["variable_roles"] = dict(variable_roles)
+    if builder_metadata:
+        model_metadata["builder"] = _structured_metadata(dict(builder_metadata))
     return InversionOutput(
         inv_inputs=prepared.inv_inputs,
         basis_functions=prepared.basis_functions,
@@ -179,7 +187,7 @@ def _make_inversion_output(
             "basis_artifact_source": prepared.basis_artifact_source,
             "basis_artifact_path": prepared.basis_artifact_path,
         },
-        model_metadata=cast(dict[str, Any], _structured_metadata(asdict(model_spec))),
+        model_metadata=model_metadata,
         output_metadata={
             "output_format": output_spec.output_format,
             "output_path": output_spec.output_path,
@@ -218,6 +226,8 @@ def make_standard_output_bundle(
     prepared: RhimePreparedInputs,
     country_file: str | None,
     sampler: RhimeSampler | None = None,
+    variable_roles: Mapping[str, str] | None = None,
+    builder_metadata: Mapping[str, Any] | None = None,
 ) -> RhimeOutputBundle:
     """Create and optionally save standard RHIME outputs."""
     if output_spec.output_format == "none":
@@ -233,6 +243,8 @@ def make_standard_output_bundle(
             model_spec=model_spec,
             output_spec=output_spec,
             sampler=sampler,
+            variable_roles=variable_roles,
+            builder_metadata=builder_metadata,
         )
     outputs["inversion_output"] = inv_out
     output_metadata["inversion_output_contract"] = "modern"
@@ -357,6 +369,8 @@ def make_multisector_output_bundle(
     idata: az.InferenceData,
     prepared: RhimePreparedInputs,
     country_file: str | None,
+    variable_roles: Mapping[str, str] | None = None,
+    builder_metadata: Mapping[str, Any] | None = None,
 ) -> RhimeOutputBundle:
     """Create and optionally save transitional multi-sector RHIME outputs."""
     with timed("rhime.output.inversion_output_create", output_format=output_spec.output_format):
@@ -366,6 +380,8 @@ def make_multisector_output_bundle(
             run_spec=run_spec,
             model_spec=model_spec,
             output_spec=output_spec,
+            variable_roles=variable_roles,
+            builder_metadata=builder_metadata,
         )
     inv_out = None
     with timed("rhime.output.multisector_diagnostics"):

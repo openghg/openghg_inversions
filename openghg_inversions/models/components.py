@@ -484,8 +484,9 @@ def add_offset_component(
     output_name: str = "offset",
     output_dim: str = "nmeasure",
     drop_first: bool = False,
+    per_site: bool = True,
 ) -> TensorVariable:
-    """Add a site-only or site-by-period offset component.
+    """Add a global, site-only, or site-by-period offset component.
 
     Args:
         site_indicator: Observation-aligned site indicator.
@@ -498,6 +499,8 @@ def add_offset_component(
         output_name: Name for the aligned deterministic offset output.
         output_dim: Observation/output dimension name.
         drop_first: Whether to omit the first site indicator column.
+        per_site: Whether to create site-specific terms. If false, create one
+            global scalar latent offset and broadcast it over observations.
 
     Returns:
         The aligned offset deterministic variable.
@@ -505,6 +508,15 @@ def add_offset_component(
     output_dim = str(output_dim)
     site_indicator = site_indicator.rename("site_indicator").transpose(output_dim)
     add_model_data(site_indicator, "site_indicator")
+    if not per_site:
+        if offset_freq_indicator is not None or offset_freq is not None:
+            raise ValueError("Global offsets do not accept an offset frequency.")
+        if drop_first:
+            raise ValueError("Global offsets do not support `drop_first=True`.")
+        latent = parse_prior(var_name, prior_args)
+        aligned = pt.broadcast_to(latent, (site_indicator.sizes[output_dim],))
+        return pm.Deterministic(output_name, aligned, dims=output_dim)
+
     indicator = _resolve_freq_indicator(
         explicit_indicator=offset_freq_indicator,
         freq=offset_freq,
