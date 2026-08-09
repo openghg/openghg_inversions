@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -28,8 +29,14 @@ from openghg_inversions.rhime import (
 )
 from openghg_inversions.rhime.outputs import RhimeOutputBundle
 from openghg_inversions.serialization import (
+    MULTIINDEX_DIMS_ATTR,
+    encode_multiindexes_for_storage,
     inferencedata_from_datatree,
     inferencedata_to_datatree,
+    load_inferencedata,
+    normalise_declared_multiindex,
+    restore_declared_multiindexes,
+    save_inferencedata,
 )
 
 
@@ -587,6 +594,129 @@ def test_inferencedata_datatree_roundtrip_preserves_root_attrs() -> None:
     restored = inferencedata_from_datatree(inferencedata_to_datatree(idata))
 
     assert restored.attrs == idata.attrs
+
+
+@pytest.mark.parametrize("suffix", [".nc", ".zarr"])
+def test_supported_inferencedata_roundtrip_restores_multiindex(
+    tmp_path: Path,
+    suffix: str,
+) -> None:
+    """The supported trace boundary round-trips semantic observation identity."""
+    nmeasure = pd.MultiIndex.from_arrays(
+        [["MHD", "TAC"], pd.to_datetime(["2019-01-01", "2019-01-02"])],
+        names=["site", "time"],
+    )
+    posterior_predictive = xr.Dataset(
+        {"y": (("chain", "draw", "nmeasure"), np.ones((1, 1, 2)))},
+        coords={
+            "chain": [0],
+            "draw": [0],
+            **xr.Coordinates.from_pandas_multiindex(nmeasure, "nmeasure"),
+        },
+    )
+    idata = az.InferenceData(
+        posterior_predictive=posterior_predictive,
+        attrs={"title": "semantic trace"},
+    )
+    path = tmp_path / f"trace{suffix}"
+
+    save_inferencedata(idata, path)
+    restored = load_inferencedata(path)
+
+    assert restored.attrs == idata.attrs
+    restored_index = restored.posterior_predictive.indexes["nmeasure"]
+    assert isinstance(restored_index, pd.MultiIndex)
+    assert restored_index.equals(nmeasure)
+
+
+def test_storage_multiindex_metadata_declares_semantic_expectations() -> None:
+    """Expanded storage form declares ownership, level order, and validation policy."""
+    nmeasure = pd.MultiIndex.from_tuples(
+        [("MHD", pd.Timestamp("2019-01-01"))],
+        names=["site", "time"],
+    )
+    ds = xr.Dataset(
+        {"y": ("nmeasure", [1.0])},
+        coords=xr.Coordinates.from_pandas_multiindex(nmeasure, "nmeasure"),
+    )
+
+    encoded = encode_multiindexes_for_storage(ds)
+    metadata = json.loads(encoded.attrs[MULTIINDEX_DIMS_ATTR])
+
+    assert metadata == {
+        "version": 1,
+        "dims": [
+            {
+                "dim": "nmeasure",
+                "levels": ["site", "time"],
+                "reconstruct": True,
+                "unique": True,
+                "order": "preserve",
+            }
+        ],
+    }
+
+
+def test_declared_multiindex_normalizer_accepts_expanded_form() -> None:
+    """Expanded semantic coordinates normalize to the same indexed representation."""
+    expanded = xr.Dataset(
+        {"y": ("nmeasure", [1.0, 2.0])},
+        coords={
+            "site": ("nmeasure", ["MHD", "TAC"]),
+            "time": ("nmeasure", pd.to_datetime(["2019-01-01", "2019-01-02"])),
+        },
+    )
+
+    normalized = normalise_declared_multiindex(expanded, "nmeasure", ["site", "time"])
+
+    index = normalized.indexes["nmeasure"]
+    assert isinstance(index, pd.MultiIndex)
+    assert index.names == ["site", "time"]
+
+
+def test_declared_multiindex_normalizer_rejects_reordered_levels() -> None:
+    """An existing index must use the declared semantic level order exactly."""
+    index = pd.MultiIndex.from_tuples(
+        [(pd.Timestamp("2019-01-01"), "MHD")],
+        names=["time", "site"],
+    )
+    ds = xr.Dataset(
+        {"y": ("nmeasure", [1.0])},
+        coords=xr.Coordinates.from_pandas_multiindex(index, "nmeasure"),
+    )
+
+    with pytest.raises(ValueError, match="expected.*site.*time.*in that order"):
+        normalise_declared_multiindex(ds, "nmeasure", ["site", "time"])
+
+
+def test_declared_multiindex_restoration_rejects_duplicate_identity() -> None:
+    """Strict restoration rejects duplicate semantic labels instead of guessing."""
+    expanded = xr.Dataset(
+        {"y": ("nmeasure", [1.0, 2.0])},
+        coords={
+            "site": ("nmeasure", ["MHD", "MHD"]),
+            "time": ("nmeasure", pd.to_datetime(["2019-01-01", "2019-01-01"])),
+        },
+        attrs={
+            MULTIINDEX_DIMS_ATTR: json.dumps(
+                {
+                    "version": 1,
+                    "dims": [
+                        {
+                            "dim": "nmeasure",
+                            "levels": ["site", "time"],
+                            "reconstruct": True,
+                            "unique": True,
+                            "order": "preserve",
+                        }
+                    ],
+                }
+            )
+        },
+    )
+
+    with pytest.raises(ValueError, match="duplicate label"):
+        restore_declared_multiindexes(expanded, strict=True)
 
 
 def test_prepared_inputs_zarr_save_overwrites_existing_artifact(tmp_path: Path) -> None:

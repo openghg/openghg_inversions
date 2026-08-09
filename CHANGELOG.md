@@ -4,6 +4,13 @@
 
 ## Code changes
 
+- Added a shared, versioned MultiIndex storage boundary. NetCDF and Zarr
+  artifacts now declare each owning dimension, ordered level names, uniqueness,
+  reconstruction, and ordering expectations; declared expanded coordinates are
+  restored with explicit xarray MultiIndex construction and focused validation.
+  Public InferenceData save/load helpers preserve these semantics across both
+  storage backends. [#555](https://github.com/openghg/openghg_inversions/issues/555)
+
 - Fixed the weights-first fixed-outer adapter to reorder physically equivalent
   reversed coordinates for both outer-region and inner-class maps before
   strict grid validation. Genuinely incompatible coordinates still fail.

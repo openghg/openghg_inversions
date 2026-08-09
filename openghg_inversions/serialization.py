@@ -28,6 +28,76 @@ import xarray as xr
 
 
 MULTIINDEX_DIMS_ATTR = "openghg_inversions:multiindex_dims"
+MULTIINDEX_SCHEMA_VERSION = 1
+
+
+def _validate_multiindex(
+    index: pd.MultiIndex,
+    *,
+    dim: str,
+    level_names: Iterable[str] | None = None,
+) -> tuple[str, ...]:
+    """Validate the semantic identity carried by a MultiIndex."""
+    names = tuple(index.names)
+    if any(not isinstance(name, str) or not name for name in names):
+        raise ValueError(f"MultiIndex {dim!r} must have non-empty string level names.")
+    if len(set(names)) != len(names):
+        raise ValueError(f"MultiIndex {dim!r} has duplicate level names.")
+
+    if level_names is not None:
+        expected = _normalise_cf_multiindex_names(level_names)
+        if names != expected:
+            raise ValueError(
+                f"MultiIndex {dim!r} has levels {list(names)!r}; expected {list(expected)!r} in that order."
+            )
+
+    if not index.is_unique:
+        duplicate = index[index.duplicated()][0]
+        raise ValueError(f"MultiIndex {dim!r} contains duplicate label {duplicate!r}.")
+    return cast(tuple[str, ...], names)
+
+
+def normalise_declared_multiindex(
+    ds: xr.Dataset,
+    dim: str,
+    level_names: str | Iterable[str],
+) -> xr.Dataset:
+    """Normalize a MultiIndex or its declared expanded form.
+
+    The owning dimension and ordered semantic level names are explicit.  An
+    already-indexed dataset is validated in place; an expanded representation
+    is reconstructed only when every level is one-dimensional on ``dim`` and
+    the resulting labels are unique.
+    """
+    levels = _normalise_cf_multiindex_names(level_names)
+    if dim not in ds.dims:
+        raise ValueError(f"MultiIndex dimension {dim!r} is missing from the Dataset.")
+
+    index = ds.indexes.get(dim)
+    if isinstance(index, pd.MultiIndex):
+        _validate_multiindex(index, dim=dim, level_names=levels)
+        return ds
+
+    missing = [level for level in levels if level not in ds.coords]
+    if missing:
+        raise ValueError(f"MultiIndex {dim!r} is missing level coordinate(s) {missing!r}.")
+    for level in levels:
+        coordinate = ds[level]
+        if coordinate.dims != (dim,):
+            raise ValueError(f"MultiIndex level coordinate {level!r} must be one-dimensional on {dim!r}.")
+        if coordinate.sizes[dim] != ds.sizes[dim]:
+            raise ValueError(f"MultiIndex level coordinate {level!r} has a length inconsistent with {dim!r}.")
+
+    multiindex = pd.MultiIndex.from_arrays(
+        [ds[level].values for level in levels],
+        names=levels,
+    )
+    _validate_multiindex(multiindex, dim=dim, level_names=levels)
+
+    # Install the index explicitly so xarray does not rely on deprecated
+    # implicit pandas.MultiIndex promotion.
+    result = ds.drop_vars(list(levels))
+    return result.assign_coords(xr.Coordinates.from_pandas_multiindex(multiindex, dim))
 
 
 def _normalise_cf_multiindex_names(index_names: str | Iterable[str]) -> tuple[str, ...]:
@@ -74,11 +144,7 @@ def encode_cf_multiindexes(ds: xr.Dataset, index_names: str | Iterable[str]) -> 
         if not isinstance(index, pd.MultiIndex):
             raise ValueError(f"Dimension {name!r} is not backed by a pandas MultiIndex.")
 
-        level_names = tuple(index.names)
-        if any(not isinstance(level_name, str) or not level_name for level_name in level_names):
-            raise ValueError(f"MultiIndex {name!r} must have non-empty string level names.")
-        if len(set(level_names)) != len(level_names):
-            raise ValueError(f"MultiIndex {name!r} has duplicate level names.")
+        level_names = _validate_multiindex(index, dim=name)
 
         repeated_level_names = all_level_names.intersection(level_names)
         if repeated_level_names:
@@ -171,6 +237,13 @@ def decode_cf_multiindexes(ds: xr.Dataset, index_names: str | Iterable[str]) -> 
         decoded = decode_compress_to_multi_index(normalised, idxnames=names)
     except (AttributeError, IndexError, KeyError, TypeError, ValueError) as exc:
         raise ValueError(f"Could not decode CF MultiIndexes {names!r}: {exc}") from exc
+
+    for name in names:
+        index = decoded.indexes.get(name)
+        if not isinstance(index, pd.MultiIndex):
+            raise ValueError(f"Decoded CF coordinate {name!r} is not a pandas MultiIndex.")
+        compress = normalised[name].attrs["compress"]
+        _validate_multiindex(index, dim=name, level_names=compress.split())
 
     missing_coords = {
         name: coordinate
@@ -296,6 +369,78 @@ def inferencedata_from_datatree(dt: xr.DataTree) -> az.InferenceData:
     )
 
 
+def save_inferencedata(
+    idata: az.InferenceData,
+    output_file: str | Path,
+    output_format: Literal["netcdf", "zarr"] | None = None,
+) -> None:
+    """Save InferenceData through the declared MultiIndex boundary.
+
+    Args:
+        idata: InferenceData whose groups and root attributes should be saved.
+        output_file: Destination NetCDF file or Zarr store.
+        output_format: Explicit backend, or ``None`` to infer it from the path.
+    """
+    save_datatree(inferencedata_to_datatree(idata), output_file, output_format)
+
+
+def load_inferencedata(file_path: str | Path) -> az.InferenceData:
+    """Load InferenceData and restore every valid declared MultiIndex.
+
+    Malformed declarations are removed and left expanded rather than guessed,
+    matching :func:`restore_declared_multiindexes`' forgiving default.
+
+    Args:
+        file_path: NetCDF file or Zarr store written by
+            :func:`save_inferencedata`.
+
+    Returns:
+        Fully loaded InferenceData with valid semantic indexes reconstructed.
+    """
+    return inferencedata_from_datatree(open_datatree_loaded(file_path))
+
+
+def encode_multiindexes_for_storage(ds: xr.Dataset) -> xr.Dataset:
+    """Expand all semantic MultiIndexes and attach versioned schema metadata.
+
+    Args:
+        ds: Dataset containing zero or more pandas MultiIndex dimensions.
+
+    Returns:
+        A serialization copy with ordinary level coordinates and declarations
+        of their owner, order, uniqueness, and reconstruction policy.
+
+    Raises:
+        ValueError: If an index has missing, repeated, or duplicate semantic
+            labels.
+    """
+    result = ds
+    records: list[dict[str, object]] = []
+    for dim, index in ds.indexes.items():
+        if dim not in result.dims or not isinstance(index, pd.MultiIndex):
+            continue
+        dim_name = str(dim)
+        level_names = _validate_multiindex(index, dim=dim_name)
+        result = result.reset_index(dim)
+        records.append(
+            {
+                "dim": dim_name,
+                "levels": list(level_names),
+                "reconstruct": True,
+                "unique": True,
+                "order": "preserve",
+            }
+        )
+
+    if records:
+        result = result.copy()
+        result.attrs = dict(result.attrs)
+        result.attrs[MULTIINDEX_DIMS_ATTR] = json.dumps(
+            {"version": MULTIINDEX_SCHEMA_VERSION, "dims": records}
+        )
+    return result
+
+
 def reset_serialisation_multiindexes(ds: xr.Dataset) -> xr.Dataset:
     """Expand xarray MultiIndexes before DataTree serialization.
 
@@ -310,20 +455,7 @@ def reset_serialisation_multiindexes(ds: xr.Dataset) -> xr.Dataset:
         ValueError: If a MultiIndex level is unnamed and cannot be restored
             unambiguously.
     """
-    result = ds
-    multiindex_dims: list[dict[str, object]] = []
-    for dim, index in ds.indexes.items():
-        if dim in result.dims and isinstance(index, pd.MultiIndex):
-            level_names = list(index.names)
-            if any(name is None for name in level_names):
-                raise ValueError(f"Cannot serialise unnamed MultiIndex levels for dimension {dim!r}.")
-            result = result.reset_index(dim)
-            multiindex_dims.append({"dim": str(dim), "levels": [str(name) for name in level_names]})
-    if multiindex_dims:
-        result = result.copy()
-        result.attrs = dict(result.attrs)
-        result.attrs[MULTIINDEX_DIMS_ATTR] = json.dumps({"dims": multiindex_dims})
-    return result
+    return encode_multiindexes_for_storage(ds)
 
 
 def restore_serialisation_multiindexes(ds: xr.Dataset, *, strict: bool = False) -> xr.Dataset:
@@ -379,6 +511,13 @@ def restore_serialisation_multiindexes(ds: xr.Dataset, *, strict: bool = False) 
             raise ValueError("MultiIndex metadata is not valid JSON.") from None
         return result
 
+    if isinstance(payload, dict):
+        version = payload.get("version")
+        if version is not None and version != MULTIINDEX_SCHEMA_VERSION:
+            if strict:
+                raise ValueError(f"Unsupported MultiIndex metadata version {version!r}.")
+            return result
+
     records = payload.get("dims") if isinstance(payload, dict) else None
     if not isinstance(records, list):
         if strict:
@@ -398,14 +537,43 @@ def restore_serialisation_multiindexes(ds: xr.Dataset, *, strict: bool = False) 
             if strict:
                 raise ValueError("MultiIndex records require string 'dim' and list 'levels' values.")
             continue
-        if not all(isinstance(level, str) for level in levels):
+        if not levels or not all(isinstance(level, str) and level for level in levels):
             if strict:
-                raise ValueError("MultiIndex level names must be strings.")
+                raise ValueError("MultiIndex level names must be non-empty strings.")
             continue
-        if dim in result.dims and all(level in result and result[level].dims == (dim,) for level in levels):
-            result = result.set_index({dim: levels})
-        elif strict:
-            raise ValueError(
-                f"MultiIndex metadata for dimension {dim!r} does not align with stored level coordinates."
-            )
+        if len(set(levels)) != len(levels):
+            if strict:
+                raise ValueError(f"MultiIndex metadata for dimension {dim!r} has duplicate levels.")
+            continue
+
+        reconstruct = record.get("reconstruct", True)
+        unique = record.get("unique", True)
+        order = record.get("order", "preserve")
+        if reconstruct is not True or unique is not True or order != "preserve":
+            if strict:
+                raise ValueError(
+                    f"MultiIndex metadata for dimension {dim!r} has unsupported semantic expectations."
+                )
+            continue
+        try:
+            result = normalise_declared_multiindex(result, dim, levels)
+        except ValueError:
+            if strict:
+                raise
     return result
+
+
+def restore_declared_multiindexes(ds: xr.Dataset, *, strict: bool = False) -> xr.Dataset:
+    """Restore MultiIndexes from explicit storage declarations.
+
+    Args:
+        ds: Dataset carrying expanded coordinates and
+            :data:`MULTIINDEX_DIMS_ATTR` metadata.
+        strict: Raise a focused error for invalid metadata or semantic labels.
+            By default, invalid declarations are removed and their coordinates
+            remain expanded.
+
+    Returns:
+        Dataset with every valid declared MultiIndex restored explicitly.
+    """
+    return restore_serialisation_multiindexes(ds, strict=strict)
