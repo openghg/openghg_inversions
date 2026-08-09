@@ -13,7 +13,6 @@ from typing import Any, TypeAlias
 import numpy as np
 import pymc as pm
 import pytensor.tensor as pt
-import xarray as xr
 from pymc.distributions import continuous
 from pytensor.tensor.variable import TensorVariable
 
@@ -87,9 +86,7 @@ def parse_prior(name: str, prior_params: PriorArgs, **kwargs) -> TensorVariable:
     """
     pdf_dict = {cd.lower(): cd for cd in continuous.__all__}
 
-    params = {
-        key: value.values if isinstance(value, xr.DataArray) else value for key, value in prior_params.items()
-    }
+    params = prior_params.copy()
     pdf = str(params.pop("pdf")).lower()
 
     if pdf == "lognormal":

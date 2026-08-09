@@ -165,7 +165,7 @@ def test_rhime_model_accepts_projected_labelled_prior_stdev() -> None:
         grid_cell_prior_stdev=0.4,
     )
     sensitivity = xr.DataArray(
-        [[1.0, 0.0], [0.0, 2.0]],
+        [[1.0, 0.0], [2.0, 0.0]],
         dims=("nmeasure", "region"),
         coords={"nmeasure": [0, 1], "region": projected["region"]},
         name="H",
@@ -180,8 +180,8 @@ def test_rhime_model_accepts_projected_labelled_prior_stdev() -> None:
         no_model_error=True,
     )
 
-    assert model.named_vars["x"].eval().shape == (2,)
-    assert model.named_vars["x"] in model.free_RVs
+    assert model.named_vars["x_active"].eval().shape == (1,)
+    assert model.named_vars["x_active"] in model.free_RVs
 
 
 def test_state_activity_materializes_dask_backed_reductions_and_vectors() -> None:
