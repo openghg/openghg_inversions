@@ -4,6 +4,11 @@
 
 ## Code changes
 
+- Fixed the weights-first fixed-outer adapter to reorder physically equivalent
+  reversed coordinates for both outer-region and inner-class maps before
+  strict grid validation. Genuinely incompatible coordinates still fail.
+  [PR #525 follow-up](https://github.com/openghg/openghg_inversions/pull/525).
+
 - Added modern RHIME likelihood support for fixed aggregation-error covariance
   supplied after input preparation: exact dense, low-rank-plus-diagonal, and
   independent diagonal representations. Structured likelihoods retain the

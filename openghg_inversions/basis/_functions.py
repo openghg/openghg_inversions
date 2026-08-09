@@ -616,7 +616,11 @@ def region_constrained_basis_from_weights(
     """
     raw_weights = _sanitize_generated_basis_weights(weights, algorithm="region-constrained")
     weights = _normalise_weights_by_max(raw_weights)
-    region_classes = _region_classes_on_weights_grid(weights, region_classes)
+    region_classes = _spatial_field_on_weights_grid(
+        weights,
+        region_classes,
+        candidate_name="region_classes",
+    )
     if split_strategy is not None and split_acceptance != "none":
         raise ValueError("split_strategy cannot be combined with a non-default split_acceptance.")
     if split_strategy is None:
@@ -642,65 +646,68 @@ def region_constrained_basis_from_weights(
     return _finalise_generated_basis(constrained_basis, start_date=start_date, domain=domain)
 
 
-def _region_classes_on_weights_grid(
+def _spatial_field_on_weights_grid(
     weights: xr.DataArray,
-    region_classes: xr.DataArray,
+    field: xr.DataArray,
+    *,
+    candidate_name: str,
 ) -> xr.DataArray:
-    """Subset a full-domain class field before physical-grid normalization.
+    """Subset or reorder a spatial field before strict grid normalization.
 
     When both inputs have matching one-dimensional dimension coordinates and
-    the class grid is at least as large, each weights coordinate selects its
-    unique nearest numeric class coordinate or unique exact nonnumeric match.
+    the candidate grid is at least as large, each weights coordinate selects its
+    unique nearest numeric candidate coordinate or unique exact nonnumeric match.
     Physical-coordinate tolerances, metadata, and CRS compatibility are then
     validated by :func:`normalize_spatial_grid`.
 
     Args:
         weights: Two-dimensional weight field defining the target grid.
-        region_classes: Two-dimensional class field on the target grid or a
+        field: Two-dimensional candidate field on the target grid or a
             larger grid containing it.
+        candidate_name: Semantic field name used in alignment errors.
 
     Returns:
-        Class field subset, transposed, and normalized to the weights grid.
+        Candidate field subset, transposed, and normalized to the weights grid.
 
     Raises:
         ValueError: If either input is not two-dimensional or their dimension
             names differ.
-        xarray.AlignmentError: If the class field cannot be normalized to the
+        xarray.AlignmentError: If the candidate field cannot be normalized to the
             physical weights grid.
     """
-    if weights.ndim != 2 or region_classes.ndim != 2 or set(weights.dims) != set(region_classes.dims):
+    if weights.ndim != 2 or field.ndim != 2 or set(weights.dims) != set(field.dims):
         return normalize_spatial_grid(
             weights,
-            region_classes,
+            field,
             reference_name="weights",
-            candidate_name="region_classes",
+            candidate_name=candidate_name,
         )
 
-    region_classes = region_classes.transpose(*weights.dims)
+    field = field.transpose(*weights.dims)
     indexers: dict[Hashable, np.ndarray] = {}
     for dimension in weights.dims:
-        if weights.sizes[dimension] > region_classes.sizes[dimension]:
+        if weights.sizes[dimension] > field.sizes[dimension]:
             break
-        if dimension not in weights.coords or dimension not in region_classes.coords:
+        if dimension not in weights.coords or dimension not in field.coords:
             break
 
         weight_coordinate = weights.coords[dimension]
-        class_coordinate = region_classes.coords[dimension]
-        if weight_coordinate.dims != (dimension,) or class_coordinate.dims != (dimension,):
+        field_coordinate = field.coords[dimension]
+        if weight_coordinate.dims != (dimension,) or field_coordinate.dims != (dimension,):
             break
 
         weight_values = weight_coordinate.to_numpy()
-        class_values = class_coordinate.to_numpy()
-        if np.issubdtype(weight_values.dtype, np.number) and np.issubdtype(class_values.dtype, np.number):
+        field_values = field_coordinate.to_numpy()
+        if np.issubdtype(weight_values.dtype, np.number) and np.issubdtype(field_values.dtype, np.number):
             distances = np.abs(
-                np.asarray(class_values, dtype=np.float64)[:, np.newaxis]
+                np.asarray(field_values, dtype=np.float64)[:, np.newaxis]
                 - np.asarray(weight_values, dtype=np.float64)[np.newaxis, :]
             )
             nearest = np.argmin(distances, axis=0)
         else:
             nearest_matches: list[int] = []
             for value in weight_values:
-                matches = np.flatnonzero(class_values == value)
+                matches = np.flatnonzero(field_values == value)
                 if matches.size != 1:
                     break
                 nearest_matches.append(int(matches[0]))
@@ -712,13 +719,13 @@ def _region_classes_on_weights_grid(
             break
         indexers[dimension] = nearest
     else:
-        region_classes = region_classes.isel(indexers)
+        field = field.isel(indexers)
 
     return normalize_spatial_grid(
         weights,
-        region_classes,
+        field,
         reference_name="weights",
-        candidate_name="region_classes",
+        candidate_name=candidate_name,
     )
 
 
@@ -855,16 +862,14 @@ def region_constrained_fixed_outer_basis_from_weights(
         load_country_region_classes(domain, country_directory) if region_classes is None else region_classes
     )
 
-    loaded_outer_regions = normalize_spatial_grid(
+    loaded_outer_regions = _spatial_field_on_weights_grid(
         weights,
         loaded_outer_regions,
-        reference_name="weights",
         candidate_name="outer_regions",
     )
-    loaded_region_classes = normalize_spatial_grid(
+    loaded_region_classes = _spatial_field_on_weights_grid(
         weights,
         loaded_region_classes,
-        reference_name="weights",
         candidate_name="region_classes",
     )
 
