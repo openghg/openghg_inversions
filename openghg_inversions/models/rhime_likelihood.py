@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+import json
 from typing import Any, Protocol, cast
 
 import numpy as np
@@ -60,12 +61,13 @@ class RhimeObservationState:
 
 @dataclass(frozen=True)
 class RhimeLikelihoodResult:
-    """Observed variable, optional error scale, and explicit semantic roles."""
+    """Observed variable, semantic roles, and serializable provenance."""
 
     likelihood: TensorVariable
     variable_roles: Mapping[str, str]
     error_scale: TensorVariable | None = None
     supported_output_formats: tuple[str, ...] = ("none",)
+    metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         """Require the observed-variable role without inferring its name."""
@@ -92,8 +94,14 @@ class RhimeLikelihoodResult:
             )
         if "none" not in output_formats:
             raise ValueError("`RhimeLikelihoodResult.supported_output_formats` must include 'none'.")
+        metadata = dict(self.metadata)
+        try:
+            json.dumps(metadata)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("`RhimeLikelihoodResult.metadata` must be JSON serializable.") from exc
         object.__setattr__(self, "variable_roles", roles)
         object.__setattr__(self, "supported_output_formats", output_formats)
+        object.__setattr__(self, "metadata", metadata)
 
 
 class RhimeLikelihoodBuilder(Protocol):
@@ -179,6 +187,88 @@ def build_gaussian_rhime_likelihood(context: RhimeLikelihoodContext) -> RhimeLik
         error_scale=state.error_scale,
         variable_roles={"concentration": "y", "model_error": "epsilon"},
         supported_output_formats=("none", "inv_out", "basic", "paris", "legacy"),
+        metadata={
+            "family": "rhime_pollution_event_gaussian",
+            "sigma_interpretation": "pollution_event_scaled",
+        },
+    )
+
+
+def build_absolute_sigma_gaussian_likelihood(
+    context: RhimeLikelihoodContext,
+) -> RhimeLikelihoodResult:
+    """Add a Gaussian likelihood with absolute observation-aligned sigma.
+
+    The marginal standard deviation is
+    ``sqrt(mf_error**2 + aggregation_error**2 + sigma**2)`` and is bounded
+    below by ``min_error``. For dense or low-rank aggregation error, its full
+    covariance is retained while the same marginal floor is applied.
+
+    This is an opt-in alternative to RHIME's historical pollution-event-scaled
+    Gaussian. ``no_model_error=True`` omits the inferred sigma term.
+    """
+    data = context.data
+    output_dim = context.output_dim
+    validate_observation_error_inputs(data, output_dim=output_dim)
+    aggregation_error = resolve_aggregation_error(
+        data,
+        context.aggregation_error_mode,
+        output_dim=output_dim,
+    )
+    observed = add_model_data(data["mf"].transpose(output_dim), "Y")
+    error_data = add_model_data(data["mf_error"].transpose(output_dim), "error")
+    min_error_data = add_model_data(data["min_error"].transpose(output_dim), "min_error")
+
+    independent_variance = error_data**2
+    if not context.no_model_error:
+        sigma = add_sigma_component(
+            context.sigma_alignment,
+            prior_args=dict(context.sigma_prior),
+        )
+        independent_variance = independent_variance + sigma**2
+
+    aggregation_marginal_variance = pt.as_tensor_variable(
+        pm.floatX(aggregation_error.marginal_variance)
+    )
+    floor_extra = cast(Any, pt.maximum)(
+        min_error_data**2 - independent_variance - aggregation_marginal_variance,
+        0.0,
+    )
+    independent_variance = independent_variance + floor_extra
+
+    mean = context.flux_mean
+    if context.boundary_mean is not None:
+        mean = mean + context.boundary_mean
+    if context.offset is not None:
+        mean = mean + context.offset
+
+    epsilon = pm.Deterministic(
+        "epsilon",
+        pt.sqrt(independent_variance + aggregation_marginal_variance),
+        dims=output_dim,
+    )
+    likelihood = add_gaussian_observation_likelihood(
+        observed=observed,
+        mean=mean,
+        independent_variance=independent_variance,
+        aggregation_error=aggregation_error,
+        output_dim=output_dim,
+    )
+    return RhimeLikelihoodResult(
+        likelihood=likelihood,
+        error_scale=epsilon,
+        variable_roles={"concentration": "y", "model_error": "epsilon"},
+        supported_output_formats=("none", "inv_out", "basic", "paris", "legacy"),
+        metadata={
+            "family": "absolute_sigma_gaussian",
+            "sigma_interpretation": "absolute",
+            "variance_terms": [
+                "mf_error",
+                "aggregation_error",
+                *([] if context.no_model_error else ["sigma"]),
+            ],
+            "minimum_error": "marginal_standard_deviation_floor",
+        },
     )
 
 

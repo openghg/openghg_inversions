@@ -103,8 +103,8 @@ When boundary-condition scaling is enabled,
    bc &\sim p_{bc}, \\
    \mu_{bc} &= H_{bc}bc.
 
-An optional site or site-by-period offset contributes ``offset``. The mean of
-the observed distribution is therefore
+An optional global, site, or site-by-period offset contributes ``offset``. The
+mean of the observed distribution is therefore
 
 .. math::
 
@@ -133,6 +133,26 @@ The current observed distribution is
 
    y \sim \mathcal{N}(\mu_{\mathrm{obs}}, \epsilon).
 
+The opt-in ``build_absolute_sigma_gaussian_likelihood`` instead treats sigma
+as an absolute observation-scale standard deviation:
+
+.. math::
+
+   \epsilon_{\mathrm{absolute}} =
+   \max\left(
+     \sqrt{
+       \mathrm{error}^2 +
+       \mathrm{aggregation\_error}^2 +
+       \sigma^2
+     },
+     \mathrm{min\_error}
+   \right).
+
+Diagonal aggregation error uses ``aggregation_error_sd`` directly. Dense and
+low-rank representations retain their full covariance while applying the same
+marginal standard-deviation floor. This alternative is explicit and does not
+change the historical RHIME default.
+
 The default priors are:
 
 .. list-table::
@@ -151,7 +171,7 @@ The default priors are:
    * - Model error
      - Uniform from 0.1 to 3
      - ``sigma``
-   * - Optional offset
+   * - Optional site/global offset
      - Normal with mean 0 and standard deviation 1
      - ``offset_latent`` and ``offset``
 
@@ -329,6 +349,25 @@ error policies, aggregation-error mode, and output dimension. This boundary
 avoids a misleading contract in which the runner builds half an error model
 before calling user code.
 
+For the absolute-sigma Gaussian above, no custom modelling function is needed:
+
+.. code-block:: python
+
+   from openghg_inversions.rhime import (
+       build_absolute_sigma_gaussian_likelihood,
+       run_rhime_from_prepared_inputs,
+   )
+
+   result = run_rhime_from_prepared_inputs(
+       prepared_inputs=prepared,
+       run_spec=run_spec,
+       likelihood_builder=build_absolute_sigma_gaussian_likelihood,
+   )
+
+Set ``add_offset=True`` and ``offset_args={"per_site": False}`` on
+``RhimeModelSpec`` to combine it with one global scalar offset. The default
+``per_site=True`` retains the existing site or site-period offset design.
+
 The helper ``build_rhime_observation_state`` is available when only the
 distribution should change. For example, this replaces Normal observations
 with a Student-t distribution while retaining the current RHIME mean and error
@@ -369,6 +408,7 @@ scale:
                "model_error": "epsilon",
            },
            supported_output_formats=("none", "inv_out"),
+           metadata={"family": "student_t", "degrees_of_freedom": 4.0},
        )
 
 
@@ -383,6 +423,10 @@ scale:
 settings may use a semantic role such as ``"concentration"``. For backwards
 compatibility, its default ``"y"`` request resolves to the declared
 ``concentration`` name when a custom model has no variable named ``y``.
+``RhimeLikelihoodResult.metadata`` must be JSON serializable. The runner saves
+it with the model metadata and automatically records the likelihood builder's
+module and qualified name, so direct-Python likelihoods remain identifiable in
+persisted inversion outputs.
 
 A complete model builder instead receives a ``RhimeModelBuilderContext``. It
 contains the validated ``RhimePreparedInputs``, updated ``RhimeRunSpec``, and

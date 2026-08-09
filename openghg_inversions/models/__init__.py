@@ -60,6 +60,7 @@ from openghg_inversions.models.rhime_likelihood import (
     RhimeLikelihoodResult,
     RhimeObservationState,
     add_rhime_likelihood_component,
+    build_absolute_sigma_gaussian_likelihood,
     build_gaussian_rhime_likelihood,
     build_rhime_observation_state,
 )
@@ -95,6 +96,7 @@ __all__ = [
     "add_offset_component",
     "add_inferpymc_likelihood_component",
     "add_rhime_likelihood_component",
+    "build_absolute_sigma_gaussian_likelihood",
     "build_gaussian_rhime_likelihood",
     "build_rhime_observation_state",
     "build_rhime_model",

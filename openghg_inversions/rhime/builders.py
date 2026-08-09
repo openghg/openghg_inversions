@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 import json
 from typing import Any, Protocol
@@ -144,7 +144,7 @@ def validate_model_build_result(
         )
 
 
-def callable_metadata(builder: RhimeModelBuilder) -> dict[str, str]:
+def callable_metadata(builder: Callable[..., Any]) -> dict[str, str]:
     """Return stable, serializable direct-Python callable identity metadata."""
     return {
         "module": getattr(builder, "__module__", type(builder).__module__),

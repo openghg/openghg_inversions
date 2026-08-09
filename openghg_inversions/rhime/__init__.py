@@ -8,6 +8,7 @@ from openghg_inversions.models.rhime_likelihood import (
     RhimeLikelihoodContext,
     RhimeLikelihoodResult,
     RhimeObservationState,
+    build_absolute_sigma_gaussian_likelihood,
     build_gaussian_rhime_likelihood,
     build_rhime_observation_state,
 )
@@ -38,6 +39,7 @@ __all__ = [
     "RhimeRunSpec",
     "RhimeResult",
     "params_from_config",
+    "build_absolute_sigma_gaussian_likelihood",
     "build_gaussian_rhime_likelihood",
     "build_rhime_observation_state",
     "resolve_flux_sources",

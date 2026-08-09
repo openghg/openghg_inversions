@@ -140,12 +140,14 @@ def _builtin_model_build_result(
         likelihood_result = get_rhime_likelihood_result(model)
         likelihood_roles = dict(likelihood_result.variable_roles)
         supported_output_formats = likelihood_result.supported_output_formats
+        likelihood_metadata = dict(likelihood_result.metadata)
     except ValueError:
         # Keep test doubles and third-party wrappers around the historical
         # built-in functions backward compatible. Real built-in models always
         # carry the explicit likelihood result.
         likelihood_roles = {"concentration": "y", "model_error": "epsilon"}
         supported_output_formats = ("none", "inv_out", "basic", "paris", "legacy")
+        likelihood_metadata = {}
 
     roles = {
         "observation": "mf",
@@ -165,11 +167,18 @@ def _builtin_model_build_result(
     if model_spec.add_offset:
         roles["offset"] = "offset"
 
+    metadata: dict[str, Any] = {
+        "kind": "builtin",
+        "strategy": model_spec.builder_strategy,
+    }
+    if likelihood_metadata:
+        metadata["likelihood"] = likelihood_metadata
+
     return RhimeModelBuildResult(
         model=model,
         variable_roles=roles,
         supported_output_formats=cast(tuple[Any, ...], supported_output_formats),
-        metadata={"kind": "builtin", "strategy": model_spec.builder_strategy},
+        metadata=metadata,
     )
 
 
@@ -321,6 +330,11 @@ def _execute_prepared_rhime(
         )
     if likelihood_builder is not None:
         validate_model_build_result(model_build_result, context=builder_context)
+    persisted_builder_metadata = dict(model_build_result.metadata)
+    if model_builder is not None:
+        persisted_builder_metadata["model_builder"] = callable_metadata(model_builder)
+    if likelihood_builder is not None:
+        persisted_builder_metadata["likelihood_builder"] = callable_metadata(likelihood_builder)
     log_timing("rhime.model_build", timer_seconds(timing_start), multisector=multisector)
 
     timing_start = timer_start()
@@ -351,6 +365,8 @@ def _execute_prepared_rhime(
     )
     if model_builder is not None:
         result.output_metadata["model_builder"] = callable_metadata(model_builder)
+    if likelihood_builder is not None:
+        result.output_metadata["likelihood_builder"] = callable_metadata(likelihood_builder)
 
     timing_start = timer_start()
     if multisector:
@@ -362,7 +378,7 @@ def _execute_prepared_rhime(
             prepared=prepared,
             country_file=run_spec.output.country_file,
             variable_roles=model_build_result.variable_roles,
-            builder_metadata=model_build_result.metadata,
+            builder_metadata=persisted_builder_metadata,
         )
     else:
         output_bundle = make_standard_output_bundle(
@@ -374,7 +390,7 @@ def _execute_prepared_rhime(
             country_file=run_spec.output.country_file,
             sampler=sampler,
             variable_roles=model_build_result.variable_roles,
-            builder_metadata=model_build_result.metadata,
+            builder_metadata=persisted_builder_metadata,
         )
     log_timing(
         "rhime.output_bundle_total",

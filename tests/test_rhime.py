@@ -44,6 +44,7 @@ from openghg_inversions.models import (
     RhimeLikelihoodContext,
     RhimeLikelihoodResult,
     StateActivity,
+    build_absolute_sigma_gaussian_likelihood,
     build_rhime_model,
     build_rhime_observation_state,
     build_rhime_model_from_spec,
@@ -963,6 +964,24 @@ def test_build_rhime_model_accepts_student_t_likelihood_builder(
         "concentration": "student_y",
         "model_error": "epsilon",
     }
+
+
+def test_build_rhime_model_accepts_global_scalar_offset(
+    rhime_inv_inputs: xr.Dataset,
+    builder_args: dict,
+) -> None:
+    """The built-in graph can broadcast one scalar offset over observations."""
+    model = build_rhime_model(
+        rhime_inv_inputs,
+        **{
+            **builder_args,
+            "add_offset": True,
+            "offset_args": {"per_site": False},
+        },
+    )
+
+    assert model["offset_latent"].ndim == 0
+    assert model["offset"].eval().shape == (rhime_inv_inputs.sizes["nmeasure"],)
 
 
 def test_modern_inv_inputs_omit_component_owned_sigma_index(rhime_inv_inputs: xr.Dataset) -> None:
@@ -2000,7 +2019,63 @@ def test_run_rhime_from_prepared_inputs_accepts_complete_model_builder(
     assert result.inv_out.model_metadata["builder"] == {
         "package": "research-models",
         "version": "1.2.3",
+        "model_builder": result.output_metadata["model_builder"],
     }
+
+
+def test_likelihood_builder_provenance_is_saved_with_result_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Saved output identifies a custom likelihood callable and its declared family."""
+    model_spec, _, run_spec = _minimal_output_specs(output_format="inv_out")
+    model_spec = replace(
+        model_spec,
+        use_bc=False,
+        add_offset=True,
+        offset_args={"per_site": False},
+    )
+    run_spec = replace(run_spec, model=model_spec)
+    inv_inputs = _minimal_output_inv_inputs()
+    inv_inputs["H"] = inv_inputs["H"].assign_coords(source=model_spec.sectors[0].flux_source)
+    inv_inputs["min_error"] = xr.zeros_like(inv_inputs["mf"])
+    prepared = RhimePreparedInputs(
+        inv_inputs=inv_inputs,
+        basis_functions=_fake_basis_functions(),
+        site_metadata=_prepared_site_metadata(),
+    )
+
+    def verification_gaussian(context: RhimeLikelihoodContext) -> RhimeLikelihoodResult:
+        return build_absolute_sigma_gaussian_likelihood(context)
+
+    def fake_sample(
+        self: RhimeSampler,
+        model: pm.Model,
+        *,
+        variable_roles: dict[str, str],
+    ) -> az.InferenceData:
+        assert model["offset_latent"].ndim == 0
+        assert variable_roles["concentration"] == "y"
+        return _minimal_output_idata()
+
+    monkeypatch.setattr(RhimeSampler, "sample", fake_sample)
+    result = run_rhime_from_prepared_inputs(
+        prepared_inputs=prepared,
+        run_spec=run_spec,
+        sampler=RhimeSampler(sample_prior_predictive=False),
+        likelihood_builder=verification_gaussian,
+    )
+
+    assert result.output_metadata["likelihood_builder"]["qualname"].endswith(
+        "verification_gaussian"
+    )
+    assert result.model_build_result is not None
+    assert result.model_build_result.metadata["likelihood"]["family"] == (
+        "absolute_sigma_gaussian"
+    )
+    assert result.inv_out is not None
+    saved_builder = result.inv_out.model_metadata["builder"]
+    assert saved_builder["likelihood_builder"] == result.output_metadata["likelihood_builder"]
+    assert saved_builder["likelihood"]["sigma_interpretation"] == "absolute"
 
 
 def test_custom_model_builder_rejects_undeclared_output_before_sampling(
