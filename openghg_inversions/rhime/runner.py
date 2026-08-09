@@ -31,7 +31,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 import inspect
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import arviz as az
 import pandas as pd
@@ -60,18 +60,30 @@ from openghg_inversions.inversion_data import (
     prepare_rhime_inputs,
 )
 from openghg_inversions.models import (
+    RhimeLikelihoodBuilder,
     RhimeModelSpec,
     SectorSpec,
     build_rhime_model_from_spec,
     build_rhime_multisector_model_from_spec,
+    get_rhime_likelihood_result,
 )
 from openghg_inversions.models._rhime_flux import _select_sector_design
 from openghg_inversions.observation_error import resolve_aggregation_error
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
+from .builders import (
+    RhimeModelBuilder,
+    RhimeModelBuilderContext,
+    RhimeModelBuildResult,
+    callable_metadata,
+    validate_model_build_result,
+)
 
 __all__ = [
     "SectorSpec",
     "RhimeModelSpec",
+    "RhimeModelBuilder",
+    "RhimeModelBuilderContext",
+    "RhimeModelBuildResult",
     "RhimeOutputSpec",
     "RhimeSampler",
     "RhimeRunSpec",
@@ -100,6 +112,7 @@ class RhimeResult:
         inv_out: Modern inversion output object when created.
         basis_functions: Retained flux basis functions from preparation.
         sampler: Sampler settings used by the run.
+        model_build_result: Concrete model and explicit role/output manifest.
     """
 
     run_spec: RhimeRunSpec
@@ -113,6 +126,51 @@ class RhimeResult:
     model: pm.Model | None = None
     inv_out: InversionOutput | None = None
     sampler: RhimeSampler = field(default_factory=RhimeSampler)
+    model_build_result: RhimeModelBuildResult | None = None
+
+
+def _builtin_model_build_result(
+    model: pm.Model,
+    *,
+    model_spec: RhimeModelSpec,
+    multisector: bool,
+) -> RhimeModelBuildResult:
+    """Describe built-in standard and multisector models through the public contract."""
+    try:
+        likelihood_result = get_rhime_likelihood_result(model)
+        likelihood_roles = dict(likelihood_result.variable_roles)
+        supported_output_formats = likelihood_result.supported_output_formats
+    except ValueError:
+        # Keep test doubles and third-party wrappers around the historical
+        # built-in functions backward compatible. Real built-in models always
+        # carry the explicit likelihood result.
+        likelihood_roles = {"concentration": "y", "model_error": "epsilon"}
+        supported_output_formats = ("none", "inv_out", "basic", "paris", "legacy")
+
+    roles = {
+        "observation": "mf",
+        "observation_error": "mf_error",
+        "minimum_error": "min_error",
+        **likelihood_roles,
+    }
+    if multisector:
+        for sector in model_spec.sectors:
+            roles[f"flux_scale:{sector.name}"] = f"x_{sector.variable_suffix}"
+            roles[f"flux_contribution:{sector.name}"] = f"mu_{sector.variable_suffix}"
+            roles[f"emissions_sensitivity:{sector.name}"] = f"hx_{sector.variable_suffix}"
+    else:
+        roles.update({"flux_scale": "x", "flux_contribution": "mu", "emissions_sensitivity": "hx"})
+    if model_spec.use_bc:
+        roles.update({"baseline": "mu_bc", "baseline_scale": "bc", "baseline_sensitivity": "hbc"})
+    if model_spec.add_offset:
+        roles["offset"] = "offset"
+
+    return RhimeModelBuildResult(
+        model=model,
+        variable_roles=roles,
+        supported_output_formats=cast(tuple[Any, ...], supported_output_formats),
+        metadata={"kind": "builtin", "strategy": model_spec.builder_strategy},
+    )
 
 
 def _apply_output_bundle(result: RhimeResult, bundle: RhimeOutputBundle) -> None:
@@ -211,6 +269,8 @@ def _execute_prepared_rhime(
     run_spec: RhimeRunSpec,
     sampler: RhimeSampler,
     multisector: bool,
+    model_builder: RhimeModelBuilder | None = None,
+    likelihood_builder: RhimeLikelihoodBuilder | None = None,
 ) -> RhimeResult:
     """Build, sample, and produce outputs from prepared RHIME inputs."""
     run_spec = _run_spec_with_prepared_inputs(run_spec, prepared)
@@ -223,13 +283,51 @@ def _execute_prepared_rhime(
             run_spec.model,
             prepared.inv_inputs,
         )
-        model = build_rhime_multisector_model_from_spec(prepared.inv_inputs, run_spec.model)
+    builder_context = RhimeModelBuilderContext(
+        prepared_inputs=prepared,
+        run_spec=run_spec,
+        multisector=multisector,
+    )
+    if model_builder is not None:
+        model_build_result = model_builder(builder_context)
+        if not isinstance(model_build_result, RhimeModelBuildResult):
+            raise TypeError(
+                "A RHIME model builder must return `RhimeModelBuildResult`; "
+                f"got {type(model_build_result).__name__}."
+            )
+        validate_model_build_result(model_build_result, context=builder_context)
+        model = model_build_result.model
+    elif multisector:
+        model = build_rhime_multisector_model_from_spec(
+            prepared.inv_inputs,
+            run_spec.model,
+            **({} if likelihood_builder is None else {"likelihood_builder": likelihood_builder}),
+        )
+        model_build_result = _builtin_model_build_result(
+            model,
+            model_spec=run_spec.model,
+            multisector=True,
+        )
     else:
-        model = build_rhime_model_from_spec(prepared.inv_inputs, run_spec.model)
+        model = build_rhime_model_from_spec(
+            prepared.inv_inputs,
+            run_spec.model,
+            **({} if likelihood_builder is None else {"likelihood_builder": likelihood_builder}),
+        )
+        model_build_result = _builtin_model_build_result(
+            model,
+            model_spec=run_spec.model,
+            multisector=False,
+        )
+    if likelihood_builder is not None:
+        validate_model_build_result(model_build_result, context=builder_context)
     log_timing("rhime.model_build", timer_seconds(timing_start), multisector=multisector)
 
     timing_start = timer_start()
-    idata = sampler.sample(model)
+    if model_builder is None and likelihood_builder is None:
+        idata = sampler.sample(model)
+    else:
+        idata = sampler.sample(model, variable_roles=model_build_result.variable_roles)
     log_timing(
         "rhime.sampler_total",
         timer_seconds(timing_start),
@@ -248,8 +346,11 @@ def _execute_prepared_rhime(
         sampler=sampler,
         model=model,
         basis_functions=prepared.basis_functions,
+        model_build_result=model_build_result,
         output_metadata={"build_and_sample_seconds": timer_seconds(build_and_sample_start)},
     )
+    if model_builder is not None:
+        result.output_metadata["model_builder"] = callable_metadata(model_builder)
 
     timing_start = timer_start()
     if multisector:
@@ -260,6 +361,8 @@ def _execute_prepared_rhime(
             idata=idata,
             prepared=prepared,
             country_file=run_spec.output.country_file,
+            variable_roles=model_build_result.variable_roles,
+            builder_metadata=model_build_result.metadata,
         )
     else:
         output_bundle = make_standard_output_bundle(
@@ -270,6 +373,8 @@ def _execute_prepared_rhime(
             prepared=prepared,
             country_file=run_spec.output.country_file,
             sampler=sampler,
+            variable_roles=model_build_result.variable_roles,
+            builder_metadata=model_build_result.metadata,
         )
     log_timing(
         "rhime.output_bundle_total",
@@ -317,6 +422,8 @@ def run_rhime_from_prepared_inputs(
     prepared_inputs: RhimePreparedInputs,
     run_spec: RhimeRunSpec,
     sampler: RhimeSampler | None = None,
+    model_builder: RhimeModelBuilder | None = None,
+    likelihood_builder: RhimeLikelihoodBuilder | None = None,
 ) -> RhimeResult:
     """Run RHIME directly from previously prepared inversion inputs.
 
@@ -333,16 +440,25 @@ def run_rhime_from_prepared_inputs(
             sites and averaging periods are replaced with values from
             ``prepared_inputs``.
         sampler: Sampling settings to use. Defaults to a new ``RhimeSampler``.
+        model_builder: Optional complete direct-Python model factory. It
+            receives :class:`RhimeModelBuilderContext` and returns a model,
+            explicit variable roles, compatible output formats, and metadata.
+        likelihood_builder: Optional complete observation-component builder
+            used inside the built-in standard or multisector model. It owns
+            both error construction and the observed distribution.
 
     Returns:
         Modern RHIME result containing the built model, sampled trace, and
         requested outputs.
 
     Raises:
-        ValueError: If the model specification contains no sectors, the sector
+        ValueError: If both builder seams are supplied, the model specification
+            contains no sectors, the sector
             count, prepared ``H`` layout, and prepared-data layout flag
             disagree, or output settings are invalid.
     """
+    if model_builder is not None and likelihood_builder is not None:
+        raise ValueError("Pass either `model_builder` or `likelihood_builder`, not both.")
     prepared_inputs = prepared_inputs.validated()
     sector_count = len(run_spec.model.sectors)
     if sector_count < 1:
@@ -398,6 +514,8 @@ def run_rhime_from_prepared_inputs(
         run_spec=run_spec,
         sampler=RhimeSampler() if sampler is None else sampler,
         multisector=multisector,
+        model_builder=model_builder,
+        likelihood_builder=likelihood_builder,
     )
 
 

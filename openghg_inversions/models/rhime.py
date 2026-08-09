@@ -46,7 +46,12 @@ from openghg_inversions.models.components import (
 )
 from openghg_inversions.models.coords import CoordRegistry, attach_coord_registry
 from openghg_inversions.models.priors import PriorArgs
-from openghg_inversions.models.rhime_likelihood import add_rhime_likelihood_component
+from openghg_inversions.models.rhime_likelihood import (
+    RhimeLikelihoodBuilder,
+    RhimeLikelihoodContext,
+    RhimeLikelihoodResult,
+    build_gaussian_rhime_likelihood,
+)
 from openghg_inversions.models.state_activity import StateActivity
 from openghg_inversions.observation_error import AggregationErrorMode
 from openghg_inversions.sigma import SigmaAlignment
@@ -63,6 +68,20 @@ DEFAULT_OFFSET_PRIOR: PriorArgs = {"pdf": "normal", "mu": 0, "sigma": 1}
 #: Compiler plan objects remain private, while these public strategy values and
 #: the graph contract of unchanged model components are stable.
 RhimeBuilderStrategy: TypeAlias = Literal["concrete", "compiled"]
+
+
+_LIKELIHOOD_RESULT_ATTR = "_openghg_rhime_likelihood_result"
+
+
+def get_rhime_likelihood_result(model: pm.Model) -> RhimeLikelihoodResult:
+    """Return the explicit likelihood roles attached by a RHIME model builder."""
+    try:
+        return cast(RhimeLikelihoodResult, getattr(model, _LIKELIHOOD_RESULT_ATTR))
+    except AttributeError as exc:
+        raise ValueError(
+            "The PyMC model has no RHIME likelihood result. Build it with a public RHIME model "
+            "builder or return explicit roles from a complete `RhimeModelBuilder`."
+        ) from exc
 
 
 def safe_pymc_name(value: str) -> str:
@@ -207,7 +226,8 @@ def _add_rhime_observation_components(
     aggregation_error_mode: AggregationErrorMode,
     offset_args: dict | None,
     power: dict | float,
-) -> None:
+    likelihood_builder: RhimeLikelihoodBuilder | None,
+) -> RhimeLikelihoodResult:
     """Add boundary, offset, error, and likelihood components to a RHIME model.
 
     Args:
@@ -226,6 +246,8 @@ def _add_rhime_observation_components(
         aggregation_error_mode: Aggregation-error representation to use.
         offset_args: Extra offset-component arguments.
         power: Likelihood error-scaling exponent or prior.
+        likelihood_builder: Complete observation-component builder. ``None``
+            uses the built-in Gaussian likelihood and RHIME error model.
 
     """
     mu_bc = None
@@ -265,19 +287,32 @@ def _add_rhime_observation_components(
             **(offset_args or {}),
         )
 
-    add_rhime_likelihood_component(
-        inv_inputs,
-        mu=mu,
-        mu_bc=mu_bc,
+    context = RhimeLikelihoodContext(
+        data=inv_inputs,
+        flux_mean=mu,
+        boundary_mean=mu_bc,
         offset=offset,
-        sigprior=sigma_prior,
         sigma_alignment=sigma_alignment,
+        sigma_prior=sigma_prior,
         power=power,
         pollution_events_from_obs=pollution_events_from_obs,
         no_model_error=no_model_error,
         aggregation_error_mode=aggregation_error_mode,
         output_dim="nmeasure",
     )
+    result = build_gaussian_rhime_likelihood(context) if likelihood_builder is None else likelihood_builder(context)
+    if not isinstance(result, RhimeLikelihoodResult):
+        raise TypeError(
+            "A RHIME likelihood builder must return `RhimeLikelihoodResult`; "
+            f"got {type(result).__name__}."
+        )
+    missing_names = sorted(set(result.variable_roles.values()) - set(pm.modelcontext(None).named_vars))
+    if missing_names:
+        raise ValueError(
+            "RHIME likelihood roles refer to variables absent from the active PyMC model: "
+            f"{missing_names!r}."
+        )
+    return result
 
 
 def _assemble_compiled_rhime_model(
@@ -296,6 +331,7 @@ def _assemble_compiled_rhime_model(
     aggregation_error_mode: AggregationErrorMode,
     offset_args: dict | None,
     power: dict | float,
+    likelihood_builder: RhimeLikelihoodBuilder | None = None,
 ) -> pm.Model:
     """Compile a normalized flux plan and add the shared RHIME components.
 
@@ -315,6 +351,7 @@ def _assemble_compiled_rhime_model(
         aggregation_error_mode: Aggregation-error representation to use.
         offset_args: Extra offset-component arguments.
         power: Likelihood error-scaling exponent or prior.
+        likelihood_builder: Optional complete observation-component builder.
 
     Returns:
         Fully assembled PyMC model.
@@ -322,7 +359,7 @@ def _assemble_compiled_rhime_model(
     with pm.Model() as model:
         attach_coord_registry(model, CoordRegistry())
         compiled_flux = _compile_loop_sum(flux_plan)
-        _add_rhime_observation_components(
+        likelihood_result = _add_rhime_observation_components(
             inv_inputs,
             mu=compiled_flux.mu,
             sigma_alignment=sigma_alignment,
@@ -337,7 +374,9 @@ def _assemble_compiled_rhime_model(
             aggregation_error_mode=aggregation_error_mode,
             offset_args=offset_args,
             power=power,
+            likelihood_builder=likelihood_builder,
         )
+        setattr(model, _LIKELIHOOD_RESULT_ATTR, likelihood_result)
 
     return model
 
@@ -359,6 +398,7 @@ def build_rhime_model(
     power: dict | float = 1.99,
     state_activity: StateActivity | None = None,
     bc_state_activity: StateActivity | None = None,
+    likelihood_builder: RhimeLikelihoodBuilder | None = None,
 ) -> pm.Model:
     """Build the standard single-sector RHIME model.
 
@@ -384,6 +424,9 @@ def build_rhime_model(
         bc_state_activity: Optional active/fixed policy for ``H_bc`` scaling
             states. Omit it to preserve the standard fully sampled BC graph
             without automatic zero-column pruning.
+        likelihood_builder: Optional complete observation-component builder.
+            The callable receives labelled means, inputs, error policies, and
+            priors and must return :class:`RhimeLikelihoodResult`.
 
     Returns:
         Built PyMC model.
@@ -412,7 +455,7 @@ def build_rhime_model(
             compute_deterministic=True,
             state_activity=state_activity,
         )
-        _add_rhime_observation_components(
+        likelihood_result = _add_rhime_observation_components(
             inv_inputs,
             mu=flux_component.output,
             sigma_alignment=sigma_alignment,
@@ -427,7 +470,9 @@ def build_rhime_model(
             aggregation_error_mode=aggregation_error_mode,
             offset_args=offset_args,
             power=power,
+            likelihood_builder=likelihood_builder,
         )
+        setattr(model, _LIKELIHOOD_RESULT_ATTR, likelihood_result)
 
     return model
 
@@ -449,6 +494,7 @@ def _build_compiled_rhime_model(
     power: dict | float = 1.99,
     state_activity: StateActivity | None = None,
     bc_state_activity: StateActivity | None = None,
+    likelihood_builder: RhimeLikelihoodBuilder | None = None,
 ) -> pm.Model:
     """Build the standard RHIME model through the opt-in flux compiler.
 
@@ -471,6 +517,7 @@ def _build_compiled_rhime_model(
         power: Exponent or prior specification used in likelihood error scaling.
         state_activity: Optional labelled active/fixed flux-state policy.
         bc_state_activity: Optional labelled active/fixed BC-state policy.
+        likelihood_builder: Optional complete observation-component builder.
 
     Returns:
         Built PyMC model.
@@ -497,16 +544,24 @@ def _build_compiled_rhime_model(
         aggregation_error_mode=aggregation_error_mode,
         offset_args=offset_args,
         power=power,
+        likelihood_builder=likelihood_builder,
     )
 
 
-def build_rhime_model_from_spec(inv_inputs: xr.Dataset, model_spec: RhimeModelSpec) -> pm.Model:
+def build_rhime_model_from_spec(
+    inv_inputs: xr.Dataset,
+    model_spec: RhimeModelSpec,
+    *,
+    likelihood_builder: RhimeLikelihoodBuilder | None = None,
+) -> pm.Model:
     """Build the standard single-sector RHIME model from a model spec.
 
     Args:
         inv_inputs: Canonical inversion-input dataset produced by
             ``make_inv_inputs``.
         model_spec: Normalized RHIME model specification.
+        likelihood_builder: Optional direct-Python observation-component
+            builder. The callable is not stored on ``model_spec``.
 
     Returns:
         Built PyMC model.
@@ -546,6 +601,7 @@ def build_rhime_model_from_spec(inv_inputs: xr.Dataset, model_spec: RhimeModelSp
         aggregation_error_mode=model_spec.aggregation_error_mode,
         offset_args=model_spec.offset_args,
         power=model_spec.power,
+        likelihood_builder=likelihood_builder,
     )
 
 
@@ -571,6 +627,7 @@ def build_rhime_multisector_model(
     state_activity: StateActivity | None = None,
     sector_state_activities: Mapping[str, StateActivity] | None = None,
     bc_state_activity: StateActivity | None = None,
+    likelihood_builder: RhimeLikelihoodBuilder | None = None,
 ) -> pm.Model:
     """Build the first shared-basis multi-sector RHIME model.
 
@@ -615,6 +672,7 @@ def build_rhime_multisector_model(
             policy freezes a complete sector.
         bc_state_activity: Optional active/fixed policy for ``H_bc`` scaling
             states. Omit it to preserve the standard fully sampled BC graph.
+        likelihood_builder: Optional complete observation-component builder.
 
     Returns:
         Built PyMC model.
@@ -663,7 +721,7 @@ def build_rhime_multisector_model(
             cast(Any, pt.stack(sector_outputs, axis=0)).sum(axis=0),
             dims="nmeasure",
         )
-        _add_rhime_observation_components(
+        likelihood_result = _add_rhime_observation_components(
             inv_inputs,
             mu=total_mu,
             sigma_alignment=sigma_alignment,
@@ -678,7 +736,9 @@ def build_rhime_multisector_model(
             aggregation_error_mode=aggregation_error_mode,
             offset_args=offset_args,
             power=power,
+            likelihood_builder=likelihood_builder,
         )
+        setattr(model, _LIKELIHOOD_RESULT_ATTR, likelihood_result)
 
     return model
 
@@ -705,6 +765,7 @@ def _build_compiled_rhime_multisector_model(
     state_activity: StateActivity | None = None,
     sector_state_activities: Mapping[str, StateActivity] | None = None,
     bc_state_activity: StateActivity | None = None,
+    likelihood_builder: RhimeLikelihoodBuilder | None = None,
 ) -> pm.Model:
     """Build multisector RHIME through the opt-in flux compiler.
 
@@ -729,6 +790,7 @@ def _build_compiled_rhime_multisector_model(
         state_activity: Optional activity policy shared by all flux sectors.
         sector_state_activities: Optional activity overrides keyed by sector.
         bc_state_activity: Optional active/fixed policy for BC scaling states.
+        likelihood_builder: Optional complete observation-component builder.
 
     Returns:
         Built PyMC model.
@@ -766,12 +828,15 @@ def _build_compiled_rhime_multisector_model(
         aggregation_error_mode=aggregation_error_mode,
         offset_args=offset_args,
         power=power,
+        likelihood_builder=likelihood_builder,
     )
 
 
 def build_rhime_multisector_model_from_spec(
     inv_inputs: xr.Dataset,
     model_spec: RhimeModelSpec,
+    *,
+    likelihood_builder: RhimeLikelihoodBuilder | None = None,
 ) -> pm.Model:
     """Build the shared-basis multi-sector RHIME model from a model spec.
 
@@ -779,6 +844,8 @@ def build_rhime_multisector_model_from_spec(
         inv_inputs: Canonical inversion-input dataset using either rectangular
             shared-basis or gathered source-specific sensitivity.
         model_spec: Normalized RHIME model specification.
+        likelihood_builder: Optional direct-Python observation-component
+            builder. The callable is not stored on ``model_spec``.
 
     Returns:
         Built PyMC model.
@@ -822,4 +889,5 @@ def build_rhime_multisector_model_from_spec(
         power=model_spec.power,
         state_activity=model_spec.state_activity,
         sector_state_activities=sector_state_activities or None,
+        likelihood_builder=likelihood_builder,
     )

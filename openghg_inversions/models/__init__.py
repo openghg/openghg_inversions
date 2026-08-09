@@ -51,9 +51,18 @@ from openghg_inversions.models.rhime import (
     build_rhime_model_from_spec,
     build_rhime_multisector_model,
     build_rhime_multisector_model_from_spec,
+    get_rhime_likelihood_result,
     safe_pymc_name,
 )
-from openghg_inversions.models.rhime_likelihood import add_rhime_likelihood_component
+from openghg_inversions.models.rhime_likelihood import (
+    RhimeLikelihoodBuilder,
+    RhimeLikelihoodContext,
+    RhimeLikelihoodResult,
+    RhimeObservationState,
+    add_rhime_likelihood_component,
+    build_gaussian_rhime_likelihood,
+    build_rhime_observation_state,
+)
 from openghg_inversions.observation_error import AggregationErrorMode
 
 __all__ = [
@@ -64,7 +73,11 @@ __all__ = [
     "DEFAULT_X_PRIOR",
     "AggregationErrorMode",
     "RhimeBuilderStrategy",
+    "RhimeLikelihoodBuilder",
+    "RhimeLikelihoodContext",
+    "RhimeLikelihoodResult",
     "RhimeModelSpec",
+    "RhimeObservationState",
     "ResolvedStateActivity",
     "SectorSpec",
     "StateActivity",
@@ -82,10 +95,13 @@ __all__ = [
     "add_offset_component",
     "add_inferpymc_likelihood_component",
     "add_rhime_likelihood_component",
+    "build_gaussian_rhime_likelihood",
+    "build_rhime_observation_state",
     "build_rhime_model",
     "build_rhime_model_from_spec",
     "build_rhime_multisector_model",
     "build_rhime_multisector_model_from_spec",
+    "get_rhime_likelihood_result",
     "safe_pymc_name",
     "active_prior_args",
     "detect_zero_sensitivity",

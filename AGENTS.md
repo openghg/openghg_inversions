@@ -47,16 +47,9 @@ If a machine has limited cores, set `PYTEST_XDIST_WORKERS=1` or run tox
 serially. Automated agents should run tox without allocating a PTY and use
 `--parallel-no-spinner` for parallel runs.
 
-The tox test environments fail before pytest when the effective
-`pytensor.config.cxx` is empty. On Rocky Linux and Blue Pebble, the launcher
-first tries the `gcc/12.3.0-sknc` module in the same shell that starts pytest.
-The default `PYTENSOR_COMPILER_BOOTSTRAP=auto` mode targets Rocky Linux or
-recognized Blue Pebble hostnames. Use `PYTENSOR_COMPILER_MODULE` and
-`PYTENSOR_MODULE_INIT` (default `/etc/profile.d/modules.sh`) for different
-module setups, `PYTENSOR_COMPILER_BOOTSTRAP=always` to enable module loading on
-other hosts, or `PYTENSOR_FLAGS='cxx=/path/to/g++'` to select a compiler
-directly. Setting `PYTENSOR_COMPILER_BOOTSTRAP=never` disables module loading
-but keeps the fail-fast compiler check.
+The tox test environments do not require a C++ compiler. PyTensor can use its
+Python implementations when no compiler is configured, so automated agents do
+not need to load a compiler module before running tests.
 
 For cluster test runs, prefer a writable node-local PyTensor cache such as
 `base_compiledir=${TMPDIR:-/tmp}/pytensor-${USER}`. Add it as a

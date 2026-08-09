@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any, Literal, cast
 
 import arviz as az
@@ -188,8 +188,22 @@ class RhimeSampler:
         args = ", ".join(f"{name}={getattr(self, name)!r}" for name in self.__slots__)
         return f"{type(self).__name__}({args})"
 
-    def sample(self, model: pm.Model) -> az.InferenceData:
-        """Sample a built RHIME model and append requested predictive groups."""
+    def sample(
+        self,
+        model: pm.Model,
+        *,
+        variable_roles: Mapping[str, str] | None = None,
+    ) -> az.InferenceData:
+        """Sample a built RHIME model and append requested predictive groups.
+
+        Args:
+            model: Concrete PyMC model to sample.
+            variable_roles: Optional semantic-role manifest from a
+                ``RhimeModelBuildResult``. Posterior-predictive entries may be
+                role names. The historical default ``"y"`` resolves to the
+                explicit ``concentration`` role when a custom model has no
+                variable named ``y``.
+        """
         sample_kwargs = dict(self.sample_kwargs or {})
         sample_kwargs.pop("return_inferencedata", None)
         idata_kwargs = dict(sample_kwargs.pop("idata_kwargs", {}))
@@ -226,7 +240,7 @@ class RhimeSampler:
         trace = _reset_retained_draws(trace, burn=self.burn)
         log_timing("rhime.sampler.burn_slicing", timer_seconds(timing_start), burn=self.burn)
 
-        trace = self._extend_predictive(trace, model=model)
+        trace = self._extend_predictive(trace, model=model, variable_roles=variable_roles)
         timing_start = timer_start()
         registry = get_coord_registry(model)
         if registry is not None:
@@ -238,7 +252,13 @@ class RhimeSampler:
         )
         return trace
 
-    def _extend_predictive(self, trace: az.InferenceData, *, model: pm.Model) -> az.InferenceData:
+    def _extend_predictive(
+        self,
+        trace: az.InferenceData,
+        *,
+        model: pm.Model,
+        variable_roles: Mapping[str, str] | None = None,
+    ) -> az.InferenceData:
         """Extend sampled trace with configured predictive groups."""
         if self.sample_prior_predictive:
             prior_draws = (
@@ -259,6 +279,23 @@ class RhimeSampler:
             posterior_var_names = (
                 None if self.sample_posterior_predictive is True else list(self.sample_posterior_predictive)
             )
+            if posterior_var_names is not None and variable_roles is not None:
+                posterior_var_names = [
+                    variable_roles.get(
+                        name,
+                        variable_roles.get("concentration", name)
+                        if name == "y" and "y" not in model.named_vars
+                        else name,
+                    )
+                    for name in posterior_var_names
+                ]
+                missing_names = sorted(set(posterior_var_names) - set(model.named_vars))
+                if missing_names:
+                    raise ValueError(
+                        "RhimeSampler posterior-predictive variables are absent from the custom model: "
+                        f"{missing_names!r}. Use concrete model names or semantic keys from "
+                        "`RhimeModelBuildResult.variable_roles`."
+                    )
             posterior_predictive_kwargs = dict(self.posterior_predictive_kwargs or {})
             posterior_predictive_kwargs.setdefault("model", model)
             if posterior_var_names is not None:
