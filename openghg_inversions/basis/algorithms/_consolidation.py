@@ -21,7 +21,8 @@ from ._contrast import (
 )
 
 if TYPE_CHECKING:
-    from ._constrained import GridNode, LatLonGridGeometry
+    from ._constrained import LatLonGridGeometry
+    from ._partition import GridNode
 
 InactiveComponentPolicy = Literal["keep", "merge_nearest"]
 

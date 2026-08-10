@@ -7,7 +7,7 @@ boundary.
 
 The main public entry point is :func:`region_constrained_basis`, with
 :func:`allocate_nbasis_by_class` handling class-local target allocation. The
-default implementation uses :class:`GreedyAxisParallelSplitStrategy` with
+default implementation uses :class:`GreedySplitStrategy` with an explicit
 :class:`AxisParallelSplitStep`; callers can supply other partition steps such as
 :class:`InertialSplitStep`.
 
@@ -31,7 +31,6 @@ from __future__ import annotations
 
 from collections.abc import Hashable, Iterable, Mapping
 from dataclasses import dataclass, field
-from queue import PriorityQueue
 from typing import Literal, Protocol, TypeAlias, cast
 
 import numpy as np
@@ -42,14 +41,22 @@ from pint.errors import PintError
 import xarray as xr
 from scipy import ndimage
 
+from ._partition import (
+    GridNode,
+    GridPartition,
+    PartitionStep,
+    SplitAcceptance,
+    SplitAcceptancePolicy,
+    TargetSplitAcceptancePolicy,
+    _split_acceptance_allows,
+    greedy_partitioning,
+)
 from ._weighted import bucket_value_split
 
 # Allocation modes control how an integer ``nbasis`` is distributed across
 # region classes before class-local splitting is applied.
 AllocationMode: TypeAlias = Literal["weight", "area"]
 NbasisAllocation: TypeAlias = int | Mapping[Hashable, int]
-GridNode: TypeAlias = tuple[int, int]
-GridPartition: TypeAlias = list[GridNode]
 _INERTIAL_TOLERANCE = 1.0e-12
 _GRID_COORDINATE_DEGREE_ATOL = 2.0e-5
 _GRID_METADATA_KEYS = ("units", "calendar", "axis", "standard_name", "positive")
@@ -86,9 +93,11 @@ class SplitStrategy(Protocol):
         """Split one class into local basis labels.
 
         Args:
-            weights: Non-negative weight field for the full grid.
-            class_mask: Boolean mask selecting the cells in the class being
-                split.
+            weights: Two-dimensional non-negative weight field for the full
+                grid.
+            class_mask: Two-dimensional Boolean mask with the same shape as
+                ``weights``, selecting the class cells to split. When selected
+                weights sum to zero, equal per-cell weights are used.
             target_regions: Requested number of local labels for this class.
 
         Returns:
@@ -109,24 +118,6 @@ class ComponentConsolidationPolicy(Protocol):
         region_classes: xr.DataArray,
     ) -> xr.DataArray:
         """Return labels after optional class-safe region consolidation."""
-        ...
-
-
-class PartitionStep(Protocol):
-    """Strategy protocol for splitting one partition into child partitions."""
-
-    def __call__(self, nodes: GridPartition, weights: np.ndarray) -> list[GridPartition]:
-        """Split one grid-node partition.
-
-        Args:
-            nodes: Grid nodes in the partition being split.
-            weights: Non-negative weight field aligned to the source grid.
-
-        Returns:
-            Child grid-node partitions. Returning one child leaves the
-            partition effectively unsplit; returning multiple children lets the
-            greedy orchestrator decide how many can fit in the target count.
-        """
         ...
 
 
@@ -293,84 +284,6 @@ class LatLonGridGeometry:
         if not np.isfinite(coords).all():
             return None
         return coords
-
-
-class SplitAcceptancePolicy(Protocol):
-    """Policy protocol for accepting proposed child partitions."""
-
-    def __call__(
-        self,
-        parent: GridPartition,
-        children: list[GridPartition],
-        weights: np.ndarray,
-    ) -> bool:
-        """Return true when proposed child partitions should be accepted.
-
-        Args:
-            parent: Parent partition selected by greedy orchestration.
-            children: Non-empty child partitions proposed by a
-                :class:`PartitionStep`.
-            weights: Non-negative weight field aligned to the source grid.
-
-        Returns:
-            True if greedy orchestration should replace ``parent`` with
-            ``children``. False freezes ``parent`` as a completed partition.
-        """
-        ...
-
-
-class TargetSplitAcceptancePolicy(SplitAcceptancePolicy, Protocol):
-    """Policy protocol for accepting splits using the class-local target count."""
-
-    def __call__(
-        self,
-        parent: GridPartition,
-        children: list[GridPartition],
-        weights: np.ndarray,
-        target_regions: int | None = None,
-    ) -> bool:
-        """Return true when proposed child partitions should be accepted.
-
-        Args:
-            parent: Parent partition selected by greedy orchestration.
-            children: Non-empty child partitions proposed by a
-                :class:`PartitionStep`.
-            weights: Non-negative class/source-local weight field aligned to
-                the source grid.
-            target_regions: Requested class/source-local upper target count
-                when available.
-
-        Returns:
-            True if greedy orchestration should replace ``parent`` with
-            ``children``. False freezes ``parent`` as a completed partition.
-        """
-        ...
-
-    def accept_split(
-        self,
-        parent: GridPartition,
-        children: list[GridPartition],
-        weights: np.ndarray,
-        target_regions: int,
-    ) -> bool:
-        """Return true when proposed children should be accepted.
-
-        Args:
-            parent: Parent partition selected by greedy orchestration.
-            children: Non-empty child partitions proposed by a
-                :class:`PartitionStep`.
-            weights: Non-negative class/source-local weight field aligned to
-                the source grid.
-            target_regions: Requested class/source-local upper target count.
-
-        Returns:
-            True if greedy orchestration should replace ``parent`` with
-            ``children``. False freezes ``parent`` as a completed partition.
-        """
-        ...
-
-
-SplitAcceptance: TypeAlias = SplitAcceptancePolicy | TargetSplitAcceptancePolicy
 
 
 @dataclass(frozen=True)
@@ -612,7 +525,7 @@ class AxisParallelSplitStep:
 
     This is a cleaned-up version of the prototype's axis-parallel split step.
     Greedy orchestration is handled separately by
-    :class:`GreedyAxisParallelSplitStrategy`.
+    :class:`GreedySplitStrategy`.
 
     Attributes:
         balanced: If true, choose the weighted long axis and split near half
@@ -984,17 +897,22 @@ class ConnectedBinaryPartitionStep:
 
 
 @dataclass(frozen=True)
-class GreedyAxisParallelSplitStrategy:
-    """Class-local greedy repeated-bisection strategy.
+class GreedySplitStrategy:
+    """Adapt generic greedy partitioning to one class mask.
 
-    This is a cleaned-up version of the prototype's axis-parallel partitioning
-    algorithm. It repeatedly splits the highest-weight current part until the
-    requested class-local region count is reached or no splittable parts remain.
+    The strategy converts the selected cells to grid nodes, applies the
+    explicitly supplied partition step through :func:`greedy_partitioning`,
+    and converts the result to dense positive class-local labels. It contains
+    no implicit choice of split geometry or algorithm.
+
+    Attributes:
+        split_step: Partition step used to propose children for the selected
+            highest-priority partition.
+        split_acceptance: Optional policy that may reject a valid proposed
+            split and freeze its parent.
     """
 
-    balanced: bool = True
-    clean_splits: bool = False
-    split_step: PartitionStep | None = None
+    split_step: PartitionStep
     split_acceptance: SplitAcceptance | None = None
 
     def __call__(
@@ -1014,8 +932,13 @@ class GreedyAxisParallelSplitStrategy:
                 reached.
 
         Returns:
-            Integer label array with positive class-local labels inside
-            ``class_mask`` and zero outside it.
+            Integer label array with the same shape as ``weights``, positive
+            class-local labels inside ``class_mask``, and zero outside it. The
+            result may contain fewer labels than ``target_regions``.
+
+        Raises:
+            ValueError: If ``target_regions`` is less than one or the partition
+                step proposes malformed child partitions.
         """
         if target_regions < 1:
             raise ValueError("target_regions must be at least 1.")
@@ -1027,15 +950,11 @@ class GreedyAxisParallelSplitStrategy:
             class_weights = class_mask.astype(np.float64)
 
         nodes = _node_list_from_mask(class_mask)
-        split_step = self.split_step or AxisParallelSplitStep(
-            balanced=self.balanced,
-            clean_splits=self.clean_splits,
-        )
-        partition = _greedy_partitioning(
+        partition = greedy_partitioning(
             [nodes],
             target_regions,
             class_weights,
-            split_step=split_step,
+            split_step=self.split_step,
             split_acceptance=self.split_acceptance,
         )
         return _labels_from_node_partition(partition, weights.shape)
@@ -1155,8 +1074,8 @@ class AxisAlignedWeightedSplitStrategy:
     axis until each rectangle is below a searched threshold. It is not a
     compatibility implementation of the legacy weighted land/sea pipeline,
     which optimizes the bucket layout before applying the land/sea split. New
-    constrained code defaults to :class:`GreedyAxisParallelSplitStrategy`
-    instead.
+    constrained code defaults to :class:`GreedySplitStrategy` composed with an
+    :class:`AxisParallelSplitStep` instead.
 
     Attributes:
         max_iter: Maximum number of threshold-search iterations.
@@ -1248,8 +1167,9 @@ def region_constrained_basis(
         min_regions_per_class: Minimum automatic allocation for each non-empty
             mapped class. If the requested total is smaller than this minimum
             requires, a ``ValueError`` is raised.
-        split_strategy: Class-local splitting strategy. Defaults to
-            :class:`GreedyAxisParallelSplitStrategy`.
+        split_strategy: Class-local splitting strategy. Defaults to an explicit
+            :class:`GreedySplitStrategy` using
+            :class:`AxisParallelSplitStep`.
         component_consolidation: Optional policy applied to the globally
             relabelled basis after class-local construction. Policies that
             deliberately combine disconnected components must preserve class
@@ -1286,7 +1206,11 @@ def region_constrained_basis(
     weight_values = _validate_weights(weights)
     class_values = region_classes.to_numpy()
     mapped_classes, class_codes = _factorize_mapped_classes(class_values, unmapped_values)
-    strategy = split_strategy if split_strategy is not None else GreedyAxisParallelSplitStrategy()
+    strategy = (
+        split_strategy
+        if split_strategy is not None
+        else GreedySplitStrategy(split_step=AxisParallelSplitStep())
+    )
 
     labels = np.zeros(weight_values.shape, dtype=np.int64)
     if not mapped_classes:
@@ -2284,119 +2208,6 @@ def _labels_from_node_partition(partition: list[GridPartition], shape: tuple[int
     return labels
 
 
-@dataclass(order=True)
-class _PrioritizedPartition:
-    """Priority queue item for selecting the next partition to split."""
-
-    priority: tuple[float, int, int]
-    nodes: GridPartition = field(compare=False)
-
-
-class _PartitionPriorityQueue:
-    """Priority queue that pops the highest-weight partition first."""
-
-    def __init__(self, weights: np.ndarray) -> None:
-        """Create a partition priority queue ranked by weight and size.
-
-        Args:
-            weights: Non-negative weight field used to rank partitions.
-        """
-        self._queue: PriorityQueue[_PrioritizedPartition] = PriorityQueue()
-        self._weights = weights
-        self._counter = 0
-
-    def __bool__(self) -> bool:
-        """Return true when the queue contains at least one partition."""
-        return not self._queue.empty()
-
-    def push(self, nodes: GridPartition) -> None:
-        """Insert a partition into the priority queue."""
-        if not nodes:
-            return
-        priority = (-_node_weight(nodes, self._weights), -len(nodes), self._counter)
-        self._counter += 1
-        self._queue.put_nowait(_PrioritizedPartition(priority, nodes))
-
-    def pop(self) -> GridPartition:
-        """Remove and return the highest-priority partition."""
-        return self._queue.get_nowait().nodes
-
-
-def _greedy_partitioning(
-    init_partition: list[GridPartition],
-    target_regions: int,
-    weights: np.ndarray,
-    *,
-    split_step: PartitionStep,
-    split_acceptance: SplitAcceptance | None = None,
-) -> list[GridPartition]:
-    """Apply a partition step greedily until a target count is reached.
-
-    Args:
-        init_partition: Initial list of partitions to refine. For class-local
-            splitting this normally contains one node list for the class.
-        target_regions: Desired number of output partitions.
-        weights: Non-negative weight field used for part ranking and passed to
-            ``split_step``.
-        split_step: Callable that splits one selected partition into child
-            partitions. Returning fewer than two non-empty children marks the
-            selected partition as done.
-        split_acceptance: Optional policy applied after ``split_step`` proposes
-            non-empty children and before those children are accepted. Rejected
-            splits freeze the selected parent partition.
-
-    Returns:
-        List of output partitions. The result may contain fewer than
-        ``target_regions`` entries when no active partition can be split further
-        or when split acceptance rejects the remaining candidates.
-    """
-    active = _PartitionPriorityQueue(weights)
-    done: list[GridPartition] = []
-    current_regions = 0
-
-    for nodes in init_partition:
-        if not nodes:
-            continue
-        current_regions += 1
-        if len(nodes) > 1:
-            active.push(nodes)
-        else:
-            done.append(nodes)
-
-    while current_regions < target_regions and active:
-        nodes = active.pop()
-        child_partitions = [child for child in split_step(nodes, weights) if child]
-
-        if len(child_partitions) < 2:
-            done.append(nodes)
-            continue
-        if current_regions - 1 + len(child_partitions) > target_regions:
-            done.append(nodes)
-            continue
-        if split_acceptance is not None and not _split_acceptance_allows(
-            split_acceptance,
-            nodes,
-            child_partitions,
-            weights,
-            target_regions,
-        ):
-            done.append(nodes)
-            continue
-
-        current_regions -= 1
-        for subnodes in child_partitions:
-            current_regions += 1
-            if len(subnodes) > 1:
-                active.push(subnodes)
-            else:
-                done.append(subnodes)
-
-    while active:
-        done.append(active.pop())
-
-    return done
-
-
 def _axis_parallel_split_nodes(
     nodes: GridPartition,
     weights: np.ndarray,
@@ -2832,21 +2643,6 @@ def _node_weight(nodes: GridPartition, weights: np.ndarray) -> float:
     return float(weights[rows, cols].sum())
 
 
-def _split_acceptance_allows(
-    policy: SplitAcceptance,
-    parent: GridPartition,
-    children: list[GridPartition],
-    weights: np.ndarray,
-    target_regions: int | None = None,
-) -> bool:
-    """Return true when a split acceptance policy accepts a proposed split."""
-    if target_regions is not None:
-        accept_split = getattr(policy, "accept_split", None)
-        if accept_split is not None:
-            return bool(accept_split(parent, children, weights, target_regions))
-    return bool(policy(parent, children, weights))
-
-
 def _node_indices(nodes: GridPartition) -> tuple[list[int], list[int]]:
     """Split grid-index nodes into row and column index lists."""
     if not nodes:
@@ -2935,7 +2731,9 @@ __all__ = [
     "ConnectedBinaryPartitionStep",
     "ConnectedComponentPartitionStep",
     "ConnectedComponentSplitStrategy",
-    "GreedyAxisParallelSplitStrategy",
+    "GreedySplitStrategy",
+    "GridNode",
+    "GridPartition",
     "InertialSplitStep",
     "LatLonGridGeometry",
     "MaxChildPCAEccentricity",
@@ -2954,4 +2752,5 @@ __all__ = [
     "normalize_spatial_grid",
     "region_class_mask",
     "region_constrained_basis",
+    "greedy_partitioning",
 ]
