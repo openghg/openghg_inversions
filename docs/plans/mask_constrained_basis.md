@@ -261,10 +261,12 @@ be tested without committing to config syntax.
   priority-queue wrapper that pops the highest-weight partition first and can
   accept split steps that return more than two child partitions without
   overshooting the requested target count.
-- 2026-08-10: Extracted the generic priority-queue engine as public
-  `greedy_partitioning`. `GreedySplitStrategy` now adapts one class mask to that
-  engine and requires an explicit `PartitionStep`; axis-parallel behavior is
-  composed explicitly at higher-level defaults.
+- 2026-08-10: Separated basis-group orchestration from group-local algorithms.
+  `_constrained` now owns masks, allocation, per-group dispatch, validation,
+  and relabelling. `_partition` owns geometry, steps, acceptance policies, the
+  public `greedy_partitioning` engine, and its `GreedySplitStrategy` adapter;
+  `_weighted` owns `AxisAlignedWeightedSplitStrategy`. Axis-parallel behavior
+  is composed explicitly at higher-level defaults.
 - 2026-06-02: PR #462 merged the stacked #318/#449/#325 implementation into
   `devel`. The direct weighted land/sea regression did not expose a boundary
   crossing bug, so production weighted behavior was left unchanged; the separate
