@@ -149,7 +149,7 @@ be tested without committing to config syntax.
   Lower-level Python calls can pass split-stopping policies such as
   `MinChildWeightShare`, `MinChildTargetWeightShare`,
   `MaxChildPCAEccentricity`, or `AllSplitAcceptancePolicies` through
-  `GreedyAxisParallelSplitStrategy`. The higher-level basis wrappers currently
+  `GreedySplitStrategy` with an explicit partition step. The higher-level basis wrappers currently
   route only `split_acceptance="none"` and `split_acceptance="contrast_score"`.
   `.ini`, `run_hbmcmc.py`, `run_rhime`, and `run-rhime` do not yet expose
   parent-share or equal-target child-share thresholds as config options. Public
@@ -221,9 +221,9 @@ be tested without committing to config syntax.
   `~/Documents/inversions/src/inversions/basis_algorithms.py`: greedy repeated
   bisection that repeatedly splits the highest-weight current part, with
   axis-parallel and inertial split functions. The #449 core now uses a
-  cleaned-up `GreedyAxisParallelSplitStrategy` as the constrained default and
-  keeps `AxisAlignedWeightedSplitStrategy` as an explicit compatibility
-  strategy.
+  cleaned-up `GreedySplitStrategy` composed with `AxisParallelSplitStep` as the
+  constrained default and keeps `AxisAlignedWeightedSplitStrategy` as an
+  explicit compatibility strategy.
 - 2026-06-01: Added #325 caller-facing adapter
   `region_constrained_basis_function` and
   `basis_algorithm="region_constrained"`.
@@ -261,6 +261,12 @@ be tested without committing to config syntax.
   priority-queue wrapper that pops the highest-weight partition first and can
   accept split steps that return more than two child partitions without
   overshooting the requested target count.
+- 2026-08-10: Separated basis-group orchestration from group-local algorithms.
+  `_constrained` now owns masks, allocation, per-group dispatch, validation,
+  and relabelling. `_partition` owns geometry, steps, acceptance policies, the
+  public `greedy_partitioning` engine, and its `GreedySplitStrategy` adapter;
+  `_weighted` owns `AxisAlignedWeightedSplitStrategy`. Axis-parallel behavior
+  is composed explicitly at higher-level defaults.
 - 2026-06-02: PR #462 merged the stacked #318/#449/#325 implementation into
   `devel`. The direct weighted land/sea regression did not expose a boundary
   crossing bug, so production weighted behavior was left unchanged; the separate

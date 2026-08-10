@@ -14,14 +14,13 @@ from __future__ import annotations
 
 from collections.abc import Hashable
 from dataclasses import dataclass
-from typing import Literal, TypeAlias
+from typing import Literal
 
 import numpy as np
 import numpy.typing as npt
 import xarray as xr
 
-GridNode: TypeAlias = tuple[int, int]
-GridPartition: TypeAlias = list[GridNode]
+from ._partition import GridPartition
 
 
 @dataclass(frozen=True)

@@ -2,7 +2,8 @@
 
 This package re-exports weighted and quadtree algorithms alongside constrained
 basis generation, class composition, allocation, and tuple-safe class masking
-helpers.
+helpers. It also exposes generic grid-partition contracts, geometry adapters,
+acceptance policies, and split steps for composing group-local strategies.
 """
 
 from ._consolidation import (
@@ -11,26 +12,10 @@ from ._consolidation import (
 )
 from ._constrained import (
     AllocationMode,
-    AllSplitAcceptancePolicies,
-    AxisAlignedWeightedSplitStrategy,
-    AxisParallelSplitStep,
     ComponentConsolidationPolicy,
-    ConnectedBinaryPartitionStep,
-    ConnectedComponentPartitionStep,
     ConnectedComponentSplitStrategy,
-    GreedyAxisParallelSplitStrategy,
-    InertialSplitStep,
-    LatLonGridGeometry,
-    MaxChildPCAEccentricity,
-    MinChildTargetWeightShare,
-    MinChildWeightShare,
     NbasisAllocation,
-    PartitionStep,
-    SplitAcceptance,
-    SplitAcceptancePolicy,
-    SplitGeometry,
     SplitStrategy,
-    TargetSplitAcceptancePolicy,
     allocate_nbasis_by_class,
     combine_inner_outer_region_classes,
     intersect_region_class_layers,
@@ -45,7 +30,30 @@ from ._contrast import (
     split_contrast_score,
 )
 from ._quadtree import get_quadtree_basis as quadtree_algorithm
-from ._weighted import nregion_landsea_basis as weighted_algorithm
+from ._partition import (
+    AllSplitAcceptancePolicies,
+    AxisParallelSplitStep,
+    ConnectedBinaryPartitionStep,
+    ConnectedComponentPartitionStep,
+    GreedySplitStrategy,
+    GridNode,
+    GridPartition,
+    InertialSplitStep,
+    LatLonGridGeometry,
+    MaxChildPCAEccentricity,
+    MinChildTargetWeightShare,
+    MinChildWeightShare,
+    PartitionStep,
+    SplitAcceptance,
+    SplitAcceptancePolicy,
+    SplitGeometry,
+    TargetSplitAcceptancePolicy,
+    greedy_partitioning,
+)
+from ._weighted import (
+    AxisAlignedWeightedSplitStrategy,
+    nregion_landsea_basis as weighted_algorithm,
+)
 
 __all__ = [
     "AllSplitAcceptancePolicies",
@@ -58,7 +66,9 @@ __all__ = [
     "ConnectedComponentSplitStrategy",
     "ContrastProximityComponentConsolidation",
     "ContrastScoreSplitAcceptance",
-    "GreedyAxisParallelSplitStrategy",
+    "GreedySplitStrategy",
+    "GridNode",
+    "GridPartition",
     "InactiveComponentPolicy",
     "InertialSplitStep",
     "LatLonGridGeometry",
@@ -76,6 +86,7 @@ __all__ = [
     "allocate_nbasis_by_class",
     "combine_inner_outer_region_classes",
     "contrast_tau_from_multiplier_cv",
+    "greedy_partitioning",
     "intersect_region_class_layers",
     "normalize_spatial_grid",
     "quadtree_algorithm",
