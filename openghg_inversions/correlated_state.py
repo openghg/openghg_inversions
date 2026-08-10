@@ -21,11 +21,11 @@ as LogNormal and the unresolved contribution as Gaussian is a moment-matched
 closure, not exact marginalization of a LogNormal state. Fixing a state at a
 known value is instead handled by ``models.StateActivity``.
 
-The main entry point is ``CorrelatedLognormalPrior``. Its constructor and
-``from_moments`` eagerly compute xarray inputs and own independent copies;
-``to_dataset`` and ``from_dataset`` provide persistence boundaries. Construction
-warns before dense covariance materialization when the reduced state exceeds
-1,000 components.
+The main entry point is ``CorrelatedLognormalPrior``. Its constructor eagerly
+computes xarray inputs and owns independent copies; ``to_dataset`` and
+``from_dataset`` provide persistence boundaries. Construction warns before
+dense covariance materialization when the reduced state exceeds 1,000
+components.
 """
 
 from __future__ import annotations
@@ -523,45 +523,6 @@ class CorrelatedLognormalPrior:
         self.state_dim = state_dim
         self.covariance_dim = covariance_dim
 
-    @classmethod
-    def from_moments(
-        cls,
-        mean: xr.DataArray,
-        arithmetic_covariance: xr.DataArray | np.ndarray,
-        *,
-        covariance_dim: str | None = None,
-    ) -> CorrelatedLognormalPrior:
-        """Construct a prior from labelled arithmetic moments.
-
-        Args:
-            mean: Positive one-dimensional arithmetic mean with a unique
-                labelled state coordinate.
-            arithmetic_covariance: Already-reduced dense ``(p, p)`` arithmetic
-                covariance. Xarray labels must match ``mean`` exactly; NumPy
-                values are interpreted in mean-label order.
-            covariance_dim: Optional name for the covariance column dimension;
-                see the constructor for the complete coordinate contract.
-
-        Returns:
-            A validated contract containing owned arithmetic moments and the
-            derived latent Gaussian moments.
-
-        Raises:
-            TypeError: If ``mean`` is not an xarray ``DataArray``.
-            ValueError: If dimensions, labels, values, or arithmetic moments
-                fail validation.
-
-        Warns:
-            UserWarning: If the reduced state contains more than 1000
-                components. This is an operational threshold, not a
-                mathematical limit.
-        """
-        return cls(
-            mean,
-            arithmetic_covariance,
-            covariance_dim=covariance_dim,
-        )
-
     def to_dataset(self) -> xr.Dataset:
         """Serialize the validated arithmetic and latent moments.
 
@@ -654,7 +615,7 @@ class CorrelatedLognormalPrior:
             if not derived_index.equals(arithmetic_index):
                 raise ValueError(f"Stored {name!r} state labels must match the arithmetic mean labels.")
 
-        prior = cls.from_moments(
+        prior = cls(
             dataset["arithmetic_mean"],
             dataset["arithmetic_covariance"],
             covariance_dim=covariance_dim,

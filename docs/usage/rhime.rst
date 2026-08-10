@@ -744,7 +744,7 @@ public state ``<name>``.
        dims="state",
        coords={"state": ["region-a", "region-b"]},
    )
-   prior = CorrelatedLognormalPrior.from_moments(
+   prior = CorrelatedLognormalPrior(
        mean,
        np.array([[0.16, 0.03], [0.03, 0.09]]),
    )

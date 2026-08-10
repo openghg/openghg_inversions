@@ -51,22 +51,24 @@ def _arithmetic_covariance() -> np.ndarray:
 
 def _prior() -> CorrelatedLognormalPrior:
     """Return the common gathered correlated prior fixture."""
-    return CorrelatedLognormalPrior.from_moments(_gathered_mean(), _arithmetic_covariance())
+    return CorrelatedLognormalPrior(_gathered_mean(), _arithmetic_covariance())
 
 
-def test_correlated_prior_constructor_matches_named_factory() -> None:
-    """Constructing directly or through ``from_moments`` gives the same prior."""
+def test_correlated_prior_constructor_exposes_derived_arrays() -> None:
+    """Direct construction exposes labelled latent moments and their factor."""
     mean = _gathered_mean()
     covariance = _arithmetic_covariance()
 
-    direct = CorrelatedLognormalPrior(mean, covariance)
-    factory = CorrelatedLognormalPrior.from_moments(mean, covariance)
+    prior = CorrelatedLognormalPrior(mean, covariance)
 
-    xr.testing.assert_identical(direct.mean, factory.mean)
-    xr.testing.assert_identical(direct.arithmetic_covariance, factory.arithmetic_covariance)
-    xr.testing.assert_identical(direct.latent_mean, factory.latent_mean)
-    xr.testing.assert_identical(direct.latent_covariance, factory.latent_covariance)
-    xr.testing.assert_identical(direct.latent_cholesky, factory.latent_cholesky)
+    assert prior.latent_mean.dims == ("state",)
+    assert prior.latent_covariance.dims == ("state", "state_covariance")
+    assert prior.latent_cholesky.dims == ("state", "state_covariance")
+    cholesky = np.asarray(prior.latent_cholesky)
+    np.testing.assert_allclose(
+        cholesky @ cholesky.T,
+        prior.latent_covariance,
+    )
 
 
 def test_correlated_prior_warns_before_large_covariance_validation() -> None:
@@ -105,7 +107,7 @@ def test_correlated_prior_owns_inputs_and_returns_independent_arrays() -> None:
     """Keep the validated prior stable when caller-visible arrays are mutated."""
     mean = _gathered_mean()
     covariance = _arithmetic_covariance()
-    prior = CorrelatedLognormalPrior.from_moments(mean, covariance)
+    prior = CorrelatedLognormalPrior(mean, covariance)
 
     mean.values[0] = 7.0
     covariance[0, 0] = 8.0
@@ -147,7 +149,7 @@ def test_correlated_lognormal_supports_positive_nonunit_means() -> None:
     """Use the general arithmetic moment map when state means are not one."""
     mean = _gathered_mean().copy(data=[0.5, 2.0, 1.5])
     covariance = 0.25 * _arithmetic_covariance()
-    prior = CorrelatedLognormalPrior.from_moments(mean, covariance)
+    prior = CorrelatedLognormalPrior(mean, covariance)
     latent_covariance = np.asarray(prior.latent_covariance)
     latent_mean = np.asarray(prior.latent_mean)
     reconstructed_mean = np.exp(latent_mean + 0.5 * np.diag(latent_covariance))
@@ -173,7 +175,7 @@ def test_correlated_lognormal_monte_carlo_preserves_cross_source_moments() -> No
 def test_diagonal_correlated_prior_matches_existing_lognormal_conversion() -> None:
     """The joint component reduces to existing independent marginal moments."""
     stdev = np.array([0.2, 0.3, 0.5])
-    prior = CorrelatedLognormalPrior.from_moments(_gathered_mean(), np.diag(stdev**2))
+    prior = CorrelatedLognormalPrior(_gathered_mean(), np.diag(stdev**2))
     expected_mu, expected_sigma = lognormal_mu_sigma(np.ones(3), stdev)
 
     np.testing.assert_allclose(prior.latent_mean, expected_mu)
@@ -210,7 +212,7 @@ def test_correlated_lognormal_rejects_invalid_moments(
     """Reject invalid arithmetic inputs and an invalid transformed covariance."""
     mean = _gathered_mean().copy(data=mean_values)
     with pytest.raises(ValueError, match=match):
-        CorrelatedLognormalPrior.from_moments(mean, covariance)
+        CorrelatedLognormalPrior(mean, covariance)
 
 
 @pytest.mark.parametrize("target", ["mean", "covariance"])
@@ -225,7 +227,7 @@ def test_correlated_lognormal_rejects_complex_moments(target: str) -> None:
         covariance[0, 0] += 0.5j
 
     with pytest.raises(ValueError, match="real numeric"):
-        CorrelatedLognormalPrior.from_moments(mean, covariance)
+        CorrelatedLognormalPrior(mean, covariance)
 
 
 def test_correlated_lognormal_rejects_nonfinite_relative_covariance() -> None:
@@ -233,7 +235,7 @@ def test_correlated_lognormal_rejects_nonfinite_relative_covariance() -> None:
     mean = xr.DataArray([1.0e-200], dims="state", coords={"state": ["tiny"]})
 
     with pytest.raises(ValueError, match="finite relative covariance"):
-        CorrelatedLognormalPrior.from_moments(mean, np.array([[1.0]]))
+        CorrelatedLognormalPrior(mean, np.array([[1.0]]))
 
 
 def test_correlated_lognormal_rejects_reordered_row_or_column_labels() -> None:
@@ -252,12 +254,12 @@ def test_correlated_lognormal_rejects_reordered_row_or_column_labels() -> None:
     )
 
     with pytest.raises(ValueError, match="row labels"):
-        CorrelatedLognormalPrior.from_moments(
+        CorrelatedLognormalPrior(
             mean,
             covariance.isel(state=[1, 0, 2]),
         )
     with pytest.raises(ValueError, match="column labels"):
-        CorrelatedLognormalPrior.from_moments(
+        CorrelatedLognormalPrior(
             mean,
             covariance.isel(state_covariance=[1, 0, 2]),
         )
@@ -266,7 +268,7 @@ def test_correlated_lognormal_rejects_reordered_row_or_column_labels() -> None:
 def test_correlated_lognormal_rejects_covariance_dimension_coord_collision() -> None:
     """Do not let the second matrix axis claim a MultiIndex level coordinate."""
     with pytest.raises(ValueError, match="must not collide"):
-        CorrelatedLognormalPrior.from_moments(
+        CorrelatedLognormalPrior(
             _gathered_mean(),
             _arithmetic_covariance(),
             covariance_dim="source",
@@ -277,7 +279,7 @@ def test_correlated_lognormal_canonicalizes_tolerance_level_asymmetry() -> None:
     """Store the symmetric matrix actually used by the Cholesky factorization."""
     covariance = _arithmetic_covariance()
     covariance[0, 1] += 5.0e-11
-    prior = CorrelatedLognormalPrior.from_moments(_gathered_mean(), covariance)
+    prior = CorrelatedLognormalPrior(_gathered_mean(), covariance)
 
     np.testing.assert_array_equal(
         prior.arithmetic_covariance,
@@ -304,7 +306,7 @@ def test_correlated_prior_rejects_reserved_serialization_coordinate_names(
     )
 
     with pytest.raises(ValueError, match="reserved correlated-state"):
-        CorrelatedLognormalPrior.from_moments(mean, _arithmetic_covariance())
+        CorrelatedLognormalPrior(mean, _arithmetic_covariance())
 
 
 def test_add_correlated_lognormal_state_builds_whitened_public_graph() -> None:
@@ -330,13 +332,13 @@ def test_add_correlated_lognormal_state_builds_whitened_public_graph() -> None:
 def test_add_correlated_lognormal_state_rejects_float32_cholesky_underflow() -> None:
     """Fail atomically rather than leaving a deterministic or partial state."""
     mean = _gathered_mean().isel(state=[0])
-    prior = CorrelatedLognormalPrior.from_moments(mean, np.array([[1.0e-100]]))
+    prior = CorrelatedLognormalPrior(mean, np.array([[1.0e-100]]))
 
     with pm.Model() as model:
         with pytest.raises(ValueError, match="remain positive in the model float dtype"):
             add_correlated_lognormal_state(prior, var_name="x")
         assert model.named_vars == {}
-        valid_prior = CorrelatedLognormalPrior.from_moments(mean, np.array([[0.1]]))
+        valid_prior = CorrelatedLognormalPrior(mean, np.array([[0.1]]))
         add_correlated_lognormal_state(valid_prior, var_name="x")
 
     assert set(model.named_vars) == {"x_latent", "x"}
@@ -349,7 +351,7 @@ def test_add_correlated_lognormal_state_rejects_unrepresentable_float32_mean(
     """Reject obviously unusable backend scales before changing the model."""
     mean = xr.DataArray([mean_value], dims="state", coords={"state": ["scale"]})
     covariance = np.array([[(0.1 * mean_value) ** 2]])
-    prior = CorrelatedLognormalPrior.from_moments(mean, covariance)
+    prior = CorrelatedLognormalPrior(mean, covariance)
 
     with pm.Model() as model:
         with pytest.raises(ValueError, match="arithmetic means.*model float dtype"):
@@ -384,7 +386,7 @@ def test_correlated_prior_preserves_ordinary_state_auxiliary_coordinates(tmp_pat
             "latitude": ("state", [50.0, 51.0, 52.0]),
         },
     )
-    prior = CorrelatedLognormalPrior.from_moments(mean, _arithmetic_covariance())
+    prior = CorrelatedLognormalPrior(mean, _arithmetic_covariance())
     registry = CoordRegistry()
     with pm.Model() as model:
         attach_coord_registry(model, registry)
