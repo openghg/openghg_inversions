@@ -267,6 +267,26 @@ def test_select_marginal_takes_principal_submatrix_without_fixed_state() -> None
     assert not hasattr(selection, "fixed_value")
 
 
+def test_marginal_prior_dataset_owns_retained_state_mask() -> None:
+    """Keep serialized mask mutations isolated from the validated selection."""
+    prior = _prior()
+    retained = xr.DataArray(
+        [True, False, True],
+        dims=("state",),
+        coords={"state": prior.mean.coords["state"]},
+    )
+    selection = prior.select_marginal(retained)
+
+    dataset = selection.to_dataset()
+    dataset["retained_state"].values[:] = False
+
+    np.testing.assert_array_equal(selection.retained, [True, False, True])
+    xr.testing.assert_identical(
+        selection.prior.mean,
+        prior.mean.isel(state=[0, 2]),
+    )
+
+
 def test_marginal_prior_requires_validated_selection() -> None:
     """Prevent inconsistent public combinations of full, mask, and reduced prior."""
     prior = _prior()
@@ -282,6 +302,29 @@ def test_marginal_prior_requires_validated_selection() -> None:
             retained=retained,
             prior=prior,
         )
+
+
+@pytest.mark.parametrize(
+    "reserved_name",
+    [
+        "arithmetic_mean",
+        "arithmetic_covariance",
+        "latent_mean",
+        "latent_covariance",
+        "latent_cholesky",
+        "retained_state",
+    ],
+)
+def test_correlated_prior_rejects_reserved_serialization_coordinate_names(
+    reserved_name: str,
+) -> None:
+    """Reject auxiliary names that collide with serialized state variables."""
+    mean = _gathered_mean().assign_coords(
+        {reserved_name: ("state", np.arange(3))},
+    )
+
+    with pytest.raises(ValueError, match="reserved correlated-state"):
+        CorrelatedLognormalPrior.from_moments(mean, _arithmetic_covariance())
 
 
 def test_add_correlated_lognormal_state_builds_whitened_public_graph() -> None:

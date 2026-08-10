@@ -101,3 +101,53 @@ def test_restore_inferencedata_coords_supports_registry_and_legacy_dict() -> Non
 
     restored2 = restore_inferencedata_coords(idata, {"nmeasure": multi_index})
     assert restored2.posterior.indexes["nmeasure"].equals(multi_index)
+
+
+def test_restore_inferencedata_auxiliary_coords_owns_group_values() -> None:
+    """Keep restored groups and registry auxiliary values mutation-isolated."""
+    auxiliary = xr.DataArray(
+        [50.0, 51.0],
+        dims=("state",),
+        coords={"state": np.arange(2)},
+        name="latitude",
+    )
+    registry = CoordRegistry(
+        original_coords={"state": pd.Index(["ocean", "ff"], name="state")},
+        auxiliary_coords={"latitude": auxiliary},
+    )
+    group = xr.Dataset(
+        data_vars={"x": (("chain", "draw", "state"), np.zeros((1, 1, 2)))},
+        coords={"chain": [0], "draw": [0], "state": np.arange(2)},
+    )
+    idata = az.InferenceData(posterior=group.copy(deep=True), prior=group.copy(deep=True))
+
+    restored = restore_inferencedata_coords(idata, registry)
+    restored.posterior["latitude"].values[0] = -999.0
+
+    np.testing.assert_array_equal(registry.auxiliary_coords["latitude"], [50.0, 51.0])
+    np.testing.assert_array_equal(restored.prior["latitude"], [50.0, 51.0])
+
+
+def test_restore_inferencedata_preserves_independent_auxiliary_on_multiindex() -> None:
+    """Restore non-level metadata attached to a MultiIndex state dimension."""
+    state_index = pd.MultiIndex.from_tuples(
+        [("ocean", "atlantic"), ("ff", "north")],
+        names=("source", "region"),
+    )
+    coords = xr.Coordinates.from_pandas_multiindex(state_index, "state")
+    mean = xr.DataArray(
+        [1.0, 1.0],
+        dims=("state",),
+        coords={**coords, "latitude": ("state", [50.0, 51.0])},
+    )
+    registry = CoordRegistry()
+    registry.add(mean.coords, model_dims=("state",))
+    posterior = xr.Dataset(
+        data_vars={"x": (("chain", "draw", "state"), np.zeros((1, 1, 2)))},
+        coords={"chain": [0], "draw": [0], "state": np.arange(2)},
+    )
+
+    restored = restore_inferencedata_coords(az.InferenceData(posterior=posterior), registry)
+
+    assert restored.posterior.indexes["state"].equals(state_index)
+    np.testing.assert_array_equal(restored.posterior["latitude"], [50.0, 51.0])
