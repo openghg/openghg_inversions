@@ -35,6 +35,7 @@ import pytensor.tensor as pt
 import xarray as xr
 from pytensor.tensor.variable import TensorVariable
 
+from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.inversion_inputs import make_freq_indicator
 from openghg_inversions.models.coords import add_coords
 from openghg_inversions.models.priors import parse_prior
@@ -71,6 +72,23 @@ class StateVectorResult:
     latent: TensorVariable | None
     state: TensorVariable
     activity: ResolvedStateActivity
+
+
+@dataclass
+class CorrelatedStateResult:
+    """Objects created by ``add_correlated_lognormal_state``.
+
+    Attributes:
+        latent: Standard-normal whitened state used by the sampler.
+        state: Positive user-facing state with the requested arithmetic
+            LogNormal moments.
+        prior: Validated backend-neutral moment contract used to build the
+            graph.
+    """
+
+    latent: TensorVariable
+    state: TensorVariable
+    prior: CorrelatedLognormalPrior
 
 
 @dataclass
@@ -362,6 +380,81 @@ def add_state_vector(
         full_state = pt.set_subtensor(full_state[active_indices], active_state)
     state = pm.Deterministic(var_name, full_state, dims=state_dim)
     return StateVectorResult(latent=latent, state=state, activity=activity)
+
+
+def add_correlated_lognormal_state(
+    prior: CorrelatedLognormalPrior,
+    /,
+    *,
+    var_name: str,
+) -> CorrelatedStateResult:
+    """Add a whitened correlated LogNormal state to the active PyMC model.
+
+    Args:
+        prior: Validated labelled arithmetic and latent moment contract.
+        var_name: Name of the positive user-facing state. The whitened standard
+            normal is named ``{var_name}_latent``.
+
+    Returns:
+        The whitened latent, positive state, and supplied prior contract.
+
+    Raises:
+        ValueError: If the arithmetic mean, latent moments, Cholesky diagonal,
+            or exponentiated central state is not finite and positive where
+            required in PyMC's configured floating-point dtype.
+
+    Notes:
+        This function must run in an active ``pm.Model`` context. After backend
+        dtype validation completes, it mutates that model by registering the
+        length-``p`` state coordinate, ``{var_name}_latent`` random variable,
+        and length-``p`` ``{var_name}`` deterministic state.
+
+        ``prior`` should contain reduced arithmetic moments produced together
+        with the matching forward operator and Gaussian unresolved-error term.
+        The coherent covariance, transformed-forward-model, and
+        aggregation-error identities are exact only for a jointly Gaussian
+        state. Reusing those first two moments with a LogNormal retained state
+        and Gaussian unresolved contribution is a moment-matched closure, not
+        exact LogNormal marginalization. Known-exact state fixing is handled
+        separately by ``StateActivity`` in the state-linear component builders.
+    """
+    state_dim = prior.state_dim
+    mean = prior.mean
+    with np.errstate(over="ignore", under="ignore", invalid="ignore"):
+        backend_mean = np.asarray(pm.floatX(np.asarray(mean.values)))
+        backend_latent_mean = np.asarray(pm.floatX(np.asarray(prior.latent_mean.values)))
+        backend_cholesky = np.asarray(pm.floatX(np.asarray(prior.latent_cholesky.values)))
+    if not np.isfinite(backend_mean).all() or (backend_mean <= 0).any():
+        raise ValueError(
+            "Correlated LogNormal arithmetic means must remain finite and positive in the model float dtype."
+        )
+    if not np.isfinite(backend_latent_mean).all() or not np.isfinite(backend_cholesky).all():
+        raise ValueError("Correlated LogNormal moments must remain finite in the model float dtype.")
+    if (np.diag(backend_cholesky) <= 0).any():
+        raise ValueError(
+            "Correlated LogNormal Cholesky diagonal must remain positive in the model float dtype."
+        )
+    with np.errstate(over="ignore", under="ignore", invalid="ignore"):
+        backend_central_state = np.exp(backend_latent_mean)
+    if not np.isfinite(backend_central_state).all() or (backend_central_state <= 0).any():
+        raise ValueError(
+            "Correlated LogNormal central states must remain finite and positive "
+            "after exponentiation in the model float dtype."
+        )
+
+    # All predictable dtype validation must finish before the active model is
+    # changed.  In particular, failed validation must not leave a latent RV
+    # that makes a corrected retry impossible.
+    add_coords(mean.coords, model_dims=(state_dim,))
+    latent = pm.Normal(f"{var_name}_latent", 0.0, 1.0, dims=state_dim)
+    latent_mean = pt.as_tensor_variable(backend_latent_mean)
+    cholesky = pt.as_tensor_variable(backend_cholesky)
+    state = pm.Deterministic(
+        var_name,
+        pt.exp(latent_mean + pt.dot(cholesky, latent)),
+        dims=state_dim,
+    )
+    return CorrelatedStateResult(latent=latent, state=state, prior=prior)
 
 
 def add_state_linear_component(

@@ -15,12 +15,14 @@ from openghg_inversions._pymc_config import configure_pytensor
 configure_pytensor()
 
 from openghg_inversions.models.components import (
+    CorrelatedStateResult,
     LinearComponentResult,
     StateLinearComponentResult,
     add_inferpymc_likelihood_component,
     add_linear_component,
     add_model_data,
     add_offset_component,
+    add_correlated_lognormal_state,
     add_sigma_component,
     add_state_linear_component,
 )
@@ -32,6 +34,7 @@ from openghg_inversions.models.coords import (
     restore_inferencedata_coords,
 )
 from openghg_inversions.models.priors import parse_prior
+from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.models.state_activity import (
     ResolvedStateActivity,
     StateActivity,
@@ -68,6 +71,8 @@ from openghg_inversions.observation_error import AggregationErrorMode
 
 __all__ = [
     "CoordRegistry",
+    "CorrelatedLognormalPrior",
+    "CorrelatedStateResult",
     "DEFAULT_BC_PRIOR",
     "DEFAULT_OFFSET_PRIOR",
     "DEFAULT_SIGMA_PRIOR",
@@ -90,6 +95,7 @@ __all__ = [
     "LinearComponentResult",
     "StateLinearComponentResult",
     "add_model_data",
+    "add_correlated_lognormal_state",
     "add_linear_component",
     "add_state_linear_component",
     "add_sigma_component",
