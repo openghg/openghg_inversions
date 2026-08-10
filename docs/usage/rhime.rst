@@ -721,6 +721,7 @@ public state ``<name>``.
 
 .. code-block:: python
 
+   import numpy as np
    import pymc as pm
    import xarray as xr
 
@@ -736,11 +737,11 @@ public state ``<name>``.
    )
    prior = CorrelatedLognormalPrior.from_moments(
        mean,
-       [[0.16, 0.03], [0.03, 0.09]],
+       np.array([[0.16, 0.03], [0.03, 0.09]]),
    )
 
    with pm.Model():
-       state = add_correlated_lognormal_state(prior, var_name="x")
+       state_result = add_correlated_lognormal_state(prior, var_name="x")
 
 This component is intentionally separate from ``StateActivity``. An inactive
 ``StateActivity`` entry is conditioned on a fixed value and restored into the

@@ -405,16 +405,34 @@ def add_correlated_lognormal_state(
         prior marginalization are different statistical operations.
     """
     state_dim = prior.state_dim
-    add_coords(prior.mean.coords, model_dims=(state_dim,))
-    latent = pm.Normal(f"{var_name}_latent", 0.0, 1.0, dims=state_dim)
-    backend_latent_mean = np.asarray(pm.floatX(np.asarray(prior.latent_mean.values)))
-    backend_cholesky = np.asarray(pm.floatX(np.asarray(prior.latent_cholesky.values)))
+    mean = prior.mean
+    with np.errstate(over="ignore", under="ignore", invalid="ignore"):
+        backend_mean = np.asarray(pm.floatX(np.asarray(mean.values)))
+        backend_latent_mean = np.asarray(pm.floatX(np.asarray(prior.latent_mean.values)))
+        backend_cholesky = np.asarray(pm.floatX(np.asarray(prior.latent_cholesky.values)))
+    if not np.isfinite(backend_mean).all() or (backend_mean <= 0).any():
+        raise ValueError(
+            "Correlated LogNormal arithmetic means must remain finite and positive in the model float dtype."
+        )
     if not np.isfinite(backend_latent_mean).all() or not np.isfinite(backend_cholesky).all():
         raise ValueError("Correlated LogNormal moments must remain finite in the model float dtype.")
     if (np.diag(backend_cholesky) <= 0).any():
         raise ValueError(
             "Correlated LogNormal Cholesky diagonal must remain positive in the model float dtype."
         )
+    with np.errstate(over="ignore", under="ignore", invalid="ignore"):
+        backend_central_state = np.exp(backend_latent_mean)
+    if not np.isfinite(backend_central_state).all() or (backend_central_state <= 0).any():
+        raise ValueError(
+            "Correlated LogNormal central states must remain finite and positive "
+            "after exponentiation in the model float dtype."
+        )
+
+    # All predictable dtype validation must finish before the active model is
+    # changed.  In particular, failed validation must not leave a latent RV
+    # that makes a corrected retry impossible.
+    add_coords(mean.coords, model_dims=(state_dim,))
+    latent = pm.Normal(f"{var_name}_latent", 0.0, 1.0, dims=state_dim)
     latent_mean = pt.as_tensor_variable(backend_latent_mean)
     cholesky = pt.as_tensor_variable(backend_cholesky)
     state = pm.Deterministic(
