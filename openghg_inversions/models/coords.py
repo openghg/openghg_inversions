@@ -270,7 +270,7 @@ def restore_inferencedata_coords(
         if not isinstance(group, xr.Dataset):
             continue
 
-        restored_multiindex_dims: set[str] = set()
+        restored_multiindex_levels: set[str] = set()
         for dim, coord in original_coords.items():
             if dim not in group.dims:
                 continue
@@ -280,7 +280,7 @@ def restore_inferencedata_coords(
             # can be validated against the final dimension layout.
             if isinstance(coord, pd.MultiIndex):
                 group = group.assign_coords(xr.Coordinates.from_pandas_multiindex(coord, dim))
-                restored_multiindex_dims.add(dim)
+                restored_multiindex_levels.update(name for name in coord.names if name is not None)
             else:
                 group = group.assign_coords({dim: coord})
 
@@ -290,15 +290,16 @@ def restore_inferencedata_coords(
                     continue
                 if any(group.sizes[dim] != coord.sizes[dim] for dim in coord.dims):
                     continue
-                # Skip auxiliaries on restored MultiIndex dims because xarray
-                # has already recreated those level coords from the index itself.
-                if any(dim in restored_multiindex_dims for dim in coord.dims):
+                # Xarray has already recreated MultiIndex level coordinates,
+                # but unrelated auxiliaries on the same dimension still need
+                # to be restored.
+                if name in restored_multiindex_levels:
                     continue
                 # Assign positionally after restoring the scientific dimension
                 # coordinate.  Reusing the registry's range coordinate here
                 # would trigger xarray label alignment against the restored
                 # labels and silently replace ordinary auxiliaries with NaN.
-                group = group.assign_coords({name: (coord.dims, coord.values)})
+                group = group.assign_coords({name: (coord.dims, np.array(coord.values, copy=True))})
 
         setattr(idata, group_name, group)
 

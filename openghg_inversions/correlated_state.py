@@ -23,6 +23,18 @@ import pandas as pd
 import xarray as xr
 
 
+_SERIALIZED_VARIABLE_NAMES = frozenset(
+    {
+        "arithmetic_mean",
+        "arithmetic_covariance",
+        "latent_mean",
+        "latent_covariance",
+        "latent_cholesky",
+        "retained_state",
+    }
+)
+
+
 def _materialize_numeric(array: xr.DataArray, *, name: str) -> np.ndarray:
     """Return an owned array of finite real float64 values."""
     values = np.asarray(array.compute().values)
@@ -261,6 +273,14 @@ class CorrelatedLognormalPrior:
         covariance_dim = covariance_dim or f"{state_dim}_covariance"
         if covariance_dim == state_dim:
             raise ValueError("Covariance matrix axes must use distinct dimension names.")
+        reserved_coord_names = _SERIALIZED_VARIABLE_NAMES | {f"{covariance_dim}_label"}
+        auxiliary_names = {name for name in mean.coords if isinstance(name, str) and name != state_dim}
+        reserved_auxiliary_names = auxiliary_names & reserved_coord_names
+        if reserved_auxiliary_names:
+            raise ValueError(
+                "State auxiliary coordinate names must not use reserved correlated-state "
+                f"dataset names; got {sorted(reserved_auxiliary_names)!r}."
+            )
         if covariance_dim in mean.coords:
             raise ValueError(
                 "Covariance matrix column dimension must not collide with a state or auxiliary "
@@ -549,7 +569,7 @@ class MarginalCorrelatedLognormalPrior:
         dataset = self.full_prior.to_dataset()
         dataset["retained_state"] = (
             self.full_prior.state_dim,
-            np.asarray(self._retained.values, dtype=bool),
+            np.array(self._retained.values, dtype=bool, copy=True),
         )
         dataset.attrs = dict(dataset.attrs)
         dataset.attrs["inactive_state_semantics"] = "coherent_prior_marginalization"
