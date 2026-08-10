@@ -4,11 +4,14 @@
 
 ## Code changes
 
-- Separated generic greedy partition refinement from region-constrained class
-  orchestration. The public `greedy_partitioning` engine now composes with an
-  explicit `PartitionStep`, while `GreedySplitStrategy` adapts one class mask
-  to dense labels. Malformed child partitions are rejected before refinement,
-  and the unreleased axis-specific strategy name has been removed.
+- Separated basis-group constraints from the algorithms applied within each
+  group. The constrained module now owns masks, target allocation, per-group
+  dispatch, and global relabelling; partition geometry, steps, policies, and
+  greedy orchestration live in the partition module, while the weighted bucket
+  adapter lives with the weighted algorithm. The public `greedy_partitioning`
+  engine composes with an explicit `PartitionStep`, malformed child partitions
+  are rejected before refinement, and the unreleased axis-specific strategy
+  name has been removed.
   [#455](https://github.com/openghg/openghg_inversions/issues/455)
 
 - Added direct-Python RHIME likelihood and complete-model builder contracts.

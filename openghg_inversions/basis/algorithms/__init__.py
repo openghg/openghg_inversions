@@ -2,7 +2,8 @@
 
 This package re-exports weighted and quadtree algorithms alongside constrained
 basis generation, class composition, allocation, and tuple-safe class masking
-helpers.
+helpers. It also exposes generic grid-partition contracts, geometry adapters,
+acceptance policies, and split steps for composing group-local strategies.
 """
 
 from ._consolidation import (
@@ -11,21 +12,9 @@ from ._consolidation import (
 )
 from ._constrained import (
     AllocationMode,
-    AllSplitAcceptancePolicies,
-    AxisAlignedWeightedSplitStrategy,
-    AxisParallelSplitStep,
     ComponentConsolidationPolicy,
-    ConnectedBinaryPartitionStep,
-    ConnectedComponentPartitionStep,
     ConnectedComponentSplitStrategy,
-    GreedySplitStrategy,
-    InertialSplitStep,
-    LatLonGridGeometry,
-    MaxChildPCAEccentricity,
-    MinChildTargetWeightShare,
-    MinChildWeightShare,
     NbasisAllocation,
-    SplitGeometry,
     SplitStrategy,
     allocate_nbasis_by_class,
     combine_inner_outer_region_classes,
@@ -42,15 +31,29 @@ from ._contrast import (
 )
 from ._quadtree import get_quadtree_basis as quadtree_algorithm
 from ._partition import (
+    AllSplitAcceptancePolicies,
+    AxisParallelSplitStep,
+    ConnectedBinaryPartitionStep,
+    ConnectedComponentPartitionStep,
+    GreedySplitStrategy,
     GridNode,
     GridPartition,
+    InertialSplitStep,
+    LatLonGridGeometry,
+    MaxChildPCAEccentricity,
+    MinChildTargetWeightShare,
+    MinChildWeightShare,
     PartitionStep,
     SplitAcceptance,
     SplitAcceptancePolicy,
+    SplitGeometry,
     TargetSplitAcceptancePolicy,
     greedy_partitioning,
 )
-from ._weighted import nregion_landsea_basis as weighted_algorithm
+from ._weighted import (
+    AxisAlignedWeightedSplitStrategy,
+    nregion_landsea_basis as weighted_algorithm,
+)
 
 __all__ = [
     "AllSplitAcceptancePolicies",

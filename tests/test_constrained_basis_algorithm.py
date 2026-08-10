@@ -16,7 +16,6 @@ from openghg_inversions.basis.algorithms import (
     ConnectedComponentSplitStrategy,
     ContrastProximityComponentConsolidation,
     ContrastScoreSplitAcceptance,
-    GreedySplitStrategy,
     InertialSplitStep,
     LatLonGridGeometry,
     MaxChildPCAEccentricity,
@@ -30,6 +29,9 @@ from openghg_inversions.basis.algorithms import (
     region_constrained_basis,
     split_contrast_score,
 )
+from openghg_inversions.basis.algorithms._constrained import SplitStrategy
+from openghg_inversions.basis.algorithms._partition import GreedySplitStrategy
+from openghg_inversions.basis.algorithms._weighted import AxisAlignedWeightedSplitStrategy
 
 
 def _class_values_for_labels(labels: xr.DataArray, classes: xr.DataArray) -> dict[int, set]:
@@ -2305,6 +2307,46 @@ def test_region_constrained_basis_rejects_explicit_over_allocation():
 
     with pytest.raises(ValueError, match="exceed mapped cell counts"):
         region_constrained_basis(weights, classes, nbasis={"a": 5})
+
+
+@pytest.mark.parametrize(
+    "split_strategy",
+    [
+        pytest.param(
+            GreedySplitStrategy(split_step=AxisParallelSplitStep()),
+            id="greedy",
+        ),
+        pytest.param(
+            AxisAlignedWeightedSplitStrategy(),
+            id="axis-aligned-weighted",
+        ),
+    ],
+)
+def test_region_constrained_basis_accepts_builtin_split_strategies(
+    split_strategy: SplitStrategy,
+):
+    """Constrained generation accepts greedy partition and weighted bucket strategies."""
+    weights = xr.DataArray(
+        np.array([[8.0, 6.0, 4.0, 2.0], [7.0, 5.0, 3.0, 1.0]]),
+        dims=("lat", "lon"),
+        coords={"lat": [50.0, 51.0], "lon": [-2.0, -1.0, 0.0, 1.0]},
+    )
+    classes = xr.DataArray(
+        np.array([["left", "left", "right", "right"], ["left", "left", "right", "right"]]),
+        dims=weights.dims,
+        coords=weights.coords,
+    )
+
+    labels = region_constrained_basis(
+        weights,
+        classes,
+        nbasis={"left": 2, "right": 2},
+        split_strategy=split_strategy,
+    )
+
+    assert set(np.unique(labels.values)) == {1, 2, 3, 4}
+    assert all(len(values) == 1 for values in _class_values_for_labels(labels, classes).values())
+    xr.testing.assert_identical(labels.coords, weights.coords)
 
 
 def test_region_constrained_basis_accepts_custom_split_strategy():
