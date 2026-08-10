@@ -1150,7 +1150,8 @@ selected inner class.</p></li>
 <li><p><strong>split_strategy</strong> – Optional class-local label generator applied only to
 bounded inner classes after layout composition. Outer IDs remain
 fixed maps even when they are disconnected. The inner default is
-the greedy axis-parallel generator.</p></li>
+<code class="docutils literal notranslate"><span class="pre">GreedySplitStrategy</span></code> configured with
+<code class="docutils literal notranslate"><span class="pre">AxisParallelSplitStep</span></code>.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
@@ -1242,11 +1243,9 @@ allocated across the inner classes. Null outer cells remain label
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.ContrastScoreSplitAcceptance.spatial_dims"><code class="docutils literal notranslate"><span class="pre">ContrastScoreSplitAcceptance.spatial_dims</span></code></a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.GreedyAxisParallelSplitStrategy"><code class="docutils literal notranslate"><span class="pre">GreedyAxisParallelSplitStrategy</span></code></a><ul>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.GreedyAxisParallelSplitStrategy.balanced"><code class="docutils literal notranslate"><span class="pre">GreedyAxisParallelSplitStrategy.balanced</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.GreedyAxisParallelSplitStrategy.clean_splits"><code class="docutils literal notranslate"><span class="pre">GreedyAxisParallelSplitStrategy.clean_splits</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.GreedyAxisParallelSplitStrategy.split_acceptance"><code class="docutils literal notranslate"><span class="pre">GreedyAxisParallelSplitStrategy.split_acceptance</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.GreedyAxisParallelSplitStrategy.split_step"><code class="docutils literal notranslate"><span class="pre">GreedyAxisParallelSplitStrategy.split_step</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.GreedySplitStrategy"><code class="docutils literal notranslate"><span class="pre">GreedySplitStrategy</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.GreedySplitStrategy.split_acceptance"><code class="docutils literal notranslate"><span class="pre">GreedySplitStrategy.split_acceptance</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.GreedySplitStrategy.split_step"><code class="docutils literal notranslate"><span class="pre">GreedySplitStrategy.split_step</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.InertialSplitStep"><code class="docutils literal notranslate"><span class="pre">InertialSplitStep</span></code></a><ul>
@@ -1304,6 +1303,7 @@ allocated across the inner classes. Null outer cells remain label
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.allocate_nbasis_by_class"><code class="docutils literal notranslate"><span class="pre">allocate_nbasis_by_class()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.combine_inner_outer_region_classes"><code class="docutils literal notranslate"><span class="pre">combine_inner_outer_region_classes()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.contrast_tau_from_multiplier_cv"><code class="docutils literal notranslate"><span class="pre">contrast_tau_from_multiplier_cv()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.greedy_partitioning"><code class="docutils literal notranslate"><span class="pre">greedy_partitioning()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.intersect_region_class_layers"><code class="docutils literal notranslate"><span class="pre">intersect_region_class_layers()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.normalize_spatial_grid"><code class="docutils literal notranslate"><span class="pre">normalize_spatial_grid()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.quadtree_algorithm"><code class="docutils literal notranslate"><span class="pre">quadtree_algorithm()</span></code></a></li>
