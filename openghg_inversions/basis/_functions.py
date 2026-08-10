@@ -17,8 +17,9 @@ import xarray as xr
 
 from .algorithms import (
     AllocationMode,
+    AxisParallelSplitStep,
     ContrastScoreSplitAcceptance,
-    GreedyAxisParallelSplitStrategy,
+    GreedySplitStrategy,
     NbasisAllocation,
     SplitStrategy,
     allocate_nbasis_by_class,
@@ -743,11 +744,14 @@ class _FixedOuterSplitStrategy:
             inner_mask: Boolean mask selecting cells handled by the inner
                 splitting strategy.
             inner_strategy: Optional strategy for inner cells. When omitted,
-                the greedy axis-parallel strategy is used.
+                ``GreedySplitStrategy`` configured with
+                ``AxisParallelSplitStep`` is used.
         """
         self.inner_mask = np.asarray(inner_mask, dtype=bool)
         self.inner_strategy = (
-            inner_strategy if inner_strategy is not None else GreedyAxisParallelSplitStrategy()
+            inner_strategy
+            if inner_strategy is not None
+            else GreedySplitStrategy(split_step=AxisParallelSplitStep())
         )
 
     def __call__(
@@ -831,7 +835,8 @@ def region_constrained_fixed_outer_basis_from_weights(
         split_strategy: Optional class-local label generator applied only to
             bounded inner classes after layout composition. Outer IDs remain
             fixed maps even when they are disconnected. The inner default is
-            the greedy axis-parallel generator.
+            ``GreedySplitStrategy`` configured with
+            ``AxisParallelSplitStep``.
 
     Returns:
         Basis field on the weights grid with a singleton ``time`` dimension,
@@ -1125,14 +1130,15 @@ def _region_constrained_split_strategy(
     contrast_sigma_design: float | None,
     contrast_s_diag: xr.DataArray | None,
 ):
-    """Return an optional region-constrained split strategy."""
+    """Return the explicitly configured region-constrained split strategy."""
     if split_acceptance == "none":
-        return None
+        return GreedySplitStrategy(split_step=AxisParallelSplitStep())
     if split_acceptance != "contrast_score":
         raise ValueError("split_acceptance must be 'none' or 'contrast_score'.")
     if contrast_contribution is None:
         raise ValueError("contrast_contribution is required when split_acceptance='contrast_score'.")
-    return GreedyAxisParallelSplitStrategy(
+    return GreedySplitStrategy(
+        split_step=AxisParallelSplitStep(),
         split_acceptance=ContrastScoreSplitAcceptance(
             contribution=contrast_contribution,
             cell_weight=contrast_cell_weight,
@@ -1141,7 +1147,7 @@ def _region_constrained_split_strategy(
             contrast_tau=contrast_tau,
             contrast_sigma_design=contrast_sigma_design,
             contrast_s_diag=contrast_s_diag,
-        )
+        ),
     )
 
 

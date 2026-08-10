@@ -24,7 +24,7 @@ from matplotlib.axes import Axes
 
 from openghg_inversions.basis.algorithms import (
     AxisParallelSplitStep,
-    GreedyAxisParallelSplitStrategy,
+    GreedySplitStrategy,
     InertialSplitStep,
     LatLonGridGeometry,
     region_constrained_basis,
@@ -361,7 +361,7 @@ def build_basis_labels(
         region_classes,
         nbasis,
         allocation="area",
-        split_strategy=GreedyAxisParallelSplitStrategy(split_step=split_step),
+        split_strategy=GreedySplitStrategy(split_step=split_step),
     )
     return labels.astype(np.int32).rename("basis")
 

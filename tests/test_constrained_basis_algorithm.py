@@ -16,7 +16,7 @@ from openghg_inversions.basis.algorithms import (
     ConnectedComponentSplitStrategy,
     ContrastProximityComponentConsolidation,
     ContrastScoreSplitAcceptance,
-    GreedyAxisParallelSplitStrategy,
+    GreedySplitStrategy,
     InertialSplitStep,
     LatLonGridGeometry,
     MaxChildPCAEccentricity,
@@ -810,7 +810,11 @@ def test_greedy_axis_parallel_strategy_hits_target_region_count():
     )
     class_mask = np.ones(weights.shape, dtype=bool)
 
-    labels = GreedyAxisParallelSplitStrategy()(weights, class_mask, target_regions=5)
+    labels = GreedySplitStrategy(split_step=AxisParallelSplitStep())(
+        weights,
+        class_mask,
+        target_regions=5,
+    )
 
     assert set(np.unique(labels)) == {1, 2, 3, 4, 5}
 
@@ -938,11 +942,11 @@ def test_connected_binary_repair_avoids_eccentricity_rejection_and_target_oversh
 
     historical_children = historical_step(nodes, weights)
     repaired_children = binary_step(nodes, weights)
-    historical_labels = GreedyAxisParallelSplitStrategy(
+    historical_labels = GreedySplitStrategy(
         split_step=historical_step,
         split_acceptance=eccentricity_guard,
     )(weights, class_mask, target_regions=3)
-    repaired_labels = GreedyAxisParallelSplitStrategy(
+    repaired_labels = GreedySplitStrategy(
         split_step=binary_step,
         split_acceptance=eccentricity_guard,
     )(weights, class_mask, target_regions=2)
@@ -969,7 +973,7 @@ def test_influence_aware_eccentricity_accepts_connected_component_fragment():
         min_child_target_weight_share=0.1,
     )
 
-    labels = GreedyAxisParallelSplitStrategy(
+    labels = GreedySplitStrategy(
         split_step=split_step,
         split_acceptance=influence_aware_guard,
     )(weights, class_mask, target_regions=3)
@@ -987,11 +991,11 @@ def test_influence_aware_eccentricity_preserves_connected_binary_result():
         AxisParallelSplitStep(balanced=True, clean_splits=True),
         connectivity=1,
     )
-    strict_labels = GreedyAxisParallelSplitStrategy(
+    strict_labels = GreedySplitStrategy(
         split_step=split_step,
         split_acceptance=MaxChildPCAEccentricity(max_child_pca_eccentricity=10.0),
     )(weights, class_mask, target_regions=2)
-    influence_aware_labels = GreedyAxisParallelSplitStrategy(
+    influence_aware_labels = GreedySplitStrategy(
         split_step=split_step,
         split_acceptance=MaxChildPCAEccentricity(
             max_child_pca_eccentricity=10.0,
@@ -1014,7 +1018,7 @@ def test_connected_strategy_raises_target_to_disconnected_class_minimum():
     )
     class_mask = weights > 0
     strategy = ConnectedComponentSplitStrategy(
-        GreedyAxisParallelSplitStrategy(),
+        GreedySplitStrategy(split_step=AxisParallelSplitStep()),
         connectivity=1,
     )
 
@@ -1037,11 +1041,11 @@ def test_connected_strategy_four_and_eight_neighbour_diagonal_adjacency():
     weights = np.eye(2, dtype=float)
     class_mask = weights > 0
     four_neighbour = ConnectedComponentSplitStrategy(
-        GreedyAxisParallelSplitStrategy(),
+        GreedySplitStrategy(split_step=AxisParallelSplitStep()),
         connectivity=1,
     )
     eight_neighbour = ConnectedComponentSplitStrategy(
-        GreedyAxisParallelSplitStrategy(),
+        GreedySplitStrategy(split_step=AxisParallelSplitStep()),
         connectivity=2,
     )
 
@@ -1062,7 +1066,7 @@ def test_connected_strategy_zero_weight_components_use_area_fallback():
         ]
     )
     strategy = ConnectedComponentSplitStrategy(
-        GreedyAxisParallelSplitStrategy(),
+        GreedySplitStrategy(split_step=AxisParallelSplitStep()),
         connectivity=1,
     )
 
@@ -1320,7 +1324,7 @@ def test_region_constrained_basis_applies_component_consolidation_policy():
         classes,
         nbasis=1,
         split_strategy=ConnectedComponentSplitStrategy(
-            GreedyAxisParallelSplitStrategy(),
+            GreedySplitStrategy(split_step=AxisParallelSplitStep()),
         ),
         component_consolidation=policy,
     )
@@ -1609,7 +1613,7 @@ def test_region_constrained_basis_with_inertial_step_keeps_class_boundaries():
         weights,
         classes,
         nbasis=4,
-        split_strategy=GreedyAxisParallelSplitStrategy(split_step=InertialSplitStep()),
+        split_strategy=GreedySplitStrategy(split_step=InertialSplitStep()),
     )
 
     assert set(np.unique(labels.values)) == {0, 1, 2, 3, 4}
@@ -1630,7 +1634,7 @@ def test_greedy_strategy_accepts_partition_step_returning_multiple_regions():
                 partitions[col].append((row, col))
             return partitions
 
-    labels = GreedyAxisParallelSplitStrategy(split_step=SplitByColumn())(
+    labels = GreedySplitStrategy(split_step=SplitByColumn())(
         weights,
         class_mask,
         target_regions=3,
@@ -1653,7 +1657,7 @@ def test_greedy_strategy_does_not_overshoot_target_with_multi_region_step():
                 partitions[col].append((row, col))
             return partitions
 
-    labels = GreedyAxisParallelSplitStrategy(split_step=SplitByColumn())(
+    labels = GreedySplitStrategy(split_step=SplitByColumn())(
         weights,
         class_mask,
         target_regions=2,
@@ -1667,7 +1671,8 @@ def test_greedy_strategy_rejects_low_weight_child_split():
     weights = np.array([[100.0, 1.0, 1.0, 1.0]])
     class_mask = np.ones(weights.shape, dtype=bool)
 
-    labels = GreedyAxisParallelSplitStrategy(
+    labels = GreedySplitStrategy(
+        split_step=AxisParallelSplitStep(),
         split_acceptance=MinChildWeightShare(min_child_weight_share=0.05),
     )(weights, class_mask, target_regions=2)
 
@@ -1679,7 +1684,8 @@ def test_greedy_strategy_accepts_split_above_min_child_weight_share():
     weights = np.ones((1, 4))
     class_mask = np.ones(weights.shape, dtype=bool)
 
-    labels = GreedyAxisParallelSplitStrategy(
+    labels = GreedySplitStrategy(
+        split_step=AxisParallelSplitStep(),
         split_acceptance=MinChildWeightShare(min_child_weight_share=0.25),
     )(weights, class_mask, target_regions=2)
 
@@ -1691,7 +1697,8 @@ def test_greedy_strategy_split_stopping_can_return_fewer_regions_than_requested(
     weights = np.array([[50.0, 50.0, 1.0, 1.0]])
     class_mask = np.ones(weights.shape, dtype=bool)
 
-    labels = GreedyAxisParallelSplitStrategy(
+    labels = GreedySplitStrategy(
+        split_step=AxisParallelSplitStep(),
         split_acceptance=MinChildWeightShare(min_child_weight_share=0.1),
     )(weights, class_mask, target_regions=3)
 
@@ -1714,7 +1721,7 @@ def test_greedy_strategy_split_stopping_freezes_rejected_partition():
             return [nodes[:1], nodes[1:]]
 
     split_step = LowWeightTailSplit()
-    labels = GreedyAxisParallelSplitStrategy(
+    labels = GreedySplitStrategy(
         split_step=split_step,
         split_acceptance=MinChildWeightShare(min_child_weight_share=0.05),
     )(weights, class_mask, target_regions=3)
@@ -1764,7 +1771,7 @@ def test_child_target_weight_share_rejects_split_that_creates_small_child():
         def __call__(self, nodes: list[tuple[int, int]], weights: np.ndarray) -> list[list[tuple[int, int]]]:
             return [nodes[:1], nodes[1:]]
 
-    labels = GreedyAxisParallelSplitStrategy(
+    labels = GreedySplitStrategy(
         split_step=LowWeightTailSplit(),
         split_acceptance=MinChildTargetWeightShare(min_child_target_weight_share=0.1),
     )(weights, class_mask, target_regions=2)
@@ -1783,7 +1790,7 @@ def test_child_target_weight_share_accepts_normal_split():
         def __call__(self, nodes: list[tuple[int, int]], weights: np.ndarray) -> list[list[tuple[int, int]]]:
             return [nodes[:1], nodes[1:]]
 
-    labels = GreedyAxisParallelSplitStrategy(
+    labels = GreedySplitStrategy(
         split_step=HeavyThenTailSplit(),
         split_acceptance=MinChildTargetWeightShare(min_child_target_weight_share=0.1),
     )(weights, class_mask, target_regions=2)
@@ -1842,7 +1849,7 @@ def test_greedy_strategy_composes_target_and_balance_policies():
         def __call__(self, nodes: list[tuple[int, int]], weights: np.ndarray) -> list[list[tuple[int, int]]]:
             return [nodes[:1], nodes[1:]]
 
-    labels = GreedyAxisParallelSplitStrategy(
+    labels = GreedySplitStrategy(
         split_step=LowWeightTailSplit(),
         split_acceptance=AllSplitAcceptancePolicies(
             MinChildTargetWeightShare(min_child_target_weight_share=0.05),
@@ -1961,7 +1968,8 @@ def test_greedy_strategy_pca_eccentricity_stopping_freezes_rejected_partition():
     weights = np.ones((1, 4))
     class_mask = np.ones(weights.shape, dtype=bool)
 
-    labels = GreedyAxisParallelSplitStrategy(
+    labels = GreedySplitStrategy(
+        split_step=AxisParallelSplitStep(),
         split_acceptance=MaxChildPCAEccentricity(max_child_pca_eccentricity=10.0),
     )(weights, class_mask, target_regions=2)
 
@@ -2008,7 +2016,8 @@ def test_max_child_pca_eccentricity_composes_with_target_weight_policy():
     weights = np.ones((1, 4))
     class_mask = np.ones(weights.shape, dtype=bool)
 
-    labels = GreedyAxisParallelSplitStrategy(
+    labels = GreedySplitStrategy(
+        split_step=AxisParallelSplitStep(),
         split_acceptance=AllSplitAcceptancePolicies(
             MinChildTargetWeightShare(min_child_target_weight_share=0.1),
             MaxChildPCAEccentricity(max_child_pca_eccentricity=10.0),
@@ -2211,7 +2220,8 @@ def test_contrast_score_acceptance_rejects_low_contrast_split():
     class_mask = np.ones(weights.shape, dtype=bool)
     contribution = np.array([[[1.0, 1.0]], [[2.0, 2.0]]])
 
-    labels = GreedyAxisParallelSplitStrategy(
+    labels = GreedySplitStrategy(
+        split_step=AxisParallelSplitStep(),
         split_acceptance=ContrastScoreSplitAcceptance(
             contribution=contribution,
             min_contrast_lambda=0.1,
@@ -2227,7 +2237,8 @@ def test_contrast_score_acceptance_accepts_high_contrast_split():
     class_mask = np.ones(weights.shape, dtype=bool)
     contribution = np.array([[[1.0, 0.0]], [[0.0, 1.0]]])
 
-    labels = GreedyAxisParallelSplitStrategy(
+    labels = GreedySplitStrategy(
+        split_step=AxisParallelSplitStep(),
         split_acceptance=ContrastScoreSplitAcceptance(
             contribution=contribution,
             min_contrast_lambda=0.1,
@@ -2252,7 +2263,8 @@ def test_region_constrained_basis_child_target_stopping_uses_class_local_total()
         weights,
         classes,
         nbasis={"high": 1, "low": 2},
-        split_strategy=GreedyAxisParallelSplitStrategy(
+        split_strategy=GreedySplitStrategy(
+            split_step=AxisParallelSplitStep(),
             split_acceptance=MinChildTargetWeightShare(min_child_target_weight_share=0.5),
         ),
     )
@@ -2276,7 +2288,8 @@ def test_region_constrained_basis_split_stopping_keeps_class_boundaries():
         weights,
         classes,
         nbasis={"high": 3, "even": 2},
-        split_strategy=GreedyAxisParallelSplitStrategy(
+        split_strategy=GreedySplitStrategy(
+            split_step=AxisParallelSplitStep(),
             split_acceptance=MinChildWeightShare(min_child_weight_share=0.1),
         ),
     )
@@ -2325,6 +2338,44 @@ def test_region_constrained_basis_accepts_custom_split_strategy():
 
     assert set(np.unique(labels.values)) == {1, 2, 3, 4}
     assert all(len(class_values) == 1 for class_values in _class_values_for_labels(labels, classes).values())
+
+
+def test_region_constrained_basis_applies_strategy_independently_per_class():
+    """An arbitrary strategy runs per class before class-safe global relabelling."""
+    weights = xr.DataArray(np.ones((2, 4)), dims=("lat", "lon"))
+    classes = xr.DataArray(
+        np.array([["left", "left", "right", "right"], ["left", "left", "right", "right"]]),
+        dims=weights.dims,
+    )
+
+    class RecordingStrategy:
+        """Record class-local calls and return non-contiguous local labels."""
+
+        def __init__(self) -> None:
+            self.calls: list[tuple[np.ndarray, int]] = []
+
+        def __call__(self, weights, class_mask, target_regions):
+            self.calls.append((class_mask.copy(), target_regions))
+            labels = np.zeros(weights.shape, dtype=np.int64)
+            labels[0, class_mask[0]] = 3
+            labels[1, class_mask[1]] = 11
+            return labels
+
+    strategy = RecordingStrategy()
+
+    labels = region_constrained_basis(
+        weights,
+        classes,
+        nbasis={"left": 2, "right": 2},
+        split_strategy=strategy,
+    )
+
+    assert len(strategy.calls) == 2
+    assert [target for _mask, target in strategy.calls] == [2, 2]
+    assert not np.any(strategy.calls[0][0] & strategy.calls[1][0])
+    assert np.all(strategy.calls[0][0] | strategy.calls[1][0])
+    assert set(np.unique(labels.values)) == {1, 2, 3, 4}
+    assert all(len(values) == 1 for values in _class_values_for_labels(labels, classes).values())
 
 
 def test_region_constrained_basis_preserves_falsy_split_strategy():
