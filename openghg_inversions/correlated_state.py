@@ -24,14 +24,30 @@ import xarray as xr
 
 
 def _materialize_numeric(array: xr.DataArray, *, name: str) -> np.ndarray:
-    """Return finite float64 values from a labelled array."""
+    """Return an owned array of finite real float64 values."""
     values = np.asarray(array.compute().values)
-    if not np.issubdtype(values.dtype, np.number):
-        raise ValueError(f"{name} must contain numeric values.")
-    values = np.asarray(values, dtype=np.float64)
+    if not np.issubdtype(values.dtype, np.number) or np.issubdtype(values.dtype, np.complexfloating):
+        raise ValueError(f"{name} must contain real numeric values.")
+    values = np.array(values, dtype=np.float64, copy=True)
     if not np.isfinite(values).all():
         raise ValueError(f"{name} must contain only finite values.")
     return values
+
+
+def _copy_state_auxiliary_coords(
+    target: xr.DataArray,
+    source: xr.DataArray,
+    *,
+    state_dim: str,
+) -> xr.DataArray:
+    """Copy ordinary state-aligned metadata not recreated by the state index."""
+    result = target
+    for name, coord in source.coords.items():
+        if name in result.coords:
+            continue
+        if set(coord.dims).issubset({state_dim}):
+            result = result.assign_coords({name: coord.copy(deep=True)})
+    return result.copy(deep=True)
 
 
 def _require_state_index(array: xr.DataArray, state_dim: str, *, name: str) -> pd.Index:
@@ -124,13 +140,13 @@ def _covariance_array(
                 "Arithmetic covariance must be square and match the state length; "
                 f"got shape {values.shape!r} for {state_size} states."
             )
-        if not np.issubdtype(values.dtype, np.number):
-            raise ValueError("Arithmetic covariance must contain numeric values.")
-        values = np.asarray(values, dtype=np.float64)
+        if not np.issubdtype(values.dtype, np.number) or np.issubdtype(values.dtype, np.complexfloating):
+            raise ValueError("Arithmetic covariance must contain real numeric values.")
+        values = np.array(values, dtype=np.float64, copy=True)
         if not np.isfinite(values).all():
             raise ValueError("Arithmetic covariance must contain only finite values.")
 
-    return xr.DataArray(
+    result = xr.DataArray(
         values,
         dims=(state_dim, covariance_dim),
         coords={
@@ -140,6 +156,7 @@ def _covariance_array(
         name="arithmetic_covariance",
         attrs=covariance_attrs,
     )
+    return _copy_state_auxiliary_coords(result, mean, state_dim=state_dim)
 
 
 def _matrix_tolerance(values: np.ndarray) -> float:
@@ -158,11 +175,11 @@ class CorrelatedLognormalPrior:
     labelled row contract.
     """
 
-    mean: xr.DataArray
-    arithmetic_covariance: xr.DataArray
-    latent_mean: xr.DataArray
-    latent_covariance: xr.DataArray
-    latent_cholesky: xr.DataArray
+    _mean: xr.DataArray
+    _arithmetic_covariance: xr.DataArray
+    _latent_mean: xr.DataArray
+    _latent_covariance: xr.DataArray
+    _latent_cholesky: xr.DataArray
     state_dim: str
     covariance_dim: str
 
@@ -184,14 +201,39 @@ class CorrelatedLognormalPrior:
     ) -> CorrelatedLognormalPrior:
         """Construct an instance after the public validation boundary."""
         instance = object.__new__(cls)
-        object.__setattr__(instance, "mean", mean)
-        object.__setattr__(instance, "arithmetic_covariance", arithmetic_covariance)
-        object.__setattr__(instance, "latent_mean", latent_mean)
-        object.__setattr__(instance, "latent_covariance", latent_covariance)
-        object.__setattr__(instance, "latent_cholesky", latent_cholesky)
+        object.__setattr__(instance, "_mean", mean.copy(deep=True))
+        object.__setattr__(instance, "_arithmetic_covariance", arithmetic_covariance.copy(deep=True))
+        object.__setattr__(instance, "_latent_mean", latent_mean.copy(deep=True))
+        object.__setattr__(instance, "_latent_covariance", latent_covariance.copy(deep=True))
+        object.__setattr__(instance, "_latent_cholesky", latent_cholesky.copy(deep=True))
         object.__setattr__(instance, "state_dim", state_dim)
         object.__setattr__(instance, "covariance_dim", covariance_dim)
         return instance
+
+    @property
+    def mean(self) -> xr.DataArray:
+        """Return an independent copy of the validated arithmetic mean."""
+        return self._mean.copy(deep=True)
+
+    @property
+    def arithmetic_covariance(self) -> xr.DataArray:
+        """Return an independent copy of the validated arithmetic covariance."""
+        return self._arithmetic_covariance.copy(deep=True)
+
+    @property
+    def latent_mean(self) -> xr.DataArray:
+        """Return an independent copy of the derived latent mean."""
+        return self._latent_mean.copy(deep=True)
+
+    @property
+    def latent_covariance(self) -> xr.DataArray:
+        """Return an independent copy of the derived latent covariance."""
+        return self._latent_covariance.copy(deep=True)
+
+    @property
+    def latent_cholesky(self) -> xr.DataArray:
+        """Return an independent copy of the derived latent Cholesky factor."""
+        return self._latent_cholesky.copy(deep=True)
 
     @classmethod
     def from_moments(
@@ -214,9 +256,7 @@ class CorrelatedLognormalPrior:
         if not isinstance(mean, xr.DataArray):
             raise TypeError("Arithmetic mean must be an xarray DataArray.")
         if mean.ndim != 1:
-            raise ValueError(
-                f"Arithmetic mean must be one-dimensional; got dimensions {mean.dims!r}."
-            )
+            raise ValueError(f"Arithmetic mean must be one-dimensional; got dimensions {mean.dims!r}.")
         state_dim = str(mean.dims[0])
         covariance_dim = covariance_dim or f"{state_dim}_covariance"
         if covariance_dim == state_dim:
@@ -256,12 +296,16 @@ class CorrelatedLognormalPrior:
         if float(np.linalg.eigvalsh(covariance_values).min()) < -tolerance:
             raise ValueError("Arithmetic covariance must be positive semidefinite.")
 
-        relative_covariance = covariance_values / np.outer(mean_values, mean_values)
+        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+            relative_covariance = covariance_values / np.outer(mean_values, mean_values)
+        if not np.isfinite(relative_covariance).all():
+            raise ValueError("Arithmetic moments must produce only finite relative covariance values.")
         if (1.0 + relative_covariance <= 0).any():
-            raise ValueError(
-                "Arithmetic moments do not define finite LogNormal latent covariance entries."
-            )
-        latent_covariance_values = np.log1p(relative_covariance)
+            raise ValueError("Arithmetic moments do not define finite LogNormal latent covariance entries.")
+        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+            latent_covariance_values = np.log1p(relative_covariance)
+        if not np.isfinite(latent_covariance_values).all():
+            raise ValueError("Derived latent covariance must contain only finite values.")
         latent_tolerance = _matrix_tolerance(latent_covariance_values)
         if not np.allclose(
             latent_covariance_values,
@@ -275,29 +319,39 @@ class CorrelatedLognormalPrior:
         except np.linalg.LinAlgError as exc:
             minimum = float(np.linalg.eigvalsh(latent_covariance_values).min())
             raise ValueError(
-                "Derived latent covariance must be positive definite; "
-                f"minimum eigenvalue is {minimum:.6g}."
+                f"Derived latent covariance must be positive definite; minimum eigenvalue is {minimum:.6g}."
             ) from exc
 
         latent_mean_values = np.log(mean_values) - 0.5 * np.diag(latent_covariance_values)
+        if not np.isfinite(latent_mean_values).all():
+            raise ValueError("Derived latent mean must contain only finite values.")
         state_coord = mean.coords[state_dim]
-        canonical_mean = xr.DataArray(
-            mean_values,
-            dims=(state_dim,),
-            coords={state_dim: state_coord},
-            name="arithmetic_mean",
-            attrs=dict(mean.attrs),
+        canonical_mean = _copy_state_auxiliary_coords(
+            xr.DataArray(
+                mean_values,
+                dims=(state_dim,),
+                coords={state_dim: state_coord},
+                name="arithmetic_mean",
+                attrs=dict(mean.attrs),
+            ),
+            mean,
+            state_dim=state_dim,
         )
-        matrix_coords = {state_dim: state_coord}
-        return cls._from_validated(
-            mean=canonical_mean,
-            arithmetic_covariance=covariance,
-            latent_mean=xr.DataArray(
+        matrix_coords = {name: coord for name, coord in canonical_mean.coords.items()}
+        canonical_latent_mean = _copy_state_auxiliary_coords(
+            xr.DataArray(
                 latent_mean_values,
                 dims=(state_dim,),
                 coords={state_dim: state_coord},
                 name="latent_mean",
             ),
+            canonical_mean,
+            state_dim=state_dim,
+        )
+        return cls._from_validated(
+            mean=canonical_mean,
+            arithmetic_covariance=covariance,
+            latent_mean=canonical_latent_mean,
             latent_covariance=xr.DataArray(
                 latent_covariance_values,
                 dims=(state_dim, covariance_dim),
@@ -324,11 +378,10 @@ class CorrelatedLognormalPrior:
         """
         if retained.dims != (self.state_dim,):
             raise ValueError(
-                f"Retained-state mask must have only the {self.state_dim!r} dimension; "
-                f"got {retained.dims!r}."
+                f"Retained-state mask must have only the {self.state_dim!r} dimension; got {retained.dims!r}."
             )
         retained_index = _require_state_index(retained, self.state_dim, name="Retained-state mask")
-        state_index = self.mean.indexes[self.state_dim]
+        state_index = self._mean.indexes[self.state_dim]
         if not retained_index.equals(state_index):
             raise ValueError(
                 "Retained-state mask labels must exactly match the prior state labels in the same order."
@@ -340,8 +393,8 @@ class CorrelatedLognormalPrior:
         if positions.size == 0:
             raise ValueError("A correlated LogNormal marginal must retain at least one state.")
 
-        marginal_mean = self.mean.isel({self.state_dim: positions})
-        marginal_covariance = self.arithmetic_covariance.isel(
+        marginal_mean = self._mean.isel({self.state_dim: positions})
+        marginal_covariance = self._arithmetic_covariance.isel(
             {self.state_dim: positions, self.covariance_dim: positions}
         )
         prior = CorrelatedLognormalPrior.from_moments(
@@ -352,20 +405,29 @@ class CorrelatedLognormalPrior:
         canonical_mask = xr.DataArray(
             retained_values,
             dims=(self.state_dim,),
-            coords={self.state_dim: self.mean.coords[self.state_dim]},
+            coords={self.state_dim: self._mean.coords[self.state_dim]},
             name="retained_state",
         )
-        return MarginalCorrelatedLognormalPrior(full_prior=self, retained=canonical_mask, prior=prior)
+        canonical_mask = _copy_state_auxiliary_coords(
+            canonical_mask,
+            self._mean,
+            state_dim=self.state_dim,
+        )
+        return MarginalCorrelatedLognormalPrior._from_validated(
+            full_prior=self,
+            retained=canonical_mask,
+            prior=prior,
+        )
 
     def to_dataset(self) -> xr.Dataset:
         """Return a serializable labelled dataset containing both moment spaces."""
         return xr.Dataset(
             {
-                self.mean.name: self.mean,
-                self.arithmetic_covariance.name: self.arithmetic_covariance,
-                self.latent_mean.name: self.latent_mean,
-                self.latent_covariance.name: self.latent_covariance,
-                self.latent_cholesky.name: self.latent_cholesky,
+                self._mean.name: self._mean.copy(deep=True),
+                self._arithmetic_covariance.name: self._arithmetic_covariance.copy(deep=True),
+                self._latent_mean.name: self._latent_mean.copy(deep=True),
+                self._latent_covariance.name: self._latent_covariance.copy(deep=True),
+                self._latent_cholesky.name: self._latent_cholesky.copy(deep=True),
             },
             attrs={
                 "correlated_state_schema": "openghg_inversions.correlated_lognormal_prior/v1",
@@ -381,9 +443,7 @@ class CorrelatedLognormalPrior:
         """Reload and revalidate a dataset produced by ``to_dataset``."""
         expected_schema = "openghg_inversions.correlated_lognormal_prior/v1"
         if dataset.attrs.get("correlated_state_schema") != expected_schema:
-            raise ValueError(
-                "Correlated-state dataset has an unsupported or missing schema declaration."
-            )
+            raise ValueError("Correlated-state dataset has an unsupported or missing schema declaration.")
         state_dim = dataset.attrs.get("state_dim")
         covariance_dim = dataset.attrs.get("covariance_dim")
         if not isinstance(state_dim, str) or not isinstance(covariance_dim, str):
@@ -416,18 +476,14 @@ class CorrelatedLognormalPrior:
         )
         for name, dims in expected_dims.items():
             if dataset[name].dims != dims:
-                raise ValueError(
-                    f"Stored {name!r} dimensions must be {dims!r}; got {dataset[name].dims!r}."
-                )
+                raise ValueError(f"Stored {name!r} dimensions must be {dims!r}; got {dataset[name].dims!r}.")
             derived_index = _require_state_index(
                 dataset[name],
                 state_dim,
                 name=f"Stored {name}",
             )
             if not derived_index.equals(arithmetic_index):
-                raise ValueError(
-                    f"Stored {name!r} state labels must match the arithmetic mean labels."
-                )
+                raise ValueError(f"Stored {name!r} state labels must match the arithmetic mean labels.")
 
         prior = cls.from_moments(
             dataset["arithmetic_mean"],
@@ -443,13 +499,11 @@ class CorrelatedLognormalPrior:
                 rtol=1e-12,
                 atol=1e-12,
             ):
-                raise ValueError(
-                    f"Stored {name!r} is inconsistent with the declared arithmetic moments."
-                )
+                raise ValueError(f"Stored {name!r} is inconsistent with the declared arithmetic moments.")
         return prior
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, init=False)
 class MarginalCorrelatedLognormalPrior:
     """Explicit result of marginalizing a labelled joint prior.
 
@@ -458,20 +512,44 @@ class MarginalCorrelatedLognormalPrior:
     """
 
     full_prior: CorrelatedLognormalPrior
-    retained: xr.DataArray
+    _retained: xr.DataArray
     prior: CorrelatedLognormalPrior
+
+    def __init__(self, *_args: object, **_kwargs: object) -> None:
+        """Require construction through validated marginal selection."""
+        raise TypeError("Use CorrelatedLognormalPrior.select_marginal(...) to construct a marginal prior.")
+
+    @classmethod
+    def _from_validated(
+        cls,
+        *,
+        full_prior: CorrelatedLognormalPrior,
+        retained: xr.DataArray,
+        prior: CorrelatedLognormalPrior,
+    ) -> MarginalCorrelatedLognormalPrior:
+        """Construct the wrapper after recomputing its principal marginal."""
+        instance = object.__new__(cls)
+        object.__setattr__(instance, "full_prior", full_prior)
+        object.__setattr__(instance, "_retained", retained.copy(deep=True))
+        object.__setattr__(instance, "prior", prior)
+        return instance
+
+    @property
+    def retained(self) -> xr.DataArray:
+        """Return an independent copy of the validated retained-state mask."""
+        return self._retained.copy(deep=True)
 
     @property
     def omitted(self) -> xr.DataArray:
         """Return the labelled omitted-state mask in full-state order."""
-        return (~self.retained).rename("marginalized_state")
+        return (~self._retained).rename("marginalized_state").copy(deep=True)
 
     def to_dataset(self) -> xr.Dataset:
         """Serialize the full prior and retained-state marginalization ledger."""
         dataset = self.full_prior.to_dataset()
         dataset["retained_state"] = (
             self.full_prior.state_dim,
-            np.asarray(self.retained.values, dtype=bool),
+            np.asarray(self._retained.values, dtype=bool),
         )
         dataset.attrs = dict(dataset.attrs)
         dataset.attrs["inactive_state_semantics"] = "coherent_prior_marginalization"
@@ -481,9 +559,7 @@ class MarginalCorrelatedLognormalPrior:
     def from_dataset(cls, dataset: xr.Dataset) -> MarginalCorrelatedLognormalPrior:
         """Reload and reapply an explicit coherent-marginalization ledger."""
         if dataset.attrs.get("inactive_state_semantics") != "coherent_prior_marginalization":
-            raise ValueError(
-                "Marginal correlated-state dataset must declare coherent prior marginalization."
-            )
+            raise ValueError("Marginal correlated-state dataset must declare coherent prior marginalization.")
         if "retained_state" not in dataset:
             raise ValueError("Marginal correlated-state dataset is missing 'retained_state'.")
         full_prior = CorrelatedLognormalPrior.from_dataset(dataset)

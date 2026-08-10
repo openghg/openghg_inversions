@@ -294,7 +294,11 @@ def restore_inferencedata_coords(
                 # has already recreated those level coords from the index itself.
                 if any(dim in restored_multiindex_dims for dim in coord.dims):
                     continue
-                group = group.assign_coords({name: coord})
+                # Assign positionally after restoring the scientific dimension
+                # coordinate.  Reusing the registry's range coordinate here
+                # would trigger xarray label alignment against the restored
+                # labels and silently replace ordinary auxiliaries with NaN.
+                group = group.assign_coords({name: (coord.dims, coord.values)})
 
         setattr(idata, group_name, group)
 
