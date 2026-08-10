@@ -1,21 +1,37 @@
 """Labelled arithmetic-moment contracts for correlated positive states.
 
-This module is backend-neutral.  It validates the scientific state coordinate
-and converts requested arithmetic LogNormal moments into the latent Gaussian
-moments needed by a model backend.  PyMC graph construction lives in
+This backend-neutral module validates an already-reduced state coordinate and
+an explicitly dense arithmetic covariance, then derives the latent Gaussian
+moments required to represent those moments with a multivariate LogNormal
+distribution. PyMC graph construction lives in
 ``openghg_inversions.models.components``.
 
-Correlated marginalization is deliberately separate from
-``models.StateActivity``.  ``StateActivity`` conditions inactive states on
-configured fixed values; selecting a principal marginal from a joint prior is
-a different statistical operation and must not silently restore omitted states
-as constants.
+The covariance accepted here is for the reduced inversion state, not a native
+grid. The implementation materializes dense covariance, latent-covariance, and
+Cholesky arrays, with quadratic memory use and cubic factorization cost. Native
+covariances with tens or hundreds of thousands of grid cells must therefore
+remain structured and be projected into the reduced state before constructing
+this contract.
+
+This module does not perform that native-to-reduced transformation or remove
+state components. The coherent covariance, transformed-forward-model, and
+aggregation-error identities are exact only for a jointly Gaussian state.
+Reusing the resulting first two moments while representing the retained state
+as LogNormal and the unresolved contribution as Gaussian is a moment-matched
+closure, not exact marginalization of a LogNormal state. Fixing a state at a
+known value is instead handled by ``models.StateActivity``.
+
+The main entry point is ``CorrelatedLognormalPrior``. Its constructor and
+``from_moments`` eagerly compute xarray inputs and own independent copies;
+``to_dataset`` and ``from_dataset`` provide persistence boundaries. Construction
+warns before dense covariance materialization when the reduced state exceeds
+1,000 components.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import json
+import warnings
 from typing import Any
 
 import numpy as np
@@ -30,13 +46,29 @@ _SERIALIZED_VARIABLE_NAMES = frozenset(
         "latent_mean",
         "latent_covariance",
         "latent_cholesky",
-        "retained_state",
     }
 )
 
+_DENSE_STATE_WARNING_THRESHOLD = 1000
+
 
 def _materialize_numeric(array: xr.DataArray, *, name: str) -> np.ndarray:
-    """Return an owned array of finite real float64 values."""
+    """Materialize an xarray object as owned finite real float64 values.
+
+    Args:
+        array: Labelled array to compute and copy into memory.
+        name: Human-readable input name used in validation errors.
+
+    Returns:
+        An owned NumPy array with ``float64`` dtype.
+
+    Raises:
+        ValueError: If the values are non-numeric, complex, or non-finite.
+
+    Notes:
+        Calling ``compute`` can trigger lazy computation or input/output before
+        the returned values are copied into memory.
+    """
     values = np.asarray(array.compute().values)
     if not np.issubdtype(values.dtype, np.number) or np.issubdtype(values.dtype, np.complexfloating):
         raise ValueError(f"{name} must contain real numeric values.")
@@ -52,7 +84,22 @@ def _copy_state_auxiliary_coords(
     *,
     state_dim: str,
 ) -> xr.DataArray:
-    """Copy ordinary state-aligned metadata not recreated by the state index."""
+    """Copy state-aligned auxiliary coordinates into a canonical array.
+
+    Args:
+        target: Canonical array that already owns its primary coordinates.
+        source: Array from which auxiliary state metadata is copied.
+        state_dim: Name of the sole permitted dimension for copied coordinates.
+
+    Returns:
+        A deep copy of ``target`` with compatible auxiliary coordinates copied
+        from ``source``.
+
+    Notes:
+        Scalar and ``state_dim``-only coordinates are compatible. Coordinates
+        already present on ``target`` or involving any other dimension are
+        skipped.
+    """
     result = target
     for name, coord in source.coords.items():
         if name in result.coords:
@@ -63,7 +110,20 @@ def _copy_state_auxiliary_coords(
 
 
 def _require_state_index(array: xr.DataArray, state_dim: str, *, name: str) -> pd.Index:
-    """Return the unique labelled index owned by ``state_dim``."""
+    """Validate and return the labelled index owned by a state dimension.
+
+    Args:
+        array: Array whose state index is required.
+        state_dim: Name of the state dimension and coordinate.
+        name: Human-readable input name used in validation errors.
+
+    Returns:
+        The unique pandas index attached to ``state_dim``.
+
+    Raises:
+        ValueError: If the coordinate is absent or non-unique, or if a
+            MultiIndex has missing or duplicate level names.
+    """
     if state_dim not in array.coords or state_dim not in array.indexes:
         raise ValueError(f"{name} must have a labelled {state_dim!r} coordinate.")
     index = array.indexes[state_dim]
@@ -96,7 +156,22 @@ def _covariance_array(
     state_dim: str,
     covariance_dim: str,
 ) -> xr.DataArray:
-    """Normalize covariance to one labelled and one same-order matrix axis."""
+    """Normalize covariance to labelled rows and a same-order column axis.
+
+    Args:
+        covariance: Dense covariance values, optionally with xarray labels.
+        mean: Validated one-dimensional arithmetic mean.
+        state_dim: Name of the labelled covariance row dimension.
+        covariance_dim: Distinct name for the covariance column dimension.
+
+    Returns:
+        An owned ``float64`` covariance with canonical dimensions and a
+        serialized column-label identity coordinate.
+
+    Raises:
+        ValueError: If the shape, dimensions, labels, values, or serialized
+            column identity do not match the arithmetic mean.
+    """
     state_coord = mean.coords[state_dim]
     mean_index = _require_state_index(mean, state_dim, name="Arithmetic mean")
     state_size = mean.sizes[state_dim]
@@ -176,15 +251,57 @@ def _matrix_tolerance(values: np.ndarray) -> float:
     return 1e-10 * max(float(np.max(np.abs(values))), 1.0)
 
 
-@dataclass(frozen=True, init=False)
+def _warn_large_dense_state(state_size: int) -> None:
+    """Warn when a dense reduced state exceeds the operational size threshold.
+
+    Args:
+        state_size: Number of components in the reduced inversion state.
+
+    Warns:
+        UserWarning: If ``state_size`` exceeds the operational threshold of
+            1000 components. The threshold is not a mathematical limit.
+    """
+    if state_size > _DENSE_STATE_WARNING_THRESHOLD:
+        warnings.warn(
+            "CorrelatedLognormalPrior expects an already-reduced dense covariance; "
+            f"state size {state_size} exceeds the operational threshold of "
+            f"{_DENSE_STATE_WARNING_THRESHOLD} (not a mathematical limit). This "
+            "representation is unsuitable for a native-grid covariance.",
+            UserWarning,
+            stacklevel=3,
+        )
+
+
 class CorrelatedLognormalPrior:
     """Validated labelled moments for one correlated positive state vector.
 
-    ``arithmetic_covariance`` uses a distinct second matrix dimension whose
-    entries are declared to follow the primary state coordinate in the same
-    order.  Only the primary axis owns the rich scientific coordinate.  This
-    avoids duplicating MultiIndex level coordinates while retaining an explicit
-    labelled row contract.
+    The arithmetic covariance is an already-reduced dense matrix. It uses a
+    distinct second dimension whose entries follow the primary state coordinate
+    in the same order. Only the primary axis owns the rich scientific
+    coordinate, avoiding duplicate MultiIndex level coordinates while retaining
+    an explicit labelled-row contract.
+
+    Attributes:
+        mean: Arithmetic mean with dimension ``(state_dim,)``. Access returns
+            an independent deep copy.
+        arithmetic_covariance: Dense arithmetic covariance with dimensions
+            ``(state_dim, covariance_dim)``. Access returns an independent deep
+            copy.
+        latent_mean: Derived Gaussian mean with dimension ``(state_dim,)``.
+            Access returns an independent deep copy.
+        latent_covariance: Derived Gaussian covariance with dimensions
+            ``(state_dim, covariance_dim)``. Access returns an independent deep
+            copy.
+        latent_cholesky: Lower Cholesky factor with dimensions
+            ``(state_dim, covariance_dim)``. Access returns an independent deep
+            copy.
+        state_dim: Name of the scientific state dimension.
+        covariance_dim: Name of the same-order covariance column dimension.
+
+    Notes:
+        Construction owns all supplied values. Array properties return deep
+        copies so callers cannot mutate the cached validated moments through
+        the public API.
     """
 
     _mean: xr.DataArray
@@ -195,75 +312,94 @@ class CorrelatedLognormalPrior:
     state_dim: str
     covariance_dim: str
 
-    def __init__(self, *_args: object, **_kwargs: object) -> None:
-        """Require construction through ``from_moments`` validation."""
-        raise TypeError("Use CorrelatedLognormalPrior.from_moments(...) to construct a prior.")
-
-    @classmethod
-    def _from_validated(
-        cls,
-        *,
-        mean: xr.DataArray,
-        arithmetic_covariance: xr.DataArray,
-        latent_mean: xr.DataArray,
-        latent_covariance: xr.DataArray,
-        latent_cholesky: xr.DataArray,
-        state_dim: str,
-        covariance_dim: str,
-    ) -> CorrelatedLognormalPrior:
-        """Construct an instance after the public validation boundary."""
-        instance = object.__new__(cls)
-        object.__setattr__(instance, "_mean", mean.copy(deep=True))
-        object.__setattr__(instance, "_arithmetic_covariance", arithmetic_covariance.copy(deep=True))
-        object.__setattr__(instance, "_latent_mean", latent_mean.copy(deep=True))
-        object.__setattr__(instance, "_latent_covariance", latent_covariance.copy(deep=True))
-        object.__setattr__(instance, "_latent_cholesky", latent_cholesky.copy(deep=True))
-        object.__setattr__(instance, "state_dim", state_dim)
-        object.__setattr__(instance, "covariance_dim", covariance_dim)
-        return instance
-
     @property
     def mean(self) -> xr.DataArray:
-        """Return an independent copy of the validated arithmetic mean."""
+        """Return the validated arithmetic mean.
+
+        Returns:
+            An independent deep copy of the labelled arithmetic mean.
+        """
         return self._mean.copy(deep=True)
 
     @property
     def arithmetic_covariance(self) -> xr.DataArray:
-        """Return an independent copy of the validated arithmetic covariance."""
+        """Return the validated arithmetic covariance.
+
+        Returns:
+            An independent deep copy of the dense labelled covariance.
+        """
         return self._arithmetic_covariance.copy(deep=True)
 
     @property
     def latent_mean(self) -> xr.DataArray:
-        """Return an independent copy of the derived latent mean."""
+        """Return the derived latent Gaussian mean.
+
+        Returns:
+            An independent deep copy of the labelled latent mean.
+        """
         return self._latent_mean.copy(deep=True)
 
     @property
     def latent_covariance(self) -> xr.DataArray:
-        """Return an independent copy of the derived latent covariance."""
+        """Return the derived latent Gaussian covariance.
+
+        Returns:
+            An independent deep copy of the dense latent covariance.
+        """
         return self._latent_covariance.copy(deep=True)
 
     @property
     def latent_cholesky(self) -> xr.DataArray:
-        """Return an independent copy of the derived latent Cholesky factor."""
+        """Return the Cholesky factor of the latent covariance.
+
+        Returns:
+            An independent deep copy of the dense lower-triangular factor.
+        """
         return self._latent_cholesky.copy(deep=True)
 
-    @classmethod
-    def from_moments(
-        cls,
+    def __init__(
+        self,
         mean: xr.DataArray,
         arithmetic_covariance: xr.DataArray | np.ndarray,
         *,
         covariance_dim: str | None = None,
-    ) -> CorrelatedLognormalPrior:
-        """Validate arithmetic moments and derive latent Gaussian moments.
+    ) -> None:
+        """Validate arithmetic moments and derive cached latent moments.
 
-        For arithmetic mean ``m`` and covariance ``C``, the latent moments are
+        Args:
+            mean: Positive one-dimensional arithmetic mean with a unique
+                labelled state coordinate.
+            arithmetic_covariance: Already-reduced dense arithmetic covariance.
+                Its shape must be ``(p, p)`` for a length-``p`` mean. Xarray
+                input must use the state dimension for rows and
+                ``covariance_dim`` for columns, with matching label order;
+                NumPy input is interpreted positionally in mean-label order.
+            covariance_dim: Optional name for the covariance column dimension.
+                Defaults to ``"{state_dim}_covariance"``.
 
-        ``Sigma[i,j] = log(1 + C[i,j] / (m[i] * m[j]))`` and
-        ``mu[i] = log(m[i]) - 0.5 * Sigma[i,i]``.
+        Raises:
+            TypeError: If ``mean`` is not an xarray ``DataArray``.
+            ValueError: If dimensions, labels, values, or arithmetic moments
+                do not define a finite positive-definite latent covariance.
 
-        The familiar mean-one contract is the special case
-        ``Sigma = log1p(C)``.
+        Warns:
+            UserWarning: If the reduced state contains more than 1000
+                components. This is an operational threshold, not a
+                mathematical limit.
+
+        Notes:
+            Inputs are eagerly computed, canonicalized, and copied. Mean and
+            covariance units must be consistent (covariance has squared mean
+            units); unit metadata is retained where possible but is neither
+            converted nor validated.
+
+            For arithmetic mean ``m`` and covariance ``C``, each latent
+            covariance entry is
+            ``Sigma[i,j] = log(1 + C[i,j] / (m[i] * m[j]))`` and
+            ``mu[i] = log(m[i]) - 0.5 * Sigma[i,i]``. For a mean-one state this
+            becomes ``Sigma[i,j] = log(1 + C[i,j])`` element by element; the
+            implementation uses ``numpy.log1p`` for that scalar operation and
+            does not take a matrix logarithm.
         """
         if not isinstance(mean, xr.DataArray):
             raise TypeError("Arithmetic mean must be an xarray DataArray.")
@@ -295,6 +431,7 @@ class CorrelatedLognormalPrior:
         mean_values = _materialize_numeric(mean, name="Arithmetic mean")
         if (mean_values <= 0).any():
             raise ValueError("Arithmetic mean must contain only positive values.")
+        _warn_large_dense_state(mean.sizes[state_dim])
 
         covariance = _covariance_array(
             arithmetic_covariance,
@@ -368,79 +505,70 @@ class CorrelatedLognormalPrior:
             canonical_mean,
             state_dim=state_dim,
         )
-        return cls._from_validated(
-            mean=canonical_mean,
-            arithmetic_covariance=covariance,
-            latent_mean=canonical_latent_mean,
-            latent_covariance=xr.DataArray(
-                latent_covariance_values,
-                dims=(state_dim, covariance_dim),
-                coords=matrix_coords,
-                name="latent_covariance",
-            ),
-            latent_cholesky=xr.DataArray(
-                latent_cholesky_values,
-                dims=(state_dim, covariance_dim),
-                coords=matrix_coords,
-                name="latent_cholesky",
-            ),
-            state_dim=state_dim,
+        self._mean = canonical_mean.copy(deep=True)
+        self._arithmetic_covariance = covariance.copy(deep=True)
+        self._latent_mean = canonical_latent_mean.copy(deep=True)
+        self._latent_covariance = xr.DataArray(
+            latent_covariance_values,
+            dims=(state_dim, covariance_dim),
+            coords=matrix_coords,
+            name="latent_covariance",
+        ).copy(deep=True)
+        self._latent_cholesky = xr.DataArray(
+            latent_cholesky_values,
+            dims=(state_dim, covariance_dim),
+            coords=matrix_coords,
+            name="latent_cholesky",
+        ).copy(deep=True)
+        self.state_dim = state_dim
+        self.covariance_dim = covariance_dim
+
+    @classmethod
+    def from_moments(
+        cls,
+        mean: xr.DataArray,
+        arithmetic_covariance: xr.DataArray | np.ndarray,
+        *,
+        covariance_dim: str | None = None,
+    ) -> CorrelatedLognormalPrior:
+        """Construct a prior from labelled arithmetic moments.
+
+        Args:
+            mean: Positive one-dimensional arithmetic mean with a unique
+                labelled state coordinate.
+            arithmetic_covariance: Already-reduced dense ``(p, p)`` arithmetic
+                covariance. Xarray labels must match ``mean`` exactly; NumPy
+                values are interpreted in mean-label order.
+            covariance_dim: Optional name for the covariance column dimension;
+                see the constructor for the complete coordinate contract.
+
+        Returns:
+            A validated contract containing owned arithmetic moments and the
+            derived latent Gaussian moments.
+
+        Raises:
+            TypeError: If ``mean`` is not an xarray ``DataArray``.
+            ValueError: If dimensions, labels, values, or arithmetic moments
+                fail validation.
+
+        Warns:
+            UserWarning: If the reduced state contains more than 1000
+                components. This is an operational threshold, not a
+                mathematical limit.
+        """
+        return cls(
+            mean,
+            arithmetic_covariance,
             covariance_dim=covariance_dim,
         )
 
-    def select_marginal(self, retained: xr.DataArray) -> MarginalCorrelatedLognormalPrior:
-        """Select a labelled principal marginal without fixing omitted states.
-
-        This operation only marginalizes the prior. It does not reduce a
-        forward operator or construct the unresolved aggregation covariance.
-        Callers using coherent reduction must supply the matching retained
-        design and unresolved covariance from the same preparation ledger.
-        """
-        if retained.dims != (self.state_dim,):
-            raise ValueError(
-                f"Retained-state mask must have only the {self.state_dim!r} dimension; got {retained.dims!r}."
-            )
-        retained_index = _require_state_index(retained, self.state_dim, name="Retained-state mask")
-        state_index = self._mean.indexes[self.state_dim]
-        if not retained_index.equals(state_index):
-            raise ValueError(
-                "Retained-state mask labels must exactly match the prior state labels in the same order."
-            )
-        retained_values = np.asarray(retained.compute().values)
-        if retained_values.dtype != np.dtype(bool):
-            raise ValueError("Retained-state mask must contain only boolean values.")
-        positions = np.flatnonzero(retained_values)
-        if positions.size == 0:
-            raise ValueError("A correlated LogNormal marginal must retain at least one state.")
-
-        marginal_mean = self._mean.isel({self.state_dim: positions})
-        marginal_covariance = self._arithmetic_covariance.isel(
-            {self.state_dim: positions, self.covariance_dim: positions}
-        )
-        prior = CorrelatedLognormalPrior.from_moments(
-            marginal_mean,
-            marginal_covariance,
-            covariance_dim=self.covariance_dim,
-        )
-        canonical_mask = xr.DataArray(
-            retained_values,
-            dims=(self.state_dim,),
-            coords={self.state_dim: self._mean.coords[self.state_dim]},
-            name="retained_state",
-        )
-        canonical_mask = _copy_state_auxiliary_coords(
-            canonical_mask,
-            self._mean,
-            state_dim=self.state_dim,
-        )
-        return MarginalCorrelatedLognormalPrior._from_validated(
-            full_prior=self,
-            retained=canonical_mask,
-            prior=prior,
-        )
-
     def to_dataset(self) -> xr.Dataset:
-        """Return a serializable labelled dataset containing both moment spaces."""
+        """Serialize the validated arithmetic and latent moments.
+
+        Returns:
+            A new labelled dataset containing deep copies of both moment
+            parameterizations and the correlated-state schema metadata.
+        """
         return xr.Dataset(
             {
                 self._mean.name: self._mean.copy(deep=True),
@@ -460,7 +588,28 @@ class CorrelatedLognormalPrior:
 
     @classmethod
     def from_dataset(cls, dataset: xr.Dataset) -> CorrelatedLognormalPrior:
-        """Reload and revalidate a dataset produced by ``to_dataset``."""
+        """Reload and revalidate a serialized correlated-state contract.
+
+        Args:
+            dataset: Dataset produced by :meth:`to_dataset`.
+
+        Returns:
+            A newly validated prior derived from the stored arithmetic moments.
+
+        Raises:
+            ValueError: If schema metadata, variables, dimensions, labels, or
+                cached latent moments are missing or inconsistent.
+
+        Warns:
+            UserWarning: If the stored reduced state contains more than 1000
+                components. This is an operational threshold, not a
+                mathematical limit.
+
+        Notes:
+            Stored latent values are checked against moments recomputed from
+            the eagerly materialized arithmetic inputs; they are never trusted
+            as an alternative construction path.
+        """
         expected_schema = "openghg_inversions.correlated_lognormal_prior/v1"
         if dataset.attrs.get("correlated_state_schema") != expected_schema:
             raise ValueError("Correlated-state dataset has an unsupported or missing schema declaration.")
@@ -521,66 +670,3 @@ class CorrelatedLognormalPrior:
             ):
                 raise ValueError(f"Stored {name!r} is inconsistent with the declared arithmetic moments.")
         return prior
-
-
-@dataclass(frozen=True, init=False)
-class MarginalCorrelatedLognormalPrior:
-    """Explicit result of marginalizing a labelled joint prior.
-
-    This object intentionally has no fixed-value or full-state reconstruction
-    field.  Omitted states are integrated out, not conditioned on constants.
-    """
-
-    full_prior: CorrelatedLognormalPrior
-    _retained: xr.DataArray
-    prior: CorrelatedLognormalPrior
-
-    def __init__(self, *_args: object, **_kwargs: object) -> None:
-        """Require construction through validated marginal selection."""
-        raise TypeError("Use CorrelatedLognormalPrior.select_marginal(...) to construct a marginal prior.")
-
-    @classmethod
-    def _from_validated(
-        cls,
-        *,
-        full_prior: CorrelatedLognormalPrior,
-        retained: xr.DataArray,
-        prior: CorrelatedLognormalPrior,
-    ) -> MarginalCorrelatedLognormalPrior:
-        """Construct the wrapper after recomputing its principal marginal."""
-        instance = object.__new__(cls)
-        object.__setattr__(instance, "full_prior", full_prior)
-        object.__setattr__(instance, "_retained", retained.copy(deep=True))
-        object.__setattr__(instance, "prior", prior)
-        return instance
-
-    @property
-    def retained(self) -> xr.DataArray:
-        """Return an independent copy of the validated retained-state mask."""
-        return self._retained.copy(deep=True)
-
-    @property
-    def omitted(self) -> xr.DataArray:
-        """Return the labelled omitted-state mask in full-state order."""
-        return (~self._retained).rename("marginalized_state").copy(deep=True)
-
-    def to_dataset(self) -> xr.Dataset:
-        """Serialize the full prior and retained-state marginalization ledger."""
-        dataset = self.full_prior.to_dataset()
-        dataset["retained_state"] = (
-            self.full_prior.state_dim,
-            np.array(self._retained.values, dtype=bool, copy=True),
-        )
-        dataset.attrs = dict(dataset.attrs)
-        dataset.attrs["inactive_state_semantics"] = "coherent_prior_marginalization"
-        return dataset
-
-    @classmethod
-    def from_dataset(cls, dataset: xr.Dataset) -> MarginalCorrelatedLognormalPrior:
-        """Reload and reapply an explicit coherent-marginalization ledger."""
-        if dataset.attrs.get("inactive_state_semantics") != "coherent_prior_marginalization":
-            raise ValueError("Marginal correlated-state dataset must declare coherent prior marginalization.")
-        if "retained_state" not in dataset:
-            raise ValueError("Marginal correlated-state dataset is missing 'retained_state'.")
-        full_prior = CorrelatedLognormalPrior.from_dataset(dataset)
-        return full_prior.select_marginal(dataset["retained_state"])

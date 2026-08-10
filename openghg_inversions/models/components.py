@@ -398,11 +398,25 @@ def add_correlated_lognormal_state(
     Returns:
         The whitened latent, positive state, and supplied prior contract.
 
+    Raises:
+        ValueError: If the arithmetic mean, latent moments, Cholesky diagonal,
+            or exponentiated central state is not finite and positive where
+            required in PyMC's configured floating-point dtype.
+
     Notes:
-        Coherent marginalization must be completed before calling this helper,
-        using ``CorrelatedLognormalPrior.select_marginal``. This helper does not
-        accept ``StateActivity`` because fixed-state conditioning and joint-
-        prior marginalization are different statistical operations.
+        This function must run in an active ``pm.Model`` context. After backend
+        dtype validation completes, it mutates that model by registering the
+        length-``p`` state coordinate, ``{var_name}_latent`` random variable,
+        and length-``p`` ``{var_name}`` deterministic state.
+
+        ``prior`` should contain reduced arithmetic moments produced together
+        with the matching forward operator and Gaussian unresolved-error term.
+        The coherent covariance, transformed-forward-model, and
+        aggregation-error identities are exact only for a jointly Gaussian
+        state. Reusing those first two moments with a LogNormal retained state
+        and Gaussian unresolved contribution is a moment-matched closure, not
+        exact LogNormal marginalization. Known-exact state fixing is handled
+        separately by ``StateActivity`` in the state-linear component builders.
     """
     state_dim = prior.state_dim
     mean = prior.mean

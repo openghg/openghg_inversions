@@ -34,10 +34,7 @@ from openghg_inversions.models.coords import (
     restore_inferencedata_coords,
 )
 from openghg_inversions.models.priors import parse_prior
-from openghg_inversions.correlated_state import (
-    CorrelatedLognormalPrior,
-    MarginalCorrelatedLognormalPrior,
-)
+from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.models.state_activity import (
     ResolvedStateActivity,
     StateActivity,
@@ -96,7 +93,6 @@ __all__ = [
     "restore_inferencedata_coords",
     "parse_prior",
     "LinearComponentResult",
-    "MarginalCorrelatedLognormalPrior",
     "StateLinearComponentResult",
     "add_model_data",
     "add_correlated_lognormal_state",
