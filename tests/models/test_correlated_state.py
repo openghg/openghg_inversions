@@ -1,15 +1,14 @@
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import pandas as pd
 import pymc as pm
 import pytest
 import xarray as xr
 
-from openghg_inversions.correlated_state import (
-    CorrelatedLognormalPrior,
-    MarginalCorrelatedLognormalPrior,
-)
+from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.models import (
     CoordRegistry,
     add_correlated_lognormal_state,
@@ -55,10 +54,51 @@ def _prior() -> CorrelatedLognormalPrior:
     return CorrelatedLognormalPrior.from_moments(_gathered_mean(), _arithmetic_covariance())
 
 
-def test_correlated_prior_requires_validated_factory_construction() -> None:
-    """Prevent callers from bypassing moment and coordinate validation."""
-    with pytest.raises(TypeError, match="from_moments"):
-        CorrelatedLognormalPrior()  # type: ignore[call-arg]
+def test_correlated_prior_constructor_matches_named_factory() -> None:
+    """Constructing directly or through ``from_moments`` gives the same prior."""
+    mean = _gathered_mean()
+    covariance = _arithmetic_covariance()
+
+    direct = CorrelatedLognormalPrior(mean, covariance)
+    factory = CorrelatedLognormalPrior.from_moments(mean, covariance)
+
+    xr.testing.assert_identical(direct.mean, factory.mean)
+    xr.testing.assert_identical(direct.arithmetic_covariance, factory.arithmetic_covariance)
+    xr.testing.assert_identical(direct.latent_mean, factory.latent_mean)
+    xr.testing.assert_identical(direct.latent_covariance, factory.latent_covariance)
+    xr.testing.assert_identical(direct.latent_cholesky, factory.latent_cholesky)
+
+
+def test_correlated_prior_warns_before_large_covariance_validation() -> None:
+    """Warn above the operational state-size threshold before covariance work."""
+    state_size = 1001
+    mean = xr.DataArray(
+        np.ones(state_size),
+        dims="state",
+        coords={"state": np.arange(state_size)},
+    )
+
+    with pytest.warns(
+        UserWarning,
+        match=r"already-reduced dense covariance.*operational threshold of 1000",
+    ):
+        with pytest.raises(ValueError, match="square and match the state length"):
+            CorrelatedLognormalPrior(mean, np.empty((0, 0)))
+
+
+def test_correlated_prior_does_not_warn_at_large_state_threshold() -> None:
+    """Do not warn when state size equals the documented operational threshold."""
+    state_size = 1000
+    mean = xr.DataArray(
+        np.ones(state_size),
+        dims="state",
+        coords={"state": np.arange(state_size)},
+    )
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", UserWarning)
+        with pytest.raises(ValueError, match="square and match the state length"):
+            CorrelatedLognormalPrior(mean, np.empty((0, 0)))
 
 
 def test_correlated_prior_owns_inputs_and_returns_independent_arrays() -> None:
@@ -245,65 +285,6 @@ def test_correlated_lognormal_canonicalizes_tolerance_level_asymmetry() -> None:
     )
 
 
-def test_select_marginal_takes_principal_submatrix_without_fixed_state() -> None:
-    """Marginalization keeps arithmetic moments and never restores a constant slot."""
-    prior = _prior()
-    retained = xr.DataArray(
-        [True, False, True],
-        dims=("state",),
-        coords={"state": prior.mean.coords["state"]},
-    )
-
-    selection = prior.select_marginal(retained)
-
-    np.testing.assert_allclose(selection.prior.mean, [1.0, 1.0])
-    np.testing.assert_allclose(
-        selection.prior.arithmetic_covariance,
-        _arithmetic_covariance()[np.ix_([0, 2], [0, 2])],
-    )
-    np.testing.assert_array_equal(selection.retained, [True, False, True])
-    np.testing.assert_array_equal(selection.omitted, [False, True, False])
-    assert selection.prior.mean.sizes["state"] == 2
-    assert not hasattr(selection, "fixed_value")
-
-
-def test_marginal_prior_dataset_owns_retained_state_mask() -> None:
-    """Keep serialized mask mutations isolated from the validated selection."""
-    prior = _prior()
-    retained = xr.DataArray(
-        [True, False, True],
-        dims=("state",),
-        coords={"state": prior.mean.coords["state"]},
-    )
-    selection = prior.select_marginal(retained)
-
-    dataset = selection.to_dataset()
-    dataset["retained_state"].values[:] = False
-
-    np.testing.assert_array_equal(selection.retained, [True, False, True])
-    xr.testing.assert_identical(
-        selection.prior.mean,
-        prior.mean.isel(state=[0, 2]),
-    )
-
-
-def test_marginal_prior_requires_validated_selection() -> None:
-    """Prevent inconsistent public combinations of full, mask, and reduced prior."""
-    prior = _prior()
-    retained = xr.DataArray(
-        [True, False, True],
-        dims="state",
-        coords={"state": prior.mean.coords["state"]},
-    )
-
-    with pytest.raises(TypeError, match="select_marginal"):
-        MarginalCorrelatedLognormalPrior(
-            full_prior=prior,
-            retained=retained,
-            prior=prior,
-        )
-
-
 @pytest.mark.parametrize(
     "reserved_name",
     [
@@ -312,7 +293,6 @@ def test_marginal_prior_requires_validated_selection() -> None:
         "latent_mean",
         "latent_covariance",
         "latent_cholesky",
-        "retained_state",
     ],
 )
 def test_correlated_prior_rejects_reserved_serialization_coordinate_names(
@@ -436,31 +416,6 @@ def test_correlated_prior_dataset_roundtrip_preserves_multiindex(tmp_path) -> No
     xr.testing.assert_identical(loaded.mean, prior.mean)
     xr.testing.assert_allclose(loaded.arithmetic_covariance, prior.arithmetic_covariance)
     xr.testing.assert_allclose(loaded.latent_covariance, prior.latent_covariance)
-
-
-def test_marginal_prior_dataset_roundtrip_preserves_omitted_identity(tmp_path) -> None:
-    """Persist marginalization semantics and full-state retained labels."""
-    prior = _prior()
-    retained = xr.DataArray(
-        [True, False, True],
-        dims=("state",),
-        coords={"state": prior.mean.coords["state"]},
-    )
-    selection = prior.select_marginal(retained)
-    encoded = encode_multiindexes_for_storage(selection.to_dataset())
-    path = tmp_path / "marginal-correlated-prior.nc"
-    encoded.to_netcdf(path)
-    restored = restore_serialisation_multiindexes(xr.load_dataset(path), strict=True)
-
-    loaded = MarginalCorrelatedLognormalPrior.from_dataset(restored)
-
-    assert loaded.full_prior.mean.indexes["state"].equals(prior.mean.indexes["state"])
-    np.testing.assert_array_equal(loaded.retained, [True, False, True])
-    np.testing.assert_array_equal(loaded.omitted, [False, True, False])
-    np.testing.assert_allclose(
-        loaded.prior.arithmetic_covariance,
-        _arithmetic_covariance()[np.ix_([0, 2], [0, 2])],
-    )
 
 
 def test_correlated_prior_dataset_rejects_inconsistent_derived_moments() -> None:
