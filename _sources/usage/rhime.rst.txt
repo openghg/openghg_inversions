@@ -616,18 +616,25 @@ Active And Fixed States
 The modern model builders sample only active flux-scaling states. Inactive
 columns are removed from the sampled vector and restored into the full ordered
 ``x`` (or ``x_<sector>``) model variable before the forward calculation and
-postprocessing. By default, a sensitivity column is inactive only when every
-value in that column is exactly zero. No tolerance is applied, so a near-zero
-nonzero column remains active. Inactive multiplicative scaling states default
-to one.
+postprocessing; the corresponding columns of ``H`` are not physically removed.
+By default, a sensitivity column is inactive only when every value in that
+column is exactly zero. No tolerance is applied, so a near-zero nonzero column
+remains active. Inactive multiplicative scaling states default to one. For an
+exactly-zero column the fixed value cannot affect the forward calculation.
 
 ``StateActivity`` can also freeze labelled states, ``basis_group`` values, or a
 complete sector. Labelled masks and fixed values are aligned to the state
 coordinate rather than interpreted as numeric state ranges. Prior distribution
 parameters may likewise be scalars, full one-dimensional arrays, or labelled
-``DataArray`` objects. Given canonical ``inv_inputs``, the following example
-assumes that ``inv_inputs["H"]`` carries a state-aligned ``basis_group``
-coordinate containing the value ``"outer"``:
+``DataArray`` objects. Fixing a nonzero state treats that parameter as known
+exactly; it does not integrate over its prior uncertainty. This represents an
+experiment such as asking what could be recovered if one emissions sector were
+known without uncertainty. The fixed state's uncertainty is deliberately
+removed rather than transferred into aggregation error.
+
+Given canonical ``inv_inputs``, the following example assumes that
+``inv_inputs["H"]`` carries a state-aligned ``basis_group`` coordinate
+containing the value ``"outer"``:
 
 .. code-block:: python
 
@@ -675,6 +682,84 @@ baseline component.
 
 The legacy single-sector ``inferpymc`` / ``fixedbasisMCMC`` compatibility path
 continues to sample its full flux state and does not gain multisector behavior.
+
+Correlated Positive Reduced States
+----------------------------------
+
+``CorrelatedLognormalPrior`` is the low-level contract for one labelled joint
+positive state. It accepts an arithmetic mean vector ``m`` and covariance
+``C`` and constructs the latent Gaussian moments
+
+.. math::
+
+   \Sigma_{ij} = \log\left(1 + \frac{C_{ij}}{m_i m_j}\right),
+   \qquad
+   \mu_i = \log(m_i) - \frac{1}{2}\Sigma_{ii}.
+
+For a mean-one scale state this reduces elementwise to
+:math:`\Sigma_{ij} = \log(1 + C_{ij})`; this is not a matrix logarithm. The
+implementation uses ``np.log1p`` for numerical stability. The contract
+validates labelled state order, arithmetic covariance, and positive
+definiteness of the derived latent covariance. ``add_correlated_lognormal_state``
+then creates a whitened standard-normal ``<name>_latent`` and the positive
+public state ``<name>``.
+
+.. code-block:: python
+
+   import numpy as np
+   import pymc as pm
+   import xarray as xr
+
+   from openghg_inversions.models import (
+       CorrelatedLognormalPrior,
+       add_correlated_lognormal_state,
+   )
+
+   mean = xr.DataArray(
+       [1.0, 1.0],
+       dims="state",
+       coords={"state": ["region-a", "region-b"]},
+   )
+   prior = CorrelatedLognormalPrior(
+       mean,
+       np.array([[0.16, 0.03], [0.03, 0.09]]),
+   )
+
+   with pm.Model():
+       state_result = add_correlated_lognormal_state(prior, var_name="x")
+
+``C`` must be the dense covariance of an already-reduced sampled state, such as
+a basis-state covariance ``C_alpha``. It is not the covariance of a native grid.
+For ``p`` sampled states this contract retains several dense ``p`` by ``p``
+matrices, uses additional dense temporaries, and performs a Cholesky
+factorization: persistent matrix storage scales as :math:`O(p^2)` and the
+factorization as :math:`O(p^3)`. Current inversions typically have fewer than
+500 sampled states. Construction emits an operational warning above 1,000
+states; this threshold is not a mathematical limit. Native grids with more
+than 100,000 cells require a structured covariance representation, such as a
+Kronecker product, whose projected products can be evaluated without realizing
+the full native covariance.
+
+This component does **not** perform the native-to-reduced uncertainty
+transformation or remove state coordinates. That work must transform the prior
+uncertainty, forward operator, and aggregation error together. The coherent
+covariance, transformed-forward-model, and aggregation-error identities are
+exact only for a jointly Gaussian state. Reusing the resulting first two
+moments while representing the retained state as LogNormal and the unresolved
+contribution as Gaussian is a moment-matched closure, not exact marginalization
+of a LogNormal state. `Issue #566 <https://github.com/openghg/openghg_inversions/issues/566>`_
+tracks the coherent preparation contract.
+
+The covariance matrix uses a distinct second dimension, named
+``<state_dim>_covariance`` by default. If an xarray covariance supplies column
+labels, they must exactly equal the primary state labels in the same order.
+An unlabelled NumPy covariance is interpreted in the arithmetic mean's state
+order. Reordered inputs are rejected rather than interpreted positionally.
+
+The initial public component is intended for custom model builders. Built-in
+``RhimeModelSpec`` integration for a gathered joint state and compatibility
+per-sector aliases is follow-up work; current ``SectorSpec`` priors remain
+independent.
 
 Basis-Aware Prior Standard Deviations
 -------------------------------------

@@ -938,17 +938,23 @@ policy call has no target-region context and therefore remains strict.</p>
 <p>The modern model builders sample only active flux-scaling states. Inactive
 columns are removed from the sampled vector and restored into the full ordered
 <code class="docutils literal notranslate"><span class="pre">x</span></code> (or <code class="docutils literal notranslate"><span class="pre">x_&lt;sector&gt;</span></code>) model variable before the forward calculation and
-postprocessing. By default, a sensitivity column is inactive only when every
-value in that column is exactly zero. No tolerance is applied, so a near-zero
-nonzero column remains active. Inactive multiplicative scaling states default
-to one.</p>
+postprocessing; the corresponding columns of <code class="docutils literal notranslate"><span class="pre">H</span></code> are not physically removed.
+By default, a sensitivity column is inactive only when every value in that
+column is exactly zero. No tolerance is applied, so a near-zero nonzero column
+remains active. Inactive multiplicative scaling states default to one. For an
+exactly-zero column the fixed value cannot affect the forward calculation.</p>
 <p><code class="docutils literal notranslate"><span class="pre">StateActivity</span></code> can also freeze labelled states, <code class="docutils literal notranslate"><span class="pre">basis_group</span></code> values, or a
 complete sector. Labelled masks and fixed values are aligned to the state
 coordinate rather than interpreted as numeric state ranges. Prior distribution
 parameters may likewise be scalars, full one-dimensional arrays, or labelled
-<code class="docutils literal notranslate"><span class="pre">DataArray</span></code> objects. Given canonical <code class="docutils literal notranslate"><span class="pre">inv_inputs</span></code>, the following example
-assumes that <code class="docutils literal notranslate"><span class="pre">inv_inputs[&quot;H&quot;]</span></code> carries a state-aligned <code class="docutils literal notranslate"><span class="pre">basis_group</span></code>
-coordinate containing the value <code class="docutils literal notranslate"><span class="pre">&quot;outer&quot;</span></code>:</p>
+<code class="docutils literal notranslate"><span class="pre">DataArray</span></code> objects. Fixing a nonzero state treats that parameter as known
+exactly; it does not integrate over its prior uncertainty. This represents an
+experiment such as asking what could be recovered if one emissions sector were
+known without uncertainty. The fixed state’s uncertainty is deliberately
+removed rather than transferred into aggregation error.</p>
+<p>Given canonical <code class="docutils literal notranslate"><span class="pre">inv_inputs</span></code>, the following example assumes that
+<code class="docutils literal notranslate"><span class="pre">inv_inputs[&quot;H&quot;]</span></code> carries a state-aligned <code class="docutils literal notranslate"><span class="pre">basis_group</span></code> coordinate
+containing the value <code class="docutils literal notranslate"><span class="pre">&quot;outer&quot;</span></code>:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">StateActivity</span><span class="p">,</span> <span class="n">build_rhime_model</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.sigma</span><span class="w"> </span><span class="kn">import</span> <span class="n">SigmaAlignment</span>
 
@@ -991,6 +997,75 @@ from supplying a standalone baseline time series, which belongs to a separate
 baseline component.</p>
 <p>The legacy single-sector <code class="docutils literal notranslate"><span class="pre">inferpymc</span></code> / <code class="docutils literal notranslate"><span class="pre">fixedbasisMCMC</span></code> compatibility path
 continues to sample its full flux state and does not gain multisector behavior.</p>
+</section>
+<section id="correlated-positive-reduced-states">
+<h2>Correlated Positive Reduced States<a class="headerlink" href="#correlated-positive-reduced-states" title="Link to this heading">#</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">CorrelatedLognormalPrior</span></code> is the low-level contract for one labelled joint
+positive state. It accepts an arithmetic mean vector <code class="docutils literal notranslate"><span class="pre">m</span></code> and covariance
+<code class="docutils literal notranslate"><span class="pre">C</span></code> and constructs the latent Gaussian moments</p>
+<div class="math notranslate nohighlight">
+\[\Sigma_{ij} = \log\left(1 + \frac{C_{ij}}{m_i m_j}\right),
+\qquad
+\mu_i = \log(m_i) - \frac{1}{2}\Sigma_{ii}.\]</div>
+<p>For a mean-one scale state this reduces elementwise to
+<span class="math notranslate nohighlight">\(\Sigma_{ij} = \log(1 + C_{ij})\)</span>; this is not a matrix logarithm. The
+implementation uses <code class="docutils literal notranslate"><span class="pre">np.log1p</span></code> for numerical stability. The contract
+validates labelled state order, arithmetic covariance, and positive
+definiteness of the derived latent covariance. <code class="docutils literal notranslate"><span class="pre">add_correlated_lognormal_state</span></code>
+then creates a whitened standard-normal <code class="docutils literal notranslate"><span class="pre">&lt;name&gt;_latent</span></code> and the positive
+public state <code class="docutils literal notranslate"><span class="pre">&lt;name&gt;</span></code>.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pymc</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pm</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">xarray</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">xr</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.models</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">CorrelatedLognormalPrior</span><span class="p">,</span>
+    <span class="n">add_correlated_lognormal_state</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">mean</span> <span class="o">=</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">(</span>
+    <span class="p">[</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">],</span>
+    <span class="n">dims</span><span class="o">=</span><span class="s2">&quot;state&quot;</span><span class="p">,</span>
+    <span class="n">coords</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;state&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;region-a&quot;</span><span class="p">,</span> <span class="s2">&quot;region-b&quot;</span><span class="p">]},</span>
+<span class="p">)</span>
+<span class="n">prior</span> <span class="o">=</span> <span class="n">CorrelatedLognormalPrior</span><span class="p">(</span>
+    <span class="n">mean</span><span class="p">,</span>
+    <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="mf">0.16</span><span class="p">,</span> <span class="mf">0.03</span><span class="p">],</span> <span class="p">[</span><span class="mf">0.03</span><span class="p">,</span> <span class="mf">0.09</span><span class="p">]]),</span>
+<span class="p">)</span>
+
+<span class="k">with</span> <span class="n">pm</span><span class="o">.</span><span class="n">Model</span><span class="p">():</span>
+    <span class="n">state_result</span> <span class="o">=</span> <span class="n">add_correlated_lognormal_state</span><span class="p">(</span><span class="n">prior</span><span class="p">,</span> <span class="n">var_name</span><span class="o">=</span><span class="s2">&quot;x&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">C</span></code> must be the dense covariance of an already-reduced sampled state, such as
+a basis-state covariance <code class="docutils literal notranslate"><span class="pre">C_alpha</span></code>. It is not the covariance of a native grid.
+For <code class="docutils literal notranslate"><span class="pre">p</span></code> sampled states this contract retains several dense <code class="docutils literal notranslate"><span class="pre">p</span></code> by <code class="docutils literal notranslate"><span class="pre">p</span></code>
+matrices, uses additional dense temporaries, and performs a Cholesky
+factorization: persistent matrix storage scales as <span class="math notranslate nohighlight">\(O(p^2)\)</span> and the
+factorization as <span class="math notranslate nohighlight">\(O(p^3)\)</span>. Current inversions typically have fewer than
+500 sampled states. Construction emits an operational warning above 1,000
+states; this threshold is not a mathematical limit. Native grids with more
+than 100,000 cells require a structured covariance representation, such as a
+Kronecker product, whose projected products can be evaluated without realizing
+the full native covariance.</p>
+<p>This component does <strong>not</strong> perform the native-to-reduced uncertainty
+transformation or remove state coordinates. That work must transform the prior
+uncertainty, forward operator, and aggregation error together. The coherent
+covariance, transformed-forward-model, and aggregation-error identities are
+exact only for a jointly Gaussian state. Reusing the resulting first two
+moments while representing the retained state as LogNormal and the unresolved
+contribution as Gaussian is a moment-matched closure, not exact marginalization
+of a LogNormal state. <a class="reference external" href="https://github.com/openghg/openghg_inversions/issues/566">Issue #566</a>
+tracks the coherent preparation contract.</p>
+<p>The covariance matrix uses a distinct second dimension, named
+<code class="docutils literal notranslate"><span class="pre">&lt;state_dim&gt;_covariance</span></code> by default. If an xarray covariance supplies column
+labels, they must exactly equal the primary state labels in the same order.
+An unlabelled NumPy covariance is interpreted in the arithmetic mean’s state
+order. Reordered inputs are rejected rather than interpreted positionally.</p>
+<p>The initial public component is intended for custom model builders. Built-in
+<code class="docutils literal notranslate"><span class="pre">RhimeModelSpec</span></code> integration for a gathered joint state and compatibility
+per-sector aliases is follow-up work; current <code class="docutils literal notranslate"><span class="pre">SectorSpec</span></code> priors remain
+independent.</p>
 </section>
 <section id="basis-aware-prior-standard-deviations">
 <h2>Basis-Aware Prior Standard Deviations<a class="headerlink" href="#basis-aware-prior-standard-deviations" title="Link to this heading">#</a></h2>
@@ -1130,6 +1205,7 @@ wrapper around <code class="docutils literal notranslate"><span class="pre">run_
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#config-files">Config Files</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#generated-basis-functions">Generated Basis Functions</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#active-and-fixed-states">Active And Fixed States</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#correlated-positive-reduced-states">Correlated Positive Reduced States</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#basis-aware-prior-standard-deviations">Basis-Aware Prior Standard Deviations</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#output-formats">Output Formats</a></li>
 </ul>
