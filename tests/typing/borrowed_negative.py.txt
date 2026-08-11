@@ -28,3 +28,13 @@ covariance = SeparableExponentialCovariance(
 )
 covariance.latitude[0] = 20.0  # expect-error: dataarray-item
 covariance.longitude.values[0] = 20.0  # expect-error: dataarray-values-item
+
+blocked_covariance = SeparableExponentialCovariance(
+    covariance.latitude,
+    covariance.longitude,
+    class_labels=xr.DataArray([["land", "sea"], ["land", "sea"]], dims=("lat", "lon")),
+)
+class_labels = blocked_covariance.class_labels
+assert class_labels is not None
+class_labels[0, 0] = "sea"  # expect-error: dataarray-item
+class_labels.values[0, 0] = "sea"  # expect-error: dataarray-values-item
