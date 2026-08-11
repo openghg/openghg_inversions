@@ -10,3 +10,4 @@ Using OpenGHG Inversions
    grouped_basis_layout
    rhime
    concrete_rhime_model
+   native_covariance

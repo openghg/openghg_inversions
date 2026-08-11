@@ -9,6 +9,17 @@
   while allowing Pyright and Mypy to diagnose selected in-place mutations;
   they deliberately do not claim runtime immutability. [OPE-38](https://linear.app/openghg-inversions/issue/OPE-38/add-experimental-borrowed-numpyxarray-type-markers)
 
+- Added labelled, matrix-free native covariance actions and
+  covariance-compatible retained product blocks for bucket scaling states. The
+  new preparation API
+  supports separable spatial kernels, class-blocked and independent-source
+  covariance, covariance-compatible restriction/prolongation operators,
+  dense or diagonal observation covariance products, reproducible
+  serialization, and explicit documentation of the `Pi`, `U_*`, and
+  `U_bucket` roles. This is the low-level native covariance foundation tracked
+  by Linear OPE-17; centred coherent reduction, unresolved covariance, and
+  likelihood integration are follow-up work.
+
 - Separated basis-group constraints from the algorithms applied within each
   group. The constrained module now owns masks, target allocation, per-group
   dispatch, and global relabelling; partition geometry, steps, policies, and

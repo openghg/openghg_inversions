@@ -1,12 +1,19 @@
 """Tests for ordered independent-source native covariance blocks."""
 
 from dataclasses import is_dataclass
+from pathlib import Path
 from typing import cast
 
 import numpy as np
+import pandas as pd
 import pytest
 import xarray as xr
 
+from openghg_inversions.basis.covariance_products import (
+    NativeCovarianceProducts,
+    project_native_covariance,
+)
+from openghg_inversions.basis.operators import MultiSourceBucketBasisOperator
 from openghg_inversions.native_covariance import SeparableExponentialCovariance
 from openghg_inversions.source_covariance import IndependentSourceCovariance
 
@@ -66,6 +73,28 @@ def _dense_block_diagonal(covariance: IndependentSourceCovariance) -> np.ndarray
         result[offset:stop, offset:stop] = block
         offset = stop
     return result
+
+
+def _basis(covariance: IndependentSourceCovariance) -> MultiSourceBucketBasisOperator:
+    """Construct the gathered bucket basis used only by Slice C product tests."""
+    component = covariance.source_covariances["z-source"]
+    latitude = component.latitude
+    longitude = component.longitude
+    return MultiSourceBucketBasisOperator(
+        {
+            "z-source": xr.DataArray(
+                [[1, 1], [2, 2]],
+                dims=("lat", "lon"),
+                coords={"lat": latitude, "lon": longitude},
+            ),
+            "a-source": xr.DataArray(
+                [[1, 1], [1, 1]],
+                dims=("lat", "lon"),
+                coords={"lat": latitude, "lon": longitude},
+            ),
+        },
+        state_dim="state",
+    )
 
 
 def test_independent_source_action_and_serialization_preserve_order() -> None:
@@ -277,3 +306,115 @@ def test_deserialization_rejects_contradictory_source_blocked_state() -> None:
 
     with pytest.raises(ValueError, match="contradicts"):
         IndependentSourceCovariance.from_dataset(dataset)
+
+
+def test_gathered_source_products_match_block_diagonal_dense_oracle() -> None:
+    """Ragged source states keep insertion order and zero cross-source covariance."""
+    covariance, native_sensitivity = _problem()
+    basis = _basis(covariance)
+    products = project_native_covariance(
+        covariance=covariance,
+        basis_operator=basis,
+        native_sensitivity=native_sensitivity,
+        observation_dim="observation",
+        observation_batch_size=1,
+    )
+    dense_b = _dense_block_diagonal(covariance)
+    h = native_sensitivity.values.reshape(3, 8)
+
+    base = basis.basis_matrix.transpose("lat", "lon", "state").compute()
+    base_values = np.asarray(base.data.todense())
+    state_sources = np.asarray(base.coords["source"].values)
+    u = np.zeros((2, 2, 2, base.sizes["state"]))
+    for source_index, source in enumerate(covariance.source_labels):
+        u[source_index] = base_values * (state_sources == source)[None, None, :]
+    u = u.reshape(8, base.sizes["state"])
+    c_alpha = np.linalg.inv(u.T @ np.linalg.solve(dense_b, u))
+    pi = c_alpha @ np.linalg.solve(dense_b, u).T
+
+    assert products.state_covariance.coords["source"].values.tolist() == [
+        "z-source",
+        "z-source",
+        "a-source",
+    ]
+    np.testing.assert_allclose(products.restriction.values.reshape(3, 8), pi, atol=1e-11)
+    np.testing.assert_allclose(products.state_covariance, c_alpha, atol=1e-11)
+    np.testing.assert_allclose(products.effective_observation_operator, h @ u, atol=1e-11)
+    np.testing.assert_allclose(
+        products.observation_state_cross_covariance,
+        h @ dense_b @ pi.T,
+        atol=1e-11,
+    )
+    np.testing.assert_allclose(products.native_observation_covariance, h @ dense_b @ h.T, atol=1e-11)
+    np.testing.assert_allclose(pi @ u, np.eye(3), atol=1e-11)
+
+
+def test_gathered_source_product_datatree_persists_multiindex(tmp_path: Path) -> None:
+    """Ragged state labels and covariance configuration survive NetCDF persistence."""
+    covariance, native_sensitivity = _problem()
+    observation_index = pd.MultiIndex.from_arrays(
+        [["observed-a", "observed-b", "observed-c"], [1, 2, 3]],
+        names=("source", "observation_id"),
+    )
+    native_sensitivity = native_sensitivity.drop_indexes("observation").drop_vars("observation")
+    native_sensitivity = native_sensitivity.assign_coords(
+        xr.Coordinates.from_pandas_multiindex(observation_index, "observation")
+    )
+    native_sensitivity = native_sensitivity.assign_coords(
+        source_cov=("observation", ["aux-a", "aux-b", "aux-c"])
+    )
+    products = project_native_covariance(
+        covariance=covariance,
+        basis_operator=_basis(covariance),
+        native_sensitivity=native_sensitivity,
+        observation_dim="observation",
+    )
+    path = tmp_path / "source-products.nc"
+
+    products.to_datatree().to_netcdf(path, engine="h5netcdf")
+    with xr.open_datatree(path, engine="h5netcdf") as stored:
+        restored = NativeCovarianceProducts.from_datatree(stored.load())
+
+    assert restored.state_covariance.coords["source"].values.tolist() == [
+        "z-source",
+        "z-source",
+        "a-source",
+    ]
+    assert restored.covariance_configuration is not None
+    assert products.covariance_configuration is not None
+    xr.testing.assert_identical(restored.covariance_configuration, products.covariance_configuration)
+    xr.testing.assert_allclose(restored.state_covariance, products.state_covariance)
+    np.testing.assert_array_equal(
+        restored.native_observation_covariance.coords["observation_source"],
+        native_sensitivity.coords["source"],
+    )
+    np.testing.assert_array_equal(
+        restored.native_observation_covariance.coords["observation_source_cov"],
+        native_sensitivity.coords["source_cov"],
+    )
+    assert restored.native_observation_covariance.indexes["observation"].names == [
+        "observation_source",
+        "observation_id",
+    ]
+
+
+def test_gathered_source_product_requires_multiindex_restoration_metadata() -> None:
+    """Expanded ragged-state coordinates cannot load silently as a plain index."""
+    from openghg_inversions.serialization import MULTIINDEX_DIMS_ATTR
+
+    covariance, native_sensitivity = _problem()
+    tree = project_native_covariance(
+        covariance=covariance,
+        basis_operator=_basis(covariance),
+        native_sensitivity=native_sensitivity,
+        observation_dim="observation",
+    ).to_datatree()
+    root = tree.to_dataset(inherit=False).copy(deep=True)
+    root.attrs.pop(MULTIINDEX_DIMS_ATTR)
+    malformed = xr.DataTree(root)
+    malformed["covariance_configuration"] = xr.DataTree(
+        cast(xr.DataTree, tree["covariance_configuration"]).to_dataset(inherit=False).copy(deep=True)
+    )
+
+    with pytest.raises(ValueError, match="restore MultiIndex"):
+        NativeCovarianceProducts.from_datatree(malformed)
