@@ -12,4 +12,5 @@ openghg\_inversions.basis
 
    openghg_inversions.basis.algorithms
    openghg_inversions.basis.basis_functions
+   openghg_inversions.basis.covariance_products
    openghg_inversions.basis.operators
