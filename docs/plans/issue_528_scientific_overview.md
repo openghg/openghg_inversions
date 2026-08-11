@@ -51,10 +51,10 @@ coherent by adding another PyMC variable name or another runner branch.
 The familiar RHIME model gives each basis-region scaling coefficient the same
 prior distribution:
 
-\[
+$$
 \alpha_r \overset{\mathrm{iid}}{\sim} p_0,
 \qquad r=1,\ldots,R.
-\]
+$$
 
 This is simple to explain and implement, but it makes the chosen partition part
 of the prior model.
@@ -63,10 +63,10 @@ Suppose a country is split into \(k\) equally weighted basis regions and each
 coefficient has independent variance \(\sigma^2\). The variance of the mean
 country scaling is
 
-\[
+$$
 \operatorname{Var}\!\left(\frac{1}{k}\sum_{r=1}^k\alpha_r\right)
 =\frac{\sigma^2}{k}.
-\]
+$$
 
 Refining the basis therefore reduces country uncertainty by \(1/\sqrt{k}\),
 even though no new scientific information has been supplied. Conversely,
@@ -93,9 +93,9 @@ coherently reduced model described here.
 Start with a native state \(x\), normally aligned to the native flux grid and
 source structure:
 
-\[
+$$
 x\sim p_x(m,B).
-\]
+$$
 
 Here \(m\) is the native mean and \(B\) describes scientifically meaningful
 uncertainty. Its structure may include:
@@ -108,20 +108,20 @@ uncertainty. Its structure may include:
 
 A retained state is then defined by a labelled operator:
 
-\[
+$$
 \alpha=\Pi x.
-\]
+$$
 
 The prior on \(\alpha\) is induced by the native model. It is not independently
 chosen after the basis is made.
 
 For a Gaussian native prior,
 
-\[
+$$
 E[\alpha]=\Pi m,
 \qquad
 C_\alpha=\Pi B\Pi^{\mathsf T}.
-\]
+$$
 
 Region size, shape, class membership, and correlation now affect uncertainty
 through the same probability model. The basis can be chosen for computational
@@ -134,7 +134,7 @@ scientific assumptions remain fixed.
 
 Let
 
-\[
+$$
 x\sim\mathcal N(m,B),
 \qquad
 y=Hx+\epsilon,
@@ -142,21 +142,23 @@ y=Hx+\epsilon,
 \epsilon\sim\mathcal N(0,R),
 \qquad
 \alpha=\Pi x.
-\]
+$$
 
 Define
 
-\[
+$$
 C_\alpha=\Pi B\Pi^{\mathsf T},
 \qquad
 U_*=B\Pi^{\mathsf T}C_\alpha^{-1},
-\]
+\qquad
+H_\alpha:=HU_*=HB\Pi^{\mathsf T}C_\alpha^{-1},
+$$
 
 and the unresolved conditional covariance
 
-\[
+$$
 B_\perp=B-U_*C_\alpha U_*^{\mathsf T}.
-\]
+$$
 
 The first implementation requires \(\Pi\) to have full row rank in the
 \(B\)-metric, so \(C_\alpha\) is positive definite. Redundant retained
@@ -165,23 +167,23 @@ automatic numerical fallback.
 
 The exact reduced model is
 
-\[
+$$
 \alpha\sim\mathcal N(\Pi m,C_\alpha),
-\]
+$$
 
-\[
+$$
 y\mid\alpha
 \sim
 \mathcal N\!\left(
-Hm+HU_*(\alpha-\Pi m),
+Hm+H_\alpha(\alpha-\Pi m),
 R+HB_\perp H^{\mathsf T}
 \right).
-\]
+$$
 
 Three quantities must therefore change together:
 
 1. the reduced prior covariance \(C_\alpha\);
-2. the effective, centred forward model \(HU_*\); and
+2. the effective, centred forward model \(H_\alpha\); and
 3. the covariance from unresolved native variability
    \(HB_\perp H^{\mathsf T}\), often called aggregation error.
 
@@ -196,9 +198,9 @@ native-model provenance.
 
 For exact marginalization,
 
-\[
+$$
 p(\alpha\mid y)=\Pi_\#p(x\mid y).
-\]
+$$
 
 Bayesian updating commutes with reduction: each basis produces the appropriate
 marginal of the same native posterior. Verification-games has confirmed this
@@ -243,9 +245,9 @@ require enormous cell-level marginal variances and pathological prior draws.
 
 Positive spatial correlation changes the scaling:
 
-\[
+$$
 \operatorname{Var}(w^{\mathsf T}x)=w^{\mathsf T}Bw.
-\]
+$$
 
 The cross terms in \(B\) allow realistic aggregate uncertainty without
 requiring every cell to vary implausibly. Correlation length and process class
@@ -276,28 +278,28 @@ PyMC variable construction.
 A native grid covariance may be far too large to store. The required reduced
 products are nevertheless limited:
 
-\[
+$$
 \Pi B\Pi^{\mathsf T},
 \qquad
 HB\Pi^{\mathsf T},
 \qquad
 HBH^{\mathsf T}.
-\]
+$$
 
 For a separable spatial kernel,
 
-\[
+$$
 K=K_{\mathrm{lat}}\otimes K_{\mathrm{lon}},
-\]
+$$
 
 its action on a reshaped field \(X\) is
 
-\[
+$$
 K\,\operatorname{vec}(X)
 =\operatorname{vec}\!\left(
 K_{\mathrm{lat}}XK_{\mathrm{lon}}^{\mathsf T}
 \right),
-\]
+$$
 
 up to the declared vectorization convention. Class masks and source blocks can
 be applied around this operator. Products can be accumulated by source and in
@@ -314,32 +316,32 @@ matrix. Dense matrices remain valuable as small-problem test oracles.
 For a positive scaling state \(a=\exp(z)\), the desired scientific inputs are
 usually arithmetic moments:
 
-\[
+$$
 E[a]=m_a,
 \qquad
 \operatorname{Cov}(a)=C_a.
-\]
+$$
 
 When a matching multivariate lognormal distribution exists,
 
-\[
+$$
 (\Sigma_z)_{ij}
 =\log\!\left(1+\frac{(C_a)_{ij}}{(m_a)_i(m_a)_j}\right),
-\]
+$$
 
-\[
+$$
 (\mu_z)_i=\log (m_a)_i-\frac12(\Sigma_z)_{ii}.
-\]
+$$
 
 Use a prior-whitened realization:
 
-\[
+$$
 \eta\sim\mathcal N(0,I),
 \qquad
 z=\mu_z+L_z\eta,
 \qquad
 a=\exp(z),
-\]
+$$
 
 where \(L_zL_z^{\mathsf T}=\Sigma_z\). Verification runs found this
 parameterization computationally robust for correlated states.
@@ -355,6 +357,18 @@ Important distinction:
 - transforming valid arithmetic moments into latent Gaussian moments is exact;
 - representing a sum of native lognormal variables by another multivariate
   lognormal is a moment closure, not exact distributional marginalization.
+
+Gaussian and LogNormal preparation can therefore share the same labelled
+arithmetic-moment reduction: project the native mean and covariance, derive
+the retained moments and effective forward operator, and propagate unresolved
+second moments. The probability-family interpretation is different. For a
+Gaussian native prior the affine conditional reduction is exact; for a
+LogNormal prior the affine conditional map and constant unresolved covariance
+are linear-Bayes products derived from the first two moments. The retained
+LogNormal fit and residual-distribution closure are further declared
+approximations. “Coherent” means that these moments and closures remain tied to
+one native model, not that the LogNormal calculation is an exact
+distribution-free marginalization.
 
 ---
 
@@ -388,7 +402,7 @@ Silently falling back would erase a meaningful scientific approximation.
 
 Write the likelihood covariance as a ledger:
 
-\[
+$$
 R_{\mathrm{total}}
 =R_{\mathrm{measurement}}
 +R_{\mathrm{aggregation}}
@@ -396,13 +410,14 @@ R_{\mathrm{total}}
 +R_{\mathrm{transport}}
 +R_{\mathrm{boundary}}
 +\cdots.
-\]
+$$
 
 Writing this as a sum is itself a model assumption: the component residuals
 must have zero cross-covariance. Dependent mechanisms must instead be one
 joint component or contribute explicit cross terms. The covariance ledger
-records that independence assumption rather than silently treating every
-mechanism as additive.
+records that zero-cross-covariance assumption rather than silently treating
+every mechanism as additive. It is an independence assumption only under an
+appropriate joint Gaussian model.
 
 Each component needs:
 
@@ -427,11 +442,11 @@ meaning should not change with storage.
 For irregular observations at the same site, a fixed Ornstein--Uhlenbeck
 component uses elapsed time directly:
 
-\[
+$$
 (R_{\mathrm{OU},s})_{ij}
 =\sigma_s^2
 \exp\!\left(-\frac{|t_i-t_j|}{\tau_s}\right).
-\]
+$$
 
 In the WUR BASE diagnosis:
 
@@ -458,26 +473,40 @@ discipline.
 Dense observation covariance becomes expensive when there are thousands of
 observations and the likelihood is evaluated repeatedly. Approximate
 
-\[
-R\approx UU^{\mathsf T}+\operatorname{diag}(d),
+$$
+D:=\operatorname{diag}(d),
+\qquad
+F\in\mathbb R^{n\times r},
+\qquad
+R\approx FF^{\mathsf T}+D,
 \qquad d_i>0.
-\]
+$$
 
 Woodbury identities and the matrix determinant lemma reduce repeated solves and
 log determinants to the retained rank:
 
-\[
+$$
 R^{-1}
-=D^{-1}-D^{-1}U(I+U^{\mathsf T}D^{-1}U)^{-1}U^{\mathsf T}D^{-1}.
-\]
+=D^{-1}-D^{-1}F(I_r+F^{\mathsf T}D^{-1}F)^{-1}F^{\mathsf T}D^{-1}.
+$$
 
 Current devel can consume fixed dense, diagonal, and LRPD covariance in the
 PyMC likelihood. Verification prototypes also construct and assess the
 approximation.
 
+LRPD is a downstream numerical approximation to an already declared dense or
+operator-defined observation covariance. It does not define coherent
+reduction or change the scientific source of the covariance. It may be
+constructed directly from covariance actions without materializing the dense
+matrix, but its purpose is to make repeated likelihood evaluations and
+sampling feasible. Its identity, rank, diagonal-tail policy, and validation
+evidence must remain linked to the source covariance it approximates.
+
 Two safeguards are essential:
 
-1. the residual diagonal must remain strictly positive; and
+1. the diagonal of the complete covariance representation being solved must
+   remain strictly positive; an individual component may have a zero tail when
+   another declared component makes the assembled covariance proper; and
 2. rank must be selected using likelihood- or posterior-aware diagnostics.
 
 Explained covariance variance is not sufficient: an all-site rank-512
@@ -497,18 +526,18 @@ The semantic model should render this *before* PyMC is built.
 |---|---|---|
 | Native state | `co2_flux_scale` | native grid × source |
 | Retained state | `inner_paris_flux_scale` | source × reporting-aligned region |
-| Observation channel | `co2_concentration` | site × time |
+| Observation model | `co2_concentration` | site × time; gas/tracer/platform recorded separately |
 | Output | `country_flux_total` | country × source |
 
 ## Prior
 
-\[
+$$
 x\sim\mathcal N(m,B_{\mathrm{space,source}}),
 \qquad
 \alpha=\Pi x,
 \qquad
 C_\alpha=\Pi B\Pi^{\mathsf T}.
-\]
+$$
 
 - native marginal amplitude: flux-relative by source;
 - spatial kernel: separable exponential, length scales shown with units;
@@ -518,19 +547,19 @@ C_\alpha=\Pi B\Pi^{\mathsf T}.
 
 ## Observation mean
 
-\[
+$$
 \mu_{\mathrm{co2}}
-=Hm+HU_*(\alpha-\Pi m)+b_{\mathrm{boundary}}.
-\]
+=Hm+H_\alpha(\alpha-\Pi m)+b_{\mathrm{boundary}}.
+$$
 
 ## Observation covariance
 
-\[
+$$
 R_{\mathrm{co2}}
 =R_{\mathrm{measurement}}
 +R_{\mathrm{temporal,OU}}
 +R_{\mathrm{aggregation}}.
-\]
+$$
 
 ## Numerical realization and assurance
 
@@ -554,23 +583,23 @@ Let a Gaussian uncertain affine transport operator have mean \(H_0\),
 coefficient covariance \(W\), and state-dependent evaluation matrix \(E_s\).
 Exact marginalization gives
 
-\[
+$$
 y\mid s
 \sim
 \mathcal N\!\left(
 H_0(s),
 R_0+E_sWE_s^{\mathsf T}
 \right).
-\]
+$$
 
 Because the covariance depends on \(s\), the normalized likelihood contains
 both
 
-\[
+$$
 \frac12 r(s)^{\mathsf T}R(s)^{-1}r(s)
 \quad\text{and}\quad
 \frac12\log\det R(s).
-\]
+$$
 
 A `determinant_weight` of one gives that normalized Gaussian model. Zero gives
 an unnormalized Bruch-style quadratic objective, while a fractional value is a
@@ -590,19 +619,22 @@ The semantic model should therefore permit a covariance component to depend on
 named state blocks, without making DUBFI or one ensemble parameterization part
 of the core abstraction.
 
-Coherent aggregation makes this pressure test sharper. If
-\(x\mid\alpha=\mu_\alpha+u\), \(u\sim\mathcal N(0,B_\perp)\), and
-\(H=\bar H+\Delta H\), then under conditional independence the covariance
-contains
+Coherent aggregation makes this pressure test sharper. Let
+\(\mu_{x\mid\alpha}:=m+U_*(\alpha-\Pi m)\),
+\(x\mid\alpha=\mu_{x\mid\alpha}+u\), and
+\(u\sim\mathcal N(0,B_\perp)\). Also let
+\(\bar H:=\mathbb E(H\mid\alpha)\) and
+\(\Delta H:=H-\bar H\). If \(u\) and \(\Delta H\) are conditionally
+independent given \(\alpha\), the covariance contains
 
-\[
+$$
 D_{\mathrm{obs}}
 +\bar H B_\perp\bar H^{\mathsf T}
 +\mathcal K_H(B_\perp)
-+\mathcal K_H(\mu_\alpha\mu_\alpha^{\mathsf T}),
++\mathcal K_H(\mu_{x\mid\alpha}\mu_{x\mid\alpha}^{\mathsf T}),
 \qquad
-\mathcal K_H(S)=\mathbb E(\Delta H S\Delta H^{\mathsf T}).
-\]
+\mathcal K_H(S)=\mathbb E(\Delta H S\Delta H^{\mathsf T}\mid\alpha).
+$$
 
 The operator--aggregation interaction \(\mathcal K_H(B_\perp)\) must be
 included once. The bilinear term \(\Delta H u\) also means that a Gaussian
@@ -620,22 +652,27 @@ representation, not a generic PyMC graph and not a new plugin framework.
 
 | Relation | Meaning |
 |---|---|
+| Flux component | canonical physical/reporting identity such as fossil fuel, GPP, TER, or ocean; called a sector in current RHIME compatibility vocabulary |
 | Native model | mean, covariance/operator, units, labels, provenance |
 | State block | stable identity, support, prior moments/family, selectors |
-| State disposition | structural, retained, fixed, or marginalized |
+| State treatment | structural, retained, fixed, or marginalized |
 | Reduction | \(\Pi\), induced moments, effective forward terms, unresolved covariance |
-| Forward term | state block → named observation channel |
+| Forward-model term | scientifically named contribution to an observation-model mean |
+| State-to-term coupling | fixed labelled transform such as an oxidative ratio and unit conversion; an uncertain coupling is another state |
 | Mean expression | explicit affine terms and named sums |
-| Covariance component | scientific source, channel group, parameters, dependencies |
+| Covariance component | scientific source, observation-model grouping, parameters, dependencies |
 | Quantity of interest | labelled functional and reconstruction requirements |
 | Approximation ledger | exact, moment closure, truncated, numerical approximation |
-| Compilation manifest | semantic identity → backend variables and saved products |
+| Compilation manifest | serialized semantic ID → backend variables and saved products |
 
-The coherent reduction should travel as one atomic aggregate. Its prior,
-effective design, intercept, unresolved covariance, state-disposition ledger,
-and provenance must not become unrelated arrays that can be mixed
-accidentally. Large arrays and alternative numerical views may remain separate
-persisted objects when one immutable header and content identity bind them.
+The coherent mathematical reduction should travel as one atomic aggregate.
+Its prior, effective design, intercept, unresolved covariance,
+state-treatment record, and provenance must not become unrelated arrays that
+can be mixed accidentally. Downstream numerical views such as LRPD factors
+have their own derived identities, diagnostics, and source-artifact reference;
+they are not part of the scientific definition of the reduction. Neither the
+mathematical aggregate nor its views need to store large dense arrays when
+labelled operator actions provide the required products.
 
 ---
 
@@ -643,7 +680,7 @@ persisted objects when one immutable header and content identity bind them.
 
 ```text
 scientific specification
-    sources, native priors, channels, covariance sources, outputs
+    sources, native priors, observation models, covariance sources, outputs
                          │
                          ▼
 canonical prepared inputs
@@ -681,6 +718,7 @@ arguments.
 ## Legend
 
 - **MERGED** — available on current `devel`.
+- **IN FLIGHT** — active implementation work that has not yet merged.
 - **PLANNED** — represented by an open issue or draft PR with a stated owner;
   not yet available to users.
 - **VERIFIED PROTOTYPE** — implemented and exercised in verification-games,
@@ -702,10 +740,11 @@ arguments.
 | Grouped state-vector layouts and metadata | **PLANNED / PARTLY MERGED** | Issue #456; existing MultiIndex groundwork |
 | Output variable-role/accessor research | **PLANNED** | Issue #444; distinct from state grouping |
 | Backend namespace and component-role mappings | **PLANNED / PARTLY MERGED** | Issue #532 and manifest issue #575 |
-| Coherent correlated gathered lognormal state | **PLANNED + VERIFIED PROTOTYPE** | Issue #565 and draft PR #571 |
+| Backend-neutral correlated arithmetic moments, LogNormal conversion/whitening, labels, and serialization | **MERGED FOUNDATION** | PR #571, delivering the independently mergeable foundation of issue #565 |
+| Built-in gathered correlated-state routing | **PLANNED** | Remaining issue #565 work |
 | Exact Gaussian coherent reducer | **VERIFIED PROTOTYPE; PLANNED FOR MIGRATION** | Issue #566; must produce all linked reduced blocks atomically |
 | Analytic-Gaussian semantic realization | **PLANNED** | Issue #576; independent mathematical and PyMC parity oracle |
-| Matrix-free separable and cross-source native covariance | **VERIFIED PROTOTYPE; PLANNED FOR MIGRATION** | Issue #493; operator-first implementation |
+| Matrix-free separable and cross-source native covariance | **VERIFIED PROTOTYPE; IN FLIGHT** | Issue #493; operator-first implementation |
 | Lognormal arithmetic moment matching and fallback | **VERIFIED PROTOTYPE; PLANNED FOR MIGRATION** | Issue #565; record closure and fallback provenance |
 | LRPD construction and rank validation | **VERIFIED PROTOTYPE; PLANNED** | Issue #566; devel currently consumes prepared factors only |
 | Fixed elapsed-time temporal OU covariance | **VERIFIED PROTOTYPE; PLANNED** | Issue #567; timescale remains application-specific |
@@ -724,7 +763,7 @@ some remain scientific research questions.
 # 18. Design invariants for issue #528
 
 1. **Scientific identity is not a PyMC name.** Sources, components, states,
-   channels, and outputs have stable IDs independent of suffixes.
+   observation models, and outputs have stable IDs independent of suffixes.
 2. **The model can be read without compiling it.** A scientist can inspect
    equations, priors, covariance components, and outputs first.
 3. **Reduction is atomic.** Induced prior, effective forward model,
@@ -779,7 +818,7 @@ some remain scientific research questions.
 
 1. inner/outer states with different supports;
 2. shared states contributing to more than one forward term;
-3. linked CO2/O2 channels with unequal observation axes;
+3. linked CO2 and O2 observation models with unequal observation axes;
 4. cross-source covariance and gathered state selectors; and
 5. reportable and non-reportable native functionals.
 
@@ -799,7 +838,7 @@ A scientist should be able to answer, before running an inversion:
 - What is random at native resolution?
 - What regional and cross-source uncertainty does that imply?
 - Which state has been retained, fixed, or marginalized?
-- What equation maps each state to each observation channel?
+- Which forward-model terms map each state to each observation-model mean?
 - Which uncertainty components enter the likelihood, and why?
 - Which operations are exact, moment closures, or numerical approximations?
 - Which reported quantities are exact functions of the retained posterior?
@@ -823,8 +862,9 @@ Within this repository:
 - [issue #528](https://github.com/openghg/openghg_inversions/issues/528) —
   backend-neutral semantic-model design; and
 - [issue #565](https://github.com/openghg/openghg_inversions/issues/565) and
-  [draft PR #571](https://github.com/openghg/openghg_inversions/pull/571) —
-  correlated gathered lognormal state and coherent marginalization.
+  [merged PR #571](https://github.com/openghg/openghg_inversions/pull/571) —
+  correlated gathered LogNormal state and its merged arithmetic-moment,
+  whitening, label, and serialization foundation.
 
 Verification-games evidence:
 
