@@ -199,7 +199,7 @@ native-model provenance.
 For exact marginalization,
 
 $$
-p(\alpha\mid y)=\Pi_\#p(x\mid y).
+p(\alpha\mid y)=\Pi_*p(x\mid y).
 $$
 
 Bayesian updating commutes with reduction: each basis produces the appropriate
