@@ -1,8 +1,10 @@
 """Tests for ordered independent-source native covariance blocks."""
 
 from pathlib import Path
+from typing import cast
 
 import numpy as np
+import pytest
 import xarray as xr
 
 from openghg_inversions.basis.covariance_products import (
@@ -101,6 +103,43 @@ def test_independent_source_action_and_serialization_preserve_order() -> None:
     np.testing.assert_allclose(applied.values.reshape(8, 3), dense @ matrix)
     np.testing.assert_allclose(solved.values.reshape(8, 3), np.linalg.solve(dense, matrix))
     xr.testing.assert_allclose(restored.apply(rhs), applied)
+
+
+def test_constructor_validates_every_block_type_before_inspecting_dimensions() -> None:
+    """Invalid blocks raise ``TypeError`` before any native dimensions are read."""
+    covariance, _, _ = _problem()
+    valid = covariance.source_covariances["z-source"]
+    invalid = cast(SeparableExponentialCovariance, object())
+
+    with pytest.raises(TypeError, match="bad.*SeparableExponentialCovariance"):
+        IndependentSourceCovariance({"bad": invalid})
+
+    with pytest.raises(TypeError, match="bad.*SeparableExponentialCovariance"):
+        IndependentSourceCovariance(
+            {"valid": valid, "bad": invalid},
+            source_dim="lat",
+        )
+
+
+def test_action_rejects_numeric_source_label_matching_only_after_string_coercion() -> None:
+    """A numeric source label cannot masquerade as the configured string label."""
+    covariance, _, native_sensitivity = _problem()
+    component = covariance.source_covariances["z-source"]
+    numeric_named_covariance = IndependentSourceCovariance({"1": component})
+    rhs = native_sensitivity.isel(native_source=[0]).assign_coords(native_source=[1])
+
+    with pytest.raises(ValueError, match="source labels/order"):
+        numeric_named_covariance.apply(rhs)
+
+
+@pytest.mark.parametrize("spatial_dim", ["lat", "lon"])
+def test_deserialization_rejects_missing_spatial_coordinates(spatial_dim: str) -> None:
+    """Missing serialized spatial labels raise a clear validation error."""
+    covariance, _, _ = _problem()
+    dataset = covariance.to_dataset().drop_indexes(spatial_dim).drop_vars(spatial_dim)
+
+    with pytest.raises(ValueError, match="missing latitude or longitude coordinates"):
+        IndependentSourceCovariance.from_dataset(dataset)
 
 
 def test_source_serialization_preserves_class_label_identity() -> None:

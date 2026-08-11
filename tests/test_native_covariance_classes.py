@@ -1,5 +1,7 @@
 """Tests for optional class blocking in native covariance actions."""
 
+from pathlib import Path
+
 import numpy as np
 import pytest
 import xarray as xr
@@ -115,6 +117,41 @@ def test_class_labels_round_trip_through_dataset(
     xr.testing.assert_identical(restored.class_labels, labels)
     rhs = xr.ones_like(labels, dtype=float)
     xr.testing.assert_allclose(restored.apply(rhs), original.apply(rhs))
+
+
+@pytest.mark.parametrize("class_blocked", [False, True])
+def test_covariance_round_trips_through_h5netcdf(
+    coordinates: tuple[xr.DataArray, xr.DataArray],
+    class_blocked: bool,
+    tmp_path: Path,
+) -> None:
+    """NetCDF persistence preserves blocked and unblocked covariance configuration."""
+    latitude, longitude = coordinates
+    class_labels = None
+    if class_blocked:
+        class_labels = xr.DataArray(
+            [[0, 1], [0, 1], [1, 1]],
+            dims=("lat", "lon"),
+            coords={"lat": latitude, "lon": longitude},
+            name="surface_class",
+        )
+    original = SeparableExponentialCovariance(
+        latitude,
+        longitude,
+        sigma=1.3,
+        class_labels=class_labels,
+    )
+    path = tmp_path / "covariance.nc"
+
+    original.to_dataset().to_netcdf(path, engine="h5netcdf")
+    with xr.open_dataset(path, engine="h5netcdf") as stored:
+        loaded = stored.load()
+    restored = SeparableExponentialCovariance.from_dataset(loaded)
+
+    assert loaded.attrs["class_blocked"] == int(class_blocked)
+    assert (restored.class_labels is not None) is class_blocked
+    if class_labels is not None:
+        xr.testing.assert_identical(restored.class_labels, class_labels)
 
 
 def test_single_class_uses_unblocked_covariance(

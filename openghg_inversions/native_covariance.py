@@ -15,11 +15,14 @@ scientific constant.
 
 Both :meth:`SeparableExponentialCovariance.apply` and
 :meth:`SeparableExponentialCovariance.solve` preserve all input dimensions,
-coordinates, name, and attributes.  Only the two one-dimensional factors are
-materialised.  Optional native-grid class labels replace ``B`` by the blocked
-action ``B_class = sum_c M_c B M_c``, where ``M_c`` is the diagonal indicator
-for class ``c``.  This prevents covariance between cells in different classes
-without constructing either ``M_c`` or the dense native covariance.
+coordinates, name, and attributes.  An unblocked action materialises the two
+one-dimensional covariance factors and their Cholesky factors, rather than the
+dense native covariance. Optional native-grid class labels replace ``B`` by
+the blocked action ``B_class = sum_c M_c B M_c``, where ``M_c`` is the diagonal
+indicator for class ``c``. A blocked action additionally stores one native-grid
+boolean mask per class, but does not construct the diagonal ``M_c`` matrices or
+the dense native covariance. Apply and solve eagerly convert each labelled
+right-hand side to a NumPy array; they do not preserve lazy Dask execution.
 Unblocked solves use the separable Cholesky factors; multi-class solves use
 matrix-free conjugate gradients. Distances are coordinate-wise degrees, not
 geodesic or longitude-wrapped distances. A missing coordinate ``units`` attr
@@ -54,7 +57,17 @@ class NativeCovarianceAction(Protocol):
     def apply(self, rhs: xr.DataArray) -> xr.DataArray:
         """Apply ``B`` to labelled RHS arrays containing every native dimension.
 
-        All non-native dimensions and their labels must be preserved.
+        Args:
+            rhs: Labelled array containing every native dimension.
+
+        Returns:
+            The covariance action with the dimensions, coordinates, name, and
+            attributes of ``rhs`` preserved.
+
+        Raises:
+            TypeError: If ``rhs`` is not an xarray data array.
+            ValueError: If native dimensions or coordinates are missing or
+                misaligned, or if values are non-numeric or non-finite.
         """
         ...
 
@@ -63,7 +76,21 @@ class InvertibleNativeCovarianceAction(NativeCovarianceAction, Protocol):
     """Native covariance action that can also solve systems in ``B``."""
 
     def solve(self, rhs: xr.DataArray) -> xr.DataArray:
-        """Return labelled ``B^-1 rhs`` while preserving non-native dimensions."""
+        """Return labelled ``B^-1 rhs`` while preserving the input layout.
+
+        Args:
+            rhs: Labelled array containing every native dimension.
+
+        Returns:
+            The covariance solve with the dimensions, coordinates, name, and
+            attributes of ``rhs`` preserved.
+
+        Raises:
+            TypeError: If ``rhs`` is not an xarray data array.
+            ValueError: If native dimensions or coordinates are missing or
+                misaligned, or if values are non-numeric or non-finite.
+            numpy.linalg.LinAlgError: If an iterative solve fails.
+        """
         ...
 
 
@@ -84,7 +111,6 @@ class SeparableExponentialCovariance:
 
     Raises:
         ValueError: If coordinates, units, or covariance parameters are invalid.
-        numpy.linalg.LinAlgError: If a class-blocked iterative solve does not converge.
     """
 
     latitude: xr.DataArray
@@ -104,6 +130,17 @@ class SeparableExponentialCovariance:
     schema_version = 1
 
     def __post_init__(self) -> None:
+        """Validate constructor inputs and cache factors used by the actions.
+
+        Coordinates and class labels are defensively copied. The resolved
+        covariance parameters, separable factors, Cholesky factors, and class
+        masks are installed through ``object.__setattr__`` because instances
+        are frozen.
+
+        Raises:
+            ValueError: If coordinates, units, covariance parameters, or class
+                labels are invalid.
+        """
         latitude = _validate_coordinate(self.latitude, "latitude")
         longitude = _validate_coordinate(self.longitude, "longitude")
         if latitude.dims[0] == longitude.dims[0]:
@@ -126,6 +163,8 @@ class SeparableExponentialCovariance:
             latitude,
             longitude,
         )
+        # Frozen dataclasses require object.__setattr__ during __post_init__
+        # when replacing constructor inputs with their validated forms.
         object.__setattr__(self, "latitude", latitude)
         object.__setattr__(self, "longitude", longitude)
         object.__setattr__(self, "sigma", sigma)
@@ -147,12 +186,20 @@ class SeparableExponentialCovariance:
     def apply(self, rhs: xr.DataArray) -> xr.DataArray:
         """Apply ``B`` while preserving the labelled layout of ``rhs``.
 
+        The right-hand side is eagerly converted to a NumPy array before the
+        covariance action is evaluated.
+
         Args:
             rhs: Array containing both native dimensions and any number of
                 additional right-hand-side dimensions.
 
         Returns:
             ``B rhs`` with dimensions and coordinates identical to ``rhs``.
+
+        Raises:
+            TypeError: If ``rhs`` is not an xarray data array.
+            ValueError: If native dimensions or coordinates are missing or
+                misaligned, or if values are non-numeric or non-finite.
         """
         matrix, original_dims, rhs_dims = self._validated_matrix(rhs)
         applied = self._apply_matrix(matrix)
@@ -171,6 +218,13 @@ class SeparableExponentialCovariance:
 
         Returns:
             ``B^-1 rhs`` with dimensions and coordinates identical to ``rhs``.
+
+        Raises:
+            TypeError: If ``rhs`` is not an xarray data array.
+            ValueError: If native dimensions or coordinates are missing or
+                misaligned, or if values are non-numeric or non-finite.
+            numpy.linalg.LinAlgError: If a class-blocked iterative solve does
+                not converge.
         """
         matrix, original_dims, rhs_dims = self._validated_matrix(rhs)
         if len(self._class_masks) <= 1:
@@ -180,7 +234,13 @@ class SeparableExponentialCovariance:
         return self._restore(solved, rhs, original_dims, rhs_dims)
 
     def to_dataset(self) -> xr.Dataset:
-        """Serialize reproducible coordinates and resolved configuration."""
+        """Serialize reproducible coordinates and resolved configuration.
+
+        Returns:
+            A versioned dataset containing the native coordinates, resolved
+            covariance parameters, and optional class labels. Boolean blocked
+            state is represented as a NetCDF-safe ``0`` or ``1`` attribute.
+        """
         dataset = xr.Dataset(
             coords={
                 self.native_dims[0]: self.latitude,
@@ -195,7 +255,7 @@ class SeparableExponentialCovariance:
                 "correlation_length_degrees": self.correlation_length,
                 "latitude_correlation_length_degrees": self.latitude_correlation_length,
                 "longitude_correlation_length_degrees": self.longitude_correlation_length,
-                "class_blocked": self.class_labels is not None,
+                "class_blocked": int(self.class_labels is not None),
                 "class_labels_name": ""
                 if self.class_labels is None or self.class_labels.name is None
                 else str(self.class_labels.name),
@@ -214,6 +274,12 @@ class SeparableExponentialCovariance:
 
         Returns:
             Reconstructed covariance action.
+
+        Raises:
+            ValueError: If the schema or version is unsupported, required
+                coordinates are missing, or serialized constructor values are
+                invalid.
+            KeyError: If a required covariance parameter attribute is missing.
         """
         if dataset.attrs.get("schema") != cls.schema:
             raise ValueError(f"Expected covariance schema {cls.schema!r}")
@@ -248,7 +314,14 @@ class SeparableExponentialCovariance:
         )
 
     def _apply_matrix(self, matrix: np.ndarray) -> np.ndarray:
-        """Apply the configured unblocked or class-blocked covariance."""
+        """Apply the configured covariance to native-first right-hand sides.
+
+        Args:
+            matrix: Eager array shaped ``(latitude, longitude, rhs)``.
+
+        Returns:
+            Covariance-applied values with the same shape as ``matrix``.
+        """
         if not self._class_masks:
             return self._apply_separable(matrix)
         result = np.zeros_like(matrix, dtype=np.result_type(matrix.dtype, np.float64))
@@ -258,13 +331,27 @@ class SeparableExponentialCovariance:
         return result
 
     def _apply_separable(self, matrix: np.ndarray) -> np.ndarray:
-        """Apply the two one-dimensional covariance factors."""
+        """Apply the two one-dimensional covariance factors.
+
+        Args:
+            matrix: Eager array shaped ``(latitude, longitude, rhs)``.
+
+        Returns:
+            Separable covariance-applied values with the same shape.
+        """
         left_applied = np.einsum("ij,jkr->ikr", self._latitude_factor, matrix)
         applied = np.einsum("ikr,lk->ilr", left_applied, self._longitude_factor)
         return applied * self.sigma**2
 
     def _solve_separable(self, matrix: np.ndarray) -> np.ndarray:
-        """Solve the unblocked separable system using Cholesky factors."""
+        """Solve the unblocked separable system using Cholesky factors.
+
+        Args:
+            matrix: Eager array shaped ``(latitude, longitude, rhs)``.
+
+        Returns:
+            Solved values with the same shape as ``matrix``.
+        """
         n_lat, n_lon, n_rhs = matrix.shape
         latitude_solved = cho_solve(
             self._latitude_cholesky,
@@ -283,7 +370,18 @@ class SeparableExponentialCovariance:
         return longitude_solved / self.sigma**2
 
     def _solve_class_blocked(self, matrix: np.ndarray) -> np.ndarray:
-        """Solve a class-blocked system with matrix-free conjugate gradients."""
+        """Solve a class-blocked system with matrix-free conjugate gradients.
+
+        Args:
+            matrix: Eager array shaped ``(latitude, longitude, rhs)``.
+
+        Returns:
+            Solved values with the same shape as ``matrix``.
+
+        Raises:
+            numpy.linalg.LinAlgError: If conjugate gradients do not converge or
+                fail because of invalid input or numerical breakdown.
+        """
         n_lat, n_lon, n_rhs = matrix.shape
         native_size = n_lat * n_lon
 
@@ -312,6 +410,20 @@ class SeparableExponentialCovariance:
         return solved
 
     def _validated_matrix(self, rhs: xr.DataArray) -> tuple[np.ndarray, tuple[str, ...], tuple[str, ...]]:
+        """Validate and eagerly reshape a labelled right-hand side.
+
+        Args:
+            rhs: Candidate right-hand side containing the native dimensions.
+
+        Returns:
+            A native-first NumPy matrix, the original dimension order, and the
+            ordered non-native right-hand-side dimensions.
+
+        Raises:
+            TypeError: If ``rhs`` is not an xarray data array.
+            ValueError: If native dimensions or coordinates are missing or
+                misaligned, or if values are non-numeric or non-finite.
+        """
         if not isinstance(rhs, xr.DataArray):
             raise TypeError("rhs must be an xarray.DataArray")
         for dim, expected in zip(self.native_dims, (self.latitude, self.longitude), strict=True):
@@ -347,6 +459,18 @@ class SeparableExponentialCovariance:
         original_dims: tuple[str, ...],
         rhs_dims: tuple[str, ...],
     ) -> xr.DataArray:
+        """Restore eager native-first results to a labelled input layout.
+
+        Args:
+            values: Result values shaped as native axes followed by flattened
+                right-hand-side axes.
+            template: Input array supplying coordinates, name, and attributes.
+            original_dims: Original input dimension order.
+            rhs_dims: Ordered non-native right-hand-side dimensions.
+
+        Returns:
+            A labelled array matching the template layout and metadata.
+        """
         shape = tuple(template.sizes[dim] for dim in (*self.native_dims, *rhs_dims))
         result = xr.DataArray(
             values.reshape(shape),
@@ -359,8 +483,23 @@ class SeparableExponentialCovariance:
 
 
 def _validate_coordinate(coordinate: xr.DataArray, axis_name: str) -> xr.DataArray:
+    """Validate one native coordinate and return a defensive copy.
+
+    Args:
+        coordinate: Candidate one-dimensional labelled coordinate.
+        axis_name: Human-readable axis name used for validation and errors.
+
+    Returns:
+        A deep copy with an explicit self-coordinate.
+
+    Raises:
+        ValueError: If the coordinate is not one-dimensional and non-empty,
+            contains non-finite or duplicate values, or has non-degree units.
+    """
     if not isinstance(coordinate, xr.DataArray) or coordinate.ndim != 1 or len(coordinate.dims) != 1:
         raise ValueError(f"{axis_name} must be a one-dimensional labelled coordinate")
+    if coordinate.size == 0:
+        raise ValueError(f"{axis_name} coordinate must contain at least one value")
     dim = coordinate.dims[0]
     if dim not in coordinate.coords:
         coordinate = coordinate.assign_coords({dim: coordinate.values})
@@ -427,6 +566,19 @@ def _validate_class_labels(
 
 
 def _positive_finite(value: float, name: str) -> float:
+    """Resolve a covariance parameter to a positive finite float.
+
+    Args:
+        value: Candidate numeric value.
+        name: Parameter name used in validation errors.
+
+    Returns:
+        The validated floating-point value.
+
+    Raises:
+        TypeError: If ``value`` cannot be converted to a float.
+        ValueError: If the resolved value is non-finite or not strictly positive.
+    """
     resolved = float(value)
     if not np.isfinite(resolved) or resolved <= 0.0:
         raise ValueError(f"{name} must be finite and strictly positive")
@@ -434,5 +586,14 @@ def _positive_finite(value: float, name: str) -> float:
 
 
 def _exponential_factor(coordinates: np.ndarray, length_scale: float) -> np.ndarray:
+    """Construct one exponential covariance factor.
+
+    Args:
+        coordinates: Validated coordinate values for one native axis.
+        length_scale: Positive correlation length in coordinate units.
+
+    Returns:
+        The dense one-dimensional exponential covariance factor.
+    """
     values = np.asarray(coordinates, dtype=np.float64)
     return np.exp(-np.abs(values[:, np.newaxis] - values[np.newaxis, :]) / length_scale)

@@ -46,6 +46,13 @@ The components have deliberately separate roles:
 4. :func:`project_native_covariance` combines those inputs into the frozen,
    serializable :class:`NativeCovarianceProducts` dataclass. Its contained
    xarray objects remain mutable.
+
+Projected artifacts carry a source identity derived from covariance
+configuration, projection strategy, and labelled ``Pi``, ``U``, and ``H``
+inputs, plus a view identity derived from that source identity and the requested
+dense/diagonal representation. These identities bind artifact metadata; they
+are not checksums of computed output values. Observation batching fills one
+preallocated eager result but does not reduce final dense quadratic storage.
 """
 
 from __future__ import annotations
@@ -88,7 +95,9 @@ class RetainedProjectionStrategy(Protocol):
 
     Implementations must return a full-rank ``Pi`` and the covariance-natural
     ``U_* = B Pi.T (Pi B Pi.T)^-1``. This invariant is what makes the returned
-    residual uncorrelated with the retained coefficients.
+    residual uncorrelated with the retained coefficients. Both arrays must use
+    native labels exactly matching the covariance grid in the same order, and
+    their retained-state labels must agree.
     """
 
     def projection(
@@ -253,7 +262,18 @@ class NativeCovarianceProducts:
         native_observation_covariance: Dense ``H B H.T`` with a collision-safe
             observation column dimension, or its labelled observation diagonal.
         strategy: Stable retained-projection strategy name.
-        content_identity: SHA-256 identity binding inputs and products.
+        source_content_identity: SHA-256 identity of the projection strategy,
+            covariance configuration or fallback representation, and labelled
+            ``Pi/U/H`` values, dimensions, and coordinates. It is independent
+            of the dense or diagonal numerical view.
+        view_identity: SHA-256 identity derived from the source identity and
+            requested observation-covariance view.
+        observation_covariance_view: Numerical view represented by
+            ``native_observation_covariance``.
+        covariance_configuration_digest: Digest declaring the covariance
+            configuration required to reproduce the source artifact. The
+            configuration content itself is stored separately in a DataTree
+            child.
         covariance_configuration: Reproducible serialized kernel/source configuration.
         basis_provenance: Stable basis implementation and dimension metadata.
     """
@@ -265,22 +285,30 @@ class NativeCovarianceProducts:
     observation_state_cross_covariance: xr.DataArray
     native_observation_covariance: xr.DataArray
     strategy: str
-    content_identity: str
+    source_content_identity: str
+    view_identity: str
+    observation_covariance_view: Literal["dense", "diagonal"]
+    covariance_configuration_digest: str = ""
     covariance_configuration: xr.Dataset | None = None
     basis_provenance: dict[str, str] = field(default_factory=dict)
 
     schema = "openghg_inversions.native_covariance_products"
-    schema_version = 1
+    schema_version = 2
 
     def to_dataset(self) -> xr.Dataset:
-        """Serialize all labelled product blocks and their shared identity.
+        """Serialize labelled product blocks and their source/view identities.
 
         Returns:
             A dataset containing every product array plus schema, strategy,
-            identity, and basis-provenance metadata. Native covariance
-            configuration is intentionally excluded because it occupies a
-            separate child node in :meth:`to_datatree`.
+            source/view identities, and basis-provenance metadata. Native
+            covariance configuration is intentionally excluded because it
+            occupies a separate child node in :meth:`to_datatree`.
+
+            The identities bind declared source and view metadata across the
+            artifact. They are not integrity checksums of the numerical output
+            variables, whose values are deliberately not re-hashed here.
         """
+        configuration_digest = self._validated_configuration_digest()
         return xr.Dataset(
             {
                 "restriction": self.restriction,
@@ -294,7 +322,10 @@ class NativeCovarianceProducts:
                 "schema": self.schema,
                 "schema_version": self.schema_version,
                 "strategy": self.strategy,
-                "content_identity": self.content_identity,
+                "source_content_identity": self.source_content_identity,
+                "view_identity": self.view_identity,
+                "observation_covariance_view": self.observation_covariance_view,
+                "covariance_configuration_digest": configuration_digest,
                 "basis_provenance": json.dumps(self.basis_provenance, sort_keys=True),
             },
         )
@@ -305,16 +336,35 @@ class NativeCovarianceProducts:
         Returns:
             A tree whose root contains :meth:`to_dataset` output and whose
             optional ``covariance_configuration`` child preserves the native
-            covariance constructor data.
+            covariance constructor data, source binding, and content digest.
         """
         from openghg_inversions.serialization import reset_serialisation_multiindexes
 
         tree = xr.DataTree(reset_serialisation_multiindexes(self.to_dataset()))
+        if self.covariance_configuration is None and self.covariance_configuration_digest:
+            raise ValueError(
+                "Cannot serialize covariance products as a DataTree without the declared "
+                "covariance configuration content"
+            )
         if self.covariance_configuration is not None:
+            configuration_digest = self._validated_configuration_digest()
             tree["covariance_configuration"] = xr.DataTree(
-                _encode_configuration_dataset(self.covariance_configuration)
+                _encode_configuration_dataset(
+                    self.covariance_configuration,
+                    source_content_identity=self.source_content_identity,
+                    configuration_digest=configuration_digest,
+                )
             )
         return tree
+
+    def _validated_configuration_digest(self) -> str:
+        """Return the declared digest after checking any attached configuration."""
+        if self.covariance_configuration is None:
+            return self.covariance_configuration_digest
+        actual_digest = _configuration_digest(self.covariance_configuration)
+        if self.covariance_configuration_digest and self.covariance_configuration_digest != actual_digest:
+            raise ValueError("Attached covariance configuration does not match its declared digest")
+        return actual_digest
 
     @classmethod
     def from_dataset(cls, dataset: xr.Dataset) -> NativeCovarianceProducts:
@@ -329,8 +379,9 @@ class NativeCovarianceProducts:
 
         Raises:
             ValueError: If the schema version, required variables, shared
-                content identity, projection strategy, or JSON-encoded basis
-                provenance is invalid.
+                source/view identity, projection strategy, numerical view, or
+                JSON-encoded basis provenance is invalid. Numerical variable
+                values are not checksummed by this metadata validation.
         """
         if dataset.attrs.get("schema") != cls.schema:
             raise ValueError(f"Expected product schema {cls.schema!r}")
@@ -347,13 +398,37 @@ class NativeCovarianceProducts:
         missing = [name for name in required if name not in dataset]
         if missing:
             raise ValueError(f"Serialized covariance products are missing variables {missing}")
-        content_identity = str(dataset.attrs.get("content_identity", ""))
+        source_content_identity = _validated_identity(
+            dataset.attrs.get("source_content_identity"),
+            name="source content identity",
+        )
+        view_identity = _validated_identity(
+            dataset.attrs.get("view_identity"),
+            name="view identity",
+        )
+        observation_covariance_view = dataset.attrs.get("observation_covariance_view")
+        if observation_covariance_view not in {"dense", "diagonal"}:
+            raise ValueError("Serialized covariance products have an invalid numerical view")
+        expected_view_identity = _view_identity(
+            source_content_identity,
+            cast(Literal["dense", "diagonal"], observation_covariance_view),
+        )
+        if view_identity != expected_view_identity:
+            raise ValueError("Serialized covariance products have an invalid derived view identity")
+        configuration_digest = dataset.attrs.get("covariance_configuration_digest")
+        if configuration_digest != "":
+            _validated_identity(
+                configuration_digest,
+                name="covariance configuration digest",
+            )
         strategy = str(dataset.attrs.get("strategy", ""))
-        if not content_identity or not strategy:
-            raise ValueError("Serialized covariance products are missing identity or strategy metadata")
+        if not strategy:
+            raise ValueError("Serialized covariance products are missing strategy metadata")
         for name in required:
-            if dataset[name].attrs.get("content_identity") != content_identity:
-                raise ValueError(f"Serialized product {name!r} does not share the root content identity")
+            if dataset[name].attrs.get("source_content_identity") != source_content_identity:
+                raise ValueError(f"Serialized product {name!r} does not share the root source identity")
+            if dataset[name].attrs.get("view_identity") != view_identity:
+                raise ValueError(f"Serialized product {name!r} does not share the root view identity")
             if dataset[name].attrs.get("projection_strategy") != strategy:
                 raise ValueError(f"Serialized product {name!r} does not share the root projection strategy")
         return cls(
@@ -364,8 +439,11 @@ class NativeCovarianceProducts:
             observation_state_cross_covariance=dataset["observation_state_cross_covariance"],
             native_observation_covariance=dataset["native_observation_covariance"],
             strategy=strategy,
-            content_identity=content_identity,
-            basis_provenance=json.loads(str(dataset.attrs.get("basis_provenance", "{}"))),
+            source_content_identity=source_content_identity,
+            view_identity=view_identity,
+            observation_covariance_view=cast(Literal["dense", "diagonal"], observation_covariance_view),
+            covariance_configuration_digest=str(configuration_digest),
+            basis_provenance=_decode_basis_provenance(dataset.attrs.get("basis_provenance")),
         )
 
     @classmethod
@@ -381,8 +459,9 @@ class NativeCovarianceProducts:
             arrays and mappings remain mutable.
 
         Raises:
-            ValueError: If the root product schema, shared identity, strategy,
-                MultiIndex metadata, or covariance configuration is invalid.
+            ValueError: If the root product schema, source/view identities,
+                strategy, MultiIndex metadata, or the covariance
+                configuration's source binding or content digest is invalid.
         """
         from openghg_inversions.serialization import (
             MULTIINDEX_DIMS_ATTR,
@@ -394,11 +473,19 @@ class NativeCovarianceProducts:
             root_dataset = restore_serialisation_multiindexes(root_dataset, strict=True)
         products = cls.from_dataset(root_dataset)
         if "covariance_configuration" not in tree:
+            if root_dataset.attrs.get("covariance_configuration_digest"):
+                raise ValueError("Serialized covariance products are missing covariance configuration")
             return products
+        configuration_digest = _validated_identity(
+            root_dataset.attrs.get("covariance_configuration_digest"),
+            name="covariance configuration digest",
+        )
         return replace(
             products,
             covariance_configuration=_decode_configuration_dataset(
-                cast(xr.DataTree, tree["covariance_configuration"]).to_dataset(inherit=False)
+                cast(xr.DataTree, tree["covariance_configuration"]).to_dataset(inherit=False),
+                expected_source_content_identity=products.source_content_identity,
+                expected_configuration_digest=configuration_digest,
             ),
         )
 
@@ -424,18 +511,21 @@ def project_native_covariance(
         observation_covariance: Return dense ``H B H.T`` or only its diagonal.
         observation_batch_size: Positive number of observation right-hand sides
             applied to ``B`` in each eager batch. This is independent of Dask
-            array chunking: each batch produces a result block and the blocks
-            are concatenated. Dense ``H B H.T`` is still fully materialized.
+            array chunking: each batch fills a slice of one preallocated result.
+            Dense ``H B H.T`` is still fully materialized.
         strategy: Retained projection choice. The default preserves bucket scalings.
 
     Returns:
-        Frozen product dataclass containing labelled blocks tied by one content
-        identity. Its contained arrays remain mutable. Inputs and products are
-        eagerly materialized; dense observation covariance has
-        quadratic observation-space storage. Full PSD eigendiagnostics are skipped
-        above 512 rows to avoid adding cubic observation-space work. Input attrs/units are not propagated:
-        product attrs are replaced by mathematical diagnostics because this API
-        does not implement unit algebra.
+        Frozen product dataclass whose arrays carry a shared source identity
+        and a view identity derived from the requested dense/diagonal
+        representation. These identities bind metadata and are not checksums
+        of computed output values. Its contained arrays remain mutable. Inputs
+        and products are eagerly materialized; dense observation covariance
+        has quadratic observation-space storage. Full PSD eigendiagnostics are
+        skipped above 512 rows to avoid adding cubic observation-space work.
+        Input attrs/units are not propagated: product attrs are replaced by
+        mathematical diagnostics because this API does not implement unit
+        algebra.
 
     Raises:
         ValueError: If labels, dimensions, values, or options are invalid.
@@ -474,6 +564,12 @@ def project_native_covariance(
     projection = projection_strategy.projection(
         covariance,
         basis_prolongation,
+        native_dims=native_dims,
+        state_dim=state_dim,
+    )
+    projection = _validated_projection(
+        projection,
+        native_reference=sensitivity,
         native_dims=native_dims,
         state_dim=state_dim,
     )
@@ -530,14 +626,14 @@ def project_native_covariance(
         output=observation_covariance,
         batch_size=batch_size,
     )
-    content_identity = _content_identity(
+    source_content_identity = _source_content_identity(
         covariance,
         projection.restriction,
         projection.prolongation,
         sensitivity,
         strategy=projection.strategy,
-        observation_covariance=observation_covariance,
     )
+    view_identity = _view_identity(source_content_identity, observation_covariance)
     covariance_to_dataset = getattr(covariance, "to_dataset", None)
     covariance_configuration = (
         cast(xr.Dataset, covariance_to_dataset()).copy(deep=True) if callable(covariance_to_dataset) else None
@@ -550,7 +646,8 @@ def project_native_covariance(
     }
     shared_attrs = {
         "projection_strategy": projection.strategy,
-        "content_identity": content_identity,
+        "source_content_identity": source_content_identity,
+        "view_identity": view_identity,
     }
     arrays = (
         projection.restriction,
@@ -571,7 +668,12 @@ def project_native_covariance(
         observation_state_cross_covariance=cross_covariance,
         native_observation_covariance=native_observation_covariance,
         strategy=projection.strategy,
-        content_identity=content_identity,
+        source_content_identity=source_content_identity,
+        view_identity=view_identity,
+        observation_covariance_view=observation_covariance,
+        covariance_configuration_digest=(
+            _configuration_digest(covariance_configuration) if covariance_configuration is not None else ""
+        ),
         covariance_configuration=covariance_configuration,
         basis_provenance=basis_provenance,
     )
@@ -589,9 +691,9 @@ def _observation_covariance(
     """Compute ``H B H.T`` in eager observation right-hand-side batches.
 
     Batching limits the size of the temporary native-space ``B H.T`` block;
-    it is not Dask chunking. Result blocks are concatenated along a distinct
-    observation-column dimension. Dense output therefore still materializes
-    the complete quadratic observation covariance, while diagonal output
+    it is not Dask chunking. The result is allocated once and filled by
+    observation-column batch. Dense output therefore still materializes the
+    complete quadratic observation covariance, while diagonal output
     materializes only its labelled diagonal.
 
     Args:
@@ -605,14 +707,20 @@ def _observation_covariance(
             covariance application.
 
     Returns:
-        Labelled dense ``H B H.T`` or ``diag(H B H.T)``.
+        Labelled dense ``H B H.T`` with dimensions ``(observation_dim,
+        collision-safe column dimension)``, or ``diag(H B H.T)`` with dimension
+        ``(observation_dim,)``. Observation-axis coordinates are preserved.
 
     Raises:
         ValueError: If covariance labels are incompatible or a dense result
             fails the symmetry diagnostic.
     """
     observation_column_dim = _matrix_column_dim(observation_dim, sensitivity.dims)
-    blocks: list[xr.DataArray] = []
+    observation_count = sensitivity.sizes[observation_dim]
+    result_values = np.empty(
+        (observation_count, observation_count) if output == "dense" else observation_count,
+        dtype=np.result_type(sensitivity.dtype, np.float64),
+    )
     for start in range(0, sensitivity.sizes[observation_dim], batch_size):
         stop = min(start + batch_size, sensitivity.sizes[observation_dim])
         rhs = _to_plain_column_axis(
@@ -626,23 +734,38 @@ def _observation_covariance(
             block = xr.dot(sensitivity, b_rhs, dim=list(native_dims)).transpose(
                 observation_dim, observation_column_dim
             )
+            result_values[:, start:stop] = np.asarray(block.values)
         else:
-            matching = _to_plain_column_axis(
-                sensitivity.isel({observation_dim: slice(start, stop)}),
+            block = (rhs * b_rhs).sum(dim=list(native_dims))
+            result_values[start:stop] = np.asarray(block.values)
+    if output == "dense":
+        coords = {
+            str(name): coordinate
+            for name, coordinate in sensitivity.coords.items()
+            if set(coordinate.dims).issubset({observation_dim})
+        }
+        coords.update(
+            _column_coordinates(
+                sensitivity,
                 row_dim=observation_dim,
                 column_dim=observation_column_dim,
-                leading_dims=native_dims,
             )
-            block = (matching * b_rhs).sum(dim=list(native_dims))
-        blocks.append(block)
-    combined = xr.concat(blocks, dim=observation_column_dim)
-    if output == "dense":
+        )
+        combined = xr.DataArray(
+            result_values,
+            dims=(observation_dim, observation_column_dim),
+            coords=coords,
+        )
         combined = _with_matrix_diagnostics(
             combined.rename("native_observation_covariance"), mathematical_name="H B H.T"
         )
     else:
-        combined = combined.rename({observation_column_dim: observation_dim})
-        combined = combined.assign_coords({observation_dim: sensitivity.coords[observation_dim]})
+        coords = {
+            str(name): coordinate
+            for name, coordinate in sensitivity.coords.items()
+            if set(coordinate.dims).issubset({observation_dim})
+        }
+        combined = xr.DataArray(result_values, dims=observation_dim, coords=coords)
         combined = combined.rename("native_observation_covariance").assign_attrs(
             mathematical_name="diag(H B H.T)",
             minimum_diagonal=float(combined.min().item()),
@@ -650,6 +773,92 @@ def _observation_covariance(
             diagnostic_tolerance=1e-10,
         )
     return combined
+
+
+def _validated_projection(
+    projection: RetainedProjection,
+    *,
+    native_reference: xr.DataArray,
+    native_dims: tuple[str, ...],
+    state_dim: str,
+) -> RetainedProjection:
+    """Validate custom strategy labels before any labelled contractions.
+
+    Args:
+        projection: Restriction/prolongation pair returned by a strategy.
+        native_reference: Validated sensitivity carrying canonical native
+            coordinates.
+        native_dims: Ordered native dimensions.
+        state_dim: Retained-state dimension.
+
+    Returns:
+        A projection with eager arrays in canonical dimension order.
+
+    Raises:
+        ValueError: If either array has invalid dimensions, values, or labels.
+            Native coordinates must exactly equal the reference coordinates;
+            xarray reordering or intersection is never used here.
+    """
+    restriction = projection.restriction
+    expected_restriction_dims = {state_dim, *native_dims}
+    if set(restriction.dims) != expected_restriction_dims or len(restriction.dims) != len(
+        expected_restriction_dims
+    ):
+        raise ValueError("Projection strategy restriction has invalid labelled dimensions")
+    restriction = _densify(restriction).transpose(state_dim, *native_dims)
+    if not np.all(np.isfinite(np.asarray(restriction.values))):
+        raise ValueError("Projection strategy restriction must contain only finite values")
+
+    prolongation = _validated_prolongation(
+        projection.prolongation,
+        native_dims=native_dims,
+        state_dim=state_dim,
+    )
+    for role, array in (("restriction", restriction), ("prolongation", prolongation)):
+        _validate_exact_native_coordinates(
+            array,
+            native_reference,
+            native_dims=native_dims,
+            role=role,
+        )
+    if state_dim not in restriction.coords or state_dim not in prolongation.coords:
+        raise ValueError("Projection strategy restriction and prolongation require state labels")
+    if not np.array_equal(
+        restriction.coords[state_dim].values,
+        prolongation.coords[state_dim].values,
+    ):
+        raise ValueError("Projection strategy restriction/prolongation state labels differ")
+    return replace(projection, restriction=restriction, prolongation=prolongation)
+
+
+def _validate_exact_native_coordinates(
+    array: xr.DataArray,
+    reference: xr.DataArray,
+    *,
+    native_dims: tuple[str, ...],
+    role: str,
+) -> None:
+    """Require exact native labels before product alignment or contraction.
+
+    Args:
+        array: Strategy-produced restriction or prolongation.
+        reference: Validated array carrying canonical native coordinates.
+        native_dims: Ordered native dimensions to compare.
+        role: Array role used in validation errors.
+
+    Raises:
+        ValueError: If a native coordinate is absent, reordered, or different.
+    """
+    for dim in native_dims:
+        if dim not in array.coords:
+            raise ValueError(f"Projection strategy {role} is missing native coordinate {dim!r}")
+        actual = np.asarray(array.coords[dim].values)
+        expected = np.asarray(reference.coords[dim].values)
+        if actual.shape != expected.shape or not np.array_equal(actual, expected):
+            raise ValueError(
+                f"Projection strategy {role} native coordinate {dim!r} must exactly match "
+                "the covariance grid in the same order"
+            )
 
 
 def _validate_projection_invariant(
@@ -675,19 +884,7 @@ def _validate_projection_invariant(
         ValueError: If dimensions, state labels, or values are invalid, or if
             ``B Pi.T`` and ``U_* C_alpha`` disagree beyond tolerance.
     """
-    prolongation = _validated_prolongation(
-        projection.prolongation,
-        native_dims=native_dims,
-        state_dim=state_dim,
-    )
-    restriction = projection.restriction
-    expected_dims = {state_dim, *native_dims}
-    if set(restriction.dims) != expected_dims or len(restriction.dims) != len(expected_dims):
-        raise ValueError("Projection strategy restriction has invalid labelled dimensions")
-    if not np.all(np.isfinite(np.asarray(restriction.values))):
-        raise ValueError("Projection strategy restriction must contain only finite values")
-    if not np.array_equal(restriction.coords[state_dim].values, prolongation.coords[state_dim].values):
-        raise ValueError("Projection strategy restriction/prolongation state labels differ")
+    prolongation = projection.prolongation
     u_c = xr.dot(prolongation, state_covariance, dim=state_dim).transpose(*native_dims, state_column_dim)
     left = np.asarray(b_restriction_transpose.values, dtype=np.float64)
     right = np.asarray(u_c.values, dtype=np.float64)
@@ -912,12 +1109,39 @@ def _column_coordinate(coordinate: xr.DataArray, column_dim: str) -> xr.DataArra
     source_values = list(coordinate.values)
     if any(isinstance(value, tuple) for value in source_values):
         values = np.asarray(
-            [json.dumps(list(value), separators=(",", ":")) for value in source_values],
+            [
+                json.dumps(
+                    list(value),
+                    separators=(",", ":"),
+                    default=_json_label_default,
+                )
+                for value in source_values
+            ],
             dtype=str,
         )
     else:
         values = np.asarray(source_values)
     return xr.DataArray(values, dims=column_dim, attrs=coordinate.attrs)
+
+
+def _json_label_default(value: object) -> str:
+    """Encode a rich tuple-label scalar as a stable string.
+
+    NumPy scalars are first converted to their Python equivalent. Datetime-like
+    objects use ``isoformat()``, while other objects use ``str()``.
+
+    Args:
+        value: Non-JSON-native coordinate-label value.
+
+    Returns:
+        Stable string suitable for a JSON tuple token.
+    """
+    if isinstance(value, np.generic):
+        value = value.item()
+    isoformat = getattr(value, "isoformat", None)
+    if callable(isoformat):
+        return str(isoformat())
+    return str(value)
 
 
 def _column_coordinates(
@@ -1024,37 +1248,65 @@ def _with_matrix_diagnostics(array: xr.DataArray, *, mathematical_name: str) -> 
     return array.assign_attrs(attrs)
 
 
-def _encode_configuration_dataset(dataset: xr.Dataset) -> xr.Dataset:
+def _encode_configuration_dataset(
+    dataset: xr.Dataset,
+    *,
+    source_content_identity: str,
+    configuration_digest: str,
+) -> xr.Dataset:
     """Namespace configuration dimensions before DataTree persistence.
 
     Args:
         dataset: Native covariance configuration to encode.
+        source_content_identity: Identity of the source content whose
+            covariance configuration this dataset describes.
+        configuration_digest: Digest of the decoded configuration content.
 
     Returns:
         A copy whose dimensions have a ``covariance_configuration__`` prefix.
         The reversible original-to-encoded mapping is stored in the
         ``openghg_inversions:configuration_dims`` attribute so parent DataTree
-        dimensions cannot absorb the child dimensions.
+        dimensions cannot absorb the child dimensions. The child also carries
+        the source identity so configurations from different artifacts cannot
+        be mixed silently.
     """
     rename = {str(dim): f"covariance_configuration__{dim}" for dim in dataset.dims}
     encoded = dataset.rename(rename).copy()
     encoded.attrs = dict(encoded.attrs)
     encoded.attrs["openghg_inversions:configuration_dims"] = json.dumps(rename, sort_keys=True)
+    encoded.attrs["openghg_inversions:source_content_identity"] = source_content_identity
+    encoded.attrs["openghg_inversions:configuration_digest"] = configuration_digest
     return encoded
 
 
-def _decode_configuration_dataset(dataset: xr.Dataset) -> xr.Dataset:
+def _decode_configuration_dataset(
+    dataset: xr.Dataset,
+    *,
+    expected_source_content_identity: str,
+    expected_configuration_digest: str,
+) -> xr.Dataset:
     """Restore namespaced configuration dimensions after persistence.
 
     Args:
         dataset: Encoded covariance configuration child dataset.
+        expected_source_content_identity: Source identity declared by the root
+            product dataset.
+        expected_configuration_digest: Configuration digest declared by the
+            root product dataset.
 
     Returns:
         A dataset with original dimension names and encoding metadata removed.
 
     Raises:
-        ValueError: If the dimension mapping metadata is absent or invalid.
+        ValueError: If the source binding or dimension mapping metadata is
+            absent or invalid.
     """
+    child_source_identity = dataset.attrs.get("openghg_inversions:source_content_identity")
+    if child_source_identity != expected_source_content_identity:
+        raise ValueError("Serialized covariance configuration does not share the root source identity")
+    child_configuration_digest = dataset.attrs.get("openghg_inversions:configuration_digest")
+    if child_configuration_digest != expected_configuration_digest:
+        raise ValueError("Serialized covariance configuration does not share the root digest")
     encoded_dims = dataset.attrs.get("openghg_inversions:configuration_dims")
     if not isinstance(encoded_dims, str):
         raise ValueError("Serialized covariance configuration is missing dimension metadata")
@@ -1064,35 +1316,122 @@ def _decode_configuration_dataset(dataset: xr.Dataset) -> xr.Dataset:
     restored = dataset.rename({str(encoded): str(original) for original, encoded in rename.items()})
     restored.attrs = dict(restored.attrs)
     del restored.attrs["openghg_inversions:configuration_dims"]
+    del restored.attrs["openghg_inversions:source_content_identity"]
+    del restored.attrs["openghg_inversions:configuration_digest"]
+    if _configuration_digest(restored) != expected_configuration_digest:
+        raise ValueError("Serialized covariance configuration content does not match its digest")
     return restored
 
 
-def _content_identity(
+def _configuration_digest(dataset: xr.Dataset) -> str:
+    """Hash decoded covariance configuration content into a stable digest.
+
+    Args:
+        dataset: Configuration in its decoded, original-dimension form.
+
+    Returns:
+        Lowercase hexadecimal SHA-256 digest stable across supported NetCDF
+        scalar and string coercions.
+    """
+    digest = hashlib.sha256()
+    digest.update(b"openghg_inversions.native_covariance_products.configuration.v1\0")
+    digest.update(_canonical_json(dataset.attrs).encode("utf-8"))
+    for name in sorted(str(name) for name in dataset.coords):
+        _update_configuration_array_digest(digest, dataset.coords[name])
+    for name in sorted(str(name) for name in dataset.data_vars):
+        _update_configuration_array_digest(digest, dataset[name])
+    return digest.hexdigest()
+
+
+def _update_configuration_array_digest(digest: _Digest, array: xr.DataArray) -> None:
+    """Hash one configuration array across NetCDF scalar/string coercions.
+
+    Args:
+        digest: Digest receiving canonical array metadata and values.
+        array: Configuration coordinate or data variable to hash.
+    """
+    digest.update(str(array.name).encode("utf-8"))
+    digest.update(_canonical_json(tuple(str(dim) for dim in array.dims)).encode("utf-8"))
+    digest.update(_canonical_json(array.attrs).encode("utf-8"))
+    values = np.ascontiguousarray(array.values)
+    digest.update(_canonical_json(values.shape).encode("utf-8"))
+    if values.dtype.hasobject or values.dtype.kind in {"U", "S"}:
+        digest.update(_canonical_json(values.tolist()).encode("utf-8"))
+    else:
+        digest.update(values.dtype.str.encode("ascii"))
+        digest.update(values.view(np.uint8).tobytes())
+
+
+def _canonical_json(value: object) -> str:
+    """Encode serialization-compatible metadata with normalized scalar types.
+
+    Args:
+        value: Metadata value accepted by JSON or
+            :func:`_canonical_json_default`.
+
+    Returns:
+        Compact, key-sorted JSON text.
+    """
+    return json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=_canonical_json_default,
+    )
+
+
+def _canonical_json_default(value: object) -> object:
+    """Normalize NumPy, byte, array, and datetime-like values for JSON.
+
+    Args:
+        value: Value rejected by the standard JSON encoder.
+
+    Returns:
+        A JSON-native scalar, list, or string.
+
+    Raises:
+        TypeError: If the value has no supported canonical representation.
+    """
+    if isinstance(value, np.generic):
+        return value.item()
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    if isinstance(value, bytes):
+        return value.decode("utf-8")
+    isoformat = getattr(value, "isoformat", None)
+    if callable(isoformat):
+        return isoformat()
+    raise TypeError(f"Cannot encode {type(value).__name__} in a configuration digest")
+
+
+def _source_content_identity(
     covariance: InvertibleNativeCovarianceAction,
     *arrays: xr.DataArray,
     strategy: str,
-    observation_covariance: str,
 ) -> str:
-    """Hash scientific inputs and configuration into a stable identity.
+    """Hash shared scientific inputs and configuration into a stable identity.
 
     Execution batching is deliberately excluded, because changing
     ``observation_batch_size`` does not change the requested scientific
-    product. Computed product values are also excluded to avoid binding the
-    identity to batch-dependent floating-point roundoff.
+    product. The dense/diagonal numerical view and computed product values are
+    also excluded. This identity binds source content, not stored-byte
+    integrity, and therefore does not detect numerical output tampering. A
+    covariance with ``to_dataset()`` contributes its configuration metadata,
+    coordinates, and variables; the custom-action fallback is stable only when
+    that object's ``repr`` is stable.
 
     Args:
         covariance: Native covariance action, preferably with serializable
             constructor configuration.
-        *arrays: Scientific input arrays to bind to the identity.
+        *arrays: Labelled restriction, prolongation, and sensitivity arrays;
+            their values, dimensions, and all coordinates are hashed.
         strategy: Stable retained-projection strategy name.
-        observation_covariance: Requested dense or diagonal output form.
 
     Returns:
         Lowercase hexadecimal SHA-256 digest.
     """
     digest = hashlib.sha256()
     digest.update(strategy.encode("utf-8"))
-    digest.update(observation_covariance.encode("utf-8"))
     to_dataset = getattr(covariance, "to_dataset", None)
     if callable(to_dataset):
         covariance_dataset = cast(xr.Dataset, to_dataset())
@@ -1108,6 +1447,76 @@ def _content_identity(
     for array in arrays:
         _update_array_digest(digest, array)
     return digest.hexdigest()
+
+
+def _view_identity(
+    source_content_identity: str,
+    observation_covariance_view: Literal["dense", "diagonal"],
+) -> str:
+    """Derive a numerical-view identity from source content and view kind.
+
+    Args:
+        source_content_identity: Identity shared by all numerical views of the
+            same ``B/H/Pi/U`` source.
+        observation_covariance_view: Requested dense or diagonal view.
+
+    Returns:
+        Lowercase hexadecimal SHA-256 digest for this derived view.
+    """
+    digest = hashlib.sha256()
+    digest.update(b"openghg_inversions.native_covariance_products.view.v1\0")
+    digest.update(source_content_identity.encode("ascii"))
+    digest.update(b"\0")
+    digest.update(observation_covariance_view.encode("ascii"))
+    return digest.hexdigest()
+
+
+def _validated_identity(value: object, *, name: str) -> str:
+    """Validate a lowercase hexadecimal SHA-256 identity.
+
+    Args:
+        value: Serialized identity candidate.
+        name: Human-readable identity name used in an error.
+
+    Returns:
+        The validated identity string.
+
+    Raises:
+        ValueError: If the value is not a 64-character lowercase hex digest.
+    """
+    if (
+        not isinstance(value, str)
+        or len(value) != 64
+        or any(character not in "0123456789abcdef" for character in value)
+    ):
+        raise ValueError(f"Serialized covariance products have an invalid {name}")
+    return value
+
+
+def _decode_basis_provenance(value: object) -> dict[str, str]:
+    """Decode and validate the serialized string-to-string provenance map.
+
+    Args:
+        value: JSON text from root dataset metadata.
+
+    Returns:
+        Decoded provenance mapping.
+
+    Raises:
+        ValueError: If the value is not valid JSON encoding an object with
+            string keys and string values.
+    """
+    if not isinstance(value, str):
+        raise ValueError("Serialized covariance products have invalid basis provenance JSON")
+    try:
+        decoded = json.loads(value)
+    except json.JSONDecodeError as exc:
+        raise ValueError("Serialized covariance products have invalid basis provenance JSON") from exc
+    if not isinstance(decoded, dict) or any(
+        not isinstance(key, str) or not isinstance(item, str) for key, item in decoded.items()
+    ):
+        raise ValueError("Serialized covariance products basis provenance must be a string mapping")
+    return decoded
 
 
 def _update_array_digest(digest: _Digest, array: xr.DataArray) -> None:

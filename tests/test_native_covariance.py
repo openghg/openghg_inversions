@@ -213,6 +213,19 @@ def test_constructor_rejects_invalid_native_coordinates(coordinate, message: str
         SeparableExponentialCovariance(latitude=latitude, longitude=longitude, sigma=1.0)
 
 
+@pytest.mark.parametrize("axis_name", ["latitude", "longitude"])
+def test_constructor_rejects_empty_native_axes(axis_name: str) -> None:
+    """Each native coordinate must contain at least one grid point."""
+    latitude, longitude = _coordinates()
+    if axis_name == "latitude":
+        latitude = latitude.isel(lat=slice(0, 0))
+    else:
+        longitude = longitude.isel(lon=slice(0, 0))
+
+    with pytest.raises(ValueError, match=rf"{axis_name}.*at least one"):
+        SeparableExponentialCovariance(latitude=latitude, longitude=longitude)
+
+
 @pytest.mark.parametrize(
     ("sigma", "correlation_length", "message"),
     [
@@ -250,6 +263,7 @@ def test_apply_does_not_construct_a_native_kronecker_matrix(monkeypatch) -> None
     )
 
     def fail_kron(*args, **kwargs):
+        """Fail if the matrix-free implementation constructs a Kronecker matrix."""
         raise AssertionError("the structured action must not call numpy.kron")
 
     monkeypatch.setattr(np, "kron", fail_kron)

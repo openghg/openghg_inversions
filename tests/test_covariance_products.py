@@ -1,4 +1,7 @@
-"""Tests for covariance products that preserve bucket prolongation semantics."""
+"""Test covariance projection, identities, eager batching, labels, and persistence."""
+
+from pathlib import Path
+from typing import cast
 
 import numpy as np
 import pandas as pd
@@ -182,8 +185,8 @@ def test_covariance_natural_prolongation_is_the_bucket_prolongation() -> None:
     np.testing.assert_allclose(u_star, u, rtol=1e-11, atol=1e-11)
 
 
-def test_dense_and_diagonal_products_are_batch_invariant() -> None:
-    """Execution batch size changes neither covariance products nor their identity."""
+def test_dense_and_diagonal_products_have_stable_source_and_derived_view_identities() -> None:
+    """Batching preserves identities while dense/diagonal views share only source identity."""
     covariance, basis_operator, h, _ = _problem()
 
     full_batch = _project(
@@ -226,7 +229,12 @@ def test_dense_and_diagonal_products_are_batch_invariant() -> None:
         ),
     ):
         xr.testing.assert_allclose(batched, full)
-    assert single_observation_batches.content_identity == full_batch.content_identity
+    assert single_observation_batches.source_content_identity == full_batch.source_content_identity
+    assert single_observation_batches.view_identity == full_batch.view_identity
+    assert diagonal.source_content_identity == full_batch.source_content_identity
+    assert diagonal.view_identity != full_batch.view_identity
+    assert full_batch.observation_covariance_view == "dense"
+    assert diagonal.observation_covariance_view == "diagonal"
     assert diagonal.native_observation_covariance.dims == ("observation",)
     expected_diagonal = xr.DataArray(
         np.diag(full_batch.native_observation_covariance.values),
@@ -237,8 +245,31 @@ def test_dense_and_diagonal_products_are_batch_invariant() -> None:
     np.testing.assert_allclose(diagonal.native_observation_covariance, expected_diagonal)
 
 
+def test_dense_batching_preallocates_instead_of_concatenating(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Dense observation batching avoids the former xr.concat block-assembly path."""
+    covariance, basis_operator, h, _ = _problem()
+
+    def reject_concat(*args: object, **kwargs: object) -> None:
+        """Fail if the former all-block concatenation path is used."""
+        raise AssertionError(f"unexpected xr.concat call: {args!r}, {kwargs!r}")
+
+    monkeypatch.setattr(xr, "concat", reject_concat)
+
+    products = _project(
+        covariance,
+        basis_operator,
+        h,
+        observation_covariance="dense",
+        observation_batch_size=1,
+    )
+
+    assert products.native_observation_covariance.shape == (3, 3)
+
+
 def test_products_round_trip_with_labels_and_identity() -> None:
-    """Dataset serialization preserves all blocks, labels, strategy, and shared identity."""
+    """Dataset and DataTree round trips preserve blocks, labels, identities, and config."""
     covariance, basis_operator, h, _ = _problem()
     products = _project(
         covariance,
@@ -262,10 +293,15 @@ def test_products_round_trip_with_labels_and_identity() -> None:
         restored.native_observation_covariance, products.native_observation_covariance
     )
     assert restored.strategy == products.strategy
-    assert restored.content_identity == products.content_identity
-    assert len(products.content_identity) == 64
+    assert restored.source_content_identity == products.source_content_identity
+    assert restored.view_identity == products.view_identity
+    assert restored.observation_covariance_view == products.observation_covariance_view
+    assert restored.covariance_configuration_digest == products.covariance_configuration_digest
+    assert len(products.source_content_identity) == 64
+    assert len(products.view_identity) == 64
     assert all(
-        array.attrs["content_identity"] == products.content_identity
+        array.attrs["source_content_identity"] == products.source_content_identity
+        and array.attrs["view_identity"] == products.view_identity
         for array in (
             products.restriction,
             products.state_covariance,
@@ -283,11 +319,24 @@ def test_products_round_trip_with_labels_and_identity() -> None:
         products.covariance_configuration,
     )
     assert restored_tree.basis_provenance == products.basis_provenance
-    assert restored_tree.prolongation.attrs["content_identity"] == products.content_identity
+    assert restored_tree.prolongation.attrs["source_content_identity"] == products.source_content_identity
 
 
-def test_content_identity_changes_with_covariance_configuration() -> None:
-    """Kernel amplitudes and class maps participate in the stable product identity."""
+def test_dataset_round_trip_cannot_silently_drop_covariance_configuration() -> None:
+    """A root-only restore preserves its config digest and refuses an incomplete tree."""
+    covariance, basis_operator, h, _ = _problem()
+    products = _project(covariance, basis_operator, h)
+
+    restored = NativeCovarianceProducts.from_dataset(products.to_dataset())
+
+    assert restored.covariance_configuration is None
+    assert restored.covariance_configuration_digest == products.covariance_configuration_digest
+    with pytest.raises(ValueError, match="without.*covariance configuration content"):
+        restored.to_datatree()
+
+
+def test_source_content_identity_changes_with_covariance_configuration() -> None:
+    """Kernel amplitudes and class maps participate in the stable source identity."""
     covariance, basis_operator, h, _ = _problem()
     baseline = _project(covariance, basis_operator, h)
     rescaled = _project(
@@ -317,18 +366,77 @@ def test_content_identity_changes_with_covariance_configuration() -> None:
         h,
     )
 
-    assert baseline.content_identity != rescaled.content_identity
-    assert baseline.content_identity != blocked.content_identity
+    assert baseline.source_content_identity != rescaled.source_content_identity
+    assert baseline.source_content_identity != blocked.source_content_identity
 
 
-def test_product_deserialization_rejects_mixed_content_identity() -> None:
-    """A block copied from another artifact cannot masquerade as coherent output."""
+def test_product_deserialization_rejects_mixed_source_identity() -> None:
+    """A product variable whose source identity differs from the root is rejected."""
     covariance, basis_operator, h, _ = _problem()
     dataset = _project(covariance, basis_operator, h).to_dataset()
-    dataset["state_covariance"].attrs["content_identity"] = "0" * 64
+    dataset["state_covariance"].attrs["source_content_identity"] = "0" * 64
 
-    with pytest.raises(ValueError, match="content identity"):
+    with pytest.raises(ValueError, match="source identity"):
         NativeCovarianceProducts.from_dataset(dataset)
+
+
+@pytest.mark.parametrize(
+    "encoded_provenance",
+    [None, "not-json", "[]", '{"operator_type": 1}'],
+)
+def test_product_deserialization_validates_basis_provenance_shape(
+    encoded_provenance: object,
+) -> None:
+    """Basis provenance must be a JSON encoding of a string-to-string mapping."""
+    covariance, basis_operator, h, _ = _problem()
+    dataset = _project(covariance, basis_operator, h).to_dataset()
+    dataset.attrs["basis_provenance"] = encoded_provenance
+
+    with pytest.raises(ValueError, match="basis provenance"):
+        NativeCovarianceProducts.from_dataset(dataset)
+
+
+def test_product_identity_metadata_is_not_a_numerical_checksum() -> None:
+    """Identity metadata binds source/view declarations but does not checksum output values."""
+    covariance, basis_operator, h, _ = _problem()
+    dataset = _project(covariance, basis_operator, h).to_dataset()
+    dataset["state_covariance"].values[0, 0] += 1.0
+
+    restored = NativeCovarianceProducts.from_dataset(dataset)
+
+    assert restored.state_covariance.values[0, 0] == dataset["state_covariance"].values[0, 0]
+
+
+def test_datatree_rejects_covariance_configuration_from_another_source() -> None:
+    """A covariance configuration child cannot be mixed into another source artifact."""
+    covariance, basis_operator, h, _ = _problem()
+    baseline_tree = _project(covariance, basis_operator, h).to_datatree()
+    other_covariance = SeparableExponentialCovariance(
+        covariance.latitude,
+        covariance.longitude,
+        sigma=2.0,
+        correlation_length=covariance.correlation_length,
+    )
+    other_tree = _project(other_covariance, basis_operator, h).to_datatree()
+    baseline_tree["covariance_configuration"] = xr.DataTree(
+        cast(xr.DataTree, other_tree["covariance_configuration"]).to_dataset(inherit=False).copy(deep=True)
+    )
+
+    with pytest.raises(ValueError, match="configuration.*root source identity"):
+        NativeCovarianceProducts.from_datatree(baseline_tree)
+
+
+def test_datatree_rejects_tampered_covariance_configuration_content() -> None:
+    """Configuration content is recomputed and checked against its bound root digest."""
+    covariance, basis_operator, h, _ = _problem()
+    tree = _project(covariance, basis_operator, h).to_datatree()
+    child = cast(xr.DataTree, tree["covariance_configuration"]).to_dataset(inherit=False).copy(deep=True)
+    latitude_dim = "covariance_configuration__lat"
+    child = child.assign_coords({latitude_dim: child.coords[latitude_dim] + 0.25})
+    tree["covariance_configuration"] = xr.DataTree(child)
+
+    with pytest.raises(ValueError, match="configuration content.*digest"):
+        NativeCovarianceProducts.from_datatree(tree)
 
 
 def test_projection_strategy_must_return_covariance_natural_prolongation() -> None:
@@ -387,6 +495,45 @@ def test_projection_strategy_protocol_accepts_structural_implementations() -> No
     assert products.strategy == "delegating_strategy"
 
 
+@pytest.mark.parametrize("role", ["restriction", "prolongation"])
+@pytest.mark.parametrize("coordinate_change", ["mismatch", "reordered", "empty-intersection"])
+def test_custom_projection_requires_exact_native_coordinates(
+    role: str,
+    coordinate_change: str,
+) -> None:
+    """Custom Pi and U native labels must match before product alignment or contraction."""
+    covariance, basis_operator, h, _ = _problem()
+
+    class RelabelledStrategy:
+        """Relabel one projection array to exercise strict native-coordinate checks."""
+
+        def projection(self, covariance, basis_prolongation, *, native_dims, state_dim):
+            """Return a coherent numeric pair with deliberately invalid latitude labels."""
+            valid = PreserveBucketProlongation().projection(
+                covariance,
+                basis_prolongation,
+                native_dims=native_dims,
+                state_dim=state_dim,
+            )
+            latitude = valid.restriction.coords["lat"].values
+            if coordinate_change == "reordered":
+                invalid_latitude = latitude[::-1]
+            elif coordinate_change == "empty-intersection":
+                invalid_latitude = latitude + 1000.0
+            else:
+                invalid_latitude = latitude + 0.25
+            restriction = valid.restriction
+            prolongation = valid.prolongation
+            if role == "restriction":
+                restriction = restriction.assign_coords(lat=invalid_latitude)
+            else:
+                prolongation = prolongation.assign_coords(lat=invalid_latitude)
+            return RetainedProjection(restriction, prolongation, "relabeled")
+
+    with pytest.raises(ValueError, match=r"native coordinate 'lat'.*exactly match"):
+        _project(covariance, basis_operator, h, strategy=RelabelledStrategy())
+
+
 def test_projection_strategy_must_return_full_rank_restriction() -> None:
     """A formally compatible zero Pi/U pair is rejected because C_alpha is singular."""
     covariance, basis_operator, h, _ = _problem()
@@ -402,12 +549,12 @@ def test_projection_strategy_must_return_full_rank_restriction() -> None:
                 "singular",
             )
 
-    with pytest.raises(ValueError, match="positive definite|full rank"):
+    with pytest.raises(ValueError, match="empty retained state|positive definite|full rank"):
         _project(covariance, basis_operator, h, strategy=SingularStrategy())
 
 
-def test_content_identity_includes_auxiliary_semantic_coordinates() -> None:
-    """Relabelling an auxiliary observation coordinate changes artifact identity."""
+def test_source_content_identity_includes_auxiliary_semantic_coordinates() -> None:
+    """Relabelling an auxiliary observation coordinate changes the source identity."""
     covariance, basis_operator, h, _ = _problem()
     first = _project(
         covariance,
@@ -420,7 +567,7 @@ def test_content_identity_includes_auxiliary_semantic_coordinates() -> None:
         h.assign_coords(network=("observation", ["DECC", "DECC", "DECC"])),
     )
 
-    assert first.content_identity != second.content_identity
+    assert first.source_content_identity != second.source_content_identity
 
 
 def test_redundant_bucket_states_are_rejected() -> None:
@@ -504,11 +651,14 @@ def test_class_blocked_products_match_dense_oracle() -> None:
     )
 
 
-def test_multiindex_observation_labels_are_preserved_on_both_matrix_axes() -> None:
-    """Dense observation products retain rich row labels and suffixed column metadata."""
+def test_datetime_multiindex_observation_labels_persist_on_both_matrix_axes(
+    tmp_path: Path,
+) -> None:
+    """Real Timestamp MultiIndex labels encode safely and persist through NetCDF."""
     covariance, basis_operator, h, _ = _problem()
-    observation_index = pd.MultiIndex.from_tuples(
-        [("MHD", "2020-01-01"), ("TAC", "2020-01-02"), ("RGL", "2020-01-03")],
+    dates = pd.to_datetime(["2020-01-01", "2020-01-02", "2020-01-03"])
+    observation_index = pd.MultiIndex.from_arrays(
+        [["MHD", "TAC", "RGL"], dates],
         names=("site", "date"),
     )
     h = h.drop_indexes("observation").drop_vars("observation")
@@ -526,8 +676,25 @@ def test_multiindex_observation_labels_are_preserved_on_both_matrix_axes() -> No
         "TAC",
         "RGL",
     ]
-    assert products.native_observation_covariance.coords["date_cov"].values.tolist() == [
-        "2020-01-01",
-        "2020-01-02",
-        "2020-01-03",
+    np.testing.assert_array_equal(
+        products.native_observation_covariance.coords["date_cov"].values,
+        dates.values,
+    )
+    assert products.native_observation_covariance.coords["observation_cov"].values.tolist() == [
+        '["MHD","2020-01-01T00:00:00"]',
+        '["TAC","2020-01-02T00:00:00"]',
+        '["RGL","2020-01-03T00:00:00"]',
     ]
+
+    path = tmp_path / "datetime-multiindex-products.nc"
+    products.to_datatree().to_netcdf(path, engine="h5netcdf")
+    with xr.open_datatree(path, engine="h5netcdf") as stored:
+        restored = NativeCovarianceProducts.from_datatree(stored.load())
+
+    restored_index = restored.native_observation_covariance.indexes["observation"]
+    assert isinstance(restored_index, pd.MultiIndex)
+    assert restored_index.equals(observation_index)
+    np.testing.assert_array_equal(
+        restored.native_observation_covariance.coords["observation_cov"].values,
+        products.native_observation_covariance.coords["observation_cov"].values,
+    )

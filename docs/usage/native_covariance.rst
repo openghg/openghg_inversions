@@ -1,11 +1,13 @@
 Native Covariance Projection
 ============================
 
-The native covariance projection API prepares the covariance and observation
-products needed to reduce a gridded scaling state. It keeps three concerns
-separate: basis geometry, native covariance, and the scientific definition of
-the retained state. It is currently a low-level preparation API; integration
-with the RHIME likelihood is follow-up work.
+The native covariance projection API prepares labelled covariance and
+observation product blocks for reducing a gridded scaling state. It keeps basis
+geometry, native covariance, and retained-state semantics separate, and never
+constructs a dense native-grid covariance matrix. This is the low-level OPE-17
+boundary: it is not connected to RHIME input preparation or likelihoods, and
+its product blocks are not the complete coherent-reduction artifact planned by
+OPE-18.
 
 Component overview
 ------------------
@@ -22,22 +24,23 @@ The classes have the following distinct roles.
      - Owns basis geometry and retained-state labels. For a single source,
        ``basis_matrix`` is the bucket prolongation :math:`U_{\mathrm{bucket}}`.
        A gathered multisource matrix is a spatial template that the projection
-       code expands onto an explicit native source dimension.
+       code expands onto an explicit native source dimension. In both cases,
+       the transpose does not define the retained restriction :math:`\Pi`.
    * - ``InvertibleNativeCovarianceAction``
      - Structural interface for applying :math:`B` and solving systems in
        :math:`B` without constructing a dense native covariance matrix.
    * - ``SeparableExponentialCovariance``
      - Concrete latitude/longitude covariance action. Optional class labels
-       make cells in different classes uncorrelated.
+       set cross-class covariance to zero; this alone does not assert
+       probabilistic independence outside a joint Gaussian model.
    * - ``IndependentSourceCovariance``
      - Composes ordered, source-specific spatial covariances into a
        block-diagonal native covariance. Its blocks currently must be
-       ``SeparableExponentialCovariance`` instances. It satisfies the same
-       covariance action interface, so product calculations use the common
-       :math:`B` apply/solve path; multisource basis geometry is still expanded
-       separately.
+       ``SeparableExponentialCovariance`` instances. Covariance application
+       and solves use the common action interface; only multisource basis
+       expansion needs a separate source-aware path.
    * - ``RetainedProjectionStrategy``
-     - Policy interface that chooses a coherent restriction :math:`\Pi` and
+     - Policy interface that chooses a compatible restriction :math:`\Pi` and
        covariance-natural prolongation :math:`U_*`.
    * - ``PreserveBucketProlongation``
      - Current structural implementation of the strategy interface. It fixes
@@ -45,15 +48,15 @@ The classes have the following distinct roles.
        :math:`\Pi_U`.
    * - ``RetainedProjection``
      - Frozen value dataclass returned by a strategy. It carries
-       :math:`(\Pi, U_*)` and the strategy identifier; it is not a protocol.
-       Its contained xarray objects remain mutable.
+       :math:`(\Pi, U_*)` and the strategy identifier; it is not a protocol,
+       and its contained xarray objects remain mutable.
    * - ``project_native_covariance``
-     - Validates and combines :math:`H`, :math:`B`, the basis geometry, and a
+     - Validates and combines :math:`H`, :math:`B`, basis geometry, and a
        projection strategy.
    * - ``NativeCovarianceProducts``
      - Frozen result and serialization dataclass containing the labelled
-       reduced covariance and observation products. Its contained xarray
-       objects and provenance mapping remain mutable.
+       product blocks. Its contained xarray objects and provenance mapping
+       remain mutable.
 
 The data flow is:
 
@@ -73,31 +76,53 @@ The data flow is:
                                              v
                               NativeCovarianceProducts
 
-``FluxWeightedBasis`` remains a data-preparation wrapper that pairs a basis
-operator with a flux field. It does not own :math:`\Pi`. By the time this API
-is called, :math:`H` already contains footprint times prior flux, so both the
-native state and retained state are multiplicative scalings.
+``FluxWeightedBasis`` is a data-preparation wrapper that pairs an operator
+with a flux field for sensitivity projection and flux reconstruction. It does
+not define :math:`\Pi`, apply native covariance, or own covariance transforms.
+By the time this API is called, :math:`H` already contains footprint times
+prior flux, so both the native and retained states are multiplicative
+scalings.
 
-Projection notation
--------------------
+Projection and centring
+-----------------------
 
-For a centred native perturbation :math:`x`, retained coefficients are
+Let the native scaling state have mean :math:`m` and covariance :math:`B`:
+
+.. math::
+
+   \operatorname{E}[x] = m,
+   \qquad
+   \operatorname{Cov}(x) = B,
+   \qquad
+   \delta x = x - m.
+
+For a retained restriction :math:`\Pi`, define
 
 .. math::
 
    \alpha = \Pi x,
-
-with retained covariance
-
-.. math::
-
+   \qquad
+   \delta\alpha = \alpha - \Pi m = \Pi\,\delta x,
+   \qquad
    C_\alpha = \Pi B \Pi^\mathsf{T}.
 
-The covariance-natural prolongation associated with a chosen restriction is
+The covariance-natural prolongation associated with that restriction is
 
 .. math::
 
    U_* = B \Pi^\mathsf{T} C_\alpha^{-1}.
+
+The full affine lift is therefore
+
+.. math::
+
+   \widehat{x}(\alpha)
+   = m + U_*\delta\alpha
+   = m + U_*(\alpha - \Pi m),
+
+not the uncentred expression :math:`U_*\alpha`. For a joint Gaussian model
+this lift is :math:`\operatorname{E}[x\mid\alpha]`. Without Gaussianity it is
+the linear-Bayes lift determined by the first two moments.
 
 In general, :math:`U_*`, :math:`U_{\mathrm{bucket}}`, and
 :math:`\Pi^\mathsf{T}` are different operators. The initial strategy preserves
@@ -111,24 +136,99 @@ the established bucket-scaling interpretation by choosing
    U_{\mathrm{bucket}}^\mathsf{T} B^{-1}.
 
 This gives :math:`\Pi_U U_{\mathrm{bucket}} = I` and
-:math:`U_* = U_{\mathrm{bucket}}`. The resulting products are
-:math:`C_\alpha`, :math:`H U_*`, :math:`H B \Pi^\mathsf{T}`, and either dense
+:math:`U_* = U_{\mathrm{bucket}}`. OPE-17 returns :math:`C_\alpha`,
+:math:`H U_*`, :math:`H B \Pi^\mathsf{T}`, and either dense
 :math:`H B H^\mathsf{T}` or its diagonal.
 
-Observation batching
---------------------
+What OPE-17 does not construct
+------------------------------
+
+The exact Gaussian reduction also needs
+
+.. math::
+
+   B_\perp
+   = B - U_* C_\alpha U_*^\mathsf{T},
+
+and the centred conditional observation model
+
+.. math::
+
+   y \mid \alpha \sim \mathcal N\!\left(
+   Hm + H U_*(\alpha - \Pi m),
+   R + H B_\perp H^\mathsf{T}
+   \right).
+
+OPE-18 owns that solve-based transformation, unresolved covariance, and the
+single coherent artifact that binds prior, forward, residual, reconstruction,
+and state-treatment information. The OPE-17 product blocks are inputs to that
+work; they must not be described or persisted as though they were already the
+complete artifact. Arbitrary reporting-function products :math:`Q`,
+low-rank-plus-diagonal numerical views, and likelihood integration are also
+outside this API.
+
+Identity and serialization
+--------------------------
+
+``source_content_identity`` binds the shared :math:`B/H/\Pi/U_*` source
+content independently of the requested dense or diagonal observation product.
+``observation_covariance_view`` records that selector, and ``view_identity``
+is derived from it and the source identity. These values bind provenance and
+shared metadata; they are not load-time integrity checksums. Deserialization
+does not rehash product values to detect numeric tampering. The later
+coherent-reduction artifact can reference the OPE-17 source identity, but
+needs its own identity for the additional prior, affine-forward, residual,
+and reconstruction content.
+
+Memory and execution boundary
+-----------------------------
+
+The structured covariance action stores axis factors rather than dense native
+:math:`B`, but this API is otherwise eager. It materializes the native
+sensitivity, bucket prolongation, restriction/prolongation, reduced products,
+and requested observation product. For native size :math:`N`, retained size
+:math:`d`, and observation count :math:`M`, important dense storage includes
+:math:`M N` for :math:`H`, :math:`N d` for each native-by-retained array,
+:math:`d^2` for retained products, and either :math:`M^2` for dense
+:math:`H B H^\mathsf{T}` or :math:`M` for its diagonal.
 
 ``observation_batch_size`` is an eager execution setting, not an xarray or
-Dask chunk size. The native sensitivity has already been materialized before
-batching begins. Each batch applies :math:`B` to a group of columns from
-:math:`H^\mathsf{T}` and then forms the corresponding output block. This limits
-the temporary native-grid-by-observation working set.
+Dask chunk size. Each batch applies :math:`B` to a group of columns from
+:math:`H^\mathsf{T}`, limiting the temporary :math:`N`-by-batch working set.
+Dense batches still fill a preallocated complete quadratic observation
+covariance. Changing the batch size changes execution only, not the scientific
+inputs or requested numerical form.
 
-The dense result is still concatenated into a complete
-:math:`H B H^\mathsf{T}` matrix and therefore requires quadratic
-observation-space storage. Requesting the diagonal avoids that dense output.
-The batch size is an execution choice and does not participate in the
-scientific content identity.
+Correspondence with ``verification-games``
+-------------------------------------------
+
+OPE-17 deliberately ports only the reusable lower-level prototype boundary.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 31 21 48
+
+   * - Prototype capability
+     - OPE-17 status
+     - Correspondence
+   * - Separable exponential covariance action, optional class blocking, and
+       batched :math:`\Pi B\Pi^\mathsf{T}`,
+       :math:`H B\Pi^\mathsf{T}`, and :math:`H B H^\mathsf{T}` products
+     - Faithful port
+     - Re-expressed as labelled xarray actions and product objects; OPE-17 also
+       supports ordered independent-source blocks.
+   * - Choose a physical or flux-total restriction :math:`\Pi` first, then
+       derive its covariance-natural lift
+     - Deliberate difference
+     - The first OPE-17 strategy is compatibility-oriented: it fixes
+       :math:`U_{\mathrm{bucket}}` first and derives :math:`\Pi_U`. The strategy
+       interface leaves room for a future :math:`\Pi`-first policy.
+   * - Cross-source covariance, arbitrary reporting functionals :math:`Q`,
+       :math:`B_\perp` products, coherent likelihood reduction, reconstruction,
+       and covariance approximation
+     - Not ported
+     - These remain prototype or downstream OPE-18 work and must not be inferred
+       from the presence of OPE-17 product blocks.
 
 API reference
 -------------

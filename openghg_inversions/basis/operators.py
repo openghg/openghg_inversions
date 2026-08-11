@@ -1,55 +1,45 @@
-"""Basis operator classes
+"""Labelled basis geometry operators for retained scaling states.
 
-Design goals
-------------
-1) Separate the *bucket prolongation* (basis functions) from any *flux weighting*.
-   - For one source, ``basis_matrix`` is ``U_bucket`` with shape native-grid by
-     retained-state. A gathered multisource matrix is the spatial membership
-     template from which the source-native ``U_bucket`` is expanded. Neither
-     transpose is automatically the retained restriction ``Pi``.
-   - Flux weighting (multiplying by flux on the grid, interpolation to maps, covariance transforms)
-     is handled by ``FluxWeightedBasis`` so that:
-       * sensitivity(fp_x_flux) does not require flux (since fp_x_flux is already precomputed),
-       * but flux-aware operations remain available when needed.
+A :class:`BasisOperator` separates bucket geometry from flux weighting and
+native covariance. For one source, :attr:`BasisOperator.basis_matrix` is the
+bucket prolongation ``U_bucket`` with native-grid rows and retained-state
+columns. A gathered multisource matrix is the spatial membership template from
+which projection code expands a source-native ``U_bucket``. Its transpose is
+not automatically the retained restriction ``Pi``.
 
-2) Canonical "state" dimension.
-   - Operators expose a single state dimension (default name: "state").
-   - In multisource/multisector cases with ragged per-source region counts, the state coordinate
-     becomes a ragged MultiIndex over (source, region_in_source). This avoids padding with zeros.
+``FluxWeightedBasis`` handles flux weighting for sensitivity projection and
+flux reconstruction. Native covariance actions, retained restrictions, and
+covariance product transforms instead belong to
+:mod:`openghg_inversions.native_covariance`,
+:mod:`openghg_inversions.source_covariance`, and
+:mod:`openghg_inversions.basis.covariance_products`.
 
-3) Minimal metadata (BasisMeta).
-   - We only need to know which dims to dot over (grid_dims) and the state_dim name.
-   - Source-labeled arrays are aligned against the state MultiIndex by concrete
-     subclasses rather than inferred from metadata.
+Operators expose one canonical state dimension, named ``"state"`` by default.
+Multisource operators represent ragged per-source region counts with a
+MultiIndex over source and region-within-source, avoiding padded state arrays.
+:class:`BasisMeta` records only the grid dimensions and state-dimension name;
+concrete operators perform any source-label alignment.
 
-4) Serialization via xarray.DataTree.
-   - BasisOperator.to_datatree() returns a self-describing DataTree with schema/kind/version attrs.
-   - BasisOperator.decode_datatree(dt) dispatches to the correct registered subclass based on dt.attrs["kind"].
-   - For multisource operators, the canonical serialized representation stores one source-labelled
-     `basis_flat` array. Readers retain compatibility with the earlier per-source child layout.
+Serialization uses self-describing :class:`xarray.DataTree` objects with
+schema, kind, and version metadata. Multisource operators store one
+source-labelled ``basis_flat`` array while readers retain compatibility with
+the earlier per-source child layout.
 
-How to use
-----------
-- Construct a basis operator:
-    op = BucketBasisOperator(basis_flat)                         # single-sector
-    op = MultiSourceBucketBasisOperator({"a": bf_a, "b": bf_b})   # ragged multisource
+Examples:
+    Construct operators, compute a sensitivity, and round-trip one operator::
 
-- Compute sensitivities:
-    H = op.sensitivity(fp_x_flux)
+        op = BucketBasisOperator(basis_flat)
+        multisource_op = MultiSourceBucketBasisOperator({"a": bf_a, "b": bf_b})
+        sensitivity = op.sensitivity(fp_x_flux)
+        restored = BasisOperator.decode_datatree(op.to_datatree())
 
-  where fp_x_flux is an xarray.DataArray with at least the grid dims (lat, lon), and typically time.
-  In multisource workflows, fp_x_flux often has a separate dimension "source".
-  The multisource operator aligns those labels against the "source" level of
-  the state MultiIndex.
+    ``fp_x_flux`` contains the configured grid dimensions and typically time.
+    In multisource workflows it may also have a ``source`` dimension, whose
+    labels the multisource operator aligns to the state MultiIndex.
 
-- Serialize/deserialize:
-    dt = op.to_datatree()
-    op2 = BasisOperator.decode_datatree(dt)
-
-Notes
------
-- Currently, basis operators cannot have a time dimension. If the input flat array has
-  a time dimension with more than one coordinate value, an error is raised.
+Note:
+    Basis geometry cannot currently vary through time. A singleton time
+    dimension is dropped; a longer time dimension raises :class:`ValueError`.
 """
 
 from __future__ import annotations
@@ -163,14 +153,12 @@ class BasisMeta:
 class BasisOperator(ABC):
     """Abstract basis operator.
 
-    Concrete subclasses must define:
-    - meta (grid dims + state dim)
-    - basis_matrix: bucket prolongation ``U_bucket`` with dims
-      (*grid_dims, state_dim)
-    - to_datatree / from_datatree
+    Concrete subclasses provide operator metadata, a bucket prolongation
+    ``U_bucket`` whose ordered dimensions are the grid dimensions followed by
+    the state dimension, and DataTree serialization methods.
 
-    The default sensitivity implementation assumes fp_x_flux has the grid dims and
-    any extra dims (e.g. time, source) are preserved.
+    The default sensitivity implementation requires ``fp_x_flux`` to contain
+    the grid dimensions and preserves extra dimensions such as time or source.
     """
 
     # stable kind string used for serialization dispatch
@@ -190,8 +178,8 @@ class BasisOperator(ABC):
     def basis_matrix(self) -> xr.DataArray:
         """Return the bucket prolongation ``U_bucket`` from state to grid.
 
-        Expected dims: (*grid_dims, state_dim)
-        (state_dim may be a MultiIndex coordinate)
+        Its ordered dimensions are the configured grid dimensions followed by
+        the state dimension, which may carry a MultiIndex coordinate.
 
         Multiplying this matrix by a state vector reconstructs a native scaling
         field. Although its transpose has the shape of a restriction, it is not
