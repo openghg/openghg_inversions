@@ -81,6 +81,9 @@
   scaling. PARIS column prior factors are applied to total columns rather than
   boundary-condition-only values.
   [PR #541](https://github.com/openghg/openghg_inversions/pull/541)
+- Enabled multisector satellite inversion footprint selection through a
+  site-aligned ``time_resolved`` selector passed to OpenGHG retrieval. CO2
+  time-resolved footprints continue to use OpenGHG's existing convolution.
 - Preserve retrieved flux periods instead of inferring them from inversion
   duration, including annual priors used by mid-year monthly inversions.
   Calendar-aware PARIS postprocessing and legacy merged-data round trips now

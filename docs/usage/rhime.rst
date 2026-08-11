@@ -102,6 +102,30 @@ Rectangular legacy inputs may carry ``source_region_count(source)`` so padded
 layouts can be rejected; modern preparation does not create that compatibility
 metadata.
 
+Satellite multisector inputs
+----------------------------
+
+Satellite runs use the same ``flux_sources``, ``sector_sources``, and
+``split_by_sectors`` preparation as surface-site runs. Set ``platform`` to
+``"satellite"``, supply the column ``max_level``, and use ``time_resolved`` to
+select the footprint representation when the store contains more than one:
+
+* ``False`` selects integrated ``fp`` footprints;
+* ``True`` selects high-frequency footprints represented by legacy
+  ``fp_HiTRes`` or by the pair ``fp_time_resolved`` and ``fp_residual``;
+* ``None`` leaves the OpenGHG search unconstrained.
+
+The option may be a scalar or a list aligned to ``sites``. For CO2,
+OpenGHG's existing high-time-resolution convolution uses the resolved
+footprint and its residual contribution.
+
+Column preparation also retains retrieval prior-factor fields, aligns small
+satellite observation/footprint timestamp precision differences, and applies
+the existing corrected-column boundary-condition scaling to satellite rows.
+These steps apply before the same source-resolved basis projection used for
+surface multisector inversions. Use a modern output format for column data;
+legacy HBMCMC output formatting does not support column observations.
+
 Running Prepared Inputs
 -----------------------
 
