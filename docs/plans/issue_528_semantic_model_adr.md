@@ -198,7 +198,7 @@ declares:
 
 Let $X$ be the complete native state, $Y$ the observations, and
 $A=T(X)$ the retained state for a measurable map $T$. If the retained prior
-is the pushforward $T_\#\mathcal L(X)$, and the reduced likelihood is
+is the pushforward $T_*\mathcal L(X)$, and the reduced likelihood is
 
 $$
 \bar \ell(y\mid a)
@@ -210,7 +210,7 @@ then Bayesian updating commutes with reduction:
 
 $$
 \mathcal L(A\mid Y=y)
-= T_\#\mathcal L(X\mid Y=y).
+= T_*\mathcal L(X\mid Y=y).
 $$
 
 In words, the posterior distribution of the retained state is the projection,
