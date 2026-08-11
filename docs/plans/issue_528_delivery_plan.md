@@ -1,6 +1,6 @@
 # Issue 528 Delivery Plan
 
-Date: 2026-08-10
+Date: 2026-08-11
 
 Status: proposed delivery sequence for review; focused ownership issues
 [#573](https://github.com/openghg/openghg_inversions/issues/573)--
@@ -59,6 +59,17 @@ coordinates, rather than silently selecting a new scientific prior.
 
 This is the central scientific invariant for #493 and #566.
 
+Gaussian and LogNormal native priors use the same labelled arithmetic-moment
+reduction contract: project the native mean and covariance and derive the
+retained moments, effective forward operator, and unresolved second moments
+together. For the Gaussian family the affine conditional reduction is exact.
+For the LogNormal family, the affine conditional map and constant unresolved
+covariance are linear-Bayes products derived from the first two moments;
+fitting the retained LogNormal law and closing the conditional residual
+distribution are further declared approximations. The native probability
+family and every approximation or closure therefore remain part of the
+identity-bound reduction record.
+
 ### Make reporting boundaries a basis-design constraint
 
 The simplest reliable scientific guidance is:
@@ -81,13 +92,14 @@ reconstructed with unresolved uncertainty, or only approximated.
 The target level of inspection is a scientist-facing model card containing:
 
 - labelled state blocks and their arithmetic prior moments;
-- forward equations for each observation channel;
+- named forward-model terms and a complete mean equation for each observation
+  model;
 - named covariance components and their scientific provenance;
 - retained, fixed, structurally absent, and coherently marginalized states;
 - requested physical output functionals and reconstruction status;
 - exact, moment-closed, low-rank-approximated, and numerical choices;
-- a separate compilation manifest mapping those identities to PyMC and output
-  names.
+- a separate compilation manifest mapping serialized semantic IDs to PyMC and
+  output names.
 
 PyMC variable names, sanitized suffixes, and builder strategy are compilation
 details, not the description of the scientific model.
@@ -112,7 +124,7 @@ The design should retain six distinct layers:
 
 ```text
 scientific specification
-    native states, priors, components, channels, covariance sources, outputs
+    native states, priors, forward-model terms, observation models, covariance sources, outputs
         -> canonical prepared inputs
            observations, native products, labels, units, provenance
                -> bound mathematical model
@@ -148,23 +160,36 @@ developed.
 - Standard and multisector declarations normalize to a private flux plan, but
   current sector/source specifications still encode convenient one-to-one
   relationships.
-- Draft [PR #571](https://github.com/openghg/openghg_inversions/pull/571)
-  implements the backend-neutral correlated-LogNormal foundation for #565 and
-  has passing CI. Built-in `RhimeModelSpec` routing is explicitly left for a
-  later slice.
+- Merged [PR #571](https://github.com/openghg/openghg_inversions/pull/571)
+  provides the backend-neutral correlated-LogNormal arithmetic-moment,
+  whitening, label, and serialization foundation for #565. Built-in
+  `RhimeModelSpec` routing is explicitly left for a later slice.
 - #493, #565 through #570, and #572 contain explicit implementation or
   documentation scopes. They are planned work, not discoveries made by this
   review.
 - #414, #415, #456, #511, and #411 through #413 already own important
-  component, persistence, grouped-state, product, and linked-channel work.
+  component, persistence, grouped-state, product, and linked-observation-model
+  work.
 
 ### Decisions already implied by the work
 
 - Native covariance projection and coherent reduction are separate contracts:
   #493 produces labelled product blocks; #566 performs the solve-based
   reduction and produces one coherent artifact.
+- The coherent artifact owns the identity-bound mathematical covariance or
+  covariance action. Dense, diagonal, LRPD, block, and matrix-free forms are
+  downstream numerical views with separate derived identities and diagnostics;
+  an LRPD view makes repeated likelihood evaluation and sampling feasible.
 - Fixed-value state activity and coherent marginalization remain different
   operations.
+- Flux component is the canonical physical/reporting identity. The existing
+  `sector`, one-sector, and multisector vocabulary remains a compatibility and
+  group-facing name; “multisector” means multiple flux components and does not
+  imply EDGAR-style inventory sectors.
+- A fixed state-to-term coupling records a labelled transform such as an
+  oxidative ratio, sign, and unit conversion. If the coupling is uncertain,
+  it is represented by a state block and the resulting bilinear or nonlinear
+  forward-model dependence is explicit.
 - Arithmetic moments are the public scientific contract for positive state
   coefficients. Latent Gaussian moments and whitening are realization details
   with recorded provenance.
@@ -181,10 +206,11 @@ developed.
 ### Design inference to validate in the ADR
 
 The semantic core should be a small relational linear model, not a general
-probabilistic-programming graph. The minimum relations are native-state models,
-retained state blocks, reductions, forward terms, named channel sums,
-covariance components, observation channels, output functionals, and a
-compilation manifest.
+probabilistic-programming graph. The minimum relations are flux components,
+native-state models, retained state blocks, reductions, forward-model terms,
+fixed state-to-term couplings, named observation-model means, covariance
+components, observation models, output functionals, and a compilation
+manifest.
 
 This inference should be pressure-tested against grouped source inputs,
 inner/outer bases, and shared CO2/O2 states before the representation is made a
@@ -196,9 +222,9 @@ public extension API.
 |---|---|---|---|
 | Independent-cell basis prior-width projection | Implemented | #521 | Keep as a documented special case and diagnostic; do not present it as coherent correlated reduction. |
 | Dense, diagonal, and LRPD likelihood consumption | Implemented | #564 | Generalize terminology through a covariance-component ledger; retain existing API compatibility. |
-| Correlated gathered LogNormal state foundation | In flight | #565 / PR #571 | Review and merge as the first state-contract slice. |
+| Correlated gathered LogNormal state foundation | Merged foundation | #565 / PR #571 | Use the merged arithmetic-moment, whitening, label, and serialization contract. |
 | Built-in model-spec routing for one gathered correlated state | Planned | Remaining #565 | Separate PR after #571; preserve per-sector compatibility views without creating independent states. |
-| Native covariance action and labelled product-block projection | Planned | #493 | Implement before #566; start with the separable exponential operator and small dense oracles. |
+| Native covariance action and labelled product-block projection | In flight | #493 | Implement before #566; start with the separable exponential operator and small dense oracles. |
 | Coherent native-to-reduced preparation | Planned | #566 | Consume #493 products; return one identity-bound result containing prior, forward, residual, and reconstruction products. |
 | Fixed aggregation covariance plus site OU mismatch | Planned | #567 | Implement after covariance-component semantics are agreed; do not hard-code experiment-specific time scales. |
 | Cached conditional sampler lifecycle | Planned | #568 | Defer until #567 has a correct normalized likelihood and profiling shows the need; keep it outside the scientific model. |
@@ -209,7 +235,7 @@ public extension API.
 | Reproducible run bundle | Planned | #415 | Persist semantic/model-card, prepared-reduction, covariance, and manifest versions. |
 | Grouped inner/outer state layouts | Planned | #456 and #407-#410 | Treat as a required semantic pressure test, not a prerequisite for the first implementation. |
 | Per-sector PARIS concentration product | Planned | #511 | Consume stable product-neutral identities; keep product schema decisions out of the semantic core. |
-| Shared-state CO2/O2 channels | Planned | #411-#413 | Required ADR pressure test; implement after channel/state/term relations are stable. |
+| Shared-state CO2/O2 observation models | Planned | #411-#413 | Required ADR pressure test; implement after observation-model/state/term relations are stable. |
 | Validate covariance second-axis labels, ordering, and uniqueness | Planned | [#573](https://github.com/openghg/openghg_inversions/issues/573) | Small correctness PR; do not hide it within #493 because current dense covariance is already exposed. |
 | Define positive-diagonal semantics for standalone and composed LRPD covariance | Planned | [#573](https://github.com/openghg/openghg_inversions/issues/573), adjacent to #564/#567 | Isolate contract and regression tests before #567. A zero residual tail may be valid only when another declared component makes the complete covariance proper. |
 | Make `output_format="none"` skip gathered-state diagnostics and reconstruction | Planned | [#574](https://github.com/openghg/openghg_inversions/issues/574), related to #570 | Small correctness PR, independent of the broader output redesign. |
@@ -228,7 +254,7 @@ public extension API.
   +--> #574 builder/no-output runner boundaries (independent)
   +--> #575 model card and typed manifest
   |
-  +--> #565 / PR #571 correlated-state foundation
+  +--> PR #571 merged correlated-state foundation
   |      `--> #565 built-in gathered-state routing
   |
   +--> #493 native covariance action and product blocks
@@ -252,14 +278,14 @@ public extension API.
 
 Pressure tests, not initial blockers:
   #456 / #407-#410 inner/outer grouped layouts
-  #411-#413 shared-state linked channels
+  #411-#413 shared-state linked observation models
   DUBFI-like uncertain-operator marginalization
 ```
 
 The dependency arrows describe contract dependencies, not a requirement that
-every parent issue be closed first. For example, #493 covariance-action work
-can proceed while PR #571 is reviewed, and #528 documentation can proceed
-without any runtime implementation.
+every parent issue be closed first. For example, active #493 covariance-action
+work can proceed before #565 built-in routing, and #528 documentation can
+proceed without every runtime implementation.
 
 ## The Next Two Days
 
@@ -281,11 +307,11 @@ framework implementation.
    - Specify parity checks before any compiler or semantic-model refactor.
    - Do not remove the route or change user-visible names in the two-day window.
 
-3. **Review PR #571.**
-   - Confirm arithmetic-to-latent moment equations, label validation,
-     marginalization ledger semantics, serialization, and CI evidence.
-   - Merge only if review is clean; otherwise leave a short, explicit correction
-     list rather than expanding its scope.
+3. **Use the foundation merged in PR #571.**
+   - Keep its arithmetic-to-latent moment equations, label validation,
+     state-treatment semantics, and serialization as the bounded foundation.
+   - Leave built-in model-spec routing to the remaining #565 slice rather than
+     expanding the merged contract retrospectively.
 
 4. **Open or prepare the four small correctness slices.**
    - Covariance second-axis alignment and uniqueness.
@@ -330,7 +356,7 @@ framework implementation.
 
 - The ADR and overview are reviewable and use stable vocabulary.
 - The concrete one-sector route has an explicit parity role.
-- PR #571 has either merged or has a bounded correction list.
+- PR #571 is merged as a bounded correlated-state foundation.
 - The four correctness gaps have explicit owners and at least focused tests or
   review-ready PRs.
 - A first #493 covariance-action slice is open or review-ready.
@@ -411,10 +437,10 @@ or validate its own supported semantic requirements.
 
 ### S1 — Correlated state foundation
 
-**Owner:** #565 / PR #571.
+**Owner:** merged PR #571 under #565.
 
-**Scope:** keep the current PR limited to backend-neutral arithmetic moments,
-latent conversion/whitening, labels, marginalization ledger, and serialization.
+**Status and scope:** merged backend-neutral arithmetic moments, latent
+conversion/whitening, labels, state-treatment metadata, and serialization.
 
 **Acceptance tests:** use #565's current analytic and Monte Carlo moment tests,
 label reorder/rejection tests, fixed-versus-marginalized tests, and save/load
@@ -485,8 +511,10 @@ identity-bound result.
 
 **Owner:** #566 slices B and C, with #414/#415 coordination.
 
-**Scope:** diagonal-preserving LRPD representation with diagnostics; arbitrary
-functional reconstruction products; serialization; adapters to
+**Scope:** construct a diagonal-preserving LRPD derived numerical view, with
+its own identity and diagnostics, from the exact labelled covariance or
+covariance action produced by R1; add arbitrary functional reconstruction
+products, serialization, and adapters to
 `RhimePreparedInputs`, #565, and the observation-covariance API.
 The durable result retains \(B_\perp\), a conditional-covariance action, or
 sufficient product access for a future operator-anomaly calculation of
@@ -523,7 +551,7 @@ shared provenance identity prevent incoherent blocks from being mixed.
 **Owner:** #575, a focused deliverable under #528.
 
 **Scope:** backend-neutral value objects or a versioned serialized schema for
-state blocks, terms, named channel means, covariance components, reductions,
+state blocks, forward-model terms, named observation-model means, covariance components, reductions,
 outputs, and approximation status. Render a scientist-facing model card. Do
 not introduce a registry or class hierarchy until two independent extensions
 need it.
@@ -531,21 +559,21 @@ need it.
 **Acceptance tests:**
 
 - the simple one-sector RHIME model is representable without PyMC names;
-- one state can feed two terms/channels;
+- one state can contribute to two terms or observation models;
 - one term can select a labelled subset of a gathered state;
 - input source, physical component, state, trace variable, and product name are
   demonstrably distinct identities;
 - validation rejects dangling IDs, incompatible dimensions/units, and unnamed
-  channel sums;
+  observation-model means;
 - model-card output contains equations, arithmetic moments, covariance ledger,
-  state disposition, outputs, and exactness labels;
+  state treatment, outputs, and exactness labels;
 - schema/version round trip is stable.
 
 ### M2 — Typed compilation and output manifest
 
 **Owner:** #575, consumed by #414, #415, #570, and #413.
 
-**Scope:** versioned mapping from semantic identities to concrete trace/data
+**Scope:** versioned mapping from serialized semantic IDs to concrete trace/data
 names, public effective states, reconstruction recipes, product-neutral
 coordinates, and product-specific adapters. Retain legacy suffix fallback only
 for old artifacts.
@@ -607,8 +635,8 @@ The ADR should decide:
 
 1. semantic identities and their cardinalities;
 2. prepared-input, bound-math, numerical-artifact, and backend boundaries;
-3. state disposition and reduction semantics;
-4. channel mean and covariance composition;
+3. state treatment and reduction semantics;
+4. observation-model mean and covariance composition;
 5. exactness/closure/approximation vocabulary;
 6. output functional and manifest contracts;
 7. migration and one-sector parity policy.
@@ -653,7 +681,8 @@ by a fixed aggregation covariance or a fixed-tau OU component:
 - dense, low-rank, latent-factor, and cached representations are numerical
   strategies for the same declared component;
 - posterior prediction needs the same state-dependent covariance law;
-- multi-channel covariance and cross-channel blocks may eventually be needed.
+- joint-observation covariance and cross-observation blocks may eventually be
+  needed.
 
 The likelihood convention is also scientific. `determinant_weight=1` denotes
 the normalized Gaussian uncertain-operator model; zero denotes an
@@ -668,18 +697,21 @@ particular, #567's site OU mismatch should not become an accidental generic
 transport-error abstraction.
 
 The follow-up must also preserve the interaction with coherent aggregation.
-For \(x\mid\alpha=\mu_\alpha+u\),
-\(u\sim\mathcal N(0,B_\perp)\), and
-\(H=\bar H+\Delta H\), define
-\(\mathcal K_H(S)=\mathbb E(\Delta H S\Delta H^{\mathsf T})\). Under
-conditional independence, the observation covariance contains
+Let \(\mu_{x\mid\alpha}:=m+U_*(\alpha-\Pi m)\),
+\(x\mid\alpha=\mu_{x\mid\alpha}+u\), and
+\(u\sim\mathcal N(0,B_\perp)\). Also let
+\(\bar H:=\mathbb E(H\mid\alpha)\),
+\(\Delta H:=H-\bar H\), and
+\(\mathcal K_H(S)=\mathbb E(\Delta H S\Delta H^{\mathsf T}\mid\alpha)\).
+When \(u\) and \(\Delta H\) are conditionally independent given \(\alpha\),
+the observation covariance contains
 
-\[
+$$
 D_{\mathrm{obs}}
 +\bar H B_\perp\bar H^{\mathsf T}
 +\mathcal K_H(B_\perp)
-+\mathcal K_H(\mu_\alpha\mu_\alpha^{\mathsf T}).
-\]
++\mathcal K_H(\mu_{x\mid\alpha}\mu_{x\mid\alpha}^{\mathsf T}).
+$$
 
 The \(\mathcal K_H(B_\perp)\) interaction is neither a second aggregation
 component nor a temporal term, and it must not be counted twice. Because the
@@ -700,23 +732,20 @@ Relevant curated background lives in:
 1. Is the first semantic representation a versioned data schema, Python value
    objects, or both? Prefer the smallest form that can render and serialize the
    model card.
-2. Does a coherent-reduction artifact own the LRPD approximation, or does it
-   own exact labelled covariance plus one or more named numerical views?
-   Multiple approximations must not share an ambiguous content identity.
-3. Which unit system is authoritative at the native-state, arithmetic-state,
+2. Which unit system is authoritative at the native-state, arithmetic-state,
    observation, and output-functional boundaries?
-4. Is label reordering ever automatic for covariance inputs, or must all
+3. Is label reordering ever automatic for covariance inputs, or must all
    covariance products be in canonical order? Whatever is chosen must be
    uniform across dense and LRPD paths.
-5. Which exactness labels are stable enough for serialization: for example,
+4. Which exactness labels are stable enough for serialization: for example,
    `exact_gaussian_marginal`, `arithmetic_moment_closure`,
    `diagonal_preserving_lrpd`, and `backend_numerical`?
-6. How should a model card display a state-dependent covariance without
+5. How should a model card display a state-dependent covariance without
    confusing a scientific covariance component with its cached numerical
    realization?
-7. Which reporting-region constraints should basis generation enforce by
+6. Which reporting-region constraints should basis generation enforce by
    default, and which should be warnings?
-8. At what point is the semantic extension API public? Recommendation: after
+7. At what point is the semantic extension API public? Recommendation: after
    the current one-sector model, inner/outer layout, and linked CO2/O2 model
    have all exercised the internal relation model.
 
@@ -746,15 +775,16 @@ Relevant curated background lives in:
   relations or have an explicit documented compatibility boundary;
 - a scientist-facing model card can describe the implemented model before
   compilation;
-- state, source, component, term, channel, and output identities are distinct;
-- state disposition and exactness/approximation ledgers are serializable;
+- state, source, component, forward-model term, observation-model, and output
+  identities are distinct;
+- state treatment and exactness/approximation records are serializable;
 - the typed/versioned compilation-output manifest is consumed by modern output
   and persistence paths;
 - one-state/multiple-term, ragged gathered state, inner/outer layout, and linked
-  channel fixtures have pressure-tested the representation;
+  observation-model fixtures have pressure-tested the representation;
 - the concrete one-sector route passes the parity suite;
 - extension guidance explains how to add a prior/state component, forward term,
-  covariance component, observation channel, and output view without requiring
+  covariance component, observation model, and output view without requiring
   users to reproduce the complete PyMC runner.
 
 Closing #528 does not require closing every scientific implementation issue in
