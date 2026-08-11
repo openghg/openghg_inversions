@@ -203,6 +203,24 @@ Correspondence with ``verification-games``
 -------------------------------------------
 
 OPE-17 deliberately ports only the reusable lower-level prototype boundary.
+The recent 14-site production runs define retained coefficients with a
+source-blocked, absolute-prior-flux-weighted mean. For source :math:`s`, region
+:math:`r`, and native cell :math:`i`, let
+
+.. math::
+
+   q_{si} = \bar F^{\mathrm{UOB\,BASE}}_{si} A_i,
+   \qquad
+   \Pi_{(s,r),(s',i)} =
+   \mathbf 1[s=s']\,\mathbf 1[i\in r]\,
+   \frac{|q_{si}|}{\sum_{j\in r}|q_{sj}|}.
+
+Thus each row is nonnegative, sums to one, and averages native scaling factors
+within exactly one source and one active region. This physical restriction is
+chosen independently of :math:`B`; the covariance then determines
+:math:`C_\alpha` and :math:`U_*`. The prototype also supports a distinct
+signed-flux-total policy, but that is not the current 14-site production
+setting. Both policies require a supplied-:math:`\Pi`-first OGI strategy.
 
 .. list-table::
    :header-rows: 1
@@ -217,8 +235,9 @@ OPE-17 deliberately ports only the reusable lower-level prototype boundary.
      - Faithful port
      - Re-expressed as labelled xarray actions and product objects; OPE-17 also
        supports ordered independent-source blocks.
-   * - Choose a physical or flux-total restriction :math:`\Pi` first, then
-       derive its covariance-natural lift
+   * - Choose a physical restriction :math:`\Pi` first, then derive its
+       covariance-natural lift. Current 14-site production uses the
+       absolute-prior-flux-weighted regional mean above.
      - Deliberate difference
      - The first OPE-17 strategy is compatibility-oriented: it fixes
        :math:`U_{\mathrm{bucket}}` first and derives :math:`\Pi_U`. The strategy
