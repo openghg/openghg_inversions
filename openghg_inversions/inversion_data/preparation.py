@@ -43,6 +43,7 @@ from openghg_inversions.basis.basis_functions import (
 from openghg_inversions.filters import filtering
 from openghg_inversions.flux_sanitization import FluxNonFiniteCheck, sanitize_flux_nonfinite
 from openghg_inversions.inversion_data._site_options import (
+    expand_site_boolean_option,
     expand_site_option,
     is_column_observation,
 )
@@ -65,6 +66,7 @@ _SITE_AVERAGING_PERIOD = "averaging_period"
 SiteStringOption = Sequence[str | None] | str | None
 SiteInletOption = Sequence[str | slice | None] | str | None
 SiteIntegerOption = Sequence[int | None] | int | None
+SiteBooleanOption = Sequence[bool | None] | bool | None
 
 
 @dataclass
@@ -676,6 +678,16 @@ def _normalise_site_inlets(
     return normalized
 
 
+def _normalise_site_booleans(
+    value: SiteBooleanOption,
+    *,
+    length: int,
+    name: str,
+) -> list[bool | None]:
+    """Normalize one optional boolean selector per requested site."""
+    return list(expand_site_boolean_option(value, nsites=length, name=name))
+
+
 @dataclass(frozen=True)
 class _SiteOptions:
     """All runner inputs whose positions are aligned to ``sites``.
@@ -693,6 +705,7 @@ class _SiteOptions:
     obs_data_level: tuple[str | None, ...]
     met_model: tuple[str | None, ...]
     max_level: tuple[int | None, ...]
+    time_resolved: tuple[bool | None, ...]
 
     def __post_init__(self) -> None:
         """Freeze supplied sequences and enforce the common-length invariant."""
@@ -706,6 +719,7 @@ class _SiteOptions:
             "obs_data_level",
             "met_model",
             "max_level",
+            "time_resolved",
         )
         for name in field_names:
             object.__setattr__(self, name, tuple(getattr(self, name)))
@@ -740,6 +754,7 @@ class _SiteOptions:
         obs_data_level: Sequence[str | None] | str | None,
         met_model: Sequence[str | None] | str | None,
         max_level: Sequence[int | None] | int | None,
+        time_resolved: SiteBooleanOption = None,
     ) -> _SiteOptions:
         """Normalize all site options and validate their common length.
 
@@ -772,6 +787,9 @@ class _SiteOptions:
             ),
             met_model=tuple(_normalise_site_strings(met_model, length=nsites, name="met_model")),
             max_level=tuple(_normalise_site_integers(max_level, length=nsites, name="max_level")),
+            time_resolved=tuple(
+                _normalise_site_booleans(time_resolved, length=nsites, name="time_resolved")
+            ),
         )
 
     def select_indices(self, indices: Sequence[int]) -> _SiteOptions:
@@ -790,6 +808,7 @@ class _SiteOptions:
             obs_data_level=select(self.obs_data_level),
             met_model=select(self.met_model),
             max_level=select(self.max_level),
+            time_resolved=select(self.time_resolved),
         )
 
     @property
@@ -1022,6 +1041,7 @@ def _prepare_merged_data(
     fp_model: str | None = None,
     fp_height: SiteStringOption = None,
     fp_species: str | None = None,
+    time_resolved: SiteBooleanOption = None,
     inlet: SiteInletOption = None,
     instrument: SiteStringOption = None,
     max_level: SiteIntegerOption = None,
@@ -1066,6 +1086,7 @@ def _prepare_merged_data(
         obs_data_level=obs_data_level,
         met_model=met_model,
         max_level=max_level,
+        time_resolved=time_resolved,
     )
     rerun_merge = True
     fp_all: dict | None = None
@@ -1107,6 +1128,7 @@ def _prepare_merged_data(
             fp_model=fp_model,
             fp_height=list(site_options.fp_height),
             fp_species=fp_species,
+            time_resolved=list(site_options.time_resolved),
             emissions_name=flux_sources,
             inlet=list(site_options.inlet),
             instrument=list(site_options.instrument),
@@ -1365,6 +1387,7 @@ def prepare_fixedbasis_inversion_data(
     fp_model: str | None = None,
     fp_height: SiteStringOption = None,
     fp_species: str | None = None,
+    time_resolved: SiteBooleanOption = None,
     inlet: SiteInletOption = None,
     instrument: SiteStringOption = None,
     max_level: SiteIntegerOption = None,
@@ -1424,6 +1447,9 @@ def prepare_fixedbasis_inversion_data(
             ``sites``.
         max_level: Maximum column level, either scalar or aligned to ``sites``.
             Entries must be integers or ``None``.
+        time_resolved: Select integrated (``False``) or time-resolved
+            high-frequency (``True``) footprints, either scalar or aligned to
+            ``sites``. ``None`` leaves the OpenGHG search unconstrained.
         min_error: Numeric minimum error or ``"residual"``/``"percentile"``
             calculation method.
         calculate_min_error: Deprecated calculation-method spelling.
@@ -1461,6 +1487,7 @@ def prepare_fixedbasis_inversion_data(
         fp_model=fp_model,
         fp_height=fp_height,
         fp_species=fp_species,
+        time_resolved=time_resolved,
         inlet=inlet,
         instrument=instrument,
         max_level=max_level,
@@ -1576,6 +1603,7 @@ def prepare_rhime_inputs(
     fp_model: str | None = None,
     fp_height: SiteStringOption = None,
     fp_species: str | None = None,
+    time_resolved: SiteBooleanOption = None,
     inlet: SiteInletOption = None,
     instrument: SiteStringOption = None,
     max_level: SiteIntegerOption = None,
@@ -1638,6 +1666,9 @@ def prepare_rhime_inputs(
             ``sites``.
         max_level: Maximum column level, either scalar or aligned to ``sites``.
             Entries must be integers or ``None``.
+        time_resolved: Select integrated (``False``) or time-resolved
+            high-frequency (``True``) footprints, either scalar or aligned to
+            ``sites``. ``None`` leaves the OpenGHG search unconstrained.
         min_error: Numeric minimum error or ``"residual"``/``"percentile"``
             calculation method.
         min_error_options: Calculated minimum-error options. The only supported
@@ -1677,6 +1708,7 @@ def prepare_rhime_inputs(
             fp_model=fp_model,
             fp_height=fp_height,
             fp_species=fp_species,
+            time_resolved=time_resolved,
             inlet=inlet,
             instrument=instrument,
             max_level=max_level,

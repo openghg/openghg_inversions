@@ -17,7 +17,7 @@ import openghg_inversions.inversion_data.get_data as get_data_module
 import openghg_inversions.inversion_data.getters as getters_module
 import openghg_inversions.inversion_data.scenario as scenario_module
 from openghg_inversions.flux_sanitization import FluxNonFiniteMetadata, NonFiniteFluxWarning
-from openghg_inversions.inversion_data._site_options import expand_site_option
+from openghg_inversions.inversion_data._site_options import expand_site_boolean_option, expand_site_option
 from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
 from openghg_inversions.inversion_data.get_data import (
     add_obs_error,
@@ -128,6 +128,7 @@ def test_mixed_platforms_keep_surface_calibration_scale_per_site(
 ) -> None:
     """Mixed surface and satellite data use each site's platform for scales."""
     observed_platforms: list[tuple[str, str | None, int | None]] = []
+    footprint_modes: list[bool | None] = []
     scenario_platforms: list[str | None] = []
 
     def fake_get_obs_data(**kwargs: object) -> object:
@@ -151,7 +152,11 @@ def test_mixed_platforms_keep_surface_calibration_scale_per_site(
 
     monkeypatch.setattr(get_data_module, "get_flux_data", lambda **kwargs: {})
     monkeypatch.setattr(get_data_module, "get_obs_data", fake_get_obs_data)
-    monkeypatch.setattr(get_data_module, "get_footprint_data", lambda **kwargs: object())
+    def fake_get_footprint_data(**kwargs: object) -> object:
+        footprint_modes.append(kwargs["time_resolved"] if isinstance(kwargs["time_resolved"], bool) else None)
+        return object()
+
+    monkeypatch.setattr(get_data_module, "get_footprint_data", fake_get_footprint_data)
     monkeypatch.setattr(get_data_module, "merged_scenario_data", fake_merged_scenario_data)
     monkeypatch.setattr(get_data_module, "add_obs_error", lambda *args, **kwargs: None)
 
@@ -164,6 +169,7 @@ def test_mixed_platforms_keep_surface_calibration_scale_per_site(
         end_date="2019-01-02",
         platform=["surface", "satellite"],
         max_level=[None, 17],
+        time_resolved=[False, True],
         emissions_name=["inventory"],
         use_bc=False,
     )
@@ -172,10 +178,46 @@ def test_mixed_platforms_keep_surface_calibration_scale_per_site(
         ("TAC", "surface", None),
         ("GOSAT-BRAZIL", "satellite", 17),
     ]
+    assert footprint_modes == [False, True]
     assert scenario_platforms == ["surface", "satellite"]
     assert result[0][".scales"] == {"TAC": "surface-scale"}
     assert result[0][".units"] == pytest.approx(1e-9)
     assert len(result) == 6
+
+
+@pytest.mark.parametrize("time_resolved", [False, True, None])
+def test_satellite_footprint_retrieval_forwards_temporal_mode(
+    monkeypatch: pytest.MonkeyPatch,
+    time_resolved: bool | None,
+) -> None:
+    """Satellite footprint search can select integrated or time-resolved data explicitly."""
+    captured: dict[str, object] = {}
+    expected = SimpleNamespace(data=xr.Dataset(coords={"time": [np.datetime64("2019-01-01")]}))
+
+    def fake_get_footprint(**kwargs: object) -> object:
+        captured.update(kwargs)
+        return expected
+
+    monkeypatch.setattr(getters_module, "get_footprint", fake_get_footprint)
+
+    result = getters_module.get_footprint_data(
+        site="GOSAT-BRAZIL",
+        domain="SOUTHAMERICA",
+        platform="satellite",
+        fp_height="column",
+        start_date="2019-01-01",
+        end_date="2019-01-02",
+        model="NAME",
+        met_model=None,
+        fp_species="inert",
+        time_resolved=time_resolved,
+        stores="test",
+    )
+
+    assert result is expected
+    assert captured["time_resolved"] is time_resolved
+    assert captured["satellite"] == "GOSAT"
+    assert captured["obs_region"] == "BRAZIL"
 
 
 def test_get_obs_data_routes_site_column_platform_to_column_retrieval(
@@ -310,6 +352,14 @@ def test_expand_site_option_rejects_misaligned_or_boolean_values() -> None:
         expand_site_option({"TAC": "value"}, nsites=1, name="option")
 
 
+def test_expand_site_boolean_option_broadcasts_and_validates() -> None:
+    """Footprint-mode selectors support scalar and site-aligned optional booleans."""
+    assert expand_site_boolean_option(True, nsites=2, name="time_resolved") == (True, True)
+    assert expand_site_boolean_option([False, None], nsites=2, name="time_resolved") == (False, None)
+    with pytest.raises(ValueError, match="booleans or None"):
+        expand_site_boolean_option([True, "false"], nsites=2, name="time_resolved")  # type: ignore[list-item]
+
+
 def test_data_processing_reuses_first_successful_observation_units(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -431,7 +481,7 @@ def test_merged_scenario_forwards_requested_output_units(
 
     result = scenario_module.merged_scenario_data(
         obs_data=object(),  # type: ignore[arg-type]
-        footprint_data=object(),  # type: ignore[arg-type]
+        footprint_data=SimpleNamespace(data=xr.Dataset({"fp": ("time", [1.0])})),  # type: ignore[arg-type]
         flux_dict={},
         output_units="ppb",
     )

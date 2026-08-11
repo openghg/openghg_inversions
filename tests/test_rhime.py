@@ -379,6 +379,7 @@ def _site_options(
     obs_data_level: list[str | None] | str | None = None,
     met_model: list[str | None] | str | None = None,
     max_level: list[int | None] | int | None = None,
+    time_resolved: list[bool | None] | bool | None = None,
 ) -> prep_module._SiteOptions:
     """Build normalized site-aligned options for private preparation tests."""
     return prep_module._SiteOptions.from_inputs(
@@ -391,6 +392,7 @@ def _site_options(
         obs_data_level=obs_data_level,
         met_model=met_model,
         max_level=max_level,
+        time_resolved=time_resolved,
     )
 
 
@@ -2417,6 +2419,9 @@ def test_rhime_runner_setup_builds_specs_before_preparation(tmp_path: Path) -> N
         "sample_kwargs": {"random_seed": 42},
         "posterior_predictive_kwargs": {"random_seed": 43},
         "builder_strategy": "compiled",
+        "platform": "satellite",
+        "max_level": 20,
+        "time_resolved": True,
     }
 
     setup = rhime_params.make_rhime_runner_setup(
@@ -2427,6 +2432,9 @@ def test_rhime_runner_setup_builds_specs_before_preparation(tmp_path: Path) -> N
 
     assert setup.data_args["flux_sources"] == ["ff-source", "gpp-source", "ter-source", "ocean-source"]
     assert setup.data_args["split_by_sectors"] is True
+    assert setup.data_args["platform"] == "satellite"
+    assert setup.data_args["max_level"] == 20
+    assert setup.data_args["time_resolved"] is True
     assert "sector_sources" not in setup.data_args
     assert "sigma_freq" not in setup.data_args
     assert setup.run_spec.sites == ("TAC",)
@@ -4169,6 +4177,7 @@ def test_prepare_merged_data_reload_keeps_all_options_aligned(
         obs_data_level=["level-tac", "level-mhd", "level-rgl"],
         met_model=["met-tac", "met-mhd", "met-rgl"],
         max_level=[10, 20, 30],
+        time_resolved=[True, False, None],
         reload_merged_data=True,
         merged_data_dir=str(tmp_path),
         use_bc=False,
@@ -4184,6 +4193,7 @@ def test_prepare_merged_data_reload_keeps_all_options_aligned(
         obs_data_level=["level-mhd"],
         met_model=["met-mhd"],
         max_level=[20],
+        time_resolved=[False],
     )
     assert set(merged.fp_all) == {"MHD", ".species", ".split_by_sectors", ".units"}
 
@@ -4201,6 +4211,7 @@ def test_site_options_direct_construction_enforces_immutable_alignment() -> None
             obs_data_level=(None, None),
             met_model=(None, None),
             max_level=(None, None),
+            time_resolved=(None, None),
         )
 
     options = _site_options(["TAC"], averaging_period=["1H"])
@@ -4253,6 +4264,7 @@ def test_prepare_merged_data_retrieval_keeps_requested_metadata_authoritative(
         obs_data_level=["level-tac", "level-mhd", "level-rgl"],
         met_model=["met-tac", "met-mhd", "met-rgl"],
         max_level=[10, 20, 30],
+        time_resolved=[False, True, False],
         use_bc=False,
     )
 
@@ -4266,6 +4278,7 @@ def test_prepare_merged_data_retrieval_keeps_requested_metadata_authoritative(
         obs_data_level=["level-tac", "level-rgl"],
         met_model=["met-tac", "met-rgl"],
         max_level=[10, 30],
+        time_resolved=[False, False],
     )
 
 

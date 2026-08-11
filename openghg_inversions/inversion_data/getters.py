@@ -305,6 +305,7 @@ def get_footprint_to_match(
     fp_height: str | None = None,
     store: str | None = None,
     averaging_period: str | None = None,
+    time_resolved: bool | None = None,
     tolerance: float = 10.0,
 ) -> FootprintData:
     site = obs.metadata["site"]
@@ -324,6 +325,7 @@ def get_footprint_to_match(
         "store": store,
         "start_date": start_date,
         "end_date": end_date,
+        "time_resolved": time_resolved,
     }
 
     if is_satellite_platform(platform):
@@ -349,6 +351,7 @@ def get_footprint_to_match(
             "store": store,
             "start_date": start_date,
             "end_date": end_date,
+            "time_resolved": time_resolved,
         }
 
     results = search_footprints(**fp_kwargs)
@@ -371,7 +374,8 @@ def get_footprint_to_match(
 
         fp_height_idx = np.argmin(np.abs(fp_heights - inlet))
         fp_height = fp_heights_strs[fp_height_idx]
-        return get_footprint(**fp_kwargs, inlet=fp_height)
+        selected_fp_kwargs = {**fp_kwargs, "inlet": fp_height}
+        return get_footprint(**selected_fp_kwargs)
 
     # get inlet values
     inlets = obs.data.inlet.values
@@ -394,7 +398,8 @@ def get_footprint_to_match(
     footprints = []
 
     for fp_height in matched_fp_heights:
-        fp_data = get_footprint(**fp_kwargs, inlet=fp_height)
+        selected_fp_kwargs = {**fp_kwargs, "inlet": fp_height}
+        fp_data = get_footprint(**selected_fp_kwargs)
         if fp_data.data.time.size > 0:
             footprints.append(fp_data)
 
@@ -441,6 +446,7 @@ def get_footprint_data(
     site: str | None = None,
     platform: str | None = None,
     averaging_period: str | None = None,
+    time_resolved: bool | None = None,
     obs_data: ObsData | None = None,
     stores: str | None | Iterable[str | None] = None,
 ) -> FootprintData | None:
@@ -471,6 +477,8 @@ def get_footprint_data(
                     store=store,
                     fp_species=fp_species,
                     averaging_period=averaging_period,
+                    platform=platform,
+                    time_resolved=time_resolved,
                 )
         elif is_satellite_platform(platform):
             # current convention: for satellite data, the site name
@@ -494,6 +502,7 @@ def get_footprint_data(
                     start_date=start_date,
                     end_date=end_date,
                     species=fp_species,
+                    time_resolved=time_resolved,
                     store=store,
                 )
         else:
@@ -509,6 +518,7 @@ def get_footprint_data(
                     end_date=end_date,
                     store=store,
                     species=fp_species,
+                    time_resolved=time_resolved,
                 )
     except SearchError:
         print(f"\nNo obs data found for {site} with inlet {fp_height} and in store {store}.")

@@ -22,6 +22,7 @@ from openghg.types import SearchError
 
 from openghg_inversions.flux_sanitization import FluxNonFiniteCheck
 from openghg_inversions.inversion_data._site_options import (
+    expand_site_boolean_option,
     expand_site_option,
     is_column_observation,
     is_column_platform,
@@ -174,6 +175,7 @@ def data_processing_surface_notracer(
     fp_model: str | None = None,
     fp_height: list[str | None | Literal["auto"]] | Literal["auto"] | str | None = None,
     fp_species: str | None = None,
+    time_resolved: Sequence[bool | None] | bool | None = None,
     emissions_name: list | None = None,
     use_bc: bool = True,
     bc_input: str | None = None,
@@ -222,6 +224,10 @@ def data_processing_surface_notracer(
         fp_model: LPDM used for generating footprints.
         fp_height: Inlet height used in footprints for corresponding sites.
         fp_species: Species name associated with footprints in the object store
+        time_resolved: Select integrated (``False``) or time-resolved
+            high-frequency (``True``) footprints, either as one value for all
+            sites or aligned to ``sites``. ``None`` leaves selection to the
+            OpenGHG search metadata.
         emissions_name: List of keywords args associated with emissions files in the object store.
             Corresponds to `source` in OpenGHG.
         use_bc: Option to include boundary conditions in model
@@ -279,6 +285,9 @@ def data_processing_surface_notracer(
     averaging_period = convert_to_list(averaging_period, nsites, "averaging_period")
     platform = convert_to_list(platform, nsites, "platform")
     max_level = convert_to_list(max_level, nsites, "max_level")
+    time_resolved = list(
+        expand_site_boolean_option(time_resolved, nsites=nsites, name="time_resolved")
+    )
     invalid_max_levels = [
         value
         for value in max_level
@@ -383,6 +392,7 @@ def data_processing_surface_notracer(
             met_model=met_model[i],
             fp_species=fp_species,
             averaging_period=averaging_period[i],
+            time_resolved=time_resolved[i],
             obs_data=site_data,
             stores=footprint_store,
         )
