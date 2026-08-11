@@ -27,6 +27,8 @@ openghg\_inversions
    openghg_inversions.convert
    openghg_inversions.filters
    openghg_inversions.model_error
+   openghg_inversions.native_covariance
    openghg_inversions.rhime
    openghg_inversions.serialization
+   openghg_inversions.source_covariance
    openghg_inversions.utils

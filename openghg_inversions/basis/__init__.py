@@ -27,6 +27,13 @@ from .prior_uncertainty import (
     calibrate_basis_prior_stdev,
     project_basis_prior_stdev,
 )
+from .covariance_products import (
+    NativeCovarianceProducts,
+    PreserveBucketProlongation,
+    RetainedProjection,
+    RetainedProjectionStrategy,
+    project_native_covariance,
+)
 
 __all__ = [
     "basis_functions_wrapper",
@@ -40,9 +47,14 @@ __all__ = [
     "load_intem_outer_regions",
     "MEAN_TOTAL_TARGET_STATISTIC",
     "MEDIAN_RELATIVE_TARGET_STATISTIC",
+    "NativeCovarianceProducts",
+    "PreserveBucketProlongation",
+    "RetainedProjection",
+    "RetainedProjectionStrategy",
     "make_basis_functions",
     "paired_abs_response_weights",
     "project_basis_prior_stdev",
+    "project_native_covariance",
     "quadtree_basis_from_weights",
     "quadtree_basis_function",
     "quadtreebasisfunction",

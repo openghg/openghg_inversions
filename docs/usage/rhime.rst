@@ -740,6 +740,10 @@ than 100,000 cells require a structured covariance representation, such as a
 Kronecker product, whose projected products can be evaluated without realizing
 the full native covariance.
 
+The low-level :doc:`native_covariance` API supplies this structured native
+covariance action and its coherent projected product blocks. It is a
+preparation interface and is not yet connected to the RHIME likelihood.
+
 This component does **not** perform the native-to-reduced uncertainty
 transformation or remove state coordinates. That work must transform the prior
 uncertainty, forward operator, and aggregation error together. The coherent

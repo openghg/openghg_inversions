@@ -9,3 +9,4 @@ Using OpenGHG Inversions
    getting_started
    rhime
    concrete_rhime_model
+   native_covariance

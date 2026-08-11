@@ -2,8 +2,11 @@
 
 Design goals
 ------------
-1) Separate the *partition/aggregation operator* (basis functions) from any *flux weighting*.
-   - The basis operator represents a linear map from a grid (lat/lon) to a reduced state space.
+1) Separate the *bucket prolongation* (basis functions) from any *flux weighting*.
+   - For one source, ``basis_matrix`` is ``U_bucket`` with shape native-grid by
+     retained-state. A gathered multisource matrix is the spatial membership
+     template from which the source-native ``U_bucket`` is expanded. Neither
+     transpose is automatically the retained restriction ``Pi``.
    - Flux weighting (multiplying by flux on the grid, interpolation to maps, covariance transforms)
      is handled by ``FluxWeightedBasis`` so that:
        * sensitivity(fp_x_flux) does not require flux (since fp_x_flux is already precomputed),
@@ -162,7 +165,8 @@ class BasisOperator(ABC):
 
     Concrete subclasses must define:
     - meta (grid dims + state dim)
-    - basis_matrix: one-hot/dummy matrix with dims (*grid_dims, state_dim)
+    - basis_matrix: bucket prolongation ``U_bucket`` with dims
+      (*grid_dims, state_dim)
     - to_datatree / from_datatree
 
     The default sensitivity implementation assumes fp_x_flux has the grid dims and
@@ -184,17 +188,21 @@ class BasisOperator(ABC):
     @property
     @abstractmethod
     def basis_matrix(self) -> xr.DataArray:
-        """Dummy matrix mapping grid -> state.
+        """Return the bucket prolongation ``U_bucket`` from state to grid.
 
         Expected dims: (*grid_dims, state_dim)
         (state_dim may be a MultiIndex coordinate)
+
+        Multiplying this matrix by a state vector reconstructs a native scaling
+        field. Although its transpose has the shape of a restriction, it is not
+        generally the covariance-compatible retained restriction ``Pi``.
         """
         raise NotImplementedError
 
     def sensitivity(self, fp_x_flux: xr.DataArray, fillna: bool = True) -> xr.DataArray:
         """Computes the sensitivity matrix ("H") by dotting over the grid.
 
-        This implements the common bucket-basis reduction:
+        This implements the common bucket-basis forward operator ``H U_bucket``:
 
         - `fp_x_flux` is a gridded quantity with dimensions that include
           `meta.grid_dims` (typically `lat` and `lon`) and usually a `time` dimension.
@@ -521,7 +529,11 @@ class BucketBasisOperator(BasisOperator):
 
     @property
     def basis_matrix(self) -> xr.DataArray:
-        """Basis matrix."""
+        """Return ``U_bucket``, mapping retained scalings to native scalings.
+
+        The dimensions are native grid by retained state. Its transpose is not
+        generally the compatible retained restriction ``Pi``.
+        """
         return self._basis_matrix
 
     @property
@@ -756,7 +768,13 @@ class MultiSourceBucketBasisOperator(BasisOperator):
 
     @property
     def basis_matrix(self) -> xr.DataArray:
-        """Basis matrix."""
+        """Return the gathered spatial template for multisource ``U_bucket``.
+
+        The dimensions are spatial grid by retained state; source identity is
+        carried by the ragged state coordinate. Projection code expands an
+        explicit source-native dimension and zeros cross-source columns. This
+        template's transpose is not the compatible retained restriction ``Pi``.
+        """
         return self._basis_matrix
 
     @property
