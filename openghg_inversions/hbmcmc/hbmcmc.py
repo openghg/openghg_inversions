@@ -640,7 +640,6 @@ def fixedbasisMCMC(
     fp_model: str | None = None,  # Changed to none. When "NAME" specified FPs are not found
     fp_height: Sequence[str | None] | str | None = None,
     fp_species: str | None = None,
-    time_resolved: Sequence[bool | None] | bool | None = None,
     emissions_name: list[str] | None = None,
     inlet: Sequence[str | slice | None] | str | None = None,
     instrument: Sequence[str | None] | str | None = None,
@@ -702,6 +701,7 @@ def fixedbasisMCMC(
     paris_postprocessing_kwargs: dict | None = None,
     power: dict | float = 1.99,
     return_basis_objects: bool = False,
+    time_resolved: Sequence[bool | None] | bool | None = None,
     **kwargs,
 ) -> xr.Dataset | dict | InversionOutput:
     """Script to run hierarchical Bayesian MCMC (RHIME) for inference of emissions.
