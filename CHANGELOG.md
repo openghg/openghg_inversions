@@ -4,6 +4,11 @@
 
 ## Code changes
 
+- Added experimental static borrowed-reference markers for NumPy arrays and
+  xarray data arrays. The markers preserve runtime identity and lazy backing
+  while allowing Pyright and Mypy to diagnose selected in-place mutations;
+  they deliberately do not claim runtime immutability. [OPE-38](https://linear.app/openghg-inversions/issue/OPE-38/add-experimental-borrowed-numpyxarray-type-markers)
+
 - Separated basis-group constraints from the algorithms applied within each
   group. The constrained module now owns masks, target allocation, per-group
   dispatch, and global relabelling; partition geometry, steps, policies, and

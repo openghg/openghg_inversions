@@ -30,6 +30,7 @@ default full set:
 
 ```bash
 tox -e py310-openghgCur -- tests/test_array_ops.py
+tox -e borrowed-types
 tox -e lint
 ```
 
