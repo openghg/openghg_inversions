@@ -188,10 +188,18 @@ def _sparse_dask_to_dense(da: DaskArray) -> DaskArray:
 
 
 def to_dense(da: xr.DataArray) -> xr.DataArray:
-    """Convert sparse to numpy.
+    """Convert sparse array payloads to dense NumPy arrays.
 
-    If the data array has chunks, these are preserved, but the underlying arrays are converted.
-    Does nothing if chunks are already numpy.
+    For an eager sparse input, this returns an eager NumPy-backed DataArray. For
+    a Dask array with sparse chunks, the outer Dask collection and its chunking
+    are preserved while a lazy block operation converts each chunk to NumPy when
+    executed. An array whose Dask chunks are already dense is returned unchanged.
+
+    Args:
+        da: DataArray whose eager data or Dask chunk payloads may be sparse.
+
+    Returns:
+        DataArray with dense NumPy data or lazily densified Dask chunks.
     """
     if not isinstance(da.data, DaskArray):  # type: ignore
         return da.as_numpy()
