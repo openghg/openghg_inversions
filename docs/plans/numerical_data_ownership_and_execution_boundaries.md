@@ -212,9 +212,29 @@ Python's standard type qualifiers cannot express a deeply read-only
 Use `Final` when non-rebinding is itself useful, not as evidence of array
 immutability. Prefer a narrow behavioral interface over returning a cache-
 sensitive array. Where returning an xarray object is useful, the borrowed-data
-contract, review, and focused tests are more honest than a misleading type
-annotation. A read-only protocol is worth considering only for a genuinely
-small project interface, not as a shadow type for all of xarray.
+contract, review, and focused tests remain the primary safeguards.
+
+`openghg_inversions.borrowed` provides an experimental, type-checker-only
+marker for the narrower case where returning the real NumPy or xarray object is
+useful but mutation through that reference is unsupported. `borrow(value)` is
+an identity operation at runtime: it does not wrap, copy, compute, persist, or
+make the value immutable. Its phantom return types make selected direct
+mutations fail static checking and retain the marker through some aliases.
+Callers can explicitly relinquish the marker by taking a deep copy. This is a
+static capability change, not a promise that a lazy backend has become an
+independent concrete buffer; the snapshot and execution distinctions below
+still apply.
+
+This marker strengthens communication but is not a sound ownership type.
+Existing aliases, untyped code, `Any`, casts, backend-specific accessors, and
+ordinary typed NumPy/xarray parameters can erase the marker. Mutating helper
+APIs such as NumPy's `out=` and operations whose upstream stubs erase
+subclasses can also bypass it. Some materializing operations can instead
+retain the marker conservatively. The module is checked within this repository
+but is not yet advertised as a package-wide PEP 561 typing contract. Keep the
+ordinary ownership docstring, do not use the marker as evidence of runtime
+immutability, and extend its shadow API only when a real borrowed return needs
+the additional coverage.
 
 ### Snapshot and export methods
 
