@@ -305,8 +305,8 @@ def get_footprint_to_match(
     fp_height: str | None = None,
     store: str | None = None,
     averaging_period: str | None = None,
-    time_resolved: bool | None = None,
     tolerance: float = 10.0,
+    time_resolved: bool | None = None,
 ) -> FootprintData:
     site = obs.metadata["site"]
     species = fp_species or obs.metadata.get("species", "inert")
