@@ -751,9 +751,19 @@ dimensions are summed over.</p></li>
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.array_ops.to_dense">
 <span class="sig-prename descclassname"><span class="pre">openghg_inversions.array_ops.</span></span><span class="sig-name descname"><span class="pre">to_dense</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">da</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></span><a class="headerlink" href="#openghg_inversions.array_ops.to_dense" title="Link to this definition">#</a></dt>
-<dd><p>Convert sparse to numpy.</p>
-<p>If the data array has chunks, these are preserved, but the underlying arrays are converted.
-Does nothing if chunks are already numpy.</p>
+<dd><p>Convert sparse array payloads to dense NumPy arrays.</p>
+<p>For an eager sparse input, this returns an eager NumPy-backed DataArray. For
+a Dask array with sparse chunks, the outer Dask collection and its chunking
+are preserved while a lazy block operation converts each chunk to NumPy when
+executed. An array whose Dask chunks are already dense is returned unchanged.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>da</strong> – DataArray whose eager data or Dask chunk payloads may be sparse.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>DataArray with dense NumPy data or lazily densified Dask chunks.</p>
+</dd>
+</dl>
 </dd></dl>
 
 </section>
