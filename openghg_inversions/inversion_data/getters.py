@@ -446,9 +446,9 @@ def get_footprint_data(
     site: str | None = None,
     platform: str | None = None,
     averaging_period: str | None = None,
-    time_resolved: bool | None = None,
     obs_data: ObsData | None = None,
     stores: str | None | Iterable[str | None] = None,
+    time_resolved: bool | None = None,
 ) -> FootprintData | None:
     """Try to retrieve Footprint data from given stores.
 
