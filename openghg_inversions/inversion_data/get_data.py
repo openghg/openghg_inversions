@@ -189,6 +189,7 @@ def data_processing_surface_notracer(
     merged_data_name: str | None = None,
     merged_data_dir: str | None = None,
     output_name: str | None = None,
+    time_resolved: Sequence[bool | None] | bool | None = None,
     flux_non_finite_check: FluxNonFiniteCheck = "lazy",
 ) -> tuple[dict, list, list, list, list, list]:
     """Retrieve and prepare surface or column datasets from OpenGHG stores.
