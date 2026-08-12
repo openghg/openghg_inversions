@@ -21,6 +21,7 @@ extensions = [
     "sphinx.ext.autosummary",
     "sphinx.ext.autosectionlabel",
     "sphinx.ext.mathjax",
+    "jupyter_sphinx",
 ]
 
 intersphinx_mapping = {
@@ -35,6 +36,7 @@ intersphinx_mapping = {
 }
 
 autosectionlabel_prefix_document = True
+jupyter_execute_kwargs = {"timeout": 120, "allow_errors": False}
 
 # napoleon settings (for google docstring style)
 napoleon_google_docstring = True

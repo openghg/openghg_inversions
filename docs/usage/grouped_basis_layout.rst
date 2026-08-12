@@ -11,6 +11,13 @@ This is currently a lower-level Python construction API.  Import it from
 or loaded the partition label arrays.  The implementation is eager and
 in-memory, and it does not infer a remainder partition.
 
+The cells on this page are executed when the documentation is built.  You can
+:jupyter-download-notebook:`download them as a Jupyter notebook <grouped_basis_layout>`
+to modify and run locally.
+
+.. jupyter-kernel:: python3
+   :id: grouped_basis_layout
+
 Build an inner/outer layout
 ---------------------------
 
@@ -19,32 +26,47 @@ negative, and NaN values mean that a cell is outside that partition.  The two
 arrays below are disjoint, and the explicitly named remainder covers every
 cell outside the inner partition.
 
-.. literalinclude:: ../examples/grouped_basis_layout.py
-   :language: python
-   :start-after: # start-grid
-   :end-before: # end-grid
+.. jupyter-execute::
 
-The combined map has raw ``basis_label`` values 1, 2, and 3::
+   import numpy as np
+   import xarray as xr
 
-   >>> result.basis_flat.values
-   array([[1, 2],
-          [3, 3]])
+   from openghg_inversions.basis.basis_functions import BasisFunctions
+   from openghg_inversions.basis.layout import BasisLayout, BasisPartition
 
-The metadata is keyed by those raw labels before an operator applies its final
-state-label policy.  Selecting only the small state-aligned variables keeps
-the spatial coordinates out of the display::
 
-   >>> result.state_metadata[["basis_group", "basis_partition", "region_in_partition"]]
-   <xarray.Dataset> Size: 96B
-   Dimensions:              (basis_label: 3)
-   Coordinates:
-     * basis_label          (basis_label) int64 24B 1 2 3
-   Data variables:
-       basis_group          (basis_label) object 24B 'inner' 'inner' 'outer'
-       basis_partition      (basis_label) object 24B 'generated_inner' ...
-       region_in_partition  (basis_label) int64 24B 1 2 1
-   Attributes:
-       state_dim:  region
+   coords = {"lat": [51.0, 52.0], "lon": [-2.0, -1.0]}
+   inner_labels = xr.DataArray(
+       [[1, 2], [0, 0]],
+       dims=("lat", "lon"),
+       coords=coords,
+       name="inner_labels",
+   )
+   remainder_labels = xr.DataArray(
+       [[0, 0], [1, 1]],
+       dims=("lat", "lon"),
+       coords=coords,
+       name="remainder_labels",
+   )
+
+   inner = BasisPartition(name="generated_inner", labels=inner_labels, group="inner")
+   remainder = BasisPartition(
+       name="explicit_remainder",
+       labels=remainder_labels,
+       group="outer",
+   )
+   layout = BasisLayout(partitions=(inner, remainder), state_dim="region")
+   result = layout.to_flat_basis()
+   result.basis_flat.values
+
+The combined map has raw ``basis_label`` values 1, 2, and 3.  The metadata is
+keyed by those raw labels before an operator applies its final state-label
+policy.  Selecting only the small state-aligned variables keeps the spatial
+coordinates out of the display.
+
+.. jupyter-execute::
+
+   result.state_metadata[["basis_group", "basis_partition", "region_in_partition"]]
 
 The exact byte counts in an xarray display can vary by platform; the important
 contract is the coordinate values and their order.
@@ -53,67 +75,74 @@ Remainders are explicit
 -----------------------
 
 Leaving out the remainder is an error rather than a request for
-``BasisLayout`` to invent one:
+``BasisLayout`` to invent one.
 
-.. literalinclude:: ../examples/grouped_basis_layout.py
-   :language: python
-   :start-after: # start-uncovered
-   :end-before: # end-uncovered
+.. jupyter-execute::
 
-::
-
-   >>> uncovered_error
-   'BasisLayout partitions leave 2 grid cells unmapped.'
+   try:
+       BasisLayout(partitions=(inner,), state_dim="region").to_flat_basis()
+   except ValueError as error:
+       uncovered_error = str(error)
+       print(uncovered_error)
 
 Attach the metadata to an operator
 ----------------------------------
 
 Pass both outputs to ``BasisFunctions.from_flat_basis``.  The
-``state_metadata`` option is forwarded to ``BucketBasisOperator``:
+``state_metadata`` option is forwarded to ``BucketBasisOperator``.
 
-.. literalinclude:: ../examples/grouped_basis_layout.py
-   :language: python
-   :start-after: # start-operator
-   :end-before: # end-operator
+.. jupyter-execute::
+
+   flux = xr.DataArray(
+       np.ones((2, 2, 1)),
+       dims=("lat", "lon", "time"),
+       coords={**coords, "time": ["2020-01-01"]},
+       name="flux",
+   )
+   basis_functions = BasisFunctions.from_flat_basis(
+       result.basis_flat,
+       flux,
+       region_labels="range0",
+       operator_kwargs={
+           "state_dim": "region",
+           "state_metadata": result.state_metadata,
+       },
+   )
+   matrix = basis_functions.operator.basis_matrix
+   print("Raw basis labels:", result.state_metadata.basis_label.values)
+   print("Operator state labels:", matrix.region.values)
+   matrix.coords.to_dataset()[
+       ["basis_group", "basis_partition", "region_in_partition"]
+   ].compute()
 
 Here the raw basis labels are ``[1, 2, 3]``, while ``region_labels="range0"``
 makes the final operator state coordinate ``[0, 1, 2]``.  Metadata follows the
-states through that relabelling::
-
-   >>> result.state_metadata.basis_label.values
-   array([1, 2, 3])
-   >>> matrix.region.values
-   array([0, 1, 2])
-   >>> matrix.coords.to_dataset()[["basis_group", "basis_partition", "region_in_partition"]].compute()
-   <xarray.Dataset> Size: 96B
-   Dimensions:              (region: 3)
-   Coordinates:
-       basis_group          (region) object 24B 'inner' 'inner' 'outer'
-       basis_partition      (region) object 24B 'generated_inner' ...
-       region_in_partition  (region) int64 24B 1 2 1
-     * region               (region) int64 24B 0 1 2
-   Data variables:
-       *empty*
+states through that relabelling.
 
 Select states by group
 ----------------------
 
 Because the grouping fields are coordinates on the state dimension, normal
-xarray operations can select an inner or outer subset:
+xarray operations can select an inner or outer subset.
 
-.. literalinclude:: ../examples/grouped_basis_layout.py
-   :language: python
-   :start-after: # start-selection
-   :end-before: # end-selection
+.. jupyter-execute::
 
-::
-
-   >>> inner_state.region.values
-   array([0, 1])
-   >>> outer_state.region.values
-   array([2])
-   >>> outer_state.basis_partition.item()
-   'explicit_remainder'
+   state = xr.DataArray(
+       [0.9, 1.1, 1.0],
+       dims="region",
+       coords={
+           "region": matrix.region.values,
+           "basis_group": ("region", matrix.basis_group.values),
+           "basis_partition": ("region", matrix.basis_partition.values),
+           "region_in_partition": ("region", matrix.region_in_partition.values),
+       },
+       name="scaling",
+   )
+   inner_state = state.where(state.basis_group == "inner", drop=True)
+   outer_state = state.where(state.basis_group == "outer", drop=True)
+   print("Inner states:", inner_state.region.values)
+   print("Outer states:", outer_state.region.values)
+   print("Outer partition:", outer_state.basis_partition.item())
 
 Round-trip preservation
 -----------------------
@@ -122,19 +151,17 @@ Round-trip preservation
 representation.  ``save`` and ``load`` use the same representation for NetCDF
 or Zarr artifacts.
 
-.. literalinclude:: ../examples/grouped_basis_layout.py
-   :language: python
-   :start-after: # start-roundtrip
-   :end-before: # end-roundtrip
+.. jupyter-execute::
 
-::
-
-   >>> restored_matrix.region.equals(matrix.region)
-   True
-   >>> restored_matrix.basis_group.equals(matrix.basis_group)
-   True
-   >>> restored_matrix.region_in_partition.equals(matrix.region_in_partition)
-   True
+   restored = BasisFunctions.from_datatree(basis_functions.to_datatree())
+   restored_matrix = restored.operator.basis_matrix
+   {
+       "region": restored_matrix.region.equals(matrix.region),
+       "basis_group": restored_matrix.basis_group.equals(matrix.basis_group),
+       "region_in_partition": restored_matrix.region_in_partition.equals(
+           matrix.region_in_partition
+       ),
+   }
 
 Stability boundary
 ------------------
