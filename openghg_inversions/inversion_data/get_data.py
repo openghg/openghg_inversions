@@ -175,7 +175,6 @@ def data_processing_surface_notracer(
     fp_model: str | None = None,
     fp_height: list[str | None | Literal["auto"]] | Literal["auto"] | str | None = None,
     fp_species: str | None = None,
-    time_resolved: Sequence[bool | None] | bool | None = None,
     emissions_name: list | None = None,
     use_bc: bool = True,
     bc_input: str | None = None,
