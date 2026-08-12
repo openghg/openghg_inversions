@@ -1,10 +1,16 @@
 Grouped basis and state metadata
 ================================
 
-``BasisLayout`` assembles disjoint, partition-local label maps into the one
-flat basis consumed by a bucket operator.  Alongside that flat map it produces
-stable semantic metadata for every state: ``basis_group``,
-``basis_partition``, and ``region_in_partition``.
+Basis functions can be constructed separately for different parts of the full
+domain—for example, a detailed inner region and a coarser outer region—and
+then combined into a single basis array.  The combined array remembers which
+group and partition each basis region came from, so states can still be
+selected and analysed by group after they have been assembled.
+
+``BasisLayout`` provides this assembly step.  It combines disjoint,
+partition-local label maps into the one flat basis consumed by a bucket
+operator.  Alongside that flat map it produces the stable state metadata
+``basis_group``, ``basis_partition``, and ``region_in_partition``.
 
 This is currently a lower-level Python construction API.  Import it from
 ``openghg_inversions.basis.layout`` when an application has already generated
