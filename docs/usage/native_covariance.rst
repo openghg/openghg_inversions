@@ -23,9 +23,10 @@ The classes have the following distinct roles.
    * - ``BasisOperator``
      - Owns basis geometry and retained-state labels. For a single source,
        ``basis_matrix`` is the bucket prolongation :math:`U_{\mathrm{bucket}}`.
-       A gathered multisource matrix is a spatial template that the projection
-       code expands onto an explicit native source dimension. In both cases,
-       the transpose does not define the retained restriction :math:`\Pi`.
+       A gathered multisource matrix is a spatial template; the basis-side
+       ``native_prolongation`` adapter expands it onto a canonical explicit
+       native source dimension. In both cases, the transpose does not define
+       the retained restriction :math:`\Pi`.
    * - ``InvertibleNativeCovarianceAction``
      - Structural interface for applying :math:`B` and solving systems in
        :math:`B` without constructing a dense native covariance matrix.
@@ -54,9 +55,9 @@ The classes have the following distinct roles.
      - Validates and combines :math:`H`, :math:`B`, basis geometry, and a
        projection strategy.
    * - ``NativeCovarianceProducts``
-     - Frozen result and serialization dataclass containing the labelled
-       product blocks. Its contained xarray objects and provenance mapping
-       remain mutable.
+     - Frozen in-memory result dataclass containing the labelled product
+       blocks. Its contained xarray objects remain mutable. Durable identity,
+       schema design, and persistence are deferred to OPE-40.
 
 The data flow is:
 
@@ -167,26 +168,26 @@ complete artifact. Arbitrary reporting-function products :math:`Q`,
 low-rank-plus-diagonal numerical views, and likelihood integration are also
 outside this API.
 
-Identity and serialization
---------------------------
+Units and persistence boundary
+------------------------------
 
-``source_content_identity`` binds the shared :math:`B/H/\Pi/U_*` source
-content independently of the requested dense or diagonal observation product.
-``observation_covariance_view`` records that selector, and ``view_identity``
-is derived from it and the source identity. These values bind provenance and
-shared metadata; they are not load-time integrity checksums. Deserialization
-does not rehash product values to detect numeric tampering. The later
-coherent-reduction artifact can reference the OPE-17 source identity, but
-needs its own identity for the additional prior, affine-forward, residual,
-and reconstruction content.
+Native and retained scaling perturbations are dimensionless. Accordingly,
+:math:`\Pi`, :math:`U_*`, and :math:`C_\alpha` carry units ``1``;
+:math:`H U_*` and :math:`H B\Pi^\mathsf{T}` inherit the sensitivity units;
+and :math:`H B H^\mathsf{T}` (including its diagonal view) carries their
+square. This low-level result is in-memory only. OPE-40 owns durable identities,
+typed coordinate persistence, schema compatibility, and DataTree/NetCDF I/O.
 
 Memory and execution boundary
 -----------------------------
 
 The structured covariance action stores axis factors rather than dense native
-:math:`B`, but this API is otherwise eager. It materializes the native
-sensitivity, bucket prolongation, restriction/prolongation, reduced products,
-and requested observation product. For native size :math:`N`, retained size
+:math:`B`, but the numerical product kernel is otherwise eager. The upstream
+pipeline must materialize the related sensitivity and canonical basis
+prolongation together before calling it; lazy inputs are rejected rather than
+computed implicitly. Custom restrictions may remain sparse or Dask-backed and
+are densified only in explicit retained-state right-hand-side blocks. For
+native size :math:`N`, retained size
 :math:`d`, and observation count :math:`M`, important dense storage includes
 :math:`M N` for :math:`H`, :math:`N d` for each native-by-retained array,
 :math:`d^2` for retained products, and either :math:`M^2` for dense
@@ -195,6 +196,7 @@ and requested observation product. For native size :math:`N`, retained size
 ``observation_batch_size`` is an eager execution setting, not an xarray or
 Dask chunk size. Each batch applies :math:`B` to a group of columns from
 :math:`H^\mathsf{T}`, limiting the temporary :math:`N`-by-batch working set.
+The same setting bounds explicit custom-restriction right-hand-side blocks.
 Dense batches still fill a preallocated complete quadratic observation
 covariance. Changing the batch size changes execution only, not the scientific
 inputs or requested numerical form.

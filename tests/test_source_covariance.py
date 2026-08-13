@@ -1,19 +1,15 @@
 """Tests for ordered independent-source native covariance blocks."""
 
 from dataclasses import is_dataclass
-from pathlib import Path
 from typing import cast
 
 import numpy as np
-import pandas as pd
 import pytest
 import xarray as xr
 
-from openghg_inversions.basis.covariance_products import (
-    NativeCovarianceProducts,
-    project_native_covariance,
-)
+from openghg_inversions.basis.covariance_products import project_native_covariance
 from openghg_inversions.basis.operators import MultiSourceBucketBasisOperator
+from openghg_inversions.array_ops import to_dense
 from openghg_inversions.native_covariance import SeparableExponentialCovariance
 from openghg_inversions.source_covariance import IndependentSourceCovariance
 
@@ -312,9 +308,16 @@ def test_gathered_source_products_match_block_diagonal_dense_oracle() -> None:
     """Ragged source states keep insertion order and zero cross-source covariance."""
     covariance, native_sensitivity = _problem()
     basis = _basis(covariance)
+    basis_prolongation = to_dense(
+        basis.native_prolongation(
+            native_sensitivity,
+            native_dims=covariance.native_dims,
+        )
+    ).compute()
     products = project_native_covariance(
         covariance=covariance,
-        basis_operator=basis,
+        basis_prolongation=basis_prolongation,
+        state_dim=basis.meta.state_dim,
         native_sensitivity=native_sensitivity,
         observation_dim="observation",
         observation_batch_size=1,
@@ -349,72 +352,40 @@ def test_gathered_source_products_match_block_diagonal_dense_oracle() -> None:
     np.testing.assert_allclose(pi @ u, np.eye(3), atol=1e-11)
 
 
-def test_gathered_source_product_datatree_persists_multiindex(tmp_path: Path) -> None:
-    """Ragged state labels and covariance configuration survive NetCDF persistence."""
+def test_multisource_native_prolongation_preserves_native_auxiliary_coordinates() -> None:
+    """Canonical gathered U retains source, spatial, state, and scalar metadata."""
     covariance, native_sensitivity = _problem()
-    observation_index = pd.MultiIndex.from_arrays(
-        [["observed-a", "observed-b", "observed-c"], [1, 2, 3]],
-        names=("source", "observation_id"),
+    basis = _basis(covariance)
+    native_layout = native_sensitivity.assign_coords(
+        inventory=("native_source", ["EDGAR", "GFAS"]),
+        cell_area=(
+            ("native_source", "lat", "lon"),
+            np.arange(8).reshape(2, 2, 2),
+        ),
+        grid_mapping="latitude_longitude",
     )
-    native_sensitivity = native_sensitivity.drop_indexes("observation").drop_vars("observation")
-    native_sensitivity = native_sensitivity.assign_coords(
-        xr.Coordinates.from_pandas_multiindex(observation_index, "observation")
-    )
-    native_sensitivity = native_sensitivity.assign_coords(
-        source_cov=("observation", ["aux-a", "aux-b", "aux-c"])
-    )
-    products = project_native_covariance(
-        covariance=covariance,
-        basis_operator=_basis(covariance),
-        native_sensitivity=native_sensitivity,
-        observation_dim="observation",
-    )
-    path = tmp_path / "source-products.nc"
 
-    products.to_datatree().to_netcdf(path, engine="h5netcdf")
-    with xr.open_datatree(path, engine="h5netcdf") as stored:
-        restored = NativeCovarianceProducts.from_datatree(stored.load())
+    prolongation = basis.native_prolongation(
+        native_layout,
+        native_dims=covariance.native_dims,
+    )
 
-    assert restored.state_covariance.coords["source"].values.tolist() == [
+    assert prolongation.dims == ("native_source", "lat", "lon", "state")
+    xr.testing.assert_identical(prolongation.coords["inventory"], native_layout.coords["inventory"])
+    xr.testing.assert_identical(prolongation.coords["cell_area"], native_layout.coords["cell_area"])
+    assert prolongation.coords["grid_mapping"].item() == "latitude_longitude"
+    assert prolongation.coords["source"].values.tolist() == [
         "z-source",
         "z-source",
         "a-source",
     ]
-    assert restored.covariance_configuration is not None
-    assert products.covariance_configuration is not None
-    xr.testing.assert_identical(restored.covariance_configuration, products.covariance_configuration)
-    xr.testing.assert_allclose(restored.state_covariance, products.state_covariance)
-    np.testing.assert_array_equal(
-        restored.native_observation_covariance.coords["observation_source"],
-        native_sensitivity.coords["source"],
-    )
-    np.testing.assert_array_equal(
-        restored.native_observation_covariance.coords["observation_source_cov"],
-        native_sensitivity.coords["source_cov"],
-    )
-    assert restored.native_observation_covariance.indexes["observation"].names == [
-        "observation_source",
-        "observation_id",
-    ]
 
 
-def test_gathered_source_product_requires_multiindex_restoration_metadata() -> None:
-    """Expanded ragged-state coordinates cannot load silently as a plain index."""
-    from openghg_inversions.serialization import MULTIINDEX_DIMS_ATTR
-
+def test_multisource_native_prolongation_requires_canonical_source_order() -> None:
+    """Canonical gathered U rejects a native layout with reordered source labels."""
     covariance, native_sensitivity = _problem()
-    tree = project_native_covariance(
-        covariance=covariance,
-        basis_operator=_basis(covariance),
-        native_sensitivity=native_sensitivity,
-        observation_dim="observation",
-    ).to_datatree()
-    root = tree.to_dataset(inherit=False).copy(deep=True)
-    root.attrs.pop(MULTIINDEX_DIMS_ATTR)
-    malformed = xr.DataTree(root)
-    malformed["covariance_configuration"] = xr.DataTree(
-        cast(xr.DataTree, tree["covariance_configuration"]).to_dataset(inherit=False).copy(deep=True)
-    )
+    basis = _basis(covariance)
+    reordered = native_sensitivity.isel(native_source=[1, 0])
 
-    with pytest.raises(ValueError, match="restore MultiIndex"):
-        NativeCovarianceProducts.from_datatree(malformed)
+    with pytest.raises(ValueError, match="source|coordinate|align|order"):
+        basis.native_prolongation(reordered, native_dims=covariance.native_dims)

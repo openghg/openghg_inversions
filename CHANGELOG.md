@@ -14,11 +14,12 @@
   new preparation API
   supports separable spatial kernels, class-blocked and independent-source
   covariance, covariance-compatible restriction/prolongation operators,
-  dense or diagonal observation covariance products, reproducible
-  serialization, and explicit documentation of the `Pi`, `U_*`, and
-  `U_bucket` roles. This is the low-level native covariance foundation tracked
-  by Linear OPE-17; centred coherent reduction, unresolved covariance, and
-  likelihood integration are follow-up work.
+  dense or diagonal observation covariance products, a basis-owned canonical
+  multisource expansion, explicit eager execution boundaries, and a units
+  contract for dimensionless scaling states. Product persistence and durable
+  identities are deferred to OPE-40. This is the low-level native covariance
+  foundation tracked by Linear OPE-17; centred coherent reduction, unresolved
+  covariance, and likelihood integration are follow-up work.
 
 - Separated basis-group constraints from the algorithms applied within each
   group. The constrained module now owns masks, target allocation, per-group
