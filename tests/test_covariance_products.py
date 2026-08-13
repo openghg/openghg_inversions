@@ -1,8 +1,4 @@
-"""Test covariance projection, identities, eager batching, labels, and persistence."""
-
-import json
-from pathlib import Path
-from typing import cast
+"""Test labelled covariance projection, eager batching, and numerical contracts."""
 
 import numpy as np
 import pandas as pd
@@ -16,7 +12,8 @@ from openghg_inversions.basis.covariance_products import (
     RetainedProjectionStrategy,
     project_native_covariance,
 )
-from openghg_inversions.basis.operators import BasisMeta, BucketBasisOperator
+from openghg_inversions.array_ops import to_dense
+from openghg_inversions.basis.operators import BucketBasisOperator
 from openghg_inversions.native_covariance import SeparableExponentialCovariance
 
 
@@ -94,9 +91,16 @@ def _project(
     **options,
 ) -> NativeCovarianceProducts:
     """Project the shared problem with its canonical observation dimension."""
+    basis_prolongation = to_dense(
+        basis_operator.native_prolongation(
+            native_sensitivity,
+            native_dims=covariance.native_dims,
+        )
+    ).compute()
     return project_native_covariance(
         covariance=covariance,
-        basis_operator=basis_operator,
+        basis_prolongation=basis_prolongation,
+        state_dim=basis_operator.meta.state_dim,
         native_sensitivity=native_sensitivity,
         observation_dim="observation",
         **options,
@@ -110,7 +114,7 @@ def test_preserve_bucket_strategy_derives_compatible_restriction() -> None:
 
     projection = PreserveBucketProlongation().projection(
         covariance,
-        basis_operator.basis_matrix,
+        to_dense(basis_operator.basis_matrix).compute(),
         native_dims=covariance.native_dims,
         state_dim="state",
     )
@@ -186,8 +190,8 @@ def test_covariance_natural_prolongation_is_the_bucket_prolongation() -> None:
     np.testing.assert_allclose(u_star, u, rtol=1e-11, atol=1e-11)
 
 
-def test_dense_and_diagonal_products_have_stable_source_and_derived_view_identities() -> None:
-    """Batching preserves identities while dense/diagonal views share only source identity."""
+def test_dense_and_diagonal_products_are_invariant_to_rhs_batching() -> None:
+    """RHS batching preserves dense products and the diagonal view."""
     covariance, basis_operator, h, _ = _problem()
 
     full_batch = _project(
@@ -230,10 +234,6 @@ def test_dense_and_diagonal_products_have_stable_source_and_derived_view_identit
         ),
     ):
         xr.testing.assert_allclose(batched, full)
-    assert single_observation_batches.source_content_identity == full_batch.source_content_identity
-    assert single_observation_batches.view_identity == full_batch.view_identity
-    assert diagonal.source_content_identity == full_batch.source_content_identity
-    assert diagonal.view_identity != full_batch.view_identity
     assert full_batch.observation_covariance_view == "dense"
     assert diagonal.observation_covariance_view == "diagonal"
     assert diagonal.native_observation_covariance.dims == ("observation",)
@@ -269,281 +269,198 @@ def test_dense_batching_preallocates_instead_of_concatenating(
     assert products.native_observation_covariance.shape == (3, 3)
 
 
-def test_products_round_trip_with_labels_and_identity() -> None:
-    """Dataset and DataTree round trips preserve blocks, labels, identities, and config."""
+def test_single_source_native_prolongation_preserves_native_auxiliary_coordinates() -> None:
+    """Canonical single-source U retains native-axis and scalar context coordinates."""
     covariance, basis_operator, h, _ = _problem()
+    native_layout = h.assign_coords(
+        cell_area=(("lat", "lon"), np.arange(6).reshape(3, 2)),
+        latitude_band=("lat", ["south", "middle", "north"]),
+        grid_mapping="latitude_longitude",
+    )
+
+    prolongation = basis_operator.native_prolongation(
+        native_layout,
+        native_dims=covariance.native_dims,
+    )
+
+    assert prolongation.dims == ("lat", "lon", "state")
+    xr.testing.assert_identical(prolongation.coords["cell_area"], native_layout.coords["cell_area"])
+    xr.testing.assert_identical(
+        prolongation.coords["latitude_band"],
+        native_layout.coords["latitude_band"],
+    )
+    assert prolongation.coords["grid_mapping"].item() == "latitude_longitude"
+
+
+@pytest.mark.parametrize(
+    "invalid_batch_size",
+    [True, "2", 1.9],
+    ids=["boolean", "string", "non-integral-float"],
+)
+def test_observation_batch_size_requires_integral_non_boolean(invalid_batch_size: object) -> None:
+    """The RHS block size rejects values that merely coerce to an integer."""
+    covariance, basis_operator, h, _ = _problem()
+
+    with pytest.raises((TypeError, ValueError), match="integer|integral|Boolean"):
+        _project(
+            covariance,
+            basis_operator,
+            h,
+            observation_batch_size=invalid_batch_size,
+        )
+
+
+def test_observation_batch_size_accepts_numpy_integral() -> None:
+    """NumPy integer scalars satisfy the public integral block-size contract."""
+    covariance, basis_operator, h, _ = _problem()
+
     products = _project(
         covariance,
         basis_operator,
         h,
-        observation_batch_size=2,
+        observation_batch_size=np.int64(2),
     )
 
-    restored = NativeCovarianceProducts.from_dataset(products.to_dataset())
-
-    xr.testing.assert_identical(restored.restriction, products.restriction)
-    xr.testing.assert_identical(restored.state_covariance, products.state_covariance)
-    xr.testing.assert_identical(
-        restored.effective_observation_operator, products.effective_observation_operator
-    )
-    xr.testing.assert_identical(
-        restored.observation_state_cross_covariance,
-        products.observation_state_cross_covariance,
-    )
-    xr.testing.assert_identical(
-        restored.native_observation_covariance, products.native_observation_covariance
-    )
-    assert restored.strategy == products.strategy
-    assert restored.source_content_identity == products.source_content_identity
-    assert restored.view_identity == products.view_identity
-    assert restored.observation_covariance_view == products.observation_covariance_view
-    assert restored.covariance_configuration_digest == products.covariance_configuration_digest
-    assert len(products.source_content_identity) == 64
-    assert len(products.view_identity) == 64
-    assert all(
-        array.attrs["source_content_identity"] == products.source_content_identity
-        and array.attrs["view_identity"] == products.view_identity
-        for array in (
-            products.restriction,
-            products.state_covariance,
-            products.effective_observation_operator,
-            products.observation_state_cross_covariance,
-            products.native_observation_covariance,
-        )
-    )
-
-    restored_tree = NativeCovarianceProducts.from_datatree(products.to_datatree())
-    assert restored_tree.covariance_configuration is not None
-    assert products.covariance_configuration is not None
-    xr.testing.assert_identical(
-        restored_tree.covariance_configuration,
-        products.covariance_configuration,
-    )
-    assert restored_tree.basis_provenance == products.basis_provenance
-    assert restored_tree.prolongation.attrs["source_content_identity"] == products.source_content_identity
+    assert products.native_observation_covariance.shape == (3, 3)
 
 
-def test_dataset_round_trip_cannot_silently_drop_covariance_configuration() -> None:
-    """A root-only restore preserves its config digest and refuses an incomplete tree."""
+def test_lazy_sensitivity_is_rejected_at_explicit_materialization_boundary() -> None:
+    """The eager kernel rejects Dask H instead of silently computing its full graph."""
     covariance, basis_operator, h, _ = _problem()
+    lazy_h = h.chunk({"observation": 1})
+    basis_prolongation = to_dense(
+        basis_operator.native_prolongation(h, native_dims=covariance.native_dims)
+    ).compute()
+
+    with pytest.raises(ValueError, match="upstream materialization|lazy|Dask"):
+        project_native_covariance(
+            covariance=covariance,
+            basis_prolongation=basis_prolongation,
+            state_dim="state",
+            native_sensitivity=lazy_h,
+            observation_dim="observation",
+        )
+
+
+def test_lazy_custom_restriction_is_materialized_in_explicit_rhs_blocks() -> None:
+    """Custom Dask Pi follows the explicit retained-state RHS block path."""
+    covariance, basis_operator, h, _ = _problem()
+
+    class LazyRestrictionStrategy:
+        """Return a valid numerical projection with a deliberately lazy restriction."""
+
+        def projection(self, covariance, basis_prolongation, *, native_dims, state_dim):
+            """Chunk the restriction to exercise the explicit eager boundary."""
+            valid = PreserveBucketProlongation().projection(
+                covariance,
+                basis_prolongation,
+                native_dims=native_dims,
+                state_dim=state_dim,
+            )
+            return RetainedProjection(
+                valid.restriction.chunk({state_dim: 1}),
+                valid.prolongation,
+                "lazy_restriction",
+            )
+
+    expected = _project(covariance, basis_operator, h)
+    actual = _project(
+        covariance,
+        basis_operator,
+        h,
+        strategy=LazyRestrictionStrategy(),
+        observation_batch_size=1,
+    )
+
+    xr.testing.assert_allclose(actual.state_covariance, expected.state_covariance)
+    xr.testing.assert_allclose(
+        actual.observation_state_cross_covariance,
+        expected.observation_state_cross_covariance,
+    )
+
+
+def test_product_units_follow_dimensionless_scaling_contract() -> None:
+    """State arrays are dimensionless while H products retain or square H units."""
+    covariance, basis_operator, h, _ = _problem()
+    products = _project(covariance, basis_operator, h.assign_attrs(units="ppt"))
+
+    for array in (
+        products.restriction,
+        products.prolongation,
+        products.state_covariance,
+    ):
+        assert array.attrs["units"] == "1"
+    assert products.effective_observation_operator.attrs["units"] == "ppt"
+    assert products.observation_state_cross_covariance.attrs["units"] == "ppt"
+    assert products.native_observation_covariance.attrs["units"] == "(ppt)^2"
+
+
+@pytest.mark.parametrize("multiindex", [False, True], ids=["index", "multiindex"])
+def test_square_products_preserve_typed_row_and_column_indexes(multiindex: bool) -> None:
+    """Square product axes carry symmetric typed Index or MultiIndex labels."""
+    covariance, basis_operator, h, _ = _problem()
+    if multiindex:
+        index = pd.MultiIndex.from_arrays(
+            [["MHD", "TAC", "RGL"], pd.to_datetime(["2020-01-01", "2020-01-02", "2020-01-03"])],
+            names=("site", "time"),
+        )
+        h = h.drop_indexes("observation").drop_vars("observation")
+        h = h.assign_coords(xr.Coordinates.from_pandas_multiindex(index, "observation"))
+    else:
+        index = pd.Index(["MHD", 7, ("RGL", 1)], dtype=object, name="observation")
+        h = h.assign_coords(observation=index)
+
+    matrix = _project(covariance, basis_operator, h).native_observation_covariance
+    row_index = matrix.indexes["observation"]
+    column_index = matrix.indexes["observation_cov"]
+
+    assert isinstance(column_index, type(row_index))
+    assert list(column_index) == list(row_index)
+    assert matrix.sel(observation=row_index[0], observation_cov=column_index[0]).ndim == 0
+
+
+def test_product_kernel_avoids_throwaway_covariance_application(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Covariance application occurs only for the two real observation RHS blocks."""
+    covariance, basis_operator, h, _ = _problem()
+    original_apply = type(covariance).apply
+    calls = 0
+
+    def counted_apply(self, rhs):
+        """Count each real covariance application before delegating."""
+        nonlocal calls
+        calls += 1
+        return original_apply(self, rhs)
+
+    monkeypatch.setattr(type(covariance), "apply", counted_apply)
+
+    _project(covariance, basis_operator, h, observation_batch_size=2)
+
+    assert calls == 2
+
+
+def test_each_dense_matrix_diagnostic_uses_one_eigendecomposition(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """State and observation covariance diagnostics each compute eigenvalues once."""
+    covariance, basis_operator, h, _ = _problem()
+    original_eigvalsh = np.linalg.eigvalsh
+    calls = 0
+
+    def counted_eigvalsh(matrix):
+        """Count symmetric eigensolver calls before delegating."""
+        nonlocal calls
+        calls += 1
+        return original_eigvalsh(matrix)
+
+    monkeypatch.setattr(np.linalg, "eigvalsh", counted_eigvalsh)
+
     products = _project(covariance, basis_operator, h)
 
-    restored = NativeCovarianceProducts.from_dataset(products.to_dataset())
-
-    assert restored.covariance_configuration is None
-    assert restored.covariance_configuration_digest == products.covariance_configuration_digest
-    with pytest.raises(ValueError, match="without.*covariance configuration content"):
-        restored.to_datatree()
-
-
-def test_source_content_identity_changes_with_covariance_configuration() -> None:
-    """Kernel amplitudes and class maps participate in the stable source identity."""
-    covariance, basis_operator, h, _ = _problem()
-    baseline = _project(covariance, basis_operator, h)
-    rescaled = _project(
-        SeparableExponentialCovariance(
-            covariance.latitude,
-            covariance.longitude,
-            sigma=2.0,
-            correlation_length=covariance.correlation_length,
-        ),
-        basis_operator,
-        h,
-    )
-    classes = xr.DataArray(
-        [[0, 1], [0, 1], [1, 1]],
-        dims=("lat", "lon"),
-        coords={"lat": covariance.latitude, "lon": covariance.longitude},
-    )
-    blocked = _project(
-        SeparableExponentialCovariance(
-            covariance.latitude,
-            covariance.longitude,
-            sigma=covariance.sigma,
-            correlation_length=covariance.correlation_length,
-            class_labels=classes,
-        ),
-        basis_operator,
-        h,
-    )
-
-    assert baseline.source_content_identity != rescaled.source_content_identity
-    assert baseline.source_content_identity != blocked.source_content_identity
-
-
-def test_product_deserialization_rejects_mixed_source_identity() -> None:
-    """A product variable whose source identity differs from the root is rejected."""
-    covariance, basis_operator, h, _ = _problem()
-    dataset = _project(covariance, basis_operator, h).to_dataset()
-    dataset["state_covariance"].attrs["source_content_identity"] = "0" * 64
-
-    with pytest.raises(ValueError, match="source identity"):
-        NativeCovarianceProducts.from_dataset(dataset)
-
-
-def test_product_deserialization_rejects_dense_matrix_declared_as_diagonal() -> None:
-    """View metadata cannot relabel a two-dimensional dense matrix as a diagonal."""
-    covariance, basis_operator, h, _ = _problem()
-    dense = _project(covariance, basis_operator, h, observation_covariance="dense")
-    diagonal = _project(covariance, basis_operator, h, observation_covariance="diagonal")
-    dataset = dense.to_dataset()
-    dataset.attrs["observation_covariance_view"] = "diagonal"
-    dataset.attrs["view_identity"] = diagonal.view_identity
-    for variable in dataset.data_vars.values():
-        variable.attrs["view_identity"] = diagonal.view_identity
-
-    with pytest.raises(ValueError, match="diagonal observation covariance.*dimensions"):
-        NativeCovarianceProducts.from_dataset(dataset)
-
-
-@pytest.mark.parametrize(
-    ("variable", "column_dim"),
-    [
-        ("state_covariance", "state_cov"),
-        ("native_observation_covariance", "observation_cov"),
-    ],
-)
-def test_product_deserialization_rejects_reordered_matrix_column_labels(
-    variable: str,
-    column_dim: str,
-) -> None:
-    """Matrix column labels must remain bound to their corresponding row labels."""
-    covariance, basis_operator, h, _ = _problem()
-    dataset = _project(covariance, basis_operator, h).to_dataset()
-    dataset = dataset.assign_coords({column_dim: dataset.coords[column_dim].values[::-1]})
-
-    with pytest.raises(ValueError, match="column.*labels are inconsistent"):
-        NativeCovarianceProducts.from_dataset(dataset)
-
-
-def test_product_deserialization_rejects_reordered_auxiliary_column_labels() -> None:
-    """Copied observation-column auxiliaries remain bound to their row labels."""
-    covariance, basis_operator, h, _ = _problem()
-    h = h.assign_coords(site=("observation", ["MHD", "TAC", "RGL"]))
-    dataset = _project(covariance, basis_operator, h).to_dataset()
-    dataset = dataset.assign_coords(site_cov=("observation_cov", dataset.coords["site_cov"].values[::-1]))
-
-    with pytest.raises(ValueError, match="column.*labels are inconsistent"):
-        NativeCovarianceProducts.from_dataset(dataset)
-
-
-def test_product_round_trip_allows_native_dimension_named_like_observation_column() -> None:
-    """Loader derives the same collision-safe observation column name as construction."""
-    covariance, _, h, _ = _problem()
-    longitude = covariance.longitude.rename({"lon": "observation_cov"})
-    renamed_covariance = SeparableExponentialCovariance(
-        covariance.latitude,
-        longitude,
-        sigma=covariance.sigma,
-        correlation_length=covariance.correlation_length,
-    )
-    basis = BucketBasisOperator(
-        xr.DataArray(
-            [[1, 1], [1, 2], [2, 2]],
-            dims=("lat", "observation_cov"),
-            coords={"lat": covariance.latitude, "observation_cov": longitude},
-        ),
-        meta=BasisMeta(grid_dims=("lat", "observation_cov"), state_dim="state"),
-    )
-    products = _project(
-        renamed_covariance,
-        basis,
-        h.rename({"lon": "observation_cov"}),
-    )
-
-    restored = NativeCovarianceProducts.from_dataset(products.to_dataset())
-
-    assert restored.native_observation_covariance.dims == (
-        "observation",
-        "observation_cov_2",
-    )
-
-
-@pytest.mark.parametrize("invalid_value", [np.nan, 1.0j])
-def test_product_deserialization_rejects_non_finite_or_complex_values(
-    invalid_value: complex,
-) -> None:
-    """Loaded numerical products retain the construction-time finite-real contract."""
-    covariance, basis_operator, h, _ = _problem()
-    dataset = _project(covariance, basis_operator, h).to_dataset()
-    dataset["effective_observation_operator"] = dataset["effective_observation_operator"].astype(
-        np.result_type(invalid_value)
-    )
-    dataset["effective_observation_operator"].values[0, 0] = invalid_value
-
-    with pytest.raises(ValueError, match="finite real"):
-        NativeCovarianceProducts.from_dataset(dataset)
-
-
-def test_product_deserialization_rejects_forged_coordinate_namespace_owner() -> None:
-    """Namespace metadata cannot claim coordinates for unknown product owners."""
-    covariance, basis_operator, h, _ = _problem()
-    dataset = _project(covariance, basis_operator, h).to_dataset()
-    namespaces = json.loads(dataset.attrs["openghg_inversions:product_coordinate_namespaces"])
-    namespaces["forged"] = {"observation": "removed"}
-    dataset.attrs["openghg_inversions:product_coordinate_namespaces"] = json.dumps(namespaces)
-
-    with pytest.raises(ValueError, match="namespace owners"):
-        NativeCovarianceProducts.from_dataset(dataset)
-
-
-@pytest.mark.parametrize(
-    "encoded_provenance",
-    [None, "not-json", "[]", '{"operator_type": 1}'],
-)
-def test_product_deserialization_validates_basis_provenance_shape(
-    encoded_provenance: object,
-) -> None:
-    """Basis provenance must be a JSON encoding of a string-to-string mapping."""
-    covariance, basis_operator, h, _ = _problem()
-    dataset = _project(covariance, basis_operator, h).to_dataset()
-    dataset.attrs["basis_provenance"] = encoded_provenance
-
-    with pytest.raises(ValueError, match="basis provenance"):
-        NativeCovarianceProducts.from_dataset(dataset)
-
-
-def test_product_identity_metadata_is_not_a_numerical_checksum() -> None:
-    """Identity metadata binds source/view declarations but does not checksum output values."""
-    covariance, basis_operator, h, _ = _problem()
-    dataset = _project(covariance, basis_operator, h).to_dataset()
-    dataset["state_covariance"].values[0, 0] += 1.0
-
-    restored = NativeCovarianceProducts.from_dataset(dataset)
-
-    assert restored.state_covariance.values[0, 0] == dataset["state_covariance"].values[0, 0]
-
-
-def test_datatree_rejects_covariance_configuration_from_another_source() -> None:
-    """A covariance configuration child cannot be mixed into another source artifact."""
-    covariance, basis_operator, h, _ = _problem()
-    baseline_tree = _project(covariance, basis_operator, h).to_datatree()
-    other_covariance = SeparableExponentialCovariance(
-        covariance.latitude,
-        covariance.longitude,
-        sigma=2.0,
-        correlation_length=covariance.correlation_length,
-    )
-    other_tree = _project(other_covariance, basis_operator, h).to_datatree()
-    baseline_tree["covariance_configuration"] = xr.DataTree(
-        cast(xr.DataTree, other_tree["covariance_configuration"]).to_dataset(inherit=False).copy(deep=True)
-    )
-
-    with pytest.raises(ValueError, match="configuration.*root source identity"):
-        NativeCovarianceProducts.from_datatree(baseline_tree)
-
-
-def test_datatree_rejects_tampered_covariance_configuration_content() -> None:
-    """Configuration content is recomputed and checked against its bound root digest."""
-    covariance, basis_operator, h, _ = _problem()
-    tree = _project(covariance, basis_operator, h).to_datatree()
-    child = cast(xr.DataTree, tree["covariance_configuration"]).to_dataset(inherit=False).copy(deep=True)
-    latitude_dim = "covariance_configuration__lat"
-    child = child.assign_coords({latitude_dim: child.coords[latitude_dim] + 0.25})
-    tree["covariance_configuration"] = xr.DataTree(child)
-
-    with pytest.raises(ValueError, match="configuration content.*digest"):
-        NativeCovarianceProducts.from_datatree(tree)
+    assert calls == 2
+    assert "minimum_eigenvalue" in products.state_covariance.attrs
+    assert "minimum_eigenvalue" in products.native_observation_covariance.attrs
 
 
 def test_projection_strategy_must_return_covariance_natural_prolongation() -> None:
@@ -603,7 +520,7 @@ def test_projection_strategy_protocol_accepts_structural_implementations() -> No
 
 
 def test_projection_strategy_names_must_be_nonempty() -> None:
-    """Empty built-in and custom identifiers are rejected before serialization."""
+    """Empty built-in and custom strategy identifiers are rejected."""
     covariance, basis_operator, h, _ = _problem()
 
     with pytest.raises(ValueError, match="non-empty"):
@@ -712,23 +629,6 @@ def test_projection_strategy_must_return_full_rank_restriction() -> None:
         _project(covariance, basis_operator, h, strategy=SingularStrategy())
 
 
-def test_source_content_identity_includes_auxiliary_semantic_coordinates() -> None:
-    """Relabelling an auxiliary observation coordinate changes the source identity."""
-    covariance, basis_operator, h, _ = _problem()
-    first = _project(
-        covariance,
-        basis_operator,
-        h.assign_coords(network=("observation", ["ICOS", "DECC", "DECC"])),
-    )
-    second = _project(
-        covariance,
-        basis_operator,
-        h.assign_coords(network=("observation", ["DECC", "DECC", "DECC"])),
-    )
-
-    assert first.source_content_identity != second.source_content_identity
-
-
 def test_redundant_bucket_states_are_rejected() -> None:
     """Linearly dependent retained coordinates fail instead of being pseudoinverted."""
     covariance, basis_operator, _, _ = _problem()
@@ -812,53 +712,4 @@ def test_class_blocked_products_match_dense_oracle() -> None:
         products.native_observation_covariance,
         h_matrix @ dense_b @ h_matrix.T,
         atol=2e-10,
-    )
-
-
-def test_datetime_multiindex_observation_labels_persist_on_both_matrix_axes(
-    tmp_path: Path,
-) -> None:
-    """Real Timestamp MultiIndex labels encode safely and persist through NetCDF."""
-    covariance, basis_operator, h, _ = _problem()
-    dates = pd.to_datetime(["2020-01-01", "2020-01-02", "2020-01-03"])
-    observation_index = pd.MultiIndex.from_arrays(
-        [["MHD", "TAC", "RGL"], dates],
-        names=("site", "date"),
-    )
-    h = h.drop_indexes("observation").drop_vars("observation")
-    h = h.assign_coords(xr.Coordinates.from_pandas_multiindex(observation_index, "observation"))
-
-    products = _project(covariance, basis_operator, h)
-
-    assert products.native_observation_covariance.coords["site"].values.tolist() == [
-        "MHD",
-        "TAC",
-        "RGL",
-    ]
-    assert products.native_observation_covariance.coords["site_cov"].values.tolist() == [
-        "MHD",
-        "TAC",
-        "RGL",
-    ]
-    np.testing.assert_array_equal(
-        products.native_observation_covariance.coords["date_cov"].values,
-        dates.values,
-    )
-    assert products.native_observation_covariance.coords["observation_cov"].values.tolist() == [
-        '["MHD","2020-01-01T00:00:00"]',
-        '["TAC","2020-01-02T00:00:00"]',
-        '["RGL","2020-01-03T00:00:00"]',
-    ]
-
-    path = tmp_path / "datetime-multiindex-products.nc"
-    products.to_datatree().to_netcdf(path, engine="h5netcdf")
-    with xr.open_datatree(path, engine="h5netcdf") as stored:
-        restored = NativeCovarianceProducts.from_datatree(stored.load())
-
-    restored_index = restored.native_observation_covariance.indexes["observation"]
-    assert isinstance(restored_index, pd.MultiIndex)
-    assert restored_index.equals(observation_index)
-    np.testing.assert_array_equal(
-        restored.native_observation_covariance.coords["observation_cov"].values,
-        products.native_observation_covariance.coords["observation_cov"].values,
     )
