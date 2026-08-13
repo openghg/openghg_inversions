@@ -389,3 +389,20 @@ def test_multisource_native_prolongation_requires_canonical_source_order() -> No
 
     with pytest.raises(ValueError, match="source|coordinate|align|order"):
         basis.native_prolongation(reordered, native_dims=covariance.native_dims)
+
+
+def test_multisource_native_prolongation_rejects_source_dimension_level_collision() -> None:
+    """A native source dimension cannot reuse the gathered state source-level name."""
+    covariance, native_sensitivity = _problem()
+    colliding_covariance = IndependentSourceCovariance(
+        covariance.source_covariances,
+        source_dim="source",
+    )
+    colliding_sensitivity = native_sensitivity.rename(native_source="source")
+    basis = _basis(covariance)
+
+    with pytest.raises(ValueError, match="source.*dimension|MultiIndex|level|collision"):
+        basis.native_prolongation(
+            colliding_sensitivity,
+            native_dims=colliding_covariance.native_dims,
+        )

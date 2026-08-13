@@ -3,8 +3,8 @@
 This module is an eager numerical kernel. Callers supply a canonical, eager
 native sensitivity ``H`` and basis prolongation ``U``; basis operators own any
 source expansion and the pipeline owns materialization. Custom restrictions
-may remain sparse or Dask-backed: they are materialized only as explicit
-retained-state right-hand-side blocks immediately before covariance actions.
+may remain sparse or Dask-backed until the named projection boundary, where
+they are materialized once and reused by all retained-state RHS blocks.
 
 For native covariance ``B`` and retained restriction ``Pi``, the kernel returns
 ``C_alpha = Pi B Pi.T``, ``H U_*``, ``H B Pi.T``, and ``H B H.T`` (or its
@@ -46,10 +46,10 @@ class RetainedProjection:
         prolongation: Covariance-natural ``U_*`` with dimensions
             ``(*native_dims, state_dim)``.
         strategy: Stable identifier for the scientific projection choice.
-        state_covariance: Optional already-derived ``C_alpha``. Strategies may
-            provide this to avoid recomputing known algebraic identities.
-        covariance_restriction_transpose: Optional already-derived
-            ``B Pi.T`` on a typed column state axis.
+        state_covariance: Optional cached ``C_alpha``. The kernel independently
+            recomputes and validates caches supplied by external strategies.
+        covariance_restriction_transpose: Optional cached ``B Pi.T``. External
+            cached values are independently recomputed and validated.
     """
 
     restriction: xr.DataArray
@@ -57,6 +57,11 @@ class RetainedProjection:
     strategy: str
     state_covariance: xr.DataArray | None = None
     covariance_restriction_transpose: xr.DataArray | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _PreserveBucketProjection(RetainedProjection):
+    """Private built-in projection with independently derived trusted products."""
 
 
 class RetainedProjectionStrategy(Protocol):
@@ -110,7 +115,10 @@ class PreserveBucketProlongation:
         prolongation = _validated_prolongation(
             basis_prolongation, native_dims=native_dims, state_dim=state_dim
         )
-        state_column_dim = matrix_column_dim(state_dim, prolongation.dims)
+        state_column_dim = matrix_column_dim(
+            state_dim,
+            {str(name) for name in (*prolongation.dims, *prolongation.coords)},
+        )
         precision_prolongation = to_column_axis(
             covariance.solve(prolongation),
             row_dim=state_dim,
@@ -169,7 +177,7 @@ class PreserveBucketProlongation:
         b_pi_t = xr.dot(prolongation, state_covariance, dim=state_dim).transpose(
             *native_dims, state_column_dim
         )
-        return RetainedProjection(
+        return _PreserveBucketProjection(
             restriction=restriction,
             prolongation=prolongation,
             strategy=self.name,
@@ -248,7 +256,8 @@ def project_native_covariance(
     _validate_exact_native_coordinates(
         prolongation, sensitivity, native_dims=native_dims, role="prolongation"
     )
-    projection = (strategy or PreserveBucketProlongation()).projection(
+    projection_strategy = strategy if strategy is not None else PreserveBucketProlongation()
+    projection = projection_strategy.projection(
         covariance,
         prolongation,
         native_dims=native_dims,
@@ -260,8 +269,24 @@ def project_native_covariance(
         native_dims=native_dims,
         state_dim=state_dim,
     )
-    state_column_dim = matrix_column_dim(state_dim, projection.restriction.dims)
-    if projection.covariance_restriction_transpose is None:
+    occupied_names = {
+        str(name)
+        for array in (sensitivity, projection.restriction, projection.prolongation)
+        for name in (*array.dims, *array.coords)
+    }
+    state_column_dim = matrix_column_dim(state_dim, occupied_names)
+    trusted_projection = (
+        _reaxis_builtin_projection(
+            projection,
+            native_dims=native_dims,
+            state_dim=state_dim,
+            state_column_dim=state_column_dim,
+        )
+        if type(projection_strategy) is PreserveBucketProlongation
+        and isinstance(projection, _PreserveBucketProjection)
+        else None
+    )
+    if trusted_projection is None:
         b_pi_t = _apply_restriction_blocks(
             covariance,
             projection.restriction,
@@ -271,9 +296,10 @@ def project_native_covariance(
             rhs_block_size=batch_size,
         )
     else:
-        b_pi_t = projection.covariance_restriction_transpose
+        assert trusted_projection.covariance_restriction_transpose is not None
+        b_pi_t = trusted_projection.covariance_restriction_transpose
 
-    if projection.state_covariance is None:
+    if trusted_projection is None:
         state_covariance = _restriction_product_blocks(
             projection.restriction,
             b_pi_t,
@@ -287,10 +313,16 @@ def project_native_covariance(
             mathematical_name="C_alpha",
             require_positive_definite=True,
         )
+        _validate_external_cached_products(
+            projection,
+            computed_b_pi_t=b_pi_t,
+            computed_state_covariance=state_covariance,
+        )
     else:
-        state_covariance = projection.state_covariance.rename("state_covariance")
+        assert trusted_projection.state_covariance is not None
+        state_covariance = trusted_projection.state_covariance.rename("state_covariance")
 
-    if projection.state_covariance is None or projection.covariance_restriction_transpose is None:
+    if trusted_projection is None:
         _validate_projection_invariant(
             projection,
             state_covariance,
@@ -352,7 +384,7 @@ def _apply_restriction_blocks(
             column_dim=column_dim,
             leading_dims=native_dims,
         )
-        rhs = to_dense(rhs).compute()
+        rhs = _materialize_dense_preserving_coordinates(rhs)
         blocks.append(covariance.apply(rhs))
     return xr.concat(blocks, dim=column_dim).transpose(*native_dims, column_dim)
 
@@ -369,7 +401,9 @@ def _restriction_product_blocks(
     """Form ``Pi B Pi.T`` while materializing explicit restriction row blocks."""
     blocks: list[xr.DataArray] = []
     for start in range(0, restriction.sizes[state_dim], rhs_block_size):
-        rows = to_dense(restriction.isel({state_dim: slice(start, start + rhs_block_size)})).compute()
+        rows = _materialize_dense_preserving_coordinates(
+            restriction.isel({state_dim: slice(start, start + rhs_block_size)})
+        )
         blocks.append(xr.dot(rows, b_pi_t, dim=list(native_dims)))
     return xr.concat(blocks, dim=state_dim).transpose(state_dim, column_dim)
 
@@ -384,7 +418,10 @@ def _observation_covariance(
     batch_size: int,
 ) -> xr.DataArray:
     """Compute ``H B H.T`` in eager observation RHS blocks."""
-    column_dim = matrix_column_dim(observation_dim, sensitivity.dims)
+    column_dim = matrix_column_dim(
+        observation_dim,
+        {str(name) for name in (*sensitivity.dims, *sensitivity.coords)},
+    )
     count = sensitivity.sizes[observation_dim]
     values = np.empty(
         (count, count) if output == "dense" else count,
@@ -427,6 +464,12 @@ def _observation_covariance(
             mathematical_name="H B H.T",
             maximum_eigen_diagnostic_size=MAX_DENSE_EIGEN_DIAGNOSTIC_SIZE,
         )
+    if not np.all(np.isfinite(values)):
+        raise ValueError("diag(H B H.T) must contain only finite real values")
+    diagonal_scale = max(1.0, float(np.max(np.abs(values))) if values.size else 1.0)
+    diagonal_tolerance = 1e-10 * diagonal_scale
+    if np.any(values < -diagonal_tolerance):
+        raise ValueError("diag(H B H.T) contains materially negative covariance values")
     result = xr.DataArray(
         values,
         dims=observation_dim,
@@ -435,8 +478,8 @@ def _observation_covariance(
             **unit_attrs,
             "mathematical_name": "diag(H B H.T)",
             "minimum_diagonal": float(np.min(values)),
-            "diagonal_nonnegative": bool(np.all(values >= -1e-10)),
-            "diagnostic_tolerance": 1e-10,
+            "diagonal_nonnegative": bool(np.all(values >= -diagonal_tolerance)),
+            "diagnostic_tolerance": diagonal_tolerance,
         },
         name="native_observation_covariance",
     )
@@ -450,7 +493,7 @@ def _validated_projection(
     native_dims: tuple[str, ...],
     state_dim: str,
 ) -> RetainedProjection:
-    """Validate strategy labels without materializing a custom restriction."""
+    """Validate labels and materialize a custom restriction exactly once."""
     if not isinstance(projection.strategy, str) or not projection.strategy:
         raise ValueError("Projection strategy must return a non-empty strategy identifier")
     restriction = projection.restriction.transpose(state_dim, *native_dims).assign_attrs(
@@ -468,7 +511,159 @@ def _validated_projection(
         raise ValueError("Projection strategy restriction and prolongation require state labels")
     if not restriction.get_index(state_dim).equals(prolongation.get_index(state_dim)):
         raise ValueError("Projection strategy restriction/prolongation state labels differ")
+    _require_compatible_axis_coordinates(
+        restriction,
+        prolongation,
+        dim=state_dim,
+        role="retained-state",
+    )
+    for role, array in (("restriction", restriction), ("prolongation", prolongation)):
+        _require_reference_native_coordinates(
+            array,
+            native_reference,
+            native_dims=native_dims,
+            role=role,
+        )
+    if not isinstance(projection, _PreserveBucketProjection):
+        restriction = _materialize_dense_preserving_coordinates(restriction)
+        restriction_values = np.asarray(restriction.values)
+        if np.iscomplexobj(restriction_values) or not np.all(np.isfinite(restriction_values)):
+            raise ValueError("Projection strategy restriction must contain only finite real values")
     return replace(projection, restriction=restriction, prolongation=prolongation)
+
+
+def _reaxis_builtin_projection(
+    projection: _PreserveBucketProjection,
+    *,
+    native_dims: tuple[str, ...],
+    state_dim: str,
+    state_column_dim: str,
+) -> _PreserveBucketProjection:
+    """Rebuild trusted built-in product columns on the globally safe axis."""
+    assert projection.state_covariance is not None
+    assert projection.covariance_restriction_transpose is not None
+    old_column_dim = next(dim for dim in projection.state_covariance.dims if dim != state_dim)
+    if old_column_dim == state_column_dim:
+        return projection
+    state_covariance = xr.DataArray(
+        projection.state_covariance.data,
+        dims=(state_dim, state_column_dim),
+        coords={
+            str(name): coordinate
+            for name, coordinate in projection.state_covariance.coords.items()
+            if set(coordinate.dims).issubset({state_dim})
+        },
+        attrs=projection.state_covariance.attrs,
+        name=projection.state_covariance.name,
+    ).assign_coords(
+        renamed_column_coordinates(
+            projection.prolongation,
+            row_dim=state_dim,
+            column_dim=state_column_dim,
+        )
+    )
+    b_pi_t = xr.DataArray(
+        projection.covariance_restriction_transpose.data,
+        dims=(*native_dims, state_column_dim),
+        coords={
+            str(name): coordinate
+            for name, coordinate in projection.covariance_restriction_transpose.coords.items()
+            if set(coordinate.dims).issubset(native_dims)
+        },
+        attrs=projection.covariance_restriction_transpose.attrs,
+        name=projection.covariance_restriction_transpose.name,
+    ).assign_coords(
+        renamed_column_coordinates(
+            projection.prolongation,
+            row_dim=state_dim,
+            column_dim=state_column_dim,
+        )
+    )
+    return replace(
+        projection,
+        state_covariance=state_covariance,
+        covariance_restriction_transpose=b_pi_t,
+    )
+
+
+def _validate_external_cached_products(
+    projection: RetainedProjection,
+    *,
+    computed_b_pi_t: xr.DataArray,
+    computed_state_covariance: xr.DataArray,
+) -> None:
+    """Independently validate optional products supplied by external strategies."""
+    candidates = (
+        (
+            "covariance_restriction_transpose",
+            projection.covariance_restriction_transpose,
+            computed_b_pi_t,
+        ),
+        ("state_covariance", projection.state_covariance, computed_state_covariance),
+    )
+    for name, cached, computed in candidates:
+        if cached is None:
+            continue
+        cached_values = np.asarray(to_dense(cached).compute().values)
+        computed_values = np.asarray(computed.values)
+        if (
+            cached_values.shape != computed_values.shape
+            or np.iscomplexobj(cached_values)
+            or not np.all(np.isfinite(cached_values))
+            or not np.allclose(cached_values, computed_values, rtol=1e-10, atol=1e-12)
+        ):
+            raise ValueError(
+                f"Projection strategy supplied inconsistent cached {name}; "
+                "it does not match the independently computed covariance product"
+            )
+
+
+def _require_compatible_axis_coordinates(
+    left: xr.DataArray,
+    right: xr.DataArray,
+    *,
+    dim: str,
+    role: str,
+) -> None:
+    """Require identical semantic coordinates attached to one shared axis."""
+    left_coords = {
+        str(name): coordinate
+        for name, coordinate in left.coords.items()
+        if dim in coordinate.dims and str(name) != dim
+    }
+    right_coords = {
+        str(name): coordinate
+        for name, coordinate in right.coords.items()
+        if dim in coordinate.dims and str(name) != dim
+    }
+    if set(left_coords) != set(right_coords):
+        raise ValueError(f"Projection {role} auxiliary coordinate names differ between Pi and U")
+    for name, coordinate in left_coords.items():
+        other = right_coords[name]
+        if coordinate.dims != other.dims or not coordinate.equals(other):
+            raise ValueError(f"Projection {role} auxiliary coordinate {name!r} differs between Pi and U")
+
+
+def _require_reference_native_coordinates(
+    array: xr.DataArray,
+    reference: xr.DataArray,
+    *,
+    native_dims: tuple[str, ...],
+    role: str,
+) -> None:
+    """Require all reference native-only and scalar coordinates on a projection array."""
+    native_set = set(native_dims)
+    expected = {
+        str(name): coordinate
+        for name, coordinate in reference.coords.items()
+        if set(coordinate.dims).issubset(native_set)
+    }
+    for name, coordinate in expected.items():
+        if name not in array.coords:
+            raise ValueError(f"Projection {role} is missing compatible native coordinate {name!r}")
+        actual = array.coords[name]
+        if actual.dims != coordinate.dims or not actual.equals(coordinate):
+            raise ValueError(f"Projection {role} native coordinate {name!r} is incompatible")
 
 
 def _validate_exact_native_coordinates(
@@ -530,7 +725,7 @@ def _validated_prolongation(
             "basis_prolongation is lazy; materialize canonical U explicitly at the upstream "
             "pipeline boundary before calling project_native_covariance"
         )
-    result = to_dense(prolongation).transpose(*native_dims, state_dim)
+    result = _materialize_dense_preserving_coordinates(prolongation).transpose(*native_dims, state_dim)
     values = np.asarray(result.values)
     if np.iscomplexobj(values) or not np.all(np.isfinite(values)):
         raise ValueError("prolongation must contain only finite real values")
@@ -559,7 +754,7 @@ def _validated_sensitivity(
             "native_sensitivity is lazy; materialize canonical H explicitly at the upstream "
             "pipeline boundary before calling project_native_covariance"
         )
-    result = to_dense(sensitivity).transpose(observation_dim, *native_dims)
+    result = _materialize_dense_preserving_coordinates(sensitivity).transpose(observation_dim, *native_dims)
     if result.sizes[observation_dim] == 0:
         raise ValueError("native_sensitivity must contain at least one observation")
     values = np.asarray(result.values)
@@ -576,3 +771,12 @@ def _require_symmetric(values: np.ndarray, name: str, tolerance: float = 1e-10) 
     scale = max(1.0, float(np.max(np.abs(values))) if values.size else 1.0)
     if asymmetry > tolerance * scale:
         raise ValueError(f"{name} is not symmetric within tolerance {tolerance:g}")
+
+
+def _materialize_dense_preserving_coordinates(array: xr.DataArray) -> xr.DataArray:
+    """Materialize dense payloads without reconstructing typed xarray indexes."""
+    materialized = array.compute()
+    data = materialized.data
+    if hasattr(data, "todense"):
+        data = data.todense()
+    return materialized.copy(data=np.asarray(data))
