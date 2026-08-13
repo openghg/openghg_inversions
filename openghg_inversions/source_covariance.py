@@ -21,6 +21,12 @@ configuration, including typed class labels, to an xarray dataset. Restoration
 validates the schema, source labels, required variables, and spatial coordinate
 metadata before reconstructing the component actions.
 
+Source dispatch intentionally uses eager per-source ``sel``, component
+operator, and ``concat`` calls. A source-only ``apply_ufunc`` or source
+chunking is not equivalent: each component consumes the full labelled spatial
+grid and owns an explicit eager NumPy boundary, rather than acting pointwise
+along a source vector.
+
 ``IndependentSourceCovariance`` is an ordinary slotted, identity-based action.
 It copies the source mapping once and exposes it through a read-only proxy;
 component actions and their borrowed coordinate properties are not copied on
@@ -37,6 +43,13 @@ import numpy as np
 import xarray as xr
 
 from openghg_inversions.native_covariance import SeparableExponentialCovariance
+from openghg_inversions._serialization_codecs import (
+    _TAGGED_JSON_VALUE_ENCODING,
+    _decode_serialized_bool,
+    _decode_tagged_json_value,
+    _encode_tagged_json_value,
+    _numpy_scalar_json_default,
+)
 
 __all__ = ["IndependentSourceCovariance"]
 
@@ -269,9 +282,15 @@ class IndependentSourceCovariance:
             class_labels = self.source_covariances[label].class_labels
             if class_labels is not None:
                 values = class_labels.transpose(*first.native_dims).values
-                label_values[index] = np.vectorize(_encode_class_label, otypes=[object])(values)
+                label_values[index] = np.vectorize(_encode_tagged_json_value, otypes=[object])(values)
                 label_names.append(str(class_labels.name) if class_labels.name is not None else "")
-                label_attrs.append(json.dumps(class_labels.attrs, sort_keys=True, default=_json_default))
+                label_attrs.append(
+                    json.dumps(
+                        class_labels.attrs,
+                        sort_keys=True,
+                        default=_numpy_scalar_json_default,
+                    )
+                )
             else:
                 label_names.append("")
                 label_attrs.append("{}")
@@ -310,7 +329,7 @@ class IndependentSourceCovariance:
                 "source_dim": self.source_dim,
                 "latitude_dim": first.native_dims[0],
                 "longitude_dim": first.native_dims[1],
-                "class_label_encoding": "tagged_json_v1",
+                "class_label_encoding": _TAGGED_JSON_VALUE_ENCODING,
             },
         )
 
@@ -334,7 +353,7 @@ class IndependentSourceCovariance:
             raise ValueError(f"Expected source covariance schema {cls.schema!r}")
         if dataset.attrs.get("schema_version") != cls.schema_version:
             raise ValueError("Unsupported independent-source covariance schema version")
-        if dataset.attrs.get("class_label_encoding") != "tagged_json_v1":
+        if dataset.attrs.get("class_label_encoding") != _TAGGED_JSON_VALUE_ENCODING:
             raise ValueError("Unsupported independent-source class-label encoding")
         source_dim = str(dataset.attrs.get("source_dim", ""))
         latitude_dim = str(dataset.attrs.get("latitude_dim", ""))
@@ -369,7 +388,7 @@ class IndependentSourceCovariance:
         covariances: dict[str, SeparableExponentialCovariance] = {}
         for label in raw_source_labels:
             labels = None
-            blocked = _serialized_boolean(
+            blocked = _decode_serialized_bool(
                 dataset["class_blocked"].sel({source_dim: label}).item(),
                 f"class_blocked flag for source {label!r}",
             )
@@ -381,7 +400,7 @@ class IndependentSourceCovariance:
                     f"Serialized class_blocked flag for source {label!r} contradicts encoded labels"
                 )
             if blocked:
-                decoded = np.vectorize(_decode_class_label, otypes=[object])(encoded.values)
+                decoded = np.vectorize(_decode_tagged_json_value, otypes=[object])(encoded.values)
                 name = str(dataset["class_label_name"].sel({source_dim: label}).item()) or None
                 attrs = json.loads(str(dataset["class_label_attrs"].sel({source_dim: label}).item()))
                 labels = encoded.copy(data=decoded).rename(name).assign_attrs(attrs)
@@ -397,11 +416,11 @@ class IndependentSourceCovariance:
                 dataset["longitude_correlation_length"].sel({source_dim: label}).item(),
                 f"longitude correlation length for source {label!r}",
             )
-            latitude_explicit = _serialized_boolean(
+            latitude_explicit = _decode_serialized_bool(
                 dataset["latitude_correlation_length_explicit"].sel({source_dim: label}).item(),
                 f"latitude correlation-length flag for source {label!r}",
             )
-            longitude_explicit = _serialized_boolean(
+            longitude_explicit = _decode_serialized_bool(
                 dataset["longitude_correlation_length_explicit"].sel({source_dim: label}).item(),
                 f"longitude correlation-length flag for source {label!r}",
             )
@@ -449,104 +468,31 @@ class IndependentSourceCovariance:
         if not isinstance(rhs, xr.DataArray):
             raise TypeError("rhs must be an xarray.DataArray")
         if self.source_dim not in rhs.dims or self.source_dim not in rhs.coords:
-            raise ValueError(f"rhs must contain labelled source dimension {self.source_dim!r}")
-        actual_labels = tuple(rhs.coords[self.source_dim].values.tolist())
-        if any(not isinstance(label, str) for label in actual_labels) or actual_labels != self.source_labels:
-            raise ValueError(
-                "rhs source labels/order do not match covariance configuration: "
-                f"{actual_labels!r} != {self.source_labels!r}"
-            )
-        original_dims = tuple(str(dim) for dim in rhs.dims)
-        results: list[xr.DataArray] = []
-        for label in self.source_labels:
-            source_rhs = rhs.sel({self.source_dim: label}, drop=True)
-            action = self.source_covariances[label]
-            results.append(getattr(action, operation)(source_rhs))
-        source_coordinate = xr.DataArray(
+            raise ValueError(f"rhs must contain labelled source dimension coordinate {self.source_dim!r}")
+        expected = xr.DataArray(
             list(self.source_labels),
             dims=self.source_dim,
             coords={self.source_dim: list(self.source_labels)},
-            attrs=rhs.coords[self.source_dim].attrs,
         )
-        combined = xr.concat(results, dim=source_coordinate)
-        combined = combined.assign_coords({name: coordinate for name, coordinate in rhs.coords.items()})
-        combined.name = rhs.name
-        combined.attrs = rhs.attrs
-        return combined.transpose(*original_dims)
+        try:
+            aligned_rhs, _ = xr.align(rhs, expected, join="exact", copy=False)
+        except xr.AlignmentError as error:
+            raise ValueError("rhs source labels/order do not match covariance configuration") from error
 
-
-def _encode_class_label(value: object) -> str:
-    """Encode a class label without losing its supported Python scalar type.
-
-    Args:
-        value: String, Boolean, integer, float, NumPy scalar, or nested tuple
-            composed from those types.
-
-    Returns:
-        Tagged compact JSON representation of ``value``.
-
-    Raises:
-        TypeError: If ``value`` has an unsupported type.
-    """
-    if isinstance(value, np.generic):
-        value = value.item()
-    payload: list[object]
-    if isinstance(value, tuple):
-        payload = ["tuple", [_encode_class_label(item) for item in value]]
-    elif isinstance(value, bool):
-        payload = ["bool", value]
-    elif isinstance(value, int):
-        payload = ["int", value]
-    elif isinstance(value, float):
-        payload = ["float", value]
-    elif isinstance(value, str):
-        payload = ["str", value]
-    else:
-        raise TypeError(f"Unsupported class-label type for serialization: {type(value).__name__}")
-    return json.dumps(payload, separators=(",", ":"))
-
-
-def _decode_class_label(encoded: str) -> object:
-    """Decode one tagged JSON class label.
-
-    Args:
-        encoded: Tagged JSON produced by :func:`_encode_class_label`.
-
-    Returns:
-        Restored supported Python scalar or tuple value.
-
-    Raises:
-        ValueError: If the JSON is malformed or its type tag is unknown.
-    """
-    kind, value = json.loads(str(encoded))
-    if kind == "tuple":
-        return tuple(_decode_class_label(item) for item in value)
-    if kind == "bool":
-        return bool(value)
-    if kind == "int":
-        return int(value)
-    if kind == "float":
-        return float(value)
-    if kind == "str":
-        return str(value)
-    raise ValueError(f"Unknown encoded class-label kind {kind!r}")
-
-
-def _json_default(value: object) -> object:
-    """Convert a NumPy scalar attribute to a JSON-compatible scalar.
-
-    Args:
-        value: Attribute value rejected by JSON's standard encoder.
-
-    Returns:
-        Equivalent built-in Python scalar.
-
-    Raises:
-        TypeError: If ``value`` is not a NumPy scalar.
-    """
-    if isinstance(value, np.generic):
-        return value.item()
-    raise TypeError(f"Class-label attr {value!r} is not JSON serializable")
+        original_dims = tuple(str(dim) for dim in rhs.dims)
+        results: list[xr.DataArray] = []
+        for label in self.source_labels:
+            source_rhs = aligned_rhs.sel({self.source_dim: label})
+            action = self.source_covariances[label]
+            results.append(getattr(action, operation)(source_rhs))
+        combined = xr.concat(
+            results,
+            dim=aligned_rhs.coords[self.source_dim],
+            coords="minimal",
+            compat="override",
+        )
+        restored_data = combined.transpose(*original_dims, transpose_coords=False).data
+        return rhs.copy(data=restored_data, deep=False)
 
 
 def _positive_finite(value: SupportsFloat, name: str) -> float:
@@ -555,12 +501,3 @@ def _positive_finite(value: SupportsFloat, name: str) -> float:
     if not np.isfinite(resolved) or resolved <= 0.0:
         raise ValueError(f"Serialized {name} must be finite and strictly positive")
     return resolved
-
-
-def _serialized_boolean(value: object, name: str) -> bool:
-    """Decode a serialized Boolean represented only by Boolean or integer 0/1."""
-    if isinstance(value, (bool, np.bool_)):
-        return bool(value)
-    if isinstance(value, (int, np.integer)) and int(value) in (0, 1):
-        return bool(value)
-    raise ValueError(f"Serialized {name} must be Boolean or integer 0/1")

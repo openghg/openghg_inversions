@@ -55,6 +55,13 @@ from scipy.sparse.linalg import LinearOperator, cg  # type: ignore[import-untype
 import xarray as xr
 
 from openghg_inversions.borrowed import BorrowedDataArray, borrow
+from openghg_inversions._serialization_codecs import (
+    _TAGGED_JSON_VALUE_ENCODING,
+    _decode_serialized_bool,
+    _decode_tagged_json_value,
+    _encode_tagged_json_value,
+    _numpy_scalar_json_default,
+)
 
 _CG_RELATIVE_TOLERANCE = "rtol" if "rtol" in inspect.signature(cg).parameters else "tol"
 _NATIVE_SERIALIZED_VARIABLE_NAMES = {"class_label_encoded"}
@@ -350,17 +357,21 @@ class SeparableExponentialCovariance:
                 "latitude_correlation_length_explicit": int(self.latitude_correlation_length_explicit),
                 "longitude_correlation_length_explicit": int(self.longitude_correlation_length_explicit),
                 "class_blocked": int(self._class_labels is not None),
-                "class_label_encoding": "tagged_json_v1" if self._class_labels is not None else "",
+                "class_label_encoding": _TAGGED_JSON_VALUE_ENCODING if self._class_labels is not None else "",
                 "class_labels_name": ""
                 if self._class_labels is None or self._class_labels.name is None
                 else str(self._class_labels.name),
                 "class_labels_attrs": "{}"
                 if self._class_labels is None
-                else json.dumps(self._class_labels.attrs, sort_keys=True, default=_json_default),
+                else json.dumps(
+                    self._class_labels.attrs,
+                    sort_keys=True,
+                    default=_numpy_scalar_json_default,
+                ),
             },
         )
         if self._class_labels is not None:
-            encoded = np.frompyfunc(_encode_class_label, 1, 1)(self._class_labels.values)
+            encoded = np.frompyfunc(_encode_tagged_json_value, 1, 1)(self._class_labels.values)
             dataset["class_label_encoded"] = self._class_labels.copy(data=np.asarray(encoded, dtype=str))
         return dataset
 
@@ -389,18 +400,18 @@ class SeparableExponentialCovariance:
         if lat_dim not in dataset.coords or lon_dim not in dataset.coords:
             raise ValueError("Serialized covariance is missing latitude or longitude coordinates")
         try:
-            latitude_length_explicit = _serialized_boolean(
+            latitude_length_explicit = _decode_serialized_bool(
                 dataset.attrs["latitude_correlation_length_explicit"],
                 "latitude_correlation_length_explicit",
             )
-            longitude_length_explicit = _serialized_boolean(
+            longitude_length_explicit = _decode_serialized_bool(
                 dataset.attrs["longitude_correlation_length_explicit"],
                 "longitude_correlation_length_explicit",
             )
         except KeyError as error:
             raise ValueError("Serialized covariance has invalid correlation-length metadata") from error
         try:
-            class_blocked = _serialized_boolean(dataset.attrs["class_blocked"], "class_blocked")
+            class_blocked = _decode_serialized_bool(dataset.attrs["class_blocked"], "class_blocked")
         except KeyError as error:
             raise ValueError("Serialized covariance has an invalid class_blocked flag") from error
         correlation_length = _positive_finite(
@@ -424,10 +435,10 @@ class SeparableExponentialCovariance:
             raise ValueError("Serialized class_blocked flag contradicts class-label data")
         class_labels = None
         if class_blocked:
-            if dataset.attrs.get("class_label_encoding") != "tagged_json_v1":
+            if dataset.attrs.get("class_label_encoding") != _TAGGED_JSON_VALUE_ENCODING:
                 raise ValueError("Unsupported covariance class-label encoding")
             encoded = dataset["class_label_encoded"]
-            decoded = np.frompyfunc(_decode_class_label, 1, 1)(encoded.values)
+            decoded = np.frompyfunc(_decode_tagged_json_value, 1, 1)(encoded.values)
             serialized_name = str(dataset.attrs.get("class_labels_name", ""))
             try:
                 serialized_attrs = json.loads(str(dataset.attrs.get("class_labels_attrs", "{}")))
@@ -727,58 +738,6 @@ def _scalar_label_equal(left: object, right: object) -> bool:
     if isinstance(result, (bool, np.bool_)):
         return bool(result)
     raise ValueError("class_labels values must be mutually comparable scalar labels")
-
-
-def _serialized_boolean(value: object, name: str) -> bool:
-    """Decode a serialized Boolean represented only by Boolean or integer 0/1."""
-    if isinstance(value, (bool, np.bool_)):
-        return bool(value)
-    if isinstance(value, (int, np.integer)) and int(value) in (0, 1):
-        return bool(value)
-    raise ValueError(f"Serialized {name} must be Boolean or integer 0/1")
-
-
-def _encode_class_label(value: object) -> str:
-    """Encode a supported scalar or nested tuple class label as tagged JSON."""
-    if isinstance(value, np.generic):
-        value = value.item()
-    payload: list[object]
-    if isinstance(value, tuple):
-        payload = ["tuple", [_encode_class_label(item) for item in value]]
-    elif isinstance(value, bool):
-        payload = ["bool", value]
-    elif isinstance(value, int):
-        payload = ["int", value]
-    elif isinstance(value, float):
-        payload = ["float", value]
-    elif isinstance(value, str):
-        payload = ["str", value]
-    else:
-        raise TypeError(f"Unsupported class-label type for serialization: {type(value).__name__}")
-    return json.dumps(payload, separators=(",", ":"))
-
-
-def _decode_class_label(encoded: str) -> object:
-    """Decode a class label produced by :func:`_encode_class_label`."""
-    kind, value = json.loads(str(encoded))
-    if kind == "tuple":
-        return tuple(_decode_class_label(item) for item in value)
-    if kind == "bool":
-        return bool(value)
-    if kind == "int":
-        return int(value)
-    if kind == "float":
-        return float(value)
-    if kind == "str":
-        return str(value)
-    raise ValueError(f"Unknown encoded class-label kind {kind!r}")
-
-
-def _json_default(value: object) -> object:
-    """Convert a NumPy scalar class-label attribute to a JSON scalar."""
-    if isinstance(value, np.generic):
-        return value.item()
-    raise TypeError(f"Class-label attr {value!r} is not JSON serializable")
 
 
 def _positive_finite(value: float, name: str) -> float:
