@@ -24,7 +24,15 @@ boolean mask per class, but does not construct the diagonal ``M_c`` matrices or
 the dense native covariance. Apply and solve eagerly convert each labelled
 right-hand side to a NumPy array; they do not preserve lazy Dask execution.
 Unblocked solves use the separable Cholesky factors; multi-class solves use
-matrix-free conjugate gradients. Distances are coordinate-wise degrees, not
+matrix-free conjugate gradients. The linear operator reports the flattened
+``N x N`` shape required by SciPy but does not materialise that matrix: each
+iteration applies the separable kernel once per class through masked native-grid
+work arrays. Grouping coordinates by class would expose a block-diagonal
+matrix, but arbitrary class blocks are dense principal submatrices and are not
+generally separable. The iterative solve therefore preserves the
+``O(N + n_lat**2 + n_lon**2)`` storage bound, at the cost of repeated
+per-class kernel applications; highly imbalanced classes can consequently have
+noticeable computational overhead. Distances are coordinate-wise degrees, not
 geodesic or longitude-wrapped distances. A missing coordinate ``units`` attr
 is interpreted as degrees for compatibility with existing OGI grids.
 
