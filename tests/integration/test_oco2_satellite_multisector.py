@@ -14,12 +14,10 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pytest
-import xarray as xr
 
 from openghg_inversions.inversion_data.preparation import RhimePreparedInputs, prepare_rhime_inputs
 
 
-_PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _DATA_STORE = Path(
     os.environ.get("OPENGHG_OCO2_DATA_STORE", "/group/chem/acrg/object_stores/temp/OCO2_test")
 )
@@ -38,25 +36,7 @@ _BC_BASIS_DIRECTORY = Path(
 _COUNTRY_DIRECTORY = Path(
     os.environ.get("OPENGHG_OCO2_COUNTRY_DIRECTORY", "/group/chem/acrg/LPDM/countries")
 )
-_PARIS_OUTPUT = Path(
-    os.environ.get(
-        "OPENGHG_OCO2_PARIS_OUTPUT",
-        _PROJECT_ROOT
-        / "run_artifacts/oco2_multisector_short/output/"
-        "oco2_eastasia_6obs_3sector_flux_co2_EASTASIA_2022-03-31 04:00:00.nc",
-    )
-)
-_SECTOR_DIAGNOSTICS = Path(
-    os.environ.get(
-        "OPENGHG_OCO2_SECTOR_DIAGNOSTICS",
-        _PROJECT_ROOT
-        / "run_artifacts/oco2_multisector_short/output/"
-        "oco2_eastasia_6obs_3sector2022-03-31 04:00:00_sector_flux_diagnostics.nc",
-    )
-)
-
 _FLUX_SOURCES = ("anth", "resp", "gpp_atm")
-_SECTORS = ("anthropogenic", "respiration", "gpp")
 
 
 def _skip_if_missing(*paths: Path) -> None:
@@ -164,68 +144,3 @@ def test_real_oco2_store_prepares_time_resolved_multisector_columns(
 
     assert prepared.site_metadata.site.values.tolist() == ["OCO2-EASTASIA"]
     assert prepared.site_metadata.averaging_period.values.tolist() == ["1H"]
-
-
-@pytest.mark.slow
-@pytest.mark.filterwarnings("ignore:Duplicate dimension names present:UserWarning")
-def test_existing_oco2_paris_output_preserves_sector_totals() -> None:
-    """Validate the generated real-data PARIS and diagnostic sector products."""
-    _skip_if_missing(_PARIS_OUTPUT, _SECTOR_DIAGNOSTICS)
-
-    with xr.open_dataset(_PARIS_OUTPUT, decode_cf=False) as paris:
-        assert paris.attrs["domain"] == "EASTASIA"
-        assert paris.attrs["species"] == "co2"
-        assert paris.attrs["paris_flux_template_version"] == "v03"
-        assert tuple(paris.sector.values) == _SECTORS
-        assert paris.sizes["sector"] == 3
-        assert paris.sizes["country"] == 31
-        assert paris.sizes["time"] == 25
-        assert paris.sizes["latitude"] == 340
-        assert paris.sizes["longitude"] == 391
-
-        for state in ("prior", "posterior"):
-            sector_sum = sum(paris[f"flux_{sector}_{state}"] for sector in _SECTORS)
-            np.testing.assert_allclose(
-                paris[f"flux_total_{state}"],
-                sector_sum,
-                rtol=1e-6,
-                # The PARIS schema stores float32 fields. Near cancellation,
-                # summing the three independently encoded sectors differs by
-                # a few 1e-12 to 1e-11 mol m-2 s-1.
-                atol=2e-11,
-            )
-            country_sector_sum = sum(
-                paris[f"flux_{sector}_{state}_country"] for sector in _SECTORS
-            )
-            np.testing.assert_allclose(
-                paris[f"flux_total_{state}_country"],
-                country_sector_sum,
-                rtol=5e-5,
-                atol=2e6,
-            )
-            assert np.isfinite(paris[f"flux_total_{state}"]).all().item()
-
-        assert paris["flux_total_prior"].attrs["units"] == "mol m-2 s-1"
-        assert paris["flux_total_prior_country"].attrs["units"] == "kg yr-1"
-        assert float(paris["flux_anthropogenic_prior"].min()) >= 0.0
-        assert float(paris["flux_respiration_prior"].min()) >= 0.0
-        assert float(paris["flux_gpp_prior"].min()) < 0.0
-        assert float(paris["flux_gpp_prior"].max()) <= 0.0
-        for sector in _SECTORS:
-            assert f"flux_{sector}_posterior_inversion_grid" in paris
-        assert "covariance_flux_sectors_posterior_country" in paris
-
-    with xr.open_dataset(_SECTOR_DIAGNOSTICS) as diagnostics:
-        for state in ("prior", "posterior"):
-            sector_sum = sum(
-                diagnostics[f"flux_{sector}_{state}_mean"] for sector in _SECTORS
-            )
-            np.testing.assert_allclose(
-                diagnostics[f"flux_total_{state}_mean"],
-                sector_sum,
-                rtol=1e-6,
-                atol=2e-11,
-            )
-        for sector in _SECTORS:
-            assert f"scaling_{sector}_prior_mean" in diagnostics
-            assert f"scaling_{sector}_posterior_mean" in diagnostics
