@@ -700,6 +700,7 @@ def fixedbasisMCMC(
     paris_postprocessing: bool = False,
     paris_postprocessing_kwargs: dict | None = None,
     power: dict | float = 1.99,
+    time_resolved: Sequence[bool | None] | bool | None = None,
     return_basis_objects: bool = False,
     time_resolved: Sequence[bool | None] | bool | None = None,
     **kwargs,

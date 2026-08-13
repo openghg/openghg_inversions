@@ -305,11 +305,14 @@ def inv_out(mcmc_args, deterministic_sampler):
 
 
 def test_fixedbasisMCMC_return_basis_objects_preserves_positional_output_format():
-    """New retained-basis option should not shift existing positional API."""
+    """New options should not shift the existing positional output API."""
     params = list(inspect.signature(fixedbasisMCMC).parameters)
 
+    assert params.index("time_resolved") > params.index("power")
+    assert params.index("time_resolved") > params.index("output_format")
     assert params.index("return_basis_objects") > params.index("power")
     assert params.index("return_basis_objects") > params.index("output_format")
+    assert params.index("return_basis_objects") == params.index("time_resolved") + 1
     assert params.index("return_basis_objects") == params.index("kwargs") - 1
 
 
@@ -508,9 +511,11 @@ def test_fixedbasisMCMC_inv_out_returns_modern_output_without_legacy_adapter(mon
     assert result.basis_functions is prepared.basis_objects["emissions"]
 
 
-def test_fixedbasisMCMC_paris_postprocessing_receives_modern_output(monkeypatch, tmp_path):
-    """Fixedbasis PARIS postprocessing uses modern InversionOutput internally."""
-    prepared = _minimal_fixedbasis_prepared_data()
+def test_fixedbasisMCMC_satellite_paris_postprocessing_receives_modern_output(
+    monkeypatch, tmp_path
+):
+    """Satellite PARIS postprocessing uses modern column-compatible output internally."""
+    prepared = _minimal_fixedbasis_prepared_data(is_column=True)
     captured = {}
 
     def fake_prepare_fixedbasis_inversion_data(**kwargs):
@@ -579,10 +584,15 @@ def test_fixedbasisMCMC_paris_postprocessing_receives_modern_output(monkeypatch,
         outputpath=str(tmp_path),
         outputname="paris-modern",
         output_format="paris",
+        inlet="column",
+        platform="satellite",
+        time_resolved=True,
         use_bc=False,
     )
 
     assert captured["prepare_kwargs"]["return_basis_objects"] is True
+    assert captured["prepare_kwargs"]["time_resolved"] is True
+    assert captured["prepare_kwargs"]["platform"] == "satellite"
     assert isinstance(captured["inv_out"], InversionOutput)
     assert captured["inv_out"].basis_functions is prepared.basis_objects["emissions"]
     assert isinstance(result, xr.Dataset)
