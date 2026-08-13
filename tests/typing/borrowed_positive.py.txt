@@ -7,6 +7,7 @@ import xarray as xr
 from typing_extensions import assert_type
 
 from openghg_inversions.borrowed import BorrowedDataArray, BorrowedNDArray, borrow
+from openghg_inversions.native_covariance import SeparableExponentialCovariance
 
 
 array = np.arange(3)
@@ -21,6 +22,13 @@ assert_type(borrowed_data_array.values, BorrowedNDArray)
 assert_type(borrowed_data_array.to_numpy(), BorrowedNDArray)
 assert_type(borrowed_data_array.copy(deep=False), BorrowedDataArray)
 assert_type(borrowed_data_array.copy(deep=True), xr.DataArray)
+
+covariance = SeparableExponentialCovariance(
+    xr.DataArray([0.0, 1.0], dims="lat"),
+    xr.DataArray([10.0, 11.0], dims="lon"),
+)
+assert_type(covariance.latitude, BorrowedDataArray)
+assert_type(covariance.longitude, BorrowedDataArray)
 
 # Copies that own their buffers remain mutable to both checkers.
 mutable_array = borrowed_array.copy()

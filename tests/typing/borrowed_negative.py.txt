@@ -4,6 +4,7 @@ import numpy as np
 import xarray as xr
 
 from openghg_inversions.borrowed import borrow
+from openghg_inversions.native_covariance import SeparableExponentialCovariance
 
 
 borrowed_array = borrow(np.arange(3))
@@ -20,3 +21,10 @@ borrowed_data_array.to_numpy()[0] = 10  # expect-error: dataarray-numpy-item
 
 shallow_copy = borrowed_data_array.copy(deep=False)
 shallow_copy[0] = 10  # expect-error: shallow-copy-item
+
+covariance = SeparableExponentialCovariance(
+    xr.DataArray([0.0, 1.0], dims="lat"),
+    xr.DataArray([10.0, 11.0], dims="lon"),
+)
+covariance.latitude[0] = 20.0  # expect-error: dataarray-item
+covariance.longitude.values[0] = 20.0  # expect-error: dataarray-values-item
