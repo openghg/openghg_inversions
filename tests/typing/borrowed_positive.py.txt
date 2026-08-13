@@ -30,6 +30,16 @@ covariance = SeparableExponentialCovariance(
 assert_type(covariance.latitude, BorrowedDataArray)
 assert_type(covariance.longitude, BorrowedDataArray)
 
+blocked_covariance = SeparableExponentialCovariance(
+    covariance.latitude,
+    covariance.longitude,
+    class_labels=xr.DataArray([["land", "sea"], ["land", "sea"]], dims=("lat", "lon")),
+)
+assert_type(blocked_covariance.class_labels, BorrowedDataArray | None)
+class_labels = blocked_covariance.class_labels
+assert class_labels is not None
+assert_type(class_labels, BorrowedDataArray)
+
 # Copies that own their buffers remain mutable to both checkers.
 mutable_array = borrowed_array.copy()
 mutable_array[0] = 10

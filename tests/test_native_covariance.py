@@ -139,6 +139,35 @@ def test_anisotropic_correlation_lengths_match_dense_oracle() -> None:
     )
 
 
+def test_default_configuration_round_trips_through_dataset() -> None:
+    """Serialization records the resolved default and reconstructs an equivalent action."""
+    latitude, longitude = _coordinates()
+    covariance = SeparableExponentialCovariance(
+        latitude=latitude,
+        longitude=longitude,
+        sigma=2.5,
+    )
+    rhs = xr.DataArray(
+        np.arange(6, dtype=float).reshape(3, 2),
+        dims=("lat", "lon"),
+        coords={"lat": latitude, "lon": longitude},
+    )
+
+    restored = SeparableExponentialCovariance.from_dataset(covariance.to_dataset())
+
+    assert covariance.correlation_length == 1.5
+    assert restored.correlation_length == 1.5
+    assert restored.sigma == 2.5
+    assert restored.native_dims == ("lat", "lon")
+    np.testing.assert_array_equal(restored.latitude, covariance.latitude)
+    np.testing.assert_array_equal(restored.longitude, covariance.longitude)
+    assert restored.latitude.dims == covariance.latitude.dims
+    assert restored.longitude.dims == covariance.longitude.dims
+    assert restored.latitude.attrs == covariance.latitude.attrs
+    assert restored.longitude.attrs == covariance.longitude.attrs
+    xr.testing.assert_allclose(restored.apply(rhs), covariance.apply(rhs))
+
+
 @pytest.mark.parametrize(
     ("bad_rhs", "message"),
     [
