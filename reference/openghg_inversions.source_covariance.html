@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>openghg_inversions.observation_error &#8212; openghg_inversions  documentation</title>
+    <title>openghg_inversions.source_covariance &#8212; openghg_inversions  documentation</title>
   
   
   
@@ -46,12 +46,12 @@
     <script src="../_static/thebelab-helper.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
-    <script>DOCUMENTATION_OPTIONS.pagename = 'reference/openghg_inversions.observation_error';</script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'reference/openghg_inversions.source_covariance';</script>
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="openghg_inversions.serialization" href="openghg_inversions.serialization.html" />
-    <link rel="prev" title="openghg_inversions.native_covariance" href="openghg_inversions.native_covariance.html" />
+    <link rel="next" title="openghg_inversions.utils" href="openghg_inversions.utils.html" />
+    <link rel="prev" title="openghg_inversions.sigma" href="openghg_inversions.sigma.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="" />
@@ -382,10 +382,10 @@
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.inversion_inputs.html">openghg_inversions.inversion_inputs</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.model_error.html">openghg_inversions.model_error</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.native_covariance.html">openghg_inversions.native_covariance</a></li>
-<li class="toctree-l2 current active"><a class="current reference internal" href="#">openghg_inversions.observation_error</a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.observation_error.html">openghg_inversions.observation_error</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.serialization.html">openghg_inversions.serialization</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.sigma.html">openghg_inversions.sigma</a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.source_covariance.html">openghg_inversions.source_covariance</a></li>
+<li class="toctree-l2 current active"><a class="current reference internal" href="#">openghg_inversions.source_covariance</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.utils.html">openghg_inversions.utils</a></li>
 </ul>
 </details></li>
@@ -435,7 +435,7 @@
     
     <li class="breadcrumb-item"><a href="openghg_inversions.html" class="nav-link">openghg_inversions</a></li>
     
-    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">openghg_inversions.observation_error</span></li>
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">openghg_inversions.source_covariance</span></li>
   </ul>
 </nav>
 </div>
@@ -452,59 +452,191 @@
 <div id="searchbox"></div>
                 <article class="bd-article">
                   
-  <section id="module-openghg_inversions.observation_error">
-<span id="openghg-inversions-observation-error"></span><h1>openghg_inversions.observation_error<a class="headerlink" href="#module-openghg_inversions.observation_error" title="Link to this heading">#</a></h1>
-<p>Backend-neutral aggregation-error covariance contracts.</p>
-<p>Aggregation error is fixed input data, separate from measurement error and
-the inferred RHIME model-error term.  Prepared inversion inputs may represent
-it exactly as a dense covariance, efficiently as a low-rank-plus-diagonal
-covariance, or diagnostically as independent standard deviations.</p>
+  <section id="module-openghg_inversions.source_covariance">
+<span id="openghg-inversions-source-covariance"></span><h1>openghg_inversions.source_covariance<a class="headerlink" href="#module-openghg_inversions.source_covariance" title="Link to this heading">#</a></h1>
+<p>Compose labelled native covariance actions into independent source blocks.</p>
+<p>The multisource covariance represented here is block diagonal by source. Each
+configured source owns a
+<a class="reference internal" href="openghg_inversions.native_covariance.html#openghg_inversions.native_covariance.SeparableExponentialCovariance" title="openghg_inversions.native_covariance.SeparableExponentialCovariance"><code class="xref py py-class docutils literal notranslate"><span class="pre">SeparableExponentialCovariance</span></code></a>
+on the same labelled spatial grid, while amplitudes, correlation lengths, and
+optional class masks may differ by source. Applying or solving the composite
+action dispatches to each source block independently, preserves all labelled
+right-hand-side dimensions, and never constructs a dense cross-source matrix.</p>
+<p>Source labels are non-empty strings whose insertion order defines the canonical
+block order. Input arrays must carry exactly those string labels in that order;
+values are not coerced between types. The leading native source dimension
+defaults to <code class="docutils literal notranslate"><span class="pre">&quot;native_source&quot;</span></code>. This is intentionally distinct from the
+<code class="docutils literal notranslate"><span class="pre">&quot;source&quot;</span></code> level on OGI’s gathered retained-state MultiIndex because xarray
+cannot represent a dimension and a MultiIndex level with the same name in one
+prolongation array.</p>
+<p><a class="reference internal" href="#openghg_inversions.source_covariance.IndependentSourceCovariance" title="openghg_inversions.source_covariance.IndependentSourceCovariance"><code class="xref py py-class docutils literal notranslate"><span class="pre">IndependentSourceCovariance</span></code></a> can serialize its complete reproducible
+configuration, including typed class labels, to an xarray dataset. Restoration
+validates the schema, source labels, required variables, and spatial coordinate
+metadata before reconstructing the component actions.</p>
+<p>Source dispatch intentionally uses eager per-source <code class="docutils literal notranslate"><span class="pre">sel</span></code>, component
+operator, and <code class="docutils literal notranslate"><span class="pre">concat</span></code> calls. A source-only <code class="docutils literal notranslate"><span class="pre">apply_ufunc</span></code> or source
+chunking is not equivalent: each component consumes the full labelled spatial
+grid and owns an explicit eager NumPy boundary, rather than acting pointwise
+along a source vector.</p>
+<p><code class="docutils literal notranslate"><span class="pre">IndependentSourceCovariance</span></code> is an ordinary slotted, identity-based action.
+It copies the source mapping once and exposes it through a read-only proxy;
+component actions and their borrowed coordinate properties are not copied on
+ordinary access.</p>
 <dl class="py class">
-<dt class="sig sig-object py" id="openghg_inversions.observation_error.AggregationError">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">openghg_inversions.observation_error.</span></span><span class="sig-name descname"><span class="pre">AggregationError</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mode</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><span class="pre">Literal</span></a><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'none'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'dense'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'low_rank'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'diagonal'</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">marginal_variance</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><span class="pre">ndarray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">covariance</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">factor</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">diagonal_variance</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.observation_error.AggregationError" title="Link to this definition">#</a></dt>
+<dt class="sig sig-object py" id="openghg_inversions.source_covariance.IndependentSourceCovariance">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">openghg_inversions.source_covariance.</span></span><span class="sig-name descname"><span class="pre">IndependentSourceCovariance</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">source_covariances</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Mapping" title="(in Python v3.14)"><span class="pre">Mapping</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="openghg_inversions.native_covariance.html#openghg_inversions.native_covariance.SeparableExponentialCovariance" title="openghg_inversions.native_covariance.SeparableExponentialCovariance"><span class="pre">SeparableExponentialCovariance</span></a><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">source_dim</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'native_source'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.source_covariance.IndependentSourceCovariance" title="Link to this definition">#</a></dt>
 <dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
-<p>Validated aggregation-error representation selected for a likelihood.</p>
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.observation_error.AggregationError.covariance">
-<span class="sig-name descname"><span class="pre">covariance</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#openghg_inversions.observation_error.AggregationError.covariance" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.observation_error.AggregationError.diagonal_variance">
-<span class="sig-name descname"><span class="pre">diagonal_variance</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#openghg_inversions.observation_error.AggregationError.diagonal_variance" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.observation_error.AggregationError.factor">
-<span class="sig-name descname"><span class="pre">factor</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#openghg_inversions.observation_error.AggregationError.factor" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.observation_error.AggregationError.marginal_variance">
-<span class="sig-name descname"><span class="pre">marginal_variance</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><span class="pre">ndarray</span></a></span><a class="headerlink" href="#openghg_inversions.observation_error.AggregationError.marginal_variance" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.observation_error.AggregationError.mode">
-<span class="sig-name descname"><span class="pre">mode</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><span class="pre">Literal</span></a><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'none'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'dense'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'low_rank'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'diagonal'</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.observation_error.AggregationError.mode" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
+<p>Block-diagonal native covariance over an ordered source mapping.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>source_covariances</strong> – Non-empty insertion-ordered mapping from source
+labels to separable spatial covariance actions on the same grid.</p></li>
+<li><p><strong>source_dim</strong> – Explicit native source dimension. It should not collide
+with a level name on the retained state MultiIndex.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#TypeError" title="(in Python v3.14)"><strong>TypeError</strong></a> – If a source block is not a
+    <code class="xref py py-class docutils literal notranslate"><span class="pre">SeparableExponentialCovariance</span></code> or the source mapping cannot
+    be copied.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If the mapping is empty, source labels or <code class="docutils literal notranslate"><span class="pre">source_dim</span></code>
+    are invalid, or block spatial dimensions or grids differ.</p></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Notes</p>
+<p>The source mapping and source-dimension properties are read-only.
+Changed configuration requires explicit reconstruction.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.source_covariance.IndependentSourceCovariance.apply">
+<span class="sig-name descname"><span class="pre">apply</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">rhs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></span><a class="headerlink" href="#openghg_inversions.source_covariance.IndependentSourceCovariance.apply" title="Link to this definition">#</a></dt>
+<dd><p>Apply independent source covariance blocks to labelled RHS arrays.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>rhs</strong> – Array containing the exact source and spatial native labels;
+all other right-hand-side dimensions are preserved.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Blockwise <code class="docutils literal notranslate"><span class="pre">B</span> <span class="pre">rhs</span></code> in the original dimension order.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#TypeError" title="(in Python v3.14)"><strong>TypeError</strong></a> – If <code class="docutils literal notranslate"><span class="pre">rhs</span></code> is not an xarray data array.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If source or spatial dimensions, coordinates, labels,
+    or numerical values are missing or invalid.</p></li>
+</ul>
+</dd>
+</dl>
 </dd></dl>
 
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.observation_error.resolve_aggregation_error">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.observation_error.</span></span><span class="sig-name descname"><span class="pre">resolve_aggregation_error</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">mode</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><span class="pre">Literal</span></a><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'auto'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'none'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'dense'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'low_rank'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'diagonal'</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'auto'</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_dim</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'nmeasure'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">covariance_dim</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'nmeasure_cov'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#openghg_inversions.observation_error.AggregationError" title="openghg_inversions.observation_error.AggregationError"><span class="pre">AggregationError</span></a></span></span><a class="headerlink" href="#openghg_inversions.observation_error.resolve_aggregation_error" title="Link to this definition">#</a></dt>
-<dd><p>Validate and select an aggregation-error covariance representation.</p>
-<p>In <code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code> mode, a structured representation takes precedence over
-<code class="docutils literal notranslate"><span class="pre">aggregation_error_sd</span></code> because that vector is commonly retained as a
-marginal diagnostic beside the exact covariance.  Supplying both dense and
-low-rank forms is ambiguous and therefore requires an explicit selection.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.source_covariance.IndependentSourceCovariance.from_dataset">
+<span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">from_dataset</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dataset</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#openghg_inversions.source_covariance.IndependentSourceCovariance" title="openghg_inversions.source_covariance.IndependentSourceCovariance"><span class="pre">IndependentSourceCovariance</span></a></span></span><a class="headerlink" href="#openghg_inversions.source_covariance.IndependentSourceCovariance.from_dataset" title="Link to this definition">#</a></dt>
+<dd><p>Restore source blocks from <a class="reference internal" href="#openghg_inversions.source_covariance.IndependentSourceCovariance.to_dataset" title="openghg_inversions.source_covariance.IndependentSourceCovariance.to_dataset"><code class="xref py py-meth docutils literal notranslate"><span class="pre">to_dataset()</span></code></a> output.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>dataset</strong> – Versioned independent-source covariance dataset.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Reconstructed source-block covariance action with class-label
+values, name, and JSON-compatible attributes restored.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If schema metadata, source or spatial coordinates, or
+    required variables are absent or invalid, or encoded metadata
+    cannot be decoded.</p>
+</dd>
+</dl>
 </dd></dl>
 
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.observation_error.validate_observation_error_inputs">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.observation_error.</span></span><span class="sig-name descname"><span class="pre">validate_observation_error_inputs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_dim</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'nmeasure'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span></span><a class="headerlink" href="#openghg_inversions.observation_error.validate_observation_error_inputs" title="Link to this definition">#</a></dt>
-<dd><p>Validate observations and independent diagonal error inputs.</p>
+<dl class="py property">
+<dt class="sig sig-object py" id="openghg_inversions.source_covariance.IndependentSourceCovariance.native_dims">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">native_dims</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.source_covariance.IndependentSourceCovariance.native_dims" title="Link to this definition">#</a></dt>
+<dd><p>Return the source dimension followed by common spatial dimensions.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Native dimensions in vectorisation order.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="openghg_inversions.source_covariance.IndependentSourceCovariance.schema">
+<span class="sig-name descname"><span class="pre">schema</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'openghg_inversions.independent_source_covariance'</span></span><a class="headerlink" href="#openghg_inversions.source_covariance.IndependentSourceCovariance.schema" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="openghg_inversions.source_covariance.IndependentSourceCovariance.schema_version">
+<span class="sig-name descname"><span class="pre">schema_version</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">1</span></span><a class="headerlink" href="#openghg_inversions.source_covariance.IndependentSourceCovariance.schema_version" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.source_covariance.IndependentSourceCovariance.solve">
+<span class="sig-name descname"><span class="pre">solve</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">rhs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></span><a class="headerlink" href="#openghg_inversions.source_covariance.IndependentSourceCovariance.solve" title="Link to this definition">#</a></dt>
+<dd><p>Solve independent source covariance blocks for labelled RHS arrays.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>rhs</strong> – Array containing the exact source and spatial native labels;
+all other right-hand-side dimensions are preserved.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Blockwise <code class="docutils literal notranslate"><span class="pre">B^-1</span> <span class="pre">rhs</span></code> in the original dimension order.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#TypeError" title="(in Python v3.14)"><strong>TypeError</strong></a> – If <code class="docutils literal notranslate"><span class="pre">rhs</span></code> is not an xarray data array.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If source or spatial dimensions, coordinates, labels,
+    or numerical values are missing or invalid.</p></li>
+<li><p><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.linalg.LinAlgError.html#numpy.linalg.LinAlgError" title="(in NumPy v2.5)"><strong>numpy.linalg.LinAlgError</strong></a> – If a class-blocked component solve does
+    not converge.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="openghg_inversions.source_covariance.IndependentSourceCovariance.source_covariances">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">source_covariances</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Mapping" title="(in Python v3.14)"><span class="pre">Mapping</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="openghg_inversions.native_covariance.html#openghg_inversions.native_covariance.SeparableExponentialCovariance" title="openghg_inversions.native_covariance.SeparableExponentialCovariance"><span class="pre">SeparableExponentialCovariance</span></a><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.source_covariance.IndependentSourceCovariance.source_covariances" title="Link to this definition">#</a></dt>
+<dd><p>Return the read-only source-to-covariance mapping.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="openghg_inversions.source_covariance.IndependentSourceCovariance.source_dim">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">source_dim</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><a class="headerlink" href="#openghg_inversions.source_covariance.IndependentSourceCovariance.source_dim" title="Link to this definition">#</a></dt>
+<dd><p>Return the read-only native source dimension name.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="openghg_inversions.source_covariance.IndependentSourceCovariance.source_labels">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">source_labels</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.source_covariance.IndependentSourceCovariance.source_labels" title="Link to this definition">#</a></dt>
+<dd><p>Return configured source labels in canonical insertion order.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Source labels defining the block order.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.source_covariance.IndependentSourceCovariance.to_dataset">
+<span class="sig-name descname"><span class="pre">to_dataset</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></span><a class="headerlink" href="#openghg_inversions.source_covariance.IndependentSourceCovariance.to_dataset" title="Link to this definition">#</a></dt>
+<dd><p>Serialize source order and reproducible component configuration.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Versioned dataset containing source-specific covariance parameters,
+independent eager copies of the common spatial coordinates, and
+any encoded class labels. The returned dataset may be mutated
+without changing component actions.</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#TypeError" title="(in Python v3.14)"><strong>TypeError</strong></a> – If a class label or class-label attribute cannot be
+    represented by the tagged JSON encoding.</p>
+</dd>
+</dl>
+</dd></dl>
+
 </dd></dl>
 
 </section>
@@ -520,20 +652,20 @@ low-rank forms is ambiguous and therefore requires an explicit selection.</p>
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="openghg_inversions.native_covariance.html"
+       href="openghg_inversions.sigma.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">openghg_inversions.native_covariance</p>
+        <p class="prev-next-title">openghg_inversions.sigma</p>
       </div>
     </a>
     <a class="right-next"
-       href="openghg_inversions.serialization.html"
+       href="openghg_inversions.utils.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">openghg_inversions.serialization</p>
+        <p class="prev-next-title">openghg_inversions.utils</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -556,23 +688,26 @@ low-rank forms is ambiguous and therefore requires an explicit selection.</p>
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.observation_error.AggregationError"><code class="docutils literal notranslate"><span class="pre">AggregationError</span></code></a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.observation_error.AggregationError.covariance"><code class="docutils literal notranslate"><span class="pre">AggregationError.covariance</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.observation_error.AggregationError.diagonal_variance"><code class="docutils literal notranslate"><span class="pre">AggregationError.diagonal_variance</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.observation_error.AggregationError.factor"><code class="docutils literal notranslate"><span class="pre">AggregationError.factor</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.observation_error.AggregationError.marginal_variance"><code class="docutils literal notranslate"><span class="pre">AggregationError.marginal_variance</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.observation_error.AggregationError.mode"><code class="docutils literal notranslate"><span class="pre">AggregationError.mode</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.source_covariance.IndependentSourceCovariance"><code class="docutils literal notranslate"><span class="pre">IndependentSourceCovariance</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.source_covariance.IndependentSourceCovariance.apply"><code class="docutils literal notranslate"><span class="pre">IndependentSourceCovariance.apply()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.source_covariance.IndependentSourceCovariance.from_dataset"><code class="docutils literal notranslate"><span class="pre">IndependentSourceCovariance.from_dataset()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.source_covariance.IndependentSourceCovariance.native_dims"><code class="docutils literal notranslate"><span class="pre">IndependentSourceCovariance.native_dims</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.source_covariance.IndependentSourceCovariance.schema"><code class="docutils literal notranslate"><span class="pre">IndependentSourceCovariance.schema</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.source_covariance.IndependentSourceCovariance.schema_version"><code class="docutils literal notranslate"><span class="pre">IndependentSourceCovariance.schema_version</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.source_covariance.IndependentSourceCovariance.solve"><code class="docutils literal notranslate"><span class="pre">IndependentSourceCovariance.solve()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.source_covariance.IndependentSourceCovariance.source_covariances"><code class="docutils literal notranslate"><span class="pre">IndependentSourceCovariance.source_covariances</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.source_covariance.IndependentSourceCovariance.source_dim"><code class="docutils literal notranslate"><span class="pre">IndependentSourceCovariance.source_dim</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.source_covariance.IndependentSourceCovariance.source_labels"><code class="docutils literal notranslate"><span class="pre">IndependentSourceCovariance.source_labels</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.source_covariance.IndependentSourceCovariance.to_dataset"><code class="docutils literal notranslate"><span class="pre">IndependentSourceCovariance.to_dataset()</span></code></a></li>
 </ul>
 </li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.observation_error.resolve_aggregation_error"><code class="docutils literal notranslate"><span class="pre">resolve_aggregation_error()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.observation_error.validate_observation_error_inputs"><code class="docutils literal notranslate"><span class="pre">validate_observation_error_inputs()</span></code></a></li>
 </ul>
   </nav></div>
 
   <div class="sidebar-secondary-item">
 
   <div class="tocsection sourcelink">
-    <a href="../_sources/reference/openghg_inversions.observation_error.rst.txt">
+    <a href="../_sources/reference/openghg_inversions.source_covariance.rst.txt">
       <i class="fa-solid fa-file-lines"></i> Show Source
     </a>
   </div>

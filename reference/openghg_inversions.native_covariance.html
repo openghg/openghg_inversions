@@ -385,6 +385,7 @@
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.observation_error.html">openghg_inversions.observation_error</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.serialization.html">openghg_inversions.serialization</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.sigma.html">openghg_inversions.sigma</a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.source_covariance.html">openghg_inversions.source_covariance</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.utils.html">openghg_inversions.utils</a></li>
 </ul>
 </details></li>
@@ -466,18 +467,31 @@ a field <code class="docutils literal notranslate"><span class="pre">X</span></c
 scientific constant.</p>
 <p>Both <a class="reference internal" href="#openghg_inversions.native_covariance.SeparableExponentialCovariance.apply" title="openghg_inversions.native_covariance.SeparableExponentialCovariance.apply"><code class="xref py py-meth docutils literal notranslate"><span class="pre">SeparableExponentialCovariance.apply()</span></code></a> and
 <a class="reference internal" href="#openghg_inversions.native_covariance.SeparableExponentialCovariance.solve" title="openghg_inversions.native_covariance.SeparableExponentialCovariance.solve"><code class="xref py py-meth docutils literal notranslate"><span class="pre">SeparableExponentialCovariance.solve()</span></code></a> preserve all input dimensions,
-coordinates, name, and attributes. The action materialises the two
+coordinates, name, and attributes.  An unblocked action materialises the two
 one-dimensional covariance factors and their Cholesky factors, rather than the
-dense native covariance. Apply and solve eagerly convert each labelled
+dense native covariance. Optional native-grid class labels replace <code class="docutils literal notranslate"><span class="pre">B</span></code> by
+the blocked action <code class="docutils literal notranslate"><span class="pre">B_class</span> <span class="pre">=</span> <span class="pre">sum_c</span> <span class="pre">M_c</span> <span class="pre">B</span> <span class="pre">M_c</span></code>, where <code class="docutils literal notranslate"><span class="pre">M_c</span></code> is the diagonal
+indicator for class <code class="docutils literal notranslate"><span class="pre">c</span></code>. A blocked action additionally stores one native-grid
+boolean mask per class, but does not construct the diagonal <code class="docutils literal notranslate"><span class="pre">M_c</span></code> matrices or
+the dense native covariance. Apply and solve eagerly convert each labelled
 right-hand side to a NumPy array; they do not preserve lazy Dask execution.
-Distances are coordinate-wise degrees, not geodesic or longitude-wrapped
-distances. A missing coordinate <code class="docutils literal notranslate"><span class="pre">units</span></code> attr is interpreted as degrees for
-compatibility with existing OGI grids.</p>
+Unblocked solves use the separable Cholesky factors; multi-class solves use
+matrix-free conjugate gradients. The linear operator reports the flattened
+<code class="docutils literal notranslate"><span class="pre">N</span> <span class="pre">x</span> <span class="pre">N</span></code> shape required by SciPy but does not materialise that matrix: each
+iteration applies the separable kernel once per class through masked native-grid
+work arrays. Grouping coordinates by class would expose a block-diagonal
+matrix, but arbitrary class blocks are dense principal submatrices and are not
+generally separable. The iterative solve therefore preserves the
+<code class="docutils literal notranslate"><span class="pre">O(N</span> <span class="pre">+</span> <span class="pre">n_lat**2</span> <span class="pre">+</span> <span class="pre">n_lon**2)</span></code> storage bound, at the cost of repeated
+per-class kernel applications; highly imbalanced classes can consequently have
+noticeable computational overhead. Distances are coordinate-wise degrees, not
+geodesic or longitude-wrapped distances. A missing coordinate <code class="docutils literal notranslate"><span class="pre">units</span></code> attr
+is interpreted as degrees for compatibility with existing OGI grids.</p>
 <p><code class="docutils literal notranslate"><span class="pre">SeparableExponentialCovariance</span></code> is an ordinary slotted, identity-based
-object. Construction owns eager coordinate copies; coordinate properties
-return borrowed arrays whose in-place mutation is unsupported. Scalar
-configuration properties are read-only, so changed parameters require explicit
-reconstruction.</p>
+object. Construction owns eager coordinate and class-label copies; array
+properties return borrowed values whose in-place mutation is unsupported.
+Scalar configuration properties are read-only, so changed parameters require
+explicit reconstruction.</p>
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.native_covariance.InvertibleNativeCovarianceAction">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">openghg_inversions.native_covariance.</span></span><span class="sig-name descname"><span class="pre">InvertibleNativeCovarianceAction</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.native_covariance.InvertibleNativeCovarianceAction" title="Link to this definition">#</a></dt>
@@ -500,7 +514,7 @@ attributes of <code class="docutils literal notranslate"><span class="pre">rhs</
 <li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#TypeError" title="(in Python v3.14)"><strong>TypeError</strong></a> – If <code class="docutils literal notranslate"><span class="pre">rhs</span></code> is not an xarray data array.</p></li>
 <li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If native dimensions or coordinates are missing or
     misaligned, or if values are non-numeric or non-finite.</p></li>
-<li><p><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.linalg.LinAlgError.html#numpy.linalg.LinAlgError" title="(in NumPy v2.5)"><strong>numpy.linalg.LinAlgError</strong></a> – If the covariance factorization fails.</p></li>
+<li><p><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.linalg.LinAlgError.html#numpy.linalg.LinAlgError" title="(in NumPy v2.5)"><strong>numpy.linalg.LinAlgError</strong></a> – If an iterative solve fails.</p></li>
 </ul>
 </dd>
 </dl>
@@ -545,7 +559,7 @@ attributes of <code class="docutils literal notranslate"><span class="pre">rhs</
 
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.native_covariance.SeparableExponentialCovariance">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">openghg_inversions.native_covariance.</span></span><span class="sig-name descname"><span class="pre">SeparableExponentialCovariance</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">latitude</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">longitude</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sigma</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">correlation_length</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1.5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">latitude_correlation_length</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">longitude_correlation_length</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.native_covariance.SeparableExponentialCovariance" title="Link to this definition">#</a></dt>
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">openghg_inversions.native_covariance.</span></span><span class="sig-name descname"><span class="pre">SeparableExponentialCovariance</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">latitude</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">longitude</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sigma</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">correlation_length</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1.5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">latitude_correlation_length</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">longitude_correlation_length</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">class_labels</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.native_covariance.SeparableExponentialCovariance" title="Link to this definition">#</a></dt>
 <dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
 <p>Separable exponential covariance over labelled latitude and longitude.</p>
 <dl class="field-list simple">
@@ -558,15 +572,17 @@ native-state units (dimensionless for RHIME scaling perturbations).</p></li>
 <li><p><strong>correlation_length</strong> – Shared fallback correlation length in degrees.</p></li>
 <li><p><strong>latitude_correlation_length</strong> – Optional latitude-specific length in degrees.</p></li>
 <li><p><strong>longitude_correlation_length</strong> – Optional longitude-specific length in degrees.</p></li>
+<li><p><strong>class_labels</strong> – Optional native-grid labels defining spatial covariance
+blocks. Cells with different labels have zero cross-covariance.</p></li>
 </ul>
 </dd>
 </dl>
 <p class="rubric">Notes</p>
-<p>Construction copies and owns the two small coordinate vectors because
-cached covariance factors depend on them. Coordinate properties return
-borrowed arrays; callers must not mutate them in place. Configuration
-properties are read-only. Instances are ordinary slotted objects with
-identity-based equality and hashing.</p>
+<p>Construction copies and owns the two small coordinate vectors and any
+class labels because cached factors and masks depend on them. Array
+properties return borrowed values; callers must not mutate them in
+place. Configuration properties are read-only. Instances are ordinary
+slotted objects with identity-based equality and hashing.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -601,9 +617,37 @@ additional right-hand-side dimensions.</p>
 </dd></dl>
 
 <dl class="py property">
+<dt class="sig sig-object py" id="openghg_inversions.native_covariance.SeparableExponentialCovariance.class_labels">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">class_labels</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="openghg_inversions.borrowed.html#openghg_inversions.borrowed.BorrowedDataArray" title="openghg_inversions.borrowed.BorrowedDataArray"><span class="pre">BorrowedDataArray</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><a class="headerlink" href="#openghg_inversions.native_covariance.SeparableExponentialCovariance.class_labels" title="Link to this definition">#</a></dt>
+<dd><p>Borrow the owned class labels, if any; in-place mutation is unsupported.</p>
+</dd></dl>
+
+<dl class="py property">
 <dt class="sig sig-object py" id="openghg_inversions.native_covariance.SeparableExponentialCovariance.correlation_length">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">correlation_length</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><a class="headerlink" href="#openghg_inversions.native_covariance.SeparableExponentialCovariance.correlation_length" title="Link to this definition">#</a></dt>
 <dd><p>Read-only shared fallback correlation length in degrees.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.native_covariance.SeparableExponentialCovariance.from_dataset">
+<span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">from_dataset</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dataset</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#openghg_inversions.native_covariance.SeparableExponentialCovariance" title="openghg_inversions.native_covariance.SeparableExponentialCovariance"><span class="pre">SeparableExponentialCovariance</span></a></span></span><a class="headerlink" href="#openghg_inversions.native_covariance.SeparableExponentialCovariance.from_dataset" title="Link to this definition">#</a></dt>
+<dd><p>Restore a covariance action from <a class="reference internal" href="#openghg_inversions.native_covariance.SeparableExponentialCovariance.to_dataset" title="openghg_inversions.native_covariance.SeparableExponentialCovariance.to_dataset"><code class="xref py py-meth docutils literal notranslate"><span class="pre">to_dataset()</span></code></a> output.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>dataset</strong> – Versioned covariance configuration dataset.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Reconstructed covariance action.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If the schema or version is unsupported, required
+    coordinates are missing, or serialized constructor values are
+    invalid.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#KeyError" title="(in Python v3.14)"><strong>KeyError</strong></a> – If a required covariance parameter attribute is missing.</p></li>
+</ul>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py property">
@@ -619,6 +663,12 @@ additional right-hand-side dimensions.</p>
 </dd></dl>
 
 <dl class="py property">
+<dt class="sig sig-object py" id="openghg_inversions.native_covariance.SeparableExponentialCovariance.latitude_correlation_length_explicit">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">latitude_correlation_length_explicit</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><a class="headerlink" href="#openghg_inversions.native_covariance.SeparableExponentialCovariance.latitude_correlation_length_explicit" title="Link to this definition">#</a></dt>
+<dd><p>Whether the latitude length was configured independently.</p>
+</dd></dl>
+
+<dl class="py property">
 <dt class="sig sig-object py" id="openghg_inversions.native_covariance.SeparableExponentialCovariance.longitude">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">longitude</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="openghg_inversions.borrowed.html#openghg_inversions.borrowed.BorrowedDataArray" title="openghg_inversions.borrowed.BorrowedDataArray"><span class="pre">BorrowedDataArray</span></a></span><a class="headerlink" href="#openghg_inversions.native_covariance.SeparableExponentialCovariance.longitude" title="Link to this definition">#</a></dt>
 <dd><p>Borrow the owned longitude coordinate; in-place mutation is unsupported.</p>
@@ -631,10 +681,26 @@ additional right-hand-side dimensions.</p>
 </dd></dl>
 
 <dl class="py property">
+<dt class="sig sig-object py" id="openghg_inversions.native_covariance.SeparableExponentialCovariance.longitude_correlation_length_explicit">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">longitude_correlation_length_explicit</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><a class="headerlink" href="#openghg_inversions.native_covariance.SeparableExponentialCovariance.longitude_correlation_length_explicit" title="Link to this definition">#</a></dt>
+<dd><p>Whether the longitude length was configured independently.</p>
+</dd></dl>
+
+<dl class="py property">
 <dt class="sig sig-object py" id="openghg_inversions.native_covariance.SeparableExponentialCovariance.native_dims">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">native_dims</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.native_covariance.SeparableExponentialCovariance.native_dims" title="Link to this definition">#</a></dt>
 <dd><p>Latitude and longitude dimension names in vectorisation order.</p>
 </dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="openghg_inversions.native_covariance.SeparableExponentialCovariance.schema">
+<span class="sig-name descname"><span class="pre">schema</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'openghg_inversions.separable_exponential_covariance'</span></span><a class="headerlink" href="#openghg_inversions.native_covariance.SeparableExponentialCovariance.schema" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="openghg_inversions.native_covariance.SeparableExponentialCovariance.schema_version">
+<span class="sig-name descname"><span class="pre">schema_version</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">1</span></span><a class="headerlink" href="#openghg_inversions.native_covariance.SeparableExponentialCovariance.schema_version" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="openghg_inversions.native_covariance.SeparableExponentialCovariance.sigma">
@@ -646,7 +712,9 @@ additional right-hand-side dimensions.</p>
 <dt class="sig sig-object py" id="openghg_inversions.native_covariance.SeparableExponentialCovariance.solve">
 <span class="sig-name descname"><span class="pre">solve</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">rhs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></span><a class="headerlink" href="#openghg_inversions.native_covariance.SeparableExponentialCovariance.solve" title="Link to this definition">#</a></dt>
 <dd><p>Solve <code class="docutils literal notranslate"><span class="pre">B</span> <span class="pre">result</span> <span class="pre">=</span> <span class="pre">rhs</span></code> without constructing the native matrix.</p>
-<p>The separable solve uses one-dimensional Cholesky factors.</p>
+<p>The separable case uses one-dimensional Cholesky factors. A covariance
+with multiple classes uses conjugate gradients with a matrix-free
+blocked covariance action.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><p><strong>rhs</strong> – Array containing both native dimensions and any number of
@@ -660,7 +728,22 @@ additional right-hand-side dimensions.</p>
 <li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#TypeError" title="(in Python v3.14)"><strong>TypeError</strong></a> – If <code class="docutils literal notranslate"><span class="pre">rhs</span></code> is not an xarray data array.</p></li>
 <li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If native dimensions or coordinates are missing or
     misaligned, or if values are non-numeric or non-finite.</p></li>
+<li><p><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.linalg.LinAlgError.html#numpy.linalg.LinAlgError" title="(in NumPy v2.5)"><strong>numpy.linalg.LinAlgError</strong></a> – If a class-blocked iterative solve does
+    not converge.</p></li>
 </ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.native_covariance.SeparableExponentialCovariance.to_dataset">
+<span class="sig-name descname"><span class="pre">to_dataset</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></span><a class="headerlink" href="#openghg_inversions.native_covariance.SeparableExponentialCovariance.to_dataset" title="Link to this definition">#</a></dt>
+<dd><p>Serialize reproducible coordinates and resolved configuration.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>A versioned dataset containing the native coordinates, resolved
+covariance parameters, and optional class labels. Boolean blocked
+state is represented as a NetCDF-safe <code class="docutils literal notranslate"><span class="pre">0</span></code> or <code class="docutils literal notranslate"><span class="pre">1</span></code> attribute.</p>
 </dd>
 </dl>
 </dd></dl>
@@ -727,14 +810,21 @@ additional right-hand-side dimensions.</p>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.native_covariance.SeparableExponentialCovariance"><code class="docutils literal notranslate"><span class="pre">SeparableExponentialCovariance</span></code></a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.native_covariance.SeparableExponentialCovariance.apply"><code class="docutils literal notranslate"><span class="pre">SeparableExponentialCovariance.apply()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.native_covariance.SeparableExponentialCovariance.class_labels"><code class="docutils literal notranslate"><span class="pre">SeparableExponentialCovariance.class_labels</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.native_covariance.SeparableExponentialCovariance.correlation_length"><code class="docutils literal notranslate"><span class="pre">SeparableExponentialCovariance.correlation_length</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.native_covariance.SeparableExponentialCovariance.from_dataset"><code class="docutils literal notranslate"><span class="pre">SeparableExponentialCovariance.from_dataset()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.native_covariance.SeparableExponentialCovariance.latitude"><code class="docutils literal notranslate"><span class="pre">SeparableExponentialCovariance.latitude</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.native_covariance.SeparableExponentialCovariance.latitude_correlation_length"><code class="docutils literal notranslate"><span class="pre">SeparableExponentialCovariance.latitude_correlation_length</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.native_covariance.SeparableExponentialCovariance.latitude_correlation_length_explicit"><code class="docutils literal notranslate"><span class="pre">SeparableExponentialCovariance.latitude_correlation_length_explicit</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.native_covariance.SeparableExponentialCovariance.longitude"><code class="docutils literal notranslate"><span class="pre">SeparableExponentialCovariance.longitude</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.native_covariance.SeparableExponentialCovariance.longitude_correlation_length"><code class="docutils literal notranslate"><span class="pre">SeparableExponentialCovariance.longitude_correlation_length</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.native_covariance.SeparableExponentialCovariance.longitude_correlation_length_explicit"><code class="docutils literal notranslate"><span class="pre">SeparableExponentialCovariance.longitude_correlation_length_explicit</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.native_covariance.SeparableExponentialCovariance.native_dims"><code class="docutils literal notranslate"><span class="pre">SeparableExponentialCovariance.native_dims</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.native_covariance.SeparableExponentialCovariance.schema"><code class="docutils literal notranslate"><span class="pre">SeparableExponentialCovariance.schema</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.native_covariance.SeparableExponentialCovariance.schema_version"><code class="docutils literal notranslate"><span class="pre">SeparableExponentialCovariance.schema_version</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.native_covariance.SeparableExponentialCovariance.sigma"><code class="docutils literal notranslate"><span class="pre">SeparableExponentialCovariance.sigma</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.native_covariance.SeparableExponentialCovariance.solve"><code class="docutils literal notranslate"><span class="pre">SeparableExponentialCovariance.solve()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.native_covariance.SeparableExponentialCovariance.to_dataset"><code class="docutils literal notranslate"><span class="pre">SeparableExponentialCovariance.to_dataset()</span></code></a></li>
 </ul>
 </li>
 </ul>

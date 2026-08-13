@@ -37,4 +37,5 @@ openghg\_inversions
    openghg_inversions.observation_error
    openghg_inversions.serialization
    openghg_inversions.sigma
+   openghg_inversions.source_covariance
    openghg_inversions.utils
