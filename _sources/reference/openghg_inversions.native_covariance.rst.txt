@@ -1,0 +1,7 @@
+openghg\_inversions.native\_covariance
+======================================
+
+.. automodule:: openghg_inversions.native_covariance
+   :members:
+   :show-inheritance:
+   :undoc-members:
