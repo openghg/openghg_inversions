@@ -702,7 +702,6 @@ def fixedbasisMCMC(
     power: dict | float = 1.99,
     time_resolved: Sequence[bool | None] | bool | None = None,
     return_basis_objects: bool = False,
-    time_resolved: Sequence[bool | None] | bool | None = None,
     **kwargs,
 ) -> xr.Dataset | dict | InversionOutput:
     """Script to run hierarchical Bayesian MCMC (RHIME) for inference of emissions.
