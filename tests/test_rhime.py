@@ -15,6 +15,7 @@ import xarray as xr
 from pytensor.compile.mode import Mode
 
 import openghg_inversions.hbmcmc.inversion_pymc as legacy_mcmc
+import openghg_inversions.config.config as config_module
 import openghg_inversions.inversion_data.preparation as prep_module
 import openghg_inversions.models as models
 import openghg_inversions.models._rhime_compiler as rhime_compiler_module
@@ -3399,6 +3400,45 @@ def test_new_rhime_docs_use_flux_sources_for_examples() -> None:
     assert "sample_kwargs =" in template
     assert "sampler_kwargs =" not in template
     assert "Legacy compatibility spelling" in rhime_doc
+
+
+def test_satellite_rhime_template_matches_modern_input_schema() -> None:
+    """The satellite example uses the same keys and value shapes as modern RHIME."""
+    generic_path = Path("openghg_inversions/config/templates/rhime_template.ini")
+    satellite_path = Path(
+        "openghg_inversions/hbmcmc/config/openghg_hbmcmc_input_satellite_template.ini"
+    )
+    generic = config_module.all_param(
+        str(generic_path), exclude_not_found=False, allow_new=True
+    )
+    satellite = config_module.all_param(
+        str(satellite_path), exclude_not_found=False, allow_new=True
+    )
+
+    assert set(satellite) == set(generic)
+    assert satellite["sites"] == ["GOSAT-BRAZIL"]
+    assert satellite["platform"] == ["satellite"]
+    assert satellite["inlet"] == ["column"]
+    assert satellite["fp_height"] == ["column"]
+    assert satellite["max_level"] == [3]
+    assert satellite["output_format"] == "paris"
+    assert satellite["paris_postprocessing_kwargs"] == {
+        "template_version": "latest",
+        "country_selections": None,
+    }
+    assert "emissions_name" not in satellite
+    assert "nit" not in satellite
+    assert "nchain" not in satellite
+
+    normalized = params_from_config(satellite_path)
+    setup = rhime_params.make_rhime_runner_setup(
+        params=normalized,
+        multisector=False,
+        data_param_names=set(inspect.signature(prepare_rhime_inputs).parameters),
+    )
+    assert setup.run_spec.sites == ("GOSAT-BRAZIL",)
+    assert setup.data_args["platform"] == ["satellite"]
+    assert setup.data_args["max_level"] == [3]
 
 
 def test_cleanup_plan_records_issue_400_decisions() -> None:
