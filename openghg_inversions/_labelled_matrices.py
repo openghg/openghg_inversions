@@ -9,14 +9,14 @@ renamed deterministically to avoid collisions.
 
 from __future__ import annotations
 
-from collections.abc import Hashable
+from collections.abc import Hashable, Iterable
 
 import numpy as np
 import pandas as pd
 import xarray as xr
 
 
-def matrix_column_dim(row_dim: str, occupied: tuple[Hashable, ...]) -> str:
+def matrix_column_dim(row_dim: str, occupied: Iterable[Hashable]) -> str:
     """Return a deterministic unoccupied column dimension for ``row_dim``."""
     candidate = f"{row_dim}_cov"
     suffix = 2
@@ -63,11 +63,17 @@ def renamed_column_coordinates(
         renamed = index.rename(renamed_levels)
         coordinates = xr.Coordinates.from_pandas_multiindex(renamed, column_dim)
         result.update({str(name): coordinate for name, coordinate in coordinates.items()})
+        result[column_dim].attrs = array.coords[row_dim].attrs
+        for raw_name, renamed_name in zip(index.names, renamed_levels, strict=True):
+            if raw_name is not None and raw_name in array.coords:
+                result[renamed_name].attrs = array.coords[raw_name].attrs
     else:
         result[column_dim] = xr.DataArray(
-            index.to_numpy(copy=False),
-            dims=column_dim,
-            attrs=array.coords[row_dim].attrs,
+            xr.IndexVariable(
+                column_dim,
+                index.rename(column_dim),
+                attrs=array.coords[row_dim].attrs,
+            )
         )
 
     for raw_name, coordinate in array.coords.items():

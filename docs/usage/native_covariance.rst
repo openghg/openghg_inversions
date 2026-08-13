@@ -185,8 +185,10 @@ The structured covariance action stores axis factors rather than dense native
 :math:`B`, but the numerical product kernel is otherwise eager. The upstream
 pipeline must materialize the related sensitivity and canonical basis
 prolongation together before calling it; lazy inputs are rejected rather than
-computed implicitly. Custom restrictions may remain sparse or Dask-backed and
-are densified only in explicit retained-state right-hand-side blocks. For
+computed implicitly. A custom restriction may remain sparse or Dask-backed
+until the explicit projection boundary, where it is materialized and densified
+once. The eager restriction is then reused across retained-state
+right-hand-side blocks, avoiding repeated execution of its lazy graph. For
 native size :math:`N`, retained size
 :math:`d`, and observation count :math:`M`, important dense storage includes
 :math:`M N` for :math:`H`, :math:`N d` for each native-by-retained array,

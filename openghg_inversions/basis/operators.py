@@ -883,6 +883,13 @@ class MultiSourceBucketBasisOperator(BasisOperator):
             )
         native_source_dim = native_dims[0]
         base = self.basis_matrix.transpose(*self.meta.grid_dims, self.meta.state_dim)
+        state_index = base.get_index(self.meta.state_dim)
+        state_level_names = {str(name) for name in getattr(state_index, "names", ()) if name is not None}
+        if native_source_dim in state_level_names:
+            raise ValueError(
+                f"Native source dimension {native_source_dim!r} collides with a retained-state "
+                "MultiIndex level; use distinct native and retained source dimension names"
+            )
         _require_exact_native_indexes(base, native_layout, native_dims=self.meta.grid_dims)
         if native_source_dim not in native_layout.coords:
             raise ValueError(f"native_layout is missing source coordinate {native_source_dim!r}")

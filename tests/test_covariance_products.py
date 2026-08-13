@@ -4,6 +4,9 @@ import numpy as np
 import pandas as pd
 import pytest
 import xarray as xr
+from dask import delayed
+from dask import array as da
+from xarray.core.indexes import PandasIndex
 
 from openghg_inversions.basis.covariance_products import (
     NativeCovarianceProducts,
@@ -324,6 +327,70 @@ def test_observation_batch_size_accepts_numpy_integral() -> None:
     assert products.native_observation_covariance.shape == (3, 3)
 
 
+@pytest.mark.parametrize("collision", ["observation-dimension", "auxiliary-coordinate"])
+def test_state_column_name_avoids_observation_namespace_collisions(collision: str) -> None:
+    """The generated state column avoids observation dimensions and coordinates."""
+    covariance, basis_operator, h, _ = _problem()
+    observation_dim = "observation"
+    if collision == "observation-dimension":
+        h = h.rename(observation="state_cov")
+        observation_dim = "state_cov"
+    else:
+        h = h.assign_coords(state_cov=("observation", ["MHD", "TAC", "RGL"]))
+    prolongation = to_dense(
+        basis_operator.native_prolongation(h, native_dims=covariance.native_dims)
+    ).compute()
+
+    products = project_native_covariance(
+        covariance=covariance,
+        basis_prolongation=prolongation,
+        state_dim="state",
+        native_sensitivity=h,
+        observation_dim=observation_dim,
+    )
+
+    state_column_dim = products.observation_state_cross_covariance.dims[1]
+    assert state_column_dim != observation_dim
+    assert state_column_dim not in h.coords
+    assert products.observation_state_cross_covariance.shape == (3, 2)
+
+
+def test_diagonal_observation_covariance_rejects_overflow() -> None:
+    """The diagonal view rejects non-finite values produced by finite huge H."""
+    covariance, basis_operator, h, _ = _problem()
+    huge_h = xr.full_like(h, 1e308)
+
+    with np.errstate(over="ignore", invalid="ignore"):
+        with pytest.raises(ValueError, match="finite|non-finite"):
+            _project(
+                covariance,
+                basis_operator,
+                huge_h,
+                observation_covariance="diagonal",
+            )
+
+
+def test_diagonal_observation_covariance_rejects_materially_negative_values(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The diagonal view rejects covariance actions producing negative variance."""
+    covariance, basis_operator, h, _ = _problem()
+
+    def negative_apply(self, rhs):
+        """Return a deliberately non-positive covariance action."""
+        return -rhs
+
+    monkeypatch.setattr(type(covariance), "apply", negative_apply)
+
+    with pytest.raises(ValueError, match="negative|nonnegative|diagonal"):
+        _project(
+            covariance,
+            basis_operator,
+            h,
+            observation_covariance="diagonal",
+        )
+
+
 def test_lazy_sensitivity_is_rejected_at_explicit_materialization_boundary() -> None:
     """The eager kernel rejects Dask H instead of silently computing its full graph."""
     covariance, basis_operator, h, _ = _problem()
@@ -379,6 +446,55 @@ def test_lazy_custom_restriction_is_materialized_in_explicit_rhs_blocks() -> Non
     )
 
 
+def test_single_chunk_lazy_restriction_is_materialized_once() -> None:
+    """A full-state Dask Pi producer executes once despite state RHS blocking."""
+    covariance, basis_operator, h, _ = _problem()
+    executions = 0
+
+    class SingleChunkRestrictionStrategy:
+        """Wrap a valid restriction in one delayed full-state chunk."""
+
+        def projection(self, covariance, basis_prolongation, *, native_dims, state_dim):
+            """Return a delayed Pi whose producer records each execution."""
+            valid = PreserveBucketProlongation().projection(
+                covariance,
+                basis_prolongation,
+                native_dims=native_dims,
+                state_dim=state_dim,
+            )
+            values = np.asarray(valid.restriction.values)
+
+            @delayed
+            def produce_restriction() -> np.ndarray:
+                """Return the full restriction and record graph execution."""
+                nonlocal executions
+                executions += 1
+                return values
+
+            lazy_values = da.from_delayed(
+                produce_restriction(),
+                shape=values.shape,
+                dtype=values.dtype,
+            )
+            restriction = xr.DataArray(
+                lazy_values,
+                dims=valid.restriction.dims,
+                coords=valid.restriction.coords,
+                attrs=valid.restriction.attrs,
+            )
+            return RetainedProjection(restriction, valid.prolongation, "single_chunk")
+
+    _project(
+        covariance,
+        basis_operator,
+        h,
+        strategy=SingleChunkRestrictionStrategy(),
+        observation_batch_size=1,
+    )
+
+    assert executions == 1
+
+
 def test_product_units_follow_dimensionless_scaling_contract() -> None:
     """State arrays are dimensionless while H products retain or square H units."""
     covariance, basis_operator, h, _ = _problem()
@@ -406,6 +522,8 @@ def test_square_products_preserve_typed_row_and_column_indexes(multiindex: bool)
         )
         h = h.drop_indexes("observation").drop_vars("observation")
         h = h.assign_coords(xr.Coordinates.from_pandas_multiindex(index, "observation"))
+        h.coords["site"].attrs["semantic_role"] = "station"
+        h.coords["time"].attrs["semantic_role"] = "sample_time"
     else:
         index = pd.Index(["MHD", 7, ("RGL", 1)], dtype=object, name="observation")
         h = h.assign_coords(observation=index)
@@ -417,6 +535,49 @@ def test_square_products_preserve_typed_row_and_column_indexes(multiindex: bool)
     assert isinstance(column_index, type(row_index))
     assert list(column_index) == list(row_index)
     assert matrix.sel(observation=row_index[0], observation_cov=column_index[0]).ndim == 0
+    if multiindex:
+        assert matrix.coords["site"].attrs["semantic_role"] == "station"
+        assert matrix.coords["site_cov"].attrs["semantic_role"] == "station"
+        assert matrix.coords["time"].attrs["semantic_role"] == "sample_time"
+        assert matrix.coords["time_cov"].attrs["semantic_role"] == "sample_time"
+
+
+@pytest.mark.parametrize(
+    "index",
+    [
+        pytest.param(
+            pd.CategoricalIndex(
+                ["MHD", "TAC", "RGL"],
+                categories=["RGL", "TAC", "MHD"],
+                ordered=True,
+                name="observation",
+            ),
+            id="categorical",
+        ),
+        pytest.param(
+            pd.period_range("2020-01", periods=3, freq="M", name="observation"),
+            id="period",
+        ),
+        pytest.param(pd.RangeIndex(5, 8, name="observation"), id="range"),
+    ],
+)
+def test_square_products_preserve_specialized_indexes_and_coordinate_attrs(
+    index: pd.Index,
+) -> None:
+    """Square row/column axes preserve specialized indexes and coordinate attrs."""
+    covariance, basis_operator, h, _ = _problem()
+    h = h.drop_indexes("observation").drop_vars("observation")
+    h = h.assign_coords(xr.Coordinates.from_xindex(PandasIndex(index, "observation")))
+    h.coords["observation"].attrs["semantic_role"] = "measurement"
+
+    matrix = _project(covariance, basis_operator, h).native_observation_covariance
+
+    assert type(matrix.indexes["observation"]) is type(index)
+    assert type(matrix.indexes["observation_cov"]) is type(index)
+    assert matrix.indexes["observation"].equals(index)
+    assert matrix.indexes["observation_cov"].equals(index.rename("observation_cov"))
+    assert matrix.coords["observation"].attrs["semantic_role"] == "measurement"
+    assert matrix.coords["observation_cov"].attrs["semantic_role"] == "measurement"
 
 
 def test_product_kernel_avoids_throwaway_covariance_application(
@@ -517,6 +678,141 @@ def test_projection_strategy_protocol_accepts_structural_implementations() -> No
     products = _project(covariance, basis_operator, h, strategy=strategy)
 
     assert products.strategy == "delegating_strategy"
+
+
+def test_false_valued_structural_strategy_is_invoked() -> None:
+    """A valid strategy with false truth value does not trigger default fallback."""
+    covariance, basis_operator, h, _ = _problem()
+    invoked = False
+
+    class FalseValuedStrategy:
+        """Expose a false truth value while implementing the strategy protocol."""
+
+        def __bool__(self) -> bool:
+            """Return false without changing the object's strategy validity."""
+            return False
+
+        def projection(self, covariance, basis_prolongation, *, native_dims, state_dim):
+            """Delegate valid algebra and record that this strategy was selected."""
+            nonlocal invoked
+            invoked = True
+            valid = PreserveBucketProlongation().projection(
+                covariance,
+                basis_prolongation,
+                native_dims=native_dims,
+                state_dim=state_dim,
+            )
+            return RetainedProjection(valid.restriction, valid.prolongation, "false_valued")
+
+    products = _project(covariance, basis_operator, h, strategy=FalseValuedStrategy())
+
+    assert invoked
+    assert products.strategy == "false_valued"
+
+
+def test_external_strategy_rejects_forged_cached_products() -> None:
+    """Untrusted zero C_alpha and B Pi.T cannot bypass products derived from Pi and B."""
+    covariance, basis_operator, h, _ = _problem()
+
+    class ForgedCacheStrategy:
+        """Return valid Pi/U alongside coherent-looking but zero cached products."""
+
+        def projection(self, covariance, basis_prolongation, *, native_dims, state_dim):
+            """Forge both optional cached products while retaining a valid Pi/U pair."""
+            valid = PreserveBucketProlongation().projection(
+                covariance,
+                basis_prolongation,
+                native_dims=native_dims,
+                state_dim=state_dim,
+            )
+            assert valid.state_covariance is not None
+            assert valid.covariance_restriction_transpose is not None
+            return RetainedProjection(
+                valid.restriction,
+                valid.prolongation,
+                "forged_cache",
+                state_covariance=xr.zeros_like(valid.state_covariance),
+                covariance_restriction_transpose=xr.zeros_like(valid.covariance_restriction_transpose),
+            )
+
+    with pytest.raises(ValueError, match="cached|C_alpha|B Pi|covariance"):
+        _project(covariance, basis_operator, h, strategy=ForgedCacheStrategy())
+
+
+@pytest.mark.parametrize("cache_mode", ["valid", "scaled-b-pi-t"])
+def test_external_strategy_cached_products_are_independently_validated(cache_mode: str) -> None:
+    """Valid external caches are accepted while a coherently scaled B Pi.T is rejected."""
+    covariance, basis_operator, h, _ = _problem()
+
+    class CachedStrategy:
+        """Return built-in Pi/U with externally supplied cached products."""
+
+        def projection(self, covariance, basis_prolongation, *, native_dims, state_dim):
+            """Supply either exact caches or a scaled covariance action cache."""
+            valid = PreserveBucketProlongation().projection(
+                covariance,
+                basis_prolongation,
+                native_dims=native_dims,
+                state_dim=state_dim,
+            )
+            assert valid.state_covariance is not None
+            assert valid.covariance_restriction_transpose is not None
+            b_pi_t = valid.covariance_restriction_transpose
+            if cache_mode == "scaled-b-pi-t":
+                b_pi_t = 2.0 * b_pi_t
+            return RetainedProjection(
+                valid.restriction,
+                valid.prolongation,
+                f"external_{cache_mode}",
+                state_covariance=valid.state_covariance,
+                covariance_restriction_transpose=b_pi_t,
+            )
+
+    if cache_mode == "scaled-b-pi-t":
+        with pytest.raises(ValueError, match="cached|B Pi|covariance"):
+            _project(covariance, basis_operator, h, strategy=CachedStrategy())
+    else:
+        expected = _project(covariance, basis_operator, h)
+        actual = _project(covariance, basis_operator, h, strategy=CachedStrategy())
+        xr.testing.assert_allclose(actual.state_covariance, expected.state_covariance)
+        xr.testing.assert_allclose(
+            actual.observation_state_cross_covariance,
+            expected.observation_state_cross_covariance,
+        )
+
+
+@pytest.mark.parametrize("coordinate_role", ["state", "native"])
+def test_custom_projection_rejects_conflicting_semantic_auxiliary_coordinates(
+    coordinate_role: str,
+) -> None:
+    """Pi and U cannot attach contradictory state or native semantic metadata."""
+    covariance, basis_operator, h, _ = _problem()
+    if coordinate_role == "native":
+        h = h.assign_coords(cell_area=(("lat", "lon"), np.arange(6).reshape(3, 2)))
+
+    class ConflictingAuxiliaryStrategy:
+        """Return a valid numerical pair with contradictory semantic coordinates."""
+
+        def projection(self, covariance, basis_prolongation, *, native_dims, state_dim):
+            """Relabel one semantic auxiliary without changing numerical values."""
+            valid = PreserveBucketProlongation().projection(
+                covariance,
+                basis_prolongation,
+                native_dims=native_dims,
+                state_dim=state_dim,
+            )
+            if coordinate_role == "state":
+                restriction = valid.restriction.assign_coords(group=(state_dim, ["a", "b"]))
+                prolongation = valid.prolongation.assign_coords(group=(state_dim, ["b", "a"]))
+            else:
+                restriction = valid.restriction.assign_coords(
+                    cell_area=(("lat", "lon"), np.arange(6).reshape(3, 2) + 1)
+                )
+                prolongation = valid.prolongation
+            return RetainedProjection(restriction, prolongation, "conflicting_auxiliary")
+
+    with pytest.raises(ValueError, match="auxiliary|coordinate|group|cell_area"):
+        _project(covariance, basis_operator, h, strategy=ConflictingAuxiliaryStrategy())
 
 
 def test_projection_strategy_names_must_be_nonempty() -> None:
