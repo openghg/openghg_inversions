@@ -1,5 +1,14 @@
 # Clean Up Inversions Refactor
 
+> **Priority update (2026-08-14):** The P0
+> [`run_rhime` readability and modifiability plan](run_rhime_readability_and_modifiability.md)
+> supersedes this note wherever it assumes that routing old configurations
+> through the current layered `run_rhime` implementation is sufficient for
+> removing the legacy path. `run_rhime` remains the default, but it must first
+> become a readable, end-to-end reference workflow with a full-pipeline model
+> variation path that is easy to copy or compose. An explicit legacy execution
+> escape hatch is tracked as short-term user relief.
+
 This note tracks the near-term refactor sequence for moving from the legacy
 `fixedbasisMCMC` path to the modern `run_rhime` pipeline.
 
