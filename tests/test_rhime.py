@@ -2065,13 +2065,9 @@ def test_likelihood_builder_provenance_is_saved_with_result_metadata(
         likelihood_builder=verification_gaussian,
     )
 
-    assert result.output_metadata["likelihood_builder"]["qualname"].endswith(
-        "verification_gaussian"
-    )
+    assert result.output_metadata["likelihood_builder"]["qualname"].endswith("verification_gaussian")
     assert result.model_build_result is not None
-    assert result.model_build_result.metadata["likelihood"]["family"] == (
-        "absolute_sigma_gaussian"
-    )
+    assert result.model_build_result.metadata["likelihood"]["family"] == ("absolute_sigma_gaussian")
     assert result.inv_out is not None
     saved_builder = result.inv_out.model_metadata["builder"]
     assert saved_builder["likelihood_builder"] == result.output_metadata["likelihood_builder"]
@@ -3643,9 +3639,11 @@ def test_multisector_runner_rejects_shared_basis_h_layout_mismatch() -> None:
         )
 
 
+@pytest.mark.rhime_contract
 def test_prepare_rhime_inputs_single_sector_reloads_merged_data(
     tac_ch4_data_args, merged_data_dir, merged_data_file_name, default_bc_basis_directory
 ) -> None:
+    """Characterize reload preparation as a single-sector public contract."""
     args = _rhime_preparation_args(
         tac_ch4_data_args,
         tac_ch4_data_args["emissions_name"],
@@ -3670,9 +3668,11 @@ def test_prepare_rhime_inputs_single_sector_reloads_merged_data(
         assert not hasattr(prepared, legacy_attr)
 
 
+@pytest.mark.rhime_contract
 def test_prepare_rhime_inputs_multisector_keeps_source_dimension(
     tac_ch4_data_args, default_bc_basis_directory
 ) -> None:
+    """Characterize source-preserving multi-sector preparation."""
     flux_sources = ["total-ukghg-edgar7", "total-ukghg-edgar7-shuffled"]
     args = _rhime_preparation_args(tac_ch4_data_args, flux_sources, default_bc_basis_directory)
     args["split_by_sectors"] = True
@@ -4495,9 +4495,11 @@ def test_prepare_rhime_inputs_rejects_non_string_averaging_period_values(
         )
 
 
+@pytest.mark.rhime_contract
 def test_run_rhime_leaves_scalar_averaging_period_for_shared_preparation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Ensure scalar averaging periods reach shared preparation unchanged."""
     captured_averaging_period: object = None
     original_signature = inspect.signature(prepare_rhime_inputs)
 
@@ -5172,7 +5174,9 @@ output_name = "test"
         params_from_config(config_file)
 
 
+@pytest.mark.rhime_contract
 def test_run_rhime_rejects_unknown_parameter_before_data_preparation(tmp_path: Path) -> None:
+    """Reject unknown acquisition parameters before preparation begins."""
     args = {
         "species": "ch4",
         "sites": ["TAC"],
@@ -5187,6 +5191,27 @@ def test_run_rhime_rejects_unknown_parameter_before_data_preparation(tmp_path: P
     }
 
     with pytest.raises(ValueError, match="Unsupported RHIME parameter"):
+        run_rhime(**args)
+
+
+@pytest.mark.rhime_contract
+def test_run_rhime_rejects_prepared_input_model_builder_before_data_preparation(tmp_path: Path) -> None:
+    """Reject model_builder at acquisition entry before input preparation."""
+    args = {
+        "species": "ch4",
+        "sites": ["TAC"],
+        "averaging_period": ["1h"],
+        "domain": "EUROPE",
+        "start_date": "2019-01-01",
+        "end_date": "2019-01-02",
+        "flux_sources": ["total-ukghg-edgar7"],
+        "output_path": str(tmp_path),
+        "output_name": "prior_variation",
+        "x_prior": {"pdf": "normal", "mu": 1.0, "sigma": 0.5},
+        "model_builder": object(),
+    }
+
+    with pytest.raises(ValueError, match="Unsupported RHIME parameter.*model_builder"):
         run_rhime(**args)
 
 
@@ -6653,13 +6678,14 @@ def test_run_rhime_api_smoke(
     assert all("number_of_observations" not in long_name for long_name in obs_long_names)
 
 
+@pytest.mark.rhime_contract
 def test_run_rhime_multisector_api_smoke(
     monkeypatch: pytest.MonkeyPatch,
     tac_ch4_data_args: dict[str, Any],
     tmp_path: Path,
     default_bc_basis_directory: Path,
 ) -> None:
-    """Run the multisector API with real diagnostics and mocked sampling."""
+    """Exercise the multi-sector public API with deterministic sampling."""
     args = tac_ch4_data_args.copy()
     args.update(
         {
@@ -6724,7 +6750,9 @@ def test_run_rhime_multisector_api_smoke(
     assert "flux_total_posterior_mean" in result.outputs["sector_flux_diagnostics"]
 
 
+@pytest.mark.rhime_contract
 def test_cli_run_rhime_passes_config_and_overrides(monkeypatch, tmp_path: Path) -> None:
+    """Forward run-rhime CLI dates, output path, and JSON overrides."""
     config_file = tmp_path / "rhime.ini"
     config_file.write_text('[RHIME.OUTPUT]\noutput_name = "test"\n', encoding="utf-8")
     seen = {}
@@ -6756,7 +6784,9 @@ def test_cli_run_rhime_passes_config_and_overrides(monkeypatch, tmp_path: Path) 
     assert seen["kwargs"]["draws"] == 1
 
 
+@pytest.mark.rhime_contract
 def test_cli_run_rhime_multisector_passes_config(monkeypatch, tmp_path: Path) -> None:
+    """Forward the multi-sector CLI configuration unchanged."""
     config_file = tmp_path / "rhime.ini"
     config_file.write_text('[RHIME.OUTPUT]\noutput_name = "test"\n', encoding="utf-8")
     seen = {}

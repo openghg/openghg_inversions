@@ -170,7 +170,9 @@ def test_fixedbasis_params_to_rhime_preserves_explicit_inversion_output_save(tmp
     assert translated["save_inversion_output"] == "explicit_inv_out.nc"
 
 
+@pytest.mark.rhime_contract
 def test_run_hbmcmc_main_routes_to_run_rhime(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Route legacy CLI parameters through run_rhime with legacy outputs."""
     config_file = tmp_path / "hbmcmc.ini"
     output_path = tmp_path / "outputs"
     _fixedbasis_config(config_file)
