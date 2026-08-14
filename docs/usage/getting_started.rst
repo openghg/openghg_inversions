@@ -139,6 +139,12 @@ Method 2: ini file
   ``openghg-inversions run-rhime`` and the RHIME config vocabulary.
   Unsupported fixedbasis-only options now raise targeted errors instead of
   being passed through to ``inferpymc``.
+- Existing INI workflows that temporarily require the historical
+  ``fixedbasisMCMC`` / ``inferpymc_postprocessouts`` product can add
+  ``--legacy-fixedbasis``. This explicit opt-in keeps legacy parameter names;
+  it does not translate them or fall back to RHIME. A missing output format or
+  ``hbmcmc`` / ``hbmcmc_postprocessing`` selects the historical product, while
+  ``output_format="legacy"`` continues to select the modern adapter.
 - A sample ``.ini`` script is at the bottom of this document.
 
 Method 3: as a job on Blue Pebble
@@ -148,6 +154,10 @@ Method 3: as a job on Blue Pebble
   SLURM <https://www.acrc.bris.ac.uk/protected/hpc-docs/job_types/serial.html>`__
   using ``sbatch``.
 - This file will specify:
+
+  - the same ``run_hbmcmc.py`` command as above; add
+    ``--legacy-fixedbasis`` after the script path only when the submitted job
+    must reproduce the historical fixedbasis product;
 
   - the name of the job
   - resources required (number of nodes, number of tasks per node,
