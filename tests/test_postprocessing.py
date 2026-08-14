@@ -1274,12 +1274,13 @@ def test_paris_postprocessing_compatibility_matches_paris_output_format(
     assert explicit["Yapost"].dims == compat["Yapost"].dims
 
 
+@pytest.mark.rhime_contract
 def test_hbmcmc_postprocessing_preserves_expected_vars_attrs_and_coords(
     mcmc_args,
     tmpdir,
     deterministic_sampler,
 ):
-    """Legacy-style postprocessing keeps its core vars, attrs, and coords."""
+    """Legacy fixedbasis output preserves its schema, values, and historical file."""
     mcmc_args["output_format"] = "hbmcmc_postprocessing"
     mcmc_args["outputpath"] = str(tmpdir)
 
@@ -1304,18 +1305,28 @@ def test_hbmcmc_postprocessing_preserves_expected_vars_attrs_and_coords(
     assert outputs["Yobs"].dims == ("nmeasure",)
     assert outputs["Ymod68"].dims == ("nmeasure", "nUI")
     assert outputs["country68"].dims == ("countrynames", "nUI")
+    inv_inputs = deterministic_sampler[0]["inv_inputs"]
+    assert isinstance(inv_inputs, xr.Dataset)
+    np.testing.assert_allclose(outputs["Yobs"].values, inv_inputs["mf"].values, rtol=1e-7)
+    np.testing.assert_allclose(outputs["Yerror"].values, inv_inputs["mf_error"].values, rtol=1e-7)
     for interval_name in ("Ymod68", "Ymod95", "country68", "country95"):
         assert np.isfinite(outputs[interval_name].values).sum() == outputs[interval_name].size
     assert "UInum" in outputs.coords
     assert "countrynames" in outputs.coords
 
+    output_path = Path(tmpdir) / "CH4_EUROPE_test_run_2019-01-01.nc"
+    assert output_path.exists()
+    with xr.open_dataset(output_path) as saved_outputs:
+        xr.testing.assert_identical(saved_outputs.load(), outputs)
 
+
+@pytest.mark.rhime_contract
 def test_inv_out_and_trace_outputs_preserve_downstream_dims_and_custom_paths(
     mcmc_args,
     tmpdir,
     deterministic_sampler,
 ):
-    """Saved trace and inversion output files preserve downstream-facing dims."""
+    """Fixedbasis trace and inversion serialization preserve values and dimensions."""
     trace_path = Path(tmpdir) / "custom_trace.nc"
     inv_out_path = Path(tmpdir) / "custom_inv_out.nc"
     mcmc_args["output_format"] = "inv_out"
@@ -1337,3 +1348,18 @@ def test_inv_out_and_trace_outputs_preserve_downstream_dims_and_custom_paths(
     assert "time" not in inv_out.flux.dims
     if "flux_time" in inv_out.flux.coords:
         assert "flux_time" in inv_out.flux.dims
+
+    saved_trace = az.from_netcdf(trace_path)
+    try:
+        assert saved_trace.posterior["x"].dims == ("chain", "draw", "nx")
+        np.testing.assert_array_equal(
+            saved_trace.posterior["x"].values,
+            inv_out.trace.posterior["x"].values,
+        )
+    finally:
+        saved_trace.close()
+
+    saved_inv_out = InversionOutput.load(inv_out_path)
+    xr.testing.assert_identical(saved_inv_out.inv_inputs, inv_out.inv_inputs)
+    xr.testing.assert_identical(saved_inv_out.trace.posterior["x"], inv_out.trace.posterior["x"])
+    assert isinstance(saved_inv_out.basis_functions, BasisFunctions)

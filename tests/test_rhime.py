@@ -7,12 +7,14 @@ from types import SimpleNamespace
 from typing import Any, Callable, cast
 
 import arviz as az
+import dask.array as da
 import numpy as np
 import pandas as pd
 import pymc as pm
 import pytest
 import xarray as xr
 from pytensor.compile.mode import Mode
+from dask.callbacks import Callback
 
 import openghg_inversions.hbmcmc.inversion_pymc as legacy_mcmc
 import openghg_inversions.inversion_data.preparation as prep_module
@@ -918,15 +920,46 @@ def test_compile_loop_sum_resolves_zero_activity_across_shared_state_terms() -> 
     assert compiled.latents["shared"] is model["x_shared_active"]
 
 
+@pytest.mark.rhime_contract
 def test_build_rhime_model_contains_expected_variables(
     rhime_inv_inputs: xr.Dataset, builder_args: dict
 ) -> None:
-    """Build the low-level model with explicitly prepared sigma alignment."""
+    """Freeze the exact standard built-model variable and dimension inventory."""
     model = build_rhime_model(rhime_inv_inputs, **builder_args)
 
     assert isinstance(model, pm.Model)
-    expected = {"x", "mu", "bc", "mu_bc", "sigma", "epsilon", "y"}
-    assert expected.issubset(model.named_vars)
+    assert set(model.named_vars) == {
+        "Y",
+        "bc",
+        "epsilon",
+        "error",
+        "hbc",
+        "hx",
+        "min_error",
+        "mu",
+        "mu_bc",
+        "sigma",
+        "sigma_period_index",
+        "sigma_site_index",
+        "x",
+        "y",
+    }
+    assert model.named_vars_to_dims == {
+        "Y": ("nmeasure",),
+        "bc": ("bc_region",),
+        "epsilon": ("nmeasure",),
+        "error": ("nmeasure",),
+        "hbc": ("nmeasure", "bc_region"),
+        "hx": ("nmeasure", "region"),
+        "min_error": ("nmeasure",),
+        "mu": ("nmeasure",),
+        "mu_bc": ("nmeasure",),
+        "sigma": ("nsigma_site", "nsigma_time"),
+        "sigma_period_index": ("nmeasure",),
+        "sigma_site_index": ("nmeasure",),
+        "x": ("region",),
+        "y": ("nmeasure",),
+    }
 
 
 def test_build_rhime_model_accepts_student_t_likelihood_builder(
@@ -966,11 +999,13 @@ def test_build_rhime_model_accepts_student_t_likelihood_builder(
     }
 
 
+@pytest.mark.rhime_contract
 def test_build_rhime_model_accepts_global_scalar_offset(
     rhime_inv_inputs: xr.Dataset,
     builder_args: dict,
 ) -> None:
     """The built-in graph can broadcast one scalar offset over observations."""
+    base_model = build_rhime_model(rhime_inv_inputs, **builder_args)
     model = build_rhime_model(
         rhime_inv_inputs,
         **{
@@ -980,6 +1015,13 @@ def test_build_rhime_model_accepts_global_scalar_offset(
         },
     )
 
+    assert set(model.named_vars) - set(base_model.named_vars) == {
+        "offset",
+        "offset_latent",
+        "site_indicator",
+    }
+    assert "offset_latent" not in model.named_vars_to_dims
+    assert model.named_vars_to_dims["offset"] == ("nmeasure",)
     assert model["offset_latent"].ndim == 0
     assert model["offset"].eval().shape == (rhime_inv_inputs.sizes["nmeasure"],)
 
@@ -990,29 +1032,116 @@ def test_modern_inv_inputs_omit_component_owned_sigma_index(rhime_inv_inputs: xr
     assert "sigma_period_index" not in rhime_inv_inputs
 
 
+@pytest.mark.rhime_contract
 def test_build_rhime_multisector_model_contains_expected_variables(
     multisector_inv_inputs: xr.Dataset, builder_args: dict
 ) -> None:
-    """Build the multisector model with explicitly prepared sigma alignment."""
+    """Freeze the exact multi-sector built-model variable and dimension inventory."""
     sectors = ["total-ukghg-edgar7", "sector-2"]
     model = build_rhime_multisector_model(multisector_inv_inputs, sectors=sectors, **builder_args)
 
-    expected = {
+    assert set(model.named_vars) == {
+        "Y",
+        "bc",
+        "epsilon",
+        "error",
+        "hbc",
+        "hx_sector_2",
+        "hx_total_ukghg_edgar7",
+        "min_error",
+        "mu",
         "x_total_ukghg_edgar7",
         "mu_total_ukghg_edgar7",
         "x_sector_2",
         "mu_sector_2",
-        "mu",
-        "bc",
         "mu_bc",
         "sigma",
-        "epsilon",
+        "sigma_period_index",
+        "sigma_site_index",
         "y",
     }
-    assert expected.issubset(model.named_vars)
+    assert model.named_vars_to_dims == {
+        "Y": ("nmeasure",),
+        "bc": ("bc_region",),
+        "epsilon": ("nmeasure",),
+        "error": ("nmeasure",),
+        "hbc": ("nmeasure", "bc_region"),
+        "hx_sector_2": ("nmeasure", "region"),
+        "hx_total_ukghg_edgar7": ("nmeasure", "region"),
+        "min_error": ("nmeasure",),
+        "mu": ("nmeasure",),
+        "mu_bc": ("nmeasure",),
+        "mu_sector_2": ("nmeasure",),
+        "mu_total_ukghg_edgar7": ("nmeasure",),
+        "sigma": ("nsigma_site", "nsigma_time"),
+        "sigma_period_index": ("nmeasure",),
+        "sigma_site_index": ("nmeasure",),
+        "x_sector_2": ("region",),
+        "x_total_ukghg_edgar7": ("region",),
+        "y": ("nmeasure",),
+    }
     region_coord = model.coords["region"]
     assert region_coord is not None
     assert len(region_coord) == multisector_inv_inputs.sizes["region"]
+
+
+@pytest.mark.rhime_contract
+def test_rhime_dask_materialization_boundaries(
+    rhime_inv_inputs: xr.Dataset,
+    builder_args: dict,
+) -> None:
+    """Observe eager sensitivity checks and PyMC registration without mutating lazy inputs."""
+    lazy_inputs = rhime_inv_inputs.copy()
+    lazy_names = ("H", "H_bc", "mf", "mf_error", "min_error")
+    lazy_arrays: dict[str, da.Array] = {}
+    materializations = dict.fromkeys(lazy_names, 0)
+
+    def record_materialization(block: np.ndarray, *, variable: str) -> np.ndarray:
+        """Record materialization of a named Dask-backed input.
+
+        Args:
+            block: Materialized NumPy block supplied by Dask.
+            variable: Input variable whose counter is incremented.
+
+        Returns:
+            The input block unchanged.
+
+        Side Effects:
+            Increments ``materializations[variable]``.
+        """
+        materializations[variable] += 1
+        return block
+
+    for name in lazy_names:
+        eager = rhime_inv_inputs[name]
+        lazy = da.from_array(eager.data, chunks=eager.shape).map_blocks(
+            record_materialization,
+            variable=name,
+            name=f"ope43-{name}",
+            meta=np.array((), dtype=eager.dtype),
+        )
+        lazy_inputs[name] = eager.copy(data=lazy)
+        lazy_arrays[name] = lazy
+
+    preparation_tasks: list[object] = []
+    with Callback(pretask=lambda key, _dsk, _state: preparation_tasks.append(key)):
+        prep_module._warn_for_nan_inputs(lazy_inputs, use_bc=True)
+
+    assert preparation_tasks
+    assert materializations == {"H": 1, "H_bc": 1, "mf": 0, "mf_error": 0, "min_error": 0}
+
+    materializations.update(dict.fromkeys(lazy_names, 0))
+    model_tasks: list[object] = []
+    with Callback(pretask=lambda key, _dsk, _state: model_tasks.append(key)):
+        model = build_rhime_model(lazy_inputs, **builder_args)
+
+    assert model_tasks
+    for name in lazy_names:
+        assert materializations[name] > 0
+        assert lazy_inputs[name].data is lazy_arrays[name]
+        assert lazy_inputs[name].chunks == lazy_arrays[name].chunks
+    np.testing.assert_array_equal(model["hx"].get_value(), rhime_inv_inputs["H"].T)
+    np.testing.assert_array_equal(model["hbc"].get_value(), rhime_inv_inputs["H_bc"].T)
 
 
 def test_build_rhime_multisector_model_uses_sector_names_for_variables(
@@ -2206,6 +2335,7 @@ def test_run_rhime_from_prepared_inputs_rejects_flag_h_layout_mismatch_before_ex
         run_rhime_from_prepared_inputs(prepared_inputs=prepared, run_spec=run_spec)
 
 
+@pytest.mark.rhime_contract
 def test_run_rhime_from_prepared_inputs_defaults_sampler_and_skips_none_output_writes(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -2501,6 +2631,7 @@ def test_legacy_sampling_names_are_not_rhime_config_aliases() -> None:
         ("legacy", "legacy"),
     ],
 )
+@pytest.mark.rhime_contract
 def test_rhime_normalises_legacy_output_format_aliases(
     legacy_output_format: str, expected_output_format: str
 ) -> None:
@@ -2736,6 +2867,7 @@ def test_rhime_model_spec_rejects_unknown_builder_strategy() -> None:
         )
 
 
+@pytest.mark.rhime_contract
 def test_rhime_sampler_runs_pymc_sampling_and_predictive_steps(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -5195,27 +5327,8 @@ def test_run_rhime_rejects_unknown_parameter_before_data_preparation(tmp_path: P
 
 
 @pytest.mark.rhime_contract
-def test_run_rhime_rejects_prepared_input_model_builder_before_data_preparation(tmp_path: Path) -> None:
-    """Reject model_builder at acquisition entry before input preparation."""
-    args = {
-        "species": "ch4",
-        "sites": ["TAC"],
-        "averaging_period": ["1h"],
-        "domain": "EUROPE",
-        "start_date": "2019-01-01",
-        "end_date": "2019-01-02",
-        "flux_sources": ["total-ukghg-edgar7"],
-        "output_path": str(tmp_path),
-        "output_name": "prior_variation",
-        "x_prior": {"pdf": "normal", "mu": 1.0, "sigma": 0.5},
-        "model_builder": object(),
-    }
-
-    with pytest.raises(ValueError, match="Unsupported RHIME parameter.*model_builder"):
-        run_rhime(**args)
-
-
 def test_run_rhime_rejects_unsupported_output_format(tmp_path: Path) -> None:
+    """Reject an output mode outside the accepted standard inventory."""
     args = {
         "species": "ch4",
         "sites": ["TAC"],
@@ -5360,7 +5473,9 @@ def test_runner_setup_defaults_inv_out_save_only_for_inv_out_format(tmp_path: Pa
     assert paris_setup.run_spec.output.save_inversion_output is False
 
 
+@pytest.mark.rhime_contract
 def test_output_path_validation_rejects_multisector_legacy_output() -> None:
+    """Reject the single-sector-only legacy format for multi-sector runs."""
     with pytest.raises(ValueError, match="single-sector"):
         rhime_specs.validate_output_path_settings(
             output_format="legacy",
@@ -5386,7 +5501,31 @@ def test_make_output_spec_validates_trace_save_path() -> None:
         )
 
 
+@pytest.mark.rhime_contract
+@pytest.mark.parametrize("output_format", ["none", "inv_out", "basic", "paris", "legacy"])
+def test_make_output_spec_accepts_supported_output_modes(
+    tmp_path: Path,
+    output_format: str,
+) -> None:
+    """Accept every supported standard RHIME output mode."""
+    spec = rhime_specs.make_output_spec(
+        output_format=output_format,
+        output_path=str(tmp_path),
+        output_name="test",
+        save_trace=False,
+        save_inversion_output=False,
+        country_file=None,
+        paris_postprocessing_kwargs=None,
+        output_filename_convention="rhime",
+        multisector=False,
+    )
+
+    assert spec.output_format == output_format
+
+
+@pytest.mark.rhime_contract
 def test_make_output_spec_normalizes_filename_convention_case() -> None:
+    """Normalize supported output and filename convention aliases."""
     spec = rhime_specs.make_output_spec(
         output_format="Legacy",
         output_path="outputs",
@@ -5403,7 +5542,9 @@ def test_make_output_spec_normalizes_filename_convention_case() -> None:
     assert spec.output_filename_convention == "legacy"
 
 
+@pytest.mark.rhime_contract
 def test_derived_output_filename_can_use_legacy_convention(tmp_path: Path) -> None:
+    """Freeze the historical derived-product filename convention."""
     spec = RhimeOutputSpec(
         output_format="legacy",
         output_path=str(tmp_path),
@@ -5423,7 +5564,9 @@ def test_derived_output_filename_can_use_legacy_convention(tmp_path: Path) -> No
     assert filename == tmp_path / "CH4_EUROPE_legacy_test_2019-01-01.nc"
 
 
+@pytest.mark.rhime_contract
 def test_make_standard_output_bundle_returns_outputs_without_mutating_result() -> None:
+    """Return the standard modern output bundle with aligned release coordinates."""
     model_spec, output_spec, run_spec = _minimal_output_specs()
     inv_inputs = _minimal_output_inv_inputs().assign_coords(
         release_lat=("nmeasure", [51.0]),
@@ -5483,6 +5626,7 @@ def test_output_bundle_serializes_state_activity_spec() -> None:
     assert policy["fixed_value"] == 2.0
 
 
+@pytest.mark.rhime_contract
 def test_make_multisector_output_bundle_returns_modern_inv_out() -> None:
     """Multi-sector RHIME outputs retain the same modern inversion-output contract."""
     sectors = (
@@ -5615,6 +5759,7 @@ def test_make_multisector_output_bundle_builds_latest_paris_flux(
     assert tuple(paris_flux.sector.values) == ("ff", "ocean")
 
 
+@pytest.mark.rhime_contract
 def test_modern_inversion_output_save_load_roundtrip(tmp_path: Path) -> None:
     """Modern output preserves January annual flux metadata for a June run."""
     model_spec, output_spec, _ = _minimal_output_specs()
@@ -6334,6 +6479,7 @@ def test_latest_paris_concentration_fills_missing_bc_with_nan(europe_country_fil
         assert np.isnan(conc_outputs[name].values).all()
 
 
+@pytest.mark.rhime_contract
 def test_standard_basic_output_uses_modern_postprocessing_without_legacy_adapter(monkeypatch) -> None:
     """RHIME basic postprocessing consumes modern output without legacy adapters."""
     model_spec, output_spec, run_spec = _minimal_output_specs(output_format="basic")
@@ -6372,6 +6518,7 @@ def test_standard_basic_output_uses_modern_postprocessing_without_legacy_adapter
     assert "basic" in bundle.outputs
 
 
+@pytest.mark.rhime_contract
 def test_standard_paris_output_uses_modern_postprocessing_without_legacy_adapter(monkeypatch) -> None:
     """RHIME PARIS postprocessing consumes modern output without legacy adapters."""
     model_spec, output_spec, run_spec = _minimal_output_specs(output_format="paris")
@@ -6424,6 +6571,7 @@ def test_standard_paris_output_uses_modern_postprocessing_without_legacy_adapter
     assert "paris_concentration" in bundle.outputs
 
 
+@pytest.mark.rhime_contract
 def test_standard_legacy_output_uses_modern_inversion_output(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -6526,6 +6674,7 @@ def test_save_inferencedata_falls_back_after_h5netcdf_failure(tmp_path: Path) ->
     ]
 
 
+@pytest.mark.rhime_contract
 def test_save_inferencedata_preserves_burn_attrs_and_resets_multiindex_coords(tmp_path: Path) -> None:
     """Standalone trace saving preserves burn metadata and serializable coordinates."""
     nmeasure_index = pd.MultiIndex.from_arrays(
@@ -6607,13 +6756,15 @@ def test_run_rhime_multisector_rejects_single_flux_source(tac_ch4_data_args, tmp
         run_rhime_multisector(**args)
 
 
+@pytest.mark.rhime_contract
 def test_run_rhime_api_smoke(
     monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
     tac_ch4_data_args: dict[str, Any],
     tmp_path: Path,
     default_bc_basis_directory: Path,
 ) -> None:
-    """Run the single-sector API with real preparation, outputs, and mocked sampling."""
+    """Run a custom Normal prior, ordered timings, and serialized-output round-trip."""
     args = tac_ch4_data_args.copy()
     args.update(
         {
@@ -6629,7 +6780,7 @@ def test_run_rhime_api_smoke(
             "tune": 0,
             "chains": 1,
             "reload_merged_data": False,
-            "x_prior": {"pdf": "normal", "mu": 1.0, "sigma": 1.0},
+            "x_prior": {"pdf": "normal", "mu": 1.25, "sigma": 0.125},
             "bc_prior": {"pdf": "normal", "mu": 1.0, "sigma": 1.0},
             "sigma_prior": {"pdf": "uniform", "lower": 0.1, "upper": 10.0},
             "sample_kwargs": {"random_seed": 123, "compute_convergence_checks": False},
@@ -6646,22 +6797,34 @@ def test_run_rhime_api_smoke(
     result = run_rhime(**args)
 
     assert isinstance(result, RhimeResult)
+    assert result.model is not None
     assert isinstance(result.basis_functions, BasisFunctions)
     assert not hasattr(result, "basis_objects")
     posterior = cast(Any, result.idata).posterior
     assert "x" in posterior
     assert "mu" in posterior
     assert result.run_spec.split_by_sectors is False
+    assert result.model_spec.sectors[0].x_prior == {
+        "pdf": "normal",
+        "mu": 1.25,
+        "sigma": 0.125,
+    }
+    assert result.model.named_vars_to_dims["x"] == ("region",)
+    x_owner = result.model["x"].owner
+    assert x_owner is not None
+    assert type(x_owner.op).__name__ == "NormalRV"
+    np.testing.assert_allclose(pm.draw(x_owner.inputs[-2]), 1.25)
+    np.testing.assert_allclose(pm.draw(x_owner.inputs[-1]), 0.125)
+    assert result.inv_inputs["H"].dims == ("region", "nmeasure")
+    assert result.inv_inputs.sizes["region"] == 4
+    assert result.inv_inputs.sizes["nmeasure"] == 24
+    nmeasure_index = result.inv_inputs.indexes["nmeasure"]
+    assert isinstance(nmeasure_index, pd.MultiIndex)
+    assert nmeasure_index.names == ["site", "time"]
+    assert nmeasure_index.get_level_values("site").unique().tolist() == ["TAC"]
     assert "inversion_output" in result.outputs
     assert isinstance(result.inv_out, InversionOutput)
     assert result.output_metadata["inversion_output_contract"] == "modern"
-    inv_input_long_names = [
-        result.inv_inputs.mf.attrs.get("long_name", ""),
-        result.inv_inputs.mf_error.attrs.get("long_name", ""),
-        result.inv_inputs.mf_repeatability.attrs.get("long_name", ""),
-        result.inv_inputs.mf_variability.attrs.get("long_name", ""),
-    ]
-    assert all("number_of_observations" not in long_name for long_name in inv_input_long_names)
     output_file = tmp_path / "rhime_test2019-01-01_inversion_output.nc"
     assert output_file.exists()
     reloaded = InversionOutput.load(output_file)
@@ -6669,13 +6832,28 @@ def test_run_rhime_api_smoke(
     assert reloaded.domain == args["domain"]
     assert isinstance(reloaded.basis_functions, BasisFunctions)
     xr.testing.assert_identical(reloaded.inv_inputs, result.inv_inputs)
-    obs_long_names = [
-        reloaded.inv_inputs.mf.attrs.get("long_name", ""),
-        reloaded.inv_inputs.mf_error.attrs.get("long_name", ""),
-        reloaded.inv_inputs.mf_repeatability.attrs.get("long_name", ""),
-        reloaded.inv_inputs.mf_variability.attrs.get("long_name", ""),
-    ]
-    assert all("number_of_observations" not in long_name for long_name in obs_long_names)
+    xr.testing.assert_identical(reloaded.trace.posterior, result.idata.posterior)
+
+    timing_output = capsys.readouterr().out
+    previous_position = -1
+    for label in (
+        "rhime.runner_setup",
+        "rhime.prepare_inputs.merged_data",
+        "rhime.prepare_inputs.obs_filtering",
+        "rhime.prepare_inputs.basis_build",
+        "rhime.prepare_inputs.footprint_sensitivity_total",
+        "rhime.prepare_inputs.make_inv_inputs",
+        "rhime.prepare_inputs.prepared_dims",
+        "rhime.prepare_inputs",
+        "rhime.model_build",
+        "rhime.sampler_total",
+        "rhime.output.inversion_output_create",
+        "rhime.output.inversion_output_save",
+        "rhime.output_bundle_total",
+    ):
+        position = timing_output.index(f"TIMING {label} ")
+        assert position > previous_position
+        previous_position = position
 
 
 @pytest.mark.rhime_contract

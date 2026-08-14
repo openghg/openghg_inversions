@@ -1,134 +1,89 @@
 # RHIME W1 behavioural and usability contracts
 
-- **Status:** Characterization baseline for OPE-43
-- **Scope:** Current public RHIME behaviour only. This is not a design for the
-  W2--W7 workstreams, and does not make private runner helpers public API.
+- **Status:** Executable characterization baseline for OPE-43
+- **Scope:** Current public RHIME behaviour only. Production code and future
+  customization choices are outside this baseline.
 
-## Repeatable parity selection
+## Authoritative command
 
-Run the current public-path oracle with:
+Every contract below is selected by one command:
 
 ```bash
 tox -e py310-openghgCur -- -m rhime_contract
 ```
 
-The selected tests exercise both public Python entry points, their prepared
-input layouts, both installed CLI commands, config override forwarding, early
-unknown-parameter failure, and the current `run_hbmcmc.py` compatibility
-route. Broader schema, output, and legacy formatter cases remain in the
-ordinary focused RHIME test files and are listed below so later work can extend
-this selection deliberately rather than infer a contract from implementation
-structure.
+There is no second, prose-only contract suite. Parameterized node IDs below
+name the base node; every parameter case is selected by the marker.
 
-## Public routes and order
+## Executable contract map
 
-`run_rhime(...)` and `run_rhime_multisector(...)` accept direct keyword
-arguments or an INI file. With an INI file, keyword arguments override config
-values; the installed `run-rhime` and `run-rhime-multisector` commands forward
-their dates, output path, and JSON `--kwargs` as those keyword arguments.
+| Contract | Executable pytest node ID |
+| --- | --- |
+| Successful single-sector acquisition, scientific stage/timing order, distinctive Normal prior parameters and state dimension, modern in-memory output, filename, and serialized round-trip | `tests/test_rhime.py::test_run_rhime_api_smoke` |
+| Successful source-resolved multi-sector acquisition, sector priors, model output, and in-memory diagnostics | `tests/test_rhime.py::test_run_rhime_multisector_api_smoke` |
+| Standard CLI forwarding of config, dates, path, and JSON overrides | `tests/test_rhime.py::test_cli_run_rhime_passes_config_and_overrides` |
+| Multi-sector CLI forwarding of its configuration unchanged | `tests/test_rhime.py::test_cli_run_rhime_multisector_passes_config` |
+| Config normalization and early unknown-parameter failure | `tests/test_rhime.py::test_rhime_normalises_legacy_output_format_aliases`; `tests/test_rhime.py::test_run_rhime_rejects_unknown_parameter_before_data_preparation` |
+| Standard and source-resolved prepared layouts | `tests/test_rhime.py::test_prepare_rhime_inputs_single_sector_reloads_merged_data`; `tests/test_rhime.py::test_prepare_rhime_inputs_multisector_keeps_source_dimension` |
+| Scalar averaging-period normalization reaches shared preparation unchanged | `tests/test_rhime.py::test_run_rhime_leaves_scalar_averaging_period_for_shared_preparation` |
+| Indexed site/time identity and site-indicator alignment | `tests/test_prepared_inputs_serialisation.py::test_site_indicator_is_derived_from_measurement_sites` |
+| NetCDF and Zarr prepared-input dimensions, indexed and auxiliary coordinates, values, basis metadata, and replay without preparation | `tests/test_prepared_inputs_serialisation.py::test_real_prepared_inputs_save_load_and_run_without_repreparation` |
+| Current Dask eager boundaries and preservation of the caller's lazy arrays/chunks | `tests/test_rhime.py::test_rhime_dask_materialization_boundaries` |
+| Exact standard PyMC variable and dimension inventory | `tests/test_rhime.py::test_build_rhime_model_contains_expected_variables` |
+| Exact multi-sector PyMC variable and dimension inventory | `tests/test_rhime.py::test_build_rhime_multisector_model_contains_expected_variables` |
+| Optional global offset variables and dimensions | `tests/test_rhime.py::test_build_rhime_model_accepts_global_scalar_offset` |
+| Predictive variable selection and prior/posterior-predictive calls | `tests/test_rhime.py::test_rhime_sampler_runs_pymc_sampling_and_predictive_steps` |
+| Accepted standard output modes, rejection of unknown modes, and rejection of the multi-sector legacy combination | `tests/test_rhime.py::test_make_output_spec_accepts_supported_output_modes`; `tests/test_rhime.py::test_run_rhime_rejects_unsupported_output_format`; `tests/test_rhime.py::test_output_path_validation_rejects_multisector_legacy_output` |
+| Case-normalized output naming and the historical derived filename | `tests/test_rhime.py::test_make_output_spec_normalizes_filename_convention_case`; `tests/test_rhime.py::test_derived_output_filename_can_use_legacy_convention` |
+| `none` mode has no output filesystem side effects | `tests/test_rhime.py::test_run_rhime_from_prepared_inputs_defaults_sampler_and_skips_none_output_writes` |
+| Standard and multi-sector modern output-bundle contents | `tests/test_rhime.py::test_make_standard_output_bundle_returns_outputs_without_mutating_result`; `tests/test_rhime.py::test_make_multisector_output_bundle_returns_modern_inv_out` |
+| `basic`, `paris`, and `legacy` select the modern `InversionOutput` adapter | `tests/test_rhime.py::test_standard_basic_output_uses_modern_postprocessing_without_legacy_adapter`; `tests/test_rhime.py::test_standard_paris_output_uses_modern_postprocessing_without_legacy_adapter`; `tests/test_rhime.py::test_standard_legacy_output_uses_modern_inversion_output` |
+| Modern inversion-output schema, provenance, trace metadata, inputs, flux, and retained basis round-trip | `tests/test_rhime.py::test_modern_inversion_output_save_load_roundtrip` |
+| Standalone trace write, metadata, and serialized measurement coordinates | `tests/test_rhime.py::test_save_inferencedata_preserves_burn_attrs_and_resets_multiindex_coords` |
+| Current `run_hbmcmc.py` translation, config-copy side effect, legacy mode, and filename convention | `tests/test_run_hbmcmc_shim.py::test_run_hbmcmc_main_routes_to_run_rhime` |
+| Direct current `fixedbasisMCMC(...)` legacy schema, dimensions, values, historical filename, and NetCDF write | `tests/test_postprocessing.py::test_hbmcmc_postprocessing_preserves_expected_vars_attrs_and_coords` |
+| Direct current `fixedbasisMCMC(...)` trace and modern inversion-output paths, dimensions, values, and serialization | `tests/test_postprocessing.py::test_inv_out_and_trace_outputs_preserve_downstream_dims_and_custom_paths` |
 
-The observable current order is:
+## Current Dask boundary
 
-```text
-normalize and validate parameters
--> retrieve/reload data
--> filter sites and observations
--> construct/load retained basis functions
--> assemble canonical inversion inputs
--> build PyMC model
--> sample and generate predictive groups
--> make in-memory outputs and write requested artifacts
-```
+The current implementation is not lazy through sampling. Preparation's NaN
+check computes Dask-backed `H` and `H_bc`. Model construction then computes
+the Dask-backed `H`, `H_bc`, `mf`, `mf_error`, and `min_error` arrays while
+registering PyMC data, before sampling begins. Those operations leave the
+caller's Dask arrays and chunk layout in place. The Dask callback and named
+materialization counters in
+`tests/test_rhime.py::test_rhime_dask_materialization_boundaries` assert each
+part of this statement.
 
-`run_rhime_from_prepared_inputs(...)` begins after canonical input assembly;
-it validates the prepared layout, output compatibility, and retained basis
-before model construction. The names and placement of private helpers are not
-part of this contract. Timing records are emitted at runner setup, input
-preparation, model build/sample, sampling, and output-bundle boundaries.
+## Built-model inventory
 
-The legacy `run_hbmcmc.py` script currently translates its fixedbasis-style
-INI vocabulary to modern RHIME vocabulary, validates it, checks the country
-file, copies the configuration for provenance, then calls `run_rhime(...)`.
-Direct `fixedbasisMCMC(...)` remains a separate legacy Python path.
+The standard built model currently contains `Y`, `error`, `min_error`, `hx`,
+`x`, `mu`, `hbc`, `bc`, `mu_bc`, `sigma_site_index`,
+`sigma_period_index`, `sigma`, `epsilon`, and `y`. The multi-sector model
+replaces standard `hx`/`x`/`mu` with source-suffixed design, state, and
+contribution variables and retains total `mu`. A global offset adds
+`site_indicator`, scalar `offset_latent`, and observation-aligned `offset`.
+Prior and posterior predictive generation selects built-model variable `y`.
 
-## Inputs and scientific graph
+These inventories are copied from the exact `model.named_vars` and
+`model.named_vars_to_dims` equality assertions in the mapped model tests; they
+are not inferred from helper names or documentation.
 
-Prepared inputs retain the filtered `sites`, matching `averaging_period`,
-authoritative site metadata, and `BasisFunctions`. `nmeasure` carries the
-observation identity (normally the indexed `(site, time)` layout); site
-metadata must align with the site identity in that dimension. Inputs are
-borrowed xarray objects: callers must not mutate them in place, and ordinary
-inspection must not copy, compute, persist, densify, or rechunk them. PyMC
-sampling and serialization/product writing are explicit execution boundaries.
+## Ordinary scientist variation
 
-Standard sensitivity `H` has no `source` dimension and uses the retained
-region layout. Multi-sector `H` retains source-resolved state, including
-gathered ragged source/state layouts; it must not be rectangularized. Filtering
-happens before basis generation, and the basis metadata records whether the
-artifact was generated or loaded.
-
-The built-in standard graph exposes `mf`, `mf_error`, `min_error`, `x`, `mu`,
-`hx`, `y`, and `epsilon`; enabling boundary conditions adds `bc`, `mu_bc`, and
-`hbc`, while offsets add `offset`. Multi-sector graphs use sanitized sector
-suffixes such as `x_ff`, `mu_ff`, and `hx_ff`. Custom prepared-input builders
-may declare a different explicit variable-role/output manifest, so those names
-are a built-in-model contract rather than a universal custom-builder rule.
-
-## Outputs and side effects
-
-The supported public output modes are `none`, `inv_out`, `basic`, `paris`, and
-`legacy`. `legacy` is single-sector only. `none` writes no ordinary output
-products, although a multi-sector run still returns in-memory sector flux
-diagnostics. Derived output formats default not to save an `InversionOutput`;
-`inv_out` defaults to saving one. `save_trace` and explicit output saves require
-an output path where a default path is needed.
-
-The current standard names include
-`<name><start>_trace.nc`, `<name><start>_inversion_output.nc`, RHIME derived
-products named from the output/species/domain/start fields, and legacy derived
-products named `<SPECIES>_<domain>_<name>_<start>.nc`. Multi-sector runs can
-also write `<name><start>_sector_flux_diagnostics.nc`. Output creation may make
-parent directories, write NetCDF/trace artifacts, and record their paths plus
-the modern inversion-output contract in `RhimeResult.output_metadata`.
-
-The detailed output/schema oracle is in `tests/test_rhime.py` (output bundle,
-filename, and serialization tests), `tests/test_prepared_inputs_serialisation.py`,
-`tests/test_xarray_input_adapter.py`, and `tests/test_postprocessing.py`.
-
-## Scientist variation baseline and review checklist
-
-The current acquisition-to-output call accepts ordinary arguments such as
-`flux_sources`, `x_prior`, and `output_path`. Changing a prior is supported:
-
-```python
-result = run_rhime(
-    species="ch4",
-    sites=["TAC"],
-    averaging_period=["1h"],
-    domain="EUROPE",
-    start_date="2019-01-01",
-    end_date="2019-01-02",
-    flux_sources=["total-ukghg-edgar7"],
-    x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.5},
-    output_path="out",
-    output_name="prior_variation",
-)
-```
-
-Changing a likelihood or complete model at that same boundary is not currently
-supported: `model_builder` and `likelihood_builder` are accepted only by
-`run_rhime_from_prepared_inputs(...)`; passing either to `run_rhime(...)` is an
-early unsupported-parameter error. This is the baseline ergonomics limitation
-for W2, not a reason to add a new framework in W1.
+`tests/test_rhime.py::test_run_rhime_api_smoke` is the executable example. It
+starts from ordinary acquisition arguments, supplies
+`x_prior={"pdf": "normal", "mu": 1.25, "sigma": 0.125}`, builds the model,
+checks the actual PyMC `NormalRV` parameters and `region` dimension, samples
+deterministically, writes the modern output, reloads it, and compares inputs
+and trace values. Future builder behavior is intentionally not characterized
+by W1.
 
 Scientific-user review:
 
-1. Find `run_rhime(...)` or `run_rhime_multisector(...)` and see the route
-   above without needing private runner knowledge.
-2. Follow normalization, preparation, model, sampling, and output in order.
-3. Change a normal prior using ordinary acquisition arguments and retain the
-   output path/name.
-4. Run the explicit contract suite, then the focused RHIME tests for the
-   output mode being changed.
-5. Inspect `RhimeResult`, `output_metadata`, the saved trace/inversion output,
-   and any selected derived product.
+1. Find the standard or multi-sector public entry point in the first two rows.
+2. Follow the asserted timing labels through preparation, model, sampling, and
+   output.
+3. Change an ordinary prior as in the single-sector executable example.
+4. Run the authoritative command.
+5. Inspect the returned `RhimeResult` and the asserted serialized artifact.

@@ -463,6 +463,7 @@ def test_prepared_inputs_roundtrip_observation_aligned_release_metadata() -> Non
     assert "release_lon" not in restored.site_metadata
 
 
+@pytest.mark.rhime_contract
 def test_site_indicator_is_derived_from_measurement_sites() -> None:
     """Supplied positional codes are replaced by the labeled measurement relation."""
     original = _prepared_inputs()
@@ -482,6 +483,7 @@ def test_site_indicator_is_derived_from_measurement_sites() -> None:
     np.testing.assert_array_equal(decoded, restored.inv_inputs["site"].values)
 
 
+@pytest.mark.rhime_contract
 @pytest.mark.parametrize("suffix", [".nc", ".zarr"])
 def test_real_prepared_inputs_save_load_and_run_without_repreparation(
     monkeypatch: pytest.MonkeyPatch,
@@ -489,7 +491,12 @@ def test_real_prepared_inputs_save_load_and_run_without_repreparation(
     prepared_from_real_route: RhimePreparedInputs,
     suffix: str,
 ) -> None:
-    """Real RHIME preparation survives both stores and runs without repeating preparation."""
+    """Freeze the labeled prepared-input round-trip and replay contract.
+
+    Both NetCDF and Zarr must preserve dimensions, indexed and auxiliary
+    coordinates, values, site alignment, and retained-basis metadata. Replaying
+    either artifact must also bypass data preparation.
+    """
     prepared = prepared_from_real_route
     serialized = prepared.to_datatree()
     encoded_inputs = serialized["inv_inputs"].to_dataset()
