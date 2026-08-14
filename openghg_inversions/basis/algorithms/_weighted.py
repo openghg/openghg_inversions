@@ -15,7 +15,6 @@ from pathlib import Path
 import numpy as np
 import xarray as xr
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -33,19 +32,27 @@ def load_landsea_indices(domain: str, country_directory: str | None = None) -> n
     Returns:
         np.ndarray: Array containing 0 (where there is sea) and 1 (where there is land).
     """
-    default_dir = Path(__file__).parent
-    if country_directory is not None:
-        landsea_path = Path(country_directory) / f"country-land-sea_{domain}.nc"
-    elif domain == "EUROPE":
+    default_dir = Path(__file__).parent if country_directory is None else Path(country_directory)
+    
+    # Try standard naming convention first
+    landsea_path = default_dir / f"country-land-sea_{domain}.nc"
+    
+    # If standard name not found and domain is EUROPE, try the special UKMO filename
+    if not landsea_path.exists() and domain == "EUROPE":
         landsea_path = default_dir / "country-EUROPE-UKMO-landsea-2023.nc"
-    else:
-        landsea_path = default_dir / f"country-land-sea_{domain}.nc"
+    
+    # If still not found, warn and try EUROPE as fallback
+    if not landsea_path.exists():
+        logger.warning(
+            f"No land-sea file found for domain {domain}. Defaulting to EUROPE."
+        )
+        landsea_path = default_dir / "country-land-sea_EUROPE.nc"
         if not landsea_path.exists():
-            logger.warning(
-                f"No land-sea file found for domain {domain}. Defaulting to EUROPE (country-EUROPE-UKMO-landsea-2023.nc)"
-            )
             landsea_path = default_dir / "country-EUROPE-UKMO-landsea-2023.nc"
-    return xr.open_dataset(landsea_path)["country"].values
+    
+    landsea_array = xr.open_dataset(landsea_path)["country"].values
+    
+    return landsea_array
 
 
 def bucket_value_split(
@@ -90,7 +97,7 @@ def bucket_value_split(
     )
 
 
-def get_nregions(bucket: float, grid: np.ndarray, domain: str, country_directory: str | None = None) -> int:
+def get_nregions(bucket: float, grid: np.ndarray, domain: str, country_directory: str | None = None, lat_bounds: tuple | None = None, lon_bounds: tuple | None = None) -> int:
     """Optimize bucket value to number of desired regions.
 
     Args:
@@ -108,10 +115,10 @@ def get_nregions(bucket: float, grid: np.ndarray, domain: str, country_directory
     Return :
         number of basis functions for bucket value
     """
-    return np.max(bucket_split_landsea_basis(grid, bucket, domain, country_directory))
+    return np.max(bucket_split_landsea_basis(grid, bucket, domain, country_directory, lat_bounds, lon_bounds))
 
 
-def optimize_nregions(bucket: float, grid: np.ndarray, nregion: int, tol: int, domain: str, country_directory: str | None = None) -> float:
+def optimize_nregions(bucket: float, grid: np.ndarray, nregion: int, tol: int, domain: str, country_directory: str | None = None, lat_bounds: tuple | None = None, lon_bounds: tuple | None = None) -> float:
     """Optimize bucket value to obtain nregion basis functions
     within +/- tol.
 
@@ -142,7 +149,7 @@ def optimize_nregions(bucket: float, grid: np.ndarray, nregion: int, tol: int, d
     for _ in range(10):
         # try 1000 iterations
         for j in range(1000):
-            current_nregion = get_nregions(current_bucket, grid, domain, country_directory)
+            current_nregion = get_nregions(current_bucket, grid, domain, country_directory, lat_bounds, lon_bounds)
 
             if current_nregion <= nregion + current_tol and current_nregion >= nregion - current_tol:
                 print(
@@ -163,7 +170,7 @@ def optimize_nregions(bucket: float, grid: np.ndarray, nregion: int, tol: int, d
     )
 
 
-def bucket_split_landsea_basis(grid: np.ndarray, bucket: float, domain: str, country_directory: str | None = None) -> np.ndarray:
+def bucket_split_landsea_basis(grid: np.ndarray, bucket: float, domain: str, country_directory: str | None = None, lat_bounds: tuple | None = None, lon_bounds: tuple | None = None) -> np.ndarray:
     """Same as bucket_split_basis but includes
     land-sea split. i.e. basis functions cannot overlap sea and land.
 
@@ -184,6 +191,29 @@ def bucket_split_landsea_basis(grid: np.ndarray, bucket: float, domain: str, cou
 
     """
     landsea_indices = load_landsea_indices(domain, country_directory=country_directory)
+    
+    # If coordinate bounds provided, crop landsea_indices to match inner region
+    if lat_bounds is not None and lon_bounds is not None:
+        # Load full domain as xarray to use coordinate-based indexing
+        # Use same path resolution logic as load_landsea_indices
+        default_dir = Path(__file__).parent if country_directory is None else Path(country_directory)
+        landsea_path = default_dir / f"country-land-sea_{domain}.nc"
+        
+        if not landsea_path.exists() and domain == "EUROPE":
+            landsea_path = default_dir / "country-EUROPE-UKMO-landsea-2023.nc"
+        
+        landsea_full_xr = xr.open_dataset(landsea_path)["country"]
+        landsea_crop = landsea_full_xr.sel(
+            lat=slice(lat_bounds[0], lat_bounds[1]),
+            lon=slice(lon_bounds[0], lon_bounds[1])
+        )
+        landsea_indices = landsea_crop.values
+    
+    # Handle any remaining shape mismatch
+    if grid.shape != landsea_indices.shape:
+        if grid.shape == landsea_indices.shape[::-1]:
+            landsea_indices = landsea_indices.T
+    
     myregions = bucket_value_split(grid, bucket)
 
     mybasis_function = np.zeros(shape=grid.shape)
@@ -192,9 +222,14 @@ def bucket_split_landsea_basis(grid: np.ndarray, bucket: float, domain: str, cou
         ymin, ymax = myregions[i][0], myregions[i][1]
         xmin, xmax = myregions[i][2], myregions[i][3]
 
-        inds_y0, inds_x0 = np.where(landsea_indices[ymin:ymax, xmin:xmax] == 0)
-        inds_y1, inds_x1 = np.where(landsea_indices[ymin:ymax, xmin:xmax] == 1)
-
+        landsea_slice = landsea_indices[ymin:ymax, xmin:xmax]
+        inds_y0, inds_x0 = np.where(landsea_slice == 0)
+        inds_y1, inds_x1 = np.where(landsea_slice == 1)
+        
+        # Debug on first region
+        if i == 0:
+            pass
+        
         count = np.max(mybasis_function)
 
         if len(inds_y0) != 0:
@@ -206,13 +241,13 @@ def bucket_split_landsea_basis(grid: np.ndarray, bucket: float, domain: str, cou
             count += 1
             for j in range(len(inds_y1)):
                 mybasis_function[inds_y1[j] + ymin, inds_x1[j] + xmin] = count
-
+    
     return mybasis_function
 
 
 def nregion_landsea_basis(
     grid: np.ndarray, bucket: float = 1, nregion: int = 100, tol: int = 1, domain: str = "EUROPE",
-    country_directory: str | None = None,
+    country_directory: str | None = None, lat_bounds: tuple | None = None, lon_bounds: tuple | None = None,
 ) -> np.ndarray:
     """Obtain basis function with nregions (for land-sea split).
 
@@ -239,6 +274,7 @@ def nregion_landsea_basis(
     Returns:
         basis_function: 2D basis function array
     """
-    bucket_opt = optimize_nregions(bucket, grid, nregion, tol, domain, country_directory)
-    basis_function = bucket_split_landsea_basis(grid, bucket_opt, domain, country_directory)
+    bucket_opt = optimize_nregions(bucket, grid, nregion, tol, domain, country_directory, lat_bounds, lon_bounds)
+    basis_function = bucket_split_landsea_basis(grid, bucket_opt, domain, country_directory, lat_bounds, lon_bounds)
+    
     return basis_function

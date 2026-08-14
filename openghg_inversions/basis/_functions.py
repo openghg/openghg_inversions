@@ -319,11 +319,16 @@ def bucketbasisfunction(
         Array with lat/lon dimensions and basis regions encoded by integers.
     """
     flux, footprints = _flux_fp_from_fp_all(fp_all, emissions_name)
-    fps = _mean_fp_times_mean_flux(flux, footprints, abs_flux=abs_flux, mask=mask).as_numpy()
+    fps_xr = _mean_fp_times_mean_flux(flux, footprints, abs_flux=abs_flux, mask=mask)
+    fps = fps_xr.as_numpy()
     fps = fps / fps.max()
 
+    # Extract coordinate bounds for inner region if mask was used
+    lat_bounds = (float(fps_xr.lat.min()), float(fps_xr.lat.max())) if hasattr(fps_xr, 'lat') else None
+    lon_bounds = (float(fps_xr.lon.min()), float(fps_xr.lon.max())) if hasattr(fps_xr, 'lon') else None
+
     # use xr.apply_ufunc to keep xarray coords
-    func = partial(weighted_algorithm, nregion=nbasis, bucket=1, domain=domain, country_directory=country_directory)
+    func = partial(weighted_algorithm, nregion=nbasis, bucket=1, domain=domain, country_directory=country_directory, lat_bounds=lat_bounds, lon_bounds=lon_bounds)
     bucket_basis = xr.apply_ufunc(func, fps)
 
     bucket_basis = bucket_basis.expand_dims({"time": [pd.to_datetime(start_date)]}, axis=-1)
