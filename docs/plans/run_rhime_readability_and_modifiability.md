@@ -1,0 +1,404 @@
+# `run_rhime` Readability and Modifiability Plan
+
+Status: approved delivery plan, P0 / highest project priority
+Date: 2026-08-14
+Owners: OpenGHG Inversions maintainers
+
+## Summary
+
+`run_rhime` remains the canonical Python and CLI entry point for ordinary
+RHIME inversions. The immediate priority is to make its implementation a
+readable reference workflow that a scientific user can follow, modify, and run
+without reconstructing a framework from prepared inputs, cross-package specs,
+builder contexts, role manifests, and output manifests.
+
+The target is the locality and code-reading experience of the release-0.6
+workflow, not the historical `fixedbasisMCMC` name or its monolithic
+implementation. OpenGHG Inversions no longer has a meaningful "non-fixed
+basis MCMC" alternative, so `fixedbasisMCMC` remains compatibility vocabulary
+only. New architecture and documentation continue to centre `run_rhime`.
+
+This work supersedes the assumption that the legacy path can be removed as
+soon as old configs execute through the current layered `run_rhime`
+implementation. The legacy implementation may be retired only after the
+canonical `run_rhime` path is demonstrably intelligible and modifiable by its
+target scientific users.
+
+## Problem
+
+The default `run_rhime(...)` call executes the whole pipeline, but the code a
+maintainer must understand is distributed across parameter normalization, run
+and model specs, shared preparation, builder protocols, model modules,
+sampling, semantic role maps, and output bundles.
+
+The supported complete-model and likelihood customization seams are exposed
+only by `run_rhime_from_prepared_inputs(...)`. A user who wants to alter the
+scientific model while retaining normal data retrieval, filtering, basis
+construction, sampling, and outputs must first prepare or load inputs and
+assemble several framework objects. This is the wrong boundary for the most
+important maintenance task: find the model, understand the complete run, make
+a scientific change, and rerun it.
+
+There are also three user-visible routes with overlapping vocabulary but
+different implementations:
+
+1. `run_rhime(...)` and the modern CLI use the modern RHIME path.
+2. `run_hbmcmc.py` translates old INI files into modern RHIME parameters.
+3. Direct `fixedbasisMCMC(...)` calls use a distinct compatibility pipeline.
+
+That split is especially painful for users who require the historical HBMCMC
+output contract. A short-term compatibility escape hatch is required while
+the main workflow is made usable.
+
+## Decision
+
+Keep `run_rhime` as the default public API and make it the readable reference
+implementation of the complete RHIME workflow.
+
+Opening the implementation of `run_rhime` should reveal, in execution order:
+
+```text
+resolve Python/config options
+-> retrieve or reload merged data
+-> filter observations and retain aligned site metadata
+-> load or fit basis functions
+-> construct labelled RHIME inversion inputs
+-> cross an explicit PyMC materialization boundary
+-> build the concrete PyMC model
+-> sample
+-> construct and save requested outputs
+```
+
+Each step may call focused helpers. The sequence, scientific choices, side
+effects, and backend boundary must remain visible in the canonical workflow.
+The implementation must not hide this narrative behind a generic pipeline
+class, stage registry, dependency-injection container, semantic compiler, or
+several layers of private runner delegation.
+
+## Design principles
+
+### 1. Locality before abstract reuse
+
+RHIME-specific orchestration, preparation policy, concrete model construction,
+and output capability decisions should live together under the `rhime`
+package. Reuse lower-level mechanics when their inputs, ordering, side effects,
+and scientific meaning are genuinely identical.
+
+Small, explicit duplication is preferable to a shared abstraction that makes
+the scientific sequence harder to inspect.
+
+### 2. One ordinary variation path
+
+The simplified `run_rhime` recipe and its named stages must be easy to copy or
+compose into a small user-owned variation. A scientist changing a model or
+likelihood should not need to construct `RhimePreparedInputs`, `RhimeRunSpec`,
+`RhimeModelSpec`, `RhimeOutputSpec`, `RhimeSampler`,
+`RhimeModelBuilderContext`, and `RhimeModelBuildResult` themselves.
+
+Adding Python-only builder arguments to `run_rhime` is an option, not a
+pre-decided requirement. First make the direct recipe trivial to adapt. Add a
+new public injection seam only if the simplified implementation and user
+examples show that it materially reduces code without adding another layer.
+
+The existing manifest-heavy complete-model contract may remain as an advanced
+extension boundary for structurally different third-party graphs. It is not
+the expected path for modifying the in-tree RHIME model.
+
+### 3. Concrete model as the reference
+
+The default PyMC graph must remain a contiguous, directly readable function
+near the workflow. The in-tree model must not require a private semantic plan
+or compiler to understand it.
+
+Model variable names, dimensions, predictive variables, and output
+capabilities should be declared beside the builder rather than duplicated in
+the runner and output layers.
+
+### 4. Explicit data ownership and execution
+
+xarray inputs are borrowed and may be Dask-backed. Stages must not mutate
+caller-owned objects or hide copying, computation, persistence, densification,
+or rechunking.
+
+Indexed dimension coordinates may be validated eagerly. Related model arrays
+must cross one named PyMC materialization boundary together. Dense chunk
+payloads should use `openghg_inversions.array_ops.to_dense` where required,
+preserving outer Dask laziness for sparse Dask inputs.
+
+### 5. Compatibility is explicit
+
+`fixedbasisMCMC` is a time-limited compatibility implementation, not the name
+or conceptual basis of new design. Exact legacy execution must be selected
+explicitly and must never silently replace the default `run_rhime` route.
+
+## Target code shape
+
+The exact names may change during implementation, but the public workflow
+should be approximately this direct:
+
+```python
+def run_rhime(
+    *,
+    config_file=None,
+    **kwargs,
+):
+    options = resolve_rhime_options(config_file=config_file, kwargs=kwargs)
+
+    merged = get_rhime_data(options.data)
+    filtered = filter_rhime_data(merged, options.filters)
+    basis = make_rhime_basis(filtered, options.basis)
+    prepared = assemble_rhime_inputs(filtered, basis, options.model)
+
+    model_inputs = materialize_rhime_model_inputs(prepared)
+    built_model = build_rhime_model(model_inputs, options.model)
+    idata = sample_rhime_model(built_model, options.sampling)
+
+    return make_rhime_result(
+        prepared=prepared,
+        built_model=built_model,
+        idata=idata,
+        output=options.output,
+    )
+```
+
+Configuration parsing may remain separate, but it should perform one clear
+translation at the workflow boundary. It must not determine accepted public
+parameters by reflecting over a large preparation function signature.
+
+`run_rhime_from_prepared_inputs(...)` remains useful for replay, serialization,
+and advanced callers. It should reuse the visible build/sample/output stages;
+it need not be removed or diminished. It must not be the only discoverable
+route to variation: copying or composing the canonical recipe should also be
+straightforward.
+
+## Proposed ownership
+
+Start by improving control flow without a large file-move PR. Once behavior is
+characterized, converge toward:
+
+```text
+openghg_inversions/rhime/
+  runner.py       public run_rhime functions and visible stage sequence
+  preparation.py RHIME-specific retrieval/filter/basis/input orchestration
+  model.py        model options, concrete PyMC graph, and graph contract
+  sampling.py     shared PyMC sampling mechanics
+  outputs.py      RHIME output construction and persistence
+  params.py       config parsing and legacy spelling translation only
+```
+
+Generic packages may retain reusable retrieval, filter, basis, array, prior,
+serialization, and product-writing primitives. They must not own RHIME's
+scientific ordering or make the canonical workflow unreadable.
+
+## Workstreams
+
+### W0 — urgent legacy-output escape hatch
+
+Add an explicit `--legacy-fixedbasis` option to `run_hbmcmc.py`.
+
+When selected, the script must:
+
+- parse the legacy INI vocabulary and CLI date overrides;
+- call the current `fixedbasisMCMC(...)` implementation directly, before
+  translating parameters into modern RHIME vocabulary;
+- preserve legacy `outputpath`, `outputname`, `nit`, `nchain`, prior, sampler,
+  and filename behaviour;
+- select the true legacy HBMCMC postprocessing path for absent, `"hbmcmc"`,
+  and `"hbmcmc_postprocessing"` output requests;
+- ensure that path calls
+  `openghg_inversions.hbmcmc.inversion_pymc.inferpymc_postprocessouts(...)`
+  rather than canonicalizing the request to the modern
+  `make_legacy_hbmcmc_output(...)` adapter;
+- produce the same values, dimensions, variables, attributes, and historical
+  filenames as the direct `inferpymc_postprocessouts(...)` path;
+- copy the source configuration for provenance as the script does today;
+- print a prominent compatibility/deprecation notice identifying the selected
+  implementation.
+
+Without the flag, `run_hbmcmc.py` must continue to translate to and call
+`run_rhime(...)`. Do not repurpose the existing `mcmc_type = "fixed_basis"`
+value, because existing configurations already use it on the modern route.
+
+This is a tactical user-unblocking change. It does not make
+`fixedbasisMCMC` part of the new architecture.
+
+### W1 — freeze behavioural and usability contracts
+
+- Characterize the current `run_rhime` Python/config/CLI paths.
+- Characterize direct legacy execution and the W0 script route.
+- Freeze prepared input dimensions, coordinates, site alignment, basis
+  metadata, PyMC variable names, supported outputs, filenames, and side effects.
+- Add an executable example proving that a scientist can change one prior or
+  likelihood and run from acquisition through output without assembling
+  prepared-input framework objects.
+- Record a short review checklist for target scientific users.
+
+### W2 — make user-owned RHIME variations trivial
+
+- Add an executable example that copies or composes the short `run_rhime`
+  recipe, replaces one model or likelihood helper, and runs from ordinary
+  acquisition arguments through output.
+- Make the required stage helpers direct, named, stable enough for examples,
+  and free of mandatory framework-object assembly.
+- Retain `run_rhime_from_prepared_inputs(...)` and the existing advanced
+  role/output manifest for replay and genuinely divergent graphs.
+- Evaluate explicit Python-only `model_builder` or `likelihood_builder`
+  arguments only after the simplified recipe exists. Keep callables out of
+  serializable config/spec objects if such arguments are added.
+- Add an acquisition-to-output custom-variation integration test.
+
+### W3 — flatten canonical orchestration
+
+- Make `run_rhime` visibly call the major stages in scientific order.
+- Remove `_run_common` and avoid nested runner facades whose names do not
+  identify a scientific stage.
+- Replace reflection-driven parameter ownership with explicit normalization.
+- Keep timing, logging, validation, and failure messages attached to named
+  stages.
+- Keep `run_rhime_multisector` equally readable; do not hide all differences
+  behind an unexplained boolean mode.
+
+### W4 — split and relocate RHIME preparation stages
+
+- Separate retrieval/reload, filtering, basis construction, sensitivity/input
+  assembly, and backend materialization into focused contracts.
+- Keep RHIME's filtering/basis order visible in the workflow.
+- Preserve retained `BasisFunctions`, prepared-input serialization, ragged
+  source layouts, satellite handling, minimum-error behaviour, and site
+  metadata.
+- Name and test every mutation, filesystem, and eager-computation boundary.
+- Keep lower-level shared data access and basis algorithms reusable.
+
+### W5 — colocate the concrete model and graph contract
+
+- Keep the readable concrete PyMC graph as the production reference.
+- Move RHIME model options and construction under the cohesive `rhime`
+  ownership boundary when this can be done without a large compatibility
+  break.
+- Define variable names, dimensions, predictive variables, and output
+  capabilities once beside the builder.
+- Remove duplicated built-in role assembly from the runner.
+- Keep the compiled strategy isolated and opt-in; do not make it necessary for
+  ordinary model review or modification.
+
+### W6 — simplify result and output orchestration
+
+- Make the route from built model and `InferenceData` to `RhimeResult` and
+  requested products visible from the canonical workflow.
+- Preserve `inv_out`, `basic`, `paris`, `legacy`, trace saving, and prepared
+  input replay where currently supported.
+- Fail before sampling when a requested output is incompatible with a selected
+  custom model contract.
+- Keep product-specific reconstruction in focused helpers.
+
+### W7 — documentation, user review, and legacy retirement gate
+
+- Rewrite the developer guide around reading and modifying `run_rhime`.
+- Add one default-model walkthrough and one copy-and-modify example.
+- Ask representative release-0.6-era users to review the workflow against the
+  usability checklist.
+- Update issues #416 and #432 to reflect this plan.
+- Retire the old direct implementation only after the acceptance gates below
+  pass. The W0 escape hatch remains until users no longer require it or an
+  explicitly supported older release is the agreed replacement.
+
+## Dependencies and sequence
+
+```text
+W0 can ship immediately and independently.
+
+W1 -> W2 -> W3 -> W4 -> W5 -> W6 -> W7
+             \----------------------/
+                 incremental PRs
+```
+
+W3 through W6 may overlap only where ownership is unambiguous and each PR
+retains a runnable, reviewed `run_rhime` path. Avoid one large rewrite.
+
+## Testing and release gates
+
+Each implementation PR needs focused tests, Ruff, and configured type checks.
+Before the umbrella issue is closed:
+
+- all current `run_rhime` and `run_rhime_multisector` tests pass;
+- all supported output-format tests pass;
+- W0 calls `inferpymc_postprocessouts(...)` exactly once for legacy HBMCMC
+  output requests and is equivalent to that direct formatter path for
+  representative supported cases;
+- stage-order tests cover retrieval, filtering, basis, input assembly,
+  materialization, build, sampling, and output;
+- model-only tests cover variables, dimensions, priors, optional BC/offset,
+  error construction, and predictive variables;
+- a full-pipeline custom variation starts with normal acquisition arguments,
+  replaces a plainly named model or likelihood helper, and does not require
+  manual prepared-input/spec/manifest assembly;
+- borrowed xarray inputs are unchanged;
+- Dask-backed tests show no hidden computation before the named backend
+  boundary and related arrays materialize together;
+- failures are tested for empty filtered sites, incompatible basis/state
+  coordinates, non-finite model inputs, missing BC sensitivity, and unsupported
+  output/model combinations;
+- at least one small real-sampler smoke test passes;
+- the default local tox workflow passes once when the branch is ready for a
+  draft PR;
+- representative scientific users confirm that they can locate the model,
+  follow the whole pipeline, make a small change, and run it.
+
+## Non-goals
+
+- Restoring the release-0.6 monolith.
+- Making `fixedbasisMCMC` the new public name or design centre.
+- Preserving arbitrary unchecked `**kwargs` passthrough.
+- Introducing a generic pipeline base class, plugin registry, dependency-
+  injection container, or new semantic intermediate representation.
+- Rewriting numerical methods, changing scientific defaults, or changing
+  outputs as part of structural PRs.
+- Removing prepared-input serialization or the advanced prepared-input runner.
+- Designing a backend protocol before a second production backend requires it.
+
+## Open questions
+
+1. Should the low-ceremony builder seam require standard RHIME variable names,
+   with the existing manifest contract reserved for divergent graphs?
+2. How much single-sector and multisector orchestration duplication improves
+   readability before it becomes a maintenance risk?
+3. Which RHIME-specific preparation helpers should move physically under the
+   `rhime` package after the initial control-flow work?
+4. What exact scientific-user review group signs off the retirement gate?
+5. How long should `--legacy-fixedbasis` remain available after the main
+   workflow is accepted?
+
+## Completion criteria
+
+This priority is complete when:
+
+1. `run_rhime` remains the documented default and visibly narrates the whole
+   workflow.
+2. An ordinary model or likelihood variation can be expressed as a short copy
+   or composition of the canonical recipe and can run through normal data
+   retrieval and outputs without manual prepared-input/spec assembly.
+3. The default PyMC graph and its output contract have one obvious ownership
+   location.
+4. Lazy/eager and filesystem boundaries are explicit and tested.
+5. Modern output behaviour and prepared-input replay remain stable.
+6. Users needing exact current legacy output can select the W0 route while it
+   remains supported.
+7. Representative scientific users judge the code usable for modification.
+
+## Tracking
+
+- GitHub umbrella: [#587](https://github.com/openghg/openghg_inversions/issues/587)
+- GitHub quick fix: [#588](https://github.com/openghg/openghg_inversions/issues/588)
+- Linear project: [P0 — `run_rhime` readable, modifiable workflow](https://linear.app/openghg-inversions/project/p0-run-rhime-readable-modifiable-workflow-b2b60550ba5f)
+- Linear umbrella: [OPE-41](https://linear.app/openghg-inversions/issue/OPE-41/p0-umbrella-make-run-rhime-the-readable-modifiable-reference-workflow)
+
+| Workstream | Linear task |
+| --- | --- |
+| W0 | [OPE-42](https://linear.app/openghg-inversions/issue/OPE-42/p0-quick-fix-route-run-hbmcmcpy-to-fixedbasismcmc-and-inferpymc) |
+| W1 | [OPE-43](https://linear.app/openghg-inversions/issue/OPE-43/p0-w1-characterize-and-freeze-current-rhime-workflow-contracts) |
+| W2 | [OPE-44](https://linear.app/openghg-inversions/issue/OPE-44/p0-w2-make-short-user-owned-rhime-variations-trivial) |
+| W3 | [OPE-45](https://linear.app/openghg-inversions/issue/OPE-45/p0-w3-rewrite-run-rhime-as-the-visible-reference-workflow) |
+| W4 | [OPE-46](https://linear.app/openghg-inversions/issue/OPE-46/p0-w4-split-rhime-preparation-into-named-scientific-stages) |
+| W5 | [OPE-47](https://linear.app/openghg-inversions/issue/OPE-47/p0-w5-colocate-the-readable-rhime-pymc-model-and-graph-contract) |
+| W6 | [OPE-48](https://linear.app/openghg-inversions/issue/OPE-48/p0-w6-simplify-rhime-result-and-output-orchestration) |
+| W7 | [OPE-49](https://linear.app/openghg-inversions/issue/OPE-49/p0-w7-publish-modification-focused-rhime-docs-and-enforce-the) |
