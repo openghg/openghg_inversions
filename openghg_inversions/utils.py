@@ -7,19 +7,20 @@ conditions, and their sensitivities.
 Many functions in this submodule originated in the ACRG code base (in `acrg.name`).
 
 """
+
 import re
+from itertools import pairwise
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Literal
+from typing import Any, Literal
 
 import numpy as np
 import pandas as pd
 import xarray as xr
-
 from openghg.analyse import combine_datasets as openghg_combine_datasets
 
+from openghg_inversions._country_file import load_country_dataset
 from openghg_inversions.config.paths import Paths
-
 
 openghginv_path = Paths.openghginv
 
@@ -61,7 +62,7 @@ def open_ds(
     Args:
         path: Path to file to open.
         chunks: Size of chunks for each dimension, e.g. {'lat': 50, 'lon': 50}.
-            Opens dataset with dask, such that it is opened 'lazily' and all of the data 
+            Opens dataset with dask, such that it is opened 'lazily' and all of the data
             is not loaded into memory. Defaults to None - dataset is opened without dask.
         combine: Way in which the data should be combined (if using chunks), either:
             'by_coords': order the datasets before concatenating (default)
@@ -87,14 +88,14 @@ def read_netcdfs(
     verbose: bool = True,
 ) -> xr.Dataset:
     """Use xarray to open sequential netCDF files and concatenate them along the specified dimension.
-    
+
     Note: this function makes sure that file is closed after open_dataset call.
 
     Args:
         files: List of netCDF filenames.
         dim: Dimension of netCDF to use for concatenating the files. Default = "time".
         chunks: Size of chunks for each dimension, e.g. {'lat': 50, 'lon': 50}.
-            Opens dataset with dask, such that it is opened 'lazily' and all of the data 
+            Opens dataset with dask, such that it is opened 'lazily' and all of the data
             is not loaded into memory. Defaults to None - dataset is opened without dask.
         verbose: If True, print progress information.
 
@@ -151,9 +152,58 @@ def ncdf_encoding(ds_in: xr.Dataset) -> dict:
     for dv in ds_in.data_vars:
         if dtype_pat.match(ds_in[dv].data.dtype.str):
             do_not_compress.append(dv)
-    encoding = {var: {"zlib": True, "complevel": 5, "shuffle": True} for var in ds_in.data_vars if var not in do_not_compress}
+    encoding = {
+        var: {"zlib": True, "complevel": 5, "shuffle": True}
+        for var in ds_in.data_vars
+        if var not in do_not_compress
+    }
 
     return encoding
+
+
+def write_netcdf_preserving_bounds_attrs(
+    ds: xr.Dataset,
+    path: str | Path,
+    *,
+    unlimited_dims: list[str] | None = None,
+) -> None:
+    """Write a compressed NetCDF while preserving explicit bounds metadata.
+
+    Xarray's CF encoder removes ``units`` and ``calendar`` from a bounds
+    variable when those attributes match its coordinate. Some external schemas,
+    including the latest PARIS CDL templates, require the attributes on both
+    variables, so they are appended after the normal write. The initial write
+    overwrites ``path``; backend and filesystem exceptions propagate.
+
+    Args:
+        ds: Dataset carrying the required bounds attributes.
+        path: Destination NetCDF path.
+        unlimited_dims: Optional dimensions to encode as unlimited.
+    """
+    ds.to_netcdf(
+        path,
+        unlimited_dims=unlimited_dims,
+        mode="w",
+        encoding=ncdf_encoding(ds),
+    )
+
+    bounds_attrs: dict[str, dict[str, Any]] = {}
+    for variable in ds.variables.values():
+        bounds_name = variable.attrs.get("bounds")
+        if not isinstance(bounds_name, str) or bounds_name not in ds:
+            continue
+        attrs = {
+            name: ds[bounds_name].attrs[name]
+            for name in ("units", "calendar")
+            if name in ds[bounds_name].attrs
+        }
+        if attrs:
+            bounds_attrs[bounds_name] = attrs
+
+    for bounds_name, attrs in bounds_attrs.items():
+        bounds = ds[bounds_name]
+        metadata_patch = xr.Dataset({bounds_name: (bounds.dims, bounds.data, attrs)})
+        metadata_patch.to_netcdf(path, mode="a")
 
 
 def get_country_file_path(country_file: str | Path | None = None, domain: str | None = None):
@@ -203,19 +253,19 @@ def get_country(domain: str, country_file: str | Path | None = None):
     """
     filename = get_country_file_path(country_file=country_file, domain=domain)
 
-    with xr.open_dataset(filename) as f:
-        lon = f.variables["lon"][:].values
-        lat = f.variables["lat"][:].values
+    f = load_country_dataset(filename)
+    lon = f.variables["lon"][:].values
+    lat = f.variables["lat"][:].values
 
-        # Get country indices and names
-        if "country" in f.variables:
-            country = f.variables["country"][:, :]
-        elif "region" in f.variables:
-            country = f.variables["region"][:, :]
-        else:
-            raise ValueError(f"Variables 'country' or 'region' not found in country file {filename}.")
+    # Get country indices and names
+    if "country" in f.variables:
+        country = f.variables["country"][:, :]
+    elif "region" in f.variables:
+        country = f.variables["region"][:, :]
+    else:
+        raise ValueError(f"Variables 'country' or 'region' not found in country file {filename}.")
 
-        name = f.variables["name"].values.astype(str)
+    name = f.variables["name"].values.astype(str)
 
     result = dict(
         lon=lon,
@@ -270,16 +320,81 @@ def areagrid(lat: np.ndarray, lon: np.ndarray) -> np.ndarray:
 # These stay private because they are implementation details for mapping
 # observation times onto available time-varying flux slices.
 # ---------------------------------------------------------------------
+def _normalize_flux_period(time_period: object) -> str | None:
+    """Normalize a calendar alias or validate a positive fixed period.
+
+    Args:
+        time_period: Source period metadata to interpret.
+
+    Returns:
+        ``"yearly"`` or ``"monthly"`` for recognized calendar aliases, the
+        stripped input for a positive fixed duration, or ``None`` when the
+        value is missing or unsupported.
+    """
+    period = str(time_period).strip()
+    normalized_period = period.casefold()
+    if _flux_period_is_missing(time_period):
+        return None
+    if normalized_period in {"1 year", "year", "yearly", "annual", "annually"}:
+        return "yearly"
+    if normalized_period in {"1 month", "month", "monthly"}:
+        return "monthly"
+
+    try:
+        fixed_period = pd.to_timedelta(period)
+    except (TypeError, ValueError):
+        return None
+    if pd.isna(fixed_period) or fixed_period <= pd.Timedelta(0):
+        return None
+    return period
+
+
+def _flux_period_is_missing(time_period: object) -> bool:
+    """Return whether source period metadata contains no usable value."""
+    if time_period is None or bool(pd.isna(time_period)):
+        return True
+    return str(time_period).strip().casefold() in {"", "nan", "nat", "none"}
+
+
+def _infer_calendar_flux_period(times: xr.DataArray | np.ndarray) -> str | None:
+    """Infer a regular yearly or monthly calendar period from timestamps.
+
+    Args:
+        times: Candidate flux-period start timestamps.
+
+    Returns:
+        ``"yearly"`` or ``"monthly"`` when every adjacent pair follows that
+        calendar offset, otherwise ``None``.
+    """
+    values = times.values if isinstance(times, xr.DataArray) else times
+    time_values = pd.DatetimeIndex(pd.to_datetime(values)).sort_values().unique()
+    if len(time_values) <= 1:
+        return None
+
+    consecutive_times = pairwise(time_values)
+    if all(end == start + pd.DateOffset(years=1) for start, end in consecutive_times):
+        return "yearly"
+
+    consecutive_times = pairwise(time_values)
+    if all(end == start + pd.DateOffset(months=1) for start, end in consecutive_times):
+        return "monthly"
+
+    return None
+
+
 def _infer_flux_period(times: xr.DataArray | np.ndarray, time_period: str | None = None) -> str:
     """Infer whether flux slices are yearly or monthly."""
     if time_period is not None:
-        time_period = str(time_period).lower()
-        if "year" in time_period:
-            return "yearly"
-        if "month" in time_period:
-            return "monthly"
+        normalized_period = _normalize_flux_period(time_period)
+        if normalized_period in ("yearly", "monthly"):
+            return normalized_period
 
-    time_values = pd.to_datetime(times)
+    calendar_period = _infer_calendar_flux_period(times)
+    if calendar_period is not None:
+        return calendar_period
+
+    values = times.values if isinstance(times, xr.DataArray) else times
+    time_values = pd.to_datetime(values)
     if len(time_values) <= 1:
         return "yearly"
 
@@ -296,8 +411,12 @@ def _map_times_to_available_period_positions(
 ) -> np.ndarray:
     """Map timestamps onto contiguous period positions defined by available flux periods."""
     period_code = "Y" if period == "yearly" else "M"
-    time_periods = pd.to_datetime(times).to_period(period_code)
-    available_periods = pd.Index(pd.to_datetime(available_times).to_period(period_code).unique())
+    time_values = times.values if isinstance(times, xr.DataArray) else times
+    available_time_values = (
+        available_times.values if isinstance(available_times, xr.DataArray) else available_times
+    )
+    time_periods = pd.to_datetime(time_values).to_period(period_code)
+    available_periods = pd.Index(pd.to_datetime(available_time_values).to_period(period_code).unique())
 
     if len(time_periods) == 0:
         return np.array([], dtype=int)
@@ -305,7 +424,9 @@ def _map_times_to_available_period_positions(
     missing = pd.Index(time_periods).difference(available_periods)
     if len(missing) > 0:
         period_label = "years" if period == "yearly" else "months"
-        raise ValueError(f"Observation {period_label} {list(missing.astype(str))} are missing from available flux periods.")
+        raise ValueError(
+            f"Observation {period_label} {list(missing.astype(str))} are missing from available flux periods."
+        )
 
     period_positions = {period_value: idx for idx, period_value in enumerate(available_periods)}
     return np.array([period_positions[period_value] for period_value in time_periods], dtype=int)

@@ -4,15 +4,14 @@ import re
 import getpass
 import warnings
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 
-# import pytensor before pymc so we can set config values
-import pytensor
+# Configure PyTensor before importing PyMC.
+from openghg_inversions._pymc_config import configure_pytensor
 
-pytensor.config.floatX = "float32"
-pytensor.config.warn_float64 = "warn"
+configure_pytensor()
 
 import pymc as pm  # noqa: E402
 import pandas as pd  # noqa: E402
@@ -22,17 +21,16 @@ from scipy import stats  # noqa: E402
 
 from openghg_inversions import convert  # noqa: E402
 from openghg_inversions import utils  # noqa: E402
+from openghg_inversions._sampling import _reset_retained_draws  # noqa: E402
 from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename  # noqa: E402
 from openghg_inversions.config.version import code_version  # noqa: E402
-from openghg_inversions.models.components import (  # noqa: E402
-    add_inferpymc_likelihood_component,
-    add_linear_component,
-    add_offset_component,
-    resolve_model_variable,
-)
-from openghg_inversions.models.coords import CoordRegistry, attach_coord_registry  # noqa: E402
+from openghg_inversions.models import build_rhime_model  # noqa: E402
+from openghg_inversions.models.components import resolve_model_variable  # noqa: E402
+from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords  # noqa: E402
 from openghg_inversions.models.priors import PriorArgs  # noqa: E402
+from openghg_inversions.models.state_activity import StateActivity  # noqa: E402
 from openghg_inversions.inversion_inputs import _compact_integer_index  # noqa: E402
+from openghg_inversions.sigma import SigmaAlignment  # noqa: E402
 
 # ----------------------------------------
 # Model building code
@@ -77,7 +75,7 @@ def _prepare_builder_priors(
     if reparameterise_log_normal:
         warnings.warn(
             "`reparameterise_log_normal` is deprecated. Set `reparameterise=True` in the relevant prior args instead.",
-            DeprecationWarning,
+            FutureWarning,
             stacklevel=2,
         )
         if str(prepared_xprior.get("pdf", "")).lower() == "lognormal":
@@ -104,15 +102,16 @@ def build_inferpymc_model(
     offset_args: dict | None = None,
     power: dict | float = 1.99,
 ) -> pm.Model:
-    """Build the current component-based inferpymc model.
+    """Compatibility adapter for the standard RHIME model builder.
 
     Args:
-        inv_inputs: Canonical inversion-input dataset, usually produced by
-            ``make_inv_inputs(...)``. This dataset must contain the observation
-            and model variables required by the current component-based model,
-            including at minimum ``H``, ``mf``, ``mf_error``,
-            ``site_indicator``, ``sigma_freq_index``, and ``min_error``. When
-            ``use_bc`` is ``True``, it must also contain ``H_bc``.
+        inv_inputs: Legacy dataset produced by
+            ``prepare_fixedbasis_inversion_data`` or an equivalent adapter.
+            It must contain the observation and model variables required by
+            the component-based model, including at minimum ``H``, ``mf``,
+            ``mf_error``, ``site_indicator``, ``sigma_freq_index``, and
+            ``min_error``. When ``use_bc`` is true, it must also contain
+            ``H_bc``.
         xprior: Prior specification for emissions scaling factors.
         bcprior: Prior specification for boundary-condition scaling factors.
         sigprior: Prior specification for model-error terms.
@@ -120,8 +119,9 @@ def build_inferpymc_model(
         offsetprior: Prior specification for optional offsets.
         add_offset: Whether to include an offset term in the model.
         use_bc: Whether to include boundary-condition terms in the model.
-        reparameterise_log_normal: Whether to request lognormal
-            reparameterisation for supported priors.
+        reparameterise_log_normal: Deprecated compatibility flag for lognormal
+            reparameterisation. Set ``reparameterise=True`` in the relevant
+            prior mapping instead.
         pollution_events_from_obs: Whether to derive pollution-event scaling
             from observations rather than modelled concentrations.
         no_model_error: Whether to suppress the explicit model-error term.
@@ -131,7 +131,10 @@ def build_inferpymc_model(
             scaling.
 
     Returns:
-        Built PyMC model for the current inferpymc path.
+        Built PyMC model for the current inferpymc compatibility path.
+
+    Warns:
+        FutureWarning: If ``reparameterise_log_normal`` is enabled.
     """
     xprior, bcprior, sigprior, offsetprior = _prepare_builder_priors(
         xprior=xprior,
@@ -140,59 +143,29 @@ def build_inferpymc_model(
         offsetprior=offsetprior,
         reparameterise_log_normal=reparameterise_log_normal,
     )
+    sigma_alignment = SigmaAlignment.from_indices(
+        inv_inputs["site_indicator"],
+        inv_inputs["sigma_freq_index"],
+        per_site=sigma_per_site,
+    )
 
-    with pm.Model() as model:
-        attach_coord_registry(model, CoordRegistry())
-        flux_component = add_linear_component(
-            inv_inputs["H"],
-            data_name="hx",
-            prior_args=xprior,
-            var_name="x",
-            output_name="mu",
-            output_dim="nmeasure",
-            compute_deterministic=True,
-        )
-
-        mu_bc = None
-        if use_bc:
-            if "H_bc" not in inv_inputs:
-                raise ValueError("If `use_bc` is True, `inv_inputs` must contain `H_bc`.")
-            bc_component = add_linear_component(
-                inv_inputs["H_bc"],
-                data_name="hbc",
-                prior_args=bcprior,
-                var_name="bc",
-                output_name="mu_bc",
-                output_dim="nmeasure",
-                compute_deterministic=True,
-            )
-            mu_bc = bc_component.output
-
-        offset = None
-        if add_offset:
-            offset_args = offset_args or {}
-            offset = add_offset_component(
-                inv_inputs["site_indicator"],
-                prior_args=offsetprior,
-                output_name="offset",
-                output_dim="nmeasure",
-                **offset_args,
-            )
-
-        add_inferpymc_likelihood_component(
-            inv_inputs,
-            mu=flux_component.output,
-            mu_bc=mu_bc,
-            offset=offset,
-            sigprior=sigprior,
-            power=power,
-            pollution_events_from_obs=pollution_events_from_obs,
-            no_model_error=no_model_error,
-            sigma_per_site=sigma_per_site,
-            output_dim="nmeasure",
-        )
-
-    return model
+    return build_rhime_model(
+        inv_inputs,
+        sigma_alignment=sigma_alignment,
+        x_prior=xprior,
+        bc_prior=bcprior,
+        sigma_prior=sigprior,
+        offset_prior=offsetprior,
+        add_offset=add_offset,
+        use_bc=use_bc,
+        pollution_events_from_obs=pollution_events_from_obs,
+        no_model_error=no_model_error,
+        offset_args=offset_args,
+        power=power,
+        # Keep fixedbasisMCMC/inferpymc's legacy single-sector state graph.
+        # Modern RHIME model specs opt into exact-zero pruning separately.
+        state_activity=StateActivity(prune_zero=False),
+    )
 
 
 # ----------------------------------------
@@ -257,7 +230,8 @@ def sample(
 
     Args:
         model: Built PyMC model to sample from.
-        draws: Number of posterior draws to keep per chain.
+        draws: Number of posterior draws requested per chain before burn
+            slicing.
         tune: Number of tuning draws passed to ``pm.sample``.
         chains: Number of MCMC chains to run.
         burn: Number of posterior draws to discard from the returned
@@ -273,7 +247,9 @@ def sample(
 
     Returns:
         Burn-sliced ``InferenceData`` for the requested model, optionally
-        extended with predictive groups.
+        extended with predictive groups. Retained draw coordinates are reset
+        to consecutive zero-based integers, and ``burn`` is stored on the root
+        and draw-bearing group attributes.
     """
     sample_kwargs = dict(kwargs)
     sample_kwargs.pop("return_inferencedata", None)
@@ -291,12 +267,16 @@ def sample(
         )
 
     burned_trace = raw_trace.isel(draw=slice(burn, None))
+    burned_trace = _reset_retained_draws(cast(az.InferenceData, burned_trace), burn=burn)
     burned_trace = extend_inferencedata_predictive(
         burned_trace,
         model=model,
         sample_prior_predictive=sample_prior_predictive,
         sample_posterior_predictive=sample_posterior_predictive,
     )
+    registry = get_coord_registry(model)
+    if registry is not None:
+        burned_trace = restore_inferencedata_coords(burned_trace, registry)
 
     nuts_sampler = sample_kwargs.get("nuts_sampler", "pymc")
     if nuts_sampler != "pymc" and sample_kwargs.get("compute_convergence_checks", True):
@@ -331,7 +311,8 @@ def _rename_trace_for_legacy_inferpymc(trace: az.InferenceData) -> az.InferenceD
 
     Returns:
         A copied ``InferenceData`` whose groups use the legacy inferpymc
-        dimension names where required.
+        dimension names where required. Root and group attributes are
+        preserved.
     """
     rename_map = {"region": "nx", "bc_region": "nbc"}
     renamed_groups: dict[str, xr.Dataset] = {}
@@ -341,7 +322,7 @@ def _rename_trace_for_legacy_inferpymc(trace: az.InferenceData) -> az.InferenceD
         applicable = {old: new for old, new in rename_map.items() if old in ds.dims or old in ds.coords}
         renamed_groups[group] = ds.rename(applicable) if applicable else ds.copy()
 
-    return az.InferenceData(**renamed_groups)
+    return cast(Any, az.InferenceData)(attrs=dict(trace.attrs), **renamed_groups)
 
 
 def _adapt_legacy_inferpymc_results(
@@ -444,12 +425,14 @@ def inferpymc(
     """Perform Bayesian inference with PyMC for emissions, BCs, and model error.
 
     This routine is the compatibility entrypoint for the current PyMC path.
-    It builds the component-based model from ``make_inv_inputs`` output, runs
-    sampling, and adapts the result into the legacy return structure used by
-    downstream postprocessing.
+    It builds the component-based model from a legacy inversion-input dataset,
+    runs sampling, and adapts the result into the return structure used by
+    downstream fixedbasis postprocessing. The input must include
+    ``sigma_freq_index``; modern RHIME inputs intentionally do not.
 
     Args:
-        inv_inputs: xarray.Dataset produced by ``make_inv_inputs``.
+        inv_inputs: Legacy fixedbasis inversion inputs including an
+            observation-aligned ``sigma_freq_index``.
         xprior: Dictionary describing the prior PDF for emissions. The entry "pdf"
             is the name of the analytical PDF used; other entries are shape
             parameters (e.g., {'pdf': 'lognormal', 'stdev': 1.0}).
@@ -467,7 +450,9 @@ def inferpymc(
         add_offset: If True, include an offset term in the model.
         verbose: If True, print additional diagnostic information.
         use_bc: If True, include boundary condition terms in the model.
-        reparameterise_log_normal: If True, reparameterise log-normal priors for numerical stability.
+        reparameterise_log_normal: Deprecated compatibility flag for lognormal
+            reparameterisation. Set ``reparameterise=True`` in the relevant
+            prior mapping instead.
         pollution_events_from_obs: If True, derive pollution event terms from observations.
         no_model_error: If True, do not include an explicit model-error term.
         offset_args: Additional arguments used when constructing offsets.
@@ -486,9 +471,12 @@ def inferpymc(
         - ``"OFFSETtrace"`` when offsets are enabled
         - ``"trace"``, ``"model"``, and convergence metadata
 
-        Raises:
-            ValueError: If the model cannot be built from the supplied
-                ``inv_inputs`` and configuration.
+    Raises:
+        ValueError: If the model cannot be built from the supplied
+            ``inv_inputs`` and configuration.
+
+    Warns:
+        FutureWarning: If ``reparameterise_log_normal`` is enabled.
     """
     burn = int(burn)
     nit = int(nit)
@@ -564,6 +552,11 @@ def _weighted_apriori_flux_for_months(flux_array_all: np.ndarray, month_index: n
     return apriori_flux
 
 
+def _hdi_for_parameter_traces(trace: np.ndarray, hdi_prob: float) -> np.ndarray:
+    """Return HDI intervals for traces shaped as ``(parameter, draw)``."""
+    return az.hdi(trace.T[np.newaxis, :, :], hdi_prob=hdi_prob)
+
+
 def inferpymc_postprocessouts(
     xouts: np.ndarray,
     sigouts: np.ndarray,
@@ -593,7 +586,7 @@ def inferpymc_postprocessouts(
     tune: int,
     nchain: int,
     sigma_per_site: bool,
-    emissions_name: str,
+    emissions_name: list[str] | None,
     bcprior: dict | None = None,
     YBCtrace: np.ndarray | None = None,
     bcouts: np.ndarray | None = None,
@@ -721,8 +714,8 @@ def inferpymc_postprocessouts(
         else:
             YmodmodeOFF[i] = np.mean(OFFSETtrace[i, :])
 
-    Ymod95OFF = az.hdi(OFFSETtrace.T, 0.95)
-    Ymod68OFF = az.hdi(OFFSETtrace.T, 0.68)
+    Ymod95OFF = _hdi_for_parameter_traces(OFFSETtrace, hdi_prob=0.95)
+    Ymod68OFF = _hdi_for_parameter_traces(OFFSETtrace, hdi_prob=0.68)
 
     # Y-BC HYPERPARAMETER
     if use_bc:
@@ -740,8 +733,8 @@ def inferpymc_postprocessouts(
             else:
                 YmodmodeBC[i] = np.mean(YBCtrace[i, :])
 
-        Ymod95BC = az.hdi(YBCtrace.T, 0.95)
-        Ymod68BC = az.hdi(YBCtrace.T, 0.68)
+        Ymod95BC = _hdi_for_parameter_traces(YBCtrace, hdi_prob=0.95)
+        Ymod68BC = _hdi_for_parameter_traces(YBCtrace, hdi_prob=0.68)
         YaprioriBC = np.sum(Hbc, axis=0)
 
     # Y-VALUES HYPERPARAMETER (XOUTS * H)
@@ -759,8 +752,8 @@ def inferpymc_postprocessouts(
         else:
             Ymodmode[i] = np.mean(Ytrace[i, :])
 
-    Ymod95 = az.hdi(Ytrace.T, 0.95)
-    Ymod68 = az.hdi(Ytrace.T, 0.68)
+    Ymod95 = _hdi_for_parameter_traces(Ytrace, hdi_prob=0.95)
+    Ymod68 = _hdi_for_parameter_traces(Ytrace, hdi_prob=0.68)
 
     if use_bc:
         Yapriori = np.sum(Hx.T, axis=1) + np.sum(Hbc.T, axis=1)
@@ -786,8 +779,8 @@ def inferpymc_postprocessouts(
         bfds = fp_data[".basis"]
 
     # Calculate mean  and mode posterior scale map and flux field
-    scalemap_mu = np.zeros_like(bfds.values)
-    scalemap_mode = np.zeros_like(bfds.values)
+    scalemap_mu = np.zeros_like(bfds.values, dtype=float)
+    scalemap_mode = np.zeros_like(bfds.values, dtype=float)
 
     for npm in nparam:
         scalemap_mu[bfds.values == (npm + 1)] = np.mean(xouts[:, npm])
@@ -899,8 +892,8 @@ def inferpymc_postprocessouts(
             cntrymode[ci] = np.mean(cntrytottrace)
 
         cntrysd[ci] = np.std(cntrytottrace)
-        cntry68[ci, :] = az.hdi(cntrytottrace.values, 0.68)
-        cntry95[ci, :] = az.hdi(cntrytottrace.values, 0.95)
+        cntry68[ci, :] = az.hdi(cntrytottrace.values, hdi_prob=0.68)
+        cntry95[ci, :] = az.hdi(cntrytottrace.values, hdi_prob=0.95)
         cntryprior[ci] = cntrytotprior
 
     # make min. model error variable
@@ -1090,9 +1083,6 @@ def inferpymc_postprocessouts(
     outds.attrs["Date created"] = str(pd.Timestamp("today"))
     outds.attrs["Convergence"] = convergence
     outds.attrs["Repository version"] = code_version()
-    outds.attrs["min_model_error"] = (
-        min_error  # TODO: remove this once PARIS formatting switches over to using min error data var
-    )
 
     # variables with variable length data types shouldn't be compressed
     # e.g. object ("O") or unicode ("U") type

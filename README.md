@@ -11,7 +11,62 @@ Currently, OpenGHG Inversions includes the following regional inversion models:
 
 ## Installation
 
-### Using pip (recommended for most users)
+### Using Pixi (recommended for development)
+
+OpenGHG Inversions reads and writes NetCDF/HDF5 data through OpenGHG,
+`xarray`, `h5netcdf`, `h5py`, and `netcdf4`. If these packages
+are installed from unrelated PyPI wheels, their bundled HDF5 libraries can
+be incompatible. The Pixi environment in this repository installs the
+compiled HDF5/NetCDF stack from conda-forge and installs
+`openghg_inversions` in editable mode.
+
+Install [Pixi](https://pixi.prefix.dev/latest/installation/), then run:
+
+```bash
+git clone https://github.com/openghg/openghg_inversions.git
+cd openghg_inversions
+pixi install -e dev
+pixi run -e dev python -c "import openghg_inversions, h5py, h5netcdf, netCDF4"
+```
+
+Useful development commands:
+
+```bash
+pixi run -e dev test
+pixi run -e dev lint
+pixi run -e dev typecheck
+pixi run -e dev tox
+```
+
+The `tox` Pixi task runs the fast default tox set (current OpenGHG plus Ruff)
+in parallel without an interactive spinner.
+
+To run the optional real country-file HDF5 smoke check on a machine that
+can access the ACRG country files, set the country directory and run the
+Pixi task:
+
+```bash
+OPENGHG_COUNTRY_FILE_SMOKE_DIR=/group/chem/acrg/LPDM/countries pixi run -e dev country-file-smoke
+```
+
+The smoke check opens `country_EUROPE_EEZ_PARIS_gapfilled.nc` and
+`country_EUROPE.nc` with xarray's default backend, `h5netcdf`, and
+`netcdf4`, then exercises `openghg_inversions._country_file.load_country_dataset`.
+It prints the `xarray`, `h5netcdf`, `h5py`, and `netCDF4` versions and the
+per-engine result. Without `OPENGHG_COUNTRY_FILE_SMOKE_DIR`, the real-file
+tests are skipped so uv/pip CI does not need access to cluster data.
+
+To test against a local OpenGHG checkout without replacing the Pixi-managed
+HDF5/NetCDF dependencies, install only the local package code:
+
+```bash
+pixi run -e dev python -m pip install --no-deps -e ~/Documents/openghg
+```
+
+Avoid running plain `pip install -U h5py h5netcdf netcdf4` inside the Pixi
+environment, as that can reintroduce incompatible wheels.
+
+### Using pip
 
 ```bash
 pip install openghg-inversions
@@ -38,7 +93,14 @@ uv pip install openghg-inversions
 
 If you want to contribute or modify the package:
 
-**With uv (recommended):**
+**With Pixi (recommended when working with NetCDF/HDF5 data):**
+```bash
+git clone https://github.com/openghg/openghg_inversions.git
+cd openghg_inversions
+pixi install -e dev
+```
+
+**With uv:**
 ```bash
 git clone https://github.com/openghg/openghg_inversions.git
 cd openghg_inversions
@@ -103,8 +165,9 @@ This should run without printing any messages.
 If you receive a message about `pymc` or `pytensor` using the `numpy` C-API, then your inversions might run slowly because the fast linear algebra libraries used by `numpy` haven't been found.
 
 Solutions to this are:
-1. try `python -m pip install numpy` after upgrading `pip, setuptools, wheel`
-2. create a `conda` env, install `numpy` using `conda`, then use `pip` to upgrade  `pip, setuptools, wheel` and install `openghg_inversions`
+1. Use the Pixi development environment above, which installs `numpy` and the NetCDF/HDF5 stack from conda-forge.
+2. Try `python -m pip install numpy` after upgrading `pip, setuptools, wheel`.
+3. Create a `conda` env, install `numpy` using `conda`, then use `pip` to upgrade `pip, setuptools, wheel` and install `openghg_inversions`.
 
 
 ## Using OpenGHG Inversions
@@ -113,15 +176,79 @@ Solutions to this are:
 
 For an overview of OpenGHG inversions, see this [primer](docs/getting_started.md).
 
-### Passing parameters to the inversion
+### Modern RHIME entry points
 
-Keyword arguments are propagated as follows:
-1. any key-value pair in an `ini` file or passed via the `--kwargs` flag is passed to the MCMC function as a keyword argument. (Currently, `fixedbasisMCMC` is the only available MCMC function)
-2. any keyword argument not recognised by the MCMC function (i.e. `fixedbasisMCMC`) is passed to the function `inferpymc` in `hbmcmc.inversion_pymc`, which is the function that creates and samples from the RHIME model.
+New RHIME runs can be launched without calling an internal source file path:
 
-Thus you can pass arguments to either `fixedbasisMCMC` or `inferpymc`, but all of these arguments will be specified in the `ini` file (or command line).
+```python
+from openghg_inversions.rhime import run_rhime, run_rhime_multisector
 
-Let's look at these two steps in detail.
+result = run_rhime(
+    species="ch4",
+    sites=["TAC"],
+    averaging_period=["1h"],
+    domain="EUROPE",
+    start_date="2019-01-01",
+    end_date="2019-01-02",
+    output_path="outputs",
+    output_name="example",
+    flux_sources=["total-ukghg-edgar7"],
+)
+```
+
+For SLURM batch scripts and installed environments, use the console entry point:
+
+```bash
+openghg-inversions run-rhime 2019-01-01 2019-01-02 -c rhime.ini --output-path outputs
+openghg-inversions run-rhime-multisector 2019-01-01 2019-01-02 -c rhime_multisector.ini
+```
+
+The new RHIME config template is available at
+`openghg_inversions/config/templates/rhime_template.ini`. New configs should use
+`flux_sources`; legacy `emissions_name` is accepted when `flux_sources` is absent.
+See the [RHIME terminology and quickstart](docs/usage/rhime.rst) page for the
+canonical config vocabulary.
+
+RHIME terminology:
+
+- `species`: primary gas or tracer name used for object-store lookup and output naming.
+- `source`: OpenGHG metadata key used to retrieve flux data.
+- `flux_sources`: RHIME field containing requested OpenGHG flux `source` values.
+- `sector_sources`: optional one-to-one mapping from RHIME sector names to unique OpenGHG flux `source` values.
+- `sector_priors`: optional complete mapping from RHIME sector names to flux-scaling priors; omit it to use a shared `x_prior`.
+- `sector`: model component optimized separately, currently backed by one unique flux `source`.
+- `tracer`: additional species used to constrain the primary species through linked forward models.
+- `emissions_name`: legacy compatibility spelling only; use `flux_sources` in new RHIME configs.
+
+### Legacy HBMCMC Compatibility
+
+New runs should use `openghg-inversions run-rhime` or the Python
+`run_rhime(...)` API above. The historical `run_hbmcmc.py` script remains as a
+compatibility wrapper for old fixedbasis-style INI files: it translates
+supported legacy names and options to modern RHIME arguments and then calls
+`run_rhime(...)`.
+This branch is no longer preserving the exact historical fixedbasisMCMC /
+inferpymc passthrough behaviour. Use release `0.6` or earlier if you need the
+old fixedbasis implementation.
+
+Direct `fixedbasisMCMC(...)` calls are a temporary legacy Python path, not a
+wrapper around `run_rhime(...)`. New work should not target that API.
+
+Modern RHIME preparation, `InversionOutput`, and postprocessing use retained
+`BasisFunctions` / `BasisOperator` objects as the primary basis representation.
+Derived flux, country, PARIS, and legacy-format products record the
+operator-backed reconstruction path and retained basis artifact source/path when
+known. Legacy flat basis NetCDF artifacts remain readable as an explicit
+compatibility fallback, but new workflows should save and load DataTree
+`BasisFunctions` artifacts.
+
+The old output names `hbmcmc` and `hbmcmc_postprocessing` are deprecated
+aliases for the modern `legacy` output format. The compatibility wrapper keeps
+the old HBMCMC filename convention for these outputs; direct `run_rhime` calls
+use RHIME filenames unless configured otherwise.
+
+The compatibility entry point still accepts the old INI layout and command-line
+overrides.
 
 #### Ways of passing arguments to the inversion
 
@@ -138,14 +265,15 @@ fix_basis_outer_regions = True
 use_bc = True
 nuts_sampler = "numpyro"
 save_trace = False
-calculate_min_error = "percentile"
+min_error = "percentile"
 pollution_events_from_obs = True
-reparameterise_log_normal = True
+reparameterise_log_normal = False
 sampler_kwargs = {"target_accept": 0.99}
 ```
 
-These will be passed to the MCMC function (e.g. `fixedbasisMCMC`) as keyword arguments.
-Any argument in `fixedbasisMCMC` can be specified in an `ini` file this way.
+These options are read from the old file layout and translated where a modern
+RHIME equivalent exists. Fixedbasis-only options that are enabled and no longer
+have a RHIME equivalent raise a targeted error.
 
 ##### Passing options at the command line
 
@@ -155,7 +283,7 @@ the inversion period, and you pass an `ini` file using the flag `-c`.
 In addition, you can pass the output path using the flag `--output-path`; this is useful if your SLURM script
 uses different output locations for different array jobs.
 
-You can also pass arbitrary keyword arguments to `run_hbmcmc.py` using the `--kwargs` flag.
+You can also pass supported RHIME-compatible keyword arguments to `run_hbmcmc.py` using the `--kwargs` flag.
 For instance:
 
 ``` bash
@@ -163,7 +291,9 @@ python run_hbmcmc.py "2019-01-01" "2019-02-01" -c "example.ini" --kwargs '{"aver
 ```
 It is crucial that you enclose the dictionary in single quotes, otherwise the command line will split the dictionary on white space.
 
-Again, this can be used to change the arguments passed to an inversion on the fly (say, in a SLURM script).
+Again, this can be used to change supported inversion arguments on the fly (say, in a SLURM script).
+Unsupported fixedbasis-only options now raise targeted errors instead of being
+passed through to `inferpymc`.
 
 The format of the dictionary inside single quotes must be JSON, because the value of `kwargs` is parsed using `json.loads`.
 Python translates JSON according to [this table](https://docs.python.org/3/library/json.html#encoders-and-decoders).
@@ -177,7 +307,10 @@ The following sections detail some parameters that enable/specify optional behav
 
 ##### Parameters for `fixedbasisMCMC`
 
-This is not a comprehensive list (see the docstring for `fixedbasisMCMC` in the [hbmcmc module](openghg_inversions/hbmcmc/hbmcmc.py) for more arguments).
+These are compatibility-era notes for old fixedbasis-style workflows, not the
+recommended interface for new runs. New configs should use the RHIME vocabulary
+above. See the docstring for `fixedbasisMCMC` in the [hbmcmc module](openghg_inversions/hbmcmc/hbmcmc.py)
+for the current compatibility arguments.
 
 
 Arguments affecting the data using in the inversion:
@@ -193,12 +326,12 @@ Arguments affecting the inverse model:
   - Default value is `False`
   - If `True`, the "outer regions" of the (`EUROPE`) domain use basis regions specified by a file provided by the Met Office (from their "InTem" model), and the "inner region", which includes the UK, is fit using our basis algorithms.
   - This option is only available for the `EUROPE` domain currently.
-- `calculate_min_error`: calculate min_error (see below) on the fly using the "residual error method" or a method based on percentiles of observations. Available arguments:
-  - `residual`: use "residual error method"
-  - `percentile`: use method based on percentiles
-  - `None`: in this case, you should pass in a value directly using (for instance) `min_error = 12.3`
-- `min_error_options`: additional parameters to pass to the function that compute min error. This should be a dictionary, and the available options depend on the function used. (The functions to compute min. model error are in `model_error.py`).
-  - If `calculate_min_error = "residual"`, then, for instance, you could use `min_error_options = {"robust": False, "by_site": True}`. (By default, `robust` is `False`, this is just to show the possibilities.)
+- `min_error`: set a numeric lower bound directly, or calculate one by passing
+  `"residual"` or `"percentile"`. The legacy `calculate_min_error` spelling is
+  deprecated and is translated only by the `run_hbmcmc` compatibility shim.
+- `min_error_options`: options for calculated minimum error. The only supported key is the boolean `by_site`.
+  - With `min_error = "residual"`, `min_error_options = {"by_site": True}` calculates a separate residual error for each retained site. The default is `False`.
+  - Unsupported keys and non-boolean `by_site` values raise a configuration error rather than being ignored.
 - `filters`: filters to apply to data (after it is resampled and aligned)
   - `filters = None` will skip filtering
   - if `filters` is a list of filters (or a string containing a single filter name), those filters will be applied to all sites.
@@ -216,16 +349,20 @@ Arguments affecting the output of the inversion:
 
 ##### Parameters for `inferpymc`
 
-As mentioned above, any keyword argument passed to `fixedbasisMCMC` (either by an `ini` file or from `--kwargs` on the command line) that is not recognised by `fixedbasisMCMC` is passed on to `inferpymc`.
+In release `0.6` and earlier, unrecognised `fixedbasisMCMC` keyword arguments
+were passed through to `inferpymc`. Current compatibility paths validate
+RHIME-compatible options instead. The argument routing design is being cleaned
+up as part of the fixedbasis retirement work.
 
-These parameters include:
+Historical inferpymc-era parameters included:
 - `min_error`: a non-negative float value specifying a lower bound for the model-measurement mismatch error (i.e. the error on (y - y_mod)).
 - `nuts_sampler`: a string, which defaults to `"pymc"`. The other option is `"numpyro"`, which will the [JAX](https://jax.readthedocs.io/en/latest/index.html) accelerated sampler from [Numpyro](https://num.pyro.ai/en/stable/index.html); this tends to be significantly faster than the NUTS sampler built into PyMC.
 - `pollution_events_from_obs`: Determines whether the model error is calculated as a fraction of:
   - the measured enhancement above the modelled baseline (if `True`)
   - the prior modelled enhancement (if `False`)
 - `no_model_error`: if `True`, only use obs error in likelihood (omitting min. model error and model error from scaling pollution events).
-- `reparameterise_log_normal`: if `True`, then log normal priors will be sampled by transforming samples from standard normal random variable to samples from the appropriate log normal distribution.
+- `reparameterise_log_normal`: deprecated compatibility flag. Set
+  `reparameterise=True` in the relevant lognormal prior mapping instead.
 
 
 ### The output from inversions
@@ -250,23 +387,17 @@ To contribute to `openghg_inversions`, you should also install the developer pac
 ```bash
 pip install -r requirements-dev.txt
 ```
-This will install the packages `flake8, pytest, black`.
+This will install the packages `pytest`, `pytest-xdist`, `ruff`, `tox`, and `tox-uv`.
 
-We use `black` to format our code. To check if your code needs reformatting, run:
+We use `ruff` to lint our code. To check for lint issues, run:
 ``` bash
-black --check openghg_inversions
+ruff check openghg_inversions
 ```
 in your `openghg_inversions` repository (with your virtual env activated).
-If you replace the flag `--check` with `--diff`, you can see what will be changed.
 
-To make these changes, run
+To fix issues that Ruff can safely update, run:
 ``` bash
-black openghg_inversions
-```
-
-We also recommend using `flake8` to check for code style issues, which you can run with:
-``` bash
-flake8 openghg_inversions
+ruff check --fix openghg_inversions
 ```
 
 You can run the tests using:
@@ -285,24 +416,66 @@ It does this automatically, so you don't need to manage pip or conda virtual env
 To install `tox` globally in a "safe" way, use:
 
 ```bash
-python -m pip install pipx-in-pipx --user
-pipx install tox
+uv tool install tox --with tox-uv
 ```
-or, within a virtual environment, do `pip install tox`.
+or, within a virtual environment, install `tox` and `tox-uv`.
 
-Calling `tox -p` will run tests against OpenGHG devel and the last two releases of OpenGHG, and run black, flake8, and mypy.
+The fast default checks the current OpenGHG release and runs Ruff:
+
+```bash
+tox -p --parallel-no-spinner
+```
+
+This is the required local check before pushing a draft pull request. GitHub
+Actions runs current, previous, and devel OpenGHG test jobs independently.
+
+The tox environments do not require a C++ compiler. PyTensor can use its
+Python implementations when no compiler is configured, so cluster module
+loading is not needed before running the tests.
+
+On a cluster compute node, a writable node-local PyTensor compilation cache
+also avoids shared-filesystem contention. Preserve any existing
+comma-separated `PYTENSOR_FLAGS` entries when adding it:
+
+```bash
+PYTENSOR_FLAGS="${PYTENSOR_FLAGS:+${PYTENSOR_FLAGS},}base_compiledir=${TMPDIR:-/tmp}/pytensor-${USER}" \
+  tox -e py310-openghgCur
+```
+
+If `PYTENSOR_FLAGS` already defines `base_compiledir`, update that entry
+instead of adding the same key twice.
+
+For final review or release-sensitive dependency changes, run the full
+compatibility matrix:
+
+```bash
+tox -p --parallel-no-spinner -e py310-openghgCur,py310-openghgPrev,py310-openghgDev,lint
+```
+
+The previous-release environment defaults to `openghg==0.18.0`. Override it
+with a deterministic package spec when needed, for example:
+
+```bash
+OPENGHG_PREV_SPEC='openghg==0.17.1' tox -e py310-openghgPrev
+```
+
+When a new OpenGHG minor release is published, update the default
+`OPENGHG_PREV_SPEC` value in `tox.ini` to the release that has just become the
+previous minor. GitHub Actions discovers current and previous releases
+automatically, but the local tox pin is deliberately maintained explicitly so
+tox configuration does not require network access.
 
 To specify individual jobs, you can use, e.g.:
 
 ```bash
-tox -e openghgDev
+tox -e py310-openghgDev
 ```
 
 to run the tests against the devel branch.
 
 Use `tox -l` to list all options.
 
-To pass arguments to pytest, mypy, black, etc, you can use, e.g.
+To pass arguments to pytest, Ruff, mypy, etc, you can use, e.g.
 
 ```bash
 tox -- "openghg_inversions/hbmcmc"
@@ -319,6 +492,20 @@ It's helpful to write a description of the changes made in your PR, as well as l
 
 Your code must past the tests and be reviewed before it can be merged.
 After this, you can merge your branch and close it (it can always be recovered later if necessary).
+
+## Citation and contributors
+
+If you use this software, please cite the version-specific Zenodo DOI for the
+release you used.
+
+The recommended prose description is:
+
+> We use RHIME, the Regional Hierarchical Inversion Modelling Environment,
+> implemented in the `openghg_inversions` Python package.
+
+The formal software citation lists the principal creators of the citable
+software artifact. Additional code, testing, documentation, scientific, and
+project contributions are recorded in the Zenodo metadata and GitHub history.
 
 ## References
 Ganesan et al. (2014),_ACP_;

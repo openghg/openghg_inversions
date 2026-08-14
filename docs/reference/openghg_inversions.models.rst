@@ -1,0 +1,16 @@
+openghg\_inversions.models
+==========================
+
+.. automodule:: openghg_inversions.models
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+
+
+.. toctree::
+   :maxdepth: 4
+
+   openghg_inversions.models.rhime
+   openghg_inversions.models.rhime_likelihood
+   openghg_inversions.models.state_activity

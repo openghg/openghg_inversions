@@ -1,41 +1,61 @@
-"""Reusable prior helpers for PyMC model construction."""
+"""Create reusable scalar or array-valued PyMC prior variables.
+
+``parse_prior`` registers continuous distributions on the active model;
+``lognormal_mu_sigma`` converts requested moments, including arrays. Optional
+lognormal reparameterization exposes ``<name>_latent`` and keeps ``<name>`` as
+the user-facing deterministic variable.
+"""
 
 from __future__ import annotations
 
-from typing import TypeAlias
+from typing import Any, TypeAlias
 
 import numpy as np
 import pymc as pm
 import pytensor.tensor as pt
 from pymc.distributions import continuous
-from pytensor.tensor import TensorVariable
+from pytensor.tensor.variable import TensorVariable
 
-PriorArgs: TypeAlias = dict[str, str | float | bool]
+PriorArgs: TypeAlias = dict[str, Any]
 
 
-def lognormal_mu_sigma(mean: float, stdev: float) -> tuple[float, float]:
+def lognormal_mu_sigma(
+    mean: float | np.ndarray,
+    stdev: float | np.ndarray,
+) -> tuple[float | np.ndarray, float | np.ndarray]:
     """Convert lognormal mean and stdev into PyMC's ``mu`` and ``sigma``.
 
     Args:
-        mean: Requested mean of the lognormal distribution.
-        stdev: Requested standard deviation of the lognormal distribution.
+        mean: Requested scalar or array-valued mean of the lognormal
+            distribution.
+        stdev: Requested scalar or array-valued standard deviation of the
+            lognormal distribution.
 
     Returns:
         A ``(mu, sigma)`` tuple suitable for ``pm.Lognormal``.
     """
-    var = np.log(1 + (stdev / mean) ** 2)
-    mu = np.log(mean) - 0.5 * var
+    mean_array = np.asarray(mean)
+    stdev_array = np.asarray(stdev)
+    var = np.log(1 + (stdev_array / mean_array) ** 2)
+    mu = np.log(mean_array) - 0.5 * var
     sigma = np.sqrt(var)
+    if mu.ndim == 0 and sigma.ndim == 0:
+        return float(mu), float(sigma)
     return mu, sigma
 
 
 def _update_log_normal_prior(prior_params: PriorArgs) -> None:
-    """Rewrite lognormal prior arguments in-place to use ``mu`` and ``sigma``."""
+    """Rewrite requested lognormal moments to PyMC parameters in place.
+
+    Args:
+        prior_params: Mutable mapping. When ``stdev`` is present, it and
+            optional ``mean`` are replaced by ``mu`` and ``sigma``.
+    """
     if "stdev" not in prior_params:
         return
 
-    stdev = float(prior_params["stdev"])
-    mean = float(prior_params.get("mean", 1.0))
+    stdev = prior_params["stdev"]
+    mean = prior_params.get("mean", 1.0)
     mu, sigma = lognormal_mu_sigma(mean, stdev)
     prior_params["mu"] = mu
     prior_params["sigma"] = sigma
@@ -74,7 +94,9 @@ def parse_prior(name: str, prior_params: PriorArgs, **kwargs) -> TensorVariable:
 
         if params.get("reparameterise", False):
             latent = pm.Normal(f"{name}_latent", 0, 1, **kwargs)
-            return pm.Deterministic(name, pt.exp(params["mu"] + params["sigma"] * latent), **kwargs)
+            mu = pm.floatX(params["mu"])
+            sigma = pm.floatX(params["sigma"])
+            return pm.Deterministic(name, pt.exp(mu + sigma * latent), **kwargs)
 
     params.pop("reparameterise", None)
 

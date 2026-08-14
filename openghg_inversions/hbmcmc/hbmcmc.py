@@ -1,7 +1,8 @@
-"""Contains functions for running all steps of the MCMC inversion using PyMC.
+"""Run the legacy ``fixedbasisMCMC`` compatibility workflow using PyMC.
 
-This module handles getting data, filtering, applying basis functions, sampling,
-and processing the outputs.
+The entry point retrieves or reloads data, applies filters and basis functions,
+samples, formats results, and can write traces, inversion outputs, merged data,
+and formatted NetCDF products. New workflows should use the RHIME runner.
 
 Notes
 -----
@@ -25,31 +26,28 @@ the users OpenGHG config file (default location: ~/.openghg/openghg.conf).
 """
 
 import logging
+import time
+import warnings
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-import time
-from typing import Literal
-import warnings
+from typing import Any, Literal, cast
 
+import arviz as az
 import numpy as np
 import xarray as xr
 
-from openghg.util import split_function_inputs
-
 import openghg_inversions.hbmcmc.inversion_pymc as mcmc
+from openghg_inversions.basis.basis_functions import BasisFunctions
+from openghg_inversions.inversion_data import FixedBasisPreparedData, prepare_fixedbasis_inversion_data
+from openghg_inversions.inversion_data._site_options import (
+    expand_site_option,
+    is_column_observation,
+)
 from openghg_inversions.models.priors import lognormal_mu_sigma
-from openghg_inversions.utils import ncdf_encoding
-from openghg_inversions.basis import basis_functions_wrapper
-from openghg_inversions.inversion_data import (
-    data_processing_surface_notracer,
-    load_merged_data,
-)
-from openghg_inversions.filters import filtering
-from openghg_inversions.postprocessing.inversion_output import (
-    InversionOutput,
-    make_inv_out_for_fixed_basis_mcmc,
-)
-from openghg_inversions.inversion_inputs import make_inv_inputs
+from openghg_inversions.postprocessing.inversion_output import InversionOutput
+from openghg_inversions.serialization import reset_serialisation_multiindexes
+from openghg_inversions.utils import ncdf_encoding, write_netcdf_preserving_bounds_attrs
 
 
 def update_log_normal_prior(prior):
@@ -68,61 +66,7 @@ def update_log_normal_prior(prior):
     return prior
 
 
-# ----------------------------------------
-# Preparing inputs
-# ----------------------------------------
-
-
-def _prepare_runtime_inv_inputs(
-    *,
-    fp_data,
-    sites,
-    start_date,
-    bc_freq,
-    sigma_freq,
-    min_error,
-    calculate_min_error,
-    min_error_options,
-) -> xr.Dataset:
-    """Create the dataset consumed by the current inferpymc runtime path.
-
-    Args:
-        fp_data: Forward-model datasets keyed by site name.
-        sites: Sites to include in the inversion inputs.
-        start_date: Inversion start date used when anchoring time-derived
-            indices.
-        bc_freq: Frequency used for BC grouping.
-        sigma_freq: Frequency used for sigma grouping.
-        min_error: Minimum-error configuration passed through to
-            ``make_inv_inputs``.
-        calculate_min_error: Deprecated compatibility argument. When provided,
-            its value overrides ``min_error``.
-        min_error_options: Extra options controlling minimum-error
-            construction.
-
-    Returns:
-        Dataset produced by ``make_inv_inputs`` for the active runtime path.
-    """
-    if calculate_min_error is not None:
-        warnings.warn(
-            "`calculate_min_error` is deprecated. Please use `min_error` to pass the calculation method instead."
-        )
-        min_error = calculate_min_error
-
-    min_error_options = min_error_options or {}
-
-    return make_inv_inputs(
-        fp_data,
-        sites=sites,
-        bc_freq=bc_freq,
-        sigma_freq=sigma_freq,
-        min_error=min_error,
-        min_error_per_site=min_error_options.get("by_site", False),
-        start_date=start_date,
-    )
-
-
-def _extract_post_process_args(inv_inputs: xr.Dataset) -> dict[str, np.ndarray]:
+def _extract_post_process_args(inv_inputs: xr.Dataset) -> dict[str, object]:
     """Extract legacy-shaped postprocessing arrays from inversion inputs.
 
     NOTE: Transitional compatibility bridge. This extracts legacy-shaped arrays
@@ -155,6 +99,66 @@ def _extract_post_process_args(inv_inputs: xr.Dataset) -> dict[str, np.ndarray]:
         "sigma_freq_index": inv_inputs.sigma_freq_index.values,
         "min_error": inv_inputs.min_error.values,
     }
+
+
+def _require_fixedbasis_inv_inputs(prepared: FixedBasisPreparedData) -> xr.Dataset:
+    """Return prepared model inputs or raise for an invalid fixedbasis contract."""
+    if prepared.inv_inputs is None:
+        raise RuntimeError("Fixed-basis data preparation did not produce model inputs.")
+    return prepared.inv_inputs
+
+
+def _require_fixedbasis_legacy_data(prepared: FixedBasisPreparedData) -> dict:
+    """Return legacy fixedbasis forward data required by postprocessing."""
+    if prepared.fp_data is None:
+        raise RuntimeError("Fixed-basis data preparation did not produce forward data.")
+    missing_legacy_keys = [key for key in (".basis", ".flux") if key not in prepared.fp_data]
+    if missing_legacy_keys:
+        raise RuntimeError(
+            "Fixed-basis data preparation did not produce legacy fixed-basis data. "
+            f"Missing key(s): {missing_legacy_keys!r}."
+        )
+    return prepared.fp_data
+
+
+def _require_fixedbasis_emissions_basis(prepared: FixedBasisPreparedData) -> BasisFunctions:
+    """Return retained emissions basis functions or raise for an invalid fixedbasis contract."""
+    try:
+        basis_functions = prepared.basis_objects["emissions"]
+    except KeyError as exc:
+        raise RuntimeError("Fixed-basis data preparation did not retain emissions BasisFunctions.") from exc
+
+    if not isinstance(basis_functions, BasisFunctions):
+        raise RuntimeError(
+            f"Fixed-basis data preparation returned invalid emissions basis object {type(basis_functions)!r}."
+        )
+    return basis_functions
+
+
+def _canonicalize_fixedbasis_trace(trace: object, basis_functions: BasisFunctions) -> object:
+    """Rename legacy fixedbasis trace dims back to modern model dims."""
+    if not isinstance(trace, az.InferenceData):
+        return trace
+
+    rename_map = {
+        "nx": basis_functions.operator.meta.state_dim,
+        "nbc": "bc_region",
+    }
+    renamed_groups: dict[str, xr.Dataset] = {}
+
+    for group in trace.groups():
+        ds = trace[group]
+        applicable = {
+            old: new
+            for old, new in rename_map.items()
+            if old != new
+            and (old in ds.dims or old in ds.coords)
+            and new not in ds.dims
+            and new not in ds.coords
+        }
+        renamed_groups[group] = ds.rename(applicable) if applicable else ds.copy()
+
+    return cast(Any, az.InferenceData)(attrs=dict(trace.attrs), **renamed_groups)
 
 
 def _inv_inputs_from_rerun_arrays(
@@ -226,14 +230,14 @@ class _OutputContext:
     species: str
     domain: str
     start_date: str
-    averaging_period: list[str]
+    averaging_period: list[str | None]
     use_bc: bool
     country_file: str | None
     paris_postprocessing_kwargs: dict | None
     legacy_postprocess_args: dict
     mcmc_args: dict
     mcmc_results: dict
-    inv_out_args: dict
+    inversion_output_args: dict
     inv_out: InversionOutput | None = None
     paths: dict[str, Path] = field(default_factory=dict)
 
@@ -252,13 +256,49 @@ def _resolve_output_format(
         )
 
     resolved_output_format = output_format.lower()
+    if resolved_output_format in {"hbmcmc", "hbmcmc_postprocessing"}:
+        warnings.warn(
+            f"output_format={resolved_output_format!r} is deprecated; use output_format='legacy' instead.",
+            UserWarning,
+            stacklevel=2,
+        )
+        resolved_output_format = "legacy"
 
-    if resolved_output_format == "hbmcmc" and is_column:
+    if is_column and resolved_output_format == "legacy":
         raise ValueError(
-            "Cannot use output_format 'hbmcmc' when column-based measurements are included. Please choose another output_format."
+            "Legacy HBMCMC output formatting is not supported for column observations; "
+            "use output_format='inv_out' or a modern RHIME output format."
         )
 
     return resolved_output_format
+
+
+def _all_requested_sites_are_column(
+    *,
+    sites: Sequence[str],
+    inlet: Sequence[str | slice | None] | str | None,
+    platform: Sequence[str | None] | str | None,
+) -> bool:
+    """Return whether every requested site is unambiguously column based.
+
+    This conservative preflight check avoids retrieval when legacy output is
+    certainly unsupported. Invalid or misaligned options are left for the
+    preparation boundary to diagnose. A second check uses retained-site
+    metadata after retrieval and filtering.
+    """
+    if not sites:
+        return False
+
+    try:
+        inlet_values = expand_site_option(inlet, nsites=len(sites), name="inlet")
+        platform_values = expand_site_option(platform, nsites=len(sites), name="platform")
+    except ValueError:
+        return False
+
+    return all(
+        is_column_observation(site_inlet, site_platform)
+        for site_inlet, site_platform in zip(inlet_values, platform_values, strict=True)
+    )
 
 
 def _resolve_trace_path(
@@ -291,7 +331,7 @@ def _build_output_context(
     species: str,
     domain: str,
     start_date: str,
-    averaging_period: list[str],
+    averaging_period: list[str | None],
     use_bc: bool,
     country_file: str | None,
     paris_postprocessing_kwargs: dict | None,
@@ -300,7 +340,7 @@ def _build_output_context(
     legacy_postprocess_args: dict,
     mcmc_args: dict,
     mcmc_results: dict,
-    inv_out_args: dict,
+    inversion_output_args: dict,
 ) -> _OutputContext:
     """Build the output context used by later output-handling stages.
 
@@ -320,7 +360,7 @@ def _build_output_context(
         legacy_postprocess_args: Legacy postprocessing argument dictionary built during inversion setup.
         mcmc_args: Arguments passed to ``mcmc.inferpymc``.
         mcmc_results: Raw sampler results from ``mcmc.inferpymc``.
-        inv_out_args: Arguments needed to build ``InversionOutput``.
+        inversion_output_args: Arguments needed to build modern ``InversionOutput``.
 
     Returns:
         _OutputContext: Context object for final output handling.
@@ -351,88 +391,130 @@ def _build_output_context(
         legacy_postprocess_args=legacy_postprocess_args,
         mcmc_args=mcmc_args,
         mcmc_results=mcmc_results,
-        inv_out_args=inv_out_args,
+        inversion_output_args=inversion_output_args,
         paths=paths,
     )
 
 
-def _build_inv_out_args(
+def _build_inversion_output_args(
     *,
-    fp_data: dict,
+    prepared: FixedBasisPreparedData,
     legacy_postprocess_args: dict,
+    mcmc_args: dict,
     mcmc_results: dict,
     sites: list[str],
+    averaging_period: list[str | None],
     start_date: str,
     end_date: str,
     species: str,
     domain: str,
-    is_column: bool,
+    output_format: str,
+    outputpath: str,
+    outputname: str,
+    save_trace: str | Path | bool,
+    save_inversion_output: str | Path | bool,
 ) -> dict:
-    """Build explicit arguments for ``make_inv_out_for_fixed_basis_mcmc``.
+    """Build explicit arguments for fixedbasis modern ``InversionOutput``.
 
     Args:
-        fp_data: Basis-applied inversion input datasets.
+        prepared: Prepared fixedbasis data including retained basis functions.
         legacy_postprocess_args: Legacy postprocessing values computed alongside inversion inputs.
+        mcmc_args: Arguments passed to ``mcmc.inferpymc``.
         mcmc_results: Raw inversion outputs from ``mcmc.inferpymc``.
         sites: Site names used in the inversion.
+        averaging_period: Observation averaging periods used in the inversion.
         start_date: Inversion start date.
         end_date: Inversion end date.
         species: Species name for output metadata.
         domain: Domain name for output metadata.
-        is_column: Whether column-based inputs are present.
+        output_format: Requested fixedbasis output format.
+        outputpath: Directory for saved outputs.
+        outputname: Base output name for saved files.
+        save_trace: Trace save setting passed to ``fixedbasisMCMC``.
+        save_inversion_output: InversionOutput save setting passed to ``fixedbasisMCMC``.
 
     Returns:
-        dict: Explicit keyword arguments for ``make_inv_out_for_fixed_basis_mcmc``.
+        dict: Explicit keyword arguments for ``InversionOutput``.
     """
-    inv_out_args = {
-        "fp_data": fp_data,
-        "Y": legacy_postprocess_args["Y"],
-        "Ytime": legacy_postprocess_args["Ytime"],
-        "error": legacy_postprocess_args["error"],
-        "obs_repeatability": legacy_postprocess_args["obs_repeatability"],
-        "obs_variability": legacy_postprocess_args["obs_variability"],
-        "site_indicator": legacy_postprocess_args["siteindicator"],
-        "site_names": sites,
-        "mcmc_results": mcmc_results,
-        "start_date": start_date,
-        "end_date": end_date,
-        "species": species,
-        "domain": domain,
-        "obs_prior_factor": legacy_postprocess_args["obs_prior_factor"],
-        "obs_prior_upper_level_factor": legacy_postprocess_args["obs_prior_upper_level_factor"],
+    basis_functions = _require_fixedbasis_emissions_basis(prepared)
+    return {
+        "trace": _canonicalize_fixedbasis_trace(mcmc_results["trace"], basis_functions),
+        "inv_inputs": _require_fixedbasis_inv_inputs(prepared),
+        "basis_functions": basis_functions,
+        "run_metadata": {
+            "start_date": start_date,
+            "end_date": end_date,
+            "sites": list(sites),
+            "averaging_period": list(averaging_period),
+            "split_by_sectors": False,
+            "basis_artifact_source": prepared.basis_artifact_source,
+            "basis_artifact_path": prepared.basis_artifact_path,
+        },
+        "model_metadata": {"species": species, "domain": domain},
+        "output_metadata": {
+            "output_format": output_format,
+            "output_path": outputpath,
+            "output_name": outputname,
+            "save_trace": save_trace,
+            "save_inversion_output": save_inversion_output,
+            "legacy_hbmcmc_attrs": _legacy_hbmcmc_attrs_from_mcmc_args(mcmc_args),
+        },
+        "provenance": {
+            "contract": "modern_fixedbasis_inversion_output",
+            "compatibility_issue": "416",
+            "basis_representation": "operator-backed",
+            "legacy_postprocessing_fields": sorted(str(key) for key in legacy_postprocess_args),
+        },
     }
 
-    if not is_column:
-        inv_out_args["obs_prior_factor"] = None
-        inv_out_args["obs_prior_upper_level_factor"] = None
 
-    return inv_out_args
+def _format_legacy_prior_attr(prior: object) -> str | None:
+    """Format a prior dictionary using the historical HBMCMC attribute shape."""
+    if not isinstance(prior, dict):
+        return None
+    return ",".join(f"{key},{value}" for key, value in prior.items())
+
+
+def _legacy_hbmcmc_attrs_from_mcmc_args(mcmc_args: dict) -> dict[str, str]:
+    """Return legacy output attrs that are still needed by old fixedbasis workflows."""
+    attrs = {
+        "Burn in": str(int(mcmc_args["burn"])),
+        "Tuning steps": str(int(mcmc_args["tune"])),
+        "Number of chains": str(int(mcmc_args["nchain"])),
+        "Error for each site": str(mcmc_args["sigma_per_site"]),
+    }
+
+    prior_attrs = {
+        "Emissions Prior": _format_legacy_prior_attr(mcmc_args.get("xprior")),
+        "Model error Prior": _format_legacy_prior_attr(mcmc_args.get("sigprior")),
+    }
+    if mcmc_args.get("use_bc"):
+        prior_attrs["BCs Prior"] = _format_legacy_prior_attr(mcmc_args.get("bcprior"))
+    if mcmc_args.get("add_offset"):
+        prior_attrs["Offset Prior"] = _format_legacy_prior_attr(mcmc_args.get("offsetprior"))
+
+    attrs.update({name: value for name, value in prior_attrs.items() if value is not None})
+    return attrs
 
 
 def _get_inversion_output(context: _OutputContext) -> InversionOutput:
-    """Build and cache the InversionOutput object for output handling."""
+    """Build and cache the modern InversionOutput object for output handling."""
     if context.inv_out is None:
-        context.inv_out = make_inv_out_for_fixed_basis_mcmc(**context.inv_out_args)
+        context.inv_out = InversionOutput(**context.inversion_output_args)
     return context.inv_out
-
-
-def _prepare_legacy_hbmcmc_postprocess_args(context: _OutputContext) -> dict:
-    """Prepare the legacy argument bag for ``inferpymc_postprocessouts``."""
-    legacy_postprocess_args = context.legacy_postprocess_args.copy()
-    legacy_postprocess_args.update(context.mcmc_args)
-    del legacy_postprocess_args["inv_inputs"]
-    del legacy_postprocess_args["nit"]
-    del legacy_postprocess_args["verbose"]
-    del legacy_postprocess_args["offset_args"]
-    del legacy_postprocess_args["power"]
-    return legacy_postprocess_args
 
 
 def _handle_core_output_artifacts(context: _OutputContext) -> None:
     """Write core inversion artifacts needed before final output dispatch."""
     trace_path = context.paths.get("trace")
     if trace_path is not None:
-        context.mcmc_results["trace"].to_netcdf(str(trace_path), engine="netcdf4", compress=True)
+        trace = context.mcmc_results["trace"]
+        if isinstance(trace, az.InferenceData):
+            trace = cast(Any, az.InferenceData)(
+                attrs=dict(trace.attrs),
+                **{group: reset_serialisation_multiindexes(trace[group]) for group in trace.groups()},
+            )
+        trace.to_netcdf(str(trace_path), engine="netcdf4", compress=True)
 
     inversion_output_path = context.paths.get("inversion_output")
     if inversion_output_path is not None:
@@ -457,19 +539,13 @@ def _finalize_output(context: _OutputContext) -> xr.Dataset | dict | InversionOu
         print(f"Post processing Complete. Time taken = {end_post - start_post:.2f} seconds")
         return outputs
 
-    if context.output_format == "hbmcmc_postprocessing":
+    if context.output_format == "legacy":
         from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename
 
         from ..postprocessing.legacy_outputs import make_legacy_hbmcmc_output
 
         outputs = make_legacy_hbmcmc_output(
             inv_out=_get_inversion_output(context),
-            mcmc_results=context.mcmc_results,
-            # TODO: Stop threading these explicitly once make_legacy_hbmcmc_output
-            # can consume the needed arrays directly from the modern model/input data path.
-            sigma_freq_index=context.legacy_postprocess_args["sigma_freq_index"],
-            Hx=context.legacy_postprocess_args["Hx"],
-            Hbc=context.legacy_postprocess_args.get("Hbc"),
             country_file=context.country_file,
             use_bc=context.use_bc,
         )
@@ -489,7 +565,6 @@ def _finalize_output(context: _OutputContext) -> xr.Dataset | dict | InversionOu
 
     if context.output_format == "paris":
         from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename
-
         from openghg_inversions.postprocessing.make_paris_outputs import make_paris_outputs
 
         obs_avg_period = context.averaging_period[0] or "0h"
@@ -522,11 +597,15 @@ def _finalize_output(context: _OutputContext) -> xr.Dataset | dict | InversionOu
         )
         Path(context.outputpath).mkdir(parents=True, exist_ok=True)
 
-        conc_outs.to_netcdf(
-            conc_output_filename, unlimited_dims=["time"], mode="w", encoding=ncdf_encoding(conc_outs)
+        write_netcdf_preserving_bounds_attrs(
+            conc_outs,
+            conc_output_filename,
+            unlimited_dims=["time"],
         )
-        flux_outs.to_netcdf(
-            flux_output_filename, unlimited_dims=["time"], mode="w", encoding=ncdf_encoding(flux_outs)
+        write_netcdf_preserving_bounds_attrs(
+            flux_outs,
+            flux_output_filename,
+            unlimited_dims=["time"],
         )
 
         logging.info("PARIS concentration outputs saved to %s", conc_output_filename)
@@ -536,23 +615,7 @@ def _finalize_output(context: _OutputContext) -> xr.Dataset | dict | InversionOu
         print(f"Post processing Complete. Time taken = {end_post - start_post:.2f} seconds")
         return xr.merge([conc_outs, flux_outs.rename(time="flux_time")])
 
-    # Legacy default hbmcmc output path.
-    mcmc_results = context.mcmc_results.copy()
-    del mcmc_results["trace"]
-    del mcmc_results["model"]
-    legacy_postprocess_args = _prepare_legacy_hbmcmc_postprocess_args(context)
-    legacy_postprocess_args.update(mcmc_results)
-    post_process_args_selection, _ = split_function_inputs(
-        legacy_postprocess_args, mcmc.inferpymc_postprocessouts
-    )
-    out = mcmc.inferpymc_postprocessouts(**post_process_args_selection)
-
-    end_post = time.time()
-
-    print(f"Post processing Complete. Time taken = {end_post - start_post:.2f} seconds")
-    print("---- Inversion completed ----")
-
-    return out
+    raise ValueError(f"Unsupported fixedbasisMCMC output_format {context.output_format!r}.")
 
 
 # ------------------------------------------------------------
@@ -564,7 +627,7 @@ def fixedbasisMCMC(
     species: str,
     sites: list[str],
     domain: str,
-    averaging_period: list[str],
+    averaging_period: Sequence[str | None] | str | None,
     start_date: str,
     end_date: str,
     outputpath: str,
@@ -573,17 +636,17 @@ def fixedbasisMCMC(
     obs_store: str = "user",
     footprint_store: str = "user",
     emissions_store: str = "user",
-    met_model: list | None = None,
+    met_model: Sequence[str | None] | str | None = None,
     fp_model: str | None = None,  # Changed to none. When "NAME" specified FPs are not found
-    fp_height: list[str] | None = None,
+    fp_height: Sequence[str | None] | str | None = None,
     fp_species: str | None = None,
     emissions_name: list[str] | None = None,
-    inlet: list[str] | None = None,
-    instrument: list[str] | None = None,
-    max_level: int | None = None,
+    inlet: Sequence[str | slice | None] | str | None = None,
+    instrument: Sequence[str | None] | str | None = None,
+    max_level: Sequence[int | None] | int | None = None,
     calibration_scale: str | None = None,
-    obs_data_level: list | None = None,
-    platform: list[str | None] | str | None = None,
+    obs_data_level: Sequence[str | None] | str | None = None,
+    platform: Sequence[str | None] | str | None = None,
     use_tracer: bool = False,
     use_bc: bool = True,
     fp_basis_case: str | None = None,
@@ -620,34 +683,37 @@ def fixedbasisMCMC(
     basis_output_path: str | None = None,
     save_trace: str | Path | bool = False,
     save_inversion_output: str | Path | bool = False,
-    min_error: Literal["percentile", "residual"] | None | float = 0.0,
+    min_error: Literal["percentile", "residual"] | dict[str, float] | None | float = 0.0,
     calculate_min_error: Literal["percentile", "residual"] | None = None,
-    min_error_options: dict | None = None,
+    min_error_options: Mapping[str, Any] | None = None,
     output_format: Literal[
         "hbmcmc",
         "hbmcmc_postprocessing",
+        "legacy",
         "paris",
         "basic",
         "merged_data",
         "inv_out",
         "mcmc_args",
         "mcmc_results",
-    ] = "hbmcmc",
+    ] = "legacy",
     paris_postprocessing: bool = False,
     paris_postprocessing_kwargs: dict | None = None,
     power: dict | float = 1.99,
+    return_basis_objects: bool = False,
     **kwargs,
 ) -> xr.Dataset | dict | InversionOutput:
     """Script to run hierarchical Bayesian MCMC (RHIME) for inference of emissions.
 
-    Uses PyMC to solve the inverse problem. Saves an output from the inversion code
-    using inferpymc_postprocessouts.
+    Uses PyMC to solve the inverse problem. This is now a legacy compatibility
+    entry point; new workflows should call ``run_rhime`` directly.
 
     Args:
         species: Atmospheric trace gas species of interest (e.g. 'co2').
         sites: List of measurement site names.
         domain: Model domain. (NB. Does not necessarily correspond to the inversion domain)
-        averaging_period: Averaging period of observations (must match number of sites).
+        averaging_period: Averaging period of observations. A scalar is
+            broadcast to all sites; a sequence must match ``sites``.
         start_date: Start time of inversion: "YYYY-mm-dd".
         end_date: End time of inversion: "YYYY-mm-dd".
         outputname: Unique identifier for output/run name.
@@ -656,16 +722,25 @@ def fixedbasisMCMC(
         obs_store: Name of object store containing measurements files.
         footprint_store: Name of object store containing footprints files.
         emissions_store: Name of object store containing emissions/flux files.
-        met_model: Meteorological model used in the LPDM (e.g. 'ukv').
+        met_model: Meteorological model used in the LPDM (e.g. 'ukv'), either
+            scalar or aligned to ``sites``.
         fp_model: LPDM used for generating footprints (e.g. 'NAME').
-        fp_height: Inlet height modelled for sites in LPDM (must match number of sites).
+        fp_height: Inlet height modelled for sites in the LPDM, either scalar
+            or aligned to ``sites``.
         fp_species: Species name associated with footprints in the object store.
         emissions_name: List of keyword "source" args used for retrieving emissions files
             from 'emissions_store'.
-        inlet: Specific inlet height for the site (must match number of sites).
-        instrument: Specific instrument for the site (must match number of sites).
+        inlet: Observation inlet selector, either scalar or aligned to
+            ``sites``. Entries may be strings, legacy ``slice`` selectors, or
+            ``None``.
+        instrument: Observation instrument, either scalar or aligned to
+            ``sites``.
+        max_level: Maximum column level, either scalar or aligned to ``sites``.
+            Entries must be integers or ``None``; booleans are rejected.
         calibration_scale: Calibration scale to use for measurements data.
-        obs_data_level: Data quality level for measurements data. (must match number of sites)
+        obs_data_level: Measurement data-quality level, either scalar or
+            aligned to ``sites``.
+        platform: Observation platform, either scalar or aligned to ``sites``.
         use_tracer: Option to use inverse model that uses tracers of species
             (e.g. d13C, CO, C2H4).
         use_bc: When True, use and infer boundary conditions.
@@ -681,9 +756,13 @@ def fixedbasisMCMC(
         country_file: Path to the country definition file.
         bc_input: Variable for calling BC data from 'bc_store' - equivalent of
             'emissions_name' for fluxes.
-        basis_algorithm: Select basis function algorithm for creating basis function file
-            for emissions on the fly. Options include "quadtree" or "weighted".
-            Defaults to "weighted" which distinguishes between land-sea regions.
+        basis_algorithm: Select basis function algorithm for creating basis
+            function file for emissions on the fly. Current fixedbasis and
+            ``run_hbmcmc.py`` configs support ``"quadtree"`` or
+            ``"weighted"``; ``"weighted"`` distinguishes between land-sea
+            regions. The lower-level Python basis API also supports
+            ``"region_constrained"`` when a caller supplies an already loaded
+            ``region_classes`` field.
         nbasis: Number of basis functions that you want if using quadtree derived
             basis function. This will optimise to closest value that fits with
             quadtree splitting algorithm, i.e. nbasis % 4 = 1.
@@ -739,196 +818,148 @@ def fixedbasisMCMC(
         save_trace: If True, save arviz `InferenceData` trace to `outputpath`. Alternatively,
             a file path (including file name and extension) can be passed, and the trace will be
             saved there.
-        merged_data_only: If True, save merged data, and do nothing else.
+        save_inversion_output: If true, save the modern ``InversionOutput`` to
+            ``outputpath``. A complete file path may be supplied instead.
         min_error: If float, the value represents the minimun error. Otherwise, compute min model error
             using the "residual" method or the "percentile" method. (See `openghg_inversions.model_error.py` for
             details.) Combines the functionality of the previous min_error and calculate_min_error parameters.
             None only an option to accomodate old ini files.
         calculate_min_error: Is deprecated and will be removed in a future update.
-        min_error_options: Dictionary of additional arguments to pass the the function used to calculate min. model
-            error (as specified by `min_error`).
+        min_error_options: Options for calculated minimum error. The only
+            supported key is boolean ``by_site``; with residual minimum error,
+            true calculates a separate value for each retained site.
         output_format: Select what is returned/saved by inversion.
-            - "hbmcmc": (default) return the results of `inferpymc_postprocessouts`, and save result as netCDF
-            - "hbmcmc_postprocessing": return legacy-style output format, computed using functions from the
-              `postprocessing` submodule
+            - "legacy": (default) return old HBMCMC-compatible output formatting, computed from modern
+              `InversionOutput`, and save result as netCDF. Deprecated aliases: "hbmcmc" and
+              "hbmcmc_postprocessing".
             - "merged_data": return `fp_all` dictionary, no further processing and inversion *not* run
-            - "inv_out": return `InversionOutput` object
+            - "inv_out": return modern `InversionOutput` object
             - "basic": return basic output created by new `postprocessing` submodule
             - "paris": return flux and concentration datasets with PARIS formatting; these are also saved
               as netCDF files in the directory `outputpath`
             - "mcmc_args": return the arguments passed to `fixedbasisMCMC`, but do not run the inversion
             - "mcmc_results": return the results of `fixedbasisMCMC` with no further processing
+            Legacy output is not supported when any retained site contains
+            column observations.
+        paris_postprocessing: Deprecated switch selecting PARIS output.
         paris_postprocessing_kwargs: Dict of kwargs to pass to `make_paris_outputs`.
         power: Power to raise pollution event size to if using pollution events from obs. Default is 1.99.
+        return_basis_objects: If True, include retained basis objects in ``output_format="mcmc_args"``
+            debug output. Fixedbasis output modes that construct modern inversion output retain them
+            internally regardless of this setting. They are not passed to ``inferpymc``.
+        **kwargs: Additional sampler arguments. The compatibility-only
+            ``flux_non_finite_check`` key selects ``"lazy"`` or ``"count"``
+            flux sanitization before the remaining values are forwarded.
 
     Returns:
-        xr.Dataset | dict: Results from the inversion in a Dataset if skip_post_processing==False,
-            in a dictionary if True.
-    """
-    # Check if any observations are column based.
-    if inlet is not None:
-        is_column = any(i == "column" for i in inlet)
-    else:
-        is_column = False
+        The selected output: a formatted ``Dataset``, raw merged-data/debug
+        dictionary, or modern ``InversionOutput``.
 
-    output_format = _resolve_output_format(
-        output_format,
-        paris_postprocessing=paris_postprocessing,
-        is_column=is_column,
+    Warns:
+        FutureWarning: If deprecated minimum-error arguments are supplied.
+        UserWarning: If deprecated output-format aliases are supplied.
+    """
+    flux_non_finite_check = cast(
+        Literal["lazy", "count"],
+        kwargs.pop("flux_non_finite_check", "lazy"),
     )
 
-    rerun_merge = True
-
-    if output_format == "merged_data":
-        reload_merged_data = False
-
-    if reload_merged_data is True and merged_data_dir is not None:
-        try:
-            fp_all = load_merged_data(merged_data_dir, species, start_date, outputname, merged_data_name)
-        except ValueError as e:
-            # couldn't find merged data
-            print(f"{e}, re-running data merge.")
-        else:
-            print("Successfully read in merged data.\n")
-            rerun_merge = False
-
-            # check if sites were dropped when merged data was saved
-            sites_merged = [s for s in fp_all if "." not in s]
-
-            if len(sites) != len(sites_merged):
-                keep_i = [i for i, s in enumerate(sites) if s in sites_merged]
-                dropped_sites = [s for s in sites if s not in sites_merged]
-
-                sites = [s for i, s in enumerate(sites) if i in keep_i]
-                inlet = [s for i, s in enumerate(inlet) if i in keep_i]
-                fp_height = [s for i, s in enumerate(fp_height) if i in keep_i]
-                instrument = [s for i, s in enumerate(instrument) if i in keep_i]
-                max_level = [s for i, s in enumerate(max_level) if i in keep_i]
-                averaging_period = [s for i, s in enumerate(averaging_period) if i in keep_i]
-
-                print(
-                    f"\nDropping {dropped_sites} sites as they are not included in the merged data object.\n"
-                )
-
-    if reload_merged_data is True and merged_data_dir is None:
-        print("Cannot reload merged data without a value for `merged_data_dir`; re-running data merge.")
+    output_format = cast(
+        Literal[
+            "legacy",
+            "paris",
+            "basic",
+            "merged_data",
+            "inv_out",
+            "mcmc_args",
+            "mcmc_results",
+        ],
+        _resolve_output_format(
+            output_format,
+            paris_postprocessing=paris_postprocessing,
+            is_column=_all_requested_sites_are_column(
+                sites=sites,
+                inlet=inlet,
+                platform=platform,
+            ),
+        ),
+    )
+    needs_modern_inv_out = output_format not in {"merged_data", "mcmc_args"} or bool(save_inversion_output)
 
     start_data = time.time()
-
-    # Get datasets for forward simulations
-    if rerun_merge:
-        if not use_tracer:
-            (
-                fp_all,
-                sites,
-                inlet,
-                fp_height,
-                instrument,
-                averaging_period,
-            ) = data_processing_surface_notracer(
-                species=species,
-                sites=sites,
-                domain=domain,
-                averaging_period=averaging_period,
-                start_date=start_date,
-                end_date=end_date,
-                obs_data_level=obs_data_level,
-                platform=platform,
-                met_model=met_model,
-                fp_model=fp_model,
-                fp_height=fp_height,
-                fp_species=fp_species,
-                emissions_name=emissions_name,
-                inlet=inlet,
-                instrument=instrument,
-                max_level=max_level,
-                calibration_scale=calibration_scale,
-                use_bc=use_bc,
-                bc_input=bc_input,
-                bc_store=bc_store,
-                obs_store=obs_store,
-                footprint_store=footprint_store,
-                emissions_store=emissions_store,
-                averagingerror=averaging_error,
-                save_merged_data=save_merged_data,
-                merged_data_name=merged_data_name,
-                merged_data_dir=merged_data_dir,
-                output_name=outputname,
-            )
-
-        elif use_tracer:
-            raise ValueError("Model does not currently include tracer model. Watch this space")
-
-        if output_format == "merged_data":
-            return fp_all  # type: ignore
-
-    # Basis function regions and sensitivity matrices
-    fp_data = basis_functions_wrapper(
-        basis_algorithm=basis_algorithm,
-        nbasis=nbasis,
+    prepared = prepare_fixedbasis_inversion_data(
+        species=species,
+        sites=sites,
+        domain=domain,
+        averaging_period=averaging_period,
+        start_date=start_date,
+        end_date=end_date,
+        output_name=outputname,
+        flux_sources=emissions_name,
+        split_by_sectors=False,
+        bc_store=bc_store,
+        obs_store=obs_store,
+        footprint_store=footprint_store,
+        emissions_store=emissions_store,
+        met_model=met_model,
+        fp_model=fp_model,
+        fp_height=fp_height,
+        fp_species=fp_species,
+        inlet=inlet,
+        instrument=instrument,
+        max_level=max_level,
+        calibration_scale=calibration_scale,
+        obs_data_level=obs_data_level,
+        platform=platform,
+        use_tracer=use_tracer,
+        use_bc=use_bc,
         fp_basis_case=fp_basis_case,
-        bc_basis_case=bc_basis_case,
         basis_directory=basis_directory,
+        bc_basis_case=bc_basis_case,
         bc_basis_directory=bc_basis_directory,
         country_directory=country_directory,
-        fp_all=fp_all,
-        use_bc=use_bc,
-        species=species,
-        domain=domain,
-        start_date=start_date,
-        fix_outer_regions=fix_basis_outer_regions,
-        emissions_name=emissions_name,
-        outputname=outputname,
-        output_path=basis_output_path,
-    )
-
-    # Apply named filters to the data
-    if filters is not None:
-        try:
-            fp_data = filtering(fp_data, filters)
-        except ValueError:
-            # possible dask issue, but should be fixed
-            # https://github.com/openghg/openghg_inversions/issues/264
-            #
-            # Apply compute before filtering to avoid dask issue
-            for site in sites:
-                fp_data[site] = fp_data[site].compute()
-            fp_data = filtering(fp_data, filters)
-
-    # check for sites dropped by filtering
-    dropped_sites = []
-    for site in sites:
-        # check if some datasets are empty due to filtering
-        if fp_data[site].time.values.shape[0] == 0:
-            dropped_sites.append(site)
-            del fp_data[site]
-
-    if len(dropped_sites) != 0:
-        sites = [s for s in sites if s not in dropped_sites]
-        print(f"\nDropping {dropped_sites} sites as no data passed the filtering.\n")
-
-    for site in sites:
-        fp_data[site].attrs["Domain"] = domain
-
-    # Inverse models
-    if use_tracer:
-        raise ValueError("Model does not currently include tracer model. Watch this space")
-
-    inv_inputs = _prepare_runtime_inv_inputs(
-        fp_data=fp_data,
-        sites=sites,
-        start_date=start_date,
+        bc_input=bc_input,
+        basis_algorithm=basis_algorithm,
+        nbasis=nbasis,
+        filters=filters,
+        fix_basis_outer_regions=fix_basis_outer_regions,
+        averaging_error=averaging_error,
         bc_freq=bc_freq,
         sigma_freq=sigma_freq,
+        reload_merged_data=False if output_format == "merged_data" else reload_merged_data,
+        save_merged_data=save_merged_data,
+        merged_data_dir=merged_data_dir,
+        merged_data_name=merged_data_name,
+        basis_output_path=basis_output_path,
         min_error=min_error,
         calculate_min_error=calculate_min_error,
         min_error_options=min_error_options,
+        return_basis_objects=return_basis_objects or needs_modern_inv_out,
+        merged_data_only=output_format == "merged_data",
+        flux_non_finite_check=flux_non_finite_check,
     )
 
-    if np.isnan(inv_inputs.H.values).any():
-        warnings.warn(f"Hx matrix contains {np.isnan(inv_inputs.H.values).flatten().sum()} NaN values")
-    if use_bc and "H_bc" in inv_inputs and np.isnan(inv_inputs.H_bc.values).any():
-        warnings.warn(f"Hbc matrix contains {np.isnan(inv_inputs.H_bc.values).flatten().sum()} NaN values")
+    if output_format == "merged_data":
+        return prepared.fp_all  # type: ignore
+
+    output_format = cast(
+        Literal[
+            "legacy",
+            "paris",
+            "basic",
+            "inv_out",
+            "mcmc_args",
+            "mcmc_results",
+        ],
+        _resolve_output_format(
+            output_format,
+            paris_postprocessing=False,
+            is_column=prepared.is_column,
+        ),
+    )
+    inv_inputs = _require_fixedbasis_inv_inputs(prepared)
+    sites = prepared.sites
+    averaging_period = prepared.averaging_period
 
     # TODO keep this config separate from mcmc_args in the future
     mcmc_config = {
@@ -951,6 +982,21 @@ def fixedbasisMCMC(
         mcmc_config["bcprior"] = update_log_normal_prior(bcprior)
 
     mcmc_args = mcmc_config.copy()
+    # add any additional kwargs to mcmc_args (these aren't needed for post processing)
+    mcmc_args.update(kwargs)
+    return_mcmc_args = mcmc_args.copy()
+    if return_basis_objects:
+        return_mcmc_args["basis_objects"] = prepared.basis_objects
+
+    end_data = time.time()
+
+    print(f"Data extraction and preparation complete. Time taken = {end_data - start_data:.2f} seconds")
+
+    # for debugging
+    if output_format == "mcmc_args":
+        return return_mcmc_args
+
+    fp_data = _require_fixedbasis_legacy_data(prepared)
     legacy_postprocess_args = _extract_post_process_args(inv_inputs)
 
     legacy_postprocess_args.update(
@@ -978,17 +1024,6 @@ def fixedbasisMCMC(
         if isinstance(v, np.ndarray) and v.dtype == "float64":
             legacy_postprocess_args[k] = v.astype("float32")
 
-    # add any additional kwargs to mcmc_args (these aren't needed for post processing)
-    mcmc_args.update(kwargs)
-
-    end_data = time.time()
-
-    print(f"Data extraction and preparation complete. Time taken = {end_data - start_data:.2f} seconds")
-
-    # for debugging
-    if output_format == "mcmc_args":
-        return mcmc_args
-
     start_inversion = time.time()
 
     # Run PyMC inversion
@@ -998,16 +1033,22 @@ def fixedbasisMCMC(
 
     print(f"MCMC Inversion complete. Time taken = {end_inversion - start_inversion:.2f} seconds")
 
-    inv_out_args = _build_inv_out_args(
-        fp_data=fp_data,
+    inversion_output_args = _build_inversion_output_args(
+        prepared=prepared,
         legacy_postprocess_args=legacy_postprocess_args,
+        mcmc_args=mcmc_args,
         mcmc_results=mcmc_results,
         sites=sites,
+        averaging_period=averaging_period,
         start_date=start_date,
         end_date=end_date,
         species=species,
         domain=domain,
-        is_column=is_column,
+        output_format=output_format,
+        outputpath=outputpath,
+        outputname=outputname,
+        save_trace=save_trace,
+        save_inversion_output=save_inversion_output,
     )
 
     output_context = _build_output_context(
@@ -1026,7 +1067,7 @@ def fixedbasisMCMC(
         legacy_postprocess_args=legacy_postprocess_args,
         mcmc_args=mcmc_args,
         mcmc_results=mcmc_results,
-        inv_out_args=inv_out_args,
+        inversion_output_args=inversion_output_args,
     )
     _handle_core_output_artifacts(output_context)
 
@@ -1049,8 +1090,7 @@ def rerun_output(input_file: str, outputname: str, outputpath: str, verbose: boo
         over the inversion period and so will not be identical to the
         original a priori flux, if it varies over the inversion period.
 
-    TODO: update this function to use `InversionOutput` (and possibly an ini file) as its inputs.
-    This may require updating `InversionOutput` to hold more model metadata.
+    TODO: replace this legacy-output replay path with an explicit modern rerun input.
     """
 
     def isFloat(string):
@@ -1171,6 +1211,7 @@ def rerun_output(input_file: str, outputname: str, outputpath: str, verbose: boo
         tune=tune,
         nchain=nchain,
         sigma_per_site=sigma_per_site,
+        emissions_name=None,
         add_offset=add_offset,
         rerun_file=ds_in,
     )

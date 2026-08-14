@@ -10,17 +10,29 @@ TODO: add more docs (and add more detailed docstrings)
 """
 
 import logging
-from pathlib import Path
 from collections.abc import Iterable
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import xarray as xr
-
-from openghg.dataobjects import ObsData, FluxData, FootprintData
-from openghg.retrieve import get_flux, get_footprint, get_obs_column, get_obs_surface, search_footprints, search_flux
+from openghg.dataobjects import FluxData, FootprintData, ObsData
+from openghg.retrieve import (
+    get_flux,
+    get_footprint,
+    get_obs_column,
+    get_obs_surface,
+    search_flux,
+    search_footprints,
+)
 from openghg.types import SearchError
 
+from openghg_inversions import utils
+from openghg_inversions.flux_sanitization import FluxNonFiniteCheck, sanitize_flux_nonfinite
+from openghg_inversions.inversion_data._site_options import (
+    is_column_observation,
+    is_satellite_platform,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -29,19 +41,40 @@ logger = logging.getLogger(__name__)
 def adjust_flux_start_date(
     start_date: str, species: str, source: str, domain: str, store: str | None = None
 ) -> pd.Timestamp:
-    """Adjusts the flux start_date to align with the flux data's temporal resolution."""
+    """Align a flux retrieval start date with the source period.
+
+    When matching search rows contain different recognized periods, the
+    longest period is used so that retrieval includes the governing flux
+    interval.
+
+    Args:
+        start_date: Requested inversion start date.
+        species: Species associated with the requested flux.
+        source: OpenGHG flux source name.
+        domain: Model domain.
+        store: Optional OpenGHG object-store name.
+
+    Returns:
+        The requested start date, rewound to the start of its year or month
+        when the source metadata identifies an annual or monthly period.
+
+    Raises:
+        SearchError: If no matching flux data is found.
+    """
     flux_search = search_flux(species=species, source=source, domain=domain, store=store)
     if flux_search.results.empty:
         raise SearchError(
             f"No flux found with species={species}, source={source}, domain={domain}, store={store}."
         )
-    flux_period = flux_search.results["time_period"][0]
+    flux_periods = {
+        utils._normalize_flux_period(value) for value in flux_search.results["time_period"] if pd.notna(value)
+    }
 
     start_date_flux = pd.to_datetime(start_date)
 
-    if flux_period == "1 year" and not start_date_flux.is_year_start:
+    if "yearly" in flux_periods and not start_date_flux.is_year_start:
         start_date_flux = start_date_flux - pd.offsets.YearBegin()
-    elif flux_period == "1 month" and not start_date_flux.is_month_start:
+    elif "monthly" in flux_periods and not start_date_flux.is_month_start:
         start_date_flux = start_date_flux - pd.offsets.MonthBegin()
 
     return start_date_flux
@@ -54,8 +87,28 @@ def get_flux_data(
     start_date: str,
     end_date: str,
     store: str | None = None,
+    flux_non_finite_check: FluxNonFiniteCheck = "lazy",
 ) -> dict[str, FluxData]:
-    """Get flux data and add to dict."""
+    """Retrieve, normalize, and sanitize flux data for an inversion.
+
+    Args:
+        sources: OpenGHG flux source names.
+        species: Species associated with the requested flux.
+        domain: Model domain.
+        start_date: Inversion start date.
+        end_date: Inversion end date.
+        store: Optional OpenGHG object-store name.
+        flux_non_finite_check: ``"lazy"`` to apply zero-fill without counting,
+            or ``"count"`` to compute exact non-finite counts and warn when
+            replacements are made.
+
+    Returns:
+        Retrieved flux objects keyed by source. Each ``flux`` variable is cast
+        to ``float32`` and has the non-finite policy applied.
+
+    Raises:
+        SearchError: If no flux data can be found before the requested end date.
+    """
     flux_dict = {}
 
     for source in sources:
@@ -102,39 +155,26 @@ def get_flux_data(
 
         logging.Logger.disabled = False  # resume confusing OpenGHG warnings
 
-        # try to guess flux time period
-        # PARIS post-processing uses the time period of the flux
-        time_period = pd.to_datetime(end_date) - pd.to_datetime(start_date)
-
-        # check number of days, with extra day at start and end for buffer
-        if time_period.days in (27, 28, 29, 30, 31, 32):
-            inferred_time_period_str = "monthly"
-        elif time_period.days in (364, 365, 366, 367):
-            inferred_time_period_str = "yearly"
-        else:
-            inferred_time_period_str = "other"
-
-        existing_time_period_str = flux_data.data.attrs.get("time_period", "")
-
-        if (
-            ("year" in inferred_time_period_str and "year" in existing_time_period_str.lower())
-            or ("month" in inferred_time_period_str and "month" in existing_time_period_str.lower())
-            or (inferred_time_period_str == "other")
-        ):
-            flux_data.data.flux.attrs["time_period"] = existing_time_period_str
-        elif "month" in existing_time_period_str.lower():
-            logger.warning("Monthly flux detected, but inversion period is {time_period.days} days. Setting flux time_period to 'monthly'.")
-            flux_data.data.flux.attrs["time_period"] = existing_time_period_str
-        else:
-            flux_data.data.flux.attrs["time_period"] = inferred_time_period_str
+        # Preserve source period metadata for downstream post-processing.
+        # Variable metadata is more specific and must not be overwritten.
+        variable_period = flux_data.data.flux.attrs.get("time_period")
+        if utils._flux_period_is_missing(variable_period) and "time_period" in flux_data.data.attrs:
+            flux_data.data.flux.attrs["time_period"] = flux_data.data.attrs["time_period"]
 
         # add flux data to result dict
         flux_dict[source] = flux_data
 
     # cast to float32 to avoid up-casting H matrix
-    for v in flux_dict.values():
+    for source, v in flux_dict.items():
         if v.data.flux.dtype != "float32":
             v.data["flux"] = v.data.flux.astype("float32")
+        v.data["flux"] = sanitize_flux_nonfinite(
+            v.data["flux"],
+            context="OpenGHG flux retrieval",
+            source=source,
+            check=flux_non_finite_check,
+            warn=flux_non_finite_check == "count",
+        )
 
     return flux_dict
 
@@ -147,9 +187,9 @@ def get_obs_data(
     start_date: str,
     end_date: str,
     domain: str | None = None,
-    platform : str | None = None,
-    satellite : str | None = None,
-    max_level : int | None = None,
+    platform: str | None = None,
+    satellite: str | None = None,
+    max_level: int | None = None,
     data_level: str | None = None,
     average: str | None = None,
     instrument: str | None = None,
@@ -159,24 +199,24 @@ def get_obs_data(
 ) -> ObsData | None:
     """Try to retrieve obs. data from listed stores."""
 
-    if platform == "satellite":
-        if max_level is None:
-            raise AttributeError(
-                "If you are using column-based data (i.e. platform is 'satellite' or 'site-column'), you need to pass max_level"
-            )
-            
+    if is_column_observation(inlet, platform) and max_level is None:
+        raise AttributeError(
+            "If you are using column-based data (i.e. platform is 'satellite' or "
+            "'site-column', or inlet is 'column'), you need to pass max_level"
+        )
+
     if stores is None or isinstance(stores, str):
         stores = [stores]
 
     for store in stores:
         try:
-            if platform == "satellite":
+            if is_satellite_platform(platform):
                 # current convention: for satellite data, the site name
                 # has format satellitename-obs_region
                 # or format satellitename-obs_region-selection
                 split_site_name = site.split("-")
                 satellite = split_site_name[0]
-                obs_region = split_site_name[1]
+                _obs_region = split_site_name[1]
                 if len(split_site_name) == 3:
                     selection = split_site_name[2]
                 else:
@@ -186,14 +226,14 @@ def get_obs_data(
                     species=species,
                     max_level=max_level,
                     satellite=satellite,
-                    platform = platform, 
+                    platform=platform,
                     domain=domain,
                     selection=selection,
                     start_date=start_date,
                     end_date=end_date,
                     store=store,
                 )
-            elif inlet=="column":
+            elif is_column_observation(inlet, platform):
                 obs_data = get_obs_column(
                     site=site,
                     species=species.lower(),
@@ -257,7 +297,7 @@ def get_footprint_to_match(
     obs: ObsData,
     domain: str,
     model: str | None = None,
-    platform : str | None = None,
+    platform: str | None = None,
     start_date: str | None = None,
     end_date: str | None = None,
     met_model: str | None = None,
@@ -286,7 +326,7 @@ def get_footprint_to_match(
         "end_date": end_date,
     }
 
-    if platform == "satellite":
+    if is_satellite_platform(platform):
         # current convention: for satellite data, the site name
         # has format satellitename-obs_region
         # or format satellitename-obs_region-selection
@@ -294,9 +334,9 @@ def get_footprint_to_match(
         satellite = split_site_name[0]
         obs_region = split_site_name[1]
         if len(split_site_name) == 3:
-            selection = split_site_name[2]
+            _selection = split_site_name[2]
         else:
-            selection = None
+            _selection = None
 
         # get available footprint heights
         fp_kwargs = {
@@ -399,7 +439,7 @@ def get_footprint_data(
     fp_species: str | None,
     fp_height: str | None,
     site: str | None = None,
-    platform : str | None = None,
+    platform: str | None = None,
     averaging_period: str | None = None,
     obs_data: ObsData | None = None,
     stores: str | None | Iterable[str | None] = None,
@@ -412,6 +452,7 @@ def get_footprint_data(
     """
     # if fp_height is 'auto', use `get_footprint_to_match`
     # otherwise, use `get_footprint`
+    store = None
     satellite = None
     obs_region = None
     try:
@@ -431,7 +472,7 @@ def get_footprint_data(
                     fp_species=fp_species,
                     averaging_period=averaging_period,
                 )
-        elif platform=="satellite":
+        elif is_satellite_platform(platform):
             # current convention: for satellite data, the site name
             # has format satellitename-obs_region
             # or format satellitename-obs_region-selection
@@ -439,11 +480,13 @@ def get_footprint_data(
             satellite = split_site_name[0]
             obs_region = split_site_name[1]
             if len(split_site_name) == 3:
-                selection = split_site_name[2]
+                _selection = split_site_name[2]
             else:
-                selection = None
+                _selection = None
+
             def get_func(store):
-                return get_footprint(domain=domain,
+                return get_footprint(
+                    domain=domain,
                     satellite=satellite,
                     obs_region=obs_region,
                     inlet=fp_height,
@@ -451,7 +494,8 @@ def get_footprint_data(
                     start_date=start_date,
                     end_date=end_date,
                     species=fp_species,
-                    store=store)
+                    store=store,
+                )
         else:
 
             def get_func(store):
@@ -467,9 +511,7 @@ def get_footprint_data(
                     species=fp_species,
                 )
     except SearchError:
-        print(
-            f"\nNo obs data found for {site} with inlet {fp_height} and in store {store}."
-            )
+        print(f"\nNo obs data found for {site} with inlet {fp_height} and in store {store}.")
 
     if stores is None or isinstance(stores, str):
         stores = [stores]

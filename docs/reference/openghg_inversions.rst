@@ -14,6 +14,7 @@ openghg\_inversions
    openghg_inversions.config
    openghg_inversions.hbmcmc
    openghg_inversions.inversion_data
+   openghg_inversions.models
    openghg_inversions.postprocessing
 
 
@@ -22,7 +23,13 @@ openghg\_inversions
    :maxdepth: 4
 
    openghg_inversions.array_ops
+   openghg_inversions.borrowed
+   openghg_inversions.correlated_state
    openghg_inversions.convert
    openghg_inversions.filters
    openghg_inversions.model_error
+   openghg_inversions.native_covariance
+   openghg_inversions.rhime
+   openghg_inversions.serialization
+   openghg_inversions.source_covariance
    openghg_inversions.utils

@@ -1,4 +1,8 @@
-"""Wrapper script to read in parameters from a configuration file and run underlying MCMC script.
+"""Compatibility script for running old fixedbasis-style configs through RHIME.
+
+This entry point preserves the historical ``run_hbmcmc.py`` command-line
+surface for old INI files, but translates supported fixedbasis-style parameter
+names and calls the modern ``run_rhime`` pathway.
 
 Run as:
     $ python run_hbmcmc.py [start end -c config.ini]
@@ -10,7 +14,7 @@ start - Start of date range to use for MCMC inversion (YYYY-MM-DD)
 end - End of date range to use for MCMC inversion (YYYY-MM-DD) (must be after start)
 -c / --config - configuration file. See config/ folder for templates and examples of this input file.
 
-If start and end are specified these will superceed the values within the configuration file, if present.
+If start and end are specified these will supersede the values within the configuration file, if present.
 If -c option is not specified, this script will look for configuration file within the
 acrg_hbmcmc/ directory called `hbmcmc_input.ini`.
 
@@ -25,15 +29,30 @@ This file will need to be edited to add parameters for your MCMC run.
 import json
 import sys
 import argparse
+import inspect
 from pathlib import Path
 from shutil import copyfile
-from collections.abc import Callable
+from typing import Any
+import warnings
 
-import openghg_inversions.hbmcmc.hbmcmc as mcmc
 import openghg_inversions.hbmcmc.hbmcmc_output as output
 
+from openghg_inversions._timing import log_timing, timed, timer_seconds, timer_start
 from openghg_inversions.config import config
 from openghg_inversions.config.paths import Paths
+from openghg_inversions.inversion_data import prepare_rhime_inputs
+from openghg_inversions.rhime import run_rhime
+from openghg_inversions.rhime.params import make_rhime_runner_setup, normalise_rhime_params
+
+
+_RUN_HBMCMC_RHIME_ALIASES = {
+    "nit": "draws",
+    "nchain": "chains",
+    "verbose": "progressbar",
+    "sampler_kwargs": "sample_kwargs",
+}
+_LOGNORMAL_PRIOR_NAMES = ("xprior", "x_prior", "bcprior", "bc_prior")
+_MIN_ERROR_METHODS = {"residual", "percentile"}
 
 
 def fixed_basis_expected_param() -> list[str]:
@@ -60,10 +79,10 @@ def fixed_basis_expected_param() -> list[str]:
     return expected_param
 
 
-def extract_mcmc_type(config_file: str, default: str = "fixed_basis") -> str:
+def extract_mcmc_type(config_file: str | Path, default: str = "fixed_basis") -> str:
     """Find value which describes the MCMC function to use.
 
-    Checks the input configuation file the "mcmc_type" keyword within
+    Checks the input configuration file the "mcmc_type" keyword within
     the "MCMC.TYPE" section. If not present, the default is used.
 
     Args:
@@ -87,26 +106,133 @@ def extract_mcmc_type(config_file: str, default: str = "fixed_basis") -> str:
     return mcmc_type
 
 
-def define_mcmc_function(mcmc_type: str) -> Callable:
-    """Links mcmc_type name to function.
+def _legacy_option_enabled(value: Any) -> bool:
+    """Return whether a legacy option value should be treated as enabled."""
+    if value is None or value is False:
+        return False
+    if isinstance(value, str):
+        return value.strip().lower() not in {"", "false", "none", "0"}
+    return True
 
-    Args:
-      mcmc_type (str):
-        Keyword for MCMC function to use.
-        Current option "fixed_basis" (openghg_inversions.hbmcmc.fixedbasisMCMC())
 
-    Returns:
-      Function
+def _translate_legacy_aliases(params: dict[str, Any]) -> None:
+    """Translate legacy run_hbmcmc parameter names to RHIME names in-place."""
+    for old, new in _RUN_HBMCMC_RHIME_ALIASES.items():
+        if old not in params:
+            continue
+        if new in params:
+            print(f"Ignoring deprecated run_hbmcmc parameter {old!r} because {new!r} was also supplied.")
+        else:
+            params[new] = params[old]
+        del params[old]
+
+
+def _normalise_legacy_output_format(params: dict[str, Any]) -> None:
+    """Map old HBMCMC output names to the modern compatibility output."""
+    paris_postprocessing = params.pop("paris_postprocessing", False)
+    if _legacy_option_enabled(paris_postprocessing):
+        params["output_format"] = "paris"
+        return
+
+    raw_output_format = params.get("output_format")
+    if raw_output_format is None:
+        params["output_format"] = "legacy"
+        return
+
+    params["output_format"] = str(raw_output_format).lower()
+
+
+def _translate_calculate_min_error(params: dict[str, Any]) -> None:
+    """Translate legacy ``calculate_min_error`` to the modern ``min_error`` option."""
+    if "calculate_min_error" not in params:
+        return
+
+    value = params.pop("calculate_min_error")
+    if not _legacy_option_enabled(value):
+        return
+
+    method = str(value).strip().lower()
+    if method not in _MIN_ERROR_METHODS:
+        raise ValueError(
+            "`calculate_min_error` is deprecated and can only be translated when set to "
+            f"one of {sorted(_MIN_ERROR_METHODS)!r}; use `min_error` instead."
+        )
+
+    warnings.warn(
+        "`calculate_min_error` is deprecated. The run_hbmcmc compatibility shim is translating "
+        "it to `min_error`.",
+        FutureWarning,
+        stacklevel=3,
+    )
+    params["min_error"] = method
+
+
+def _translate_reparameterise_log_normal(params: dict[str, Any]) -> None:
+    """Translate legacy lognormal reparameterisation flag into prior dictionaries."""
+    value = params.pop("reparameterise_log_normal", False)
+    if not _legacy_option_enabled(value):
+        return
+
+    warnings.warn(
+        "`reparameterise_log_normal` is deprecated. The run_hbmcmc compatibility shim is setting "
+        "`reparameterise=True` in lognormal emissions and BC prior dictionaries.",
+        FutureWarning,
+        stacklevel=3,
+    )
+    for name in _LOGNORMAL_PRIOR_NAMES:
+        prior = params.get(name)
+        if not isinstance(prior, dict):
+            continue
+        if str(prior.get("pdf", "")).lower() != "lognormal":
+            continue
+        prior = prior.copy()
+        prior["reparameterise"] = True
+        params[name] = prior
+
+
+def _translate_legacy_options(params: dict[str, Any]) -> None:
+    """Translate legacy fixedbasis options that have modern RHIME equivalents."""
+    _translate_calculate_min_error(params)
+    _translate_reparameterise_log_normal(params)
+
+
+def fixedbasis_params_to_rhime(params: dict[str, Any]) -> dict[str, Any]:
+    """Translate fixedbasis-style script/config parameters into RHIME arguments.
+
+    The compatibility shim deliberately stays at the entrypoint boundary:
+    legacy config spellings are normalised here, then the modern ``run_rhime``
+    API performs its existing validation and spec construction.
     """
-    function_dict = {"fixed_basis": mcmc.fixedbasisMCMC}
+    translated = dict(params)
+    mcmc_type = translated.pop("mcmc_type", "fixed_basis")
+    if mcmc_type != "fixed_basis":
+        raise ValueError(f"Unsupported run_hbmcmc mcmc_type {mcmc_type!r}; expected 'fixed_basis'.")
 
-    return function_dict[mcmc_type]
+    _translate_legacy_aliases(translated)
+    _normalise_legacy_output_format(translated)
+    _translate_legacy_options(translated)
+    translated["output_filename_convention"] = "legacy"
+    if "save_inversion_output" not in translated and translated["output_format"] != "inv_out":
+        translated["save_inversion_output"] = False
+    return normalise_rhime_params(translated)
+
+
+def validate_rhime_params(params: dict[str, Any]) -> None:
+    """Validate translated single-sector RHIME params before script side effects."""
+    make_rhime_runner_setup(
+        params=params,
+        multisector=False,
+        data_param_names=set(inspect.signature(prepare_rhime_inputs).parameters),
+    )
 
 
 def hbmcmc_extract_param(
-    config_file: str, mcmc_type: str | None = "fixed_basis", print_param: bool | None = True, **command_line
+    config_file: str | Path,
+    mcmc_type: str | None = "fixed_basis",
+    print_param: bool | None = True,
+    **command_line,
 ):
-    """Extract parameters from input configuration file and associated MCMC function.
+    """Extract fixedbasis-style parameters from an input configuration file.
 
     Checks the mcmc_type to extract the required parameters.
 
@@ -117,16 +243,16 @@ def hbmcmc_extract_param(
         Keyword for MCMC function to use.
         Default = "fixed_basis" (only option at present)
       print_param:
-        Went set to True, print out extracted parameter names.
+        When set to True, print out extracted parameter names.
         Default = True
       command_line:
         Any additional command line arguments to be added to the param
-        dictionary or to superceed values contained within the config file.
+        dictionary or to supersede values contained within the config file.
 
     Returns:
-      function,collections.OrderedDict:
-        MCMC function to use, dictionary of parameter names and values passed
-        to MCMC function
+      dict:
+        Dictionary of parameter names and values from the fixedbasis-style
+        configuration file plus command-line overrides.
 
     Raises:
         ValueError if expected parameter is missing or has `None` value.
@@ -144,7 +270,7 @@ def hbmcmc_extract_param(
         config_file, expected_param=expected_param, ignore_sections=[mcmc_type_section]
     )
 
-    # Command line values added to param (or superceed inputs from the config
+    # Command line values added to param (or supersede inputs from the config
     # file)
     for key, value in command_line.items():
         if value is not None:
@@ -164,15 +290,13 @@ def hbmcmc_extract_param(
     return param
 
 
-if __name__ == "__main__":
-    openghginv_path = Paths.openghginv
-    config_file = openghginv_path / "hbmcmc" / "hbmcmc_input.ini"
-
+def build_parser(default_config_file: Path) -> argparse.ArgumentParser:
+    """Build the legacy run_hbmcmc argument parser."""
     parser = argparse.ArgumentParser(description="Running Hierarchical Bayesian MCMC script")
     parser.add_argument("start", help="Start date string of the format YYYY-MM-DD", nargs="?")
-    parser.add_argument("end", help="End date sting of the format YYYY-MM-DD", nargs="?")
+    parser.add_argument("end", help="End date string of the format YYYY-MM-DD", nargs="?")
     parser.add_argument(
-        "-c", "--config", help="Name (including path) of configuration file", default=config_file
+        "-c", "--config", help="Name (including path) of configuration file", default=default_config_file
     )
     parser.add_argument(
         "-r",
@@ -189,8 +313,15 @@ if __name__ == "__main__":
         "--output-path",
         help="Path to write ini file and results to.",
     )
+    return parser
 
-    args = parser.parse_args()
+
+def main(argv: list[str] | None = None) -> None:
+    """Run fixedbasis-style configs through the modern RHIME path."""
+    openghginv_path = Paths.openghginv
+    config_file = openghginv_path / "hbmcmc" / "hbmcmc_input.ini"
+
+    args = build_parser(config_file).parse_args(argv)
 
     config_file = Path(args.config)
     command_line_args = {}
@@ -218,16 +349,33 @@ if __name__ == "__main__":
 
     if not config_file.exists():
         raise ValueError(
-            "Configuration file cannot be found.\n"
-            f"Please check path and filename are correct: {config_file}"
+            f"Configuration file cannot be found.\nPlease check path and filename are correct: {config_file}"
         )
 
+    timing_start = timer_start()
     mcmc_type = extract_mcmc_type(config_file)
-    mcmc_function = define_mcmc_function(mcmc_type)
-    print(f"Using MCMC type: {mcmc_type} - function {mcmc_function.__name__}(...)")
-
+    print(f"Using MCMC type: {mcmc_type} - routing fixedbasis-style config to run_rhime(...)")
     param = hbmcmc_extract_param(config_file, mcmc_type, **command_line_args)
+    log_timing("run_hbmcmc.config_extract", timer_seconds(timing_start))
 
-    output.copy_config_file(config_file, param=param, **command_line_args)
+    with timed("run_hbmcmc.fixedbasis_to_rhime_translation"):
+        rhime_params = fixedbasis_params_to_rhime(param)
 
-    mcmc_function(**param)
+    with timed("run_hbmcmc.validation"):
+        validate_rhime_params(rhime_params)
+
+    country_file = rhime_params.get("country_file")
+    if country_file is not None and str(country_file).strip():
+        country_file_path = Path(country_file)
+        if not country_file_path.exists():
+            raise FileNotFoundError(f"Configured country_file does not exist: {country_file_path}")
+
+    # TODO(#423): Validate BC and saved fp-basis files, including glob matches and readability.
+    with timed("run_hbmcmc.config_copy"):
+        output.copy_config_file(str(config_file), param=param, **command_line_args)
+
+    run_rhime(**rhime_params)
+
+
+if __name__ == "__main__":
+    main()

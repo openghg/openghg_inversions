@@ -1,7 +1,9 @@
 import numpy as np
 import pandas as pd
 import pymc as pm
+import pytest
 import xarray as xr
+from pytensor.compile.mode import Mode
 
 from openghg_inversions.models.components import (
     LinearComponentResult,
@@ -13,6 +15,11 @@ from openghg_inversions.models.components import (
     resolve_model_variable,
 )
 from openghg_inversions.models.coords import CoordRegistry, attach_coord_registry
+from openghg_inversions.models.rhime_likelihood import (
+    RhimeLikelihoodContext,
+    build_absolute_sigma_gaussian_likelihood,
+)
+from openghg_inversions.sigma import SigmaAlignment
 
 
 def _obs_index() -> pd.MultiIndex:
@@ -26,31 +33,45 @@ def _obs_index() -> pd.MultiIndex:
     )
 
 
+def _obs_coords() -> xr.Coordinates:
+    """Create explicit xarray coordinates for the stacked observation index."""
+    return xr.Coordinates.from_pandas_multiindex(_obs_index(), "nmeasure")
+
+
 def _site_indicator() -> xr.DataArray:
     """Create a simple site-indicator DataArray aligned to the test index."""
-    index = _obs_index()
     return xr.DataArray(
         np.array([0, 0, 1, 1]),
         dims=("nmeasure",),
-        coords={"nmeasure": index},
+        coords=_obs_coords(),
         name="site_indicator",
     )
 
 
 def _likelihood_dataset() -> xr.Dataset:
     """Create a minimal canonical-style dataset for likelihood tests."""
-    index = _obs_index()
     return xr.Dataset(
         data_vars={
             "mf": ("nmeasure", np.array([1.0, 2.0, 3.0, 4.0])),
             "mf_error": ("nmeasure", np.full(4, 0.1)),
             "site_indicator": ("nmeasure", np.array([0, 0, 1, 1])),
-            "sigma_freq_index": ("nmeasure", np.array([0, 0, 1, 1])),
             "min_error": ("nmeasure", np.full(4, 0.01)),
         },
-        coords={
-            "nmeasure": index,
-        },
+        coords=_obs_coords(),
+    )
+
+
+def _sigma_alignment(data: xr.Dataset, *, per_site: bool = True) -> SigmaAlignment:
+    """Create prepared sigma alignment data for likelihood tests."""
+    period_index = xr.DataArray(
+        np.array([0, 0, 1, 1]),
+        dims=("nmeasure",),
+        coords=data["site_indicator"].coords,
+    )
+    return SigmaAlignment.from_indices(
+        data["site_indicator"],
+        period_index,
+        per_site=per_site,
     )
 
 
@@ -139,31 +160,33 @@ def test_resolve_model_variable_prefers_latent() -> None:
     assert resolve_model_variable(model, "missing") is None
 
 
-def test_add_sigma_component_supports_explicit_and_derived_freq() -> None:
-    """Check sigma accepts explicit or internally derived frequency indicators."""
-    site_indicator = _site_indicator()
-    sigma_freq_index = xr.DataArray([0, 0, 1, 1], dims=("nmeasure",), coords=site_indicator.coords)
+def test_add_sigma_component_uses_prepared_alignment() -> None:
+    """Check the PyMC component only consumes backend-neutral prepared alignment."""
+    data = _likelihood_dataset()
+    alignment = _sigma_alignment(data)
 
     with pm.Model(coords={"nmeasure": np.arange(4)}) as model:
         attach_coord_registry(model, CoordRegistry())
         add_sigma_component(
-            site_indicator,
+            alignment,
             prior_args={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
-            sigma_freq_index=sigma_freq_index,
+            compute_deterministic=True,
         )
         assert "sigma" in model.named_vars
-        assert "sigma_freq_index" in model.named_vars
+        assert "sigma_site_index" in model.named_vars
+        assert "sigma_period_index" in model.named_vars
+        assert "sigma_aligned" in model.named_vars
 
     with pm.Model(coords={"nmeasure": np.arange(4)}) as model:
         attach_coord_registry(model, CoordRegistry())
         add_sigma_component(
-            site_indicator,
+            _sigma_alignment(data, per_site=False),
             prior_args={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
-            sigma_freq="monthly",
-            per_site=False,
         )
         assert model.named_vars["sigma"].eval().shape[0] == 1
-        assert "sigma_freq_index" in model.named_vars
+        assert "site_indicator" not in model.named_vars
+        assert np.array_equal(model.named_vars["sigma_site_index"].eval(), np.zeros(4))
+        assert "sigma_period_index" in model.named_vars
 
 
 def test_add_offset_component_supports_manual_and_derived_freq() -> None:
@@ -194,6 +217,57 @@ def test_add_offset_component_supports_manual_and_derived_freq() -> None:
         assert "offset_freq_indicator" in model.named_vars
 
 
+def test_add_offset_component_supports_one_global_scalar() -> None:
+    """A global offset has one latent value broadcast over observations."""
+    site_indicator = _site_indicator()
+
+    with pm.Model(coords={"nmeasure": np.arange(4)}) as model:
+        attach_coord_registry(model, CoordRegistry())
+        offset = add_offset_component(
+            site_indicator,
+            prior_args={"pdf": "normal", "mu": 0.0, "sigma": 1.0},
+            per_site=False,
+        )
+
+    assert model.named_vars["offset_latent"].ndim == 0
+    assert offset.eval().shape == (4,)
+    assert "offset_design" not in model.named_vars
+
+
+@pytest.mark.parametrize("invalid_args", [{"offset_freq": "monthly"}, {"drop_first": True}])
+def test_global_offset_rejects_site_period_options(invalid_args: dict[str, object]) -> None:
+    """Global offsets reject options that only have site-design semantics."""
+    with pm.Model(coords={"nmeasure": np.arange(4)}) as model:
+        attach_coord_registry(model, CoordRegistry())
+        with pytest.raises(ValueError, match="Global offsets"):
+            add_offset_component(
+                _site_indicator(),
+                prior_args={"pdf": "normal", "mu": 0.0, "sigma": 1.0},
+                per_site=False,
+                **invalid_args,
+            )
+
+
+def test_add_offset_component_drop_first_and_freq_builds_expected_design() -> None:
+    """Check drop-first offsets still build the expected site-period design."""
+    site_indicator = _site_indicator()
+
+    with pm.Model(coords={"nmeasure": np.arange(4)}) as model:
+        attach_coord_registry(model, CoordRegistry())
+        add_offset_component(
+            site_indicator,
+            prior_args={"pdf": "normal", "mu": 0.0, "sigma": 1.0},
+            offset_freq="monthly",
+            output_name="offset",
+            drop_first=True,
+        )
+
+    offset_design = model.named_vars["offset_design"].eval()
+    assert offset_design.shape == (4, 2)
+    np.testing.assert_array_equal(offset_design[:2], np.zeros((2, 2)))
+    np.testing.assert_array_equal(offset_design[2:], np.array([[0, 1], [0, 1]]))
+
+
 def test_add_inferpymc_likelihood_component_adds_epsilon_and_y() -> None:
     """Check the likelihood helper adds epsilon, y, and sigma variables."""
     ds = _likelihood_dataset()
@@ -207,7 +281,115 @@ def test_add_inferpymc_likelihood_component_adds_epsilon_and_y() -> None:
             mu=mu,
             mu_bc=mu_bc,
             sigprior={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
-            sigma_per_site=True,
+            sigma_alignment=_sigma_alignment(ds),
         )
 
     assert {"epsilon", "y", "sigma"}.issubset(model.named_vars)
+
+
+def test_likelihood_no_model_error_uses_observation_error() -> None:
+    """Check no-model-error mode bypasses pollution-event model error."""
+    ds = _likelihood_dataset().copy()
+    ds["min_error"] = ("nmeasure", np.full(ds.sizes["nmeasure"], 999.0))
+
+    with pm.Model(coords={"nmeasure": np.arange(4)}) as model:
+        attach_coord_registry(model, CoordRegistry())
+        mu = pm.Data("mu_input", np.ones(4), dims="nmeasure")
+        add_inferpymc_likelihood_component(
+            ds,
+            mu=mu,
+            mu_bc=None,
+            sigprior={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
+            no_model_error=True,
+            sigma_alignment=_sigma_alignment(ds, per_site=False),
+        )
+
+    np.testing.assert_allclose(model.named_vars["epsilon"].eval(), ds["mf_error"].values)
+
+
+def test_likelihood_pollution_events_from_obs_can_run_without_boundary_conditions() -> None:
+    """Check obs-derived pollution-event scaling does not require BC terms."""
+    ds = _likelihood_dataset().copy()
+
+    with pm.Model(coords={"nmeasure": np.arange(4)}) as model:
+        attach_coord_registry(model, CoordRegistry())
+        mu = pm.Data("mu_input", np.zeros(4), dims="nmeasure")
+        add_inferpymc_likelihood_component(
+            ds,
+            mu=mu,
+            mu_bc=None,
+            sigprior={"pdf": "uniform", "lower": 0.5, "upper": 1.5},
+            pollution_events_from_obs=True,
+            sigma_alignment=SigmaAlignment.from_frequency(
+                ds["site_indicator"],
+                frequency=None,
+                per_site=False,
+            ),
+            power=2.0,
+        )
+
+    epsilon = model.named_vars["epsilon"].eval(mode=Mode(linker="py", optimizer="fast_run"))
+    assert np.all(np.diff(epsilon) > 0)
+    assert "y" in model.named_vars
+
+
+def test_absolute_sigma_gaussian_uses_additive_standard_deviation_terms() -> None:
+    """The opt-in Gaussian matches the verification-games error definition."""
+    data = _likelihood_dataset()
+    data["aggregation_error_sd"] = xr.DataArray(
+        np.full(4, 0.2),
+        dims="nmeasure",
+        coords=data["mf"].coords,
+    )
+    data["min_error"] = data["min_error"].copy(data=np.array([0.01, 1.0, 0.01, 0.01]))
+
+    with pm.Model(coords={"nmeasure": np.arange(4)}) as model:
+        attach_coord_registry(model, CoordRegistry())
+        mu = pm.Data("mu_input", np.ones(4), dims="nmeasure")
+        result = build_absolute_sigma_gaussian_likelihood(
+            RhimeLikelihoodContext(
+                data=data,
+                flux_mean=mu,
+                boundary_mean=None,
+                offset=None,
+                sigma_alignment=_sigma_alignment(data),
+                sigma_prior={"pdf": "uniform", "lower": 0.5, "upper": 0.50000001},
+                power=1.99,
+                pollution_events_from_obs=False,
+                no_model_error=False,
+                aggregation_error_mode="diagonal",
+            )
+        )
+
+    epsilon = model.named_vars["epsilon"].eval(mode=Mode(linker="py", optimizer="fast_run"))
+    expected = np.full(4, np.sqrt(0.1**2 + 0.2**2 + 0.5**2))
+    expected[1] = 1.0
+    np.testing.assert_allclose(epsilon, expected, rtol=1e-7, atol=1e-7)
+    assert result.metadata["family"] == "absolute_sigma_gaussian"
+    assert result.variable_roles == {"concentration": "y", "model_error": "epsilon"}
+
+
+def test_likelihood_samples_prior_predictive_with_shared_sigma_and_registered_site_indicator() -> None:
+    """Check shared sigma indexing still works after offsets register site data."""
+    ds = _likelihood_dataset()
+
+    with pm.Model(coords={"nmeasure": np.arange(4)}) as model:
+        attach_coord_registry(model, CoordRegistry())
+        mu = pm.Data("mu_input", np.ones(4), dims="nmeasure")
+        mu_bc = pm.Data("mu_bc_input", np.zeros(4), dims="nmeasure")
+        offset = add_offset_component(
+            ds["site_indicator"],
+            prior_args={"pdf": "normal", "mu": 0.0, "sigma": 1.0},
+            output_name="offset",
+        )
+        add_inferpymc_likelihood_component(
+            ds,
+            mu=mu,
+            mu_bc=mu_bc,
+            offset=offset,
+            sigprior={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
+            sigma_alignment=_sigma_alignment(ds, per_site=False),
+        )
+
+        assert model.named_vars["sigma"].eval().shape[0] == 1
+        pm.sample_prior_predictive(draws=1, model=model, random_seed=123)

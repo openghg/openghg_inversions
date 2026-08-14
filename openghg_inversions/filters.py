@@ -142,7 +142,8 @@ def filtering(
                 n_dropped = n_nofilter - n_filter
                 perc_dropped = np.round(n_dropped / n_nofilter * 100, 2)
                 print(f"{filt} filter removed {n_dropped} ({perc_dropped} %) obs at site {site}")
-                if n_filter == 0: break # no values left, so we won't apply remaining filters
+                if n_filter == 0:
+                    break  # no values left, so we won't apply remaining filters
 
     return datasets
 
@@ -201,9 +202,9 @@ def six_hr_mean(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
 
     """
     if keep_missing:
-        return dataset.resample(indexer={"time": "6H"}).mean()
+        return dataset.resample(indexer={"time": "6h"}).mean()
     else:
-        return dataset.resample(indexer={"time": "6H"}).mean().dropna(dim="time")
+        return dataset.resample(indexer={"time": "6h"}).mean().dropna(dim="time")
 
 
 @register_filter

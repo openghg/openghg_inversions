@@ -25,7 +25,7 @@ jobs:
       devel: ${{ steps.versions.outputs.OPENGHG_DEVEL }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: set OpenGHG latest and previous minor versions, and devel
         id: versions
         run: |
@@ -57,36 +57,87 @@ jobs:
           echo "${{ needs.openghg-version.outputs.previous_minor }}"
           echo "${{ needs.openghg-version.outputs.devel }}"
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+          enable-cache: true
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-          cache: 'pip'
       - name: Install package
         run: |
-          pip install --upgrade pip setuptools wheel
-          pip install ${{ matrix.openghg-version }}
-          pip install -r requirements.txt
-          pip install -e .
-      - name: Install pytest
-        run: pip install pytest
+          uv pip install --system --upgrade setuptools wheel
+          # Keep the matrix-selected OpenGHG target in the same uv resolution as the package install.
+          uv pip install --system "${{ matrix.openghg-version }}" -r requirements.txt -e . pytest pytest-xdist
+      - name: Prime ArviZ cache
+        run: python -c "import arviz"
       - name: Run tests
-        run: pytest tests/
+        run: pytest tests/ -n 2 --dist=worksteal
+
+  lint:
+    name: Run lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+          enable-cache: true
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Install tox
+        run: uv tool install tox --with tox-uv
+      - name: Run lint
+        run: tox -e lint
+
+  borrowed-types:
+    name: Verify borrowed-reference typing
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+          enable-cache: true
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Install tox
+        run: uv tool install tox --with tox-uv
+      - name: Verify Pyright and Mypy diagnostics
+        run: tox -e borrowed-types
 
   # Stable job name for branch-protection required-check rules.
   # Use "CI Gate" as the required check name instead of brittle matrix-expanded names.
   ci-gate:
     name: CI Gate
     runs-on: ubuntu-latest
-    needs: [test]
+    needs: [test, lint, borrowed-types]
     if: ${{ always() }}
     permissions: {}
     steps:
-      - name: Check test results
+      - name: Check test and lint results
         run: |
           if [ "${{ needs.test.result }}" != "success" ]; then
             echo "Test matrix job(s) failed, were cancelled, or were skipped (result: ${{ needs.test.result }})."
             exit 1
           fi
-          echo "All tests passed."
+          if [ "${{ needs.lint.result }}" != "success" ]; then
+            echo "Lint job failed, was cancelled, or was skipped (result: ${{ needs.lint.result }})."
+            exit 1
+          fi
+          if [ "${{ needs.borrowed-types.result }}" != "success" ]; then
+            echo "Borrowed-reference typing failed, was cancelled, or was skipped (result: ${{ needs.borrowed-types.result }})."
+            exit 1
+          fi
+          echo "All tests, lint, and borrowed-reference typing checks passed."

@@ -5,24 +5,25 @@ Design goals
 1) Separate the *partition/aggregation operator* (basis functions) from any *flux weighting*.
    - The basis operator represents a linear map from a grid (lat/lon) to a reduced state space.
    - Flux weighting (multiplying by flux on the grid, interpolation to maps, covariance transforms)
-     is handled by a separate wrapper class (planned: FluxWeightedBasis) so that:
+     is handled by ``FluxWeightedBasis`` so that:
        * sensitivity(fp_x_flux) does not require flux (since fp_x_flux is already precomputed),
        * but flux-aware operations remain available when needed.
 
 2) Canonical "state" dimension.
    - Operators expose a single state dimension (default name: "state").
    - In multisource/multisector cases with ragged per-source region counts, the state coordinate
-     becomes a MultiIndex over (source, region_in_source). This avoids padding with zeros.
+     becomes a ragged MultiIndex over (source, region_in_source). This avoids padding with zeros.
 
 3) Minimal metadata (BasisMeta).
    - We only need to know which dims to dot over (grid_dims) and the state_dim name.
-   - Any special alignment hacks are implemented in concrete subclasses rather than inferred from metadata.
+   - Source-labeled arrays are aligned against the state MultiIndex by concrete
+     subclasses rather than inferred from metadata.
 
 4) Serialization via xarray.DataTree.
    - BasisOperator.to_datatree() returns a self-describing DataTree with schema/kind/version attrs.
    - BasisOperator.decode_datatree(dt) dispatches to the correct registered subclass based on dt.attrs["kind"].
-   - For multisource operators, the canonical serialized representation stores per-source flat basis arrays
-     under dt["basis_flat"][<source>], keeping storage compact and natural.
+   - For multisource operators, the canonical serialized representation stores one source-labelled
+     `basis_flat` array. Readers retain compatibility with the earlier per-source child layout.
 
 How to use
 ----------
@@ -34,9 +35,9 @@ How to use
     H = op.sensitivity(fp_x_flux)
 
   where fp_x_flux is an xarray.DataArray with at least the grid dims (lat, lon), and typically time.
-  In multisource workflows, fp_x_flux often has a separate dimension "source". The multisource operator
-  implements an alignment/broadcast hack so that the fp_x_flux source dimension can be matched against
-  the MultiIndex level "source" stored on the state coordinate.
+  In multisource workflows, fp_x_flux often has a separate dimension "source".
+  The multisource operator aligns those labels against the "source" level of
+  the state MultiIndex.
 
 - Serialize/deserialize:
     dt = op.to_datatree()
@@ -50,13 +51,15 @@ Notes
 
 from __future__ import annotations
 
+import json
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import ClassVar, Literal
-from typing_extensions import Self
+from typing import Any, ClassVar, Literal, TypeVar, cast
 
 import numpy as np
 import xarray as xr
+from typing_extensions import Self
 
 from openghg_inversions.array_ops import (
     align_to_multi_index_level_values,
@@ -64,15 +67,19 @@ from openghg_inversions.array_ops import (
     force_align,
     get_xr_dummies,
 )
+from openghg_inversions.basis.layout import (
+    BasisStateMetadata,
+)
 
 # ----------------------------
 # Registry
 # ----------------------------
 
 _BASIS_OPERATOR_REGISTRY: dict[str, type[BasisOperator]] = {}
+BasisOperatorT = TypeVar("BasisOperatorT", bound="BasisOperator")
 
 
-def register_basis_operator(kind: str):
+def register_basis_operator(kind: str) -> Callable[[type[BasisOperatorT]], type[BasisOperatorT]]:
     """Registers a `BasisOperator` subclass for DataTree deserialisation.
 
     This decorator builds a small module-level registry mapping a stable `kind`
@@ -90,7 +97,7 @@ def register_basis_operator(kind: str):
         ValueError: If `kind` is already registered to a different class.
     """
 
-    def _decorator(cls: type[BasisOperator]) -> type[BasisOperator]:
+    def _decorator(cls: type[BasisOperatorT]) -> type[BasisOperatorT]:
         if kind in _BASIS_OPERATOR_REGISTRY and _BASIS_OPERATOR_REGISTRY[kind] is not cls:
             raise ValueError(
                 f"BasisOperator kind '{kind}' already registered with {_BASIS_OPERATOR_REGISTRY[kind]}"
@@ -349,6 +356,88 @@ def drop_singleton_time(da: xr.DataArray, *, name: str = "basis_flat") -> xr.Dat
     return da.squeeze("time", drop=True)
 
 
+def _canonicalise_multisource_basis_grids(
+    basis_flat: dict[str, xr.DataArray],
+    *,
+    grid_dims: tuple[str, ...],
+) -> dict[str, xr.DataArray]:
+    """Align source bases to the configured dimensions and first labeled grid.
+
+    Args:
+        basis_flat: Nonempty source-to-basis mapping.
+        grid_dims: Expected grid dimension names.
+
+    Returns:
+        Source bases in ``grid_dims`` order with coordinate labels ordered
+        like the first source. Data attributes are preserved.
+
+    Raises:
+        ValueError: If a basis has unexpected dimensions, non-unique grid
+            labels, or labels that differ from the first source.
+    """
+    source_items = list(basis_flat.items())
+    reference_source, reference = source_items[0]
+    input_reference_dims = cast(tuple[str, ...], reference.dims)
+    if set(input_reference_dims) != set(grid_dims):
+        raise ValueError(
+            f"Multi-source flat basis {reference_source!r} must have grid dimensions "
+            f"{grid_dims!r}; got {input_reference_dims!r}."
+        )
+    reference_dims = grid_dims
+    reference = reference.transpose(*reference_dims)
+
+    reference_indexes = {}
+    for dim in reference_dims:
+        reference_index = reference.get_index(dim)
+        if not reference_index.is_unique:
+            raise ValueError(
+                "Multi-source flat bases must have unique grid coordinate labels; "
+                f"source {reference_source!r} has duplicates on {dim!r}."
+            )
+        reference_indexes[dim] = reference_index
+
+    canonical: dict[str, xr.DataArray] = {}
+    reference_coords = {
+        dim: reference.coords[dim]
+        if dim in reference.coords
+        else xr.IndexVariable(dim, reference_indexes[dim])
+        for dim in reference_dims
+    }
+    for source, basis in source_items:
+        if set(basis.dims) != set(reference_dims):
+            raise ValueError(
+                "Multi-source flat bases must have the same grid dimensions; "
+                f"source {reference_source!r} has {reference_dims!r}, "
+                f"source {source!r} has {basis.dims!r}."
+            )
+
+        aligned = basis.transpose(*reference_dims)
+        indexers: dict[str, np.ndarray] = {}
+        for dim in reference_dims:
+            source_index = aligned.get_index(dim)
+            if not source_index.is_unique:
+                raise ValueError(
+                    "Multi-source flat bases must have unique grid coordinate labels; "
+                    f"source {source!r} has duplicates on {dim!r}."
+                )
+
+            reference_index = reference_indexes[dim]
+            if (
+                len(reference_index) != len(source_index)
+                or not reference_index.difference(source_index).empty
+                or not source_index.difference(reference_index).empty
+            ):
+                raise ValueError(
+                    "Multi-source flat bases must have the same grid coordinate labels; "
+                    f"sources {reference_source!r} and {source!r} differ on {dim!r}."
+                )
+            indexers[dim] = source_index.get_indexer(reference_index)
+
+        canonical[source] = aligned.isel(indexers).assign_coords(reference_coords)
+
+    return canonical
+
+
 # ----------------------------
 # Concrete operators
 # ----------------------------
@@ -374,6 +463,7 @@ class BucketBasisOperator(BasisOperator):
         meta: BasisMeta | None = None,
         state_dim: str | None = None,
         region_labels: RegionLabels = "range0",
+        state_metadata: xr.Dataset | BasisStateMetadata | None = None,
         chunks: dict[str, int] | None = None,
     ) -> None:
         """Creates a single-source bucket basis operator.
@@ -386,7 +476,9 @@ class BucketBasisOperator(BasisOperator):
             region_labels: Policy for the output state coordinate labels:
                 - `"range0"`: `0..N-1` (legacy-friendly)
                 - `"range1"`: `1..N`
-                - `"basis_values"`: use the unique positive labels found in `basis_flat`.
+                - `"basis_values"`: use the ordered non-negative labels found in `basis_flat`.
+            state_metadata: Optional metadata for the state axis. Metadata may be
+                indexed by raw ``basis_label`` values or by the final state dimension.
             chunks: Optional chunking to apply to the basis matrix.
         """
         meta = meta or BasisMeta()
@@ -403,14 +495,24 @@ class BucketBasisOperator(BasisOperator):
         # create dummy matrix (grid -> state)
         # cat_dim name must match meta.state_dim
         mat = get_xr_dummies(self.basis_flat, cat_dim=self.meta.state_dim)
+        basis_value_labels = self._basis_value_labels(mat)
 
         # optionally override state coordinate policy
-        mat = self._apply_region_labels_policy(mat)
+        mat = self._apply_region_labels_policy(mat, basis_value_labels=basis_value_labels)
+
+        if state_metadata is not None:
+            state_metadata_on_state_dim = BasisStateMetadata.from_dataset(state_metadata).on_state_dim(
+                state_dim=self.meta.state_dim,
+                state_coord=mat[self.meta.state_dim],
+                basis_value_labels=basis_value_labels,
+            )
+            mat = state_metadata_on_state_dim.assign_to_matrix(mat, state_dim=self.meta.state_dim)
 
         # chunking
         mat = mat.chunk(chunks) if chunks is not None else mat.chunk()
 
         self._basis_matrix = mat
+        self._state_metadata = BasisStateMetadata.from_matrix(mat, state_dim=self.meta.state_dim)
 
     @property
     def meta(self) -> BasisMeta:
@@ -422,35 +524,90 @@ class BucketBasisOperator(BasisOperator):
         """Basis matrix."""
         return self._basis_matrix
 
-    def _apply_region_labels_policy(self, mat: xr.DataArray) -> xr.DataArray:
+    @property
+    def state_metadata(self) -> xr.Dataset | None:
+        """Semantic metadata coordinates carried on the state dimension.
+
+        Returns:
+            Dataset containing ``basis_group``, ``basis_partition``, and
+            ``region_in_partition`` indexed by ``meta.state_dim``, or ``None``
+            when no grouped metadata was supplied.
+        """
+        if self._state_metadata is None:
+            return None
+        return self._state_metadata.to_dataset()
+
+    def _basis_value_labels(self, mat: xr.DataArray) -> np.ndarray:
+        """Return raw basis labels in the dummy-column order.
+
+        Args:
+            mat: Dummy matrix returned by ``get_xr_dummies`` before or after
+                state-coordinate relabeling.
+
+        Returns:
+            Raw non-negative or positive basis labels ordered to match the dummy
+            matrix state columns.
+
+        Raises:
+            ValueError: If the flat basis labels do not form a supported
+                zero-based or one-based label set.
+        """
+        labels = np.unique(self.basis_flat.values.astype(int))
+        positive_labels = labels[labels > 0]
+        non_negative_labels = labels[labels >= 0]
+        n = mat.sizes[self.meta.state_dim]
+
+        if len(positive_labels) == n:
+            return positive_labels.astype(int)
+        if len(non_negative_labels) == n:
+            return non_negative_labels.astype(int)
+        raise ValueError(
+            "Basis labels must be one-based positive values or zero-based non-negative values; "
+            f"got labels {labels.tolist()} for {n} dummy columns."
+        )
+
+    def _apply_region_labels_policy(
+        self,
+        mat: xr.DataArray,
+        *,
+        basis_value_labels: np.ndarray | None = None,
+    ) -> xr.DataArray:
         """Applies the configured `region_labels` policy to the state coordinate.
 
         Args:
             mat: Dummy matrix returned by `get_xr_dummies`.
+            basis_value_labels: Optional raw basis labels ordered to match the
+                dummy matrix columns. If omitted, they are computed from
+                ``basis_flat``.
 
         Returns:
             `mat` with an updated state coordinate.
 
+        Raises:
+            ValueError: If ``region_labels`` is unknown or the flat basis labels
+                do not form a supported label set.
+
         Notes:
-            This assumes `get_xr_dummies` orders categories in ascending order of the
-            unique positive labels in `basis_flat`.
+            This assumes `get_xr_dummies` orders categories in ascending order
+            of the unique labels in `basis_flat`. Both one-based basis labels
+            (`1..N`) and zero-based legacy output labels (`0..N-1`) are
+            accepted.
         """
-        # Determine basis label values present (assume positive ints, often 1..N)
-        labels = np.unique(self.basis_flat.values.astype(int))
-        labels = labels[labels > 0]
-        n = len(labels)
+        if basis_value_labels is None:
+            basis_value_labels = self._basis_value_labels(mat)
+        n = mat.sizes[self.meta.state_dim]
 
         if self.region_labels == "range0":
             coord = np.arange(n, dtype=int)
         elif self.region_labels == "range1":
             coord = np.arange(1, n + 1, dtype=int)
         elif self.region_labels == "basis_values":
-            coord = labels.astype(int)
+            coord = basis_value_labels.astype(int)
         else:
             raise ValueError(f"Unknown region_labels policy: {self.region_labels}")
 
         # Assign coordinate. Important: this assumes get_xr_dummies created state columns
-        # ordered by sorted unique labels > 0. If that assumption changes, we must reindex.
+        # ordered by sorted unique labels. If that assumption changes, we must reindex.
         return mat.assign_coords({self.meta.state_dim: coord})
 
     # ---- DataTree IO ----
@@ -474,6 +631,8 @@ class BucketBasisOperator(BasisOperator):
                 "region_labels": self.region_labels,
             }
         )
+        if self._state_metadata is not None:
+            dt["state_metadata"] = xr.DataTree(self._state_metadata.to_dataset())
         return dt
 
     @classmethod
@@ -485,10 +644,16 @@ class BucketBasisOperator(BasisOperator):
 
         Returns:
             A reconstructed `BucketBasisOperator`.
+
+        Raises:
+            KeyError: If the serialized ``basis_flat`` variable is missing.
+            ValueError: If serialized labels, metadata, or state coordinates
+                are invalid.
         """
         ds = dt.to_dataset()
 
         basis_flat = ds["basis_flat"]
+        state_metadata = dt["state_metadata"].to_dataset() if "state_metadata" in dt else None
         meta = BasisMeta(
             grid_dims=tuple(dt.attrs.get("grid_dims", ("lat", "lon"))),
             state_dim=str(dt.attrs.get("state_dim", "state")),
@@ -499,6 +664,7 @@ class BucketBasisOperator(BasisOperator):
             basis_flat=basis_flat,
             meta=meta,
             region_labels=region_labels,  # type: ignore[arg-type]
+            state_metadata=state_metadata,
         )
 
 
@@ -506,7 +672,8 @@ class BucketBasisOperator(BasisOperator):
 class MultiSourceBucketBasisOperator(BasisOperator):
     """Multiple flat bases keyed by source, with potentially ragged region counts.
 
-    Canonical state_dim is a gathered MultiIndex over (source, region_in_source).
+    The canonical state dimension is a ragged MultiIndex over
+    ``(source, region_in_source)``.
     """
 
     def __init__(
@@ -521,7 +688,7 @@ class MultiSourceBucketBasisOperator(BasisOperator):
     ) -> None:
         """Creates a multisource bucket basis operator with ragged per-source regions.
 
-        The canonical state dimension is a gathered MultiIndex over
+        The canonical state dimension is a ragged MultiIndex over
         `(source, region_in_source)`, stored on the single dimension `meta.state_dim`.
 
         Args:
@@ -534,7 +701,9 @@ class MultiSourceBucketBasisOperator(BasisOperator):
             chunks: Optional chunking to apply to the gathered basis matrix.
 
         Raises:
-            ValueError: If `basis_flat` is empty.
+            ValueError: If `basis_flat` is empty or a source label is not a
+                string, or if source bases have incompatible dimensions,
+                non-unique grid labels, or different grid labels.
         """
         meta = meta or BasisMeta()
         if state_dim is not None:
@@ -543,6 +712,8 @@ class MultiSourceBucketBasisOperator(BasisOperator):
 
         if not basis_flat:
             raise ValueError("basis_flat dict is empty.")
+        if not all(isinstance(source, str) for source in basis_flat):
+            raise ValueError("Multi-source basis labels must all be strings.")
 
         self.source_dim = source_dim
         self.region_in_source_dim = region_in_source_dim
@@ -552,6 +723,10 @@ class MultiSourceBucketBasisOperator(BasisOperator):
             k: drop_singleton_time(v, name=f"basis_flat[{k!r}]") for k, v in basis_flat.items()
         }
         self.basis_flat = {k: v.rename("basis_flat") for k, v in self.basis_flat.items()}
+        self.basis_flat = _canonicalise_multisource_basis_grids(
+            self.basis_flat,
+            grid_dims=self.meta.grid_dims,
+        )
 
         # Build per-source dummy matrices with ragged region_in_source dim
         mats: dict[str, xr.DataArray] = {}
@@ -566,6 +741,7 @@ class MultiSourceBucketBasisOperator(BasisOperator):
             key_dim=self.source_dim,
             ragged_dim=self.region_in_source_dim,
             stack_dim=self.meta.state_dim,
+            join="exact",
         )
 
         # chunking
@@ -582,6 +758,79 @@ class MultiSourceBucketBasisOperator(BasisOperator):
     def basis_matrix(self) -> xr.DataArray:
         """Basis matrix."""
         return self._basis_matrix
+
+    @property
+    def source_labels(self) -> tuple[str, ...]:
+        """Return canonical source labels in operator/state insertion order.
+
+        Returns:
+            Source labels in the same order used by ``basis_flat`` and the
+            ragged state MultiIndex.
+        """
+        return tuple(self.basis_flat)
+
+    def _stacked_basis_flat(self) -> xr.DataArray:
+        """Stack source bases on a common labeled grid, retaining common attributes.
+
+        Attributes shared with the same value by all source arrays are retained.
+        Conflicting source-specific attributes are deliberately omitted because
+        one stacked variable cannot represent them faithfully. Source grids
+        with the same coordinate labels are reordered to the first source.
+
+        Returns:
+            Flat bases with the canonical source dimension followed by the
+            configured grid dimensions.
+
+        Raises:
+            ValueError: If source bases do not have the same grid dimensions
+                and coordinate-label sets.
+        """
+        canonical = _canonicalise_multisource_basis_grids(
+            self.basis_flat,
+            grid_dims=self.meta.grid_dims,
+        )
+
+        try:
+            basis_flat = xr.concat(
+                list(canonical.values()),
+                dim=xr.IndexVariable(self.source_dim, list(self.source_labels)),
+                join="exact",
+                combine_attrs="drop_conflicts",
+            )
+        except ValueError as exc:
+            raise ValueError("Multi-source flat bases must have compatible labeled grids.") from exc
+
+        return basis_flat.transpose(self.source_dim, *self.meta.grid_dims).rename("basis_flat")
+
+    def operator_for_source(self, source: str, *, state_dim: str | None = None) -> BucketBasisOperator:
+        """Return a single-source bucket operator for one source.
+
+        This keeps source-specific basis selection at the operator boundary,
+        avoiding direct use of the legacy flat-basis compatibility view in
+        modern postprocessing code.
+
+        Args:
+            source: Source label to select from the source-specific basis
+                mapping.
+            state_dim: Optional state dimension for the returned single-source
+                operator. If omitted, the per-source region dimension is used.
+
+        Returns:
+            A single-source bucket operator for ``source``.
+
+        Raises:
+            ValueError: If ``source`` is not present in this operator.
+        """
+        try:
+            basis_flat = self.basis_flat[source]
+        except KeyError as exc:
+            raise ValueError(f"Basis operator is missing basis for source {source!r}.") from exc
+
+        meta = BasisMeta(grid_dims=self.meta.grid_dims, state_dim=state_dim or self.region_in_source_dim)
+        operator_cls = cast(Any, BucketBasisOperator)
+        return cast(
+            BucketBasisOperator, operator_cls(basis_flat=basis_flat, meta=meta, region_labels="range0")
+        )
 
     def _align_source_like_state(self, other: xr.DataArray) -> xr.DataArray:
         """Broadcast `other(source, ...)` onto `state` using the state MultiIndex level `source`.
@@ -671,14 +920,17 @@ class MultiSourceBucketBasisOperator(BasisOperator):
     def to_datatree(self) -> xr.DataTree:
         """Serialises the multisource operator to a DataTree.
 
-        The returned DataTree stores per-source `basis_flat` arrays as children under
-        `dt["basis_flat"][<source>]`.
+        The returned DataTree stores one source-labelled ``basis_flat`` array.
+        Its source coordinate is the sole source-order representation, avoiding
+        source names in storage paths and redundant JSON metadata.
 
         Returns:
             DataTree representation of the operator.
+
+        Raises:
+            ValueError: If source bases do not have compatible labeled grids.
         """
-        # root: metadata only (empty dataset OK)
-        dt = xr.DataTree()
+        dt = xr.DataTree(xr.Dataset({"basis_flat": self._stacked_basis_flat()}))
         dt.attrs.update(
             {
                 "schema": self.schema,
@@ -690,12 +942,6 @@ class MultiSourceBucketBasisOperator(BasisOperator):
                 "region_in_source_dim": self.region_in_source_dim,
             }
         )
-
-        # store basis_flat per source as children
-        dt["basis_flat"] = xr.DataTree.from_dict(
-            {src: xr.Dataset({"basis_flat": bf}) for src, bf in self.basis_flat.items()}
-        )
-
         return dt
 
     @classmethod
@@ -706,7 +952,16 @@ class MultiSourceBucketBasisOperator(BasisOperator):
             dt: DataTree produced by `MultiSourceBucketBasisOperator.to_datatree()`.
 
         Returns:
-            A reconstructed `MultiSourceBucketBasisOperator`.
+            A reconstructed `MultiSourceBucketBasisOperator`. The canonical
+            representation obtains order from the ``source`` coordinate.
+            Earlier per-source child artifacts remain readable; for those,
+            legacy ``source_order`` metadata controls insertion/state order
+            when present.
+
+        Raises:
+            ValueError: If required basis data or source coordinates are
+                missing, or legacy source-order metadata is malformed or
+                inconsistent with stored source children.
         """
         meta = BasisMeta(
             grid_dims=tuple(dt.attrs.get("grid_dims", ("lat", "lon"))),
@@ -715,12 +970,56 @@ class MultiSourceBucketBasisOperator(BasisOperator):
         source_dim = str(dt.attrs.get("source_dim", "source"))
         region_in_source_dim = str(dt.attrs.get("region_in_source_dim", "region_in_source"))
 
-        if "basis_flat" not in dt:
-            raise ValueError("Expected child node 'basis_flat' in DataTree.")
+        root_dataset = dt.to_dataset()
+        if "basis_flat" in root_dataset:
+            stacked_basis = root_dataset["basis_flat"]
+            if source_dim not in stacked_basis.dims:
+                raise ValueError(f"Stored multi-source 'basis_flat' must have dimension {source_dim!r}.")
 
-        basis_node = dt["basis_flat"]
+            source_values = stacked_basis[source_dim].values.tolist()
+            if not all(isinstance(source, str) for source in source_values):
+                raise ValueError("Multi-source basis labels must all be strings.")
+            if len(set(source_values)) != len(source_values):
+                raise ValueError("Multi-source basis labels must be unique.")
+
+            basis_flat = {
+                source: stacked_basis.sel({source_dim: source}, drop=True) for source in source_values
+            }
+            return cls(
+                basis_flat=basis_flat,
+                meta=meta,
+                source_dim=source_dim,
+                region_in_source_dim=region_in_source_dim,
+            )
+
+        if "basis_flat" not in dt.children:
+            raise ValueError("Expected variable or child node 'basis_flat' in DataTree.")
+
+        basis_node = dt.children["basis_flat"]
+        source_order = list(basis_node.children)
+        raw_source_order = dt.attrs.get("source_order")
+        if raw_source_order is not None:
+            if not isinstance(raw_source_order, str):
+                raise ValueError("Multi-source basis 'source_order' metadata must be a JSON string.")
+            try:
+                parsed_source_order = json.loads(raw_source_order)
+            except json.JSONDecodeError:
+                raise ValueError("Multi-source basis 'source_order' metadata is not valid JSON.") from None
+            if not isinstance(parsed_source_order, list) or not all(
+                isinstance(source, str) for source in parsed_source_order
+            ):
+                raise ValueError("Multi-source basis 'source_order' metadata must contain a list of strings.")
+            if len(set(parsed_source_order)) != len(parsed_source_order):
+                raise ValueError("Multi-source basis 'source_order' metadata contains duplicates.")
+            if set(parsed_source_order) != set(source_order):
+                raise ValueError(
+                    "Multi-source basis 'source_order' metadata does not match stored source children."
+                )
+            source_order = parsed_source_order
+
         basis_flat: dict[str, xr.DataArray] = {}
-        for src, child in basis_node.items():
+        for src in source_order:
+            child = basis_node.children[src]
             ds = child.to_dataset()
             if "basis_flat" not in ds:
                 raise ValueError(f"Missing 'basis_flat' variable for source '{src}'.")

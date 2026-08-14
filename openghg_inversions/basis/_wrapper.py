@@ -1,16 +1,256 @@
-"""Functions to calling basis function algorithms and applying basis functions to data."""
+"""Wrappers for creating basis functions and applying them to sensitivities."""
 
+from collections.abc import Mapping
 from pathlib import Path
 from time import time
-from typing import Literal
+from typing import Any, Literal, cast
 
 import xarray as xr
-from openghg.analyse._utils import match_dataset_dims, stack_datasets
 
-from openghg_inversions.array_ops import force_align
-from .basis_functions import BasisFunctions
-from ._functions import basis_functions, fixed_outer_regions_basis, basis
-from ._helpers import fp_sensitivity, bc_sensitivity
+from .basis_functions import (
+    BASIS_ARTIFACT_PATH_ATTR,
+    BASIS_ARTIFACT_SOURCE_ATTR,
+    BasisFunctions,
+    basis_functions_from_fp_all_flat_basis,
+    flux_from_fp_all,
+)
+from ._functions import basis_functions, fixed_outer_regions_basis, basis, openghginv_path
+from ._helpers import apply_basis_functions_sensitivity, bc_sensitivity
+
+_VALID_BASIS_OUTPUT_FORMATS = ("legacy", "datatree")
+
+
+def make_basis_functions(
+    *,
+    fp_all: dict,
+    species: str,
+    domain: str,
+    start_date: str,
+    emissions_name: list[str] | None,
+    nbasis: int,
+    basis_algorithm: str | None = None,
+    fix_outer_regions: bool = False,
+    fp_basis_case: str | None = None,
+    basis_directory: str | None = None,
+    country_directory: str | None = None,
+    outputname: str | None = None,
+    output_path: str | None = None,
+    basis_output_format: Literal["legacy", "datatree"] = "legacy",
+    region_classes: xr.DataArray | None = None,
+    region_allocation: Literal["weight", "area"] = "weight",
+    min_regions_per_class: int = 1,
+    split_acceptance: Literal["none", "contrast_score"] = "none",
+    contrast_contribution: xr.DataArray | None = None,
+    contrast_cell_weight: xr.DataArray | None = None,
+    min_contrast_delta_eig: float | None = None,
+    min_contrast_lambda: float | None = None,
+    contrast_tau: float | None = None,
+    contrast_sigma_design: float | None = None,
+    contrast_s_diag: xr.DataArray | None = None,
+) -> BasisFunctions:
+    """Create or load retained emissions basis functions.
+
+    This helper owns basis artifact generation/loading without applying the
+    legacy fixedbasis ``fp_data`` side channels.
+
+    Args:
+        fp_all: Legacy merged-data dictionary containing flux and footprint data.
+        species: Atmospheric trace gas species used when saving generated basis
+            artifacts.
+        domain: Inversion domain used for generated basis metadata and basis
+            artifact lookup.
+        start_date: Start date of the inversion period.
+        emissions_name: Optional list of OpenGHG flux source names used to
+            select emissions from ``fp_all``.
+        nbasis: Desired number of generated basis regions.
+        basis_algorithm: Algorithm used when generating a basis field on the
+            fly. Supported values are ``"quadtree"``, ``"weighted"``, and
+            ``"region_constrained"``.
+        fix_outer_regions: If true, use fixed InTEM outer regions and generate
+            basis labels only for the inner region.
+        fp_basis_case: Optional saved emissions basis case. When supplied, a
+            saved artifact is loaded instead of generating a basis.
+        basis_directory: Optional root directory for saved emissions basis
+            artifacts.
+        country_directory: Optional directory containing auxiliary land/sea and
+            InTEM outer-region files used by generated basis algorithms.
+        outputname: Optional output-name component used when saving generated
+            basis artifacts.
+        output_path: Optional directory where generated basis artifacts should
+            be saved.
+        basis_output_format: Format for saved generated basis artifacts.
+            ``"legacy"`` writes the historical flat netCDF file, while
+            ``"datatree"`` writes the retained ``BasisFunctions`` artifact.
+        region_classes: Two-dimensional class field used only with
+            ``basis_algorithm="region_constrained"``. Loading this field from a
+            file is the caller's responsibility.
+        region_allocation: Automatic class-allocation mode for
+            ``region_constrained``. One of ``"weight"`` or ``"area"``.
+        min_regions_per_class: Minimum automatic allocation for each non-empty
+            mapped class when using ``region_constrained``.
+        split_acceptance: Optional split-acceptance criterion for
+            ``region_constrained``. Defaults to ``"none"`` to preserve existing
+            behavior. ``"contrast_score"`` requires ``contrast_contribution``.
+        contrast_contribution: Design contribution array for contrast scoring;
+            do not use observed mole-fraction values or residuals.
+        contrast_cell_weight: Optional prior flux or split-mass field for
+            contrast scoring.
+        min_contrast_delta_eig: Optional minimum contrast ``delta_eig``.
+        min_contrast_lambda: Optional minimum contrast ``lambda``.
+        contrast_tau: Prior standard deviation of the split contrast
+            coefficient. If omitted, ``tau=1`` is uncalibrated.
+        contrast_sigma_design: Optional scalar design standard deviation.
+        contrast_s_diag: Optional diagonal design covariance entries.
+
+    Returns:
+        Retained emissions basis object ready for sensitivity projection.
+
+    Raises:
+        ValueError: If neither a saved basis case nor an algorithm is supplied,
+            or if an unsupported output format or basis algorithm is requested.
+        TypeError: If a generated algorithm returns an unsupported basis object.
+    """
+    saving_generated_basis = output_path is not None and basis_algorithm is not None and fp_basis_case is None
+    if saving_generated_basis and basis_output_format not in _VALID_BASIS_OUTPUT_FORMATS:
+        expected = "', '".join(_VALID_BASIS_OUTPUT_FORMATS)
+        raise ValueError(
+            f"Unknown basis_output_format '{basis_output_format}'. Expected one of: '{expected}'."
+        )
+
+    basis_data_array: xr.DataArray | Mapping[str, xr.DataArray] | None = None
+    basis_start = time()
+
+    if fp_basis_case is not None:
+        if basis_algorithm:
+            print(
+                f"Basis algorithm {basis_algorithm} and basis case {fp_basis_case} supplied; using {fp_basis_case}."
+            )
+        basis_functions_object = load_basis_functions(
+            fp_all=fp_all,
+            domain=domain,
+            basis_case=fp_basis_case,
+            basis_directory=basis_directory,
+        )
+
+    elif basis_algorithm is None:
+        raise ValueError("One of `fp_basis_case` or `basis_algorithm` must be specified.")
+
+    elif fix_outer_regions is True:
+        print("Using fixed outer regions for basis functions.")
+        try:
+            basis_data_array = fixed_outer_regions_basis(
+                fp_all,
+                start_date,
+                basis_algorithm,
+                domain,
+                emissions_name,
+                nbasis,
+                country_directory,
+                region_classes=region_classes,
+                region_allocation=region_allocation,
+                min_regions_per_class=min_regions_per_class,
+                split_acceptance=split_acceptance,
+                contrast_contribution=contrast_contribution,
+                contrast_cell_weight=contrast_cell_weight,
+                min_contrast_delta_eig=min_contrast_delta_eig,
+                min_contrast_lambda=min_contrast_lambda,
+                contrast_tau=contrast_tau,
+                contrast_sigma_design=contrast_sigma_design,
+                contrast_s_diag=contrast_s_diag,
+            )
+        except KeyError as e:
+            raise ValueError(
+                "Basis algorithm not recognised. Please use 'quadtree', 'weighted', "
+                "'region_constrained', or input a basis function file"
+            ) from e
+        print(f"Using InTEM regions with {basis_algorithm} to derive basis functions for inner region.")
+        print("Using generated in-memory basis artifact.")
+        basis_functions_object = basis_functions_from_fp_all_flat_basis(
+            fp_all=fp_all,
+            basis_flat=basis_data_array,
+            metadata={BASIS_ARTIFACT_SOURCE_ATTR: "generated"},
+        )
+
+    else:
+        try:
+            basis_function = basis_functions[basis_algorithm]
+        except KeyError as e:
+            raise ValueError(
+                "Basis algorithm not recognised. Please use 'quadtree', 'weighted', "
+                "'region_constrained', or input a basis function file"
+            ) from e
+        print(f"Using {basis_function.description} to derive basis functions.")
+        algorithm_kwargs: dict[str, Any] = {"country_directory": country_directory}
+        if basis_algorithm == "region_constrained":
+            algorithm_kwargs.update(
+                {
+                    "region_classes": region_classes,
+                    "allocation": region_allocation,
+                    "min_regions_per_class": min_regions_per_class,
+                    "split_acceptance": split_acceptance,
+                    "contrast_contribution": contrast_contribution,
+                    "contrast_cell_weight": contrast_cell_weight,
+                    "min_contrast_delta_eig": min_contrast_delta_eig,
+                    "min_contrast_lambda": min_contrast_lambda,
+                    "contrast_tau": contrast_tau,
+                    "contrast_sigma_design": contrast_sigma_design,
+                    "contrast_s_diag": contrast_s_diag,
+                }
+            )
+        basis_candidate = basis_function.algorithm(
+            fp_all,
+            start_date,
+            domain,
+            emissions_name,
+            nbasis,
+            **algorithm_kwargs,
+        )
+        if not isinstance(basis_candidate, (xr.DataArray, Mapping)):
+            raise TypeError(
+                f"Basis algorithm {basis_algorithm!r} returned unsupported basis data "
+                f"{type(basis_candidate)!r}."
+            )
+        basis_data_array = cast(xr.DataArray | Mapping[str, xr.DataArray], basis_candidate)
+        print("Using generated in-memory basis artifact.")
+        basis_functions_object = basis_functions_from_fp_all_flat_basis(
+            fp_all=fp_all,
+            basis_flat=basis_data_array,
+            metadata={BASIS_ARTIFACT_SOURCE_ATTR: "generated"},
+        )
+
+    print(f"Computing basis took {time() - basis_start}s.")
+
+    if saving_generated_basis:
+        assert basis_algorithm is not None
+        assert output_path is not None
+        if not isinstance(basis_data_array, xr.DataArray):
+            raise TypeError("Saving generated basis output currently requires a single flat basis DataArray.")
+        if basis_output_format == "legacy":
+            basis_artifact_path = _save_basis(
+                basis=basis_data_array,
+                basis_algorithm=basis_algorithm,
+                output_dir=output_path,
+                domain=domain,
+                species=species,
+                output_name=outputname,
+            )
+        elif basis_output_format == "datatree":
+            basis_artifact_path = _save_basis_datatree(
+                basis_functions=basis_functions_object,
+                basis=basis_data_array,
+                basis_algorithm=basis_algorithm,
+                output_dir=output_path,
+                domain=domain,
+                species=species,
+                output_name=outputname,
+            )
+        else:
+            raise ValueError(f"Unknown basis_output_format '{basis_output_format}'.")
+        basis_functions_object = basis_functions_object.with_metadata(
+            {BASIS_ARTIFACT_PATH_ATTR: str(basis_artifact_path)}
+        )
+
+    return basis_functions_object
 
 
 def basis_functions_wrapper(
@@ -32,128 +272,125 @@ def basis_functions_wrapper(
     output_path: str | None = None,
     return_basis_objects: bool = False,
     basis_output_format: Literal["legacy", "datatree"] = "legacy",
+    region_classes: xr.DataArray | None = None,
+    region_allocation: Literal["weight", "area"] = "weight",
+    min_regions_per_class: int = 1,
+    split_acceptance: Literal["none", "contrast_score"] = "none",
+    contrast_contribution: xr.DataArray | None = None,
+    contrast_cell_weight: xr.DataArray | None = None,
+    min_contrast_delta_eig: float | None = None,
+    min_contrast_lambda: float | None = None,
+    contrast_tau: float | None = None,
+    contrast_sigma_design: float | None = None,
+    contrast_s_diag: xr.DataArray | None = None,
 ):
-    """Wrapper function for selecting basis function
-    algorithm.
+    """Create basis sensitivities for a legacy fixed-basis inversion.
 
     Args:
-      fp_all (dict):
-        Dictionary object produced from get_data functions
-      species (str):
-        Atmospheric trace gas species of interest
-      domain (str):
-        Model domain
-      start_date (str):
-        Start date of period of inference
-      emissions_name (str/list):
-        Emissions dataset key words for retrieving from object store
-      nbasis (int):
-        Number of basis function regions to calculated in domain
-      use_bc (bool):
-        Option to include/exclude boundary conditions in inversion
-      basis_algorithm (str, optional):
-        One of "quadtree" (for using Quadtree algorithm) or
-        "weighted" (for using an algorihtm that splits region
-        by input data). Land-sea separation is not imposed in the
-        quadtree basis functions, but is imposed by default in "weighted"
-        Default None
-      fixed_outer_region (bool):
-        When set to True uses InTEM regions to derive basis functions for inner region
-        Default False
-      fp_basis_case (str):
-        Name of basis function to use for emissions.
-        Default None
-      bc_basis_case (str, optional):
-        Name of basis case type for boundary conditions (NOTE, I don't
-        think that currently you can do anything apart from scaling NSEW
-        boundary conditions if you want to scale these monthly.)
-        Default None
-      basis_directory (str, optional):
-        Directory containing the basis function if not default.
-        Default None
-      bc_basis_directory (str, optional):
-        Directory containing the boundary condition basis functions
-        (e.g. files starting with "NESW")
-        Default None
-      outputname (str, optional):
-        File output name
-        Default None
-      output_path (str, optional):
-        Passed to `outputdir` argument of `quadtreebasisfunction`. Used for testing.
-        Default None
-      return_basis_objects (bool, optional):
-        If True, return a tuple ``(fp_data, basis_objects)`` where
-        ``basis_objects["emissions"]`` is a ``BasisFunctions`` object constructed
-        from the basis used in this wrapper.
-        Default False
-      basis_output_format (str, optional):
-        Format to use when saving basis output with ``output_path``:
-        - ``"legacy"``: save legacy flat basis netCDF (default)
-        - ``"datatree"``: save BasisFunctions DataTree netCDF
-        Default "legacy"
+        fp_all: Legacy merged-data dictionary containing flux and footprint data.
+        species: Atmospheric trace gas species used when saving generated basis
+            artifacts.
+        domain: Inversion domain.
+        start_date: Start date of the inversion period.
+        emissions_name: Optional list of OpenGHG flux source names used to
+            select emissions from ``fp_all``.
+        nbasis: Desired number of generated basis regions.
+        use_bc: If true, include boundary-condition sensitivities.
+        basis_algorithm: Algorithm used when generating a basis field on the
+            fly. ``"quadtree"`` does not impose land/sea separation,
+            ``"weighted"`` uses the legacy weighted land/sea split, and
+            ``"region_constrained"`` requires caller-supplied
+            ``region_classes`` to prevent labels crossing those classes.
+        fix_outer_regions: If true, use fixed InTEM outer regions and generate
+            basis labels only for the inner region.
+        fp_basis_case: Optional saved emissions basis case. When supplied, a
+            saved artifact is loaded instead of generating a basis.
+        bc_basis_case: Boundary-condition basis case to load when ``use_bc`` is
+            true.
+        basis_directory: Optional root directory for saved emissions basis
+            artifacts.
+        bc_basis_directory: Optional root directory for saved boundary-condition
+            basis artifacts.
+        country_directory: Optional directory containing auxiliary land/sea and
+            InTEM outer-region files used by generated basis algorithms.
+        outputname: Optional output-name component used when saving generated
+            basis artifacts.
+        output_path: Optional directory where generated basis artifacts should
+            be saved.
+        return_basis_objects: If true, return the legacy ``fp_data`` dictionary
+            plus retained basis objects.
+        basis_output_format: Format for saved generated basis artifacts.
+            ``"legacy"`` writes the historical flat netCDF file, while
+            ``"datatree"`` writes the retained ``BasisFunctions`` artifact.
+        region_classes: Two-dimensional class field used only with
+            ``basis_algorithm="region_constrained"``. Loading this field from a
+            file is the caller's responsibility.
+        region_allocation: Automatic class-allocation mode for
+            ``region_constrained``. One of ``"weight"`` or ``"area"``.
+        min_regions_per_class: Minimum automatic allocation for each non-empty
+            mapped class when using ``region_constrained``.
+        split_acceptance: Optional split-acceptance criterion for
+            ``region_constrained``. Defaults to ``"none"`` to preserve existing
+            behavior.
+        contrast_contribution: Design contribution array for contrast scoring;
+            do not use observed mole-fraction values or residuals.
+        contrast_cell_weight: Optional prior flux or split-mass field for
+            contrast scoring.
+        min_contrast_delta_eig: Optional minimum contrast ``delta_eig``.
+        min_contrast_lambda: Optional minimum contrast ``lambda``.
+        contrast_tau: Prior standard deviation of the split contrast
+            coefficient. If omitted, ``tau=1`` is uncalibrated.
+        contrast_sigma_design: Optional scalar design standard deviation.
+        contrast_s_diag: Optional diagonal design covariance entries.
 
     Returns:
-      fp_data (dict) or tuple[dict, dict[str, BasisFunctions]]:
-        By default, returns a dictionary object similar to fp_all but with information
-        on basis functions and sensitivities.
+        By default, returns a dictionary similar to ``fp_all`` but with basis
+        function and sensitivity data added. If ``return_basis_objects=True``,
+        returns ``(fp_data, basis_objects)`` where ``basis_objects["emissions"]``
+        is the retained emissions ``BasisFunctions`` object.
 
-        If ``return_basis_objects=True``, returns ``(fp_data, basis_objects)`` where
-        ``basis_objects`` contains an ``"emissions"`` key with a ``BasisFunctions``
-        object that wraps the basis operator and representative flux.
+    Raises:
+        ValueError: If boundary conditions are requested without
+            ``bc_basis_case``.
     """
     if use_bc is True and bc_basis_case is None:
         raise ValueError("If `use_bc` is True, you must specify `bc_basis_case`.")
 
-    basis_start = time()
-
-    if fp_basis_case is not None:
-        if basis_algorithm:
-            print(
-                f"Basis algorithm {basis_algorithm} and basis case {fp_basis_case} supplied; using {fp_basis_case}."
-            )
-        basis_data_array = basis(
-            domain=domain, basis_case=fp_basis_case, basis_directory=basis_directory
-        ).basis
-
-    elif basis_algorithm is None:
-        raise ValueError("One of `fp_basis_case` or `basis_algorithm` must be specified.")
-
-    elif fix_outer_regions is True:
-        print("Using fixed outer regions for basis functions.")
-        try:
-            basis_data_array = fixed_outer_regions_basis(
-                fp_all, start_date, basis_algorithm, domain, emissions_name, nbasis, country_directory
-            )
-        except KeyError as e:
-            raise ValueError(
-                "Basis algorithm not recognised. Please use either 'quadtree' or 'weighted', or input a basis function file"
-            ) from e
-        print(f"Using InTEM regions with {basis_algorithm} to derive basis functions for inner region.")
-
-    else:
-        try:
-            basis_function = basis_functions[basis_algorithm]
-        except KeyError as e:
-            raise ValueError(
-                "Basis algorithm not recognised. Please use either 'quadtree' or 'weighted', or input a basis function file"
-            ) from e
-        print(f"Using {basis_function.description} to derive basis functions.")
-        basis_data_array = basis_function.algorithm(fp_all, start_date, domain, emissions_name, nbasis, country_directory=country_directory)
-
-    print(f"Computing basis took {time() - basis_start}s.")
+    basis_functions_object = make_basis_functions(
+        fp_all=fp_all,
+        species=species,
+        domain=domain,
+        start_date=start_date,
+        emissions_name=emissions_name,
+        nbasis=nbasis,
+        basis_algorithm=basis_algorithm,
+        fix_outer_regions=fix_outer_regions,
+        fp_basis_case=fp_basis_case,
+        basis_directory=basis_directory,
+        country_directory=country_directory,
+        region_classes=region_classes,
+        region_allocation=region_allocation,
+        min_regions_per_class=min_regions_per_class,
+        split_acceptance=split_acceptance,
+        contrast_contribution=contrast_contribution,
+        contrast_cell_weight=contrast_cell_weight,
+        min_contrast_delta_eig=min_contrast_delta_eig,
+        min_contrast_lambda=min_contrast_lambda,
+        contrast_tau=contrast_tau,
+        contrast_sigma_design=contrast_sigma_design,
+        contrast_s_diag=contrast_s_diag,
+        outputname=outputname,
+        output_path=output_path,
+        basis_output_format=basis_output_format,
+    )
 
     fp_sens_start = time()
-    fp_data = fp_sensitivity(fp_all, basis_func=basis_data_array)
+    fp_data = apply_basis_functions_sensitivity(fp_all, basis_functions_object)
     print(f"Computing fp sensitivity took {time() - fp_sens_start}s.")
 
     basis_objects: dict[str, BasisFunctions] = {}
-    needs_basis_object = return_basis_objects or (output_path is not None and basis_output_format == "datatree")
-
-    if needs_basis_object:
-        basis_objects["emissions"] = _make_basis_functions_object(
-            fp_all=fp_all,
-            basis=basis_data_array,
-        )
+    if return_basis_objects:
+        basis_objects["emissions"] = basis_functions_object
 
     if use_bc is True:
         bc_sens_start = time()
@@ -165,132 +402,113 @@ def basis_functions_wrapper(
         )
         print(f"Computing bc sensitivity took {time() - bc_sens_start}s.")
 
-    if output_path is not None and basis_algorithm is not None and fp_basis_case is None:
-        if basis_output_format == "legacy":
-            _save_basis(
-                basis=basis_data_array,
-                basis_algorithm=basis_algorithm,
-                output_dir=output_path,
-                domain=domain,
-                species=species,
-                output_name=outputname,
-            )
-        elif basis_output_format == "datatree":
-            _save_basis_datatree(
-                basis_functions=basis_objects["emissions"],
-                basis=basis_data_array,
-                basis_algorithm=basis_algorithm,
-                output_dir=output_path,
-                domain=domain,
-                species=species,
-                output_name=outputname,
-            )
-        else:
-            raise ValueError(
-                f"Unknown basis_output_format '{basis_output_format}'. "
-                "Expected one of: 'legacy', 'datatree'."
-            )
-
     if return_basis_objects:
         return fp_data, basis_objects
 
     return fp_data
 
 
-def _make_basis_functions_object(fp_all: dict, basis: xr.DataArray) -> BasisFunctions:
-    """Construct a BasisFunctions object from wrapper inputs.
+def load_basis_functions(
+    *,
+    fp_all: dict,
+    domain: str,
+    basis_case: str,
+    basis_directory: str | Path | None = None,
+) -> BasisFunctions:
+    """Load a saved basis artifact as retained ``BasisFunctions``.
 
-    The current wrapper computes a single emissions basis array. For non-sector
-    workflows, this helper combines all flux sources into one representative flux
-    using the same alignment/summing behavior as ``ModelScenario.combine_flux_sources``.
-    For sector-split workflows, fluxes are preserved along a ``source`` dimension.
+    DataTree artifacts are preferred when the matching file carries the
+    ``openghg_inversions.flux_weighted_basis`` schema and are loaded through
+    ``BasisFunctions.load``. Otherwise the existing legacy flat artifact loader
+    is used and a retained basis object is built from runtime flux in
+    ``fp_all``.
+
+    Args:
+        fp_all: Legacy merged-data dictionary used to build runtime flux when
+            adapting legacy flat artifacts or replacing serialized DataTree flux.
+        domain: Inversion domain used in the artifact path convention.
+        basis_case: Basis case prefix used in the artifact path convention.
+        basis_directory: Optional root directory containing per-domain basis
+            artifact subdirectories.
+
+    Returns:
+        Loaded retained basis object with ``basis_artifact_source`` metadata.
+
+    Raises:
+        FileNotFoundError: If no matching artifact files are found.
+        ValueError: If more than one matching DataTree artifact is found.
     """
-    if ".flux" not in fp_all or not fp_all[".flux"]:
-        raise ValueError("Cannot construct BasisFunctions object: fp_all['.flux'] is missing or empty.")
+    files = _basis_artifact_files(domain=domain, basis_case=basis_case, basis_directory=basis_directory)
+    datatree_files = [file for file in files if _is_basis_datatree_artifact(file)]
 
-    flux_entries = fp_all[".flux"]
-    flux_arrays = {key: _extract_flux_dataarray(value, flux_key=key) for key, value in flux_entries.items()}
+    if datatree_files:
+        if len(datatree_files) > 1:
+            files_text = "\n".join(f"  - {file}" for file in datatree_files)
+            raise ValueError(
+                "DataTree basis artifact loading currently supports one matching file, but found "
+                f"{len(datatree_files)} for basis_case={basis_case!r}, domain={domain!r}:\n"
+                f"{files_text}\n"
+                "Use a more specific basis_case or remove/rename stale DataTree basis artifacts."
+            )
+        basis_functions = BasisFunctions.load(datatree_files[0])
+        print(f"Loaded DataTree basis artifact: {datatree_files[0]}")
+        current_flux = flux_from_fp_all(fp_all)
+        if "source" in current_flux.dims:
+            basis_functions = basis_functions.select_sources(
+                [str(source) for source in current_flux.source.values]
+            )
+        basis_functions = basis_functions.with_flux(current_flux).with_metadata(
+            {
+                BASIS_ARTIFACT_SOURCE_ATTR: "datatree",
+                BASIS_ARTIFACT_PATH_ATTR: str(datatree_files[0]),
+            }
+        )
+        return basis_functions
 
-    # Follow existing ModelScenario behavior:
-    # - single-source workflows combine fluxes by summing over flux entries
-    # - multi-source/sector workflows keep per-source fluxes keyed by source
-    if _is_multi_source_workflow(fp_all):
-        flux = _stack_flux_sources_with_alignment(flux_arrays)
-    else:
-        flux = _combine_flux_sources_like_modelscenario(flux_arrays)
-
-    return BasisFunctions.from_basis_flat(
-        basis_flat=basis,
-        flux=flux,
-        operator_kwargs={"state_dim": "region"},
+    basis_data_array = basis(
+        domain=domain,
+        basis_case=basis_case,
+        basis_directory=str(basis_directory) if isinstance(basis_directory, Path) else basis_directory,
+    ).basis
+    print(f"Loaded legacy flat basis artifact for basis_case={basis_case!r}, domain={domain!r}.")
+    return basis_functions_from_fp_all_flat_basis(
+        fp_all=fp_all,
+        basis_flat=basis_data_array,
+        metadata={
+            BASIS_ARTIFACT_SOURCE_ATTR: "legacy_flat",
+            BASIS_ARTIFACT_PATH_ATTR: _basis_artifact_path_metadata(files),
+        },
     )
 
 
-def _is_multi_source_workflow(fp_all: dict) -> bool:
-    """Determine multi-source/sector mode from fp_all metadata.
-
-    Prefer explicit ``.split_by_sectors`` when present. For legacy/hand-constructed
-    ``fp_all`` without this flag, fall back to inferring sectoral behavior when
-    multiple flux entries are present.
-    """
-    split_by_sectors = fp_all.get(".split_by_sectors")
-    if split_by_sectors is not None:
-        return bool(split_by_sectors)
-
-    flux_entries = fp_all.get(".flux")
-    return isinstance(flux_entries, dict) and len(flux_entries) > 1
-
-
-def _extract_flux_dataarray(flux_entry: object, flux_key: str) -> xr.DataArray:
-    """Extract a DataArray named ``flux`` from supported flux entry containers."""
-    if hasattr(flux_entry, "data") and isinstance(flux_entry.data, xr.Dataset) and "flux" in flux_entry.data:
-        return flux_entry.data["flux"]
-    if isinstance(flux_entry, xr.Dataset) and "flux" in flux_entry:
-        return flux_entry["flux"]
-    if isinstance(flux_entry, xr.DataArray):
-        return flux_entry
-
-    raise TypeError(
-        "Could not extract a flux DataArray from fp_all['.flux']. "
-        f"Got type {type(flux_entry)!r} for flux entry {flux_key!r}."
-    )
+def _basis_artifact_files(
+    *,
+    domain: str,
+    basis_case: str,
+    basis_directory: str | Path | None = None,
+) -> list[Path]:
+    """Find basis artifact files using the legacy basis directory convention."""
+    basis_path = Path(basis_directory) if basis_directory is not None else openghginv_path / "basis_functions"
+    files = sorted((basis_path / domain).glob(f"{basis_case}_{domain}*.nc"))
+    if not files:
+        raise FileNotFoundError(
+            f"Can't find basis function files for domain '{domain}' and basis_case '{basis_case}' "
+        )
+    return files
 
 
-def _combine_flux_sources_like_modelscenario(flux_arrays: dict[str, xr.DataArray]) -> xr.DataArray:
-    """Combine fluxes as in ModelScenario.combine_flux_sources."""
-    flux_datasets = [
-        arr.rename("flux").to_dataset() if arr.name != "flux" else arr.to_dataset()
-        for arr in flux_arrays.values()
-    ]
-
-    if len(flux_datasets) == 1:
-        return flux_datasets[0]["flux"]
-
-    dims = [dim for dim in flux_datasets[0].dims if dim != "time"]
-    flux_datasets = match_dataset_dims(flux_datasets, dims=dims)
-    if "time" in flux_datasets[0].dims:
-        flux_stacked = stack_datasets(flux_datasets, dim="time", method="ffill")
-    else:
-        flux_stacked = sum(flux_datasets)
-
-    return flux_stacked["flux"]
+def _basis_artifact_path_metadata(files: list[Path]) -> str:
+    """Return deterministic artifact path metadata for one or more matched files."""
+    return ";".join(str(file) for file in files)
 
 
-def _stack_flux_sources_with_alignment(flux_arrays: dict[str, xr.DataArray]) -> xr.DataArray:
-    """Stack fluxes along `source`, validating structural coordinate alignment."""
-    first_key = next(iter(flux_arrays))
-    reference = flux_arrays[first_key]
-    dims_to_align = [dim for dim in reference.dims if dim != "time"]
-
-    aligned_flux = {}
-    for key, arr in flux_arrays.items():
-        aligned_flux[key] = force_align(arr, reference=reference, dims=dims_to_align)
-
-    return xr.concat(
-        [arr.expand_dims({"source": [key]}) for key, arr in aligned_flux.items()],
-        dim="source",
-        join="outer",
-    )
+def _is_basis_datatree_artifact(path: Path) -> bool:
+    """Return true when a file contains the BasisFunctions DataTree schema."""
+    try:
+        with xr.open_datatree(path) as dt:
+            return dt.attrs.get("schema") == "openghg_inversions.flux_weighted_basis"
+    except (OSError, ValueError, KeyError):
+        return False
 
 
 def _save_basis(
@@ -300,14 +518,14 @@ def _save_basis(
     domain: str,
     species: str,
     output_name: str | None = None,
-) -> None:
+) -> Path:
     """Save basis functions to netCDF.
 
     Args:
       basis (xarray.DataArray):
         basis dataset to save
       basis_algorithm (str):
-        name of basis algorithm (e.g. "quadtree" or "weighted")
+        name of basis algorithm (e.g. "quadtree", "weighted", or "region_constrained")
       output_dir (str):
         root directory to save basis functions
       domain (str):
@@ -319,7 +537,7 @@ def _save_basis(
         Default None
 
     Returns:
-        None. Saves basis dataset to netCDF.
+        Path to the written basis artifact.
     """
     basis_out_path = Path(output_dir, domain.upper())
 
@@ -333,7 +551,9 @@ def _save_basis(
     else:
         output_name = f"{basis_algorithm}_{species}-{output_name}_{domain}_{start_date}.nc"
 
-    basis.to_netcdf(basis_out_path / output_name, mode="w")
+    output_path = basis_out_path / output_name
+    basis.to_netcdf(output_path, mode="w")
+    return output_path
 
 
 def _save_basis_datatree(
@@ -344,11 +564,12 @@ def _save_basis_datatree(
     domain: str,
     species: str,
     output_name: str | None = None,
-) -> None:
-    """Save BasisFunctions object to netCDF DataTree.
+) -> Path:
+    """Save ``BasisFunctions`` using the wrapper's DataTree file convention.
 
-    This is an opt-in serialization path. The legacy flat basis writer remains the
-    default to preserve backwards compatibility.
+    This is an opt-in serialization path around ``BasisFunctions.save``. The
+    legacy flat basis writer remains the default to preserve backwards
+    compatibility.
     """
     basis_out_path = Path(output_dir, domain.upper())
 
@@ -362,5 +583,6 @@ def _save_basis_datatree(
     else:
         output_name = f"{basis_algorithm}_{species}-{output_name}_{domain}_{start_date}_basis_datatree.nc"
 
-    dt = basis_functions.to_datatree()
-    dt.to_netcdf(basis_out_path / output_name)
+    output_path = basis_out_path / output_name
+    basis_functions.save(output_path)
+    return output_path

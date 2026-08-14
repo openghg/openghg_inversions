@@ -1,0 +1,40 @@
+"""Negative static-type probe for borrowed NumPy and xarray arrays."""
+
+import numpy as np
+import xarray as xr
+
+from openghg_inversions.borrowed import borrow
+from openghg_inversions.native_covariance import SeparableExponentialCovariance
+
+
+borrowed_array = borrow(np.arange(3))
+borrowed_array[0] = 10  # expect-error: ndarray-item
+borrowed_array.fill(10)  # expect-error: ndarray-method
+borrowed_array.sort()  # expect-error: ndarray-deprecated-method
+
+borrowed_data_array = borrow(xr.DataArray(np.arange(3), dims="x"))
+borrowed_data_array[0] = 10  # expect-error: dataarray-item
+borrowed_data_array.values = np.arange(3)  # expect-error: dataarray-values
+borrowed_data_array.values[0] = 10  # expect-error: dataarray-values-item
+borrowed_data_array.data[0] = 10  # expect-error: dataarray-data-item
+borrowed_data_array.to_numpy()[0] = 10  # expect-error: dataarray-numpy-item
+
+shallow_copy = borrowed_data_array.copy(deep=False)
+shallow_copy[0] = 10  # expect-error: shallow-copy-item
+
+covariance = SeparableExponentialCovariance(
+    xr.DataArray([0.0, 1.0], dims="lat"),
+    xr.DataArray([10.0, 11.0], dims="lon"),
+)
+covariance.latitude[0] = 20.0  # expect-error: dataarray-item
+covariance.longitude.values[0] = 20.0  # expect-error: dataarray-values-item
+
+blocked_covariance = SeparableExponentialCovariance(
+    covariance.latitude,
+    covariance.longitude,
+    class_labels=xr.DataArray([["land", "sea"], ["land", "sea"]], dims=("lat", "lon")),
+)
+class_labels = blocked_covariance.class_labels
+assert class_labels is not None
+class_labels[0, 0] = "sea"  # expect-error: dataarray-item
+class_labels.values[0, 0] = "sea"  # expect-error: dataarray-values-item
