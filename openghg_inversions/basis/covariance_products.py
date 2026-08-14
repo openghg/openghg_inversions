@@ -31,7 +31,6 @@ from openghg_inversions._labelled_matrices import (
     to_column_axis,
     with_square_matrix_diagnostics,
 )
-from openghg_inversions.array_ops import to_dense
 from openghg_inversions.native_covariance import InvertibleNativeCovarianceAction
 
 MAX_DENSE_EIGEN_DIAGNOSTIC_SIZE = 512
@@ -46,22 +45,11 @@ class RetainedProjection:
         prolongation: Covariance-natural ``U_*`` with dimensions
             ``(*native_dims, state_dim)``.
         strategy: Stable identifier for the scientific projection choice.
-        state_covariance: Optional cached ``C_alpha``. The kernel independently
-            recomputes and validates caches supplied by external strategies.
-        covariance_restriction_transpose: Optional cached ``B Pi.T``. External
-            cached values are independently recomputed and validated.
     """
 
     restriction: xr.DataArray
     prolongation: xr.DataArray
     strategy: str
-    state_covariance: xr.DataArray | None = None
-    covariance_restriction_transpose: xr.DataArray | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class _PreserveBucketProjection(RetainedProjection):
-    """Private built-in projection with independently derived trusted products."""
 
 
 class RetainedProjectionStrategy(Protocol):
@@ -132,6 +120,14 @@ class PreserveBucketProlongation:
         _require_symmetric(gram_values, "U.T B^-1 U")
         try:
             factor = cho_factor(gram_values, lower=True, check_finite=True)
+            cholesky_diagonal = np.diag(factor[0])
+            largest_pivot = float(np.max(np.abs(cholesky_diagonal)))
+            if (
+                not cholesky_diagonal.size
+                or largest_pivot <= 0.0
+                or float(np.min(np.abs(cholesky_diagonal))) <= 1e-6 * largest_pivot
+            ):
+                raise np.linalg.LinAlgError("numerically rank-deficient Gram matrix")
             covariance_values = cho_solve(factor, np.eye(gram_values.shape[0]), check_finite=False)
         except np.linalg.LinAlgError as exc:
             raise ValueError(
@@ -157,11 +153,6 @@ class PreserveBucketProlongation:
                 column_dim=state_column_dim,
             )
         )
-        state_covariance = with_square_matrix_diagnostics(
-            state_covariance,
-            mathematical_name="C_alpha",
-            require_positive_definite=True,
-        )
         restriction = xr.dot(state_covariance, precision_prolongation, dim=state_column_dim).transpose(
             state_dim, *native_dims
         )
@@ -174,15 +165,10 @@ class PreserveBucketProlongation:
         prolongation = prolongation.rename("prolongation").assign_attrs(
             mathematical_name="U_bucket", strategy=self.name, units="1"
         )
-        b_pi_t = xr.dot(prolongation, state_covariance, dim=state_dim).transpose(
-            *native_dims, state_column_dim
-        )
-        return _PreserveBucketProjection(
+        return RetainedProjection(
             restriction=restriction,
             prolongation=prolongation,
             strategy=self.name,
-            state_covariance=state_covariance,
-            covariance_restriction_transpose=b_pi_t,
         )
 
 
@@ -275,62 +261,35 @@ def project_native_covariance(
         for name in (*array.dims, *array.coords)
     }
     state_column_dim = matrix_column_dim(state_dim, occupied_names)
-    trusted_projection = (
-        _reaxis_builtin_projection(
-            projection,
-            native_dims=native_dims,
-            state_dim=state_dim,
-            state_column_dim=state_column_dim,
-        )
-        if type(projection_strategy) is PreserveBucketProlongation
-        and isinstance(projection, _PreserveBucketProjection)
-        else None
+    b_pi_t = _apply_restriction_blocks(
+        covariance,
+        projection.restriction,
+        native_dims=native_dims,
+        state_dim=state_dim,
+        column_dim=state_column_dim,
+        rhs_block_size=batch_size,
     )
-    if trusted_projection is None:
-        b_pi_t = _apply_restriction_blocks(
-            covariance,
-            projection.restriction,
-            native_dims=native_dims,
-            state_dim=state_dim,
-            column_dim=state_column_dim,
-            rhs_block_size=batch_size,
-        )
-    else:
-        assert trusted_projection.covariance_restriction_transpose is not None
-        b_pi_t = trusted_projection.covariance_restriction_transpose
-
-    if trusted_projection is None:
-        state_covariance = _restriction_product_blocks(
-            projection.restriction,
-            b_pi_t,
-            native_dims=native_dims,
-            state_dim=state_dim,
-            column_dim=state_column_dim,
-            rhs_block_size=batch_size,
-        )
-        state_covariance = with_square_matrix_diagnostics(
-            state_covariance.rename("state_covariance").assign_attrs(units="1"),
-            mathematical_name="C_alpha",
-            require_positive_definite=True,
-        )
-        _validate_external_cached_products(
-            projection,
-            computed_b_pi_t=b_pi_t,
-            computed_state_covariance=state_covariance,
-        )
-    else:
-        assert trusted_projection.state_covariance is not None
-        state_covariance = trusted_projection.state_covariance.rename("state_covariance")
-
-    if trusted_projection is None:
-        _validate_projection_invariant(
-            projection,
-            state_covariance,
-            b_pi_t,
-            native_dims=native_dims,
-            state_dim=state_dim,
-            state_column_dim=state_column_dim,
-        )
+    state_covariance = _restriction_product_blocks(
+        projection.restriction,
+        b_pi_t,
+        native_dims=native_dims,
+        state_dim=state_dim,
+        column_dim=state_column_dim,
+        rhs_block_size=batch_size,
+    )
+    state_covariance = with_square_matrix_diagnostics(
+        state_covariance.rename("state_covariance").assign_attrs(units="1"),
+        mathematical_name="C_alpha",
+        require_positive_definite=True,
+    )
+    _validate_projection_invariant(
+        projection,
+        state_covariance,
+        b_pi_t,
+        native_dims=native_dims,
+        state_dim=state_dim,
+        state_column_dim=state_column_dim,
+    )
     h_units = sensitivity.attrs.get("units")
     linear_units = {"units": h_units} if h_units is not None else {}
     effective_operator = xr.dot(sensitivity, projection.prolongation, dim=list(native_dims)).transpose(
@@ -427,6 +386,10 @@ def _observation_covariance(
         (count, count) if output == "dense" else count,
         dtype=np.result_type(sensitivity.dtype, np.float64),
     )
+    diagonal_error_bounds = np.empty(count, dtype=np.float64) if output == "diagonal" else None
+    native_size = int(np.prod([sensitivity.sizes[dim] for dim in native_dims]))
+    machine_epsilon = np.finfo(np.dtype(values.dtype)).eps
+    contraction_error_factor = 8.0 * native_size * machine_epsilon
     for start in range(0, count, batch_size):
         stop = min(start + batch_size, count)
         rhs = to_column_axis(
@@ -440,7 +403,17 @@ def _observation_covariance(
             block = xr.dot(sensitivity, b_rhs, dim=list(native_dims)).transpose(observation_dim, column_dim)
             values[:, start:stop] = np.asarray(block.values)
         else:
-            values[start:stop] = np.asarray((rhs * b_rhs).sum(dim=list(native_dims)).values)
+            terms = rhs * b_rhs
+            values[start:stop] = np.asarray(terms.sum(dim=list(native_dims)).values)
+            assert diagonal_error_bounds is not None
+            contraction_magnitudes = np.asarray(
+                abs(terms).sum(dim=list(native_dims)).values,
+                dtype=np.float64,
+            )
+            diagonal_error_bounds[start:stop] = contraction_error_factor * np.maximum(
+                contraction_magnitudes,
+                1.0,
+            )
     units = sensitivity.attrs.get("units")
     unit_attrs = {"units": f"({units})^2"} if units is not None else {}
     row_coords = {
@@ -466,10 +439,12 @@ def _observation_covariance(
         )
     if not np.all(np.isfinite(values)):
         raise ValueError("diag(H B H.T) must contain only finite real values")
-    diagonal_scale = max(1.0, float(np.max(np.abs(values))) if values.size else 1.0)
-    diagonal_tolerance = 1e-10 * diagonal_scale
-    if np.any(values < -diagonal_tolerance):
+    assert diagonal_error_bounds is not None
+    if not np.all(np.isfinite(diagonal_error_bounds)):
+        raise ValueError("diag(H B H.T) numerical error bounds must be finite")
+    if np.any(values < -diagonal_error_bounds):
         raise ValueError("diag(H B H.T) contains materially negative covariance values")
+    values = np.where(values < 0.0, 0.0, values)
     result = xr.DataArray(
         values,
         dims=observation_dim,
@@ -478,8 +453,9 @@ def _observation_covariance(
             **unit_attrs,
             "mathematical_name": "diag(H B H.T)",
             "minimum_diagonal": float(np.min(values)),
-            "diagonal_nonnegative": bool(np.all(values >= -diagonal_tolerance)),
-            "diagnostic_tolerance": diagonal_tolerance,
+            "diagonal_nonnegative": True,
+            "maximum_contraction_error_bound": float(np.max(diagonal_error_bounds)),
+            "diagnostic_tolerance": "per_observation_contraction_error_bound",
         },
         name="native_observation_covariance",
     )
@@ -524,98 +500,11 @@ def _validated_projection(
             native_dims=native_dims,
             role=role,
         )
-    if not isinstance(projection, _PreserveBucketProjection):
-        restriction = _materialize_dense_preserving_coordinates(restriction)
-        restriction_values = np.asarray(restriction.values)
-        if np.iscomplexobj(restriction_values) or not np.all(np.isfinite(restriction_values)):
-            raise ValueError("Projection strategy restriction must contain only finite real values")
+    restriction = _materialize_dense_preserving_coordinates(restriction)
+    restriction_values = np.asarray(restriction.values)
+    if np.iscomplexobj(restriction_values) or not np.all(np.isfinite(restriction_values)):
+        raise ValueError("Projection strategy restriction must contain only finite real values")
     return replace(projection, restriction=restriction, prolongation=prolongation)
-
-
-def _reaxis_builtin_projection(
-    projection: _PreserveBucketProjection,
-    *,
-    native_dims: tuple[str, ...],
-    state_dim: str,
-    state_column_dim: str,
-) -> _PreserveBucketProjection:
-    """Rebuild trusted built-in product columns on the globally safe axis."""
-    assert projection.state_covariance is not None
-    assert projection.covariance_restriction_transpose is not None
-    old_column_dim = next(dim for dim in projection.state_covariance.dims if dim != state_dim)
-    if old_column_dim == state_column_dim:
-        return projection
-    state_covariance = xr.DataArray(
-        projection.state_covariance.data,
-        dims=(state_dim, state_column_dim),
-        coords={
-            str(name): coordinate
-            for name, coordinate in projection.state_covariance.coords.items()
-            if set(coordinate.dims).issubset({state_dim})
-        },
-        attrs=projection.state_covariance.attrs,
-        name=projection.state_covariance.name,
-    ).assign_coords(
-        renamed_column_coordinates(
-            projection.prolongation,
-            row_dim=state_dim,
-            column_dim=state_column_dim,
-        )
-    )
-    b_pi_t = xr.DataArray(
-        projection.covariance_restriction_transpose.data,
-        dims=(*native_dims, state_column_dim),
-        coords={
-            str(name): coordinate
-            for name, coordinate in projection.covariance_restriction_transpose.coords.items()
-            if set(coordinate.dims).issubset(native_dims)
-        },
-        attrs=projection.covariance_restriction_transpose.attrs,
-        name=projection.covariance_restriction_transpose.name,
-    ).assign_coords(
-        renamed_column_coordinates(
-            projection.prolongation,
-            row_dim=state_dim,
-            column_dim=state_column_dim,
-        )
-    )
-    return replace(
-        projection,
-        state_covariance=state_covariance,
-        covariance_restriction_transpose=b_pi_t,
-    )
-
-
-def _validate_external_cached_products(
-    projection: RetainedProjection,
-    *,
-    computed_b_pi_t: xr.DataArray,
-    computed_state_covariance: xr.DataArray,
-) -> None:
-    """Independently validate optional products supplied by external strategies."""
-    candidates = (
-        (
-            "covariance_restriction_transpose",
-            projection.covariance_restriction_transpose,
-            computed_b_pi_t,
-        ),
-        ("state_covariance", projection.state_covariance, computed_state_covariance),
-    )
-    for name, cached, computed in candidates:
-        if cached is None:
-            continue
-        cached_values = np.asarray(to_dense(cached).compute().values)
-        computed_values = np.asarray(computed.values)
-        if (
-            cached_values.shape != computed_values.shape
-            or np.iscomplexobj(cached_values)
-            or not np.all(np.isfinite(cached_values))
-            or not np.allclose(cached_values, computed_values, rtol=1e-10, atol=1e-12)
-        ):
-            raise ValueError(
-                f"Projection strategy supplied inconsistent cached {name}; "
-                "it does not match the independently computed covariance product"
-            )
 
 
 def _require_compatible_axis_coordinates(
