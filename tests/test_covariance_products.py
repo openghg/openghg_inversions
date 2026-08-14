@@ -137,6 +137,15 @@ def test_preserve_bucket_strategy_derives_compatible_restriction() -> None:
     )
 
 
+def test_retained_projection_public_contract_contains_only_pi_u_and_strategy() -> None:
+    """External projection results expose only restriction, prolongation, and strategy."""
+    assert tuple(RetainedProjection.__dataclass_fields__) == (
+        "restriction",
+        "prolongation",
+        "strategy",
+    )
+
+
 def test_products_match_dense_oracle_and_coherent_forward_model() -> None:
     """C_alpha, H_alpha, H B Pi.T, and H B H.T match dense coherent oracles."""
     covariance, basis_operator, h, dense_b = _problem()
@@ -255,11 +264,16 @@ def test_dense_batching_preallocates_instead_of_concatenating(
     """Dense observation batching avoids the former xr.concat block-assembly path."""
     covariance, basis_operator, h, _ = _problem()
 
-    def reject_concat(*args: object, **kwargs: object) -> None:
-        """Fail if the former all-block concatenation path is used."""
-        raise AssertionError(f"unexpected xr.concat call: {args!r}, {kwargs!r}")
+    original_concat = xr.concat
 
-    monkeypatch.setattr(xr, "concat", reject_concat)
+    def reject_observation_concat(*args: object, **kwargs: object):
+        """Allow state blocking but fail on former observation block assembly."""
+        dim = kwargs.get("dim")
+        if dim in {"observation", "observation_cov"}:
+            raise AssertionError(f"unexpected observation xr.concat call: {args!r}, {kwargs!r}")
+        return original_concat(*args, **kwargs)
+
+    monkeypatch.setattr(xr, "concat", reject_observation_concat)
 
     products = _project(
         covariance,
@@ -370,17 +384,27 @@ def test_diagonal_observation_covariance_rejects_overflow() -> None:
             )
 
 
-def test_diagonal_observation_covariance_rejects_materially_negative_values(
+def test_diagonal_observation_covariance_uses_per_observation_negative_tolerance(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The diagonal view rejects covariance actions producing negative variance."""
+    """An unrelated huge positive variance cannot make negative one acceptable."""
     covariance, basis_operator, h, _ = _problem()
+    original_apply = type(covariance).apply
 
-    def negative_apply(self, rhs):
-        """Return a deliberately non-positive covariance action."""
-        return -rhs
+    def mixed_scale_apply(self, rhs):
+        """Return observation variances of approximately 1e20, -1, and 1."""
+        rhs_dim = next(dim for dim in rhs.dims if dim not in covariance.native_dims)
+        if not str(rhs_dim).startswith("observation"):
+            return original_apply(self, rhs)
+        squared_norm = (rhs * rhs).sum(dim=list(covariance.native_dims))
+        target = xr.DataArray(
+            [1e20, -1.0, 1.0],
+            dims=rhs_dim,
+            coords={rhs_dim: rhs.coords[rhs_dim]},
+        )
+        return rhs * (target / squared_norm)
 
-    monkeypatch.setattr(type(covariance), "apply", negative_apply)
+    monkeypatch.setattr(type(covariance), "apply", mixed_scale_apply)
 
     with pytest.raises(ValueError, match="negative|nonnegative|diagonal"):
         _project(
@@ -389,6 +413,42 @@ def test_diagonal_observation_covariance_rejects_materially_negative_values(
             h,
             observation_covariance="diagonal",
         )
+
+
+def test_diagonal_observation_covariance_allows_tiny_local_roundoff(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A tiny negative diagonal within its local numerical scale is tolerated."""
+    covariance, basis_operator, h, _ = _problem()
+    original_apply = type(covariance).apply
+
+    def roundoff_apply(self, rhs):
+        """Create one tiny negative through cancellation of order-one terms."""
+        rhs_dim = next(dim for dim in rhs.dims if dim not in covariance.native_dims)
+        if not str(rhs_dim).startswith("observation"):
+            return original_apply(self, rhs)
+        result = xr.zeros_like(rhs)
+        rhs_values = np.asarray(rhs.values)
+        result_values = np.asarray(result.values)
+        result_values[..., 0] = rhs_values[..., 0]
+        result_values[..., 2] = rhs_values[..., 2]
+        middle_rhs = rhs_values[..., 1].reshape(-1)
+        middle_result = result_values[..., 1].reshape(-1)
+        middle_result[0] = 1.0 / middle_rhs[0]
+        middle_result[1] = (-1.0 - 1e-14) / middle_rhs[1]
+        return result
+
+    monkeypatch.setattr(type(covariance), "apply", roundoff_apply)
+
+    products = _project(
+        covariance,
+        basis_operator,
+        h,
+        observation_covariance="diagonal",
+    )
+
+    assert products.native_observation_covariance.values[1] == 0.0
+    assert products.native_observation_covariance.attrs["diagonal_nonnegative"] is True
 
 
 def test_lazy_sensitivity_is_rejected_at_explicit_materialization_boundary() -> None:
@@ -583,7 +643,7 @@ def test_square_products_preserve_specialized_indexes_and_coordinate_attrs(
 def test_product_kernel_avoids_throwaway_covariance_application(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Covariance application occurs only for the two real observation RHS blocks."""
+    """Covariance applies only to one Pi block and two observation RHS blocks."""
     covariance, basis_operator, h, _ = _problem()
     original_apply = type(covariance).apply
     calls = 0
@@ -598,7 +658,7 @@ def test_product_kernel_avoids_throwaway_covariance_application(
 
     _project(covariance, basis_operator, h, observation_batch_size=2)
 
-    assert calls == 2
+    assert calls == 3
 
 
 def test_each_dense_matrix_diagnostic_uses_one_eigendecomposition(
@@ -708,77 +768,6 @@ def test_false_valued_structural_strategy_is_invoked() -> None:
 
     assert invoked
     assert products.strategy == "false_valued"
-
-
-def test_external_strategy_rejects_forged_cached_products() -> None:
-    """Untrusted zero C_alpha and B Pi.T cannot bypass products derived from Pi and B."""
-    covariance, basis_operator, h, _ = _problem()
-
-    class ForgedCacheStrategy:
-        """Return valid Pi/U alongside coherent-looking but zero cached products."""
-
-        def projection(self, covariance, basis_prolongation, *, native_dims, state_dim):
-            """Forge both optional cached products while retaining a valid Pi/U pair."""
-            valid = PreserveBucketProlongation().projection(
-                covariance,
-                basis_prolongation,
-                native_dims=native_dims,
-                state_dim=state_dim,
-            )
-            assert valid.state_covariance is not None
-            assert valid.covariance_restriction_transpose is not None
-            return RetainedProjection(
-                valid.restriction,
-                valid.prolongation,
-                "forged_cache",
-                state_covariance=xr.zeros_like(valid.state_covariance),
-                covariance_restriction_transpose=xr.zeros_like(valid.covariance_restriction_transpose),
-            )
-
-    with pytest.raises(ValueError, match="cached|C_alpha|B Pi|covariance"):
-        _project(covariance, basis_operator, h, strategy=ForgedCacheStrategy())
-
-
-@pytest.mark.parametrize("cache_mode", ["valid", "scaled-b-pi-t"])
-def test_external_strategy_cached_products_are_independently_validated(cache_mode: str) -> None:
-    """Valid external caches are accepted while a coherently scaled B Pi.T is rejected."""
-    covariance, basis_operator, h, _ = _problem()
-
-    class CachedStrategy:
-        """Return built-in Pi/U with externally supplied cached products."""
-
-        def projection(self, covariance, basis_prolongation, *, native_dims, state_dim):
-            """Supply either exact caches or a scaled covariance action cache."""
-            valid = PreserveBucketProlongation().projection(
-                covariance,
-                basis_prolongation,
-                native_dims=native_dims,
-                state_dim=state_dim,
-            )
-            assert valid.state_covariance is not None
-            assert valid.covariance_restriction_transpose is not None
-            b_pi_t = valid.covariance_restriction_transpose
-            if cache_mode == "scaled-b-pi-t":
-                b_pi_t = 2.0 * b_pi_t
-            return RetainedProjection(
-                valid.restriction,
-                valid.prolongation,
-                f"external_{cache_mode}",
-                state_covariance=valid.state_covariance,
-                covariance_restriction_transpose=b_pi_t,
-            )
-
-    if cache_mode == "scaled-b-pi-t":
-        with pytest.raises(ValueError, match="cached|B Pi|covariance"):
-            _project(covariance, basis_operator, h, strategy=CachedStrategy())
-    else:
-        expected = _project(covariance, basis_operator, h)
-        actual = _project(covariance, basis_operator, h, strategy=CachedStrategy())
-        xr.testing.assert_allclose(actual.state_covariance, expected.state_covariance)
-        xr.testing.assert_allclose(
-            actual.observation_state_cross_covariance,
-            expected.observation_state_cross_covariance,
-        )
 
 
 @pytest.mark.parametrize("coordinate_role", ["state", "native"])
