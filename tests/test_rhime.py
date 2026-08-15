@@ -6929,17 +6929,65 @@ def test_run_rhime_multisector_api_smoke(
 
 
 @pytest.mark.rhime_contract
-def test_cli_run_rhime_passes_config_and_overrides(monkeypatch, tmp_path: Path) -> None:
-    """Forward run-rhime CLI dates, output path, and JSON overrides."""
+def test_cli_run_rhime_passes_config_and_overrides(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Merge a real config with winning CLI values across RHIME pipeline seams."""
     config_file = tmp_path / "rhime.ini"
-    config_file.write_text('[RHIME.OUTPUT]\noutput_name = "test"\n', encoding="utf-8")
-    seen = {}
+    config_file.write_text(
+        """
+[INPUT.MEASUREMENTS]
+species = "co2"
+sites = ["MHD"]
+averaging_period = ["2h"]
+start_date = "2018-01-01"
+end_date = "2018-01-02"
 
-    def fake_run_rhime(*, config_file, **kwargs):
-        seen["config_file"] = config_file
-        seen["kwargs"] = kwargs
+[INPUT.STORES]
+bc_store = "config-bc-store"
 
-    monkeypatch.setattr("openghg_inversions.rhime.run_rhime", fake_run_rhime)
+[INPUT.PRIORS]
+domain = "CONFIG-DOMAIN"
+flux_sources = ["config-source"]
+
+[INPUT.BASIS_CASE]
+basis_algorithm = "quadtree"
+
+[RHIME.PDF]
+x_prior = {"pdf": "uniform", "lower": 0.5, "upper": 1.5}
+
+[RHIME.ITERATIONS]
+draws = 17
+
+[RHIME.OUTPUT]
+output_path = "config-output"
+output_name = "config-name"
+output_format = "inv_out"
+""",
+        encoding="utf-8",
+    )
+    prepared = RhimePreparedInputs(
+        inv_inputs=_minimal_output_inv_inputs(),
+        basis_functions=_fake_basis_functions(),
+        site_metadata=_prepared_site_metadata(),
+    )
+    seen: dict[str, Any] = {}
+
+    def fake_prepare_rhime_inputs(**kwargs: Any) -> RhimePreparedInputs:
+        """Capture post-merge preparation arguments and return minimal inputs."""
+        seen["preparation"] = kwargs
+        return prepared
+
+    setattr(fake_prepare_rhime_inputs, "__signature__", inspect.signature(prepare_rhime_inputs))
+
+    def fake_execute_prepared_rhime(**kwargs: Any) -> RhimeResult:
+        """Capture the model, sampler, and output specs after config merging."""
+        seen["execution"] = kwargs
+        return cast(RhimeResult, SimpleNamespace())
+
+    monkeypatch.setattr(rhime_module, "prepare_rhime_inputs", fake_prepare_rhime_inputs)
+    monkeypatch.setattr(rhime_module, "_execute_prepared_rhime", fake_execute_prepared_rhime)
 
     main(
         [
@@ -6951,15 +6999,48 @@ def test_cli_run_rhime_passes_config_and_overrides(monkeypatch, tmp_path: Path) 
             "--output-path",
             str(tmp_path),
             "--kwargs",
-            '{"draws": 1}',
+            (
+                '{"species": "ch4", "sites": ["TAC"], '
+                '"averaging_period": ["1h"], "domain": "DIRECT-DOMAIN", '
+                '"flux_sources": ["direct-source"], "basis_algorithm": "weighted", '
+                '"x_prior": {"pdf": "normal", "mu": 1.25, "sigma": 0.125}, '
+                '"draws": 7, "output_name": "direct-name", "output_format": "none"}'
+            ),
         ]
     )
 
-    assert seen["config_file"] == str(config_file)
-    assert seen["kwargs"]["start_date"] == "2019-01-01"
-    assert seen["kwargs"]["end_date"] == "2019-01-02"
-    assert seen["kwargs"]["output_path"] == str(tmp_path)
-    assert seen["kwargs"]["draws"] == 1
+    preparation = seen["preparation"]
+    assert preparation["species"] == "ch4"
+    assert preparation["sites"] == ["TAC"]
+    assert preparation["averaging_period"] == ["1h"]
+    assert preparation["domain"] == "DIRECT-DOMAIN"
+    assert preparation["start_date"] == "2019-01-01"
+    assert preparation["end_date"] == "2019-01-02"
+    assert preparation["flux_sources"] == ["direct-source"]
+    assert preparation["basis_algorithm"] == "weighted"
+    assert preparation["bc_store"] == "config-bc-store"
+    assert preparation["output_name"] == "direct-name"
+
+    execution = seen["execution"]
+    assert execution["prepared"] is prepared
+    assert execution["multisector"] is False
+    run_spec = execution["run_spec"]
+    assert run_spec.start_date == "2019-01-01"
+    assert run_spec.end_date == "2019-01-02"
+    assert run_spec.sites == ("TAC",)
+    assert run_spec.averaging_period == ("1h",)
+    assert run_spec.model.species == "ch4"
+    assert run_spec.model.domain == "DIRECT-DOMAIN"
+    assert run_spec.model.sectors[0].flux_source == "direct-source"
+    assert run_spec.model.sectors[0].x_prior == {
+        "pdf": "normal",
+        "mu": 1.25,
+        "sigma": 0.125,
+    }
+    assert execution["sampler"].draws == 7
+    assert run_spec.output.output_path == str(tmp_path)
+    assert run_spec.output.output_name == "direct-name"
+    assert run_spec.output.output_format == "none"
 
 
 @pytest.mark.rhime_contract

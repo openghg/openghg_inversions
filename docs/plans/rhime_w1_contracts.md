@@ -21,7 +21,7 @@ name the base node; every parameter case is selected by the marker.
 | --- | --- |
 | Successful single-sector acquisition, scientific stage/timing order, distinctive Normal prior parameters and state dimension, modern in-memory output, filename, and serialized round-trip | `tests/test_rhime.py::test_run_rhime_api_smoke` |
 | Successful source-resolved multi-sector acquisition, sector priors, model output, and in-memory diagnostics | `tests/test_rhime.py::test_run_rhime_multisector_api_smoke` |
-| Standard CLI forwarding of config, dates, path, and JSON overrides | `tests/test_rhime.py::test_cli_run_rhime_passes_config_and_overrides` |
+| Standard CLI parses a real config, applies keyword-over-config precedence, and routes winning scientific, model, sampler, and output values through the runner | `tests/test_rhime.py::test_cli_run_rhime_passes_config_and_overrides` |
 | Multi-sector CLI forwarding of its configuration unchanged | `tests/test_rhime.py::test_cli_run_rhime_multisector_passes_config` |
 | Config normalization and early unknown-parameter failure | `tests/test_rhime.py::test_rhime_normalises_legacy_output_format_aliases`; `tests/test_rhime.py::test_run_rhime_rejects_unknown_parameter_before_data_preparation` |
 | Standard and source-resolved prepared layouts | `tests/test_rhime.py::test_prepare_rhime_inputs_single_sector_reloads_merged_data`; `tests/test_rhime.py::test_prepare_rhime_inputs_multisector_keeps_source_dimension` |
