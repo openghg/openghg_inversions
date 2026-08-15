@@ -822,8 +822,20 @@ class _SiteOptions:
 
 
 @dataclass
-class _MergedInversionData:
-    """Merged data and complete site-aligned metadata shared by preparation paths."""
+class RhimeMergedData:
+    """Merged RHIME data and complete site-aligned metadata between stages.
+
+    Args:
+        fp_all: Merged per-site datasets plus shared flux, boundary-condition,
+            and calibration entries.
+        site_options: Complete site-aligned acquisition options retained after
+            retrieval or filtering.
+
+    Notes:
+        This is a supported orchestration handoff. Its datasets remain
+        backend-neutral and may be Dask-backed; later stages must treat them as
+        borrowed.
+    """
 
     fp_all: dict
     site_options: _SiteOptions
@@ -837,6 +849,11 @@ class _MergedInversionData:
     def averaging_period(self) -> tuple[str | None, ...]:
         """Retained averaging periods aligned to :attr:`sites`."""
         return self.site_options.averaging_period
+
+    @property
+    def platform(self) -> tuple[str | None, ...]:
+        """Retained observation platforms aligned to :attr:`sites`."""
+        return self.site_options.platform
 
 
 def _drop_sites_missing_from_loaded_data(
@@ -1037,7 +1054,7 @@ def _prepare_merged_data(
     merged_data_dir: str | None = None,
     merged_data_name: str | None = None,
     flux_non_finite_check: FluxNonFiniteCheck = "lazy",
-) -> _MergedInversionData:
+) -> RhimeMergedData:
     """Gather or reload merged data and align site metadata.
 
     ``flux_sources`` contains modern OpenGHG flux ``source`` values. This
@@ -1162,7 +1179,7 @@ def _prepare_merged_data(
                     warn=flux_non_finite_check == "count",
                 )
 
-    return _MergedInversionData(
+    return RhimeMergedData(
         fp_all=fp_all,
         site_options=site_options,
     )
@@ -1245,7 +1262,7 @@ def _validate_multisector_sensitivity_sources(
 
 def _rhime_site_data_from_basis_functions(
     *,
-    merged: _MergedInversionData,
+    merged: RhimeMergedData,
     basis_functions: BasisFunctions,
     domain: str,
     split_by_sectors: bool,
@@ -1314,9 +1331,9 @@ def _rhime_site_data_from_basis_functions(
 
 def _filter_merged_inversion_data(
     *,
-    merged: _MergedInversionData,
+    merged: RhimeMergedData,
     filters: Any,
-) -> _MergedInversionData:
+) -> RhimeMergedData:
     """Filter merged RHIME data as a separate pre-basis preparation stage.
 
     Args:
@@ -1343,7 +1360,7 @@ def _filter_merged_inversion_data(
         filters=filters,
     )
     fp_all = _select_fp_all_sites({**merged.fp_all, **fp_data}, site_options.sites)
-    return _MergedInversionData(fp_all=fp_all, site_options=site_options)
+    return RhimeMergedData(fp_all=fp_all, site_options=site_options)
 
 
 def prepare_fixedbasis_inversion_data(
