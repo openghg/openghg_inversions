@@ -172,21 +172,17 @@ def test_fixedbasis_params_to_rhime_preserves_explicit_inversion_output_save(tmp
 
 @pytest.mark.rhime_contract
 def test_run_hbmcmc_main_routes_to_run_rhime(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """Route legacy CLI parameters through run_rhime with legacy outputs."""
+    """Route legacy CLI parameters through run_rhime and copy the effective config."""
     config_file = tmp_path / "hbmcmc.ini"
     output_path = tmp_path / "outputs"
     _fixedbasis_config(config_file)
+    original_config = config_file.read_text(encoding="utf-8")
     seen: dict[str, Any] = {}
 
-    def fake_copy_config_file(config_file_arg: str, param: dict[str, Any], **command_line: Any) -> None:
-        seen["copy_config_file"] = config_file_arg
-        seen["copy_param"] = param
-        seen["copy_command_line"] = command_line
-
     def fake_run_rhime(**kwargs: Any) -> None:
+        """Capture translated keyword arguments without running an inversion."""
         seen["run_rhime_kwargs"] = kwargs
 
-    monkeypatch.setattr(run_hbmcmc.output, "copy_config_file", fake_copy_config_file)
     monkeypatch.setattr(run_hbmcmc, "run_rhime", fake_run_rhime)
 
     run_hbmcmc.main(
@@ -202,10 +198,14 @@ def test_run_hbmcmc_main_routes_to_run_rhime(monkeypatch: pytest.MonkeyPatch, tm
         ]
     )
 
-    assert seen["copy_config_file"] == str(config_file)
-    assert seen["copy_command_line"]["start_date"] == "2020-01-01"
-    assert seen["copy_command_line"]["end_date"] == "2020-02-01"
-    assert seen["copy_command_line"]["outputpath"] == str(output_path)
+    copied_config = output_path / "CH4_EUROPE_legacy_run_2020-01-01.ini"
+    expected_config = (
+        original_config.replace('start_date = "2019-01-01"', "start_date = '2020-01-01'")
+        .replace('end_date = "2019-01-02"', "end_date = '2020-02-01'")
+        .replace('outputpath = "out"', f"outputpath = '{output_path}'")
+        .replace("nchain = 3", "nchain = 2")
+    )
+    assert copied_config.read_text(encoding="utf-8") == expected_config
     assert seen["run_rhime_kwargs"]["start_date"] == "2020-01-01"
     assert seen["run_rhime_kwargs"]["end_date"] == "2020-02-01"
     assert seen["run_rhime_kwargs"]["output_path"] == str(output_path)

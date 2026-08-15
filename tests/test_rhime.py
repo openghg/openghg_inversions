@@ -5687,12 +5687,14 @@ def test_make_multisector_output_bundle_returns_modern_inv_out() -> None:
     assert bundle.outputs["inversion_output"] is bundle.inv_out
 
 
+@pytest.mark.rhime_contract
 def test_make_multisector_output_bundle_builds_latest_paris_flux(
     europe_country_file: Path,
     fake_multisector_basis_functions_matching_country_grid: Callable[..., BasisFunctions],
     multisector_postprocessing_inv_out: Callable[..., InversionOutput],
+    tmp_path: Path,
 ) -> None:
-    """Multi-sector PARIS output builds explicit latest total and sector flux output."""
+    """Serialize real multi-sector PARIS flux and sector diagnostics products."""
     sectors = (
         SectorSpec(
             name="FF",
@@ -5710,6 +5712,7 @@ def test_make_multisector_output_bundle_builds_latest_paris_flux(
     model_spec = RhimeModelSpec(species="ch4", domain="EUROPE", sectors=sectors)
     output_spec = RhimeOutputSpec(
         output_format="paris",
+        output_path=str(tmp_path),
         output_name="test",
         save_inversion_output=False,
         paris_postprocessing_kwargs={
@@ -5758,8 +5761,62 @@ def test_make_multisector_output_bundle_builds_latest_paris_flux(
     assert "flux_ocean_posterior" in paris_flux
     assert tuple(paris_flux.sector.values) == ("ff", "ocean")
 
+    paris_flux_path = Path(bundle.output_metadata["paris_flux_path"])
+    diagnostics_path = Path(bundle.output_metadata["sector_flux_diagnostics_path"])
+    assert paris_flux_path.exists()
+    assert diagnostics_path.exists()
+    with xr.open_dataset(paris_flux_path) as reloaded_paris_flux:
+        assert "flux_total_posterior" in reloaded_paris_flux
+        assert "flux_ff_posterior" in reloaded_paris_flux
+        assert "flux_ocean_posterior" in reloaded_paris_flux
+    with xr.open_dataset(diagnostics_path) as reloaded_diagnostics:
+        assert "flux_ff_posterior_mean" in reloaded_diagnostics
+        assert "flux_ocean_posterior_mean" in reloaded_diagnostics
+        assert "flux_total_posterior_mean" in reloaded_diagnostics
+
 
 @pytest.mark.rhime_contract
+def test_default_model_inversion_output_save_load_roundtrip(tmp_path: Path) -> None:
+    """Round-trip default-model metadata, trace attrs, inputs, and retained basis."""
+    model_spec, output_spec, run_spec = _minimal_output_specs()
+    prepared = RhimePreparedInputs(
+        inv_inputs=_minimal_output_inv_inputs(),
+        basis_functions=_fake_basis_functions(artifact_source="unit-test"),
+        site_metadata=_prepared_site_metadata(),
+    )
+    idata = _minimal_output_idata()
+    idata.attrs["burn"] = 1000
+    cast(Any, idata).posterior.attrs["burn"] = 1000
+    bundle = rhime_outputs.make_standard_output_bundle(
+        output_spec=output_spec,
+        run_spec=run_spec,
+        model_spec=model_spec,
+        idata=idata,
+        prepared=prepared,
+        country_file=None,
+    )
+    assert bundle.inv_out is not None
+
+    output_file = tmp_path / "default_model_inv_out.nc"
+    bundle.inv_out.save(output_file)
+    reloaded = InversionOutput.load(output_file)
+
+    assert reloaded.species == "ch4"
+    assert reloaded.domain == "EUROPE"
+    assert reloaded.run_metadata["basis_artifact_source"] == "unit-test"
+    assert reloaded.provenance["basis_representation"] == "operator-backed"
+    assert reloaded.output_metadata["output_format"] == "inv_out"
+    assert reloaded.model_metadata["builder_strategy"] == "concrete"
+    assert reloaded.trace.attrs["burn"] == 1000
+    assert cast(Any, reloaded.trace).posterior.attrs["burn"] == 1000
+    xr.testing.assert_identical(reloaded.inv_inputs, prepared.inv_inputs)
+    xr.testing.assert_identical(reloaded.basis_functions.flux, prepared.basis_functions.flux)
+    xr.testing.assert_equal(
+        reloaded.basis_functions.operator.basis_matrix,
+        prepared.basis_functions.operator.basis_matrix,
+    )
+
+
 def test_modern_inversion_output_save_load_roundtrip(tmp_path: Path) -> None:
     """Modern output preserves January annual flux metadata for a June run."""
     model_spec, output_spec, _ = _minimal_output_specs()
@@ -6197,8 +6254,9 @@ def test_standard_postprocessing_rejects_multisector_outputs() -> None:
         basic_output(inv_out)
 
 
+@pytest.mark.rhime_contract
 def test_basic_output_processes_modern_output(europe_country_file: Path) -> None:
-    """Real basic postprocessing accepts modern output directly."""
+    """Produce key observation, error, predictive, flux, and country variables."""
     from openghg_inversions.postprocessing.make_outputs import basic_output
 
     outputs = basic_output(
@@ -6330,8 +6388,9 @@ def test_paris_concentration_column_prior_factor_is_added_to_totals_not_bc(europ
     assert float(conc_outputs["Yobs_prior_upper_level_factor"].squeeze()) == pytest.approx(0.3 * units)
 
 
+@pytest.mark.rhime_contract
 def test_latest_paris_output_processes_modern_output(europe_country_file: Path, tmp_path: Path) -> None:
-    """Explicit latest PARIS output uses the new concentration and flux templates."""
+    """Validate selected latest-PARIS schema fields and serialized dtypes."""
     from openghg_inversions.postprocessing.make_paris_outputs import (
         make_paris_outputs,
     )
@@ -6479,7 +6538,6 @@ def test_latest_paris_concentration_fills_missing_bc_with_nan(europe_country_fil
         assert np.isnan(conc_outputs[name].values).all()
 
 
-@pytest.mark.rhime_contract
 def test_standard_basic_output_uses_modern_postprocessing_without_legacy_adapter(monkeypatch) -> None:
     """RHIME basic postprocessing consumes modern output without legacy adapters."""
     model_spec, output_spec, run_spec = _minimal_output_specs(output_format="basic")
@@ -6518,7 +6576,6 @@ def test_standard_basic_output_uses_modern_postprocessing_without_legacy_adapter
     assert "basic" in bundle.outputs
 
 
-@pytest.mark.rhime_contract
 def test_standard_paris_output_uses_modern_postprocessing_without_legacy_adapter(monkeypatch) -> None:
     """RHIME PARIS postprocessing consumes modern output without legacy adapters."""
     model_spec, output_spec, run_spec = _minimal_output_specs(output_format="paris")
@@ -6573,10 +6630,13 @@ def test_standard_paris_output_uses_modern_postprocessing_without_legacy_adapter
 
 @pytest.mark.rhime_contract
 def test_standard_legacy_output_uses_modern_inversion_output(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    europe_country_file: Path,
+    tmp_path: Path,
 ) -> None:
-    """RHIME legacy output is formatted from modern InversionOutput."""
-    model_spec, output_spec, run_spec = _minimal_output_specs(output_format="legacy")
+    """Create and reload a real legacy product from modern inversion output."""
+    modern_output = _modern_postprocessing_inv_out(europe_country_file)
+    model_spec, _, base_run_spec = _minimal_output_specs(output_format="legacy")
+    model_spec = replace(model_spec, use_bc=False)
     output_spec = RhimeOutputSpec(
         output_format="legacy",
         output_path=str(tmp_path),
@@ -6584,57 +6644,52 @@ def test_standard_legacy_output_uses_modern_inversion_output(
         save_inversion_output=False,
     )
     run_spec = RhimeRunSpec(
-        run_spec.start_date,
-        run_spec.end_date,
-        run_spec.sites,
-        run_spec.averaging_period,
+        base_run_spec.start_date,
+        base_run_spec.end_date,
+        base_run_spec.sites,
+        base_run_spec.averaging_period,
         model_spec,
         output_spec,
     )
+    inv_inputs = modern_output.inv_inputs.assign(
+        sigma_freq_index=("nmeasure", np.zeros(modern_output.inv_inputs.sizes["nmeasure"], dtype=int))
+    )
     prepared = RhimePreparedInputs(
-        inv_inputs=_minimal_output_inv_inputs(),
-        basis_functions=_fake_basis_functions(),
+        inv_inputs=inv_inputs,
+        basis_functions=modern_output.basis_functions,
         site_metadata=_prepared_site_metadata(),
     )
-    captured: dict[str, Any] = {}
-
-    def fail_inferpymc_postprocessouts(**kwargs: Any) -> None:
-        raise AssertionError("run_rhime legacy output must not call inferpymc_postprocessouts")
-
-    def fake_make_legacy_hbmcmc_output(
-        inv_out: InversionOutput,
-        country_file: str | None = None,
-        use_bc: bool = False,
-    ) -> xr.Dataset:
-        captured["inv_out"] = inv_out
-        captured["country_file"] = country_file
-        captured["use_bc"] = use_bc
-        return xr.Dataset({"legacy": ((), 1)})
-
-    monkeypatch.setattr(legacy_mcmc, "inferpymc_postprocessouts", fail_inferpymc_postprocessouts)
-    monkeypatch.setattr(
-        "openghg_inversions.postprocessing.legacy_outputs.make_legacy_hbmcmc_output",
-        fake_make_legacy_hbmcmc_output,
+    idata = cast(Any, az.InferenceData)(
+        **{
+            group: modern_output.trace[group].drop_vars("hx")
+            if group == "constant_data"
+            else modern_output.trace[group]
+            for group in modern_output.trace.groups()
+        }
     )
 
     bundle = rhime_outputs.make_standard_output_bundle(
         output_spec=output_spec,
         run_spec=run_spec,
         model_spec=model_spec,
-        idata=_minimal_output_idata(),
+        idata=idata,
         prepared=prepared,
-        country_file="countries.json",
+        country_file=str(europe_country_file),
     )
 
     assert isinstance(bundle.inv_out, InversionOutput)
-    assert captured["inv_out"] is bundle.inv_out
-    assert captured["country_file"] == "countries.json"
-    assert captured["use_bc"] is True
     assert bundle.output_metadata["postprocessing_input_contract"] == "modern_inversion_output"
     assert "legacy" in bundle.outputs
+    legacy_output = bundle.outputs["legacy"]
+    for variable in ("Yobs", "Ymodmean", "fluxmode", "countrymean", "xtrace", "sigtrace"):
+        assert variable in legacy_output
     expected_path = tmp_path / "legacy_test_ch4_EUROPE_2019-01-01.nc"
     assert expected_path.exists()
     assert bundle.output_metadata["legacy_output_path"] == str(expected_path)
+    with xr.open_dataset(expected_path) as reloaded:
+        assert reloaded.sizes["nmeasure"] == legacy_output.sizes["nmeasure"]
+        assert "fluxmode" in reloaded
+        assert "countrymean" in reloaded
 
 
 def test_save_inferencedata_prefers_h5netcdf(tmp_path: Path) -> None:
@@ -6764,7 +6819,7 @@ def test_run_rhime_api_smoke(
     tmp_path: Path,
     default_bc_basis_directory: Path,
 ) -> None:
-    """Run a custom Normal prior, ordered timings, and serialized-output round-trip."""
+    """Run a custom prior, exact observation metadata, timings, and output round-trip."""
     args = tac_ch4_data_args.copy()
     args.update(
         {
@@ -6818,6 +6873,15 @@ def test_run_rhime_api_smoke(
     assert result.inv_inputs["H"].dims == ("region", "nmeasure")
     assert result.inv_inputs.sizes["region"] == 4
     assert result.inv_inputs.sizes["nmeasure"] == 24
+    assert {
+        name: result.inv_inputs[name].attrs["long_name"]
+        for name in ("mf", "mf_error", "mf_repeatability", "mf_variability")
+    } == {
+        "mf": "mole_fraction_of_methane_in_air",
+        "mf_error": "mole_fraction_of_methane_in_air_error",
+        "mf_repeatability": "mole_fraction_of_methane_in_air_repeatability",
+        "mf_variability": "mole_fraction_of_methane_in_air_variability",
+    }
     nmeasure_index = result.inv_inputs.indexes["nmeasure"]
     assert isinstance(nmeasure_index, pd.MultiIndex)
     assert nmeasure_index.names == ["site", "time"]

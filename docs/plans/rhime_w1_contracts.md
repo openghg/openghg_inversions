@@ -19,7 +19,7 @@ name the base node; every parameter case is selected by the marker.
 
 | Contract | Executable pytest node ID |
 | --- | --- |
-| Successful single-sector acquisition, scientific stage/timing order, distinctive Normal prior parameters and state dimension, modern in-memory output, filename, and serialized round-trip | `tests/test_rhime.py::test_run_rhime_api_smoke` |
+| Successful single-sector acquisition, exact observation `long_name` attributes, scientific stage/timing order, distinctive Normal prior parameters and state dimension, modern in-memory output, filename, and serialized round-trip | `tests/test_rhime.py::test_run_rhime_api_smoke` |
 | Successful source-resolved multi-sector acquisition, sector priors, model output, and in-memory diagnostics | `tests/test_rhime.py::test_run_rhime_multisector_api_smoke` |
 | Standard CLI parses a real config, applies keyword-over-config precedence, and routes winning scientific, model, sampler, and output values through the runner | `tests/test_rhime.py::test_cli_run_rhime_passes_config_and_overrides` |
 | Multi-sector CLI forwarding of its configuration unchanged | `tests/test_rhime.py::test_cli_run_rhime_multisector_passes_config` |
@@ -37,10 +37,11 @@ name the base node; every parameter case is selected by the marker.
 | Case-normalized output naming and the historical derived filename | `tests/test_rhime.py::test_make_output_spec_normalizes_filename_convention_case`; `tests/test_rhime.py::test_derived_output_filename_can_use_legacy_convention` |
 | `none` mode has no output filesystem side effects | `tests/test_rhime.py::test_run_rhime_from_prepared_inputs_defaults_sampler_and_skips_none_output_writes` |
 | Standard and multi-sector modern output-bundle contents | `tests/test_rhime.py::test_make_standard_output_bundle_returns_outputs_without_mutating_result`; `tests/test_rhime.py::test_make_multisector_output_bundle_returns_modern_inv_out` |
-| `basic`, `paris`, and `legacy` select the modern `InversionOutput` adapter | `tests/test_rhime.py::test_standard_basic_output_uses_modern_postprocessing_without_legacy_adapter`; `tests/test_rhime.py::test_standard_paris_output_uses_modern_postprocessing_without_legacy_adapter`; `tests/test_rhime.py::test_standard_legacy_output_uses_modern_inversion_output` |
-| Modern inversion-output schema, provenance, trace metadata, inputs, flux, and retained basis round-trip | `tests/test_rhime.py::test_modern_inversion_output_save_load_roundtrip` |
+| Selected real basic product variables; selected latest-PARIS schema fields, dtypes, covariance shape, and NetCDF reloads; and selected real legacy product variables and NetCDF reload | `tests/test_rhime.py::test_basic_output_processes_modern_output`; `tests/test_rhime.py::test_latest_paris_output_processes_modern_output`; `tests/test_rhime.py::test_standard_legacy_output_uses_modern_inversion_output` |
+| Real multi-sector latest-PARIS total/sector flux variables and sector-diagnostic mean variables, with NetCDF reloads | `tests/test_rhime.py::test_make_multisector_output_bundle_builds_latest_paris_flux` |
+| Default concrete-model inversion-output identity, selected provenance, burn metadata, inputs, flux, and basis-matrix round-trip | `tests/test_rhime.py::test_default_model_inversion_output_save_load_roundtrip` |
 | Standalone trace write, metadata, and serialized measurement coordinates | `tests/test_rhime.py::test_save_inferencedata_preserves_burn_attrs_and_resets_multiindex_coords` |
-| Current `run_hbmcmc.py` translation, config-copy side effect, legacy mode, and filename convention | `tests/test_run_hbmcmc_shim.py::test_run_hbmcmc_main_routes_to_run_rhime` |
+| Selected `run_hbmcmc.py` translation fields, exact config-copy contents, legacy mode, and historical filename convention | `tests/test_run_hbmcmc_shim.py::test_run_hbmcmc_main_routes_to_run_rhime` |
 | Direct current `fixedbasisMCMC(...)` legacy schema, dimensions, values, historical filename, and NetCDF write | `tests/test_postprocessing.py::test_hbmcmc_postprocessing_preserves_expected_vars_attrs_and_coords` |
 | Direct current `fixedbasisMCMC(...)` trace and modern inversion-output paths, dimensions, values, and serialization | `tests/test_postprocessing.py::test_inv_out_and_trace_outputs_preserve_downstream_dims_and_custom_paths` |
 
