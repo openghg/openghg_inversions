@@ -1,6 +1,6 @@
 # RHIME W1 behavioural and usability contracts
 
-- **Status:** Executable characterization baseline for OPE-43
+- **Status:** Complete — merged in PR #590 as `21785585` on 2026-08-15
 - **Scope:** Current public RHIME behaviour only. Production code and future
   customization choices are outside this baseline.
 

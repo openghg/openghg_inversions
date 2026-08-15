@@ -8,6 +8,11 @@
 > become a readable, end-to-end reference workflow with a full-pipeline model
 > variation path that is easy to copy or compose. An explicit legacy execution
 > escape hatch is tracked as short-term user relief.
+>
+> W1 is complete. The active delivery sequence is now W3a (visible
+> orchestration), W2.0 (tested full copy-and-modify runner), W2a (Python-only
+> likelihood callable on `run_rhime`), W2b (cookiecutter-generated downstream
+> package proof), then W4-W7. The detailed P0 plan is authoritative.
 
 This note tracks the near-term refactor sequence for moving from the legacy
 `fixedbasisMCMC` path to the modern `run_rhime` pipeline.
