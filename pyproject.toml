@@ -146,6 +146,7 @@ testpaths = ["tests"]
 markers = [
   "create_frozen: tests that generate/update frozen regression outputs (not run by default)",
   "country_file_smoke: optional real country-file HDF5 backend smoke tests",
+  "rhime_contract: current public RHIME workflow compatibility contracts",
   "slow: tests that take a long time",
 ]
 addopts = "-m 'not create_frozen and not slow'"

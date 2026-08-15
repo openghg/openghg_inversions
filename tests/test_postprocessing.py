@@ -1274,48 +1274,249 @@ def test_paris_postprocessing_compatibility_matches_paris_output_format(
     assert explicit["Yapost"].dims == compat["Yapost"].dims
 
 
+@pytest.mark.rhime_contract
 def test_hbmcmc_postprocessing_preserves_expected_vars_attrs_and_coords(
     mcmc_args,
     tmpdir,
     deterministic_sampler,
 ):
-    """Legacy-style postprocessing keeps its core vars, attrs, and coords."""
+    """Legacy fixedbasis output preserves its schema, values, and historical file."""
     mcmc_args["output_format"] = "hbmcmc_postprocessing"
     mcmc_args["outputpath"] = str(tmpdir)
 
     outputs = fixedbasisMCMC(**mcmc_args)
     assert isinstance(outputs, xr.Dataset)
 
-    expected_vars = [
-        "Yobs",
-        "Yerror",
-        "Yerror_repeatability",
-        "Yerror_variability",
-        "Yapriori",
-        "Ymod68",
-        "country68",
-        "fluxapriori",
-        "basisfunctions",
-    ]
-    for var_name in expected_vars:
-        assert var_name in outputs
-        assert "longname" in outputs[var_name].attrs
+    expected_dims = {
+        "Yobs": ("nmeasure",),
+        "Yerror": ("nmeasure",),
+        "Yerror_repeatability": ("nmeasure",),
+        "Yerror_variability": ("nmeasure",),
+        "min_model_error": ("nmeasure",),
+        "Ytime": ("nmeasure",),
+        "Yapriori": ("nmeasure",),
+        "Ymodmean": ("nmeasure",),
+        "Ymodmedian": ("nmeasure",),
+        "Ymodmode": ("nmeasure",),
+        "Ymod68": ("nmeasure", "nUI"),
+        "Ymod95": ("nmeasure", "nUI"),
+        "Yoffmean": ("nmeasure",),
+        "Yoffmedian": ("nmeasure",),
+        "Yoffmode": ("nmeasure",),
+        "Yoff68": ("nmeasure", "nUI"),
+        "Yoff95": ("nmeasure", "nUI"),
+        "xtrace": ("steps", "nparam"),
+        "sigtrace": ("steps", "nsigma_site", "nsigma_time"),
+        "siteindicator": ("nmeasure",),
+        "sigmafreqindex": ("nmeasure",),
+        "sitenames": ("nsite",),
+        "sitelons": ("nsite",),
+        "sitelats": ("nsite",),
+        "fluxapriori": ("lat", "lon"),
+        "fluxmode": ("lat", "lon", "flux_time"),
+        "scalingmean": ("lat", "lon"),
+        "scalingmode": ("lat", "lon"),
+        "basisfunctions": ("lat", "lon"),
+        "countrymean": ("countrynames",),
+        "countrymedian": ("countrynames",),
+        "countrymode": ("countrynames",),
+        "countrysd": ("countrynames",),
+        "country68": ("countrynames", "nUI"),
+        "country95": ("countrynames", "nUI"),
+        "countryapriori": ("countrynames",),
+        "countrydefinition": ("lat", "lon"),
+        "xsensitivity": ("nmeasure", "nparam"),
+        "YaprioriBC": ("nmeasure",),
+        "YmodmeanBC": ("nmeasure",),
+        "YmodmedianBC": ("nmeasure",),
+        "YmodmodeBC": ("nmeasure",),
+        "Ymod95BC": ("nmeasure", "nUI"),
+        "Ymod68BC": ("nmeasure", "nUI"),
+        "bctrace": ("steps", "nBC"),
+        "bcsensitivity": ("nmeasure", "nBC"),
+    }
+    assert {name: outputs[name].dims for name in outputs.data_vars} == expected_dims
+    assert all("longname" in outputs[name].attrs for name in outputs.data_vars)
 
-    assert outputs["Yobs"].dims == ("nmeasure",)
-    assert outputs["Ymod68"].dims == ("nmeasure", "nUI")
-    assert outputs["country68"].dims == ("countrynames", "nUI")
-    for interval_name in ("Ymod68", "Ymod95", "country68", "country95"):
-        assert np.isfinite(outputs[interval_name].values).sum() == outputs[interval_name].size
-    assert "UInum" in outputs.coords
-    assert "countrynames" in outputs.coords
+    expected_coord_dims = {
+        "nmeasure": ("nmeasure",),
+        "UInum": ("nUI",),
+        "nsite": ("nsite",),
+        "lat": ("lat",),
+        "lon": ("lon",),
+        "flux_time": ("flux_time",),
+        "countrynames": ("countrynames",),
+        "stepnum": ("steps",),
+        "paramnum": ("nparam",),
+        "measurenum": ("nmeasure",),
+        "nsigma_site": ("nsigma_site",),
+        "nsigma_time": ("nsigma_time",),
+        "numBC": ("nBC",),
+    }
+    assert {name: outputs[name].dims for name in outputs.coords} == expected_coord_dims
+
+    inv_inputs = deterministic_sampler[0]["inv_inputs"]
+    assert isinstance(inv_inputs, xr.Dataset)
+    source_observation_vars = {
+        "Yobs": "mf",
+        "Yerror": "mf_error",
+        "Yerror_repeatability": "mf_repeatability",
+        "Yerror_variability": "mf_variability",
+        "min_model_error": "min_error",
+    }
+    for output_name, input_name in source_observation_vars.items():
+        np.testing.assert_allclose(outputs[output_name].values, inv_inputs[input_name].values, rtol=1e-7)
+    np.testing.assert_array_equal(outputs["Ytime"].values, inv_inputs["time"].values)
+    np.testing.assert_array_equal(outputs["siteindicator"].values, inv_inputs["site_indicator"].values)
+    np.testing.assert_array_equal(outputs["sigmafreqindex"].values, inv_inputs["sigma_freq_index"].values)
+    np.testing.assert_array_equal(
+        outputs["sitenames"].values,
+        pd.unique(inv_inputs.indexes["nmeasure"].get_level_values("site")),
+    )
+    assert np.all(np.isnan(outputs[["sitelons", "sitelats"]].to_array().values))
+
+    for coord_name, dim_name in {
+        "nmeasure": "nmeasure",
+        "UInum": "nUI",
+        "nsite": "nsite",
+        "stepnum": "steps",
+        "paramnum": "nparam",
+        "measurenum": "nmeasure",
+        "nsigma_site": "nsigma_site",
+        "nsigma_time": "nsigma_time",
+        "numBC": "nBC",
+    }.items():
+        np.testing.assert_array_equal(outputs[coord_name].values, np.arange(outputs.sizes[dim_name]))
+    np.testing.assert_array_equal(
+        outputs["flux_time"].values,
+        np.array([mcmc_args["start_date"]], dtype="datetime64[ns]"),
+    )
+    assert np.all(np.diff(outputs["lat"].values) > 0)
+    assert np.all(np.diff(outputs["lon"].values) > 0)
+    assert outputs["countrynames"].values[0] == "OCEAN"
+    assert len(np.unique(outputs["countrynames"].values)) == outputs.sizes["countrynames"]
+
+    draw_offsets = np.linspace(-0.1, 0.1, outputs.sizes["steps"])
+    expected_xtrace = 1.0 + draw_offsets[:, None] + 0.01 * np.arange(outputs.sizes["nparam"])[None, :]
+    expected_sigtrace = np.broadcast_to(
+        1.0 + draw_offsets[:, None, None],
+        (outputs.sizes["steps"], outputs.sizes["nsigma_site"], outputs.sizes["nsigma_time"]),
+    )
+    expected_bctrace = 1.0 + 0.5 * draw_offsets[:, None] + 0.01 * np.arange(outputs.sizes["nBC"])[None, :]
+    np.testing.assert_allclose(outputs["xtrace"].values, expected_xtrace, rtol=1e-7)
+    np.testing.assert_allclose(outputs["sigtrace"].values, expected_sigtrace, rtol=1e-7)
+    np.testing.assert_allclose(outputs["bctrace"].values, expected_bctrace, rtol=1e-7)
+
+    emissions_sensitivity = inv_inputs["H"].transpose("nmeasure", "region").values
+    bc_sensitivity = inv_inputs["H_bc"].transpose("nmeasure", "bc_region").values
+    np.testing.assert_allclose(outputs["xsensitivity"].values, emissions_sensitivity, rtol=1e-7)
+    np.testing.assert_allclose(outputs["bcsensitivity"].values, bc_sensitivity, rtol=1e-7)
+
+    expected_posterior_concentration = (
+        expected_xtrace @ emissions_sensitivity.T + expected_bctrace @ bc_sensitivity.T
+    )
+    expected_posterior_bc = expected_bctrace @ bc_sensitivity.T
+    concentration_expectations = {
+        "Yapriori": emissions_sensitivity.sum(axis=1) + bc_sensitivity.sum(axis=1),
+        "Ymodmean": expected_posterior_concentration.mean(axis=0),
+        "Ymodmedian": np.median(expected_posterior_concentration, axis=0),
+        "YaprioriBC": bc_sensitivity.sum(axis=1),
+        "YmodmeanBC": expected_posterior_bc.mean(axis=0),
+        "YmodmedianBC": np.median(expected_posterior_bc, axis=0),
+    }
+    for output_name, expected_values in concentration_expectations.items():
+        np.testing.assert_allclose(outputs[output_name].values, expected_values, rtol=1e-6)
+
+    for offset_name in ("Yoffmean", "Yoffmedian", "Yoffmode", "Yoff68", "Yoff95"):
+        np.testing.assert_array_equal(outputs[offset_name].values, 0.0)
+
+    for hdi68_name, hdi95_name, mean_name, median_name, mode_name in (
+        ("Ymod68", "Ymod95", "Ymodmean", "Ymodmedian", "Ymodmode"),
+        ("Ymod68BC", "Ymod95BC", "YmodmeanBC", "YmodmedianBC", "YmodmodeBC"),
+    ):
+        hdi68 = outputs[hdi68_name].values
+        hdi95 = outputs[hdi95_name].values
+        mean = outputs[mean_name].values
+        median = outputs[median_name].values
+        mode = outputs[mode_name].values
+        assert np.all(np.isfinite([hdi68, hdi95]))
+        assert np.all(hdi68[:, 0] <= hdi68[:, 1])
+        assert np.all(hdi95[:, 0] <= hdi95[:, 1])
+        assert np.all(hdi95[:, 0] <= hdi68[:, 0])
+        assert np.all(hdi68[:, 1] <= hdi95[:, 1])
+        for estimate in (mean, median, mode):
+            assert np.all(hdi95[:, 0] <= estimate)
+            assert np.all(estimate <= hdi95[:, 1])
+
+    country_scalar_names = (
+        "countrymean",
+        "countrymedian",
+        "countrymode",
+        "countrysd",
+        "countryapriori",
+    )
+    assert all(np.all(np.isfinite(outputs[name].values)) for name in country_scalar_names)
+    assert all(np.all(outputs[name].values >= 0.0) for name in country_scalar_names)
+    np.testing.assert_array_equal(outputs["countrymean"].values, outputs["countrymedian"].values)
+    np.testing.assert_array_equal(outputs["countrymean"].values, outputs["countryapriori"].values)
+    country68 = outputs["country68"].values
+    country95 = outputs["country95"].values
+    assert np.all(np.isfinite([country68, country95]))
+    assert np.all(country68 >= 0.0)
+    assert np.all(country95 >= 0.0)
+    assert np.all(country68[:, 0] <= country68[:, 1])
+    assert np.all(country95[:, 0] <= country95[:, 1])
+    assert np.all(country95[:, 0] <= country68[:, 0])
+    assert np.all(country68[:, 1] <= country95[:, 1])
+    assert np.all(country95[:, 0] <= outputs["countrymode"].values)
+    assert np.all(outputs["countrymode"].values <= country95[:, 1])
+
+    basis_values, basis_counts = np.unique(outputs["basisfunctions"].values, return_counts=True)
+    np.testing.assert_array_equal(basis_values, np.arange(outputs.sizes["nparam"]))
+    np.testing.assert_array_equal(basis_counts, [28470, 28665, 28616, 28812])
+    np.testing.assert_array_equal(
+        outputs["scalingmean"].values,
+        (1.0 + 0.01 * outputs["basisfunctions"].values).astype("float32"),
+    )
+    for name in ("fluxapriori", "fluxmode", "scalingmode"):
+        assert np.all(np.isfinite(outputs[name].values))
+    assert np.all(outputs["scalingmode"].values >= 0.0)
+    assert np.all(np.isfinite(outputs["countrydefinition"].values))
+    assert np.all(outputs["countrydefinition"].values >= 0.0)
+    np.testing.assert_array_equal(
+        outputs["countrydefinition"].values,
+        outputs["countrydefinition"].values.astype(int),
+    )
+
+    expected_attrs = {
+        "Start date": mcmc_args["start_date"],
+        "End date": mcmc_args["end_date"],
+        "Convergence": "Unavailable",
+        "Burn in": "0",
+        "Tuning steps": "0",
+        "Number of chains": "1",
+        "Error for each site": "True",
+        "Emissions Prior": "pdf,truncatednormal,mu,1.0,sigma,1.0,lower,0.0",
+        "Model error Prior": "pdf,uniform,lower,0.1,upper,3",
+        "BCs Prior": "pdf,truncatednormal,mu,1.0,sigma,0.1,lower,0.0",
+        "basis_reconstruction_path": "operator-backed",
+        "basis_artifact_source": "generated",
+    }
+    assert {name: outputs.attrs[name] for name in expected_attrs} == expected_attrs
+
+    output_path = Path(tmpdir) / "CH4_EUROPE_test_run_2019-01-01.nc"
+    assert output_path.exists()
+    with xr.open_dataset(output_path) as saved_outputs:
+        xr.testing.assert_identical(saved_outputs.load(), outputs)
 
 
+@pytest.mark.rhime_contract
 def test_inv_out_and_trace_outputs_preserve_downstream_dims_and_custom_paths(
     mcmc_args,
     tmpdir,
     deterministic_sampler,
 ):
-    """Saved trace and inversion output files preserve downstream-facing dims."""
+    """Fixedbasis trace and inversion serialization preserve values and dimensions."""
     trace_path = Path(tmpdir) / "custom_trace.nc"
     inv_out_path = Path(tmpdir) / "custom_inv_out.nc"
     mcmc_args["output_format"] = "inv_out"
@@ -1337,3 +1538,18 @@ def test_inv_out_and_trace_outputs_preserve_downstream_dims_and_custom_paths(
     assert "time" not in inv_out.flux.dims
     if "flux_time" in inv_out.flux.coords:
         assert "flux_time" in inv_out.flux.dims
+
+    saved_trace = az.from_netcdf(trace_path)
+    try:
+        assert saved_trace.posterior["x"].dims == ("chain", "draw", "nx")
+        np.testing.assert_array_equal(
+            saved_trace.posterior["x"].values,
+            inv_out.trace.posterior["x"].values,
+        )
+    finally:
+        saved_trace.close()
+
+    saved_inv_out = InversionOutput.load(inv_out_path)
+    xr.testing.assert_identical(saved_inv_out.inv_inputs, inv_out.inv_inputs)
+    xr.testing.assert_identical(saved_inv_out.trace.posterior["x"], inv_out.trace.posterior["x"])
+    assert isinstance(saved_inv_out.basis_functions, BasisFunctions)
