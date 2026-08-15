@@ -5,6 +5,10 @@ normalizes legacy spelling into the modern spec vocabulary, prepares inversion
 inputs, builds a PyMC model, samples it, and writes requested outputs.
 ``run_rhime_from_prepared_inputs`` starts at the same post-preparation boundary
 for callers that already hold canonical inputs and retained basis metadata.
+The public stage sequence is resolve, prepare, align retained sites,
+materialize model inputs, build, sample, and construct the result. Canonical
+xarray and Dask inputs remain borrowed until the named materialization
+boundary; preparation, sampling, and result stages may perform documented I/O.
 
 Terminology used by the RHIME API:
 
@@ -28,8 +32,8 @@ Terminology used by the RHIME API:
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
-import inspect
 from pathlib import Path
 from typing import Any, cast
 
@@ -39,6 +43,7 @@ import pymc as pm
 import xarray as xr
 
 from openghg_inversions._timing import log_timing, timer_seconds, timer_start
+from openghg_inversions.array_ops import to_dense
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.rhime.outputs import (
     RhimeOutputBundle,
@@ -69,6 +74,12 @@ from openghg_inversions.models import (
 )
 from openghg_inversions.models._rhime_flux import _select_sector_design
 from openghg_inversions.observation_error import resolve_aggregation_error
+from openghg_inversions.observation_error import (
+    AGGREGATION_ERROR_COVARIANCE,
+    AGGREGATION_ERROR_SD,
+    DIAGONAL_RESIDUAL_VARIANCE,
+    LOW_RANK_FACTOR,
+)
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from .builders import (
     RhimeModelBuilder,
@@ -88,11 +99,20 @@ __all__ = [
     "RhimeSampler",
     "RhimeRunSpec",
     "RhimeResult",
+    "build_multisector_rhime_model",
+    "build_standard_rhime_model",
+    "make_multisector_rhime_result",
+    "make_standard_rhime_result",
+    "materialize_rhime_model_inputs",
     "params_from_config",
+    "prepare_rhime_run_inputs",
     "resolve_flux_sources",
+    "resolve_rhime_options",
     "run_rhime",
     "run_rhime_from_prepared_inputs",
     "run_rhime_multisector",
+    "sample_rhime_model",
+    "with_prepared_rhime_sites",
 ]
 
 
@@ -190,24 +210,96 @@ def _apply_output_bundle(result: RhimeResult, bundle: RhimeOutputBundle) -> None
     result.output_metadata.update(bundle.output_metadata)
 
 
-def _make_rhime_runner_setup(
+def resolve_rhime_options(
     *,
-    params: dict[str, Any],
+    params: Mapping[str, Any],
     multisector: bool,
 ) -> rhime_params.RhimeRunnerSetup:
-    """Normalize raw RHIME parameters into specs and preparation arguments."""
-    return rhime_params.make_rhime_runner_setup(
-        params=params,
+    """Resolve raw RHIME options into preparation, model, sampling, and output settings.
+
+    This supported orchestration stage owns normalization and validation only;
+    it performs no data access and retains no caller-owned mappings. The
+    ``multisector`` choice selects the two intentionally different public
+    recipes. The returned setup is the current W2 copy-and-modify handoff and
+    may gain fields through an explicitly documented migration.
+
+    Args:
+        params: Direct Python or configuration-derived RHIME options.
+        multisector: Whether to resolve the multi-sector recipe.
+
+    Returns:
+        Normalized run specification, sampler, and preparation arguments.
+
+    Raises:
+        ValueError: If required, structured, or mode-specific options are
+            invalid.
+    """
+    timing_start = timer_start()
+    setup = rhime_params.make_rhime_runner_setup(params=params, multisector=multisector)
+    log_timing("rhime.runner_setup", timer_seconds(timing_start), multisector=multisector)
+    return setup
+
+
+def prepare_rhime_run_inputs(
+    data_args: Mapping[str, Any],
+    *,
+    multisector: bool,
+) -> RhimePreparedInputs:
+    """Retrieve, filter, basis-transform, and assemble labelled RHIME inputs.
+
+    This supported coarse preparation stage delegates to
+    :func:`prepare_rhime_inputs`, whose implementation visibly owns, in order,
+    merged-data retrieval or reload, observation filtering with retained-site
+    alignment, basis loading or fitting, sensitivity construction, and
+    labelled input assembly. It may read OpenGHG stores or local artifacts,
+    write requested merged-data and basis artifacts, print progress, emit
+    warnings, and eagerly check sensitivity arrays for NaNs. It does not build
+    a PyMC model and does not mutate the supplied mapping. Deeper preparation
+    stages remain private until their ownership contracts are stabilized.
+
+    Args:
+        data_args: Preparation arguments returned by
+            :func:`resolve_rhime_options`.
+        multisector: Recipe identity recorded in timing metadata.
+
+    Returns:
+        Canonical labelled inversion inputs and retained basis metadata.
+    """
+    timing_start = timer_start()
+    prepared = prepare_rhime_inputs(**dict(data_args))
+    log_timing(
+        "rhime.prepare_inputs",
+        timer_seconds(timing_start),
         multisector=multisector,
-        data_param_names=set(inspect.signature(prepare_rhime_inputs).parameters),
+        nmeasure=prepared.inv_inputs.sizes.get("nmeasure"),
+        sites=len(prepared.sites),
+        regions=prepared.inv_inputs.sizes.get("region"),
+        sources=prepared.inv_inputs.sizes.get("source"),
+        basis_source=prepared.basis_artifact_source,
     )
+    return prepared
 
 
-def _run_spec_with_prepared_inputs(
+def with_prepared_rhime_sites(
     run_spec: RhimeRunSpec,
     prepared: RhimePreparedInputs,
 ) -> RhimeRunSpec:
-    """Update run metadata with retained sites from prepared RHIME inputs."""
+    """Return run metadata aligned to sites retained by preparation.
+
+    This supported pure stage owns the handoff from filtered observations to
+    run provenance. It creates a replacement specification, does not mutate
+    either argument, and preserves all non-site settings. It exists for the W2
+    copied-runner surface and will be migrated explicitly if site ownership
+    later moves into a preparation result.
+
+    Args:
+        run_spec: Resolved run metadata before data preparation.
+        prepared: Prepared inputs with authoritative retained-site metadata.
+
+    Returns:
+        A run specification whose sites and averaging periods match
+        ``prepared``.
+    """
     return replace(
         run_spec,
         sites=tuple(prepared.sites),
@@ -261,65 +353,128 @@ def _validate_multisector_basis_layout(
     if any(not coordinates_match for _, _, _, _, coordinates_match in region_layouts):
         details = ", ".join(
             f"sector {sector!r} -> source {source!r}: basis has {basis_count} regions, "
-            f"prepared H has {prepared_count}"
-            + ("" if coordinates_match else " with different coordinates")
+            f"prepared H has {prepared_count}" + ("" if coordinates_match else " with different coordinates")
             for sector, source, basis_count, prepared_count, coordinates_match in region_layouts
         )
         raise ValueError(
-            "Retained source-specific basis state coordinates do not match prepared H; "
-            + details
-            + "."
+            "Retained source-specific basis state coordinates do not match prepared H; " + details + "."
         )
 
 
-def _execute_prepared_rhime(
+_MODEL_INPUT_VARIABLES = (
+    "H",
+    "H_bc",
+    "mf",
+    "mf_error",
+    "min_error",
+    "site_indicator",
+    AGGREGATION_ERROR_SD,
+    AGGREGATION_ERROR_COVARIANCE,
+    LOW_RANK_FACTOR,
+    DIAGONAL_RESIDUAL_VARIANCE,
+)
+
+
+def materialize_rhime_model_inputs(prepared: RhimePreparedInputs) -> xr.Dataset:
+    """Materialize related PyMC input arrays together without mutating preparation.
+
+    This supported backend-boundary stage converts sparse chunk payloads with
+    :func:`to_dense`, computes the model-owned arrays in one xarray operation,
+    and places them in a shallow dataset copy. The canonical prepared dataset,
+    its Dask arrays, and their chunking remain caller-owned and unchanged.
+    Coordinates and non-model variables retain their existing eager or lazy
+    state. This W2 stage is intentionally PyMC-specific; any later ownership
+    migration will preserve a documented compatibility path.
+
+    Args:
+        prepared: Canonical RHIME inputs borrowed from preparation or replay.
+
+    Returns:
+        A dataset copy whose available model input variables are dense and
+        eager, with all other variables shared from ``prepared``.
+    """
+    timing_start = timer_start()
+    inv_inputs = prepared.inv_inputs
+    names = [name for name in _MODEL_INPUT_VARIABLES if name in inv_inputs]
+    dense_inputs = xr.Dataset({name: to_dense(inv_inputs[name]) for name in names}).compute()
+    model_inputs = inv_inputs.copy(
+        deep=False,
+        data={
+            name: dense_inputs[name].data if name in dense_inputs else variable.data
+            for name, variable in inv_inputs.data_vars.items()
+        },
+    )
+    log_timing(
+        "rhime.model_inputs_materialize",
+        timer_seconds(timing_start),
+        variables=names,
+    )
+    return model_inputs
+
+
+def _validated_custom_model_build(
+    model_builder: RhimeModelBuilder,
+    *,
+    context: RhimeModelBuilderContext,
+) -> RhimeModelBuildResult:
+    """Call and validate an advanced complete-model builder."""
+    model_build_result = model_builder(context)
+    if not isinstance(model_build_result, RhimeModelBuildResult):
+        raise TypeError(
+            "A RHIME model builder must return `RhimeModelBuildResult`; "
+            f"got {type(model_build_result).__name__}."
+        )
+    validate_model_build_result(model_build_result, context=context)
+    return model_build_result
+
+
+def build_standard_rhime_model(
     *,
     prepared: RhimePreparedInputs,
+    model_inputs: xr.Dataset,
     run_spec: RhimeRunSpec,
-    sampler: RhimeSampler,
-    multisector: bool,
     model_builder: RhimeModelBuilder | None = None,
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
-) -> RhimeResult:
-    """Build, sample, and produce outputs from prepared RHIME inputs."""
-    run_spec = _run_spec_with_prepared_inputs(run_spec, prepared)
+) -> RhimeModelBuildResult:
+    """Build and describe a standard single-sector RHIME PyMC model.
 
-    build_and_sample_start = timer_start()
+    This supported stage owns the standard graph choice and its output-role
+    description. Built-in construction consumes the eager dataset returned by
+    :func:`materialize_rhime_model_inputs`; an advanced complete-model builder
+    retains the historical context containing canonical ``prepared`` inputs.
+    It creates a PyMC graph but performs no sampling or output writes. The
+    returned manifest is stage-owned, so copied runners need not construct one.
+
+    Args:
+        prepared: Canonical prepared inputs retained for advanced builders and
+            later outputs.
+        model_inputs: Materialized PyMC inputs.
+        run_spec: Retained-site-aligned run specification.
+        model_builder: Optional advanced complete-model builder.
+        likelihood_builder: Optional likelihood builder used by the built-in
+            model.
+
+    Returns:
+        Built model with validated roles and output capabilities.
+
+    Raises:
+        TypeError: If a complete-model builder returns the wrong type.
+        ValueError: If builder roles or output capabilities are invalid.
+    """
     timing_start = timer_start()
-    if multisector:
-        _validate_multisector_basis_layout(
-            prepared.basis_functions,
-            run_spec.model,
-            prepared.inv_inputs,
-        )
     builder_context = RhimeModelBuilderContext(
         prepared_inputs=prepared,
         run_spec=run_spec,
-        multisector=multisector,
+        multisector=False,
     )
     if model_builder is not None:
-        model_build_result = model_builder(builder_context)
-        if not isinstance(model_build_result, RhimeModelBuildResult):
-            raise TypeError(
-                "A RHIME model builder must return `RhimeModelBuildResult`; "
-                f"got {type(model_build_result).__name__}."
-            )
-        validate_model_build_result(model_build_result, context=builder_context)
-        model = model_build_result.model
-    elif multisector:
-        model = build_rhime_multisector_model_from_spec(
-            prepared.inv_inputs,
-            run_spec.model,
-            **({} if likelihood_builder is None else {"likelihood_builder": likelihood_builder}),
-        )
-        model_build_result = _builtin_model_build_result(
-            model,
-            model_spec=run_spec.model,
-            multisector=True,
+        model_build_result = _validated_custom_model_build(
+            model_builder,
+            context=builder_context,
         )
     else:
         model = build_rhime_model_from_spec(
-            prepared.inv_inputs,
+            model_inputs,
             run_spec.model,
             **({} if likelihood_builder is None else {"likelihood_builder": likelihood_builder}),
         )
@@ -330,18 +485,108 @@ def _execute_prepared_rhime(
         )
     if likelihood_builder is not None:
         validate_model_build_result(model_build_result, context=builder_context)
-    persisted_builder_metadata = dict(model_build_result.metadata)
-    if model_builder is not None:
-        persisted_builder_metadata["model_builder"] = callable_metadata(model_builder)
-    if likelihood_builder is not None:
-        persisted_builder_metadata["likelihood_builder"] = callable_metadata(likelihood_builder)
-    log_timing("rhime.model_build", timer_seconds(timing_start), multisector=multisector)
+    log_timing("rhime.model_build", timer_seconds(timing_start), multisector=False)
+    return model_build_result
 
+
+def build_multisector_rhime_model(
+    *,
+    prepared: RhimePreparedInputs,
+    model_inputs: xr.Dataset,
+    run_spec: RhimeRunSpec,
+    model_builder: RhimeModelBuilder | None = None,
+    likelihood_builder: RhimeLikelihoodBuilder | None = None,
+) -> RhimeModelBuildResult:
+    """Build and describe a source-resolved multi-sector RHIME PyMC model.
+
+    This supported stage visibly owns the multi-sector-only retained-basis
+    layout check and graph builder. Built-in construction consumes materialized
+    inputs; an advanced complete-model builder retains the historical canonical
+    prepared-input context. It creates no samples or files, and returns the
+    role/output manifest needed by later supported stages so callers never
+    assemble that manifest themselves. Migration of this W2 surface will be
+    explicit and documented.
+
+    Args:
+        prepared: Canonical prepared inputs and source-specific basis metadata.
+        model_inputs: Materialized PyMC inputs.
+        run_spec: Retained-site-aligned multi-sector run specification.
+        model_builder: Optional advanced complete-model builder.
+        likelihood_builder: Optional likelihood builder used by the built-in
+            model.
+
+    Returns:
+        Built multi-sector model with validated roles and capabilities.
+
+    Raises:
+        TypeError: If a complete-model builder returns the wrong type.
+        ValueError: If basis state coordinates or builder contracts disagree.
+    """
     timing_start = timer_start()
-    if model_builder is None and likelihood_builder is None:
-        idata = sampler.sample(model)
+    _validate_multisector_basis_layout(
+        prepared.basis_functions,
+        run_spec.model,
+        prepared.inv_inputs,
+    )
+    builder_context = RhimeModelBuilderContext(
+        prepared_inputs=prepared,
+        run_spec=run_spec,
+        multisector=True,
+    )
+    if model_builder is not None:
+        model_build_result = _validated_custom_model_build(
+            model_builder,
+            context=builder_context,
+        )
     else:
-        idata = sampler.sample(model, variable_roles=model_build_result.variable_roles)
+        model = build_rhime_multisector_model_from_spec(
+            model_inputs,
+            run_spec.model,
+            **({} if likelihood_builder is None else {"likelihood_builder": likelihood_builder}),
+        )
+        model_build_result = _builtin_model_build_result(
+            model,
+            model_spec=run_spec.model,
+            multisector=True,
+        )
+    if likelihood_builder is not None:
+        validate_model_build_result(model_build_result, context=builder_context)
+    log_timing("rhime.model_build", timer_seconds(timing_start), multisector=True)
+    return model_build_result
+
+
+def sample_rhime_model(
+    model_build_result: RhimeModelBuildResult,
+    sampler: RhimeSampler,
+    *,
+    use_variable_roles: bool = False,
+) -> az.InferenceData:
+    """Sample one built RHIME model using supported sampler mechanics.
+
+    This supported stage owns PyMC execution and predictive sampling side
+    effects. ``use_variable_roles`` preserves the advanced builder/likelihood
+    behavior while ordinary built-in models retain the historical sampler call.
+    It does not mutate prepared inputs or write RHIME products. This W2 stage
+    will retain a migration path if sampling ownership later changes.
+
+    Args:
+        model_build_result: Model and stage-owned semantic roles.
+        sampler: Sampling and predictive settings.
+        use_variable_roles: Whether predictive names should resolve through
+            the build result's role mapping.
+
+    Returns:
+        Sampled ArviZ inference data.
+    """
+    timing_start = timer_start()
+    if use_variable_roles:
+        idata = sampler.sample(
+            model_build_result.model,
+            variable_roles=model_build_result.variable_roles,
+        )
+    else:
+        idata = sampler.sample(model_build_result.model)
+
     log_timing(
         "rhime.sampler_total",
         timer_seconds(timing_start),
@@ -351,6 +596,58 @@ def _execute_prepared_rhime(
         chains=sampler.chains,
         nuts_sampler=sampler.nuts_sampler,
     )
+    return idata
+
+
+def _persisted_builder_metadata(
+    model_build_result: RhimeModelBuildResult,
+    *,
+    model_builder: RhimeModelBuilder | None,
+    likelihood_builder: RhimeLikelihoodBuilder | None,
+) -> dict[str, Any]:
+    """Return serializable builder provenance for output helpers."""
+    metadata = dict(model_build_result.metadata)
+    if model_builder is not None:
+        metadata["model_builder"] = callable_metadata(model_builder)
+    if likelihood_builder is not None:
+        metadata["likelihood_builder"] = callable_metadata(likelihood_builder)
+    return metadata
+
+
+def make_standard_rhime_result(
+    *,
+    prepared: RhimePreparedInputs,
+    run_spec: RhimeRunSpec,
+    sampler: RhimeSampler,
+    model_build_result: RhimeModelBuildResult,
+    idata: az.InferenceData,
+    build_and_sample_seconds: float,
+    model_builder: RhimeModelBuilder | None = None,
+    likelihood_builder: RhimeLikelihoodBuilder | None = None,
+) -> RhimeResult:
+    """Construct and write requested standard RHIME outputs.
+
+    This supported terminal stage owns ``RhimeResult`` construction and the
+    standard output bundle, including trace and product filesystem writes. It
+    preserves canonical prepared inputs in the result and records safe builder
+    provenance. Callers supply stage products but never construct role or
+    output manifests. The W2 signature is supported with explicit migration if
+    output ownership later moves.
+
+    Args:
+        prepared: Canonical prepared inputs retained in outputs.
+        run_spec: Retained-site-aligned standard run specification.
+        sampler: Sampler settings used for the run.
+        model_build_result: Built model and stage-owned output roles.
+        idata: Sampled inference data.
+        build_and_sample_seconds: Combined build and sampling duration.
+        model_builder: Optional advanced builder, used only for provenance.
+        likelihood_builder: Optional likelihood builder, used only for
+            provenance.
+
+    Returns:
+        Complete standard RHIME result and requested products.
+    """
     result = RhimeResult(
         run_spec=run_spec,
         model_spec=run_spec.model,
@@ -358,10 +655,10 @@ def _execute_prepared_rhime(
         inv_inputs=prepared.inv_inputs,
         idata=idata,
         sampler=sampler,
-        model=model,
+        model=model_build_result.model,
         basis_functions=prepared.basis_functions,
         model_build_result=model_build_result,
-        output_metadata={"build_and_sample_seconds": timer_seconds(build_and_sample_start)},
+        output_metadata={"build_and_sample_seconds": build_and_sample_seconds},
     )
     if model_builder is not None:
         result.output_metadata["model_builder"] = callable_metadata(model_builder)
@@ -369,68 +666,106 @@ def _execute_prepared_rhime(
         result.output_metadata["likelihood_builder"] = callable_metadata(likelihood_builder)
 
     timing_start = timer_start()
-    if multisector:
-        output_bundle = make_multisector_output_bundle(
-            output_spec=run_spec.output,
-            run_spec=run_spec,
-            model_spec=run_spec.model,
-            idata=idata,
-            prepared=prepared,
-            country_file=run_spec.output.country_file,
-            variable_roles=model_build_result.variable_roles,
-            builder_metadata=persisted_builder_metadata,
-        )
-    else:
-        output_bundle = make_standard_output_bundle(
-            output_spec=run_spec.output,
-            run_spec=run_spec,
-            model_spec=run_spec.model,
-            idata=idata,
-            prepared=prepared,
-            country_file=run_spec.output.country_file,
-            sampler=sampler,
-            variable_roles=model_build_result.variable_roles,
-            builder_metadata=persisted_builder_metadata,
-        )
+    output_bundle = make_standard_output_bundle(
+        output_spec=run_spec.output,
+        run_spec=run_spec,
+        model_spec=run_spec.model,
+        idata=idata,
+        prepared=prepared,
+        country_file=run_spec.output.country_file,
+        sampler=sampler,
+        variable_roles=model_build_result.variable_roles,
+        builder_metadata=_persisted_builder_metadata(
+            model_build_result,
+            model_builder=model_builder,
+            likelihood_builder=likelihood_builder,
+        ),
+    )
     log_timing(
         "rhime.output_bundle_total",
         timer_seconds(timing_start),
-        multisector=multisector,
+        multisector=False,
+        output_format=run_spec.output.output_format,
+    )
+    _apply_output_bundle(result, output_bundle)
+    return result
+
+
+def make_multisector_rhime_result(
+    *,
+    prepared: RhimePreparedInputs,
+    run_spec: RhimeRunSpec,
+    sampler: RhimeSampler,
+    model_build_result: RhimeModelBuildResult,
+    idata: az.InferenceData,
+    build_and_sample_seconds: float,
+    model_builder: RhimeModelBuilder | None = None,
+    likelihood_builder: RhimeLikelihoodBuilder | None = None,
+) -> RhimeResult:
+    """Construct and write requested multi-sector RHIME outputs.
+
+    This supported terminal stage owns multi-sector diagnostics and output
+    differences; unlike the standard stage it does not pass sampler metadata
+    into the output bundle. It may write requested products and mutates only
+    the newly created result. Callers consume the build-stage manifest without
+    constructing role or output mappings. This W2 API will migrate explicitly
+    if result ownership changes.
+
+    Args:
+        prepared: Canonical multi-sector inputs and retained basis metadata.
+        run_spec: Retained-site-aligned multi-sector run specification.
+        sampler: Sampler settings used for the run.
+        model_build_result: Built model and stage-owned output roles.
+        idata: Sampled inference data.
+        build_and_sample_seconds: Combined build and sampling duration.
+        model_builder: Optional advanced builder, used only for provenance.
+        likelihood_builder: Optional likelihood builder, used only for
+            provenance.
+
+    Returns:
+        Complete multi-sector result, products, and sector diagnostics.
+    """
+    result = RhimeResult(
+        run_spec=run_spec,
+        model_spec=run_spec.model,
+        output_spec=run_spec.output,
+        inv_inputs=prepared.inv_inputs,
+        idata=idata,
+        sampler=sampler,
+        model=model_build_result.model,
+        basis_functions=prepared.basis_functions,
+        model_build_result=model_build_result,
+        output_metadata={"build_and_sample_seconds": build_and_sample_seconds},
+    )
+    if model_builder is not None:
+        result.output_metadata["model_builder"] = callable_metadata(model_builder)
+    if likelihood_builder is not None:
+        result.output_metadata["likelihood_builder"] = callable_metadata(likelihood_builder)
+
+    timing_start = timer_start()
+    output_bundle = make_multisector_output_bundle(
+        output_spec=run_spec.output,
+        run_spec=run_spec,
+        model_spec=run_spec.model,
+        idata=idata,
+        prepared=prepared,
+        country_file=run_spec.output.country_file,
+        variable_roles=model_build_result.variable_roles,
+        builder_metadata=_persisted_builder_metadata(
+            model_build_result,
+            model_builder=model_builder,
+            likelihood_builder=likelihood_builder,
+        ),
+    )
+    log_timing(
+        "rhime.output_bundle_total",
+        timer_seconds(timing_start),
+        multisector=True,
         output_format=run_spec.output.output_format,
     )
     _apply_output_bundle(result, output_bundle)
 
     return result
-
-
-def _run_common(
-    *,
-    multisector: bool,
-    params: dict[str, Any],
-) -> RhimeResult:
-    """Run the shared RHIME pipeline after public wrapper/config normalization."""
-    timing_start = timer_start()
-    setup = _make_rhime_runner_setup(params=params, multisector=multisector)
-    log_timing("rhime.runner_setup", timer_seconds(timing_start), multisector=multisector)
-
-    timing_start = timer_start()
-    prepared = prepare_rhime_inputs(**setup.data_args)
-    log_timing(
-        "rhime.prepare_inputs",
-        timer_seconds(timing_start),
-        multisector=multisector,
-        nmeasure=prepared.inv_inputs.sizes.get("nmeasure"),
-        sites=len(prepared.sites),
-        regions=prepared.inv_inputs.sizes.get("region"),
-        sources=prepared.inv_inputs.sizes.get("source"),
-        basis_source=prepared.basis_artifact_source,
-    )
-    return _execute_prepared_rhime(
-        prepared=prepared,
-        run_spec=setup.run_spec,
-        sampler=setup.sampler,
-        multisector=multisector,
-    )
 
 
 def run_rhime_from_prepared_inputs(
@@ -525,11 +860,60 @@ def run_rhime_from_prepared_inputs(
         multisector=multisector,
     )
 
-    return _execute_prepared_rhime(
+    run_spec = with_prepared_rhime_sites(run_spec, prepared_inputs)
+    # Complete-model builders retain their historical ownership of canonical,
+    # potentially lazy prepared inputs.  Only the built-in model crosses the
+    # named PyMC materialization boundary here.
+    model_inputs = (
+        prepared_inputs.inv_inputs
+        if model_builder is not None
+        else materialize_rhime_model_inputs(prepared_inputs)
+    )
+    active_sampler = RhimeSampler() if sampler is None else sampler
+    build_and_sample_start = timer_start()
+
+    if multisector:
+        model_build_result = build_multisector_rhime_model(
+            prepared=prepared_inputs,
+            model_inputs=model_inputs,
+            run_spec=run_spec,
+            model_builder=model_builder,
+            likelihood_builder=likelihood_builder,
+        )
+    else:
+        model_build_result = build_standard_rhime_model(
+            prepared=prepared_inputs,
+            model_inputs=model_inputs,
+            run_spec=run_spec,
+            model_builder=model_builder,
+            likelihood_builder=likelihood_builder,
+        )
+
+    idata = sample_rhime_model(
+        model_build_result,
+        active_sampler,
+        use_variable_roles=model_builder is not None or likelihood_builder is not None,
+    )
+    build_and_sample_seconds = timer_seconds(build_and_sample_start)
+
+    if multisector:
+        return make_multisector_rhime_result(
+            prepared=prepared_inputs,
+            run_spec=run_spec,
+            sampler=active_sampler,
+            model_build_result=model_build_result,
+            idata=idata,
+            build_and_sample_seconds=build_and_sample_seconds,
+            model_builder=model_builder,
+            likelihood_builder=likelihood_builder,
+        )
+    return make_standard_rhime_result(
         prepared=prepared_inputs,
         run_spec=run_spec,
-        sampler=RhimeSampler() if sampler is None else sampler,
-        multisector=multisector,
+        sampler=active_sampler,
+        model_build_result=model_build_result,
+        idata=idata,
+        build_and_sample_seconds=build_and_sample_seconds,
         model_builder=model_builder,
         likelihood_builder=likelihood_builder,
     )
@@ -561,8 +945,38 @@ def run_rhime(
         ValueError: If required parameters are missing, unsupported parameters
             are supplied, or the flux-source count is invalid.
     """
-    params = params_from_config(config_file, extra_kwargs=kwargs) if config_file is not None else dict(kwargs)
-    return _run_common(multisector=False, params=params)
+    params = (
+        params_from_config(config_file, extra_kwargs=kwargs, normalise=False)
+        if config_file is not None
+        else dict(kwargs)
+    )
+    setup = resolve_rhime_options(params=params, multisector=False)
+
+    # Preparation visibly follows the scientific order implemented by the
+    # supported coarse stage: retrieve/reload merged data; filter observations
+    # while retaining aligned site metadata; load/fit the basis; construct
+    # sensitivities; and assemble labelled inversion inputs.
+    prepared = prepare_rhime_run_inputs(setup.data_args, multisector=False)
+    run_spec = with_prepared_rhime_sites(setup.run_spec, prepared)
+
+    # Cross the explicit eager PyMC boundary without changing canonical inputs.
+    model_inputs = materialize_rhime_model_inputs(prepared)
+    build_and_sample_start = timer_start()
+    model_build_result = build_standard_rhime_model(
+        prepared=prepared,
+        model_inputs=model_inputs,
+        run_spec=run_spec,
+    )
+    idata = sample_rhime_model(model_build_result, setup.sampler)
+
+    return make_standard_rhime_result(
+        prepared=prepared,
+        run_spec=run_spec,
+        sampler=setup.sampler,
+        model_build_result=model_build_result,
+        idata=idata,
+        build_and_sample_seconds=timer_seconds(build_and_sample_start),
+    )
 
 
 def run_rhime_multisector(
@@ -592,5 +1006,35 @@ def run_rhime_multisector(
         ValueError: If required parameters are missing, unsupported parameters
             are supplied, or fewer than two flux sources are provided.
     """
-    params = params_from_config(config_file, extra_kwargs=kwargs) if config_file is not None else dict(kwargs)
-    return _run_common(multisector=True, params=params)
+    params = (
+        params_from_config(config_file, extra_kwargs=kwargs, normalise=False)
+        if config_file is not None
+        else dict(kwargs)
+    )
+    setup = resolve_rhime_options(params=params, multisector=True)
+
+    # Multi-sector preparation retains source-resolved flux sensitivities after
+    # the same visible retrieve/reload, filter/site alignment, basis, and
+    # labelled-assembly sequence as the standard recipe.
+    prepared = prepare_rhime_run_inputs(setup.data_args, multisector=True)
+    run_spec = with_prepared_rhime_sites(setup.run_spec, prepared)
+
+    model_inputs = materialize_rhime_model_inputs(prepared)
+    build_and_sample_start = timer_start()
+    model_build_result = build_multisector_rhime_model(
+        prepared=prepared,
+        model_inputs=model_inputs,
+        run_spec=run_spec,
+    )
+    idata = sample_rhime_model(model_build_result, setup.sampler)
+
+    # Multi-sector output owns sector diagnostics and its distinct format
+    # constraints; it is intentionally not hidden behind the standard stage.
+    return make_multisector_rhime_result(
+        prepared=prepared,
+        run_spec=run_spec,
+        sampler=setup.sampler,
+        model_build_result=model_build_result,
+        idata=idata,
+        build_and_sample_seconds=timer_seconds(build_and_sample_start),
+    )
