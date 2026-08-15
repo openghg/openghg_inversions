@@ -1145,7 +1145,7 @@ def test_rhime_dask_materialization_boundaries(
     np.testing.assert_array_equal(model["hbc"].get_value(), rhime_inv_inputs["H_bc"].T)
 
 
-def test_materialize_rhime_model_inputs_computes_copy_and_preserves_borrowed_dask() -> None:
+def test_materialize_pymc_inputs_computes_copy_and_preserves_borrowed_dask() -> None:
     """Materialization computes related model arrays without changing canonical Dask inputs."""
     inv_inputs = _minimal_output_inv_inputs()
     inv_inputs["H_bc"] = (("bc_region", "nmeasure"), [[0.5]])
@@ -1177,7 +1177,7 @@ def test_materialize_rhime_model_inputs_computes_copy_and_preserves_borrowed_das
     compute_graphs: list[object] = []
 
     with Callback(start=lambda dsk: compute_graphs.append(dsk)):
-        materialized = rhime_public.materialize_rhime_model_inputs(
+        materialized = rhime_public.materialize_pymc_inputs(
             prepared,
             aggregation_error_mode="none",
         )
@@ -1193,7 +1193,7 @@ def test_materialize_rhime_model_inputs_computes_copy_and_preserves_borrowed_das
     assert prepared.inv_inputs["unrelated"].data is original_arrays["unrelated"]
 
 
-def test_materialize_rhime_model_inputs_computes_selected_error_form_and_retains_coordinates() -> None:
+def test_materialize_pymc_inputs_computes_selected_error_form_and_retains_coordinates() -> None:
     """Materialization skips dormant covariance and retains computed auxiliary coordinates."""
     inv_inputs = _minimal_output_inv_inputs()
     nmeasure = inv_inputs.sizes["nmeasure"]
@@ -1229,7 +1229,7 @@ def test_materialize_rhime_model_inputs_computes_selected_error_form_and_retains
         site_metadata=_prepared_site_metadata(),
     )
     assert computed == []
-    materialized = rhime_public.materialize_rhime_model_inputs(
+    materialized = rhime_public.materialize_pymc_inputs(
         prepared,
         aggregation_error_mode="low_rank",
     )
@@ -1246,6 +1246,107 @@ def test_materialize_rhime_model_inputs_computes_selected_error_form_and_retains
     assert not isinstance(materialized["low_rank_factor"].data, da.Array)
     assert not isinstance(materialized["diagonal_residual_variance"].data, da.Array)
     assert not isinstance(materialized["aggregation_error_sd"].data, da.Array)
+
+
+def test_assemble_rhime_inputs_preserves_borrowed_site_datasets(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Assembly copies dataset metadata while sharing caller-owned Dask arrays."""
+    lazy_mf = da.from_array(np.array([1.0]), chunks=1)
+    supplied = xr.Dataset(
+        {"mf": ("time", lazy_mf)},
+        coords={"time": np.array(["2019-01-01"], dtype="datetime64[ns]")},
+        attrs={"source": "caller"},
+    )
+    site_data = {"TAC": supplied}
+    merged = prep_module.RhimeMergedData(
+        fp_all=site_data,
+        site_options=_site_options(["TAC"], averaging_period=["1h"]),
+    )
+    captured: dict[str, xr.Dataset] = {}
+
+    def make_inputs(**kwargs: Any) -> xr.Dataset:
+        """Capture the stage-owned dataset passed into labelled assembly."""
+        captured.update(kwargs["fp_data"])
+        return _minimal_output_inv_inputs()
+
+    monkeypatch.setattr(prep_module, "_make_inv_inputs", make_inputs)
+    monkeypatch.setattr(
+        prep_module,
+        "_scale_satellite_bc_sensitivity_to_column_signal",
+        lambda inputs, **kwargs: inputs,
+    )
+    monkeypatch.setattr(prep_module, "_warn_for_nan_inputs", lambda *args, **kwargs: None)
+
+    rhime_public.assemble_rhime_inputs(
+        merged,
+        _fake_basis_functions(),
+        site_data,
+        {
+            "domain": "EUROPE",
+            "start_date": "2019-01-01",
+            "use_bc": False,
+        },
+    )
+
+    assert supplied.attrs == {"source": "caller"}
+    assert "Domain" not in supplied.attrs
+    assert captured["TAC"] is not supplied
+    assert captured["TAC"].attrs == {"source": "caller", "Domain": "EUROPE"}
+    assert captured["TAC"]["mf"].data is lazy_mf
+
+
+def test_prepared_replay_computes_selected_error_only_at_pymc_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Replay selects lazily, then executes a selected Dask covariance exactly once."""
+    model_spec, _, run_spec = _minimal_output_specs(output_format="none")
+    model_spec = replace(model_spec, aggregation_error_mode="dense")
+    run_spec = replace(run_spec, model=model_spec)
+    executions: list[str] = []
+
+    @delayed
+    def covariance() -> np.ndarray:
+        executions.append("covariance")
+        return np.eye(1)
+
+    covariance_array = da.from_delayed(covariance(), shape=(1, 1), dtype=float)
+    inv_inputs = _minimal_output_inv_inputs().assign(
+        aggregation_error_covariance=(("nmeasure", "nmeasure_cov"), covariance_array)
+    )
+    prepared = RhimePreparedInputs(
+        inv_inputs=inv_inputs,
+        basis_functions=_fake_basis_functions(),
+        site_metadata=_prepared_site_metadata(),
+    )
+    original_select = rhime_module._select_aggregation_error_mode
+    selection_snapshots: list[tuple[str, ...]] = []
+
+    def select_without_computing(data: xr.Dataset, mode: str) -> str:
+        """Record that both mode-selection calls remain before execution."""
+        selection_snapshots.append(tuple(executions))
+        return original_select(data, mode)
+
+    build_result = RhimeModelBuildResult(model=pm.Model(), variable_roles={"concentration": "y"})
+    expected = cast(RhimeResult, SimpleNamespace(route="dense-replay"))
+
+    def build(**kwargs: Any) -> RhimeModelBuildResult:
+        """Assert the selected representation is eager at the built-in builder handoff."""
+        assert not isinstance(kwargs["model_inputs"]["aggregation_error_covariance"].data, da.Array)
+        assert executions == ["covariance"]
+        return build_result
+
+    monkeypatch.setattr(rhime_module, "_select_aggregation_error_mode", select_without_computing)
+    monkeypatch.setattr(rhime_module, "build_standard_rhime_model", build)
+    monkeypatch.setattr(rhime_module, "sample_rhime_model", lambda *args, **kwargs: _minimal_output_idata())
+    monkeypatch.setattr(rhime_module, "make_standard_rhime_result", lambda **kwargs: expected)
+
+    result = run_rhime_from_prepared_inputs(prepared_inputs=prepared, run_spec=run_spec)
+
+    assert result is expected
+    assert selection_snapshots == [(), ()]
+    assert executions == ["covariance"]
+    assert prepared.inv_inputs["aggregation_error_covariance"].data is covariance_array
 
 
 def test_explicit_preparation_option_ownership_matches_current_preparer() -> None:
@@ -2193,7 +2294,7 @@ def test_run_rhime_from_prepared_inputs_routes_without_preparation(
     monkeypatch.setattr(prep_module, "prepare_rhime_inputs", fail_prepare)
     monkeypatch.setattr(rhime_module, "resolve_rhime_options", fail_setup)
     monkeypatch.setattr(rhime_module, "params_from_config", fail_config)
-    monkeypatch.setattr(rhime_module, "materialize_rhime_model_inputs", materialize)
+    monkeypatch.setattr(rhime_module, "materialize_pymc_inputs", materialize)
     monkeypatch.setattr(
         rhime_module,
         "build_standard_rhime_model" if sector_count == 1 else "build_multisector_rhime_model",
@@ -2329,7 +2430,7 @@ def test_public_rhime_runners_follow_named_stage_order(
     monkeypatch.setattr(rhime_module, "build_rhime_sensitivities", build_sensitivities)
     monkeypatch.setattr(rhime_module, "assemble_rhime_inputs", assemble)
     monkeypatch.setattr(rhime_module, "with_prepared_rhime_sites", align)
-    monkeypatch.setattr(rhime_module, "materialize_rhime_model_inputs", materialize)
+    monkeypatch.setattr(rhime_module, "materialize_pymc_inputs", materialize)
     monkeypatch.setattr(rhime_module, build_stage, build)
     monkeypatch.setattr(rhime_module, "sample_rhime_model", sample)
     monkeypatch.setattr(rhime_module, result_stage, result)
@@ -2362,7 +2463,7 @@ def test_rhime_public_package_exports_supported_orchestration_stages() -> None:
         "build_rhime_sensitivities",
         "assemble_rhime_inputs",
         "with_prepared_rhime_sites",
-        "materialize_rhime_model_inputs",
+        "materialize_pymc_inputs",
         "build_standard_rhime_model",
         "build_multisector_rhime_model",
         "sample_rhime_model",
@@ -2440,7 +2541,7 @@ def test_public_stages_compose_as_complete_external_runner(monkeypatch: pytest.M
         setup.data_args,
     )
     run_spec = rhime_public.with_prepared_rhime_sites(setup.run_spec, prepared)
-    model_inputs = rhime_public.materialize_rhime_model_inputs(
+    model_inputs = rhime_public.materialize_pymc_inputs(
         prepared,
         aggregation_error_mode=run_spec.model.aggregation_error_mode,
     )
@@ -2515,7 +2616,7 @@ def test_run_rhime_from_prepared_inputs_accepts_complete_model_builder(
         raise AssertionError("complete model builders must not materialize prepared inputs")
 
     monkeypatch.setattr(RhimeSampler, "sample", fake_sample)
-    monkeypatch.setattr(rhime_module, "materialize_rhime_model_inputs", fail_materialization)
+    monkeypatch.setattr(rhime_module, "materialize_pymc_inputs", fail_materialization)
     result = run_rhime_from_prepared_inputs(
         prepared_inputs=prepared,
         run_spec=run_spec,
@@ -7464,7 +7565,7 @@ output_format = "inv_out"
     monkeypatch.setattr(rhime_params, "normalise_rhime_params", track_normalise)
     monkeypatch.setattr(
         rhime_module,
-        "materialize_rhime_model_inputs",
+        "materialize_pymc_inputs",
         lambda value, *, aggregation_error_mode: value.inv_inputs,
     )
     monkeypatch.setattr(rhime_module, "build_standard_rhime_model", fake_build)

@@ -77,7 +77,6 @@ from openghg_inversions.models import (
     get_rhime_likelihood_result,
 )
 from openghg_inversions.models._rhime_flux import _select_sector_design
-from openghg_inversions.observation_error import resolve_aggregation_error
 from openghg_inversions.observation_error import (
     AGGREGATION_ERROR_COVARIANCE,
     AGGREGATION_ERROR_SD,
@@ -113,7 +112,7 @@ __all__ = [
     "filter_rhime_observations",
     "make_multisector_rhime_result",
     "make_standard_rhime_result",
-    "materialize_rhime_model_inputs",
+    "materialize_pymc_inputs",
     "params_from_config",
     "retrieve_or_reload_rhime_data",
     "resolve_flux_sources",
@@ -428,7 +427,9 @@ def assemble_rhime_inputs(
     This supported stage attaches domain metadata, assembles observation-
     aligned arrays, applies the existing satellite boundary-condition scale,
     and eagerly checks ``H`` and optional ``H_bc`` for NaNs. It returns the
-    durable prepared-input handoff without crossing the PyMC boundary.
+    durable prepared-input handoff without crossing the PyMC boundary. Supplied
+    site datasets remain borrowed; metadata is attached to shallow copies that
+    preserve their underlying array and Dask graphs.
 
     Args:
         merged: Filtered data and retained site metadata.
@@ -439,11 +440,12 @@ def assemble_rhime_inputs(
     Returns:
         Validated canonical inputs with retained basis and site metadata.
     """
-    rhime_preparation._set_domain_attrs(site_data, merged.sites, data_args["domain"])
+    owned_site_data = {site: dataset.copy(deep=False) for site, dataset in site_data.items()}
+    rhime_preparation._set_domain_attrs(owned_site_data, merged.sites, data_args["domain"])
     min_error_options = normalise_min_error_options(data_args.get("min_error_options"))
     with timed("rhime.prepare_inputs.make_inv_inputs", sites=len(merged.sites)):
         inv_inputs = rhime_preparation._make_inv_inputs(
-            fp_data=site_data,
+            fp_data=owned_site_data,
             sites=merged.sites,
             start_date=data_args["start_date"],
             bc_freq=data_args.get("bc_freq"),
@@ -568,7 +570,7 @@ _MODEL_INPUT_VARIABLES = (
 )
 
 
-def materialize_rhime_model_inputs(
+def materialize_pymc_inputs(
     prepared: RhimePreparedInputs,
     *,
     aggregation_error_mode: AggregationErrorMode,
@@ -588,7 +590,11 @@ def materialize_rhime_model_inputs(
     Args:
         prepared: Canonical RHIME inputs borrowed from preparation or replay.
         aggregation_error_mode: Aggregation-error representation selected by
-            the resolved model specification.
+            the resolved model specification. ``auto`` chooses the richest
+            available representation; ``none`` ignores aggregation error;
+            ``dense`` uses the full covariance; ``low_rank`` uses a factor
+            plus diagonal residual; and ``diagonal`` uses per-observation
+            standard deviations only.
 
     Returns:
         A dataset copy whose available model input variables are dense and
@@ -665,7 +671,7 @@ def build_standard_rhime_model(
 
     This supported stage owns the standard graph choice and its output-role
     description. Built-in construction consumes the eager dataset returned by
-    :func:`materialize_rhime_model_inputs`; an advanced complete-model builder
+    :func:`materialize_pymc_inputs`; an advanced complete-model builder
     retains the historical context containing canonical ``prepared`` inputs.
     It creates a PyMC graph but performs no sampling or output writes. The
     returned manifest is stage-owned, so copied runners need not construct one.
@@ -1062,11 +1068,11 @@ def run_rhime_from_prepared_inputs(
 
     output_spec = run_spec.output
     validate_output_format(output_spec.output_format)
-    aggregation_error = resolve_aggregation_error(
+    aggregation_error_mode = _select_aggregation_error_mode(
         prepared_inputs.inv_inputs,
         run_spec.model.aggregation_error_mode,
     )
-    if aggregation_error.mode != "none" and output_spec.output_format in {
+    if aggregation_error_mode != "none" and output_spec.output_format in {
         "basic",
         "paris",
         "legacy",
@@ -1092,7 +1098,7 @@ def run_rhime_from_prepared_inputs(
     model_inputs = (
         prepared_inputs.inv_inputs
         if model_builder is not None
-        else materialize_rhime_model_inputs(
+        else materialize_pymc_inputs(
             prepared_inputs,
             aggregation_error_mode=run_spec.model.aggregation_error_mode,
         )
@@ -1204,7 +1210,7 @@ def run_rhime(
     run_spec = with_prepared_rhime_sites(setup.run_spec, prepared)
 
     # Cross the explicit eager PyMC boundary without changing canonical inputs.
-    model_inputs = materialize_rhime_model_inputs(
+    model_inputs = materialize_pymc_inputs(
         prepared,
         aggregation_error_mode=run_spec.model.aggregation_error_mode,
     )
@@ -1283,7 +1289,7 @@ def run_rhime_multisector(
     )
     run_spec = with_prepared_rhime_sites(setup.run_spec, prepared)
 
-    model_inputs = materialize_rhime_model_inputs(
+    model_inputs = materialize_pymc_inputs(
         prepared,
         aggregation_error_mode=run_spec.model.aggregation_error_mode,
     )
