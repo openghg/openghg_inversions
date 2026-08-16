@@ -83,6 +83,7 @@ from openghg_inversions.observation_error import (
     DIAGONAL_RESIDUAL_VARIANCE,
     LOW_RANK_FACTOR,
     AggregationErrorMode,
+    resolve_aggregation_error,
     select_aggregation_error_mode,
 )
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
@@ -1068,10 +1069,16 @@ def run_rhime_from_prepared_inputs(
 
     output_spec = run_spec.output
     validate_output_format(output_spec.output_format)
-    aggregation_error_mode = select_aggregation_error_mode(
-        prepared_inputs.inv_inputs,
-        run_spec.model.aggregation_error_mode,
-    )
+    if model_builder is not None:
+        aggregation_error_mode = resolve_aggregation_error(
+            prepared_inputs.inv_inputs,
+            run_spec.model.aggregation_error_mode,
+        ).mode
+    else:
+        aggregation_error_mode = select_aggregation_error_mode(
+            prepared_inputs.inv_inputs,
+            run_spec.model.aggregation_error_mode,
+        )
     if aggregation_error_mode != "none" and output_spec.output_format in {
         "basic",
         "paris",

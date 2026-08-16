@@ -2639,6 +2639,35 @@ def test_run_rhime_from_prepared_inputs_accepts_complete_model_builder(
     }
 
 
+def test_complete_model_builder_validates_aggregation_error_before_execution() -> None:
+    """Missing requested aggregation-error inputs fail before a custom builder runs."""
+    model_spec, _, run_spec = _minimal_output_specs(output_format="none")
+    model_spec = replace(model_spec, aggregation_error_mode="dense")
+    run_spec = replace(run_spec, model=model_spec)
+    prepared = RhimePreparedInputs(
+        inv_inputs=_minimal_output_inv_inputs(),
+        basis_functions=_fake_basis_functions(),
+        site_metadata=_prepared_site_metadata(),
+    )
+    built_contexts: list[RhimeModelBuilderContext] = []
+
+    def custom_model_builder(context: RhimeModelBuilderContext) -> RhimeModelBuildResult:
+        built_contexts.append(context)
+        return RhimeModelBuildResult(model=pm.Model(), variable_roles={"concentration": "y"})
+
+    with pytest.raises(
+        ValueError,
+        match="Dense aggregation error requires 'aggregation_error_covariance' in prepared inputs",
+    ):
+        run_rhime_from_prepared_inputs(
+            prepared_inputs=prepared,
+            run_spec=run_spec,
+            model_builder=custom_model_builder,
+        )
+
+    assert built_contexts == []
+
+
 def test_likelihood_builder_provenance_is_saved_with_result_metadata(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
