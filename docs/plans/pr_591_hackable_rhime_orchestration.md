@@ -243,10 +243,19 @@ The follow-up work has distinct owners:
 - OPE-44 should turn the default copied spine into tested executable source and
   render that source into the customization guide rather than promoting the
   hand-written snippets here.
+- OPE-54 should reuse that source shape for a tested project-owned basis stage,
+  proving that the public spine can supply a new version of one step rather
+  than merely record the default recipe.
 - OPE-46 should own filtering/basis ordering, eager-retry policy, and any
-  filter dependency or computation contract.
+  filter dependency or computation contract, including cached or externally
+  supplied preparation products.
 - OPE-47 should make the concrete PyMC graph and its semantic/output contract
-  easier to reach and modify.
+  easier to reach and modify. The follow-on model-input requirements plan
+  describes how components should derive the labelled input bill of materials
+  used for validation, PyMC materialization, and replay in
+  [RHIME model input requirements and prepared artifacts](rhime_model_input_requirements_and_artifacts.md).
+- OPE-55 should bind prepared data to a serialized model/run specification for
+  standard replay without making reusable preparation caches model-specific.
 - OPE-49 should consolidate the proven examples and historical context into
   the final modification-focused developer documentation.
 

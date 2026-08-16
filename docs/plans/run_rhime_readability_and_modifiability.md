@@ -171,7 +171,7 @@ def run_rhime(
     basis = make_rhime_basis(filtered, options.basis)
     prepared = assemble_rhime_inputs(filtered, basis, options.model)
 
-    model_inputs = materialize_rhime_model_inputs(prepared)
+    model_inputs = materialize_pymc_inputs(prepared)
     built_model = build_rhime_model(
         model_inputs,
         options.model,
@@ -397,6 +397,26 @@ role/output manifests.
 - Keep the compiled strategy isolated and opt-in; do not make it necessary for
   ordinary model review or modification.
 
+Derive a small, immutable model-input bill of materials from the selected
+built-in components. It should name the exact labelled arrays consumed by the
+model and drive owned validation plus `materialize_pymc_inputs`; it must not be
+a caller-authored manifest, stage registry, or generic scientific schema. See
+[RHIME model input requirements and prepared artifacts](rhime_model_input_requirements_and_artifacts.md).
+
+### W5b — bind replayable artifacts to serialized model specifications
+
+- Keep reusable prepared-data caches distinct from model-bound replay bundles.
+- Preserve cached or externally supplied scientific data as a supported way to
+  bypass OpenGHG acquisition and expensive calculations.
+- Bind a replay bundle to a versioned serialized model/run specification and
+  the derived model-input requirements used to validate it.
+- Permit compatible model specs to reuse the same prepared cache without
+  mutating it.
+- Persist safe callable identity and metadata only; never serialize executable
+  Python code.
+- Treat this as the concrete P0 delivery slice for GitHub #415 and OPE-21, not
+  as a new semantic compiler or general run-bundle framework.
+
 ### W6 — simplify result and output orchestration
 
 - Make the route from built model and `InferenceData` to `RhimeResult` and
@@ -432,7 +452,7 @@ W1 complete
   -> W2.0
   -> W2a
   -> W2b
-  -> W4 -> W5 -> W6 -> W7
+  -> W4 -> W5 -> W5b -> W6 -> W7
 ```
 
 W3a precedes W2 because W2.0 must copy supported, plainly named stages rather
@@ -533,6 +553,7 @@ This priority is complete when:
 - GitHub quick fix: [#588](https://github.com/openghg/openghg_inversions/issues/588)
 - Linear project: [P0 — `run_rhime` readable, modifiable workflow](https://linear.app/openghg-inversions/project/p0-run-rhime-readable-modifiable-workflow-b2b60550ba5f)
 - Linear delivery plan: [P0 `run_rhime` delivery plan](https://linear.app/openghg-inversions/document/p0-run-rhime-readability-and-modifiability-delivery-plan-6bbd11f779ca)
+- GitHub run-bundle issue: [#415](https://github.com/openghg/openghg_inversions/issues/415)
 
 | Workstream | Linear task |
 | --- | --- |
@@ -542,7 +563,9 @@ This priority is complete when:
 | W2.0 | [OPE-44](https://linear.app/openghg-inversions/issue/OPE-44/p0-w20-publish-a-complete-copy-and-modify-rhime-runner) |
 | W2a | [OPE-52](https://linear.app/openghg-inversions/issue/OPE-52/p0-w2a-add-the-low-ceremony-run-rhime-likelihood-strategy-seam) |
 | W2b | [OPE-53](https://linear.app/openghg-inversions/issue/OPE-53/p0-w2b-prove-run-rhime-reuse-in-an-openghg-cookiecutter-package) |
+| Custom stage proof | [OPE-54](https://linear.app/openghg-inversions/issue/OPE-54/custom-basis-creation-with-the-visible-rhime-runner) |
 | W4 | [OPE-46](https://linear.app/openghg-inversions/issue/OPE-46/p0-w4-split-rhime-preparation-into-named-scientific-stages) |
 | W5 | [OPE-47](https://linear.app/openghg-inversions/issue/OPE-47/p0-w5-colocate-the-readable-rhime-pymc-model-and-graph-contract) |
+| W5b | [OPE-55](https://linear.app/openghg-inversions/issue/OPE-55/p0-w5b-bind-replayable-rhime-artifacts-to-serialized-model) |
 | W6 | [OPE-48](https://linear.app/openghg-inversions/issue/OPE-48/p0-w6-simplify-rhime-result-and-output-orchestration) |
 | W7 | [OPE-49](https://linear.app/openghg-inversions/issue/OPE-49/p0-w7-publish-modification-focused-rhime-docs-and-enforce-the) |
