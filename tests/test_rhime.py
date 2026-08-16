@@ -1319,7 +1319,7 @@ def test_prepared_replay_computes_selected_error_only_at_pymc_boundary(
         basis_functions=_fake_basis_functions(),
         site_metadata=_prepared_site_metadata(),
     )
-    original_select = rhime_module._select_aggregation_error_mode
+    original_select = rhime_module.select_aggregation_error_mode
     selection_snapshots: list[tuple[str, ...]] = []
 
     def select_without_computing(data: xr.Dataset, mode: str) -> str:
@@ -1336,7 +1336,7 @@ def test_prepared_replay_computes_selected_error_only_at_pymc_boundary(
         assert executions == ["covariance"]
         return build_result
 
-    monkeypatch.setattr(rhime_module, "_select_aggregation_error_mode", select_without_computing)
+    monkeypatch.setattr(rhime_module, "select_aggregation_error_mode", select_without_computing)
     monkeypatch.setattr(rhime_module, "build_standard_rhime_model", build)
     monkeypatch.setattr(rhime_module, "sample_rhime_model", lambda *args, **kwargs: _minimal_output_idata())
     monkeypatch.setattr(rhime_module, "make_standard_rhime_result", lambda **kwargs: expected)

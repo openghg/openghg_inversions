@@ -83,7 +83,7 @@ from openghg_inversions.observation_error import (
     DIAGONAL_RESIDUAL_VARIANCE,
     LOW_RANK_FACTOR,
     AggregationErrorMode,
-    _select_aggregation_error_mode,
+    select_aggregation_error_mode,
 )
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from .builders import (
@@ -602,7 +602,7 @@ def materialize_pymc_inputs(
     """
     timing_start = timer_start()
     inv_inputs = prepared.inv_inputs
-    selected_error_mode = _select_aggregation_error_mode(inv_inputs, aggregation_error_mode)
+    selected_error_mode = select_aggregation_error_mode(inv_inputs, aggregation_error_mode)
     aggregation_names: tuple[str, ...]
     if selected_error_mode == "dense":
         aggregation_names = (AGGREGATION_ERROR_COVARIANCE, AGGREGATION_ERROR_SD)
@@ -1068,7 +1068,7 @@ def run_rhime_from_prepared_inputs(
 
     output_spec = run_spec.output
     validate_output_format(output_spec.output_format)
-    aggregation_error_mode = _select_aggregation_error_mode(
+    aggregation_error_mode = select_aggregation_error_mode(
         prepared_inputs.inv_inputs,
         run_spec.model.aggregation_error_mode,
     )
