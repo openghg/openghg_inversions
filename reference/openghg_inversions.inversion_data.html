@@ -522,6 +522,55 @@
 </dd></dl>
 
 <dl class="py class">
+<dt class="sig sig-object py" id="openghg_inversions.inversion_data.RhimeMergedData">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">openghg_inversions.inversion_data.</span></span><span class="sig-name descname"><span class="pre">RhimeMergedData</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fp_all</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">site_options</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">_SiteOptions</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inversion_data.RhimeMergedData" title="Link to this definition">#</a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>Merged RHIME data and complete site-aligned metadata between stages.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>fp_all</strong> – Merged per-site datasets plus shared flux, boundary-condition,
+and calibration entries.</p></li>
+<li><p><strong>site_options</strong> – Complete site-aligned acquisition options retained after
+retrieval or filtering.</p></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Notes</p>
+<p>This is a supported orchestration handoff. Its datasets remain
+backend-neutral and may be Dask-backed; later stages must treat them as
+borrowed.</p>
+<dl class="py property">
+<dt class="sig sig-object py" id="openghg_inversions.inversion_data.RhimeMergedData.averaging_period">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">averaging_period</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.inversion_data.RhimeMergedData.averaging_period" title="Link to this definition">#</a></dt>
+<dd><p>Retained averaging periods aligned to <a class="reference internal" href="#openghg_inversions.inversion_data.RhimeMergedData.sites" title="openghg_inversions.inversion_data.RhimeMergedData.sites"><code class="xref py py-attr docutils literal notranslate"><span class="pre">sites</span></code></a>.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="openghg_inversions.inversion_data.RhimeMergedData.fp_all">
+<span class="sig-name descname"><span class="pre">fp_all</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a></span><a class="headerlink" href="#openghg_inversions.inversion_data.RhimeMergedData.fp_all" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="openghg_inversions.inversion_data.RhimeMergedData.platform">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">platform</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.inversion_data.RhimeMergedData.platform" title="Link to this definition">#</a></dt>
+<dd><p>Retained observation platforms aligned to <a class="reference internal" href="#openghg_inversions.inversion_data.RhimeMergedData.sites" title="openghg_inversions.inversion_data.RhimeMergedData.sites"><code class="xref py py-attr docutils literal notranslate"><span class="pre">sites</span></code></a>.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="openghg_inversions.inversion_data.RhimeMergedData.site_options">
+<span class="sig-name descname"><span class="pre">site_options</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">_SiteOptions</span></span><a class="headerlink" href="#openghg_inversions.inversion_data.RhimeMergedData.site_options" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="openghg_inversions.inversion_data.RhimeMergedData.sites">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">sites</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.inversion_data.RhimeMergedData.sites" title="Link to this definition">#</a></dt>
+<dd><p>Retained site names.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.inversion_data.RhimePreparedInputs">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">openghg_inversions.inversion_data.</span></span><span class="sig-name descname"><span class="pre">RhimePreparedInputs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">inv_inputs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">basis_functions</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.basis.basis_functions.html#openghg_inversions.basis.basis_functions.FluxWeightedBasis" title="openghg_inversions.basis.basis_functions.FluxWeightedBasis"><span class="pre">FluxWeightedBasis</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">site_metadata</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.inversion_data.RhimePreparedInputs" title="Link to this definition">#</a></dt>
 <dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
@@ -1045,6 +1094,14 @@ preparation route.</p></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.preparation.html#openghg_inversions.inversion_data.preparation.FixedBasisPreparedData.sites"><code class="docutils literal notranslate"><span class="pre">FixedBasisPreparedData.sites</span></code></a></li>
 </ul>
 </li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.inversion_data.preparation.html#openghg_inversions.inversion_data.preparation.RhimeMergedData"><code class="docutils literal notranslate"><span class="pre">RhimeMergedData</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.preparation.html#openghg_inversions.inversion_data.preparation.RhimeMergedData.averaging_period"><code class="docutils literal notranslate"><span class="pre">RhimeMergedData.averaging_period</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.preparation.html#openghg_inversions.inversion_data.preparation.RhimeMergedData.fp_all"><code class="docutils literal notranslate"><span class="pre">RhimeMergedData.fp_all</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.preparation.html#openghg_inversions.inversion_data.preparation.RhimeMergedData.platform"><code class="docutils literal notranslate"><span class="pre">RhimeMergedData.platform</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.preparation.html#openghg_inversions.inversion_data.preparation.RhimeMergedData.site_options"><code class="docutils literal notranslate"><span class="pre">RhimeMergedData.site_options</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.preparation.html#openghg_inversions.inversion_data.preparation.RhimeMergedData.sites"><code class="docutils literal notranslate"><span class="pre">RhimeMergedData.sites</span></code></a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.inversion_data.preparation.html#openghg_inversions.inversion_data.preparation.RhimePreparedInputs"><code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code></a><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.preparation.html#openghg_inversions.inversion_data.preparation.RhimePreparedInputs.averaging_period"><code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs.averaging_period</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.preparation.html#openghg_inversions.inversion_data.preparation.RhimePreparedInputs.basis_artifact_path"><code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs.basis_artifact_path</span></code></a></li>
@@ -1151,6 +1208,14 @@ preparation route.</p></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.FixedBasisPreparedData.inv_inputs"><code class="docutils literal notranslate"><span class="pre">FixedBasisPreparedData.inv_inputs</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.FixedBasisPreparedData.is_column"><code class="docutils literal notranslate"><span class="pre">FixedBasisPreparedData.is_column</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.FixedBasisPreparedData.sites"><code class="docutils literal notranslate"><span class="pre">FixedBasisPreparedData.sites</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.RhimeMergedData"><code class="docutils literal notranslate"><span class="pre">RhimeMergedData</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.RhimeMergedData.averaging_period"><code class="docutils literal notranslate"><span class="pre">RhimeMergedData.averaging_period</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.RhimeMergedData.fp_all"><code class="docutils literal notranslate"><span class="pre">RhimeMergedData.fp_all</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.RhimeMergedData.platform"><code class="docutils literal notranslate"><span class="pre">RhimeMergedData.platform</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.RhimeMergedData.site_options"><code class="docutils literal notranslate"><span class="pre">RhimeMergedData.site_options</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.RhimeMergedData.sites"><code class="docutils literal notranslate"><span class="pre">RhimeMergedData.sites</span></code></a></li>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.inversion_data.RhimePreparedInputs"><code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code></a><ul class="nav section-nav flex-column">
