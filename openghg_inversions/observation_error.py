@@ -82,9 +82,24 @@ def validate_observation_error_inputs(
         _validate_vector(data, name, output_dim=output_dim)
 
 
-def _select_mode(data: xr.Dataset, requested: AggregationErrorMode) -> Literal[
-    "none", "dense", "low_rank", "diagonal"
-]:
+def select_aggregation_error_mode(
+    data: xr.Dataset, requested: AggregationErrorMode
+) -> Literal["none", "dense", "low_rank", "diagonal"]:
+    """Select an aggregation-error representation without materializing it.
+
+    Args:
+        data: Prepared inversion inputs containing any available aggregation-error
+            representations.
+        requested: Requested representation, or ``"auto"`` to infer one from
+            the available inputs.
+
+    Returns:
+        The selected concrete aggregation-error representation.
+
+    Raises:
+        ValueError: If ``requested`` is invalid or ``"auto"`` finds both dense
+            and low-rank representations.
+    """
     if requested not in ("auto", "none", "dense", "low_rank", "diagonal"):
         raise ValueError(
             "`aggregation_error_mode` must be one of 'auto', 'none', 'dense', "
@@ -125,7 +140,7 @@ def resolve_aggregation_error(
     """
     if output_dim not in data.dims:
         raise ValueError(f"Prepared inputs have no observation dimension {output_dim!r}.")
-    selected = _select_mode(data, mode)
+    selected = select_aggregation_error_mode(data, mode)
     nmeasure = data.sizes[output_dim]
 
     if selected == "none":

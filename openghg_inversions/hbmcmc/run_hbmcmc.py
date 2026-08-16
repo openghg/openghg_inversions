@@ -29,7 +29,6 @@ This file will need to be edited to add parameters for your MCMC run.
 import json
 import sys
 import argparse
-import inspect
 from pathlib import Path
 from shutil import copyfile
 from typing import Any
@@ -40,9 +39,8 @@ import openghg_inversions.hbmcmc.hbmcmc_output as output
 from openghg_inversions._timing import log_timing, timed, timer_seconds, timer_start
 from openghg_inversions.config import config
 from openghg_inversions.config.paths import Paths
-from openghg_inversions.inversion_data import prepare_rhime_inputs
-from openghg_inversions.rhime import run_rhime
-from openghg_inversions.rhime.params import make_rhime_runner_setup, normalise_rhime_params
+from openghg_inversions.rhime import resolve_rhime_options, run_rhime
+from openghg_inversions.rhime.params import normalise_rhime_params
 
 
 _RUN_HBMCMC_RHIME_ALIASES = {
@@ -218,12 +216,17 @@ def fixedbasis_params_to_rhime(params: dict[str, Any]) -> dict[str, Any]:
 
 
 def validate_rhime_params(params: dict[str, Any]) -> None:
-    """Validate translated single-sector RHIME params before script side effects."""
-    make_rhime_runner_setup(
-        params=params,
-        multisector=False,
-        data_param_names=set(inspect.signature(prepare_rhime_inputs).parameters),
-    )
+    """Validate translated single-sector RHIME params before script side effects.
+
+    Args:
+        params: Translated fixed-basis options to validate as a single-sector
+            RHIME run.
+
+    Raises:
+        ValueError: If required, structured, or single-sector options are
+            invalid.
+    """
+    resolve_rhime_options(params=params, multisector=False)
 
 
 def hbmcmc_extract_param(

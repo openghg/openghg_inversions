@@ -562,7 +562,7 @@ def test_real_prepared_inputs_save_load_and_run_without_repreparation(
         observed["output_prepared"] = kwargs["prepared"]
         return RhimeOutputBundle(outputs={"loaded": True})
 
-    monkeypatch.setattr(rhime_runner, "prepare_rhime_inputs", fail_preparation)
+    monkeypatch.setattr(rhime_runner, "retrieve_or_reload_rhime_data", fail_preparation)
     monkeypatch.setattr(rhime_runner, "build_rhime_model_from_spec", fake_builder)
     monkeypatch.setattr(RhimeSampler, "sample", fake_sample)
     monkeypatch.setattr(rhime_runner, "make_standard_output_bundle", fake_outputs)
@@ -914,7 +914,7 @@ def test_loaded_prepared_inputs_run_through_existing_seam(
         observed["output_idata"] = kwargs["idata"]
         return RhimeOutputBundle(outputs={"loaded": True})
 
-    monkeypatch.setattr(rhime_runner, "prepare_rhime_inputs", fail_preparation)
+    monkeypatch.setattr(rhime_runner, "retrieve_or_reload_rhime_data", fail_preparation)
     monkeypatch.setattr(rhime_runner, "build_rhime_model_from_spec", fake_builder)
     monkeypatch.setattr(RhimeSampler, "sample", fake_sample)
     monkeypatch.setattr(rhime_runner, "make_standard_output_bundle", fake_outputs)
