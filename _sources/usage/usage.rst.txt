@@ -7,6 +7,7 @@ Using OpenGHG Inversions
 
    installation
    getting_started
+   cli
    grouped_basis_layout
    rhime
    customising_rhime

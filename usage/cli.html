@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>Using OpenGHG Inversions &#8212; openghg_inversions  documentation</title>
+    <title>Running RHIME from the command line &#8212; openghg_inversions  documentation</title>
   
   
   
@@ -46,12 +46,12 @@
     <script src="../_static/thebelab-helper.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
-    <script>DOCUMENTATION_OPTIONS.pagename = 'usage/usage';</script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'usage/cli';</script>
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="Installation and Setup" href="installation.html" />
-    <link rel="prev" title="OpenGHG Inversions Documentation" href="../index.html" />
+    <link rel="next" title="Grouped basis and state metadata" href="grouped_basis_layout.html" />
+    <link rel="prev" title="Getting started with OpenGHG Inversions" href="getting_started.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="" />
@@ -137,7 +137,7 @@
   <ul class="bd-navbar-elements navbar-nav">
     
 <li class="nav-item current active">
-  <a class="nav-link nav-internal" href="#">
+  <a class="nav-link nav-internal" href="usage.html">
     Using OpenGHG Inversions
   </a>
 </li>
@@ -237,7 +237,7 @@
   <ul class="bd-navbar-elements navbar-nav">
     
 <li class="nav-item current active">
-  <a class="nav-link nav-internal" href="#">
+  <a class="nav-link nav-internal" href="usage.html">
     Using OpenGHG Inversions
   </a>
 </li>
@@ -299,10 +299,10 @@
      aria-label="Section Navigation">
   <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
   <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">Contents:</span></p>
-<ul class="nav bd-sidenav">
+<ul class="current nav bd-sidenav">
 <li class="toctree-l1"><a class="reference internal" href="installation.html">Installation and Setup</a></li>
 <li class="toctree-l1"><a class="reference internal" href="getting_started.html">Getting started with OpenGHG Inversions</a></li>
-<li class="toctree-l1"><a class="reference internal" href="cli.html">Running RHIME from the command line</a></li>
+<li class="toctree-l1 current active"><a class="current reference internal" href="#">Running RHIME from the command line</a></li>
 <li class="toctree-l1"><a class="reference internal" href="grouped_basis_layout.html">Grouped basis and state metadata</a></li>
 <li class="toctree-l1"><a class="reference internal" href="rhime.html">RHIME Terminology And Quickstart</a></li>
 <li class="toctree-l1"><a class="reference internal" href="customising_rhime.html">Customising the complete RHIME workflow</a></li>
@@ -347,7 +347,10 @@
         <i class="fa-solid fa-home"></i>
       </a>
     </li>
-    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Using OpenGHG Inversions</span></li>
+    
+    <li class="breadcrumb-item"><a href="usage.html" class="nav-link">Using OpenGHG Inversions</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Running RHIME from the command line</span></li>
   </ul>
 </nav>
 </div>
@@ -364,20 +367,134 @@
 <div id="searchbox"></div>
                 <article class="bd-article">
                   
-  <section id="using-openghg-inversions">
-<h1>Using OpenGHG Inversions<a class="headerlink" href="#using-openghg-inversions" title="Link to this heading">#</a></h1>
-<div class="toctree-wrapper compound">
-<p aria-level="2" class="caption" role="heading"><span class="caption-text">Contents:</span></p>
-<ul>
-<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation and Setup</a></li>
-<li class="toctree-l1"><a class="reference internal" href="getting_started.html">Getting started with OpenGHG Inversions</a></li>
-<li class="toctree-l1"><a class="reference internal" href="cli.html">Running RHIME from the command line</a></li>
-<li class="toctree-l1"><a class="reference internal" href="grouped_basis_layout.html">Grouped basis and state metadata</a></li>
-<li class="toctree-l1"><a class="reference internal" href="rhime.html">RHIME Terminology And Quickstart</a></li>
-<li class="toctree-l1"><a class="reference internal" href="customising_rhime.html">Customising the complete RHIME workflow</a></li>
-<li class="toctree-l1"><a class="reference internal" href="concrete_rhime_model.html">Concrete RHIME Model</a></li>
-</ul>
+  <section id="running-rhime-from-the-command-line">
+<h1>Running RHIME from the command line<a class="headerlink" href="#running-rhime-from-the-command-line" title="Link to this heading">#</a></h1>
+<p>The <code class="docutils literal notranslate"><span class="pre">openghg-inversions</span></code> command is the recommended entry point for running
+RHIME from a terminal or a batch scheduler. It is installed with
+<code class="docutils literal notranslate"><span class="pre">openghg_inversions</span></code>, so a run does not need to know where the package source
+code is located.</p>
+<section id="standard-and-multisector-runs">
+<h2>Standard and multisector runs<a class="headerlink" href="#standard-and-multisector-runs" title="Link to this heading">#</a></h2>
+<p>Use <code class="docutils literal notranslate"><span class="pre">run-rhime</span></code> for a standard inversion and
+<code class="docutils literal notranslate"><span class="pre">run-rhime-multisector</span></code> for a shared-basis multisector inversion:</p>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>openghg-inversions<span class="w"> </span>run-rhime<span class="w"> </span><span class="m">2019</span>-01-01<span class="w"> </span><span class="m">2019</span>-02-01<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--config<span class="w"> </span>/path/to/rhime.ini<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--output-path<span class="w"> </span>/path/to/outputs
+
+<span class="gp">$ </span>openghg-inversions<span class="w"> </span>run-rhime-multisector<span class="w"> </span><span class="m">2019</span>-01-01<span class="w"> </span><span class="m">2019</span>-02-01<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--config<span class="w"> </span>/path/to/rhime_multisector.ini<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--output-path<span class="w"> </span>/path/to/outputs
+</pre></div>
 </div>
+<p><code class="docutils literal notranslate"><span class="pre">--config</span></code> (or <code class="docutils literal notranslate"><span class="pre">-c</span></code>) is required. The start and end dates are optional
+positional arguments; when supplied, they override <code class="docutils literal notranslate"><span class="pre">start_date</span></code> and
+<code class="docutils literal notranslate"><span class="pre">end_date</span></code> in the INI file. Likewise, <code class="docutils literal notranslate"><span class="pre">--output-path</span></code> overrides the
+configured output directory. Other RHIME keyword arguments can be overridden
+with a JSON object passed to <code class="docutils literal notranslate"><span class="pre">--kwargs</span></code>:</p>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>openghg-inversions<span class="w"> </span>run-rhime<span class="w"> </span>-c<span class="w"> </span>rhime.ini<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--kwargs<span class="w"> </span><span class="s1">'{"draws": 2000, "tune": 1000, "chains": 4}'</span>
+</pre></div>
+</div>
+<p>Keep the JSON in single quotes so the shell passes it as one argument. Run
+<code class="docutils literal notranslate"><span class="pre">openghg-inversions</span> <span class="pre">run-rhime</span> <span class="pre">--help</span></code> or
+<code class="docutils literal notranslate"><span class="pre">openghg-inversions</span> <span class="pre">run-rhime-multisector</span> <span class="pre">--help</span></code> for the complete command
+syntax. New configuration files should use the RHIME vocabulary documented in
+<a class="reference internal" href="rhime.html"><span class="doc">RHIME Terminology And Quickstart</span></a>; the packaged starting point is
+<code class="docutils literal notranslate"><span class="pre">openghg_inversions/config/templates/rhime_template.ini</span></code>.</p>
+</section>
+<section id="translating-the-older-batch-example">
+<h2>Translating the older batch example<a class="headerlink" href="#translating-the-older-batch-example" title="Link to this heading">#</a></h2>
+<p>The older documentation launched an internal Python file directly:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nv">INI_FILE</span><span class="o">=</span>/user/home/example/my_inversions/my_hbmcmc_inputs.ini
+python<span class="w"> </span>/user/home/example/openghg_inversions/openghg_inversions/hbmcmc/run_hbmcmc.py<span class="w"> </span>-c<span class="w"> </span><span class="s2">"</span><span class="nv">$INI_FILE</span><span class="s2">"</span>
+</pre></div>
+</div>
+<p>With a modern RHIME config, replace those two lines with the installed CLI.
+The following updated version uses the repository’s Pixi environment. Pixi is
+recommended for inversion jobs that read NetCDF/HDF5 data because the workspace
+keeps the compiled HDF5 and NetCDF stack together on conda-forge; see
+<a class="reference internal" href="installation.html"><span class="doc">Installation and Setup</span></a> for the package constraints and smoke check.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="ch">#!/bin/bash</span>
+<span class="c1">#SBATCH --job-name=my_inv</span>
+<span class="c1">#SBATCH --output=openghg_inversions.out</span>
+<span class="c1">#SBATCH --error=openghg_inversions.err</span>
+<span class="c1">#SBATCH --nodes=1</span>
+<span class="c1">#SBATCH --ntasks-per-node=1</span>
+<span class="c1">#SBATCH --cpus-per-task=4</span>
+<span class="c1">#SBATCH --time=04:00:00</span>
+<span class="c1">#SBATCH --mem=30gb</span>
+<span class="c1">#SBATCH --account=dept123456</span>
+
+module<span class="w"> </span>--force<span class="w"> </span>purge
+module<span class="w"> </span>load<span class="w"> </span>git/2.45.1
+
+<span class="nv">REPOSITORY</span><span class="o">=</span>/user/home/example/openghg_inversions
+<span class="nb">cd</span><span class="w"> </span><span class="s2">"</span><span class="nv">$REPOSITORY</span><span class="s2">"</span>
+
+<span class="nv">INI_FILE</span><span class="o">=</span>/user/home/example/my_inversions/rhime.ini
+<span class="nv">OUTPUT_DIR</span><span class="o">=</span>/user/home/example/my_inversions/outputs
+
+pixi<span class="w"> </span>run<span class="w"> </span>--locked<span class="w"> </span>-e<span class="w"> </span>dev<span class="w"> </span>openghg-inversions<span class="w"> </span>run-rhime<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span><span class="m">2019</span>-01-01<span class="w"> </span><span class="m">2019</span>-02-01<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--config<span class="w"> </span><span class="s2">"</span><span class="nv">$INI_FILE</span><span class="s2">"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--output-path<span class="w"> </span><span class="s2">"</span><span class="nv">$OUTPUT_DIR</span><span class="s2">"</span>
+</pre></div>
+</div>
+<p>Submit the saved script in the same way as before, for example
+<code class="docutils literal notranslate"><span class="pre">sbatch</span> <span class="pre">my_inversion_script.sh</span></code>. <code class="docutils literal notranslate"><span class="pre">pixi</span> <span class="pre">run</span> <span class="pre">--locked</span></code> checks that
+<code class="docutils literal notranslate"><span class="pre">pixi.lock</span></code> agrees with the workspace and installs the selected environment
+when necessary. Install Pixi and create the environment on the login node
+before the first submission if compute nodes do not have network access:</p>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span><span class="nb">cd</span><span class="w"> </span>/user/home/example/openghg_inversions
+<span class="gp">$ </span>pixi<span class="w"> </span>install<span class="w"> </span>--locked<span class="w"> </span>-e<span class="w"> </span>dev
+</pre></div>
+</div>
+<section id="alternative-environment-blocks">
+<h3>Alternative environment blocks<a class="headerlink" href="#alternative-environment-blocks" title="Link to this heading">#</a></h3>
+<p>If the repository was installed with <code class="docutils literal notranslate"><span class="pre">uv</span></code>, replace the <code class="docutils literal notranslate"><span class="pre">pixi</span> <span class="pre">run</span> <span class="pre">...</span></code> line
+with the following command, still running it from <code class="docutils literal notranslate"><span class="pre">$REPOSITORY</span></code>:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>run<span class="w"> </span>--locked<span class="w"> </span>openghg-inversions<span class="w"> </span>run-rhime<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span><span class="m">2019</span>-01-01<span class="w"> </span><span class="m">2019</span>-02-01<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--config<span class="w"> </span><span class="s2">"</span><span class="nv">$INI_FILE</span><span class="s2">"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--output-path<span class="w"> </span><span class="s2">"</span><span class="nv">$OUTPUT_DIR</span><span class="s2">"</span>
+</pre></div>
+</div>
+<p>Prepare the environment on the login node with <code class="docutils literal notranslate"><span class="pre">uv</span> <span class="pre">sync</span> <span class="pre">--locked</span></code> when
+compute nodes cannot download packages. <code class="docutils literal notranslate"><span class="pre">uv</span></code> uses the repository’s
+<code class="docutils literal notranslate"><span class="pre">uv.lock</span></code>, but its PyPI wheels do not provide the same single conda-forge
+HDF5/NetCDF stack as Pixi. Prefer Pixi if a <code class="docutils literal notranslate"><span class="pre">uv</span></code> environment reports HDF5,
+<code class="docutils literal notranslate"><span class="pre">h5py</span></code>, <code class="docutils literal notranslate"><span class="pre">h5netcdf</span></code>, or <code class="docutils literal notranslate"><span class="pre">netCDF4</span></code> binary errors.</p>
+<p>An existing conda environment remains usable too. Replace the Pixi setup and
+command with:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">eval</span><span class="w"> </span><span class="s2">"</span><span class="k">$(</span>conda<span class="w"> </span>shell.bash<span class="w"> </span>hook<span class="k">)</span><span class="s2">"</span>
+conda<span class="w"> </span>activate<span class="w"> </span>pymc_env
+
+openghg-inversions<span class="w"> </span>run-rhime<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span><span class="m">2019</span>-01-01<span class="w"> </span><span class="m">2019</span>-02-01<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--config<span class="w"> </span><span class="s2">"</span><span class="nv">$INI_FILE</span><span class="s2">"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--output-path<span class="w"> </span><span class="s2">"</span><span class="nv">$OUTPUT_DIR</span><span class="s2">"</span>
+</pre></div>
+</div>
+<p>In every case, invoke the installed command rather than an internal
+<code class="docutils literal notranslate"><span class="pre">openghg_inversions/hbmcmc/run_hbmcmc.py</span></code> path.</p>
+<p>For a multisector batch run, only the config and subcommand need to change:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nv">INI_FILE</span><span class="o">=</span>/user/home/example/my_inversions/rhime_multisector.ini
+<span class="nv">OUTPUT_DIR</span><span class="o">=</span>/user/home/example/my_inversions/outputs
+
+pixi<span class="w"> </span>run<span class="w"> </span>--locked<span class="w"> </span>-e<span class="w"> </span>dev<span class="w"> </span>openghg-inversions<span class="w"> </span>run-rhime-multisector<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span><span class="m">2019</span>-01-01<span class="w"> </span><span class="m">2019</span>-02-01<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--config<span class="w"> </span><span class="s2">"</span><span class="nv">$INI_FILE</span><span class="s2">"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--output-path<span class="w"> </span><span class="s2">"</span><span class="nv">$OUTPUT_DIR</span><span class="s2">"</span>
+</pre></div>
+</div>
+<p>The historical <code class="docutils literal notranslate"><span class="pre">run_hbmcmc.py</span></code> entry point remains a compatibility wrapper
+for supported older fixedbasis-style INI files. It does not turn such a file
+into a multisector configuration. For new batch jobs, start from the RHIME
+template, use <code class="docutils literal notranslate"><span class="pre">flux_sources</span></code> for standard runs, and configure the sector
+sources described in <a class="reference internal" href="rhime.html"><span class="doc">RHIME Terminology And Quickstart</span></a> before selecting
+<code class="docutils literal notranslate"><span class="pre">run-rhime-multisector</span></code>.</p>
+</section>
+</section>
 </section>
 
 
@@ -391,20 +508,20 @@
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="../index.html"
+       href="getting_started.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">OpenGHG Inversions Documentation</p>
+        <p class="prev-next-title">Getting started with OpenGHG Inversions</p>
       </div>
     </a>
     <a class="right-next"
-       href="installation.html"
+       href="grouped_basis_layout.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">Installation and Setup</p>
+        <p class="prev-next-title">Grouped basis and state metadata</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -420,9 +537,25 @@
 
 
   <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#standard-and-multisector-runs">Standard and multisector runs</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#translating-the-older-batch-example">Translating the older batch example</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#alternative-environment-blocks">Alternative environment blocks</a></li>
+</ul>
+</li>
+</ul>
+  </nav></div>
+
+  <div class="sidebar-secondary-item">
 
   <div class="tocsection sourcelink">
-    <a href="../_sources/usage/usage.rst.txt">
+    <a href="../_sources/usage/cli.rst.txt">
       <i class="fa-solid fa-file-lines"></i> Show Source
     </a>
   </div>
