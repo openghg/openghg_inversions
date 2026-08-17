@@ -214,6 +214,145 @@ def test_run_hbmcmc_main_routes_to_run_rhime(monkeypatch: pytest.MonkeyPatch, tm
     assert seen["run_rhime_kwargs"]["output_filename_convention"] == "legacy"
 
 
+def test_run_hbmcmc_legacy_fixedbasis_parser_is_explicit(tmp_path: Path) -> None:
+    """The compatibility route is disabled unless its flag is supplied."""
+    parser = run_hbmcmc.build_parser(tmp_path / "hbmcmc.ini")
+
+    assert parser.parse_args([]).legacy_fixedbasis is False
+    assert parser.parse_args(["--legacy-fixedbasis"]).legacy_fixedbasis is True
+
+
+@pytest.mark.parametrize("output_format", [None, "hbmcmc", "hbmcmc_postprocessing"])
+def test_run_hbmcmc_legacy_fixedbasis_preserves_raw_params_and_selects_true_legacy_output(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    output_format: str | None,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The explicit opt-in calls fixedbasisMCMC with untranslated legacy values."""
+    config_file = tmp_path / "hbmcmc.ini"
+    _fixedbasis_config(config_file)
+    if output_format is None:
+        config_file.write_text(
+            config_file.read_text(encoding="utf-8").replace('output_format = "hbmcmc"\n', ""),
+            encoding="utf-8",
+        )
+    elif output_format != "hbmcmc":
+        config_file.write_text(
+            config_file.read_text(encoding="utf-8").replace('hbmcmc"', f'{output_format}"'),
+            encoding="utf-8",
+        )
+    events: list[str] = []
+    seen: dict[str, Any] = {}
+
+    def fake_copy_config_file(config_file_arg: str, param: dict[str, Any], **command_line: Any) -> None:
+        events.append("copy")
+        seen["copy_param"] = param
+
+    def fake_fixedbasis_mcmc(**kwargs: Any) -> None:
+        events.append("fixedbasis")
+        seen["fixedbasis_kwargs"] = kwargs
+
+    def fail_run_rhime(**kwargs: Any) -> None:
+        raise AssertionError("The legacy opt-in must not fall back to RHIME.")
+
+    monkeypatch.setattr(run_hbmcmc.output, "copy_config_file", fake_copy_config_file)
+    monkeypatch.setattr(run_hbmcmc, "fixedbasisMCMC", fake_fixedbasis_mcmc)
+    monkeypatch.setattr(run_hbmcmc, "run_rhime", fail_run_rhime)
+
+    run_hbmcmc.main(["-c", str(config_file), "--legacy-fixedbasis"])
+
+    fixedbasis_kwargs = seen["fixedbasis_kwargs"]
+    assert events == ["copy", "fixedbasis"]
+    assert seen["copy_param"].get("output_format") == output_format
+    assert fixedbasis_kwargs["nit"] == 7
+    assert fixedbasis_kwargs["nchain"] == 3
+    assert fixedbasis_kwargs["emissions_name"] == ["total-ukghg-edgar7"]
+    assert fixedbasis_kwargs["sampler_kwargs"] == {"target_accept": 0.9}
+    assert fixedbasis_kwargs["outputpath"] == "out"
+    assert fixedbasis_kwargs["outputname"] == "legacy_run"
+    assert fixedbasis_kwargs["output_format"] == run_hbmcmc._LEGACY_FIXEDBASIS_OUTPUT_FORMAT
+    assert "draws" not in fixedbasis_kwargs
+    assert "chains" not in fixedbasis_kwargs
+    notice = capsys.readouterr().out
+    assert "WARNING: --legacy-fixedbasis SELECTED" in notice
+    assert "No automatic fallback to run_rhime" in notice
+
+
+def test_run_hbmcmc_legacy_fixedbasis_preserves_explicit_modern_legacy_output(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Explicit output_format=legacy remains the modern fixedbasis adapter mode."""
+    config_file = tmp_path / "hbmcmc.ini"
+    _fixedbasis_config(config_file)
+    config_file.write_text(
+        config_file.read_text(encoding="utf-8").replace(
+            'output_format = "hbmcmc"', 'output_format = "legacy"'
+        ),
+        encoding="utf-8",
+    )
+    seen: dict[str, Any] = {}
+
+    monkeypatch.setattr(run_hbmcmc.output, "copy_config_file", lambda *args, **kwargs: None)
+    monkeypatch.setattr(run_hbmcmc, "fixedbasisMCMC", lambda **kwargs: seen.update(kwargs))
+
+    run_hbmcmc.main(["-c", str(config_file), "--legacy-fixedbasis"])
+
+    assert seen["output_format"] == "legacy"
+
+
+def test_run_hbmcmc_legacy_fixedbasis_rejects_rhime_only_options_before_copy(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """RHIME-only option names fail clearly instead of being silently translated."""
+    config_file = tmp_path / "hbmcmc.ini"
+    _fixedbasis_config(config_file)
+
+    def fail_copy_config_file(*args: Any, **kwargs: Any) -> None:
+        raise AssertionError("Invalid legacy options must fail before config copying.")
+
+    monkeypatch.setattr(run_hbmcmc.output, "copy_config_file", fail_copy_config_file)
+
+    with pytest.raises(ValueError, match=r"--legacy-fixedbasis.*sample_kwargs"):
+        run_hbmcmc.main(
+            [
+                "-c",
+                str(config_file),
+                "--legacy-fixedbasis",
+                "--kwargs",
+                '{"sample_kwargs": {"target_accept": 0.95}}',
+            ]
+        )
+
+
+def test_run_hbmcmc_legacy_fixedbasis_checks_country_file_before_copy(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The compatibility route validates country_file before filesystem side effects."""
+    config_file = tmp_path / "hbmcmc.ini"
+    _fixedbasis_config(config_file)
+    missing_country_file = tmp_path / "missing_country_file.nc"
+    config_file.write_text(
+        config_file.read_text(encoding="utf-8")
+        + f'\n[INPUT.BASIS_CASE]\ncountry_file = "{missing_country_file}"\n',
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        run_hbmcmc.output,
+        "copy_config_file",
+        lambda *args, **kwargs: pytest.fail("country_file must be checked before config copying"),
+    )
+    monkeypatch.setattr(
+        run_hbmcmc,
+        "fixedbasisMCMC",
+        lambda **kwargs: pytest.fail("country_file must be checked before execution"),
+    )
+
+    with pytest.raises(FileNotFoundError, match="country_file"):
+        run_hbmcmc.main(["-c", str(config_file), "--legacy-fixedbasis"])
+
+
 def test_run_hbmcmc_main_validates_before_copying_config(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
