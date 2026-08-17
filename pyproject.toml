@@ -57,7 +57,11 @@ dev = [
 
 [dependency-groups]
 # UV only dependency groups; just mirror some extras
-uv_dev = ["openghg_inversions[jupyter,dev]"]
+uv_dev = [
+  "openghg_inversions[jupyter,dev]",
+  "tox>=4.24",
+  "tox-uv",
+]
 
 [project.urls]
 "Home" = "https://github.com/openghg/openghg_inversions"
@@ -111,6 +115,7 @@ country-file-smoke = "pytest -s tests/postprocessing/test_country_file_smoke.py"
 lint = "ruff check ."
 typecheck = "pyright"
 tox = "tox -p --parallel-no-spinner"
+docs-preview = "python scripts/preview_docs.py"
 
 [tool.pixi.feature.dev.pypi-dependencies]
 tox = ">=4.24"
