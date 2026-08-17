@@ -304,6 +304,7 @@
 <li class="toctree-l1"><a class="reference internal" href="getting_started.html">Getting started with OpenGHG Inversions</a></li>
 <li class="toctree-l1"><a class="reference internal" href="grouped_basis_layout.html">Grouped basis and state metadata</a></li>
 <li class="toctree-l1"><a class="reference internal" href="rhime.html">RHIME Terminology And Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="customising_rhime.html">Customising the complete RHIME workflow</a></li>
 <li class="toctree-l1"><a class="reference internal" href="concrete_rhime_model.html">Concrete RHIME Model</a></li>
 </ul>
 </div>
@@ -384,7 +385,7 @@ editable mode.</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/openghg/openghg_inversions.git
 <span class="nb">cd</span><span class="w"> </span>openghg_inversions
 pixi<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span>dev
-pixi<span class="w"> </span>run<span class="w"> </span>-e<span class="w"> </span>dev<span class="w"> </span>python<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;import openghg_inversions, h5py, h5netcdf, netCDF4&quot;</span>
+pixi<span class="w"> </span>run<span class="w"> </span>-e<span class="w"> </span>dev<span class="w"> </span>python<span class="w"> </span>-c<span class="w"> </span><span class="s2">"import openghg_inversions, h5py, h5netcdf, netCDF4"</span>
 </pre></div>
 </div>
 <p>The <code class="docutils literal notranslate"><span class="pre">dev</span></code> environment includes the test, lint, type-checking, and tox
@@ -461,7 +462,7 @@ information about this in the “Contributing” section below):</p>
 <section id="verify-that-pymc-is-using-fast-linear-algebra-libraries">
 <h2>Verify that PyMC is using fast linear algebra libraries<a class="headerlink" href="#verify-that-pymc-is-using-fast-linear-algebra-libraries" title="Link to this heading">#</a></h2>
 <p>At this point, run</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;import pymc&quot;</span>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-c<span class="w"> </span><span class="s2">"import pymc"</span>
 </pre></div>
 </div>
 <p>This should run without printing any messages. If you receive a message

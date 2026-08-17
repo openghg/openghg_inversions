@@ -473,9 +473,9 @@ first.</p>
 <p class="rubric">Example</p>
 <p>Project a cached footprint-times-flux field into state space:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">apply_basis_functions</span><span class="p">(</span><span class="n">ds</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">Dataset</span><span class="p">,</span> <span class="n">bf</span><span class="p">:</span> <span class="n">BasisFunctions</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">xr</span><span class="o">.</span><span class="n">Dataset</span><span class="p">:</span>
-    <span class="k">if</span> <span class="s2">&quot;fp_x_flux&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">ds</span><span class="p">:</span>
+    <span class="k">if</span> <span class="s2">"fp_x_flux"</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">ds</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">ds</span>
-    <span class="k">return</span> <span class="n">bf</span><span class="o">.</span><span class="n">sensitivity</span><span class="p">(</span><span class="n">ds</span><span class="o">.</span><span class="n">fp_x_flux</span><span class="p">)</span><span class="o">.</span><span class="n">rename</span><span class="p">(</span><span class="s2">&quot;H&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">to_dataset</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">bf</span><span class="o">.</span><span class="n">sensitivity</span><span class="p">(</span><span class="n">ds</span><span class="o">.</span><span class="n">fp_x_flux</span><span class="p">)</span><span class="o">.</span><span class="n">rename</span><span class="p">(</span><span class="s2">"H"</span><span class="p">)</span><span class="o">.</span><span class="n">to_dataset</span><span class="p">()</span>
 </pre></div>
 </div>
 <dl class="py attribute">

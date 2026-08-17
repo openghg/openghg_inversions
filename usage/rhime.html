@@ -51,7 +51,7 @@
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="Concrete RHIME Model" href="concrete_rhime_model.html" />
+    <link rel="next" title="Customising the complete RHIME workflow" href="customising_rhime.html" />
     <link rel="prev" title="Grouped basis and state metadata" href="grouped_basis_layout.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
@@ -305,6 +305,7 @@
 <li class="toctree-l1"><a class="reference internal" href="getting_started.html">Getting started with OpenGHG Inversions</a></li>
 <li class="toctree-l1"><a class="reference internal" href="grouped_basis_layout.html">Grouped basis and state metadata</a></li>
 <li class="toctree-l1 current active"><a class="current reference internal" href="#">RHIME Terminology And Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="customising_rhime.html">Customising the complete RHIME workflow</a></li>
 <li class="toctree-l1"><a class="reference internal" href="concrete_rhime_model.html">Concrete RHIME Model</a></li>
 </ul>
 </div>
@@ -408,38 +409,38 @@ tracer inversions.</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="n">run_rhime</span><span class="p">,</span> <span class="n">run_rhime_multisector</span>
 
 <span class="n">result</span> <span class="o">=</span> <span class="n">run_rhime</span><span class="p">(</span>
-    <span class="n">species</span><span class="o">=</span><span class="s2">&quot;ch4&quot;</span><span class="p">,</span>
-    <span class="n">sites</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;TAC&quot;</span><span class="p">],</span>
-    <span class="n">averaging_period</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;1h&quot;</span><span class="p">],</span>
-    <span class="n">domain</span><span class="o">=</span><span class="s2">&quot;EUROPE&quot;</span><span class="p">,</span>
-    <span class="n">start_date</span><span class="o">=</span><span class="s2">&quot;2019-01-01&quot;</span><span class="p">,</span>
-    <span class="n">end_date</span><span class="o">=</span><span class="s2">&quot;2019-01-02&quot;</span><span class="p">,</span>
-    <span class="n">output_path</span><span class="o">=</span><span class="s2">&quot;outputs&quot;</span><span class="p">,</span>
-    <span class="n">output_name</span><span class="o">=</span><span class="s2">&quot;example&quot;</span><span class="p">,</span>
-    <span class="n">flux_sources</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;total-ukghg-edgar7&quot;</span><span class="p">],</span>
+    <span class="n">species</span><span class="o">=</span><span class="s2">"ch4"</span><span class="p">,</span>
+    <span class="n">sites</span><span class="o">=</span><span class="p">[</span><span class="s2">"TAC"</span><span class="p">],</span>
+    <span class="n">averaging_period</span><span class="o">=</span><span class="p">[</span><span class="s2">"1h"</span><span class="p">],</span>
+    <span class="n">domain</span><span class="o">=</span><span class="s2">"EUROPE"</span><span class="p">,</span>
+    <span class="n">start_date</span><span class="o">=</span><span class="s2">"2019-01-01"</span><span class="p">,</span>
+    <span class="n">end_date</span><span class="o">=</span><span class="s2">"2019-01-02"</span><span class="p">,</span>
+    <span class="n">output_path</span><span class="o">=</span><span class="s2">"outputs"</span><span class="p">,</span>
+    <span class="n">output_name</span><span class="o">=</span><span class="s2">"example"</span><span class="p">,</span>
+    <span class="n">flux_sources</span><span class="o">=</span><span class="p">[</span><span class="s2">"total-ukghg-edgar7"</span><span class="p">],</span>
 <span class="p">)</span>
 
 <span class="n">multi_sector_result</span> <span class="o">=</span> <span class="n">run_rhime_multisector</span><span class="p">(</span>
-    <span class="n">species</span><span class="o">=</span><span class="s2">&quot;ch4&quot;</span><span class="p">,</span>
-    <span class="n">sites</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;TAC&quot;</span><span class="p">],</span>
-    <span class="n">averaging_period</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;1h&quot;</span><span class="p">],</span>
-    <span class="n">domain</span><span class="o">=</span><span class="s2">&quot;EUROPE&quot;</span><span class="p">,</span>
-    <span class="n">start_date</span><span class="o">=</span><span class="s2">&quot;2019-01-01&quot;</span><span class="p">,</span>
-    <span class="n">end_date</span><span class="o">=</span><span class="s2">&quot;2019-01-02&quot;</span><span class="p">,</span>
-    <span class="n">output_path</span><span class="o">=</span><span class="s2">&quot;outputs&quot;</span><span class="p">,</span>
-    <span class="n">output_name</span><span class="o">=</span><span class="s2">&quot;example_multisector&quot;</span><span class="p">,</span>
-    <span class="n">flux_sources</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;ff-inventory&quot;</span><span class="p">,</span> <span class="s2">&quot;gpp-inventory&quot;</span><span class="p">,</span> <span class="s2">&quot;ter-inventory&quot;</span><span class="p">,</span> <span class="s2">&quot;ocean-inventory&quot;</span><span class="p">],</span>
+    <span class="n">species</span><span class="o">=</span><span class="s2">"ch4"</span><span class="p">,</span>
+    <span class="n">sites</span><span class="o">=</span><span class="p">[</span><span class="s2">"TAC"</span><span class="p">],</span>
+    <span class="n">averaging_period</span><span class="o">=</span><span class="p">[</span><span class="s2">"1h"</span><span class="p">],</span>
+    <span class="n">domain</span><span class="o">=</span><span class="s2">"EUROPE"</span><span class="p">,</span>
+    <span class="n">start_date</span><span class="o">=</span><span class="s2">"2019-01-01"</span><span class="p">,</span>
+    <span class="n">end_date</span><span class="o">=</span><span class="s2">"2019-01-02"</span><span class="p">,</span>
+    <span class="n">output_path</span><span class="o">=</span><span class="s2">"outputs"</span><span class="p">,</span>
+    <span class="n">output_name</span><span class="o">=</span><span class="s2">"example_multisector"</span><span class="p">,</span>
+    <span class="n">flux_sources</span><span class="o">=</span><span class="p">[</span><span class="s2">"ff-inventory"</span><span class="p">,</span> <span class="s2">"gpp-inventory"</span><span class="p">,</span> <span class="s2">"ter-inventory"</span><span class="p">,</span> <span class="s2">"ocean-inventory"</span><span class="p">],</span>
     <span class="n">sector_sources</span><span class="o">=</span><span class="p">{</span>
-        <span class="s2">&quot;FF&quot;</span><span class="p">:</span> <span class="s2">&quot;ff-inventory&quot;</span><span class="p">,</span>
-        <span class="s2">&quot;GPP&quot;</span><span class="p">:</span> <span class="s2">&quot;gpp-inventory&quot;</span><span class="p">,</span>
-        <span class="s2">&quot;TER&quot;</span><span class="p">:</span> <span class="s2">&quot;ter-inventory&quot;</span><span class="p">,</span>
-        <span class="s2">&quot;ocean&quot;</span><span class="p">:</span> <span class="s2">&quot;ocean-inventory&quot;</span><span class="p">,</span>
+        <span class="s2">"FF"</span><span class="p">:</span> <span class="s2">"ff-inventory"</span><span class="p">,</span>
+        <span class="s2">"GPP"</span><span class="p">:</span> <span class="s2">"gpp-inventory"</span><span class="p">,</span>
+        <span class="s2">"TER"</span><span class="p">:</span> <span class="s2">"ter-inventory"</span><span class="p">,</span>
+        <span class="s2">"ocean"</span><span class="p">:</span> <span class="s2">"ocean-inventory"</span><span class="p">,</span>
     <span class="p">},</span>
     <span class="n">sector_priors</span><span class="o">=</span><span class="p">{</span>
-        <span class="s2">&quot;FF&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;pdf&quot;</span><span class="p">:</span> <span class="s2">&quot;lognormal&quot;</span><span class="p">,</span> <span class="s2">&quot;mean&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> <span class="s2">&quot;stdev&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">},</span>
-        <span class="s2">&quot;GPP&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;pdf&quot;</span><span class="p">:</span> <span class="s2">&quot;normal&quot;</span><span class="p">,</span> <span class="s2">&quot;mu&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> <span class="s2">&quot;sigma&quot;</span><span class="p">:</span> <span class="mf">0.5</span><span class="p">},</span>
-        <span class="s2">&quot;TER&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;pdf&quot;</span><span class="p">:</span> <span class="s2">&quot;normal&quot;</span><span class="p">,</span> <span class="s2">&quot;mu&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> <span class="s2">&quot;sigma&quot;</span><span class="p">:</span> <span class="mf">0.5</span><span class="p">},</span>
-        <span class="s2">&quot;ocean&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;pdf&quot;</span><span class="p">:</span> <span class="s2">&quot;lognormal&quot;</span><span class="p">,</span> <span class="s2">&quot;mean&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> <span class="s2">&quot;stdev&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">},</span>
+        <span class="s2">"FF"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"pdf"</span><span class="p">:</span> <span class="s2">"lognormal"</span><span class="p">,</span> <span class="s2">"mean"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> <span class="s2">"stdev"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">},</span>
+        <span class="s2">"GPP"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"pdf"</span><span class="p">:</span> <span class="s2">"normal"</span><span class="p">,</span> <span class="s2">"mu"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> <span class="s2">"sigma"</span><span class="p">:</span> <span class="mf">0.5</span><span class="p">},</span>
+        <span class="s2">"TER"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"pdf"</span><span class="p">:</span> <span class="s2">"normal"</span><span class="p">,</span> <span class="s2">"mu"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> <span class="s2">"sigma"</span><span class="p">:</span> <span class="mf">0.5</span><span class="p">},</span>
+        <span class="s2">"ocean"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"pdf"</span><span class="p">:</span> <span class="s2">"lognormal"</span><span class="p">,</span> <span class="s2">"mean"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> <span class="s2">"stdev"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">},</span>
     <span class="p">},</span>
 <span class="p">)</span>
 </pre></div>
@@ -477,27 +478,27 @@ model, output, and sampler specifications:</p>
 <span class="c1"># Produced by prepare_rhime_inputs or by another source adapter that</span>
 <span class="c1"># satisfies the same canonical contract.</span>
 <span class="n">prepared</span> <span class="o">=</span> <span class="n">prepare_inputs_elsewhere</span><span class="p">()</span>
-<span class="n">prepared</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="s2">&quot;prepared-inputs.nc&quot;</span><span class="p">)</span>
-<span class="n">prepared</span> <span class="o">=</span> <span class="n">RhimePreparedInputs</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="s2">&quot;prepared-inputs.nc&quot;</span><span class="p">)</span>
+<span class="n">prepared</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="s2">"prepared-inputs.nc"</span><span class="p">)</span>
+<span class="n">prepared</span> <span class="o">=</span> <span class="n">RhimePreparedInputs</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="s2">"prepared-inputs.nc"</span><span class="p">)</span>
 <span class="n">model_spec</span> <span class="o">=</span> <span class="n">RhimeModelSpec</span><span class="p">(</span>
-    <span class="n">species</span><span class="o">=</span><span class="s2">&quot;ch4&quot;</span><span class="p">,</span>
-    <span class="n">domain</span><span class="o">=</span><span class="s2">&quot;EUROPE&quot;</span><span class="p">,</span>
+    <span class="n">species</span><span class="o">=</span><span class="s2">"ch4"</span><span class="p">,</span>
+    <span class="n">domain</span><span class="o">=</span><span class="s2">"EUROPE"</span><span class="p">,</span>
     <span class="n">sectors</span><span class="o">=</span><span class="p">(</span>
         <span class="n">SectorSpec</span><span class="p">(</span>
-            <span class="n">name</span><span class="o">=</span><span class="s2">&quot;total&quot;</span><span class="p">,</span>
-            <span class="n">flux_source</span><span class="o">=</span><span class="s2">&quot;total-ukghg-edgar7&quot;</span><span class="p">,</span>
-            <span class="n">x_prior</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;pdf&quot;</span><span class="p">:</span> <span class="s2">&quot;lognormal&quot;</span><span class="p">,</span> <span class="s2">&quot;mean&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> <span class="s2">&quot;stdev&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">},</span>
-            <span class="n">variable_suffix</span><span class="o">=</span><span class="s2">&quot;total&quot;</span><span class="p">,</span>
+            <span class="n">name</span><span class="o">=</span><span class="s2">"total"</span><span class="p">,</span>
+            <span class="n">flux_source</span><span class="o">=</span><span class="s2">"total-ukghg-edgar7"</span><span class="p">,</span>
+            <span class="n">x_prior</span><span class="o">=</span><span class="p">{</span><span class="s2">"pdf"</span><span class="p">:</span> <span class="s2">"lognormal"</span><span class="p">,</span> <span class="s2">"mean"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> <span class="s2">"stdev"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">},</span>
+            <span class="n">variable_suffix</span><span class="o">=</span><span class="s2">"total"</span><span class="p">,</span>
         <span class="p">),</span>
     <span class="p">),</span>
 <span class="p">)</span>
 <span class="n">run_spec</span> <span class="o">=</span> <span class="n">RhimeRunSpec</span><span class="p">(</span>
-    <span class="n">start_date</span><span class="o">=</span><span class="s2">&quot;2019-01-01&quot;</span><span class="p">,</span>
-    <span class="n">end_date</span><span class="o">=</span><span class="s2">&quot;2019-01-02&quot;</span><span class="p">,</span>
+    <span class="n">start_date</span><span class="o">=</span><span class="s2">"2019-01-01"</span><span class="p">,</span>
+    <span class="n">end_date</span><span class="o">=</span><span class="s2">"2019-01-02"</span><span class="p">,</span>
     <span class="n">sites</span><span class="o">=</span><span class="n">prepared</span><span class="o">.</span><span class="n">sites</span><span class="p">,</span>
     <span class="n">averaging_period</span><span class="o">=</span><span class="n">prepared</span><span class="o">.</span><span class="n">averaging_period</span><span class="p">,</span>
     <span class="n">model</span><span class="o">=</span><span class="n">model_spec</span><span class="p">,</span>
-    <span class="n">output</span><span class="o">=</span><span class="n">RhimeOutputSpec</span><span class="p">(</span><span class="n">output_format</span><span class="o">=</span><span class="s2">&quot;none&quot;</span><span class="p">),</span>
+    <span class="n">output</span><span class="o">=</span><span class="n">RhimeOutputSpec</span><span class="p">(</span><span class="n">output_format</span><span class="o">=</span><span class="s2">"none"</span><span class="p">),</span>
     <span class="n">split_by_sectors</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
 <span class="p">)</span>
 <span class="n">result</span> <span class="o">=</span> <span class="n">run_rhime_from_prepared_inputs</span><span class="p">(</span>
@@ -650,44 +651,44 @@ its numerical unit conversion.</p>
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">xarray</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">xr</span>
 
-<span class="n">sources</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;ocean&quot;</span><span class="p">,</span> <span class="s2">&quot;FF&quot;</span><span class="p">,</span> <span class="s2">&quot;GPP&quot;</span><span class="p">,</span> <span class="s2">&quot;TER&quot;</span><span class="p">]</span>  <span class="c1"># meaningful, non-alphabetical order</span>
+<span class="n">sources</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"ocean"</span><span class="p">,</span> <span class="s2">"FF"</span><span class="p">,</span> <span class="s2">"GPP"</span><span class="p">,</span> <span class="s2">"TER"</span><span class="p">]</span>  <span class="c1"># meaningful, non-alphabetical order</span>
 
 <span class="n">site_times</span> <span class="o">=</span> <span class="n">OrderedDict</span><span class="p">(</span>
     <span class="n">TAC</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span>
-        <span class="p">[</span><span class="s2">&quot;2021-01-01T12:00&quot;</span><span class="p">,</span> <span class="s2">&quot;2021-01-02T12:00&quot;</span><span class="p">],</span>
-        <span class="n">dtype</span><span class="o">=</span><span class="s2">&quot;datetime64[ns]&quot;</span><span class="p">,</span>
+        <span class="p">[</span><span class="s2">"2021-01-01T12:00"</span><span class="p">,</span> <span class="s2">"2021-01-02T12:00"</span><span class="p">],</span>
+        <span class="n">dtype</span><span class="o">=</span><span class="s2">"datetime64[ns]"</span><span class="p">,</span>
     <span class="p">),</span>
     <span class="n">MHD</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span>
-        <span class="p">[</span><span class="s2">&quot;2021-01-01T15:00&quot;</span><span class="p">,</span> <span class="s2">&quot;2021-01-03T15:00&quot;</span><span class="p">,</span> <span class="s2">&quot;2021-01-04T15:00&quot;</span><span class="p">],</span>
-        <span class="n">dtype</span><span class="o">=</span><span class="s2">&quot;datetime64[ns]&quot;</span><span class="p">,</span>
+        <span class="p">[</span><span class="s2">"2021-01-01T15:00"</span><span class="p">,</span> <span class="s2">"2021-01-03T15:00"</span><span class="p">,</span> <span class="s2">"2021-01-04T15:00"</span><span class="p">],</span>
+        <span class="n">dtype</span><span class="o">=</span><span class="s2">"datetime64[ns]"</span><span class="p">,</span>
     <span class="p">),</span>
 <span class="p">)</span>
 <span class="n">site_data</span> <span class="o">=</span> <span class="n">OrderedDict</span><span class="p">()</span>
 <span class="k">for</span> <span class="n">site</span><span class="p">,</span> <span class="n">times</span> <span class="ow">in</span> <span class="n">site_times</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-    <span class="n">cache</span> <span class="o">=</span> <span class="n">xr</span><span class="o">.</span><span class="n">open_zarr</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">site</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span><span class="si">}</span><span class="s2">-base-fp-x-flux.zarr&quot;</span><span class="p">)[</span>
-        <span class="s2">&quot;fp_x_flux_sectoral&quot;</span>
+    <span class="n">cache</span> <span class="o">=</span> <span class="n">xr</span><span class="o">.</span><span class="n">open_zarr</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">site</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span><span class="si">}</span><span class="s2">-base-fp-x-flux.zarr"</span><span class="p">)[</span>
+        <span class="s2">"fp_x_flux_sectoral"</span>
     <span class="p">]</span><span class="o">.</span><span class="n">sel</span><span class="p">(</span><span class="n">source</span><span class="o">=</span><span class="n">sources</span><span class="p">,</span> <span class="n">time</span><span class="o">=</span><span class="n">times</span><span class="p">)</span>
     <span class="c1"># Current verification-games caches store mole fractions with units</span>
-    <span class="c1"># &quot;1&quot;. Numerically convert them in that consumer before adaptation;</span>
+    <span class="c1"># "1". Numerically convert them in that consumer before adaptation;</span>
     <span class="c1"># changing metadata alone would be scientifically incorrect.</span>
-    <span class="k">if</span> <span class="n">cache</span><span class="o">.</span><span class="n">attrs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;units&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="s2">&quot;1&quot;</span><span class="p">:</span>
-        <span class="n">cache</span> <span class="o">=</span> <span class="p">(</span><span class="n">cache</span> <span class="o">*</span> <span class="mf">1e6</span><span class="p">)</span><span class="o">.</span><span class="n">assign_attrs</span><span class="p">({</span><span class="o">**</span><span class="n">cache</span><span class="o">.</span><span class="n">attrs</span><span class="p">,</span> <span class="s2">&quot;units&quot;</span><span class="p">:</span> <span class="s2">&quot;ppm&quot;</span><span class="p">})</span>
-    <span class="k">if</span> <span class="n">cache</span><span class="o">.</span><span class="n">attrs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;units&quot;</span><span class="p">)</span> <span class="o">!=</span> <span class="s2">&quot;ppm&quot;</span><span class="p">:</span>
-        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Normalize this cache numerically to ppm first.&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">cache</span><span class="o">.</span><span class="n">attrs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"units"</span><span class="p">)</span> <span class="o">==</span> <span class="s2">"1"</span><span class="p">:</span>
+        <span class="n">cache</span> <span class="o">=</span> <span class="p">(</span><span class="n">cache</span> <span class="o">*</span> <span class="mf">1e6</span><span class="p">)</span><span class="o">.</span><span class="n">assign_attrs</span><span class="p">({</span><span class="o">**</span><span class="n">cache</span><span class="o">.</span><span class="n">attrs</span><span class="p">,</span> <span class="s2">"units"</span><span class="p">:</span> <span class="s2">"ppm"</span><span class="p">})</span>
+    <span class="k">if</span> <span class="n">cache</span><span class="o">.</span><span class="n">attrs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"units"</span><span class="p">)</span> <span class="o">!=</span> <span class="s2">"ppm"</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"Normalize this cache numerically to ppm first."</span><span class="p">)</span>
     <span class="c1"># Schematic placeholder for application-owned observation loading.</span>
     <span class="n">observation</span> <span class="o">=</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">(</span>
         <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">times</span><span class="o">.</span><span class="n">size</span><span class="p">),</span>
-        <span class="n">dims</span><span class="o">=</span><span class="s2">&quot;time&quot;</span><span class="p">,</span>
-        <span class="n">coords</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;time&quot;</span><span class="p">:</span> <span class="n">times</span><span class="p">},</span>
-        <span class="n">attrs</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;units&quot;</span><span class="p">:</span> <span class="s2">&quot;ppm&quot;</span><span class="p">},</span>
+        <span class="n">dims</span><span class="o">=</span><span class="s2">"time"</span><span class="p">,</span>
+        <span class="n">coords</span><span class="o">=</span><span class="p">{</span><span class="s2">"time"</span><span class="p">:</span> <span class="n">times</span><span class="p">},</span>
+        <span class="n">attrs</span><span class="o">=</span><span class="p">{</span><span class="s2">"units"</span><span class="p">:</span> <span class="s2">"ppm"</span><span class="p">},</span>
     <span class="p">)</span>
     <span class="n">site_data</span><span class="p">[</span><span class="n">site</span><span class="p">]</span> <span class="o">=</span> <span class="n">xr</span><span class="o">.</span><span class="n">Dataset</span><span class="p">(</span>
         <span class="p">{</span>
-            <span class="s2">&quot;mf&quot;</span><span class="p">:</span> <span class="n">observation</span><span class="p">,</span>
-            <span class="s2">&quot;mf_error&quot;</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">ones_like</span><span class="p">(</span><span class="n">observation</span><span class="p">)</span><span class="o">.</span><span class="n">assign_attrs</span><span class="p">(</span><span class="n">units</span><span class="o">=</span><span class="s2">&quot;ppm&quot;</span><span class="p">),</span>
-            <span class="s2">&quot;mf_repeatability&quot;</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">ones_like</span><span class="p">(</span><span class="n">observation</span><span class="p">)</span><span class="o">.</span><span class="n">assign_attrs</span><span class="p">(</span><span class="n">units</span><span class="o">=</span><span class="s2">&quot;ppm&quot;</span><span class="p">),</span>
-            <span class="s2">&quot;mf_variability&quot;</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">observation</span><span class="p">)</span><span class="o">.</span><span class="n">assign_attrs</span><span class="p">(</span><span class="n">units</span><span class="o">=</span><span class="s2">&quot;ppm&quot;</span><span class="p">),</span>
-            <span class="s2">&quot;fp_x_flux_sectoral&quot;</span><span class="p">:</span> <span class="n">cache</span><span class="p">,</span>
+            <span class="s2">"mf"</span><span class="p">:</span> <span class="n">observation</span><span class="p">,</span>
+            <span class="s2">"mf_error"</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">ones_like</span><span class="p">(</span><span class="n">observation</span><span class="p">)</span><span class="o">.</span><span class="n">assign_attrs</span><span class="p">(</span><span class="n">units</span><span class="o">=</span><span class="s2">"ppm"</span><span class="p">),</span>
+            <span class="s2">"mf_repeatability"</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">ones_like</span><span class="p">(</span><span class="n">observation</span><span class="p">)</span><span class="o">.</span><span class="n">assign_attrs</span><span class="p">(</span><span class="n">units</span><span class="o">=</span><span class="s2">"ppm"</span><span class="p">),</span>
+            <span class="s2">"mf_variability"</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">observation</span><span class="p">)</span><span class="o">.</span><span class="n">assign_attrs</span><span class="p">(</span><span class="n">units</span><span class="o">=</span><span class="s2">"ppm"</span><span class="p">),</span>
+            <span class="s2">"fp_x_flux_sectoral"</span><span class="p">:</span> <span class="n">cache</span><span class="p">,</span>
         <span class="p">}</span>
     <span class="p">)</span>
 </pre></div>
@@ -700,13 +701,13 @@ the supplied site datasets; it does not acquire or normalize the upstream data.<
 
 <span class="c1"># This retained artifact owns the basis operator, source-resolved reference</span>
 <span class="c1"># flux, state labels, and source order used for later reconstruction.</span>
-<span class="n">basis_functions</span> <span class="o">=</span> <span class="n">BasisFunctions</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="s2">&quot;base-country-basis.zarr&quot;</span><span class="p">)</span>
+<span class="n">basis_functions</span> <span class="o">=</span> <span class="n">BasisFunctions</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="s2">"base-country-basis.zarr"</span><span class="p">)</span>
 <span class="n">prepared</span> <span class="o">=</span> <span class="n">prepare_rhime_inputs_from_xarray</span><span class="p">(</span>
     <span class="n">site_data</span><span class="p">,</span>
     <span class="n">basis_functions</span><span class="o">=</span><span class="n">basis_functions</span><span class="p">,</span>
-    <span class="n">averaging_period</span><span class="o">=</span><span class="s2">&quot;1h&quot;</span><span class="p">,</span>
+    <span class="n">averaging_period</span><span class="o">=</span><span class="s2">"1h"</span><span class="p">,</span>
     <span class="n">min_error</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span>
-    <span class="n">start_date</span><span class="o">=</span><span class="s2">&quot;2021-01-01&quot;</span><span class="p">,</span>
+    <span class="n">start_date</span><span class="o">=</span><span class="s2">"2021-01-01"</span><span class="p">,</span>
 <span class="p">)</span>
 </pre></div>
 </div>
@@ -714,8 +715,8 @@ the supplied site datasets; it does not acquire or normalize the upstream data.<
 prepared artifact is reopened:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.inversion_data</span><span class="w"> </span><span class="kn">import</span> <span class="n">RhimePreparedInputs</span>
 
-<span class="n">prepared</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="s2">&quot;base-prepared-inputs.zarr&quot;</span><span class="p">)</span>
-<span class="n">prepared</span> <span class="o">=</span> <span class="n">RhimePreparedInputs</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="s2">&quot;base-prepared-inputs.zarr&quot;</span><span class="p">)</span>
+<span class="n">prepared</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="s2">"base-prepared-inputs.zarr"</span><span class="p">)</span>
+<span class="n">prepared</span> <span class="o">=</span> <span class="n">RhimePreparedInputs</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="s2">"base-prepared-inputs.zarr"</span><span class="p">)</span>
 </pre></div>
 </div>
 <p>Finally, construct and execute the OpenGHG Inversions run from the canonical
@@ -728,28 +729,28 @@ prepared object:</p>
     <span class="n">run_rhime_from_prepared_inputs</span><span class="p">,</span>
 <span class="p">)</span>
 
-<span class="n">sources</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;ocean&quot;</span><span class="p">,</span> <span class="s2">&quot;FF&quot;</span><span class="p">,</span> <span class="s2">&quot;GPP&quot;</span><span class="p">,</span> <span class="s2">&quot;TER&quot;</span><span class="p">]</span>
+<span class="n">sources</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"ocean"</span><span class="p">,</span> <span class="s2">"FF"</span><span class="p">,</span> <span class="s2">"GPP"</span><span class="p">,</span> <span class="s2">"TER"</span><span class="p">]</span>
 <span class="n">sectors</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span>
     <span class="n">SectorSpec</span><span class="p">(</span>
         <span class="n">name</span><span class="o">=</span><span class="n">source</span><span class="p">,</span>
         <span class="n">flux_source</span><span class="o">=</span><span class="n">source</span><span class="p">,</span>
-        <span class="n">x_prior</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;pdf&quot;</span><span class="p">:</span> <span class="s2">&quot;lognormal&quot;</span><span class="p">,</span> <span class="s2">&quot;mean&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> <span class="s2">&quot;stdev&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">},</span>
+        <span class="n">x_prior</span><span class="o">=</span><span class="p">{</span><span class="s2">"pdf"</span><span class="p">:</span> <span class="s2">"lognormal"</span><span class="p">,</span> <span class="s2">"mean"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> <span class="s2">"stdev"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">},</span>
         <span class="n">variable_suffix</span><span class="o">=</span><span class="n">source</span><span class="o">.</span><span class="n">lower</span><span class="p">(),</span>
     <span class="p">)</span>
     <span class="k">for</span> <span class="n">source</span> <span class="ow">in</span> <span class="n">sources</span>
 <span class="p">)</span>
 <span class="n">run_spec</span> <span class="o">=</span> <span class="n">RhimeRunSpec</span><span class="p">(</span>
-    <span class="n">start_date</span><span class="o">=</span><span class="s2">&quot;2021-01-01&quot;</span><span class="p">,</span>
-    <span class="n">end_date</span><span class="o">=</span><span class="s2">&quot;2021-01-05&quot;</span><span class="p">,</span>
+    <span class="n">start_date</span><span class="o">=</span><span class="s2">"2021-01-01"</span><span class="p">,</span>
+    <span class="n">end_date</span><span class="o">=</span><span class="s2">"2021-01-05"</span><span class="p">,</span>
     <span class="n">sites</span><span class="o">=</span><span class="n">prepared</span><span class="o">.</span><span class="n">sites</span><span class="p">,</span>
     <span class="n">averaging_period</span><span class="o">=</span><span class="n">prepared</span><span class="o">.</span><span class="n">averaging_period</span><span class="p">,</span>
     <span class="n">model</span><span class="o">=</span><span class="n">RhimeModelSpec</span><span class="p">(</span>
-        <span class="n">species</span><span class="o">=</span><span class="s2">&quot;co2&quot;</span><span class="p">,</span>
-        <span class="n">domain</span><span class="o">=</span><span class="s2">&quot;EUROPE&quot;</span><span class="p">,</span>
+        <span class="n">species</span><span class="o">=</span><span class="s2">"co2"</span><span class="p">,</span>
+        <span class="n">domain</span><span class="o">=</span><span class="s2">"EUROPE"</span><span class="p">,</span>
         <span class="n">sectors</span><span class="o">=</span><span class="n">sectors</span><span class="p">,</span>
-        <span class="n">sigma_freq</span><span class="o">=</span><span class="s2">&quot;monthly&quot;</span><span class="p">,</span>
+        <span class="n">sigma_freq</span><span class="o">=</span><span class="s2">"monthly"</span><span class="p">,</span>
     <span class="p">),</span>
-    <span class="n">output</span><span class="o">=</span><span class="n">RhimeOutputSpec</span><span class="p">(</span><span class="n">output_format</span><span class="o">=</span><span class="s2">&quot;none&quot;</span><span class="p">),</span>
+    <span class="n">output</span><span class="o">=</span><span class="n">RhimeOutputSpec</span><span class="p">(</span><span class="n">output_format</span><span class="o">=</span><span class="s2">"none"</span><span class="p">),</span>
     <span class="n">split_by_sectors</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
 <span class="p">)</span>
 <span class="n">result</span> <span class="o">=</span> <span class="n">run_rhime_from_prepared_inputs</span><span class="p">(</span>
@@ -818,22 +819,22 @@ features do not extend legacy HBMCMC model or output paths.</p>
 <h2>Config Files<a class="headerlink" href="#config-files" title="Link to this heading">#</a></h2>
 <p>New RHIME config files should use <code class="docutils literal notranslate"><span class="pre">flux_sources</span></code>:</p>
 <div class="highlight-ini notranslate"><div class="highlight"><pre><span></span><span class="k">[INPUT.MEASUREMENTS]</span>
-<span class="na">species</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;ch4&quot;</span>
-<span class="na">sites</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">[&quot;TAC&quot;]</span>
-<span class="na">averaging_period</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">[&quot;1h&quot;]</span>
-<span class="na">start_date</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;2019-01-01&quot;</span>
-<span class="na">end_date</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;2019-01-02&quot;</span>
+<span class="na">species</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"ch4"</span>
+<span class="na">sites</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">["TAC"]</span>
+<span class="na">averaging_period</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">["1h"]</span>
+<span class="na">start_date</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"2019-01-01"</span>
+<span class="na">end_date</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"2019-01-02"</span>
 
 <span class="k">[INPUT.PRIORS]</span>
-<span class="na">domain</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;EUROPE&quot;</span>
-<span class="na">flux_sources</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">[&quot;total-ukghg-edgar7&quot;]</span>
+<span class="na">domain</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"EUROPE"</span>
+<span class="na">flux_sources</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">["total-ukghg-edgar7"]</span>
 
 <span class="k">[RHIME.OPTIONS]</span>
-<span class="na">builder_strategy</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;concrete&quot;</span>
+<span class="na">builder_strategy</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"concrete"</span>
 
 <span class="k">[RHIME.OUTPUT]</span>
-<span class="na">output_path</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;outputs&quot;</span>
-<span class="na">output_name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;example&quot;</span>
+<span class="na">output_path</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"outputs"</span>
+<span class="na">output_name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"example"</span>
 </pre></div>
 </div>
 <p>For multi-sector RHIME, use <code class="docutils literal notranslate"><span class="pre">sector_sources</span></code> when the optimized sector names
@@ -842,21 +843,21 @@ are not the same strings as the OpenGHG source values. Its values must match
 it must contain exactly the same sector keys as <code class="docutils literal notranslate"><span class="pre">sector_sources</span></code>; otherwise
 omit it and use one shared <code class="docutils literal notranslate"><span class="pre">x_prior</span></code>.</p>
 <div class="highlight-ini notranslate"><div class="highlight"><pre><span></span><span class="k">[INPUT.PRIORS]</span>
-<span class="na">domain</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;EUROPE&quot;</span>
-<span class="na">flux_sources</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">[&quot;ff-inventory&quot;, &quot;gpp-inventory&quot;, &quot;ter-inventory&quot;, &quot;ocean-inventory&quot;]</span>
+<span class="na">domain</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"EUROPE"</span>
+<span class="na">flux_sources</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">["ff-inventory", "gpp-inventory", "ter-inventory", "ocean-inventory"]</span>
 <span class="na">sector_sources</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">{</span>
-<span class="w">    </span><span class="na">&quot;FF&quot;</span><span class="o">:</span><span class="w"> </span><span class="s">&quot;ff-inventory&quot;</span><span class="na">,</span>
-<span class="w">    </span><span class="na">&quot;GPP&quot;</span><span class="o">:</span><span class="w"> </span><span class="s">&quot;gpp-inventory&quot;</span><span class="na">,</span>
-<span class="w">    </span><span class="na">&quot;TER&quot;</span><span class="o">:</span><span class="w"> </span><span class="s">&quot;ter-inventory&quot;</span><span class="na">,</span>
-<span class="w">    </span><span class="na">&quot;ocean&quot;</span><span class="o">:</span><span class="w"> </span><span class="s">&quot;ocean-inventory&quot;</span>
+<span class="w">    </span><span class="na">"FF"</span><span class="o">:</span><span class="w"> </span><span class="s">"ff-inventory"</span><span class="na">,</span>
+<span class="w">    </span><span class="na">"GPP"</span><span class="o">:</span><span class="w"> </span><span class="s">"gpp-inventory"</span><span class="na">,</span>
+<span class="w">    </span><span class="na">"TER"</span><span class="o">:</span><span class="w"> </span><span class="s">"ter-inventory"</span><span class="na">,</span>
+<span class="w">    </span><span class="na">"ocean"</span><span class="o">:</span><span class="w"> </span><span class="s">"ocean-inventory"</span>
 <span class="na">}</span>
 
 <span class="k">[RHIME.PDF]</span>
 <span class="na">sector_priors</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">{</span>
-<span class="w">    </span><span class="na">&quot;FF&quot;: {&quot;pdf&quot;</span><span class="o">:</span><span class="w"> </span><span class="s">&quot;lognormal&quot;</span><span class="na">, &quot;mean&quot;</span><span class="o">:</span><span class="w"> </span><span class="s">1.0, &quot;stdev&quot;: 1.0},</span>
-<span class="w">    </span><span class="na">&quot;GPP&quot;: {&quot;pdf&quot;</span><span class="o">:</span><span class="w"> </span><span class="s">&quot;normal&quot;</span><span class="na">, &quot;mu&quot;</span><span class="o">:</span><span class="w"> </span><span class="s">1.0, &quot;sigma&quot;: 0.5},</span>
-<span class="w">    </span><span class="na">&quot;TER&quot;: {&quot;pdf&quot;</span><span class="o">:</span><span class="w"> </span><span class="s">&quot;normal&quot;</span><span class="na">, &quot;mu&quot;</span><span class="o">:</span><span class="w"> </span><span class="s">1.0, &quot;sigma&quot;: 0.5},</span>
-<span class="w">    </span><span class="na">&quot;ocean&quot;: {&quot;pdf&quot;</span><span class="o">:</span><span class="w"> </span><span class="s">&quot;lognormal&quot;</span><span class="na">, &quot;mean&quot;</span><span class="o">:</span><span class="w"> </span><span class="s">1.0, &quot;stdev&quot;: 1.0}</span>
+<span class="w">    </span><span class="na">"FF": {"pdf"</span><span class="o">:</span><span class="w"> </span><span class="s">"lognormal"</span><span class="na">, "mean"</span><span class="o">:</span><span class="w"> </span><span class="s">1.0, "stdev": 1.0},</span>
+<span class="w">    </span><span class="na">"GPP": {"pdf"</span><span class="o">:</span><span class="w"> </span><span class="s">"normal"</span><span class="na">, "mu"</span><span class="o">:</span><span class="w"> </span><span class="s">1.0, "sigma": 0.5},</span>
+<span class="w">    </span><span class="na">"TER": {"pdf"</span><span class="o">:</span><span class="w"> </span><span class="s">"normal"</span><span class="na">, "mu"</span><span class="o">:</span><span class="w"> </span><span class="s">1.0, "sigma": 0.5},</span>
+<span class="w">    </span><span class="na">"ocean": {"pdf"</span><span class="o">:</span><span class="w"> </span><span class="s">"lognormal"</span><span class="na">, "mean"</span><span class="o">:</span><span class="w"> </span><span class="s">1.0, "stdev": 1.0}</span>
 <span class="na">}</span>
 </pre></div>
 </div>
@@ -886,12 +887,12 @@ every distinct outer label receives one target:</p>
     <span class="n">region_constrained_fixed_outer_basis_from_weights</span><span class="p">,</span>
 <span class="p">)</span>
 
-<span class="n">outer_regions</span> <span class="o">=</span> <span class="n">load_intem_outer_regions</span><span class="p">(</span><span class="s2">&quot;EUROPE&quot;</span><span class="p">)</span>
-<span class="n">region_classes</span> <span class="o">=</span> <span class="n">load_country_region_classes</span><span class="p">(</span><span class="s2">&quot;EUROPE&quot;</span><span class="p">)</span>
+<span class="n">outer_regions</span> <span class="o">=</span> <span class="n">load_intem_outer_regions</span><span class="p">(</span><span class="s2">"EUROPE"</span><span class="p">)</span>
+<span class="n">region_classes</span> <span class="o">=</span> <span class="n">load_country_region_classes</span><span class="p">(</span><span class="s2">"EUROPE"</span><span class="p">)</span>
 <span class="n">basis</span> <span class="o">=</span> <span class="n">region_constrained_fixed_outer_basis_from_weights</span><span class="p">(</span>
     <span class="n">weights</span><span class="p">,</span>
-    <span class="n">start_date</span><span class="o">=</span><span class="s2">&quot;2020-01-01&quot;</span><span class="p">,</span>
-    <span class="n">domain</span><span class="o">=</span><span class="s2">&quot;EUROPE&quot;</span><span class="p">,</span>
+    <span class="n">start_date</span><span class="o">=</span><span class="s2">"2020-01-01"</span><span class="p">,</span>
+    <span class="n">domain</span><span class="o">=</span><span class="s2">"EUROPE"</span><span class="p">,</span>
     <span class="n">nbasis</span><span class="o">=</span><span class="mi">150</span><span class="p">,</span>
     <span class="n">outer_regions</span><span class="o">=</span><span class="n">outer_regions</span><span class="p">,</span>
     <span class="n">region_classes</span><span class="o">=</span><span class="n">region_classes</span><span class="p">,</span>
@@ -965,16 +966,16 @@ containing the value <code class="docutils literal notranslate"><span class="pre
 <span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.sigma</span><span class="w"> </span><span class="kn">import</span> <span class="n">SigmaAlignment</span>
 
 <span class="n">state_policy</span> <span class="o">=</span> <span class="n">StateActivity</span><span class="p">(</span>
-    <span class="n">fixed_groups</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;outer&quot;</span><span class="p">,),</span>
+    <span class="n">fixed_groups</span><span class="o">=</span><span class="p">(</span><span class="s2">"outer"</span><span class="p">,),</span>
     <span class="n">fixed_value</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span>
 <span class="p">)</span>
 <span class="n">sigma_alignment</span> <span class="o">=</span> <span class="n">SigmaAlignment</span><span class="o">.</span><span class="n">from_frequency</span><span class="p">(</span>
-    <span class="n">inv_inputs</span><span class="p">[</span><span class="s2">&quot;site_indicator&quot;</span><span class="p">],</span>
+    <span class="n">inv_inputs</span><span class="p">[</span><span class="s2">"site_indicator"</span><span class="p">],</span>
 <span class="p">)</span>
 <span class="n">model</span> <span class="o">=</span> <span class="n">build_rhime_model</span><span class="p">(</span>
     <span class="n">inv_inputs</span><span class="p">,</span>
     <span class="n">sigma_alignment</span><span class="o">=</span><span class="n">sigma_alignment</span><span class="p">,</span>
-    <span class="n">x_prior</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;pdf&quot;</span><span class="p">:</span> <span class="s2">&quot;normal&quot;</span><span class="p">,</span> <span class="s2">&quot;mu&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> <span class="s2">&quot;sigma&quot;</span><span class="p">:</span> <span class="mf">0.5</span><span class="p">},</span>
+    <span class="n">x_prior</span><span class="o">=</span><span class="p">{</span><span class="s2">"pdf"</span><span class="p">:</span> <span class="s2">"normal"</span><span class="p">,</span> <span class="s2">"mu"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> <span class="s2">"sigma"</span><span class="p">:</span> <span class="mf">0.5</span><span class="p">},</span>
     <span class="n">state_activity</span><span class="o">=</span><span class="n">state_policy</span><span class="p">,</span>
 <span class="p">)</span>
 </pre></div>
@@ -1031,8 +1032,8 @@ public state <code class="docutils literal notranslate"><span class="pre">&lt;na
 
 <span class="n">mean</span> <span class="o">=</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">(</span>
     <span class="p">[</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">],</span>
-    <span class="n">dims</span><span class="o">=</span><span class="s2">&quot;state&quot;</span><span class="p">,</span>
-    <span class="n">coords</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;state&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;region-a&quot;</span><span class="p">,</span> <span class="s2">&quot;region-b&quot;</span><span class="p">]},</span>
+    <span class="n">dims</span><span class="o">=</span><span class="s2">"state"</span><span class="p">,</span>
+    <span class="n">coords</span><span class="o">=</span><span class="p">{</span><span class="s2">"state"</span><span class="p">:</span> <span class="p">[</span><span class="s2">"region-a"</span><span class="p">,</span> <span class="s2">"region-b"</span><span class="p">]},</span>
 <span class="p">)</span>
 <span class="n">prior</span> <span class="o">=</span> <span class="n">CorrelatedLognormalPrior</span><span class="p">(</span>
     <span class="n">mean</span><span class="p">,</span>
@@ -1040,7 +1041,7 @@ public state <code class="docutils literal notranslate"><span class="pre">&lt;na
 <span class="p">)</span>
 
 <span class="k">with</span> <span class="n">pm</span><span class="o">.</span><span class="n">Model</span><span class="p">():</span>
-    <span class="n">state_result</span> <span class="o">=</span> <span class="n">add_correlated_lognormal_state</span><span class="p">(</span><span class="n">prior</span><span class="p">,</span> <span class="n">var_name</span><span class="o">=</span><span class="s2">&quot;x&quot;</span><span class="p">)</span>
+    <span class="n">state_result</span> <span class="o">=</span> <span class="n">add_correlated_lognormal_state</span><span class="p">(</span><span class="n">prior</span><span class="p">,</span> <span class="n">var_name</span><span class="o">=</span><span class="s2">"x"</span><span class="p">)</span>
 </pre></div>
 </div>
 <p><code class="docutils literal notranslate"><span class="pre">C</span></code> must be the dense covariance of an already-reduced sampled state, such as
@@ -1099,7 +1100,7 @@ retain their gathered <code class="docutils literal notranslate"><span class="pr
 <span class="p">)</span>
 <span class="n">model</span> <span class="o">=</span> <span class="n">build_rhime_model</span><span class="p">(</span>
     <span class="n">inv_inputs</span><span class="p">,</span>
-    <span class="n">x_prior</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;pdf&quot;</span><span class="p">:</span> <span class="s2">&quot;normal&quot;</span><span class="p">,</span> <span class="s2">&quot;mu&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> <span class="s2">&quot;sigma&quot;</span><span class="p">:</span> <span class="n">x_prior_stdev</span><span class="p">},</span>
+    <span class="n">x_prior</span><span class="o">=</span><span class="p">{</span><span class="s2">"pdf"</span><span class="p">:</span> <span class="s2">"normal"</span><span class="p">,</span> <span class="s2">"mu"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> <span class="s2">"sigma"</span><span class="p">:</span> <span class="n">x_prior_stdev</span><span class="p">},</span>
 <span class="p">)</span>
 </pre></div>
 </div>
@@ -1175,11 +1176,11 @@ wrapper around <code class="docutils literal notranslate"><span class="pre">run_
       </div>
     </a>
     <a class="right-next"
-       href="concrete_rhime_model.html"
+       href="customising_rhime.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">Concrete RHIME Model</p>
+        <p class="prev-next-title">Customising the complete RHIME workflow</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>

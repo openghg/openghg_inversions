@@ -462,7 +462,7 @@
 <span class="sig-prename descclassname"><span class="pre">openghg_inversions.postprocessing.utils.</span></span><span class="sig-name descname"><span class="pre">add_suffix</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">suffix</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.postprocessing.utils.add_suffix" title="Link to this definition">#</a></dt>
 <dd><p>Decorator to add suffix to variable names of dataset returned by decorated function.</p>
 <p>For example:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="nd">@add_suffix</span><span class="p">(</span><span class="s2">&quot;abc&quot;</span><span class="p">)</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="nd">@add_suffix</span><span class="p">(</span><span class="s2">"abc"</span><span class="p">)</span>
 <span class="k">def</span><span class="w"> </span><span class="nf">some_func</span><span class="p">():</span>
    <span class="o">...</span>
 </pre></div>
@@ -474,13 +474,13 @@ each time it is called. This is the decorate function
 that is returned. Then the actual “decoration” is done by
 the decorate function.</p>
 <p>So:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="nd">@add_suffix</span><span class="p">(</span><span class="s2">&quot;mean&quot;</span><span class="p">)</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="nd">@add_suffix</span><span class="p">(</span><span class="s2">"mean"</span><span class="p">)</span>
 <span class="k">def</span><span class="w"> </span><span class="nf">calc_mean</span><span class="p">():</span>
     <span class="k">pass</span>
 </pre></div>
 </div>
 <p>is the same as:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">temp</span> <span class="o">=</span> <span class="n">add_suffix</span><span class="p">(</span><span class="s2">&quot;mean&quot;</span><span class="p">)</span>  <span class="c1"># get `decorate`</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">temp</span> <span class="o">=</span> <span class="n">add_suffix</span><span class="p">(</span><span class="s2">"mean"</span><span class="p">)</span>  <span class="c1"># get `decorate`</span>
 
 <span class="nd">@temp</span>
 <span class="k">def</span><span class="w"> </span><span class="nf">calc_mean</span><span class="p">():</span>

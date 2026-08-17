@@ -305,6 +305,7 @@
 <li class="toctree-l1 current active"><a class="current reference internal" href="#">Getting started with OpenGHG Inversions</a></li>
 <li class="toctree-l1"><a class="reference internal" href="grouped_basis_layout.html">Grouped basis and state metadata</a></li>
 <li class="toctree-l1"><a class="reference internal" href="rhime.html">RHIME Terminology And Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="customising_rhime.html">Customising the complete RHIME workflow</a></li>
 <li class="toctree-l1"><a class="reference internal" href="concrete_rhime_model.html">Concrete RHIME Model</a></li>
 </ul>
 </div>
@@ -610,7 +611,7 @@ just cloned <code class="docutils literal notranslate"><span class="pre">openghg
 <span class="c1"># Set up Python environment</span>
 module<span class="w"> </span>--force<span class="w"> </span>purge
 module<span class="w"> </span>load<span class="w"> </span>git/2.45.1
-<span class="nb">eval</span><span class="w"> </span><span class="s2">&quot;</span><span class="k">$(</span>conda<span class="w"> </span>shell.bash<span class="w"> </span>hook<span class="k">)</span><span class="s2">&quot;</span>
+<span class="nb">eval</span><span class="w"> </span><span class="s2">"</span><span class="k">$(</span>conda<span class="w"> </span>shell.bash<span class="w"> </span>hook<span class="k">)</span><span class="s2">"</span>
 conda<span class="w"> </span>activate<span class="w"> </span>pymc_env
 
 <span class="c1">#conda info</span>
@@ -620,8 +621,8 @@ conda<span class="w"> </span>activate<span class="w"> </span>pymc_env
 python<span class="w"> </span>/user/home/bm13805/openghg_inversions/openghg_inversions/hbmcmc/run_hbmcmc.py<span class="w"> </span>-c<span class="w"> </span><span class="nv">$INI_FILE</span>
 
 <span class="c1"># check numpy config</span>
-<span class="c1"># python -c &quot;import numpy as np; np.show_config()&quot;</span>
-<span class="c1"># python -c &quot;import pymc&quot;</span>
+<span class="c1"># python -c "import numpy as np; np.show_config()"</span>
+<span class="c1"># python -c "import pymc"</span>
 </pre></div>
 </div>
 <p>If this script is saved as <code class="docutils literal notranslate"><span class="pre">my_inversions_script.sh</span></code>, you would run it
@@ -663,21 +664,21 @@ well.)</p></li>
 
 <span class="k">[INPUT.MEASUREMENTS]</span>
 <span class="c1">; Input values for extracting observations</span>
-<span class="c1">; species (str) - species name,  e.g. &quot;ch4&quot;, &quot;co2&quot;, &quot;n2o&quot;, etc.</span>
-<span class="c1">; sites (list) - site codes as a list, e.g. [&quot;TAC&quot;, &quot;MHD&quot;]</span>
+<span class="c1">; species (str) - species name,  e.g. "ch4", "co2", "n2o", etc.</span>
+<span class="c1">; sites (list) - site codes as a list, e.g. ["TAC", "MHD"]</span>
 <span class="c1">; averaging_period (list) - Time periods for to average the measurements to (can be None and must match length of sites)</span>
 <span class="c1">; start_date (str) - Start of observations to extract (format YYYY-MM-DD)</span>
 <span class="c1">; end_date (str) - End of observations to extract (format YYYY-MM-DD) (non-inclusive)</span>
 <span class="c1">; inlet (list/None) - Specific inlet height for the site (list - must match number of sites)</span>
 <span class="c1">; instrument (list/None) - Specific instrument for the site (list - must match number of sites)</span>
 
-<span class="na">species</span><span class="w">     </span><span class="o">=</span><span class="w"> </span><span class="s">&#39;ch4&#39;</span><span class="w">   </span><span class="c1">; (required)</span>
-<span class="na">sites</span><span class="w">       </span><span class="o">=</span><span class="w"> </span><span class="s">[&#39;TAC&#39;]</span><span class="w"> </span><span class="c1">; (required)</span>
-<span class="na">averaging_period</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">[&#39;1H&#39;]</span><span class="w">  </span><span class="c1">; (required)</span>
-<span class="na">start_date</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="s">&#39;2019-01-01&#39;</span><span class="w">      </span><span class="c1">; (required)</span>
-<span class="na">end_date</span><span class="w">    </span><span class="o">=</span><span class="w"> </span><span class="s">&#39;2019-02-01&#39;</span><span class="w">      </span><span class="c1">; (required)</span>
-<span class="na">inlet</span><span class="w">         </span><span class="o">=</span><span class="w"> </span><span class="s">[&quot;185m&quot;]</span>
-<span class="na">instrument</span><span class="w">    </span><span class="o">=</span><span class="w"> </span><span class="s">[&quot;picarro&quot;]</span>
+<span class="na">species</span><span class="w">     </span><span class="o">=</span><span class="w"> </span><span class="s">'ch4'</span><span class="w">   </span><span class="c1">; (required)</span>
+<span class="na">sites</span><span class="w">       </span><span class="o">=</span><span class="w"> </span><span class="s">['TAC']</span><span class="w"> </span><span class="c1">; (required)</span>
+<span class="na">averaging_period</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">['1H']</span><span class="w">  </span><span class="c1">; (required)</span>
+<span class="na">start_date</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="s">'2019-01-01'</span><span class="w">      </span><span class="c1">; (required)</span>
+<span class="na">end_date</span><span class="w">    </span><span class="o">=</span><span class="w"> </span><span class="s">'2019-02-01'</span><span class="w">      </span><span class="c1">; (required)</span>
+<span class="na">inlet</span><span class="w">         </span><span class="o">=</span><span class="w"> </span><span class="s">["185m"]</span>
+<span class="na">instrument</span><span class="w">    </span><span class="o">=</span><span class="w"> </span><span class="s">["picarro"]</span>
 
 
 <span class="k">[INPUT.PRIORS]</span>
@@ -687,18 +688,18 @@ well.)</p></li>
 <span class="c1">; fp_height (list) - Release height for footprints (must match number of sites).</span>
 <span class="c1">; emissions_name (list/None) - Legacy key for a specific flux source.</span>
 
-<span class="na">domain</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&#39;EUROPE&#39;</span><span class="w">  </span><span class="c1">; (required)</span>
-<span class="na">fp_height</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">[&quot;185m&quot;]</span><span class="w">  </span><span class="c1">; typically the same as inlet, but may differ slightly (e.g. if instrument moved to 180m, for instance)</span>
-<span class="na">fp_model</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;NAME&quot;</span><span class="w">  </span><span class="c1">; LPDM model, usually NAME</span>
-<span class="na">emissions_name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">[&quot;total-ukghg-edgar7&quot;]</span><span class="w">  </span><span class="c1">; legacy fixedbasis key; new RHIME configs use flux_sources</span>
-<span class="na">met_model</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&#39;UKV&#39;</span><span class="w">  </span><span class="c1">; or None if not specified, check the metadata for your footprint</span>
+<span class="na">domain</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">'EUROPE'</span><span class="w">  </span><span class="c1">; (required)</span>
+<span class="na">fp_height</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">["185m"]</span><span class="w">  </span><span class="c1">; typically the same as inlet, but may differ slightly (e.g. if instrument moved to 180m, for instance)</span>
+<span class="na">fp_model</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"NAME"</span><span class="w">  </span><span class="c1">; LPDM model, usually NAME</span>
+<span class="na">emissions_name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">["total-ukghg-edgar7"]</span><span class="w">  </span><span class="c1">; legacy fixedbasis key; new RHIME configs use flux_sources</span>
+<span class="na">met_model</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">'UKV'</span><span class="w">  </span><span class="c1">; or None if not specified, check the metadata for your footprint</span>
 
 <span class="k">[INPUT.BASIS_CASE]</span>
 <span class="c1">; Input values to extract the basis cases to use within the inversion for boundary conditions and emissions</span>
-<span class="c1">; basis_algorithm (str): Choice of basis function algorithm to use. One of &quot;quadtree&quot; or &quot;weighted&quot;.</span>
-<span class="c1">; The Python basis API also supports &quot;region_constrained&quot; when the caller supplies a region_classes DataArray;</span>
+<span class="c1">; basis_algorithm (str): Choice of basis function algorithm to use. One of "quadtree" or "weighted".</span>
+<span class="c1">; The Python basis API also supports "region_constrained" when the caller supplies a region_classes DataArray;</span>
 <span class="c1">; this .ini route does not currently load region_classes from file or route child-share split-stopping policies.</span>
-<span class="c1">; bc_basis_case (str): Boundary conditions basis, defaults to &quot;NESW&quot; (looks for file format {bc_basis_case}_{domain}_*.nc)</span>
+<span class="c1">; bc_basis_case (str): Boundary conditions basis, defaults to "NESW" (looks for file format {bc_basis_case}_{domain}_*.nc)</span>
 <span class="c1">; bc_basis_directory (str/None): Directory for bc_basis functions. If None provided, creates new folder in openghg_inversions expecting to find bc_basis_function files there.</span>
 <span class="c1">; fp_basis_case (str/None): Emissions bases:</span>
 <span class="c1">; - if specified, looks for file format {fp_basis_case}_{domain}_*.nc</span>
@@ -707,19 +708,19 @@ well.)</p></li>
 <span class="c1">; basis_directory (str/None): Directory containing the basis functions (with domain name as subdirectories)</span>
 <span class="c1">; country_file (str/None): Directory with filename  containing the indices of country boundaries in domain</span>
 
-<span class="na">basis_algorithm</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;quadtree&quot;</span>
-<span class="na">bc_basis_case</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;NESW&quot;</span>
+<span class="na">basis_algorithm</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"quadtree"</span>
+<span class="na">bc_basis_case</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"NESW"</span>
 <span class="na">fp_basis_case</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">None</span>
 <span class="na">nbasis</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">50</span>
-<span class="na">basis_directory</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;/group/chemistry/acrg/LPDM/basis_functions/&quot;</span>
+<span class="na">basis_directory</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"/group/chemistry/acrg/LPDM/basis_functions/"</span>
 <span class="na">bc_basis_directory</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">None</span>
 <span class="na">country_file</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">None</span>
 
 <span class="k">[MCMC.TYPE]</span>
 <span class="c1">; Which MCMC setup to use. This defines the function which will be called and the expected inputs.</span>
-<span class="c1">; Options include: &quot;fixed_basis&quot;</span>
+<span class="c1">; Options include: "fixed_basis"</span>
 
-<span class="na">mcmc_type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;fixed_basis&quot;</span>
+<span class="na">mcmc_type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"fixed_basis"</span>
 
 
 <span class="k">[MCMC.PDF]</span>
@@ -732,21 +733,21 @@ well.)</p></li>
 <span class="c1">; See https://docs.pymc.io/api/distributions/continuous.html</span>
 <span class="c1">; Check openghg_inversions.hbmcmc.inversion_pymc for options.</span>
 
-<span class="na">xprior   = {&quot;pdf&quot;</span><span class="o">:</span><span class="s">&quot;lognormal&quot;</span><span class="na">, &quot;stdev&quot;</span><span class="o">:</span><span class="s">1}</span><span class="w">  </span><span class="c1">; lognormal with mean = 1, stdev = 1</span>
-<span class="na">bcprior  = {&quot;pdf&quot;</span><span class="o">:</span><span class="s">&quot;truncatednormal&quot;</span><span class="na">, &quot;mu&quot;</span><span class="o">:</span><span class="s">1.0, &quot;sigma&quot;:0.02}</span><span class="w">  </span><span class="c1">; truncated normal with mean = 1, stdev 0.02</span>
-<span class="na">sigprior = {&quot;pdf&quot;</span><span class="o">:</span><span class="s">&quot;uniform&quot;</span><span class="na">, &quot;lower&quot;</span><span class="o">:</span><span class="s">0.5, &quot;upper&quot;:10}</span>
+<span class="na">xprior   = {"pdf"</span><span class="o">:</span><span class="s">"lognormal"</span><span class="na">, "stdev"</span><span class="o">:</span><span class="s">1}</span><span class="w">  </span><span class="c1">; lognormal with mean = 1, stdev = 1</span>
+<span class="na">bcprior  = {"pdf"</span><span class="o">:</span><span class="s">"truncatednormal"</span><span class="na">, "mu"</span><span class="o">:</span><span class="s">1.0, "sigma":0.02}</span><span class="w">  </span><span class="c1">; truncated normal with mean = 1, stdev 0.02</span>
+<span class="na">sigprior = {"pdf"</span><span class="o">:</span><span class="s">"uniform"</span><span class="na">, "lower"</span><span class="o">:</span><span class="s">0.5, "upper":10}</span>
 <span class="c1">;add_offset = False</span>
-<span class="c1">;offsetprior = {&quot;pdf&quot;: &quot;normal&quot;}</span>
-<span class="c1">;offset_args = {&quot;drop_first&quot;: False}  ;; set to True if you want first site to have offset 0.0</span>
+<span class="c1">;offsetprior = {"pdf": "normal"}</span>
+<span class="c1">;offset_args = {"drop_first": False}  ;; set to True if you want first site to have offset 0.0</span>
 
 <span class="k">[MCMC.BC_SPLIT]</span>
 <span class="c1">; Boundary conditions setup</span>
 <span class="c1">; - bc_freq - The period over which the baseline is estimated. e.g.</span>
 <span class="c1">;  - None - one scaling for the whole inversion</span>
-<span class="c1">;  - &quot;monthly&quot; - per calendar monthly</span>
-<span class="c1">;  - &quot;*D&quot; (e.g. &quot;30D&quot;) - per number of days (e.g. 30 days)</span>
+<span class="c1">;  - "monthly" - per calendar monthly</span>
+<span class="c1">;  - "*D" (e.g. "30D") - per number of days (e.g. 30 days)</span>
 
-<span class="na">bc_freq</span><span class="w">    </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;monthly&quot;</span>
+<span class="na">bc_freq</span><span class="w">    </span><span class="o">=</span><span class="w"> </span><span class="s">"monthly"</span>
 <span class="na">sigma_freq</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">None</span>
 <span class="na">sigma_per_site</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">True</span>
 
@@ -769,52 +770,52 @@ well.)</p></li>
 
 <span class="k">[MCMC.OPTIONS]</span>
 <span class="c1">; averaging_error (bool): Add variability in averaging period to the measurement error (Note: currently this</span>
-<span class="c1">;                         doesn&#39;t work correctly)</span>
-<span class="c1">; min_error: numeric lower bound for model-measurement mismatch, or &quot;residual&quot;/&quot;percentile&quot;</span>
+<span class="c1">;                         doesn't work correctly)</span>
+<span class="c1">; min_error: numeric lower bound for model-measurement mismatch, or "residual"/"percentile"</span>
 <span class="c1">;            to calculate the bound from the prepared observations.</span>
-<span class="c1">; fix_basis_outer_regions (bool): If True, the &quot;outer regions&quot; of the domain use basis regions specified by a</span>
-<span class="c1">;                                 file provided by the Met Office (from their &quot;InTem&quot; model), and the &quot;inner</span>
-<span class="c1">;                                 region&quot;, which includes the UK, is fit using our basis algorithms.</span>
+<span class="c1">; fix_basis_outer_regions (bool): If True, the "outer regions" of the domain use basis regions specified by a</span>
+<span class="c1">;                                 file provided by the Met Office (from their "InTem" model), and the "inner</span>
+<span class="c1">;                                 region", which includes the UK, is fit using our basis algorithms.</span>
 <span class="c1">; use_bc (bool): defaults to True. If False, no boundary conditions will be used in the inversion. This</span>
 <span class="c1">;                implicitly assumes that contributions from the boundary have been subtracted from the</span>
 <span class="c1">;                observations.</span>
-<span class="c1">; nuts_sampler (str): defaults to &quot;pymc&quot;. The other option is &quot;numpyro&quot;, which will the JAX accelerated sampler</span>
+<span class="c1">; nuts_sampler (str): defaults to "pymc". The other option is "numpyro", which will the JAX accelerated sampler</span>
 <span class="c1">;                     from Numpyro; this tends to be significantly faster than the NUTS sampler built into PyMC.</span>
 <span class="c1">; save_trace (bool): If True, the arviz InferenceData output from sampling will be saved to the output path of</span>
-<span class="c1">;                    the inversion, with a file name of the form f&quot;{outputname}{start_data}_trace.nc.</span>
+<span class="c1">;                    the inversion, with a file name of the form f"{outputname}{start_data}_trace.nc.</span>
 <span class="c1">;                    Alternatively, you can pass a path (including filename), and that path will be used.</span>
 <span class="c1">; calculate_min_error: deprecated legacy spelling. The run_hbmcmc compatibility shim translates</span>
-<span class="c1">;                      &quot;residual&quot; or &quot;percentile&quot; to `min_error`; prefer `min_error` directly.</span>
+<span class="c1">;                      "residual" or "percentile" to `min_error`; prefer `min_error` directly.</span>
 <span class="c1">; pollution_events_from_obs (bool): Determines whether the model error is calculated as a fraction of:</span>
 <span class="c1">;                                   - the measured enhancement above the modelled baseline (if True)</span>
 <span class="c1">;                                   - the prior modelled enhancement (if False)</span>
 <span class="c1">; reparameterise_log_normal (bool): Deprecated compatibility flag. Set reparameterise=True in</span>
 <span class="c1">;                                   the relevant lognormal prior mapping instead.</span>
-<span class="c1">; sampler_kwargs (dict): Kwargs to pass to the sampler (e.g. sampler_kwargs = {&#39;target_accept&#39;: 0.99})</span>
+<span class="c1">; sampler_kwargs (dict): Kwargs to pass to the sampler (e.g. sampler_kwargs = {'target_accept': 0.99})</span>
 
 <span class="na">averaging_error</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">True</span>
-<span class="na">min_error</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;residual&quot;</span>
+<span class="na">min_error</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"residual"</span>
 <span class="na">fix_basis_outer_regions</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">False</span>
 <span class="na">use_bc</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">True</span>
-<span class="na">nuts_sampler</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;numpyro&quot;</span>
+<span class="na">nuts_sampler</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"numpyro"</span>
 <span class="na">save_trace</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">True</span>
-<span class="na">min_error_options</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">{&quot;by_site&quot;: True}</span><span class="w">  </span><span class="c1">; mapping; only supported key is boolean by_site (residual only)</span>
+<span class="na">min_error_options</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">{"by_site": True}</span><span class="w">  </span><span class="c1">; mapping; only supported key is boolean by_site (residual only)</span>
 <span class="na">pollution_events_from_obs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">True</span>
 <span class="na">no_model_error</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">False</span>
 <span class="na">reparameterise_log_normal</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">False</span>
 
 <span class="k">[MCMC.OUTPUT]</span>
 <span class="c1">; Format of output</span>
-<span class="c1">; &quot;legacy&quot; writes the old HBMCMC-compatible output through modern RHIME.</span>
-<span class="c1">; Deprecated aliases &quot;hbmcmc&quot; and &quot;hbmcmc_postprocessing&quot; are accepted.</span>
-<span class="na">output_format</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;legacy&quot;</span>
+<span class="c1">; "legacy" writes the old HBMCMC-compatible output through modern RHIME.</span>
+<span class="c1">; Deprecated aliases "hbmcmc" and "hbmcmc_postprocessing" are accepted.</span>
+<span class="na">output_format</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"legacy"</span>
 
 <span class="c1">; Details of where to write the output</span>
 <span class="c1">; outputpath (str) - directory to write output</span>
 <span class="c1">; outputname (str) - unique identifier for output/run name.</span>
 
-<span class="na">outputpath</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&#39;/user/work/ab12345/my_inversions&#39;</span><span class="w">  </span><span class="c1">; (required)</span>
-<span class="na">outputname</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&#39;ch4_TAC_test&#39;</span><span class="w">  </span><span class="c1">; (required)</span>
+<span class="na">outputpath</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">'/user/work/ab12345/my_inversions'</span><span class="w">  </span><span class="c1">; (required)</span>
+<span class="na">outputname</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">'ch4_TAC_test'</span><span class="w">  </span><span class="c1">; (required)</span>
 </pre></div>
 </div>
 </section>
