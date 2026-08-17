@@ -9,40 +9,38 @@ acquisition-to-output workflow and pass one direct-Python callable to
 ``run_rhime``. The callable is deliberately unavailable to INI files: it is
 not imported from configuration or stored in a run or model specification.
 
-This example replaces RHIME's Gaussian observation distribution with an
-editable Student-t likelihood while reusing RHIME's current mean and error
-construction. The likelihood is the same one used by the complete copied
-runner below, so the difference between the examples is orchestration ceremony
-rather than scientific behaviour.
+The complete integration is one named argument:
 
-The project-owned likelihood selection is one small module:
+.. code-block:: python
 
-.. literalinclude:: ../../examples/rhime_customisation/likelihoods.py
-   :language: python
-   :linenos:
+   from my_project.likelihoods import likelihood_builder
+   from openghg_inversions.rhime import run_rhime
 
-The preferred runner keeps the full standard pipeline in one ``run_rhime``
-call:
-
-.. literalinclude:: ../../examples/rhime_customisation/run_with_likelihood.py
-   :language: python
-   :linenos:
-
-Run the short form with a normal RHIME configuration and optional JSON
-overrides::
-
-   python -m package_name.run_with_likelihood config.ini \
-       --kwargs '{"output_path": "outputs", "output_format": "inv_out"}'
-
-The callable's safe module and qualified name, together with its
-JSON-compatible likelihood metadata, are recorded in result and serialized
-output provenance. Executable Python code is not serialized.
+   result = run_rhime(
+       config_file="config.ini",
+       likelihood_builder=likelihood_builder,
+   )
 
 A builder is called as ``likelihood_builder(context)`` while the PyMC model is
 active and returns ``RhimeLikelihoodResult``. Its semantic roles drive
 predictive sampling, its supported output formats are validated before
 sampling, and its metadata must be JSON-compatible. The ordinary caller does
 not construct the context, a specification, or a role/output manifest.
+
+Editable likelihood
+~~~~~~~~~~~~~~~~~~~
+
+The tested project-owned example replaces RHIME's Gaussian observation
+distribution with Student-t while reusing RHIME's current mean and error
+construction:
+
+.. literalinclude:: ../../examples/rhime_customisation/likelihoods.py
+   :language: python
+   :linenos:
+
+The callable's safe module and qualified name, together with its
+JSON-compatible likelihood metadata, are recorded in result and serialized
+output provenance. Executable Python code is not serialized.
 
 The example makes those owned invariants explicit: ``student_y`` is declared
 as the ``concentration`` role, RHIME's ``epsilon`` remains the ``model_error``
@@ -51,6 +49,21 @@ Student-t family and degrees of freedom are recorded as JSON metadata. It
 rejects dense and low-rank aggregation covariance because the example uses an
 independent Student-t distribution; supporting those modes would require a
 multivariate likelihood rather than a hidden approximation.
+
+Optional project CLI
+~~~~~~~~~~~~~~~~~~~~
+
+The short wrapper below packages the same one-call integration as a reusable
+Python function and command-line entry point:
+
+.. literalinclude:: ../../examples/rhime_customisation/run_with_likelihood.py
+   :language: python
+   :linenos:
+
+Run it with a normal RHIME configuration and optional JSON overrides::
+
+   python -m package_name.run_with_likelihood config.ini \
+       --kwargs '{"output_path": "outputs", "output_format": "inv_out"}'
 
 ``run_rhime_multisector`` accepts the same Python-only builder contract. The
 standard multi-sector model retains sector flux components and roles, then

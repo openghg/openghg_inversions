@@ -1027,6 +1027,7 @@ def test_editable_example_builder_returns_student_t_contract(
 @pytest.mark.parametrize("aggregation_error_mode", ["dense", "low_rank"])
 def test_editable_example_builder_rejects_correlated_aggregation_error(
     aggregation_error_mode: str,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The independent Student-t example rejects correlated error representations."""
     data = _minimal_output_inv_inputs()
@@ -1050,6 +1051,15 @@ def test_editable_example_builder_rejects_correlated_aggregation_error(
         frequency="3h",
         anchor_time="2019-01-01",
     )
+    selected_modes: list[str] = []
+    original_select = example_likelihoods.select_aggregation_error_mode
+
+    def select_mode(data: xr.Dataset, requested: Any) -> Any:
+        """Record the cheap public preflight used by the example."""
+        selected_modes.append(requested)
+        return original_select(data, requested)
+
+    monkeypatch.setattr(example_likelihoods, "select_aggregation_error_mode", select_mode)
 
     with pm.Model(coords={"nmeasure": np.arange(data.sizes["nmeasure"])}) as model:
         context = RhimeLikelihoodContext(
@@ -1066,6 +1076,7 @@ def test_editable_example_builder_rejects_correlated_aggregation_error(
         )
         with pytest.raises(ValueError, match="assumes independent observations"):
             example_likelihoods.likelihood_builder(context)
+    assert selected_modes == [aggregation_error_mode]
     assert model.named_vars == {}
 
 
@@ -2627,6 +2638,12 @@ def test_rhime_public_package_exports_supported_orchestration_stages() -> None:
     for name in stage_names:
         assert getattr(rhime_public, name) is getattr(rhime_module, name)
         assert name in rhime_public.__all__
+
+
+def test_rhime_public_package_exports_aggregation_error_mode_selector() -> None:
+    """Likelihood examples can preflight covariance mode through the RHIME API."""
+    assert rhime_public.select_aggregation_error_mode is rhime_module.select_aggregation_error_mode
+    assert "select_aggregation_error_mode" in rhime_public.__all__
 
 
 def test_public_stages_compose_as_complete_external_runner(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -371,53 +371,9 @@ configuration options to combine it with one global scalar offset. The
 default ``per_site=True`` retains the existing site or site-period offset
 design.
 
-The helper ``build_rhime_observation_state`` is available when only the
-distribution should change. For example, this replaces Normal observations
-with a Student-t distribution while retaining the current RHIME mean and error
-scale:
-
-.. code-block:: python
-
-   import pymc as pm
-
-   from openghg_inversions.rhime import (
-       RhimeLikelihoodContext,
-       RhimeLikelihoodResult,
-       build_rhime_observation_state,
-       run_rhime,
-   )
-
-
-   def student_t_likelihood(
-       context: RhimeLikelihoodContext,
-   ) -> RhimeLikelihoodResult:
-       state = build_rhime_observation_state(context)
-       if state.aggregation_error.mode not in {"none", "diagonal"}:
-           raise ValueError("This Student-t model assumes independent observations.")
-       observed = pm.StudentT(
-           "student_y",
-           nu=4.0,
-           mu=state.mean,
-           sigma=state.error_scale,
-           observed=state.observed,
-           dims=context.output_dim,
-       )
-       return RhimeLikelihoodResult(
-           likelihood=observed,
-           error_scale=state.error_scale,
-           variable_roles={
-               "concentration": "student_y",
-               "model_error": "epsilon",
-           },
-           supported_output_formats=("none", "inv_out"),
-           metadata={"family": "student_t", "degrees_of_freedom": 4.0},
-       )
-
-
-   result = run_rhime(
-       config_file="config.ini",
-       likelihood_builder=student_t_likelihood,
-   )
+Keep scientific customization implementations in one tested location. The
+:doc:`customising_rhime` guide contains the editable Student-t example and the
+minimal ordinary-runner call; this concrete-model page does not duplicate it.
 
 ``RhimeSampler`` receives the returned role manifest. Posterior-predictive
 settings may use a semantic role such as ``"concentration"``. For backwards

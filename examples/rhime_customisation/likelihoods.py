@@ -11,11 +11,11 @@ not build a model, retrieve data, sample, or write outputs.
 
 import pymc as pm
 
-from openghg_inversions.observation_error import resolve_aggregation_error
 from openghg_inversions.rhime import (
     RhimeLikelihoodContext,
     RhimeLikelihoodResult,
     build_rhime_observation_state,
+    select_aggregation_error_mode,
 )
 
 
@@ -45,12 +45,11 @@ def likelihood_builder(context: RhimeLikelihoodContext) -> RhimeLikelihoodResult
         output writes. Unsupported aggregation modes are rejected before any
         nodes are added.
     """
-    aggregation_error = resolve_aggregation_error(
+    aggregation_error_mode = select_aggregation_error_mode(
         context.data,
         context.aggregation_error_mode,
-        output_dim=context.output_dim,
     )
-    if aggregation_error.mode not in {"none", "diagonal"}:
+    if aggregation_error_mode not in {"none", "diagonal"}:
         raise ValueError("This Student-t model assumes independent observations.")
     state = build_rhime_observation_state(context)
     observed = pm.StudentT(
