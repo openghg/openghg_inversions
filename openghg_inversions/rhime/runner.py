@@ -12,6 +12,12 @@ result. Canonical xarray and Dask inputs remain borrowed until the named
 materialization boundary; acquisition, sampling, and result stages may perform
 documented I/O.
 
+``run_rhime`` and ``run_rhime_multisector`` accept an optional Python-only
+likelihood builder outside configuration and serializable specifications. Its
+declared variable roles drive predictive selection, its output capabilities
+are validated before sampling, and only safe callable identity plus
+JSON-compatible metadata are retained as provenance.
+
 Terminology used by the RHIME API:
 
 - ``species`` is the primary gas or tracer name used for object-store lookup
@@ -1163,6 +1169,7 @@ def run_rhime_from_prepared_inputs(
 def run_rhime(
     *,
     config_file: str | Path | None = None,
+    likelihood_builder: RhimeLikelihoodBuilder | None = None,
     **kwargs: Any,
 ) -> RhimeResult:
     """Run a standard single-sector RHIME inversion.
@@ -1170,6 +1177,13 @@ def run_rhime(
     Args:
         config_file: Optional INI configuration file. Values in ``kwargs``
             override values read from this file.
+        likelihood_builder: Optional Python-only callable invoked with a
+            ``RhimeLikelihoodContext`` in the active PyMC model and returning
+            ``RhimeLikelihoodResult``. The result declares semantic variable
+            roles, supported output formats, and JSON-compatible metadata;
+            roles drive predictive selection and output compatibility is
+            validated before sampling. The callable is never read from
+            configuration or stored in run/model specifications.
         **kwargs: RHIME run parameters using snake-case names, such as
             ``output_path``, ``output_name``, ``flux_sources``, and
             ``x_prior``. ``species`` names the primary gas or tracer used for
@@ -1183,8 +1197,10 @@ def run_rhime(
         output metadata, and generated outputs.
 
     Raises:
+        TypeError: If a likelihood builder returns the wrong result type.
         ValueError: If required parameters are missing, unsupported parameters
-            are supplied, or the flux-source count is invalid.
+            are supplied, the flux-source count is invalid, or likelihood
+            roles, metadata, or requested-output compatibility are invalid.
     """
     params = (
         params_from_config(config_file, extra_kwargs=kwargs, normalise=False)
@@ -1222,13 +1238,36 @@ def run_rhime(
         aggregation_error_mode=run_spec.model.aggregation_error_mode,
     )
     build_and_sample_start = timer_start()
-    model_build_result = build_standard_rhime_model(
-        prepared=prepared,
-        model_inputs=model_inputs,
-        run_spec=run_spec,
-    )
-    idata = sample_rhime_model(model_build_result, setup.sampler)
+    if likelihood_builder is None:
+        model_build_result = build_standard_rhime_model(
+            prepared=prepared,
+            model_inputs=model_inputs,
+            run_spec=run_spec,
+        )
+        idata = sample_rhime_model(model_build_result, setup.sampler)
+    else:
+        model_build_result = build_standard_rhime_model(
+            prepared=prepared,
+            model_inputs=model_inputs,
+            run_spec=run_spec,
+            likelihood_builder=likelihood_builder,
+        )
+        idata = sample_rhime_model(
+            model_build_result,
+            setup.sampler,
+            use_variable_roles=True,
+        )
 
+    if likelihood_builder is not None:
+        return make_standard_rhime_result(
+            prepared=prepared,
+            run_spec=run_spec,
+            sampler=setup.sampler,
+            model_build_result=model_build_result,
+            idata=idata,
+            build_and_sample_seconds=timer_seconds(build_and_sample_start),
+            likelihood_builder=likelihood_builder,
+        )
     return make_standard_rhime_result(
         prepared=prepared,
         run_spec=run_spec,
@@ -1242,6 +1281,7 @@ def run_rhime(
 def run_rhime_multisector(
     *,
     config_file: str | Path | None = None,
+    likelihood_builder: RhimeLikelihoodBuilder | None = None,
     **kwargs: Any,
 ) -> RhimeResult:
     """Run a shared-basis multi-sector RHIME inversion.
@@ -1249,6 +1289,13 @@ def run_rhime_multisector(
     Args:
         config_file: Optional INI configuration file. Values in ``kwargs``
             override values read from this file.
+        likelihood_builder: Optional Python-only callable invoked with a
+            ``RhimeLikelihoodContext`` in the active PyMC model and returning
+            ``RhimeLikelihoodResult``. The result declares semantic variable
+            roles, supported output formats, and JSON-compatible metadata;
+            roles drive predictive selection and output compatibility is
+            validated before sampling. The callable is never read from
+            configuration or stored in run/model specifications.
         **kwargs: RHIME run parameters using snake-case names. Multi-sector
             runs require at least two ``flux_sources`` and may include
             a complete ``sector_priors`` mapping keyed by sector name. When
@@ -1263,8 +1310,11 @@ def run_rhime_multisector(
         output metadata, and sector diagnostics.
 
     Raises:
+        TypeError: If a likelihood builder returns the wrong result type.
         ValueError: If required parameters are missing, unsupported parameters
-            are supplied, or fewer than two flux sources are provided.
+            are supplied, fewer than two flux sources are provided, or
+            likelihood roles, metadata, or requested-output compatibility are
+            invalid.
     """
     params = (
         params_from_config(config_file, extra_kwargs=kwargs, normalise=False)
@@ -1301,15 +1351,38 @@ def run_rhime_multisector(
         aggregation_error_mode=run_spec.model.aggregation_error_mode,
     )
     build_and_sample_start = timer_start()
-    model_build_result = build_multisector_rhime_model(
-        prepared=prepared,
-        model_inputs=model_inputs,
-        run_spec=run_spec,
-    )
-    idata = sample_rhime_model(model_build_result, setup.sampler)
+    if likelihood_builder is None:
+        model_build_result = build_multisector_rhime_model(
+            prepared=prepared,
+            model_inputs=model_inputs,
+            run_spec=run_spec,
+        )
+        idata = sample_rhime_model(model_build_result, setup.sampler)
+    else:
+        model_build_result = build_multisector_rhime_model(
+            prepared=prepared,
+            model_inputs=model_inputs,
+            run_spec=run_spec,
+            likelihood_builder=likelihood_builder,
+        )
+        idata = sample_rhime_model(
+            model_build_result,
+            setup.sampler,
+            use_variable_roles=True,
+        )
 
     # Multi-sector output owns sector diagnostics and its distinct format
     # constraints; it is intentionally not hidden behind the standard stage.
+    if likelihood_builder is not None:
+        return make_multisector_rhime_result(
+            prepared=prepared,
+            run_spec=run_spec,
+            sampler=setup.sampler,
+            model_build_result=model_build_result,
+            idata=idata,
+            build_and_sample_seconds=timer_seconds(build_and_sample_start),
+            likelihood_builder=likelihood_builder,
+        )
     return make_multisector_rhime_result(
         prepared=prepared,
         run_spec=run_spec,

@@ -336,9 +336,11 @@ component namespaces are not implemented. They are tracked in
 Alternative models and likelihoods
 ----------------------------------
 
-Direct-Python likelihood and complete-model builders enter only at
-``run_rhime_from_prepared_inputs``. Callables are deliberately not stored on
-``RhimeModelSpec``, so model and run specs remain serializable. There is no
+Direct-Python likelihood builders enter through ``run_rhime``,
+``run_rhime_multisector``, or ``run_rhime_from_prepared_inputs``.
+Complete-model builders remain available only at the prepared-input boundary.
+Callables are never read from configuration or stored on ``RhimeModelSpec`` or
+``RhimeRunSpec``, so model and run specs remain serializable. There is no
 entry-point or config-file plugin registry.
 
 A likelihood builder owns the complete observation component, including its

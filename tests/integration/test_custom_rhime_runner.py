@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import importlib.util
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -10,12 +9,39 @@ from typing import Any
 import pytest
 import xarray as xr
 
+from examples.rhime_customisation import likelihoods
+from examples.rhime_customisation import runner as custom_runner
+from examples.rhime_customisation import run_with_likelihood as short_runner
 
-_RUNNER_PATH = Path(__file__).parents[2] / "examples" / "rhime_customisation" / "runner.py"
-_RUNNER_SPEC = importlib.util.spec_from_file_location("rhime_customisation_runner", _RUNNER_PATH)
-assert _RUNNER_SPEC is not None and _RUNNER_SPEC.loader is not None
-custom_runner = importlib.util.module_from_spec(_RUNNER_SPEC)
-_RUNNER_SPEC.loader.exec_module(custom_runner)
+
+def test_short_and_full_examples_share_likelihood_and_supported_output(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The preferred form selects the full runner's likelihood and output mode."""
+    config_file = tmp_path / "rhime.ini"
+    expected = object()
+    seen: dict[str, Any] = {}
+
+    def run_rhime(**kwargs: Any) -> Any:
+        """Capture the preferred one-call example without executing RHIME."""
+        seen.update(kwargs)
+        return expected
+
+    monkeypatch.setattr(short_runner, "run_rhime", run_rhime)
+    result = short_runner.run_with_likelihood(
+        config_file=config_file,
+        output_format="none",
+    )
+
+    assert result is expected
+    assert short_runner.likelihood_builder is likelihoods.likelihood_builder
+    assert custom_runner.likelihood_builder is likelihoods.likelihood_builder
+    assert seen == {
+        "config_file": config_file,
+        "likelihood_builder": custom_runner.likelihood_builder,
+        "output_format": "none",
+    }
 
 
 @pytest.mark.parametrize("reload_merged_data", [False, True])

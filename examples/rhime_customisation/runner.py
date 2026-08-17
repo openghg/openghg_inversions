@@ -22,7 +22,6 @@ from typing import Any
 from openghg_inversions.rhime import (
     RhimeResult,
     assemble_rhime_inputs,
-    build_absolute_sigma_gaussian_likelihood,
     build_rhime_basis,
     build_rhime_sensitivities,
     build_standard_rhime_model,
@@ -35,6 +34,10 @@ from openghg_inversions.rhime import (
     sample_rhime_model,
     with_prepared_rhime_sites,
 )
+
+from .likelihoods import likelihood_builder
+
+build_absolute_sigma_gaussian_likelihood = likelihood_builder
 
 
 def run_custom_rhime(
@@ -86,7 +89,7 @@ def run_custom_rhime(
         model_inputs=model_inputs,
         run_spec=run_spec,
         # This is the deliberate scientific replacement in the copied runner.
-        likelihood_builder=build_absolute_sigma_gaussian_likelihood,
+        likelihood_builder=likelihood_builder,
     )
     idata = sample_rhime_model(
         model_build_result,
@@ -101,7 +104,7 @@ def run_custom_rhime(
         model_build_result=model_build_result,
         idata=idata,
         build_and_sample_seconds=perf_counter() - build_and_sample_start,
-        likelihood_builder=build_absolute_sigma_gaussian_likelihood,
+        likelihood_builder=likelihood_builder,
     )
 
 
