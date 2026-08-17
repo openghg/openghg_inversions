@@ -51,8 +51,10 @@ The older documentation launched an internal Python file directly:
    python /user/home/example/openghg_inversions/openghg_inversions/hbmcmc/run_hbmcmc.py -c "$INI_FILE"
 
 With a modern RHIME config, replace those two lines with the installed CLI.
-The rest of the environment setup and the SLURM resource requests can remain
-the same:
+The following updated version uses the repository's Pixi environment. Pixi is
+recommended for inversion jobs that read NetCDF/HDF5 data because the workspace
+keeps the compiled HDF5 and NetCDF stack together on conda-forge; see
+:doc:`installation` for the package constraints and smoke check.
 
 .. code-block:: bash
 
@@ -69,21 +71,63 @@ the same:
 
    module --force purge
    module load git/2.45.1
-   eval "$(conda shell.bash hook)"
-   conda activate pymc_env
+
+   REPOSITORY=/user/home/example/openghg_inversions
+   cd "$REPOSITORY"
 
    INI_FILE=/user/home/example/my_inversions/rhime.ini
    OUTPUT_DIR=/user/home/example/my_inversions/outputs
+
+   pixi run --locked -e dev openghg-inversions run-rhime \
+       2019-01-01 2019-02-01 \
+       --config "$INI_FILE" \
+       --output-path "$OUTPUT_DIR"
+
+Submit the saved script in the same way as before, for example
+``sbatch my_inversion_script.sh``. ``pixi run --locked`` checks that
+``pixi.lock`` agrees with the workspace and installs the selected environment
+when necessary. Install Pixi and create the environment on the login node
+before the first submission if compute nodes do not have network access:
+
+.. code-block:: console
+
+   $ cd /user/home/example/openghg_inversions
+   $ pixi install --locked -e dev
+
+Alternative environment blocks
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If the repository was installed with ``uv``, replace the ``pixi run ...`` line
+with the following command, still running it from ``$REPOSITORY``:
+
+.. code-block:: bash
+
+   uv run --locked openghg-inversions run-rhime \
+       2019-01-01 2019-02-01 \
+       --config "$INI_FILE" \
+       --output-path "$OUTPUT_DIR"
+
+Prepare the environment on the login node with ``uv sync --locked`` when
+compute nodes cannot download packages. ``uv`` uses the repository's
+``uv.lock``, but its PyPI wheels do not provide the same single conda-forge
+HDF5/NetCDF stack as Pixi. Prefer Pixi if a ``uv`` environment reports HDF5,
+``h5py``, ``h5netcdf``, or ``netCDF4`` binary errors.
+
+An existing conda environment remains usable too. Replace the Pixi setup and
+command with:
+
+.. code-block:: bash
+
+   eval "$(conda shell.bash hook)"
+   conda activate pymc_env
 
    openghg-inversions run-rhime \
        2019-01-01 2019-02-01 \
        --config "$INI_FILE" \
        --output-path "$OUTPUT_DIR"
 
-Submit the saved script in the same way as before, for example
-``sbatch my_inversion_script.sh``. Because the command is installed in
-``pymc_env``, there is no hard-coded checkout path to update when the package
-location changes.
+In every case, invoke the installed command rather than an internal
+``openghg_inversions/hbmcmc/run_hbmcmc.py`` path.
 
 For a multisector batch run, only the config and subcommand need to change:
 
@@ -92,7 +136,7 @@ For a multisector batch run, only the config and subcommand need to change:
    INI_FILE=/user/home/example/my_inversions/rhime_multisector.ini
    OUTPUT_DIR=/user/home/example/my_inversions/outputs
 
-   openghg-inversions run-rhime-multisector \
+   pixi run --locked -e dev openghg-inversions run-rhime-multisector \
        2019-01-01 2019-02-01 \
        --config "$INI_FILE" \
        --output-path "$OUTPUT_DIR"
