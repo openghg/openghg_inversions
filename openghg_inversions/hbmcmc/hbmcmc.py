@@ -25,6 +25,7 @@ object stores and for the paths to object stores to already be set in
 the users OpenGHG config file (default location: ~/.openghg/openghg.conf).
 """
 
+import inspect
 import logging
 import time
 import warnings
@@ -48,6 +49,9 @@ from openghg_inversions.models.priors import lognormal_mu_sigma
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.serialization import reset_serialisation_multiindexes
 from openghg_inversions.utils import ncdf_encoding, write_netcdf_preserving_bounds_attrs
+
+
+_LEGACY_FIXEDBASIS_OUTPUT_FORMAT = "legacy_fixedbasis"
 
 
 def update_log_normal_prior(prior):
@@ -504,6 +508,40 @@ def _get_inversion_output(context: _OutputContext) -> InversionOutput:
     return context.inv_out
 
 
+def _prepare_legacy_fixedbasis_postprocess_args(context: _OutputContext) -> dict[str, object]:
+    """Select historical postprocessing inputs from a completed fixedbasis run.
+
+    Args:
+        context: Fixedbasis output context containing preparation, sampler, and
+            result values.
+
+    Returns:
+        Arguments accepted by ``inferpymc_postprocessouts``.
+
+    Raises:
+        RuntimeError: If the legacy sampler contract did not produce a required
+            postprocessing value.
+    """
+    available_args: dict[str, object] = dict(context.legacy_postprocess_args)
+    available_args.update(context.mcmc_args)
+    available_args.update(context.mcmc_results)
+
+    signature = inspect.signature(mcmc.inferpymc_postprocessouts)
+    missing = [
+        name
+        for name, parameter in signature.parameters.items()
+        if parameter.kind not in {inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD}
+        and parameter.default is inspect.Parameter.empty
+        and name not in available_args
+    ]
+    if missing:
+        raise RuntimeError(
+            f"Legacy fixedbasis postprocessing is missing required value(s): {', '.join(sorted(missing))}."
+        )
+
+    return {name: available_args[name] for name in signature.parameters if name in available_args}
+
+
 def _handle_core_output_artifacts(context: _OutputContext) -> None:
     """Write core inversion artifacts needed before final output dispatch."""
     trace_path = context.paths.get("trace")
@@ -537,6 +575,13 @@ def _finalize_output(context: _OutputContext) -> xr.Dataset | dict | InversionOu
         outputs = basic_output(_get_inversion_output(context), country_file=context.country_file)
         end_post = time.time()
         print(f"Post processing Complete. Time taken = {end_post - start_post:.2f} seconds")
+        return outputs
+
+    if context.output_format == _LEGACY_FIXEDBASIS_OUTPUT_FORMAT:
+        outputs = mcmc.inferpymc_postprocessouts(**_prepare_legacy_fixedbasis_postprocess_args(context))
+        end_post = time.time()
+        print(f"Post processing Complete. Time taken = {end_post - start_post:.2f} seconds")
+        print("---- Inversion completed ----")
         return outputs
 
     if context.output_format == "legacy":
@@ -689,6 +734,7 @@ def fixedbasisMCMC(
     output_format: Literal[
         "hbmcmc",
         "hbmcmc_postprocessing",
+        "legacy_fixedbasis",
         "legacy",
         "paris",
         "basic",
@@ -888,7 +934,11 @@ def fixedbasisMCMC(
             ),
         ),
     )
-    needs_modern_inv_out = output_format not in {"merged_data", "mcmc_args"} or bool(save_inversion_output)
+    needs_modern_inv_out = output_format not in {
+        "merged_data",
+        "mcmc_args",
+        _LEGACY_FIXEDBASIS_OUTPUT_FORMAT,
+    } or bool(save_inversion_output)
 
     start_data = time.time()
     prepared = prepare_fixedbasis_inversion_data(
@@ -949,6 +999,7 @@ def fixedbasisMCMC(
 
     output_format = cast(
         Literal[
+            "legacy_fixedbasis",
             "legacy",
             "paris",
             "basic",
@@ -1038,22 +1089,26 @@ def fixedbasisMCMC(
 
     print(f"MCMC Inversion complete. Time taken = {end_inversion - start_inversion:.2f} seconds")
 
-    inversion_output_args = _build_inversion_output_args(
-        prepared=prepared,
-        legacy_postprocess_args=legacy_postprocess_args,
-        mcmc_args=mcmc_args,
-        mcmc_results=mcmc_results,
-        sites=sites,
-        averaging_period=averaging_period,
-        start_date=start_date,
-        end_date=end_date,
-        species=species,
-        domain=domain,
-        output_format=output_format,
-        outputpath=outputpath,
-        outputname=outputname,
-        save_trace=save_trace,
-        save_inversion_output=save_inversion_output,
+    inversion_output_args = (
+        _build_inversion_output_args(
+            prepared=prepared,
+            legacy_postprocess_args=legacy_postprocess_args,
+            mcmc_args=mcmc_args,
+            mcmc_results=mcmc_results,
+            sites=sites,
+            averaging_period=averaging_period,
+            start_date=start_date,
+            end_date=end_date,
+            species=species,
+            domain=domain,
+            output_format=output_format,
+            outputpath=outputpath,
+            outputname=outputname,
+            save_trace=save_trace,
+            save_inversion_output=save_inversion_output,
+        )
+        if needs_modern_inv_out
+        else {}
     )
 
     output_context = _build_output_context(

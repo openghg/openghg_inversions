@@ -465,6 +465,85 @@ def test_fixedbasisMCMC_hbmcmc_output_uses_modern_legacy_formatter(monkeypatch, 
     assert result["xtrace_mean"].values.tolist() == [1.05]
 
 
+def test_fixedbasisMCMC_true_legacy_mode_calls_only_inferpymc_postprocessouts(monkeypatch, tmp_path):
+    """The runner-only output mode invokes the historical postprocessor exactly once."""
+    prepared = _minimal_fixedbasis_prepared_data(basis_objects={})
+    postprocess_calls: list[dict[str, object]] = []
+
+    def fake_prepare_fixedbasis_inversion_data(**kwargs):
+        assert kwargs["return_basis_objects"] is False
+        return prepared
+
+    def fake_inferpymc(**kwargs):
+        return {"xouts": np.array([[1.0]], dtype="float64")}
+
+    def fake_inferpymc_postprocessouts(
+        xouts,
+        Hx,
+        outputpath,
+        outputname,
+        emissions_name,
+        xprior,
+        nchain,
+        **kwargs,
+    ):
+        postprocess_calls.append(
+            {
+                "xouts": xouts,
+                "Hx": Hx,
+                "outputpath": outputpath,
+                "outputname": outputname,
+                "emissions_name": emissions_name,
+                "xprior": xprior,
+                "nchain": nchain,
+            }
+        )
+        return xr.Dataset({"xtrace": (("steps", "nx"), xouts)})
+
+    def fail_make_legacy_hbmcmc_output(*args, **kwargs):
+        raise AssertionError("True legacy mode must not use the modern legacy adapter.")
+
+    monkeypatch.setattr(
+        hbmcmc_module,
+        "prepare_fixedbasis_inversion_data",
+        fake_prepare_fixedbasis_inversion_data,
+    )
+    monkeypatch.setattr(hbmcmc_module.mcmc, "inferpymc", fake_inferpymc)
+    monkeypatch.setattr(
+        hbmcmc_module.mcmc,
+        "inferpymc_postprocessouts",
+        fake_inferpymc_postprocessouts,
+    )
+    monkeypatch.setattr(
+        legacy_outputs,
+        "make_legacy_hbmcmc_output",
+        fail_make_legacy_hbmcmc_output,
+    )
+
+    result = fixedbasisMCMC(
+        species="ch4",
+        sites=["TAC"],
+        domain="EUROPE",
+        averaging_period=["1H"],
+        start_date="2019-01-01",
+        end_date="2019-02-01",
+        outputpath=str(tmp_path),
+        outputname="true_legacy",
+        output_format=hbmcmc_module._LEGACY_FIXEDBASIS_OUTPUT_FORMAT,
+        emissions_name=["legacy-flux"],
+        xprior={"pdf": "normal", "mu": 1.0, "sigma": 1.0},
+        nchain=3,
+        use_bc=False,
+    )
+
+    assert len(postprocess_calls) == 1
+    assert postprocess_calls[0]["outputpath"] == str(tmp_path)
+    assert postprocess_calls[0]["outputname"] == "true_legacy"
+    assert postprocess_calls[0]["emissions_name"] == ["legacy-flux"]
+    assert postprocess_calls[0]["nchain"] == 3
+    assert isinstance(result, xr.Dataset)
+
+
 def test_fixedbasisMCMC_inv_out_returns_modern_output_without_legacy_adapter(monkeypatch, tmp_path):
     """The fixedbasis inv_out path returns modern InversionOutput without legacy adapters."""
     prepared = _minimal_fixedbasis_prepared_data()
