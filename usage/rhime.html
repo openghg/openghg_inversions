@@ -1149,9 +1149,14 @@ compatibility output formats, but new workflows should save and load DataTree
 files. It translates legacy option names to the modern <code class="docutils literal notranslate"><span class="pre">run_rhime</span></code> API and
 uses the legacy filename convention. New scripts and new configs should use
 <code class="docutils literal notranslate"><span class="pre">openghg-inversions</span> <span class="pre">run-rhime</span></code> or <code class="docutils literal notranslate"><span class="pre">run_rhime(...)</span></code> directly.
-This compatibility route no longer preserves the exact historical
-<code class="docutils literal notranslate"><span class="pre">fixedbasisMCMC</span></code> / <code class="docutils literal notranslate"><span class="pre">inferpymc</span></code> passthrough behaviour. Use release <code class="docutils literal notranslate"><span class="pre">0.6</span></code> or
-earlier if you need the old fixedbasis implementation.
+For temporary reproduction of historical products, pass
+<code class="docutils literal notranslate"><span class="pre">--legacy-fixedbasis</span></code> to <code class="docutils literal notranslate"><span class="pre">run_hbmcmc.py</span></code>. This explicit opt-in sends the
+untranslated INI parameters to <code class="docutils literal notranslate"><span class="pre">fixedbasisMCMC</span></code>; a missing output format or
+the old <code class="docutils literal notranslate"><span class="pre">hbmcmc</span></code> / <code class="docutils literal notranslate"><span class="pre">hbmcmc_postprocessing</span></code> names select the historical
+<code class="docutils literal notranslate"><span class="pre">inferpymc_postprocessouts</span></code> product and filename. An explicit
+<code class="docutils literal notranslate"><span class="pre">output_format=&quot;legacy&quot;</span></code> still selects the modern legacy-format adapter.
+The command prints a prominent warning, raises on unsupported options, and
+does not fall back to RHIME if the legacy run fails.
 Direct <code class="docutils literal notranslate"><span class="pre">fixedbasisMCMC(...)</span></code> calls are a temporary legacy Python path, not a
 wrapper around <code class="docutils literal notranslate"><span class="pre">run_rhime(...)</span></code>.</p>
 </section>

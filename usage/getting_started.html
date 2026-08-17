@@ -509,6 +509,12 @@ and runs the modern <code class="docutils literal notranslate"><span class="pre"
 <code class="docutils literal notranslate"><span class="pre">openghg-inversions</span> <span class="pre">run-rhime</span></code> and the RHIME config vocabulary.
 Unsupported fixedbasis-only options now raise targeted errors instead of
 being passed through to <code class="docutils literal notranslate"><span class="pre">inferpymc</span></code>.</p></li>
+<li><p>Existing INI workflows that temporarily require the historical
+<code class="docutils literal notranslate"><span class="pre">fixedbasisMCMC</span></code> / <code class="docutils literal notranslate"><span class="pre">inferpymc_postprocessouts</span></code> product can add
+<code class="docutils literal notranslate"><span class="pre">--legacy-fixedbasis</span></code>. This explicit opt-in keeps legacy parameter names;
+it does not translate them or fall back to RHIME. A missing output format or
+<code class="docutils literal notranslate"><span class="pre">hbmcmc</span></code> / <code class="docutils literal notranslate"><span class="pre">hbmcmc_postprocessing</span></code> selects the historical product, while
+<code class="docutils literal notranslate"><span class="pre">output_format=&quot;legacy&quot;</span></code> continues to select the modern adapter.</p></li>
 <li><p>A sample <code class="docutils literal notranslate"><span class="pre">.ini</span></code> script is at the bottom of this document.</p></li>
 </ul>
 </section>
@@ -520,6 +526,9 @@ SLURM</a>
 using <code class="docutils literal notranslate"><span class="pre">sbatch</span></code>.</p></li>
 <li><p>This file will specify:</p>
 <ul>
+<li><p>the same <code class="docutils literal notranslate"><span class="pre">run_hbmcmc.py</span></code> command as above; add
+<code class="docutils literal notranslate"><span class="pre">--legacy-fixedbasis</span></code> after the script path only when the submitted job
+must reproduce the historical fixedbasis product;</p></li>
 <li><p>the name of the job</p></li>
 <li><p>resources required (number of nodes, number of tasks per node,
 number of cpus per task, memory required, compute time required).

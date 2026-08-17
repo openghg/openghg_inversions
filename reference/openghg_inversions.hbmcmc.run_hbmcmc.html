@@ -470,7 +470,9 @@ $ python run_hbmcmc.py 2012-01-01 2013-01-01 -c hbmcmc_ch4_run.ini</p>
 </dl>
 <p>start - Start of date range to use for MCMC inversion (YYYY-MM-DD)
 end - End of date range to use for MCMC inversion (YYYY-MM-DD) (must be after start)
--c / –config - configuration file. See config/ folder for templates and examples of this input file.</p>
+-c / –config - configuration file. See config/ folder for templates and examples of this input file.
+–legacy-fixedbasis - explicitly run the deprecated fixedbasisMCMC/inferpymc
+compatibility path with untranslated legacy parameters. The default is run_rhime.</p>
 <p>If start and end are specified these will supersede the values within the configuration file, if present.
 If -c option is not specified, this script will look for configuration file within the
 acrg_hbmcmc/ directory called <cite>hbmcmc_input.ini</cite>.</p>
@@ -567,7 +569,7 @@ configuration file plus command-line overrides.</p>
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.hbmcmc.run_hbmcmc.main">
 <span class="sig-prename descclassname"><span class="pre">openghg_inversions.hbmcmc.run_hbmcmc.</span></span><span class="sig-name descname"><span class="pre">main</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">argv</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.14)"><span class="pre">list</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span></span><a class="headerlink" href="#openghg_inversions.hbmcmc.run_hbmcmc.main" title="Link to this definition">#</a></dt>
-<dd><p>Run fixedbasis-style configs through the modern RHIME path.</p>
+<dd><p>Run a fixedbasis-style config through RHIME or the explicit legacy opt-in.</p>
 </dd></dl>
 
 <dl class="py function">
