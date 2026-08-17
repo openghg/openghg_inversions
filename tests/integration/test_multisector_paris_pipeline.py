@@ -225,9 +225,13 @@ def test_multisector_rhime_pipeline_writes_latest_paris_flux_schema(
         assert reloaded.sizes["latitude"] == 293
         assert reloaded.sizes["time"] == 1
         assert tuple(reloaded.country.values) == PARIS_LATEST_COUNTRIES
+        assert tuple(reloaded.country_2.values) == PARIS_LATEST_COUNTRIES
         assert tuple(reloaded.sector.values) == ("ff", "ocean")
+        assert tuple(reloaded.sector_2.values) == ("ff", "ocean")
         assert reloaded.country.attrs["long_name"] == "country_ISO_3166_1_alpha3"
+        assert reloaded.country_2.attrs == reloaded.country.attrs
         assert reloaded.sector.attrs["long_name"] == "short name of flux sector"
+        assert reloaded.sector_2.attrs == reloaded.sector.attrs
         assert reloaded.attrs["paris_flux_template_version"] == "v03"
         assert {
             "title",
@@ -245,21 +249,21 @@ def test_multisector_rhime_pipeline_writes_latest_paris_flux_schema(
             "license",
         }.issubset(reloaded.attrs)
         assert reloaded["covariance_flux_total_posterior_country"].dims == (
+            "country",
+            "country_2",
             "time",
-            "country",
-            "country",
         )
         for sector in ("ff", "ocean"):
             assert reloaded[f"covariance_flux_{sector}_posterior_country"].dims == (
+                "country",
+                "country_2",
                 "time",
-                "country",
-                "country",
             )
         assert reloaded["covariance_flux_sectors_posterior_country"].dims == (
-            "time",
+            "sector_2",
+            "sector",
             "country",
-            "sector",
-            "sector",
+            "time",
         )
         assert "covariance_flux_total_posterior_country" in schema_info
         assert "covariance_flux_sectors_posterior_country" in schema_info

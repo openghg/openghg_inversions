@@ -6933,18 +6933,22 @@ def test_latest_paris_output_processes_modern_output(europe_country_file: Path, 
     assert "stdev_flux_total_posterior" in flux_outputs
     assert "covariance_flux_total_posterior_country" in flux_outputs
     assert tuple(flux_outputs.country.values) == PARIS_LATEST_COUNTRIES
-    assert flux_outputs["covariance_flux_total_posterior_country"].shape == (
+    assert tuple(flux_outputs.country_2.values) == PARIS_LATEST_COUNTRIES
+    covariance = flux_outputs["covariance_flux_total_posterior_country"]
+    assert covariance.dims == ("country", "country_2", "time")
+    assert covariance.shape == (
+        flux_outputs.sizes["country"],
+        flux_outputs.sizes["country_2"],
         flux_outputs.sizes["time"],
-        flux_outputs.sizes["country"],
-        flux_outputs.sizes["country"],
     )
+    covariance = covariance.transpose("time", "country", "country_2")
     np.testing.assert_allclose(
         np.diagonal(
-            flux_outputs["covariance_flux_total_posterior_country"].values,
+            covariance.values,
             axis1=1,
             axis2=2,
         ),
-        flux_outputs["stdev_flux_total_posterior_country"].values ** 2,
+        flux_outputs["stdev_flux_total_posterior_country"].transpose("time", "country").values ** 2,
         rtol=1e-6,
     )
     assert "country_flux_total_posterior" not in flux_outputs
