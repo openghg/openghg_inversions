@@ -75,10 +75,10 @@ Advanced: copy the complete runner
 
 The copied runner below is an advanced, version-coupled escape hatch for
 scientific changes beyond the likelihood seam. It makes the major stages
-visible while importing their implementations from the
-supported public RHIME API. Prefer ``run_rhime_from_prepared_inputs`` when
-replaying prepared inputs, replacing the complete model, or deliberately
-starting from a different preparation graph.
+visible while importing their implementations from the supported public RHIME
+API. Prefer ``run_rhime_from_prepared_inputs`` when replaying prepared inputs,
+replacing the complete model, or deliberately starting from a different
+preparation graph.
 
 The deliberate change is the likelihood passed to
 ``build_standard_rhime_model``: the example selects the same project-owned
@@ -110,5 +110,105 @@ the likelihood contract directly, so the documentation and runnable examples
 cannot drift apart.
 
 .. literalinclude:: ../../examples/rhime_customisation/runner.py
+   :language: python
+   :linenos:
+
+Advanced: compose a custom basis stage
+--------------------------------------
+
+The second complete runner replaces one call in the preparation spine:
+``build_project_basis`` replaces ``build_rhime_basis``. The project function
+composes public basis primitives instead of selecting a built-in basis
+algorithm. It:
+
+* derives and normalizes a two-dimensional weight field with
+  ``basis_weights_from_fp_all``;
+* loads the public country grid and reduces positive country codes to ``land``
+  and the remaining cells to ``ocean``;
+* creates physical north-south/east-west coordinates with
+  ``LatLonGridGeometry``;
+* uses balanced inertial splits, decomposes every proposed child into
+  four-neighbour connected components, and rejects splits whose children
+  exceed the configured PCA eccentricity guard;
+* generates class-safe labels with ``region_constrained_basis``; and
+* wraps the flat labels and current run flux in retained ``BasisFunctions``
+  with ``basis_functions_from_fp_all_flat_basis``.
+
+The nested split strategy follows the latest selected-country guarded-basis
+variant in the ``verification-games`` project. That variant gives the UK,
+Ireland, France, Germany, Italy, Belgium, and the Netherlands separate classes,
+while remaining land and ocean form two more. This smaller example deliberately
+uses the land/ocean class variant so the composition stays readable. To adopt
+the selected-country policy, replace ``_land_ocean_classes`` with a project
+function that maps the loaded integer country codes or country names to those
+classes. Keep this classification outside OpenGHG Inversions unless it becomes
+a broadly supported policy.
+
+The weighting is deliberately not identical to that later verification-games
+preparation step. Verification-games sums absolute cached ``fp_x_flux`` after
+those sensitivities exist. At this earlier visible-runner basis boundary they
+have not been constructed yet, so the example uses the public
+``basis_weights_from_fp_all`` field while preserving the guarded split strategy
+and class composition.
+
+The flat labels and retained object record namespaced provenance for the class
+policy, normalized weight source, connected balanced-inertial strategy,
+connectivity, and eccentricity threshold. Those fields travel with a saved
+``BasisFunctions`` artifact and make the project choice inspectable later.
+
+Acquisition, filtering, sensitivity construction, labelled input assembly,
+the standard likelihood and model, the eager PyMC boundary, sampling,
+predictive selection, filenames, and output handling remain library-owned.
+
+The project owns the scientific validity of its classification, coverage,
+region count, eccentricity threshold, and split policy. ``BasisFunctions`` and
+the unchanged downstream stages validate the grid, coordinates, sources, site
+alignment, state layout, and model inputs they consume; they cannot certify
+that the project's scientific partition is appropriate. Malformed artifacts
+fail while loading; structurally valid artifacts fail later if they violate a
+downstream alignment contract.
+
+The example exposes ``project_basis_path`` separately from standard RHIME
+options. Point it at a self-contained ``.nc`` or ``.zarr`` artifact written by
+``BasisFunctions.save`` to bypass fitting::
+
+   python -m package_name.custom_basis_runner config.ini \
+       --project-basis-path cache/project-basis.zarr
+
+The eccentricity guard is also a visible project-owned option, rather than an
+opaque library default. It defaults to ``10`` and is removed before standard
+RHIME option resolution::
+
+   python -m package_name.custom_basis_runner config.ini \
+       --max-child-pca-eccentricity 10
+
+``BasisFunctions.load`` eagerly loads the saved operator, metadata, and flux,
+then closes the artifact. The serialized flux is deliberately retained. Use
+the standard public ``load_basis_functions`` helper instead when loading a
+named RHIME basis cache that should take its retained flux from the current
+``fp_all`` acquisition.
+
+Without an artifact, basis generation is a named eager boundary: the public
+weight adapter eagerly materializes a derived two-dimensional weight field
+from borrowed inputs; normalization, geometry construction, country-class
+loading, and guarded region splitting then compute eager class and label
+fields. Before that boundary, the filtered xarray objects are borrowed and may
+be Dask-backed. The compatibility adapter retains the current run's flux with
+the generated labels at this visible runner boundary, and the resulting
+``BasisFunctions`` object flows unchanged through sensitivity construction and
+labelled assembly. Model arrays are materialized separately and explicitly by
+``materialize_pymc_inputs``.
+
+Copy ``examples/rhime_customisation/custom_basis_runner.py`` to
+``src/<package_name>/custom_basis_runner.py`` and keep the project basis rule
+beside the copied orchestration spine. This source is imported and executed by
+integration tests and rendered here, so the documentation and runnable example
+cannot drift apart.
+
+This guarded composition is intentionally project-specific and is not yet a
+common, stable strategy that warrants another lower-ceremony ``run_rhime``
+option.
+
+.. literalinclude:: ../../examples/rhime_customisation/custom_basis_runner.py
    :language: python
    :linenos:
