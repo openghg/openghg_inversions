@@ -9,10 +9,11 @@ acquisition-to-output workflow and pass one direct-Python callable to
 ``run_rhime``. The callable is deliberately unavailable to INI files: it is
 not imported from configuration or stored in a run or model specification.
 
-This example selects the absolute-sigma Gaussian likelihood in place of
-RHIME's default pollution-event-scaled Gaussian. The likelihood is the same
-one used by the complete copied runner below, so the difference between the
-examples is orchestration ceremony rather than scientific behaviour.
+This example replaces RHIME's Gaussian observation distribution with an
+editable Student-t likelihood while reusing RHIME's current mean and error
+construction. The likelihood is the same one used by the complete copied
+runner below, so the difference between the examples is orchestration ceremony
+rather than scientific behaviour.
 
 The project-owned likelihood selection is one small module:
 
@@ -43,6 +44,14 @@ predictive sampling, its supported output formats are validated before
 sampling, and its metadata must be JSON-compatible. The ordinary caller does
 not construct the context, a specification, or a role/output manifest.
 
+The example makes those owned invariants explicit: ``student_y`` is declared
+as the ``concentration`` role, RHIME's ``epsilon`` remains the ``model_error``
+role, only ``none`` and ``inv_out`` outputs are declared compatible, and the
+Student-t family and degrees of freedom are recorded as JSON metadata. It
+rejects dense and low-rank aggregation covariance because the example uses an
+independent Student-t distribution; supporting those modes would require a
+multivariate likelihood rather than a hidden approximation.
+
 ``run_rhime_multisector`` accepts the same Python-only builder contract. The
 standard multi-sector model retains sector flux components and roles, then
 passes their combined observation mean to the likelihood, so no special case
@@ -59,11 +68,10 @@ replaying prepared inputs, replacing the complete model, or deliberately
 starting from a different preparation graph.
 
 The deliberate change is the likelihood passed to
-``build_standard_rhime_model``: the example selects
-``build_absolute_sigma_gaussian_likelihood`` in place of RHIME's default
-pollution-event-scaled Gaussian. Acquisition, filtering, basis construction,
-labelled input assembly, the eager PyMC boundary, sampling, predictive
-selection, filenames, and output handling remain library-owned.
+``build_standard_rhime_model``: the example selects the same project-owned
+Student-t builder as the preferred form. Acquisition, filtering, basis
+construction, labelled input assembly, the eager PyMC boundary, sampling,
+predictive selection, filenames, and output handling remain library-owned.
 
 In a project created with the `OpenGHG project cookiecutter
 <https://github.com/openghg/openghg-project-cookiecutter>`_, copy the preferred
@@ -84,8 +92,9 @@ Less common Python/config options can be supplied as a JSON object::
    python -m package_name.rhime_runner config.ini \
        --kwargs '{"reload_merged_data": true, "output_format": "inv_out"}'
 
-All three sources are imported and executed by the integration test, so the
-documentation and runnable examples cannot drift apart.
+The test suite imports all three sources, exercises both runners, and validates
+the likelihood contract directly, so the documentation and runnable examples
+cannot drift apart.
 
 .. literalinclude:: ../../examples/rhime_customisation/runner.py
    :language: python

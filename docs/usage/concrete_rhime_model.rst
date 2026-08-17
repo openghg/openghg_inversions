@@ -351,24 +351,25 @@ error policies, aggregation-error mode, and output dimension. This boundary
 avoids a misleading contract in which the runner builds half an error model
 before calling user code.
 
-For the absolute-sigma Gaussian above, no custom modelling function is needed:
+For the absolute-sigma Gaussian above, pass the helper directly to the
+ordinary runner:
 
 .. code-block:: python
 
    from openghg_inversions.rhime import (
        build_absolute_sigma_gaussian_likelihood,
-       run_rhime_from_prepared_inputs,
+       run_rhime,
    )
 
-   result = run_rhime_from_prepared_inputs(
-       prepared_inputs=prepared,
-       run_spec=run_spec,
+   result = run_rhime(
+       config_file="config.ini",
        likelihood_builder=build_absolute_sigma_gaussian_likelihood,
    )
 
-Set ``add_offset=True`` and ``offset_args={"per_site": False}`` on
-``RhimeModelSpec`` to combine it with one global scalar offset. The default
-``per_site=True`` retains the existing site or site-period offset design.
+Pass ``add_offset=True`` and ``offset_args={"per_site": False}`` as Python or
+configuration options to combine it with one global scalar offset. The
+default ``per_site=True`` retains the existing site or site-period offset
+design.
 
 The helper ``build_rhime_observation_state`` is available when only the
 distribution should change. For example, this replaces Normal observations
@@ -382,9 +383,8 @@ scale:
    from openghg_inversions.rhime import (
        RhimeLikelihoodContext,
        RhimeLikelihoodResult,
-       RhimeSampler,
        build_rhime_observation_state,
-       run_rhime_from_prepared_inputs,
+       run_rhime,
    )
 
 
@@ -414,10 +414,8 @@ scale:
        )
 
 
-   result = run_rhime_from_prepared_inputs(
-       prepared_inputs=prepared,
-       run_spec=run_spec,
-       sampler=RhimeSampler(draws=1000, tune=1000, chains=4),
+   result = run_rhime(
+       config_file="config.ini",
        likelihood_builder=student_t_likelihood,
    )
 

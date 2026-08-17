@@ -666,6 +666,21 @@ def _validated_custom_model_build(
     return model_build_result
 
 
+def _validate_likelihood_builder(likelihood_builder: object | None) -> None:
+    """Reject non-callable likelihood builders at the public boundary.
+
+    Args:
+        likelihood_builder: Candidate direct-Python likelihood builder.
+
+    Raises:
+        TypeError: If the candidate is neither callable nor ``None``.
+    """
+    if likelihood_builder is not None and not callable(likelihood_builder):
+        raise TypeError(
+            f"`likelihood_builder` must be callable or None; got {type(likelihood_builder).__name__}."
+        )
+
+
 def build_standard_rhime_model(
     *,
     prepared: RhimePreparedInputs,
@@ -688,17 +703,24 @@ def build_standard_rhime_model(
             later outputs.
         model_inputs: Materialized PyMC inputs.
         run_spec: Retained-site-aligned run specification.
-        model_builder: Optional advanced complete-model builder.
+        model_builder: Optional advanced complete-model builder. Mutually
+            exclusive with ``likelihood_builder``; when both are supplied the
+            stage rejects them before either executes.
         likelihood_builder: Optional likelihood builder used by the built-in
-            model.
+            model. Mutually exclusive with ``model_builder``; when both are
+            supplied the stage rejects them before either executes.
 
     Returns:
         Built model with validated roles and output capabilities.
 
     Raises:
-        TypeError: If a complete-model builder returns the wrong type.
-        ValueError: If builder roles or output capabilities are invalid.
+        TypeError: If a complete-model builder or likelihood builder returns
+            the wrong result type.
+        ValueError: If both builder seams are supplied or builder roles or
+            output capabilities are invalid.
     """
+    if model_builder is not None and likelihood_builder is not None:
+        raise ValueError("Pass either `model_builder` or `likelihood_builder`, not both.")
     timing_start = timer_start()
     builder_context = RhimeModelBuilderContext(
         prepared_inputs=prepared,
@@ -722,7 +744,11 @@ def build_standard_rhime_model(
             multisector=False,
         )
     if likelihood_builder is not None:
-        validate_model_build_result(model_build_result, context=builder_context)
+        validate_model_build_result(
+            model_build_result,
+            context=builder_context,
+            builder_kind="likelihood",
+        )
     log_timing("rhime.model_build", timer_seconds(timing_start), multisector=False)
     return model_build_result
 
@@ -749,17 +775,24 @@ def build_multisector_rhime_model(
         prepared: Canonical prepared inputs and source-specific basis metadata.
         model_inputs: Materialized PyMC inputs.
         run_spec: Retained-site-aligned multi-sector run specification.
-        model_builder: Optional advanced complete-model builder.
+        model_builder: Optional advanced complete-model builder. Mutually
+            exclusive with ``likelihood_builder``; when both are supplied the
+            stage rejects them before either executes.
         likelihood_builder: Optional likelihood builder used by the built-in
-            model.
+            model. Mutually exclusive with ``model_builder``; when both are
+            supplied the stage rejects them before either executes.
 
     Returns:
         Built multi-sector model with validated roles and capabilities.
 
     Raises:
-        TypeError: If a complete-model builder returns the wrong type.
-        ValueError: If basis state coordinates or builder contracts disagree.
+        TypeError: If a complete-model builder or likelihood builder returns
+            the wrong result type.
+        ValueError: If both builder seams are supplied or basis state
+            coordinates or builder contracts disagree.
     """
+    if model_builder is not None and likelihood_builder is not None:
+        raise ValueError("Pass either `model_builder` or `likelihood_builder`, not both.")
     timing_start = timer_start()
     _validate_multisector_basis_layout(
         prepared.basis_functions,
@@ -788,7 +821,11 @@ def build_multisector_rhime_model(
             multisector=True,
         )
     if likelihood_builder is not None:
-        validate_model_build_result(model_build_result, context=builder_context)
+        validate_model_build_result(
+            model_build_result,
+            context=builder_context,
+            builder_kind="likelihood",
+        )
     log_timing("rhime.model_build", timer_seconds(timing_start), multisector=True)
     return model_build_result
 
@@ -1041,11 +1078,18 @@ def run_rhime_from_prepared_inputs(
         requested outputs.
 
     Raises:
+        TypeError: If ``likelihood_builder`` is not callable, or either
+            builder returns the wrong result type.
         ValueError: If both builder seams are supplied, the model specification
             contains no sectors, the sector
             count, prepared ``H`` layout, and prepared-data layout flag
             disagree, or output settings are invalid.
+
+    Notes:
+        A non-callable likelihood builder is rejected before prepared inputs
+        are validated, materialized, or otherwise touched.
     """
+    _validate_likelihood_builder(likelihood_builder)
     if model_builder is not None and likelihood_builder is not None:
         raise ValueError("Pass either `model_builder` or `likelihood_builder`, not both.")
     prepared_inputs = prepared_inputs.validated()
@@ -1197,11 +1241,17 @@ def run_rhime(
         output metadata, and generated outputs.
 
     Raises:
-        TypeError: If a likelihood builder returns the wrong result type.
+        TypeError: If a likelihood builder is not callable or returns the
+            wrong result type.
         ValueError: If required parameters are missing, unsupported parameters
             are supplied, the flux-source count is invalid, or likelihood
             roles, metadata, or requested-output compatibility are invalid.
+
+    Notes:
+        A non-callable likelihood builder is rejected before configuration is
+        parsed or data is acquired, prepared, or materialized.
     """
+    _validate_likelihood_builder(likelihood_builder)
     params = (
         params_from_config(config_file, extra_kwargs=kwargs, normalise=False)
         if config_file is not None
@@ -1238,36 +1288,18 @@ def run_rhime(
         aggregation_error_mode=run_spec.model.aggregation_error_mode,
     )
     build_and_sample_start = timer_start()
-    if likelihood_builder is None:
-        model_build_result = build_standard_rhime_model(
-            prepared=prepared,
-            model_inputs=model_inputs,
-            run_spec=run_spec,
-        )
-        idata = sample_rhime_model(model_build_result, setup.sampler)
-    else:
-        model_build_result = build_standard_rhime_model(
-            prepared=prepared,
-            model_inputs=model_inputs,
-            run_spec=run_spec,
-            likelihood_builder=likelihood_builder,
-        )
-        idata = sample_rhime_model(
-            model_build_result,
-            setup.sampler,
-            use_variable_roles=True,
-        )
+    model_build_result = build_standard_rhime_model(
+        prepared=prepared,
+        model_inputs=model_inputs,
+        run_spec=run_spec,
+        likelihood_builder=likelihood_builder,
+    )
+    idata = sample_rhime_model(
+        model_build_result,
+        setup.sampler,
+        use_variable_roles=likelihood_builder is not None,
+    )
 
-    if likelihood_builder is not None:
-        return make_standard_rhime_result(
-            prepared=prepared,
-            run_spec=run_spec,
-            sampler=setup.sampler,
-            model_build_result=model_build_result,
-            idata=idata,
-            build_and_sample_seconds=timer_seconds(build_and_sample_start),
-            likelihood_builder=likelihood_builder,
-        )
     return make_standard_rhime_result(
         prepared=prepared,
         run_spec=run_spec,
@@ -1275,6 +1307,7 @@ def run_rhime(
         model_build_result=model_build_result,
         idata=idata,
         build_and_sample_seconds=timer_seconds(build_and_sample_start),
+        likelihood_builder=likelihood_builder,
     )
 
 
@@ -1310,12 +1343,18 @@ def run_rhime_multisector(
         output metadata, and sector diagnostics.
 
     Raises:
-        TypeError: If a likelihood builder returns the wrong result type.
+        TypeError: If a likelihood builder is not callable or returns the
+            wrong result type.
         ValueError: If required parameters are missing, unsupported parameters
             are supplied, fewer than two flux sources are provided, or
             likelihood roles, metadata, or requested-output compatibility are
             invalid.
+
+    Notes:
+        A non-callable likelihood builder is rejected before configuration is
+        parsed or data is acquired, prepared, or materialized.
     """
+    _validate_likelihood_builder(likelihood_builder)
     params = (
         params_from_config(config_file, extra_kwargs=kwargs, normalise=False)
         if config_file is not None
@@ -1351,38 +1390,20 @@ def run_rhime_multisector(
         aggregation_error_mode=run_spec.model.aggregation_error_mode,
     )
     build_and_sample_start = timer_start()
-    if likelihood_builder is None:
-        model_build_result = build_multisector_rhime_model(
-            prepared=prepared,
-            model_inputs=model_inputs,
-            run_spec=run_spec,
-        )
-        idata = sample_rhime_model(model_build_result, setup.sampler)
-    else:
-        model_build_result = build_multisector_rhime_model(
-            prepared=prepared,
-            model_inputs=model_inputs,
-            run_spec=run_spec,
-            likelihood_builder=likelihood_builder,
-        )
-        idata = sample_rhime_model(
-            model_build_result,
-            setup.sampler,
-            use_variable_roles=True,
-        )
+    model_build_result = build_multisector_rhime_model(
+        prepared=prepared,
+        model_inputs=model_inputs,
+        run_spec=run_spec,
+        likelihood_builder=likelihood_builder,
+    )
+    idata = sample_rhime_model(
+        model_build_result,
+        setup.sampler,
+        use_variable_roles=likelihood_builder is not None,
+    )
 
     # Multi-sector output owns sector diagnostics and its distinct format
     # constraints; it is intentionally not hidden behind the standard stage.
-    if likelihood_builder is not None:
-        return make_multisector_rhime_result(
-            prepared=prepared,
-            run_spec=run_spec,
-            sampler=setup.sampler,
-            model_build_result=model_build_result,
-            idata=idata,
-            build_and_sample_seconds=timer_seconds(build_and_sample_start),
-            likelihood_builder=likelihood_builder,
-        )
     return make_multisector_rhime_result(
         prepared=prepared,
         run_spec=run_spec,
@@ -1390,4 +1411,5 @@ def run_rhime_multisector(
         model_build_result=model_build_result,
         idata=idata,
         build_and_sample_seconds=timer_seconds(build_and_sample_start),
+        likelihood_builder=likelihood_builder,
     )

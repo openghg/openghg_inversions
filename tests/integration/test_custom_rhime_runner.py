@@ -161,11 +161,11 @@ def test_custom_runner_uses_supported_stages_for_acquisition_and_reload(
         return model_inputs
 
     def build(**kwargs: Any) -> Any:
-        """Record the custom absolute-sigma likelihood handoff."""
+        """Record the project-owned Student-t likelihood handoff."""
         assert kwargs["prepared"] is prepared
         assert kwargs["model_inputs"] is model_inputs
         assert kwargs["run_spec"] is aligned_spec
-        assert kwargs["likelihood_builder"] is custom_runner.build_absolute_sigma_gaussian_likelihood
+        assert kwargs["likelihood_builder"] is custom_runner.likelihood_builder
         calls.append("build")
         return build_result
 
@@ -183,7 +183,7 @@ def test_custom_runner_uses_supported_stages_for_acquisition_and_reload(
         assert kwargs["sampler"] is sampler
         assert kwargs["model_build_result"] is build_result
         assert kwargs["idata"] is idata
-        assert kwargs["likelihood_builder"] is custom_runner.build_absolute_sigma_gaussian_likelihood
+        assert kwargs["likelihood_builder"] is custom_runner.likelihood_builder
         assert kwargs["build_and_sample_seconds"] >= 0.0
         calls.append("result")
         return expected_result

@@ -1,4 +1,4 @@
-"""Run ordinary RHIME with the absolute-sigma Gaussian likelihood.
+"""Run ordinary RHIME with a project-owned Student-t likelihood.
 
 This is the preferred low-ceremony customization route. It keeps RHIME's
 complete acquisition-to-output pipeline and changes only the direct-Python
@@ -22,15 +22,13 @@ from openghg_inversions.rhime import RhimeResult, run_rhime
 
 from .likelihoods import likelihood_builder
 
-build_absolute_sigma_gaussian_likelihood = likelihood_builder
-
 
 def run_with_likelihood(
     *,
     config_file: str | Path | None = None,
     **kwargs: Any,
 ) -> RhimeResult:
-    """Run standard RHIME with an absolute-sigma Gaussian likelihood.
+    """Run standard RHIME with a project-owned Student-t likelihood.
 
     Args:
         config_file: Optional RHIME INI configuration file.
@@ -40,9 +38,15 @@ def run_with_likelihood(
     Returns:
         The sampled result and any outputs requested by the RHIME options.
 
+    Raises:
+        TypeError: If the likelihood builder returns an invalid result type.
+        ValueError: If required options are missing, aggregation or output is
+            unsupported, or likelihood roles or metadata are invalid.
+
     Notes:
-        This workflow may retrieve or reload data, eagerly materializes PyMC
-        model inputs, runs sampling, and writes configured outputs.
+        This workflow may retrieve or reload data, materializes related model
+        arrays together at the named PyMC boundary without mutating canonical
+        prepared inputs, runs sampling, and writes configured outputs.
     """
     return run_rhime(
         config_file=config_file,
