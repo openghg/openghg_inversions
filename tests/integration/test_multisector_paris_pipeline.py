@@ -245,9 +245,11 @@ def test_multisector_rhime_pipeline_writes_latest_paris_flux_schema(
             "project",
             "references",
             "history",
-            "conventions",
+            "Conventions",
             "license",
         }.issubset(reloaded.attrs)
+        assert reloaded.attrs["Conventions"] == "CF-1.8"
+        assert "conventions" not in reloaded.attrs
         assert reloaded["covariance_flux_total_posterior_country"].dims == (
             "country",
             "country_2",

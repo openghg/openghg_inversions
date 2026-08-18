@@ -192,6 +192,9 @@ def test_latest_paris_flux_output_processes_multisector_sectors(
         "cell_methods": "time: mean area: mean",
     }
     assert flux_outputs.time_bnds.attrs == {}
+    assert flux_outputs.attrs["Conventions"] == "CF-1.8"
+    assert "conventions" not in flux_outputs.attrs
+    assert flux_outputs.attrs["source"].strip()
     assert flux_outputs.attrs["comment"].strip()
     assert flux_outputs.attrs["references"].strip()
     _assert_latest_flux_dimension_order(flux_outputs)
@@ -311,11 +314,22 @@ def test_latest_paris_flux_output_processes_multisector_sectors(
             assert actual.attrs == expected.attrs
             np.testing.assert_allclose(actual.values, expected.values, rtol=1e-6)
         assert reloaded_flux.time_bnds.attrs == {}
+        assert reloaded_flux.attrs["Conventions"] == "CF-1.8"
+        assert "conventions" not in reloaded_flux.attrs
         _assert_latest_flux_dimension_order(reloaded_flux)
+    with xr.open_dataset(flux_file, decode_cf=False) as raw_flux:
+        assert raw_flux.attrs["Conventions"] == "CF-1.8"
+        assert "conventions" not in raw_flux.attrs
+        assert raw_flux.time_bnds.attrs == {}
+        for coordinate in ("time", "latitude", "longitude", "percentile"):
+            assert "_FillValue" not in raw_flux[coordinate].attrs
+        assert raw_flux.latitude.dtype == np.dtype("float64")
+        assert raw_flux.longitude.dtype == np.dtype("float64")
 
 
 def test_latest_paris_concentration_has_cf_metadata(
     multisector_postprocessing_inv_out: Callable[..., InversionOutput],
+    tmp_path: Path,
 ) -> None:
     """Latest concentration output carries the revised CF metadata contract."""
     inv_out = multisector_postprocessing_inv_out()
@@ -332,8 +346,24 @@ def test_latest_paris_concentration_has_cf_metadata(
     assert result.time_bnds.attrs == {}
     assert result.altitude.attrs["positive"] == "up"
     assert result.altitude_model.attrs["positive"] == "up"
+    assert result.attrs["Conventions"] == "CF-1.8"
+    assert "conventions" not in result.attrs
+    assert result.attrs["source"].strip()
+    assert "site" not in result.variables
     assert result.attrs["comment"].strip()
     assert result.attrs["references"].strip()
+
+    concentration_file = tmp_path / "latest_concentration.nc"
+    result.to_netcdf(concentration_file)
+    with xr.open_dataset(concentration_file) as reloaded:
+        assert reloaded.attrs["Conventions"] == "CF-1.8"
+        assert "conventions" not in reloaded.attrs
+    with xr.open_dataset(concentration_file, decode_cf=False) as raw:
+        assert raw.attrs["Conventions"] == "CF-1.8"
+        assert "conventions" not in raw.attrs
+        assert raw.time_bnds.attrs == {}
+        assert "_FillValue" not in raw.percentile.attrs
+        assert "site" not in raw.variables
 
 
 def test_multisector_country_covariance_promotes_float32_traces(
