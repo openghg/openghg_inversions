@@ -8,9 +8,13 @@ they are materialized once and reused by all retained-state RHS blocks.
 
 For native covariance ``B`` and retained restriction ``Pi``, the kernel returns
 ``C_alpha = Pi B Pi.T``, ``H U_*``, ``H B Pi.T``, and ``H B H.T`` (or its
-diagonal). The default strategy preserves bucket prolongation by deriving
-``Pi_U = (U.T B^-1 U)^-1 U.T B^-1``. Durable artifact identity and persistence
-are intentionally deferred to the artifact-I/O layer.
+diagonal). Strategies return authoritative ``Pi``; the kernel derives
+``B Pi.T``, ``C_alpha``, and ``U_* = B Pi.T C_alpha^-1``. The default strategy
+preserves bucket prolongation by deriving
+``Pi_U = (U.T B^-1 U)^-1 U.T B^-1``. The kernel trusts the covariance action's
+real self-adjoint positive-definite semantics and compatible inverse rather
+than globally certifying a matrix-free operator. Durable artifact identity and
+persistence are intentionally deferred to the artifact-I/O layer.
 """
 
 from __future__ import annotations
@@ -38,22 +42,21 @@ MAX_DENSE_EIGEN_DIAGNOSTIC_SIZE = 512
 
 @dataclass(frozen=True, slots=True)
 class RetainedProjection:
-    """A labelled restriction/prolongation pair selected by one strategy.
+    """A labelled retained restriction selected by one strategy.
 
     Attributes:
-        restriction: ``Pi`` with dimensions ``(state_dim, *native_dims)``.
-        prolongation: Covariance-natural ``U_*`` with dimensions
-            ``(*native_dims, state_dim)``.
+        restriction: Dimensionless ``Pi`` with dimensions
+            ``(state_dim, *native_dims)``. The frozen dataclass does not freeze
+            this mutable DataArray.
         strategy: Stable identifier for the scientific projection choice.
     """
 
     restriction: xr.DataArray
-    prolongation: xr.DataArray
     strategy: str
 
 
 class RetainedProjectionStrategy(Protocol):
-    """Extension seam for choosing retained coefficients and their lift."""
+    """Extension seam for choosing authoritative retained coefficients."""
 
     def projection(
         self,
@@ -63,7 +66,20 @@ class RetainedProjectionStrategy(Protocol):
         native_dims: tuple[str, ...],
         state_dim: str,
     ) -> RetainedProjection:
-        """Return a compatible labelled restriction and prolongation."""
+        """Return the authoritative labelled retained restriction ``Pi``.
+
+        Args:
+            covariance: Labelled native covariance action.
+            basis_prolongation: Dimensionless basis ``U`` with dimensions
+                ``(*native_dims, state_dim)``.
+            native_dims: Ordered native covariance dimensions.
+            state_dim: Retained-state dimension.
+
+        Returns:
+            A dimensionless restriction with dimensions
+            ``(state_dim, *native_dims)``. The kernel derives ``B Pi.T``,
+            ``C_alpha``, and ``U_*`` from it.
+        """
         ...
 
 
@@ -95,7 +111,7 @@ class PreserveBucketProlongation:
             state_dim: Retained-state dimension.
 
         Returns:
-            The coherent ``(Pi_U, U)`` pair and algebraically known products.
+            The authoritative bucket-compatible restriction ``Pi_U``.
 
         Raises:
             ValueError: If ``U`` is invalid or lacks full column rank.
@@ -162,19 +178,40 @@ class PreserveBucketProlongation:
             strategy=self.name,
             units="1",
         )
-        prolongation = prolongation.rename("prolongation").assign_attrs(
-            mathematical_name="U_bucket", strategy=self.name, units="1"
-        )
         return RetainedProjection(
             restriction=restriction,
-            prolongation=prolongation,
             strategy=self.name,
         )
 
 
 @dataclass(frozen=True, slots=True)
 class NativeCovarianceProducts:
-    """Labelled in-memory product blocks induced by one coherent projection."""
+    """Labelled in-memory product blocks induced by one retained restriction.
+
+    Attributes:
+        restriction: Dimensionless ``Pi`` with dimensions
+            ``(state_dim, *native_dims)``.
+        prolongation: Derived dimensionless covariance-natural ``U_*`` with
+            dimensions ``(*native_dims, state_dim)``.
+        state_covariance: Positive-definite dimensionless ``C_alpha`` with
+            distinct typed row/column state dimensions.
+        effective_observation_operator: ``H U_*`` with dimensions
+            ``(observation_dim, state_dim)`` and sensitivity units.
+        observation_state_cross_covariance: ``H B Pi.T`` with dimensions
+            ``(observation_dim, state_column_dim)`` and sensitivity units.
+        native_observation_covariance: Dense positive-semidefinite (and
+            possibly singular) ``H B H.T`` on distinct typed observation axes,
+            or its nonnegative observation-axis diagonal. Units are squared
+            sensitivity units.
+        strategy: Identifier of the strategy that selected ``Pi``.
+        observation_covariance_view: Whether the observation covariance field
+            contains the dense matrix or its diagonal.
+
+    Notes:
+        Freezing the dataclass prevents field reassignment, but the contained
+        DataArrays remain mutable. Product attributes are construction-time
+        snapshots, not live views of input attribute mappings.
+    """
 
     restriction: xr.DataArray
     prolongation: xr.DataArray
@@ -209,13 +246,19 @@ def project_native_covariance(
         observation_covariance: Return dense ``H B H.T`` or its diagonal.
         observation_batch_size: Positive integral number of covariance
             right-hand sides per eager block.
-        strategy: Projection choice; defaults to bucket preservation.
+        strategy: Authoritative restriction choice; defaults to the
+            bucket-preserving restriction.
 
     Returns:
         Frozen in-memory labelled product value object. Scaling covariance,
         restriction, and prolongation have units ``"1"``. Products linear in
         ``H`` inherit its units; observation covariance uses squared ``H``
         units when supplied.
+
+        The kernel trusts the covariance action's declared self-adjoint
+        positive-definite semantics; it does not globally certify a
+        matrix-free ``B``. Runtime checks diagnose only the requested products
+        and covariance-action outputs encountered here.
 
     Raises:
         TypeError: If ``observation_batch_size`` is not an integral non-Boolean.
@@ -256,9 +299,7 @@ def project_native_covariance(
         state_dim=state_dim,
     )
     occupied_names = {
-        str(name)
-        for array in (sensitivity, projection.restriction, projection.prolongation)
-        for name in (*array.dims, *array.coords)
+        str(name) for array in (sensitivity, projection.restriction) for name in (*array.dims, *array.coords)
     }
     state_column_dim = matrix_column_dim(state_dim, occupied_names)
     b_pi_t = _apply_restriction_blocks(
@@ -282,8 +323,8 @@ def project_native_covariance(
         mathematical_name="C_alpha",
         require_positive_definite=True,
     )
-    _validate_projection_invariant(
-        projection,
+    prolongation = _derive_covariance_natural_prolongation(
+        projection.restriction,
         state_covariance,
         b_pi_t,
         native_dims=native_dims,
@@ -292,7 +333,7 @@ def project_native_covariance(
     )
     h_units = sensitivity.attrs.get("units")
     linear_units = {"units": h_units} if h_units is not None else {}
-    effective_operator = xr.dot(sensitivity, projection.prolongation, dim=list(native_dims)).transpose(
+    effective_operator = xr.dot(sensitivity, prolongation, dim=list(native_dims)).transpose(
         observation_dim, state_dim
     )
     effective_operator = effective_operator.rename("effective_observation_operator").assign_attrs(
@@ -314,7 +355,7 @@ def project_native_covariance(
     )
     return NativeCovarianceProducts(
         restriction=projection.restriction,
-        prolongation=projection.prolongation,
+        prolongation=prolongation,
         state_covariance=state_covariance,
         effective_observation_operator=effective_operator,
         observation_state_cross_covariance=cross_covariance,
@@ -344,7 +385,13 @@ def _apply_restriction_blocks(
             leading_dims=native_dims,
         )
         rhs = _materialize_dense_preserving_coordinates(rhs)
-        blocks.append(covariance.apply(rhs))
+        blocks.append(
+            _validated_covariance_apply(
+                covariance,
+                rhs,
+                context="B Pi.T",
+            )
+        )
     return xr.concat(blocks, dim=column_dim).transpose(*native_dims, column_dim)
 
 
@@ -365,6 +412,41 @@ def _restriction_product_blocks(
         )
         blocks.append(xr.dot(rows, b_pi_t, dim=list(native_dims)))
     return xr.concat(blocks, dim=state_dim).transpose(state_dim, column_dim)
+
+
+def _validated_covariance_apply(
+    covariance: InvertibleNativeCovarianceAction,
+    rhs: xr.DataArray,
+    *,
+    context: str,
+) -> xr.DataArray:
+    """Apply ``B`` and reject invalid action output.
+
+    Args:
+        covariance: Native covariance action.
+        rhs: Labelled right-hand sides.
+        context: Product name included in validation errors.
+
+    Returns:
+        The labelled finite-real action result.
+
+    Raises:
+        ValueError: If the result is not a DataArray or contains complex or
+            non-finite values.
+    """
+    result = covariance.apply(rhs)
+    if not isinstance(result, xr.DataArray):
+        raise ValueError(
+            f"covariance.apply action-contract violation while computing {context}: "
+            "expected an xarray.DataArray"
+        )
+    values = np.asarray(result.values)
+    if np.iscomplexobj(values) or not np.all(np.isfinite(values)):
+        raise ValueError(
+            f"covariance.apply action-contract violation while computing {context}: "
+            "output must contain only finite real values"
+        )
+    return result
 
 
 def _observation_covariance(
@@ -398,7 +480,11 @@ def _observation_covariance(
             column_dim=column_dim,
             leading_dims=native_dims,
         )
-        b_rhs = covariance.apply(rhs)
+        b_rhs = _validated_covariance_apply(
+            covariance,
+            rhs,
+            context="H B H.T",
+        )
         if output == "dense":
             block = xr.dot(sensitivity, b_rhs, dim=list(native_dims)).transpose(observation_dim, column_dim)
             values[:, start:stop] = np.asarray(block.values)
@@ -412,7 +498,7 @@ def _observation_covariance(
             )
             diagonal_error_bounds[start:stop] = contraction_error_factor * np.maximum(
                 contraction_magnitudes,
-                1.0,
+                0.0,
             )
     units = sensitivity.attrs.get("units")
     unit_attrs = {"units": f"({units})^2"} if units is not None else {}
@@ -478,59 +564,25 @@ def _validated_projection(
     expected = {state_dim, *native_dims}
     if set(restriction.dims) != expected or len(restriction.dims) != len(expected):
         raise ValueError("Projection strategy restriction has invalid labelled dimensions")
-    prolongation = _validated_prolongation(
-        projection.prolongation, native_dims=native_dims, state_dim=state_dim
-    ).assign_attrs({**projection.prolongation.attrs, "units": "1"})
-    for role, array in (("restriction", restriction), ("prolongation", prolongation)):
-        _validate_exact_native_coordinates(array, native_reference, native_dims=native_dims, role=role)
-    if state_dim not in restriction.coords or state_dim not in prolongation.coords:
-        raise ValueError("Projection strategy restriction and prolongation require state labels")
-    if not restriction.get_index(state_dim).equals(prolongation.get_index(state_dim)):
-        raise ValueError("Projection strategy restriction/prolongation state labels differ")
-    _require_compatible_axis_coordinates(
+    _validate_exact_native_coordinates(
         restriction,
-        prolongation,
-        dim=state_dim,
-        role="retained-state",
+        native_reference,
+        native_dims=native_dims,
+        role="restriction",
     )
-    for role, array in (("restriction", restriction), ("prolongation", prolongation)):
-        _require_reference_native_coordinates(
-            array,
-            native_reference,
-            native_dims=native_dims,
-            role=role,
-        )
+    if state_dim not in restriction.coords:
+        raise ValueError("Projection strategy restriction requires state labels")
+    _require_reference_native_coordinates(
+        restriction,
+        native_reference,
+        native_dims=native_dims,
+        role="restriction",
+    )
     restriction = _materialize_dense_preserving_coordinates(restriction)
     restriction_values = np.asarray(restriction.values)
     if np.iscomplexobj(restriction_values) or not np.all(np.isfinite(restriction_values)):
         raise ValueError("Projection strategy restriction must contain only finite real values")
-    return replace(projection, restriction=restriction, prolongation=prolongation)
-
-
-def _require_compatible_axis_coordinates(
-    left: xr.DataArray,
-    right: xr.DataArray,
-    *,
-    dim: str,
-    role: str,
-) -> None:
-    """Require identical semantic coordinates attached to one shared axis."""
-    left_coords = {
-        str(name): coordinate
-        for name, coordinate in left.coords.items()
-        if dim in coordinate.dims and str(name) != dim
-    }
-    right_coords = {
-        str(name): coordinate
-        for name, coordinate in right.coords.items()
-        if dim in coordinate.dims and str(name) != dim
-    }
-    if set(left_coords) != set(right_coords):
-        raise ValueError(f"Projection {role} auxiliary coordinate names differ between Pi and U")
-    for name, coordinate in left_coords.items():
-        other = right_coords[name]
-        if coordinate.dims != other.dims or not coordinate.equals(other):
-            raise ValueError(f"Projection {role} auxiliary coordinate {name!r} differs between Pi and U")
+    return replace(projection, restriction=restriction)
 
 
 def _require_reference_native_coordinates(
@@ -572,29 +624,69 @@ def _validate_exact_native_coordinates(
             )
 
 
-def _validate_projection_invariant(
-    projection: RetainedProjection,
+def _derive_covariance_natural_prolongation(
+    restriction: xr.DataArray,
     state_covariance: xr.DataArray,
     b_pi_t: xr.DataArray,
     *,
     native_dims: tuple[str, ...],
     state_dim: str,
     state_column_dim: str,
-) -> None:
-    """Require ``B Pi.T = U_* C_alpha`` for a custom strategy."""
-    right = xr.dot(projection.prolongation, state_covariance, dim=state_dim).transpose(
-        *native_dims, state_column_dim
+) -> xr.DataArray:
+    """Derive labelled ``U_* = B Pi.T C_alpha^-1`` from authoritative ``Pi``.
+
+    The result has dimensions ``(*native_dims, state_dim)`` and preserves
+    native coordinates from ``B Pi.T`` and state coordinates from ``Pi``.
+
+    Args:
+        restriction: Authoritative labelled ``Pi``.
+        state_covariance: Positive-definite ``C_alpha``.
+        b_pi_t: Labelled ``B Pi.T``.
+        native_dims: Ordered native covariance dimensions.
+        state_dim: Retained-state row dimension.
+        state_column_dim: Distinct retained-state column dimension.
+
+    Returns:
+        The dimensionless covariance-natural prolongation ``U_*``.
+
+    Raises:
+        ValueError: If ``C_alpha`` cannot be factored as positive definite.
+    """
+    covariance_values = np.asarray(state_covariance.values, dtype=np.float64)
+    try:
+        factor = cho_factor(covariance_values, lower=True, check_finite=True)
+        b_pi_values = np.asarray(b_pi_t.transpose(*native_dims, state_column_dim).values)
+        native_shape = tuple(b_pi_t.sizes[dim] for dim in native_dims)
+        solved = cho_solve(
+            factor,
+            b_pi_values.reshape((-1, b_pi_t.sizes[state_column_dim])).T,
+            check_finite=True,
+        ).T.reshape((*native_shape, restriction.sizes[state_dim]))
+    except np.linalg.LinAlgError as exc:
+        raise ValueError("C_alpha must be positive definite to derive U_*") from exc
+    coords = {
+        str(name): coordinate
+        for name, coordinate in b_pi_t.coords.items()
+        if set(coordinate.dims).issubset(native_dims)
+    }
+    coords.update(
+        {
+            str(name): coordinate
+            for name, coordinate in restriction.coords.items()
+            if set(coordinate.dims).issubset({state_dim})
+        }
     )
-    left_values = np.asarray(b_pi_t.values, dtype=np.float64)
-    right_values = np.asarray(right.values, dtype=np.float64)
-    scale = max(
-        float(np.max(np.abs(left_values))) if left_values.size else 0.0,
-        float(np.max(np.abs(right_values))) if right_values.size else 0.0,
-        np.finfo(np.float64).tiny,
+    return xr.DataArray(
+        solved,
+        dims=(*native_dims, state_dim),
+        coords=coords,
+        attrs={
+            "mathematical_name": "U_*",
+            "definition": "B Pi.T C_alpha^-1",
+            "units": "1",
+        },
+        name="prolongation",
     )
-    error = float(np.max(np.abs(left_values - right_values))) if left_values.size else 0.0
-    if error > 1e-9 * scale + 10.0 * np.finfo(np.float64).tiny:
-        raise ValueError("Projection strategy is incoherent: expected B Pi.T = U_* C_alpha")
 
 
 def _validated_prolongation(
