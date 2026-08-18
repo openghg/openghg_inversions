@@ -477,7 +477,7 @@ class SeparableExponentialCovariance:
         Returns:
             Covariance-applied values with the same shape as ``matrix``.
         """
-        if not self._class_masks:
+        if len(self._class_masks) <= 1:
             return self._apply_separable(matrix)
         result = np.zeros_like(matrix, dtype=np.result_type(matrix.dtype, np.float64))
         for mask in self._class_masks:

@@ -40,7 +40,7 @@ from openghg_inversions.native_covariance import InvertibleNativeCovarianceActio
 MAX_DENSE_EIGEN_DIAGNOSTIC_SIZE = 512
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)
 class RetainedProjection:
     """A labelled retained restriction selected by one strategy.
 
@@ -184,7 +184,7 @@ class PreserveBucketProlongation:
         )
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)
 class NativeCovarianceProducts:
     """Labelled in-memory product blocks induced by one retained restriction.
 
@@ -384,7 +384,6 @@ def _apply_restriction_blocks(
             column_dim=column_dim,
             leading_dims=native_dims,
         )
-        rhs = _materialize_dense_preserving_coordinates(rhs)
         blocks.append(
             _validated_covariance_apply(
                 covariance,
@@ -404,12 +403,10 @@ def _restriction_product_blocks(
     column_dim: str,
     rhs_block_size: int,
 ) -> xr.DataArray:
-    """Form ``Pi B Pi.T`` while materializing explicit restriction row blocks."""
+    """Form ``Pi B Pi.T`` from the already materialized restriction."""
     blocks: list[xr.DataArray] = []
     for start in range(0, restriction.sizes[state_dim], rhs_block_size):
-        rows = _materialize_dense_preserving_coordinates(
-            restriction.isel({state_dim: slice(start, start + rhs_block_size)})
-        )
+        rows = restriction.isel({state_dim: slice(start, start + rhs_block_size)})
         blocks.append(xr.dot(rows, b_pi_t, dim=list(native_dims)))
     return xr.concat(blocks, dim=state_dim).transpose(state_dim, column_dim)
 
@@ -556,14 +553,21 @@ def _validated_projection(
     state_dim: str,
 ) -> RetainedProjection:
     """Validate labels and materialize a custom restriction exactly once."""
+    if not isinstance(projection, RetainedProjection):
+        raise ValueError("Projection strategy must return a RetainedProjection")
     if not isinstance(projection.strategy, str) or not projection.strategy:
         raise ValueError("Projection strategy must return a non-empty strategy identifier")
+    if not isinstance(projection.restriction, xr.DataArray):
+        raise ValueError("Projection strategy restriction must be an xarray.DataArray")
+    expected = {state_dim, *native_dims}
+    if (
+        set(projection.restriction.dims) != expected
+        or len(projection.restriction.dims) != len(expected)
+    ):
+        raise ValueError("Projection strategy restriction has invalid labelled dimensions")
     restriction = projection.restriction.transpose(state_dim, *native_dims).assign_attrs(
         {**projection.restriction.attrs, "units": "1"}
     )
-    expected = {state_dim, *native_dims}
-    if set(restriction.dims) != expected or len(restriction.dims) != len(expected):
-        raise ValueError("Projection strategy restriction has invalid labelled dimensions")
     _validate_exact_native_coordinates(
         restriction,
         native_reference,

@@ -144,6 +144,18 @@ def test_retained_projection_public_contract_contains_only_pi_and_strategy() -> 
     )
 
 
+def test_array_product_handoffs_use_identity_equality() -> None:
+    """Array-bearing handoffs do not invoke ambiguous xarray value equality."""
+    covariance, basis_operator, h, _ = _problem()
+    products = _project(covariance, basis_operator, h)
+
+    assert products == products
+    assert products != _project(covariance, basis_operator, h)
+    projection = RetainedProjection(products.restriction, products.strategy)
+    assert projection == projection
+    assert projection != RetainedProjection(products.restriction, products.strategy)
+
+
 def test_products_match_dense_oracle_and_coherent_forward_model() -> None:
     """C_alpha, H_alpha, H B Pi.T, and H B H.T match dense coherent oracles."""
     covariance, basis_operator, h, dense_b = _problem()
@@ -822,6 +834,22 @@ def test_projection_strategy_names_must_be_nonempty() -> None:
 
     with pytest.raises(ValueError, match="non-empty"):
         _project(covariance, basis_operator, h, strategy=EmptyNameStrategy())
+
+
+@pytest.mark.parametrize("invalid_result", [object(), RetainedProjection("not-an-array", "invalid")])
+def test_projection_strategy_rejects_malformed_result(invalid_result: object) -> None:
+    """Malformed extensions fail at the public strategy boundary with a clear error."""
+    covariance, basis_operator, h, _ = _problem()
+
+    class MalformedStrategy:
+        """Return one deliberately invalid projection result."""
+
+        def projection(self, covariance, basis_prolongation, *, native_dims, state_dim):
+            """Return the parameterized malformed result."""
+            return invalid_result
+
+    with pytest.raises(ValueError, match="RetainedProjection|xarray.DataArray"):
+        _project(covariance, basis_operator, h, strategy=MalformedStrategy())
 
 
 def test_projection_strategy_rejects_complex_restriction() -> None:
