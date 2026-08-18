@@ -1193,6 +1193,7 @@ def fixed_outer_regions_basis(
     country_directory: str | None = None,
     abs_flux: bool = False,
     *,
+    outer_regions_path: str | Path | None = None,
     region_classes: xr.DataArray | None = None,
     region_allocation: AllocationMode = "weight",
     min_regions_per_class: int = 1,
@@ -1226,6 +1227,9 @@ def fixed_outer_regions_basis(
             InTEM outer-region file. When omitted, default package files are
             used.
         abs_flux: If true, use absolute flux values when constructing weights.
+        outer_regions_path: Optional direct path to the fixed outer-region
+            NetCDF file. When omitted, the packaged
+            ``outer_region_definition_<domain>.nc`` file is used.
         region_classes: Region or country class field used only with
             ``basis_algorithm="region_constrained"``. File loading should
             happen before calling this helper.
@@ -1249,7 +1253,10 @@ def fixed_outer_regions_basis(
     Returns:
         Basis field with fixed outer labels and generated inner labels.
     """
-    if country_directory is None:
+    if outer_regions_path is not None:
+        intem_regions_path = Path(outer_regions_path)
+        logger.info(f"Loading InTEM outer region file for domain {domain} from {intem_regions_path}.")
+    elif country_directory is None:
         logger.info(f"Loading default InTEM outer region file for domain {domain}.")
         intem_regions_path = Path(__file__).parent / f"outer_region_definition_{domain}.nc"
     else:

@@ -1,7 +1,7 @@
 """Public RHIME runners, specifications, builders, and orchestration stages.
 
-Use ``run_rhime``, ``run_rhime_multisector``, or
-``run_rhime_from_prepared_inputs`` for complete runs. Copied runners may use
+Use ``run_rhime``, ``run_rhime_multisector``, ``run_rhime_nested``, or the
+prepared-input entry points for complete runs. Copied runners may use
 the supported resolve, retrieve/reload, filter, basis, sensitivity, assembly,
 alignment, materialization, build, sample, and result stages directly.
 Alignment is pure; acquisition may access data, model materialization crosses
@@ -46,10 +46,23 @@ from .runner import (
 )
 from .sampling import RhimeSampler
 from .specs import RhimeOutputSpec, RhimeRunSpec
+from .nested import (
+    NestedRhimePreparedInputs,
+    NestedRhimeResult,
+    align_inner_merged_to_outer_observations,
+    build_nested_rhime_model_result,
+    combine_nested_rhime_inputs,
+    mask_outer_merged_for_inner_domain,
+    prepare_nested_rhime_inputs,
+    run_rhime_nested,
+    run_rhime_nested_from_prepared_inputs,
+)
 
 __all__ = [
     "SectorSpec",
     "RhimeModelSpec",
+    "NestedRhimePreparedInputs",
+    "NestedRhimeResult",
     "RhimeModelBuilder",
     "RhimeModelBuilderContext",
     "RhimeModelBuildResult",
@@ -63,11 +76,16 @@ __all__ = [
     "RhimeResult",
     "params_from_config",
     "assemble_rhime_inputs",
+    "align_inner_merged_to_outer_observations",
     "build_multisector_rhime_model",
+    "build_nested_rhime_model_result",
     "build_rhime_basis",
     "build_rhime_sensitivities",
     "build_standard_rhime_model",
     "filter_rhime_observations",
+    "combine_nested_rhime_inputs",
+    "mask_outer_merged_for_inner_domain",
+    "prepare_nested_rhime_inputs",
     "build_absolute_sigma_gaussian_likelihood",
     "build_gaussian_rhime_likelihood",
     "build_rhime_observation_state",
@@ -80,6 +98,8 @@ __all__ = [
     "run_rhime",
     "run_rhime_from_prepared_inputs",
     "run_rhime_multisector",
+    "run_rhime_nested",
+    "run_rhime_nested_from_prepared_inputs",
     "sample_rhime_model",
     "select_aggregation_error_mode",
     "with_prepared_rhime_sites",

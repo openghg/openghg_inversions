@@ -1,7 +1,11 @@
 import numpy as np
+import pytest
 import xarray as xr
 
-from openghg_inversions.basis.algorithms._weighted import bucket_split_landsea_basis
+from openghg_inversions.basis.algorithms._weighted import (
+    bucket_split_landsea_basis,
+    load_landsea_indices,
+)
 
 
 def _assert_labels_do_not_cross_classes(labels: np.ndarray, classes: np.ndarray) -> None:
@@ -43,3 +47,22 @@ def test_weighted_landsea_basis_labels_do_not_cross_landsea_classes(tmp_path):
     assert labels.shape == grid.shape
     assert labels.min() > 0
     _assert_labels_do_not_cross_classes(labels, landsea)
+
+
+def test_weighted_basis_requires_a_matching_domain_landsea_file() -> None:
+    with pytest.raises(FileNotFoundError, match="basis_algorithm='quadtree'"):
+        load_landsea_indices("NESTED-DOMAIN-WITHOUT-A-PACKAGED-MASK")
+
+
+def test_weighted_basis_rejects_landsea_shape_mismatch(tmp_path) -> None:
+    xr.Dataset({"country": (("lat", "lon"), np.ones((2, 2), dtype=int))}).to_netcdf(
+        tmp_path / "country-land-sea_NESTED.nc"
+    )
+
+    with pytest.raises(ValueError, match=r"Land-sea mask shape \(2, 2\).*grid shape \(3, 3\)"):
+        bucket_split_landsea_basis(
+            np.ones((3, 3)),
+            bucket=1.0,
+            domain="NESTED",
+            country_directory=str(tmp_path),
+        )

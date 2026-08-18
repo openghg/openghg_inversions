@@ -39,6 +39,7 @@ _ALIASES = {
     "sigprior": "sigma_prior",
     "offsetprior": "offset_prior",
     "emissions_name": "flux_sources",
+    "outer_region_definition_file": "outer_regions_path",
 }
 _OUTPUT_FORMAT_ALIASES = {
     "hbmcmc": "legacy",
@@ -91,6 +92,7 @@ RHIME_PREPARATION_OPTION_NAMES = frozenset(
         "bc_basis_case",
         "bc_basis_directory",
         "country_directory",
+        "outer_regions_path",
         "bc_input",
         "basis_algorithm",
         "nbasis",

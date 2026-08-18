@@ -11,3 +11,4 @@ openghg\_inversions.rhime
    :maxdepth: 4
 
    openghg_inversions.rhime.builders
+   openghg_inversions.rhime.nested

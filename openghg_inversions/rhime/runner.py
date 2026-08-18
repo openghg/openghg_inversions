@@ -40,7 +40,7 @@ Terminology used by the RHIME API:
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, cast
@@ -376,6 +376,7 @@ def build_rhime_basis(
             fp_basis_case=fp_basis_case,
             basis_directory=data_args.get("basis_directory"),
             country_directory=data_args.get("country_directory"),
+            outer_regions_path=data_args.get("outer_regions_path"),
             fp_all=merged.fp_all,
             species=data_args["species"],
             domain=data_args["domain"],
@@ -581,6 +582,7 @@ def materialize_pymc_inputs(
     prepared: RhimePreparedInputs,
     *,
     aggregation_error_mode: AggregationErrorMode,
+    additional_variables: Sequence[str] = (),
 ) -> xr.Dataset:
     """Materialize related PyMC input arrays together without mutating preparation.
 
@@ -602,6 +604,9 @@ def materialize_pymc_inputs(
             ``dense`` uses the full covariance; ``low_rank`` uses a factor
             plus diagonal residual; and ``diagonal`` uses per-observation
             standard deviations only.
+        additional_variables: Explicit extra arrays owned by a first-class
+            model boundary, such as nested-domain ``H_inner``. Missing names
+            are rejected instead of silently left lazy.
 
     Returns:
         A dataset copy whose available model input variables are dense and
@@ -619,7 +624,19 @@ def materialize_pymc_inputs(
         aggregation_names = (AGGREGATION_ERROR_SD,)
     else:
         aggregation_names = ()
-    names = [name for name in (*_MODEL_INPUT_VARIABLES, *aggregation_names) if name in inv_inputs]
+    missing_additional = sorted(set(additional_variables) - set(inv_inputs.variables))
+    if missing_additional:
+        raise ValueError(
+            "Requested additional PyMC input variables are absent from prepared inputs: "
+            f"{missing_additional!r}."
+        )
+    names = list(
+        dict.fromkeys(
+            name
+            for name in (*_MODEL_INPUT_VARIABLES, *aggregation_names, *additional_variables)
+            if name in inv_inputs
+        )
+    )
     coordinate_names = sorted(
         {
             str(coordinate_name)

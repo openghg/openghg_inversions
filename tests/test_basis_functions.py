@@ -1091,6 +1091,54 @@ def test_fixed_outer_regions_can_use_region_constrained_algorithm(tmp_path):
     assert len(np.unique(labels.values[outer_values == 1])) == 1
 
 
+def test_fixed_outer_regions_accepts_direct_outer_map_path(tmp_path):
+    """A nested-domain outer map need not use the domain-derived filename."""
+    fp_all, region_classes = _tiny_region_constrained_fp_all()
+    outer_values = np.array(
+        [
+            [0, 0, 1, 1],
+            [0, 2, 2, 1],
+            [0, 2, 2, 1],
+            [0, 0, 1, 1],
+        ],
+        dtype=int,
+    )
+    outer_path = tmp_path / "outer_region_definition_EUHROB.nc"
+    xr.Dataset(
+        {"region": (("lat", "lon"), outer_values)},
+        coords=region_classes.coords,
+    ).to_netcdf(outer_path)
+
+    basis_func = fixed_outer_regions_basis(
+        fp_all=fp_all,
+        start_date="2020-01-01",
+        basis_algorithm="region_constrained",
+        domain="TEST",
+        emissions_name=["total"],
+        nbasis=3,
+        outer_regions_path=outer_path,
+        region_classes=region_classes,
+    )
+
+    assert basis_func.sizes["time"] == 1
+    assert bool((basis_func > 0).all())
+
+    retained = make_basis_functions(
+        fp_all=fp_all,
+        species="ch4",
+        domain="TEST",
+        start_date="2020-01-01",
+        emissions_name=["total"],
+        nbasis=3,
+        basis_algorithm="region_constrained",
+        fix_outer_regions=True,
+        outer_regions_path=outer_path,
+        region_classes=region_classes,
+    )
+    assert isinstance(retained, BasisFunctions)
+    assert bool((retained.flat_basis() > 0).all())
+
+
 def test_region_constrained_fixed_outer_basis_from_weights_allocates_inner_only():
     """Fixed-outer composition gives outer classes one state and reserves nbasis for inner classes."""
     lat = np.array([50.1, 50.2, 50.3, 50.4])

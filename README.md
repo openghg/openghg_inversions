@@ -203,7 +203,7 @@ For an overview of OpenGHG inversions, see this [primer](docs/getting_started.md
 New RHIME runs can be launched without calling an internal source file path:
 
 ```python
-from openghg_inversions.rhime import run_rhime, run_rhime_multisector
+from openghg_inversions.rhime import run_rhime, run_rhime_multisector, run_rhime_nested
 
 result = run_rhime(
     species="ch4",
@@ -218,11 +218,19 @@ result = run_rhime(
 )
 ```
 
+Nested outer/inner grids use the explicit ``run_rhime_nested`` entry point.
+It masks the outer response over the inner extent, retains separate native
+bases, and samples separate ``x_outer`` and ``x_inner`` state blocks. See the
+[nested-domain RHIME tutorial](docs/usage/nested_domains.rst). Nested output is
+currently sampling-only (``output_format="none"``) so a single-grid writer
+cannot accidentally discard or re-grid the inner posterior.
+
 For SLURM batch scripts and installed environments, use the console entry point:
 
 ```bash
 openghg-inversions run-rhime 2019-01-01 2019-01-02 -c rhime.ini --output-path outputs
 openghg-inversions run-rhime-multisector 2019-01-01 2019-01-02 -c rhime_multisector.ini
+openghg-inversions run-rhime-nested 2019-01-01 2019-02-01 -c rhime_nested.ini
 ```
 
 The new RHIME config template is available at
