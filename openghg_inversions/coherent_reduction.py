@@ -113,7 +113,11 @@ def reduce_native_gaussian(
         join="exact",
         copy=False,
     )
-    mean, sensitivity = compute(to_dense(mean), to_dense(sensitivity))
+    dense_mean = to_dense(mean)
+    dense_sensitivity = to_dense(sensitivity)
+    mean_data, sensitivity_data = compute(dense_mean.data, dense_sensitivity.data)
+    mean = mean.copy(data=mean_data)
+    sensitivity = sensitivity.copy(data=sensitivity_data)
 
     products = project_native_covariance(
         covariance=covariance,
