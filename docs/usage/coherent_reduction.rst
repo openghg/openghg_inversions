@@ -18,8 +18,8 @@ Let the native scaling state and observation model be
 
 The low-level :doc:`native_covariance` operation constructs
 :math:`C_\alpha = \Pi B\Pi^\mathsf{T}`,
-:math:`HB\Pi^\mathsf{T}`, and :math:`HBH^\mathsf{T}`. Coherent reduction
-constructs those linked products locally, then solves for
+:math:`H_\alpha`, and :math:`HBH^\mathsf{T}`. Coherent reduction constructs
+those linked products locally, then returns
 
 .. math::
 
@@ -39,8 +39,7 @@ without constructing an inverse, then returns the centred conditional model
    A = HBH^\mathsf{T} - H_\alpha C_\alpha H_\alpha^\mathsf{T}.
 
 All three retained quantities---the prior, effective forward operator, and
-unresolved covariance---come from the same product set and are validated
-together.
+unresolved covariance---come from the same product set.
 
 Preparing the exact result
 --------------------------
@@ -70,22 +69,29 @@ The operation is a named eager boundary. Related Dask-backed mean and
 sensitivity inputs are densified lazily where necessary and materialized
 together. The covariance product blocks are built and reduced locally, so a
 sensitivity cannot be substituted after projection. The result fields are
-eager xarray snapshots with explicit retained and observation labels. The
-frozen result prevents field reassignment but does not claim that contained
-xarray objects are immutable.
+eager xarray arrays with explicit retained and observation labels.
 
-Validation and limits
----------------------
+Boundary contract and limits
+----------------------------
 
-The first exact contract requires a full-rank retained restriction, so
-:math:`C_\alpha` must be positive definite. It does not silently choose a
-pseudoinverse. The reducer also requires dense :math:`HBH^\mathsf{T}` products,
-checks exact label order, finite-real values, declared units, Cholesky solve
-residuals, the redundant :math:`H_\alpha = HU_*` identity, and positive
-semidefiniteness of :math:`A` for matrices within the documented eigenvalue
-diagnostic threshold. Larger dense matrices retain symmetry, conditioning,
-and coherent-product checks while recording that the cubic global eigenvalue
-diagnostic was skipped.
+The public operation transposes inputs into their declared scientific roles
+and performs one exact xarray alignment before computing. This is deliberate:
+xarray dot products otherwise use an inner join and could silently omit native
+cells with unmatched labels. Products created by that operation are trusted by
+the nearby equation kernel rather than validated a second time.
+
+Unit conversion belongs to the upstream OpenGHG/pint-xarray preparation
+boundary. The native mean and basis describe dimensionless scaling, and the
+sensitivity must already be expressed in the desired observation units. The
+reducer propagates those prepared unit attributes; it does not compare
+manufactured unit strings as a substitute for Pint dimensional analysis.
+
+The retained restriction must be full rank, so :math:`C_\alpha` is positive
+definite. Covariance-product construction enforces this requirement and does
+not choose a pseudoinverse. The unresolved covariance is symmetrized to remove
+floating-point asymmetry; its positive-semidefinite identity is covered by the
+scientific equivalence tests rather than a size-dependent production
+eigendecomposition.
 
 This operation does not add observation error :math:`R`, construct a
 likelihood, approximate :math:`A` as low-rank plus diagonal, serialize the

@@ -124,9 +124,6 @@ def with_square_matrix_diagnostics(
     *,
     mathematical_name: str,
     require_positive_definite: bool = False,
-    require_positive_semidefinite: bool = False,
-    positive_semidefinite_tolerance_scale: float | None = None,
-    positive_semidefinite_relative_tolerance: float = 1e-10,
     maximum_eigen_diagnostic_size: int = 512,
 ) -> xr.DataArray:
     """Validate a labelled square matrix once and attach numerical diagnostics.
@@ -136,16 +133,6 @@ def with_square_matrix_diagnostics(
         mathematical_name: Mathematical label stored in attributes and errors.
         require_positive_definite: Whether to reject non-positive or
             numerically rank-deficient matrices.
-        require_positive_semidefinite: Whether to reject materially negative
-            eigenvalues when the matrix is no larger than
-            ``maximum_eigen_diagnostic_size``. Singular matrices remain valid;
-            larger matrices record that the global diagnostic was skipped.
-        positive_semidefinite_tolerance_scale: Optional nonnegative scale for
-            the PSD tolerance. Use the scale of parent subtraction operands
-            when validating a small Schur complement. By default the matrix's
-            own spectral scale is used.
-        positive_semidefinite_relative_tolerance: Relative multiplier applied
-            to the selected PSD tolerance scale.
         maximum_eigen_diagnostic_size: Largest matrix for which a full
             eigendecomposition is performed when positivity is not required.
 
@@ -175,25 +162,8 @@ def with_square_matrix_diagnostics(
         "symmetry_absolute_error": asymmetry,
         "diagnostic_tolerance": tolerance,
     }
-    if require_positive_definite and require_positive_semidefinite:
-        raise ValueError("Choose either positive-definite or positive-semidefinite validation")
-    if positive_semidefinite_tolerance_scale is not None and not require_positive_semidefinite:
-        raise ValueError(
-            "positive_semidefinite_tolerance_scale requires positive-semidefinite validation"
-        )
-    if positive_semidefinite_tolerance_scale is not None and (
-        not np.isfinite(positive_semidefinite_tolerance_scale)
-        or positive_semidefinite_tolerance_scale < 0.0
-    ):
-        raise ValueError("positive_semidefinite_tolerance_scale must be finite and nonnegative")
-    if (
-        not np.isfinite(positive_semidefinite_relative_tolerance)
-        or positive_semidefinite_relative_tolerance < 0.0
-    ):
-        raise ValueError("positive_semidefinite_relative_tolerance must be finite and nonnegative")
     should_diagnose_eigenvalues = (
-        require_positive_definite
-        or values.shape[0] <= maximum_eigen_diagnostic_size
+        require_positive_definite or values.shape[0] <= maximum_eigen_diagnostic_size
     )
     if should_diagnose_eigenvalues:
         eigenvalues = np.linalg.eigvalsh((values + values.T) * 0.5)
@@ -203,23 +173,7 @@ def with_square_matrix_diagnostics(
             not eigenvalues.size or maximum <= 0.0 or minimum <= 1e-12 * maximum
         ):
             raise ValueError(f"{mathematical_name} must be positive definite and full rank")
-        eigenvalue_scale = (
-            max(abs(minimum), abs(maximum))
-            if positive_semidefinite_tolerance_scale is None
-            else positive_semidefinite_tolerance_scale
-        )
-        psd_tolerance = positive_semidefinite_relative_tolerance * eigenvalue_scale
-        if require_positive_semidefinite and minimum < -psd_tolerance:
-            raise ValueError(f"{mathematical_name} must be positive semidefinite")
-        attrs.update(
-            minimum_eigenvalue=minimum,
-            maximum_eigenvalue=maximum,
-            psd_diagnostic="full_eigendecomposition",
-        )
-        if require_positive_definite:
-            attrs["condition_number"] = maximum / minimum
-        if require_positive_semidefinite:
-            attrs["positive_semidefinite_tolerance"] = psd_tolerance
+        attrs.update(minimum_eigenvalue=minimum, psd_diagnostic="full_eigendecomposition")
     else:
         attrs.update(
             minimum_eigenvalue=np.nan,
