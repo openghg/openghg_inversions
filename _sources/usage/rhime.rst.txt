@@ -46,6 +46,14 @@ Terminology
 Python API
 ----------
 
+The stable package imports below are unchanged. Scientists who want to inspect
+or copy a complete implementation can read
+``openghg_inversions.rhime.standard`` or
+``openghg_inversions.rhime.multisector`` directly; each module shows its whole
+scientific process from option resolution through output construction.
+``openghg_inversions.rhime.runner`` remains as an import-compatibility module
+and contains no workflow implementation.
+
 .. code-block:: python
 
    from openghg_inversions.rhime import run_rhime, run_rhime_multisector

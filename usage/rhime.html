@@ -423,6 +423,13 @@ tracer inversions.</p>
 </section>
 <section id="python-api">
 <h2>Python API<a class="headerlink" href="#python-api" title="Link to this heading">#</a></h2>
+<p>The stable package imports below are unchanged. Scientists who want to inspect
+or copy a complete implementation can read
+<code class="docutils literal notranslate"><span class="pre">openghg_inversions.rhime.standard</span></code> or
+<code class="docutils literal notranslate"><span class="pre">openghg_inversions.rhime.multisector</span></code> directly; each module shows its whole
+scientific process from option resolution through output construction.
+<code class="docutils literal notranslate"><span class="pre">openghg_inversions.rhime.runner</span></code> remains as an import-compatibility module
+and contains no workflow implementation.</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="n">run_rhime</span><span class="p">,</span> <span class="n">run_rhime_multisector</span>
 
 <span class="n">result</span> <span class="o">=</span> <span class="n">run_rhime</span><span class="p">(</span>
