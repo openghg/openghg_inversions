@@ -8,9 +8,6 @@ before constructing RHIME specs.
 Preparation-option ownership is fixed by
 ``RHIME_PREPARATION_OPTION_NAMES`` rather than inferred from a callable
 signature.
-Preparation-option ownership is fixed by
-``RHIME_PREPARATION_OPTION_NAMES`` rather than inferred from a callable
-signature.
 """
 
 from __future__ import annotations

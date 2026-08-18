@@ -8,8 +8,6 @@ Using OpenGHG Inversions
    installation
    getting_started
    cli
-   grouped_basis_layout
-   cli
    multisector_inversions
    grouped_basis_layout
    rhime
