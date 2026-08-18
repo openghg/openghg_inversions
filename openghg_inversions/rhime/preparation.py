@@ -13,193 +13,34 @@ compute when a selected filter cannot operate lazily.  Basis construction may
 read, fit, or write a basis artifact, and sensitivity construction may execute
 the basis and boundary-condition algorithms.  Labelled assembly validates the
 durable :class:`~openghg_inversions.inversion_data.RhimePreparedInputs`
-artifact but does not make its arrays eager.
-
-``materialize_pymc_inputs`` is the single named backend boundary.  It computes
-all related model arrays together, using :func:`openghg_inversions.array_ops.to_dense`
-for sparse chunk payloads while leaving the durable prepared inputs unchanged.
+artifact but does not make its arrays eager. Backend-specific materialization
+is kept in :mod:`openghg_inversions.rhime.materialization` so this module reads
+as the scientific transformation from merged observations to labelled inputs.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
-from pathlib import Path
 from typing import Any
 
-from dask import compute as dask_compute
-from dask.array import Array as DaskArray
 import xarray as xr
 
-from openghg_inversions._timing import log_timing, timed, timer_seconds, timer_start
-from openghg_inversions.array_ops import to_dense
+from openghg_inversions._timing import log_timing, timed
 from openghg_inversions.basis import make_basis_functions
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs
 from openghg_inversions.inversion_data import preparation as inversion_preparation
 from openghg_inversions.model_error import normalise_min_error_options
-from openghg_inversions.observation_error import (
-    AGGREGATION_ERROR_COVARIANCE,
-    AGGREGATION_ERROR_SD,
-    DIAGONAL_RESIDUAL_VARIANCE,
-    LOW_RANK_FACTOR,
-    AggregationErrorMode,
-    select_aggregation_error_mode,
-)
+
+from ._validation import validate_external_merged_data
 
 __all__ = [
     "assemble_rhime_inputs",
     "build_rhime_basis",
     "build_rhime_sensitivities",
     "filter_rhime_observations",
-    "materialize_pymc_inputs",
     "retrieve_or_reload_rhime_data",
 ]
-
-_PREPARATION_PROVENANCE_OPTIONS = (
-    "species",
-    "sites",
-    "domain",
-    "averaging_period",
-    "start_date",
-    "end_date",
-    "output_name",
-    "flux_sources",
-    "split_by_sectors",
-    "bc_store",
-    "obs_store",
-    "footprint_store",
-    "emissions_store",
-    "met_model",
-    "fp_model",
-    "fp_height",
-    "fp_species",
-    "inlet",
-    "instrument",
-    "max_level",
-    "calibration_scale",
-    "obs_data_level",
-    "platform",
-    "use_tracer",
-    "filters",
-    "use_bc",
-    "bc_input",
-    "bc_freq",
-    "min_error",
-    "min_error_options",
-    "averaging_error",
-    "basis_algorithm",
-    "nbasis",
-    "fp_basis_case",
-    "basis_directory",
-    "bc_basis_case",
-    "bc_basis_directory",
-    "country_directory",
-    "fix_basis_outer_regions",
-    "reload_merged_data",
-    "save_merged_data",
-    "merged_data_dir",
-    "merged_data_name",
-    "basis_output_path",
-    "flux_non_finite_check",
-)
-
-
-def _json_preparation_value(value: Any) -> Any:
-    """Convert supported resolved option values to owned JSON-compatible data."""
-    if isinstance(value, Path):
-        return str(value)
-    if isinstance(value, Mapping):
-        return {str(key): _json_preparation_value(item) for key, item in value.items()}
-    if isinstance(value, tuple | list):
-        return [_json_preparation_value(item) for item in value]
-    if isinstance(value, slice):
-        return {
-            "start": _json_preparation_value(value.start),
-            "stop": _json_preparation_value(value.stop),
-            "step": _json_preparation_value(value.step),
-        }
-    return value
-
-
-def _preparation_metadata(
-    data_args: Mapping[str, Any],
-    *,
-    merged: RhimeMergedData,
-    basis_functions: BasisFunctions,
-) -> dict[str, Any]:
-    """Describe the model-independent preparation that owns an assembled cache."""
-    missing_options = [name for name in _PREPARATION_PROVENANCE_OPTIONS if name not in data_args]
-    if missing_options:
-        raise ValueError(
-            "RHIME preparation metadata requires resolved preparation options; "
-            f"missing {missing_options!r}."
-        )
-    metadata = {
-        name: _json_preparation_value(data_args[name]) for name in _PREPARATION_PROVENANCE_OPTIONS
-    }
-    metadata.update(
-        {
-            "stage": "assembled_rhime_inputs",
-            "sites": list(merged.sites),
-            "averaging_period": list(merged.averaging_period),
-            "inlet": _json_preparation_value(merged.site_options.inlet),
-            "fp_height": _json_preparation_value(merged.site_options.fp_height),
-            "instrument": _json_preparation_value(merged.site_options.instrument),
-            "platform": _json_preparation_value(merged.site_options.platform),
-            "obs_data_level": _json_preparation_value(merged.site_options.obs_data_level),
-            "met_model": _json_preparation_value(merged.site_options.met_model),
-            "max_level": _json_preparation_value(merged.site_options.max_level),
-            "split_by_sectors": bool(merged.fp_all.get(".split_by_sectors", False)),
-            "basis_artifact_source": basis_functions.basis_artifact_source or "generated",
-            "basis_artifact_path": _json_preparation_value(
-                getattr(basis_functions, "basis_artifact_path", None)
-            ),
-        }
-    )
-    return metadata
-
-
-def _validate_external_merged_data(
-    merged_data: RhimeMergedData,
-    data_args: Mapping[str, Any],
-    *,
-    multisector: bool,
-) -> RhimeMergedData:
-    """Validate a borrowed external merged-data handoff at its owning stage."""
-    if not isinstance(merged_data, RhimeMergedData):
-        raise TypeError(f"`merged_data` must be a RhimeMergedData handoff; got {type(merged_data).__name__}.")
-
-    requested_sites = {str(site).upper() for site in data_args["sites"]}
-    unexpected_sites = [site for site in merged_data.sites if site not in requested_sites]
-    if unexpected_sites:
-        raise ValueError(
-            f"External RHIME merged data contains site(s) outside the resolved run: {unexpected_sites!r}."
-        )
-
-    retained_sites = set(merged_data.sites)
-    stored_sites = {str(name).upper() for name in merged_data.fp_all if not str(name).startswith(".")}
-    missing_site_data = sorted(retained_sites - stored_sites)
-    undeclared_site_data = sorted(stored_sites - retained_sites)
-    if missing_site_data or undeclared_site_data:
-        raise ValueError(
-            "External RHIME merged data site contents do not match its retained site metadata: "
-            f"missing site data {missing_site_data!r}; undeclared site data {undeclared_site_data!r}."
-        )
-
-    if ".split_by_sectors" not in merged_data.fp_all:
-        raise ValueError(
-            "External RHIME merged data must declare an explicit '.split_by_sectors' sector layout."
-        )
-    stored_multisector = merged_data.fp_all[".split_by_sectors"]
-    if type(stored_multisector) is not bool:
-        raise ValueError("External RHIME merged data '.split_by_sectors' must be a boolean.")
-    if stored_multisector != multisector:
-        raise ValueError(
-            "External RHIME merged data has an incompatible sector layout: "
-            f"artifact split_by_sectors={stored_multisector!r}, "
-            f"runner multisector={multisector!r}."
-        )
-    return merged_data
 
 
 def retrieve_or_reload_rhime_data(
@@ -217,7 +58,11 @@ def retrieve_or_reload_rhime_data(
     emit warnings.  ``data_args`` is never mutated.
     """
     if merged_data is not None:
-        return _validate_external_merged_data(merged_data, data_args, multisector=multisector)
+        return validate_external_merged_data(
+            merged_data,
+            requested_sites=data_args["sites"],
+            multisector=multisector,
+        )
 
     with timed(
         "rhime.prepare_inputs.merged_data",
@@ -349,16 +194,20 @@ def assemble_rhime_inputs(
     site_data: Mapping[str, xr.Dataset],
     data_args: Mapping[str, Any],
 ) -> RhimePreparedInputs:
-    """Assemble and validate durable, backend-neutral labelled RHIME inputs.
+    """Construct and validate durable, backend-neutral RHIME model inputs.
 
     The stage attaches domain metadata to shallow per-site copies, assembles
     observation-aligned arrays, applies the satellite boundary-condition
-    scaling, and retains basis and site metadata.  It may perform the existing
-    explicit non-finite sensitivity validation but does not cross the PyMC
-    materialization boundary.
+    scaling, and retains basis and site metadata. It also preserves the legacy
+    construction of the minimum-error floor and boundary-condition temporal
+    parameterization. Those are inverse-model settings, not properties of the
+    acquired data; moving them to their model components is a later semantic
+    change. This stage does not cross the PyMC materialization boundary.
     """
     owned_site_data = {site: dataset.copy(deep=False) for site, dataset in site_data.items()}
     inversion_preparation._set_domain_attrs(owned_site_data, merged.sites, data_args["domain"])
+    # These inverse-model settings are materialized into labelled arrays here
+    # to preserve the existing numerical contract while preparation is split.
     min_error_options = normalise_min_error_options(data_args["min_error_options"])
     with timed("rhime.prepare_inputs.make_inv_inputs", sites=len(merged.sites)):
         inv_inputs = inversion_preparation._make_inv_inputs(
@@ -393,71 +242,4 @@ def assemble_rhime_inputs(
             sites=merged.sites,
             averaging_period=merged.averaging_period,
         ),
-        preparation_metadata=_preparation_metadata(
-            data_args,
-            merged=merged,
-            basis_functions=basis_functions,
-        ),
     )
-
-
-_MODEL_INPUT_VARIABLES = (
-    "H",
-    "H_bc",
-    "mf",
-    "mf_error",
-    "min_error",
-    "site_indicator",
-)
-
-
-def materialize_pymc_inputs(
-    prepared: RhimePreparedInputs,
-    *,
-    aggregation_error_mode: AggregationErrorMode,
-) -> xr.Dataset:
-    """Materialize related PyMC arrays together without mutating preparation.
-
-    Sparse chunk payloads are converted with :func:`to_dense`; model-owned
-    arrays and their lazy auxiliary coordinates are computed in one shared
-    Dask operation and installed in a shallow dataset copy.  Dormant error
-    representations and the canonical prepared artifact remain unchanged.
-    """
-    timing_start = timer_start()
-    inv_inputs = prepared.inv_inputs
-    selected_error_mode = select_aggregation_error_mode(inv_inputs, aggregation_error_mode)
-    aggregation_names: tuple[str, ...]
-    if selected_error_mode == "dense":
-        aggregation_names = (AGGREGATION_ERROR_COVARIANCE, AGGREGATION_ERROR_SD)
-    elif selected_error_mode == "low_rank":
-        aggregation_names = (LOW_RANK_FACTOR, DIAGONAL_RESIDUAL_VARIANCE, AGGREGATION_ERROR_SD)
-    elif selected_error_mode == "diagonal":
-        aggregation_names = (AGGREGATION_ERROR_SD,)
-    else:
-        aggregation_names = ()
-    names = [name for name in (*_MODEL_INPUT_VARIABLES, *aggregation_names) if name in inv_inputs]
-    coordinate_names = sorted(
-        {
-            str(coordinate_name)
-            for name in names
-            for coordinate_name, coordinate in inv_inputs[name].coords.items()
-            if isinstance(coordinate.data, DaskArray)
-        }
-    )
-    computed = dask_compute(
-        *(to_dense(inv_inputs[name]).data for name in names),
-        *(inv_inputs.coords[name].data for name in coordinate_names),
-    )
-    dense_data = dict(zip(names, computed[: len(names)], strict=True))
-    dense_coordinates = dict(zip(coordinate_names, computed[len(names) :], strict=True))
-    variables = dict(inv_inputs.variables)
-    for name, data in {**dense_data, **dense_coordinates}.items():
-        variables[name] = variables[name].copy(deep=False, data=data)
-    model_inputs = inv_inputs._replace(variables=variables)
-    log_timing(
-        "rhime.model_inputs_materialize",
-        timer_seconds(timing_start),
-        variables=names,
-        coordinates=coordinate_names,
-    )
-    return model_inputs

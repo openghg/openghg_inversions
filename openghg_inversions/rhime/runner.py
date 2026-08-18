@@ -59,12 +59,12 @@ from openghg_inversions.rhime.outputs import (
 )
 from . import params as rhime_params
 from .params import params_from_config, resolve_flux_sources
+from .materialization import materialize_pymc_inputs
 from .preparation import (
     assemble_rhime_inputs,
     build_rhime_basis,
     build_rhime_sensitivities,
     filter_rhime_observations,
-    materialize_pymc_inputs,
     retrieve_or_reload_rhime_data,
 )
 from .sampling import RhimeSampler

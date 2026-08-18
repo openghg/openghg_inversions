@@ -20,7 +20,6 @@ model.
 
 from __future__ import annotations
 
-import json
 import warnings
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
@@ -62,57 +61,10 @@ from openghg_inversions.sigma import SigmaAlignment
 MinErrorConfig = Literal["percentile", "residual"] | dict[str, float] | None | int | float
 RHIME_PREPARED_INPUTS_SCHEMA = "openghg_inversions.rhime_prepared_inputs"
 RHIME_PREPARED_INPUTS_SCHEMA_VERSION = 1
-RHIME_PREPARATION_METADATA_ATTR = "preparation_metadata_json"
 _SITE_AVERAGING_PERIOD = "averaging_period"
 SiteStringOption = Sequence[str | None] | str | None
 SiteInletOption = Sequence[str | slice | None] | str | None
 SiteIntegerOption = Sequence[int | None] | int | None
-
-
-def _normalize_preparation_metadata(metadata: Mapping[str, Any] | None) -> dict[str, Any]:
-    """Return an owned JSON-safe preparation-provenance mapping."""
-    candidate = {} if metadata is None else dict(metadata)
-    if not all(isinstance(key, str) for key in candidate):
-        raise ValueError("RhimePreparedInputs preparation metadata keys must be strings.")
-    try:
-        encoded = json.dumps(candidate, sort_keys=True, allow_nan=False)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(
-            "RhimePreparedInputs preparation metadata must contain only finite JSON-compatible values."
-        ) from exc
-    decoded = json.loads(encoded)
-    if not isinstance(decoded, dict):  # pragma: no cover - guaranteed by dict(candidate)
-        raise ValueError("RhimePreparedInputs preparation metadata must be a mapping.")
-    return cast(dict[str, Any], decoded)
-
-
-def _json_preparation_value(value: Any) -> Any:
-    """Convert common resolved preparation values to JSON-compatible copies."""
-    if isinstance(value, Path):
-        return str(value)
-    if isinstance(value, Mapping):
-        return {str(key): _json_preparation_value(item) for key, item in value.items()}
-    if isinstance(value, tuple | list):
-        return [_json_preparation_value(item) for item in value]
-    return value
-
-
-def _preparation_metadata_from_attrs(attrs: Mapping[Any, Any]) -> dict[str, Any]:
-    """Load optional preparation provenance from a backward-compatible artifact."""
-    encoded = attrs.get(RHIME_PREPARATION_METADATA_ATTR)
-    if encoded is None:
-        return {}
-    if not isinstance(encoded, str):
-        raise ValueError(f"RhimePreparedInputs {RHIME_PREPARATION_METADATA_ATTR!r} must be a JSON string.")
-    try:
-        decoded = json.loads(encoded)
-    except json.JSONDecodeError as exc:
-        raise ValueError(
-            f"RhimePreparedInputs {RHIME_PREPARATION_METADATA_ATTR!r} is not valid JSON."
-        ) from exc
-    if not isinstance(decoded, dict):
-        raise ValueError("RhimePreparedInputs preparation metadata must decode to a mapping.")
-    return _normalize_preparation_metadata(decoded)
 
 
 @dataclass
@@ -167,10 +119,6 @@ class RhimePreparedInputs:
             locations, must instead remain observation-aligned arrays. Such
             arrays may be carried alongside the inversion arrays without
             implying that model builders consume them.
-        preparation_metadata: Owned, JSON-compatible scientific preparation
-            options and provenance. This metadata describes a reusable cache;
-            it is not a serialized model specification or exact replay claim.
-
     Raises:
         ValueError: If site metadata, measurement indexing, or multi-source
             labels are inconsistent.
@@ -179,14 +127,12 @@ class RhimePreparedInputs:
     inv_inputs: xr.Dataset
     basis_functions: BasisFunctions
     site_metadata: xr.Dataset
-    preparation_metadata: dict[str, Any]
 
     def __init__(
         self,
         inv_inputs: xr.Dataset,
         basis_functions: BasisFunctions,
         site_metadata: xr.Dataset,
-        preparation_metadata: Mapping[str, Any] | None = None,
     ) -> None:
         """Initialize and normalize prepared inputs.
 
@@ -195,10 +141,6 @@ class RhimePreparedInputs:
                 MultiIndex and integer site indicators.
             basis_functions: Retained basis object and its provenance.
             site_metadata: Authoritative site-indexed metadata dataset.
-            preparation_metadata: JSON-compatible scientific preparation
-                options and provenance. This cache metadata is model-
-                independent and does not claim exact run replay.
-
         Raises:
             ValueError: If the prepared-input semantic invariants do not hold.
         """
@@ -215,11 +157,6 @@ class RhimePreparedInputs:
         object.__setattr__(self, "inv_inputs", normalized_inv_inputs)
         object.__setattr__(self, "basis_functions", basis_functions)
         object.__setattr__(self, "site_metadata", normalized_site_metadata)
-        object.__setattr__(
-            self,
-            "preparation_metadata",
-            _normalize_preparation_metadata(preparation_metadata),
-        )
 
     @classmethod
     def from_legacy_inputs(
@@ -325,7 +262,6 @@ class RhimePreparedInputs:
             inv_inputs=self.inv_inputs,
             basis_functions=self.basis_functions,
             site_metadata=self.site_metadata,
-            preparation_metadata=self.preparation_metadata,
         )
 
     def to_datatree(self) -> xr.DataTree:
@@ -363,11 +299,6 @@ class RhimePreparedInputs:
         dt.attrs = {
             "schema": RHIME_PREPARED_INPUTS_SCHEMA,
             "schema_version": RHIME_PREPARED_INPUTS_SCHEMA_VERSION,
-            RHIME_PREPARATION_METADATA_ATTR: json.dumps(
-                prepared.preparation_metadata,
-                sort_keys=True,
-                separators=(",", ":"),
-            ),
         }
         return dt
 
@@ -428,7 +359,6 @@ class RhimePreparedInputs:
             site_metadata=_site_metadata_from_serialisation(
                 cast(xr.DataTree, dt["site_metadata"]).to_dataset()
             ),
-            preparation_metadata=_preparation_metadata_from_attrs(dt.attrs),
         )
 
     def save(
@@ -1849,28 +1779,4 @@ def prepare_rhime_inputs(
             sites=filtered_merged.sites,
             averaging_period=filtered_merged.averaging_period,
         ),
-        preparation_metadata={
-            "stage": "assembled_rhime_inputs",
-            "species": species,
-            "domain": domain,
-            "start_date": start_date,
-            "end_date": end_date,
-            "flux_sources": list(flux_sources),
-            "filters": _json_preparation_value(filters),
-            "use_bc": use_bc,
-            "bc_freq": bc_freq,
-            "min_error": _json_preparation_value(min_error),
-            "min_error_options": _json_preparation_value(min_error_options),
-            "averaging_error": averaging_error,
-            "basis_algorithm": basis_algorithm,
-            "nbasis": nbasis,
-            "fp_basis_case": fp_basis_case,
-            "bc_basis_case": bc_basis_case,
-            "fix_basis_outer_regions": fix_basis_outer_regions,
-            "sites": list(filtered_merged.sites),
-            "averaging_period": list(filtered_merged.averaging_period),
-            "split_by_sectors": split_by_sectors,
-            "basis_artifact_source": basis_source,
-            "basis_artifact_path": getattr(basis_functions, "basis_artifact_path", None),
-        },
     )

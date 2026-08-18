@@ -107,11 +107,6 @@ def _prepared_inputs(
         inv_inputs=inv_inputs,
         basis_functions=_basis_functions().with_metadata(basis_metadata),
         site_metadata=_site_metadata(("TAC", "MHD"), ("1h", None)),
-        preparation_metadata={
-            "stage": "assembled_rhime_inputs",
-            "species": "ch4",
-            "filters": ["daytime"],
-        },
     )
 
 
@@ -401,31 +396,6 @@ def _assert_prepared_identical(
     assert actual.averaging_period == expected.averaging_period
     assert actual.basis_artifact_source == expected.basis_artifact_source
     assert actual.basis_artifact_path == expected.basis_artifact_path
-    assert actual.preparation_metadata == expected.preparation_metadata
-
-
-def test_prepared_inputs_loads_legacy_artifact_without_preparation_metadata() -> None:
-    """Schema-v1 artifacts written before OPE-46 remain valid cache inputs."""
-    prepared = _prepared_inputs()
-    dt = prepared.to_datatree()
-    del dt.attrs["preparation_metadata_json"]
-
-    restored = RhimePreparedInputs.from_datatree(dt)
-
-    assert restored.preparation_metadata == {}
-
-
-def test_prepared_inputs_rejects_non_json_preparation_metadata() -> None:
-    """Cache provenance fails at construction instead of during a later write."""
-    original = _prepared_inputs()
-
-    with pytest.raises(ValueError, match="finite JSON-compatible"):
-        RhimePreparedInputs(
-            inv_inputs=original.inv_inputs,
-            basis_functions=original.basis_functions,
-            site_metadata=original.site_metadata,
-            preparation_metadata={"invalid": object()},
-        )
 
 
 @pytest.fixture(scope="module")

@@ -25,6 +25,7 @@ import openghg_inversions.models._rhime_compiler as rhime_compiler_module
 import openghg_inversions.models.rhime as rhime_models_module
 import openghg_inversions.postprocessing.inversion_output as inversion_output_module
 import openghg_inversions.rhime as rhime_public
+import openghg_inversions.rhime.materialization as rhime_materialization
 import openghg_inversions.rhime.outputs as rhime_outputs
 import openghg_inversions.rhime.params as rhime_params
 import openghg_inversions.rhime.preparation as rhime_preparation
@@ -1374,7 +1375,7 @@ def test_assemble_rhime_inputs_preserves_borrowed_site_datasets(
         },
         multisector=False,
     )
-    prepared = rhime_public.assemble_rhime_inputs(
+    rhime_public.assemble_rhime_inputs(
         merged,
         _fake_basis_functions(),
         site_data,
@@ -1386,12 +1387,6 @@ def test_assemble_rhime_inputs_preserves_borrowed_site_datasets(
     assert captured["TAC"] is not supplied
     assert captured["TAC"].attrs == {"source": "caller", "Domain": "EUROPE"}
     assert captured["TAC"]["mf"].data is lazy_mf
-    assert prepared.preparation_metadata["basis_algorithm"] == "weighted"
-    assert prepared.preparation_metadata["nbasis"] == 100
-    for selector in ("inlet", "instrument", "platform", "fp_height"):
-        assert prepared.preparation_metadata[selector] == [None]
-    assert prepared.preparation_metadata["fp_model"] is None
-    assert prepared.preparation_metadata["calibration_scale"] is None
 
 
 def test_prepared_replay_computes_selected_error_only_at_pymc_boundary(
@@ -1435,7 +1430,7 @@ def test_prepared_replay_computes_selected_error_only_at_pymc_boundary(
         return build_result
 
     monkeypatch.setattr(rhime_module, "select_aggregation_error_mode", select_without_computing)
-    monkeypatch.setattr(rhime_preparation, "select_aggregation_error_mode", select_without_computing)
+    monkeypatch.setattr(rhime_materialization, "select_aggregation_error_mode", select_without_computing)
     monkeypatch.setattr(rhime_module, "build_standard_rhime_model", build)
     monkeypatch.setattr(rhime_module, "sample_rhime_model", lambda *args, **kwargs: _minimal_output_idata())
     monkeypatch.setattr(rhime_module, "make_standard_rhime_result", lambda **kwargs: expected)

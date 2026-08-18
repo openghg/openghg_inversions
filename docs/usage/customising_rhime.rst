@@ -48,14 +48,6 @@ construction and labelled assembly consume that result without mutating the
 external object.  A normal ``reload_merged_data`` request instead belongs to
 the same retrieval stage and may read a configured artifact from disk.
 
-For a later cache boundary, ``RhimePreparedInputs.save`` stores the assembled
-labelled observations, sensitivities, retained ``BasisFunctions``, site
-metadata, coordinates, attrs, and schema version.  Load it with
-``RhimePreparedInputs.load`` and pass it to ``run_rhime_from_prepared_inputs``.
-That reusable scientific artifact is not an exact run replay: it is not bound
-to a serialized model specification, and compatible model specifications may
-consume it without changing the cached arrays.
-
 Change the likelihood with a Python function
 --------------------------------------------
 

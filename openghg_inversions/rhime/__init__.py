@@ -24,13 +24,13 @@ from openghg_inversions.models.rhime_likelihood import (
 from openghg_inversions.observation_error import select_aggregation_error_mode
 
 from .builders import RhimeModelBuilder, RhimeModelBuilderContext, RhimeModelBuildResult
+from .materialization import materialize_pymc_inputs
 from .params import params_from_config, resolve_flux_sources
 from .preparation import (
     assemble_rhime_inputs,
     build_rhime_basis,
     build_rhime_sensitivities,
     filter_rhime_observations,
-    materialize_pymc_inputs,
     retrieve_or_reload_rhime_data,
 )
 from .runner import (
