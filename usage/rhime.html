@@ -309,6 +309,7 @@
 <li class="toctree-l1 current active"><a class="current reference internal" href="#">RHIME Terminology And Quickstart</a></li>
 <li class="toctree-l1"><a class="reference internal" href="customising_rhime.html">Customising a RHIME likelihood</a></li>
 <li class="toctree-l1"><a class="reference internal" href="concrete_rhime_model.html">Concrete RHIME Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="native_covariance.html">Native Covariance Projection</a></li>
 </ul>
 </div>
 </nav></div>
@@ -1057,6 +1058,9 @@ states; this threshold is not a mathematical limit. Native grids with more
 than 100,000 cells require a structured covariance representation, such as a
 Kronecker product, whose projected products can be evaluated without realizing
 the full native covariance.</p>
+<p>The low-level <a class="reference internal" href="native_covariance.html"><span class="doc">Native Covariance Projection</span></a> API supplies this structured native
+covariance action and its covariance-compatible projected product blocks. It
+is a preparation interface and is not yet connected to the RHIME likelihood.</p>
 <p>This component does <strong>not</strong> perform the native-to-reduced uncertainty
 transformation or remove state coordinates. That work must transform the prior
 uncertainty, forward operator, and aggregation error together. The coherent

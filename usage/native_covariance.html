@@ -1,0 +1,756 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Native Covariance Projection &#8212; openghg_inversions  documentation</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../_static/styles/theme.css?digest=90905a2f556bf617f1a9" rel="stylesheet" />
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=90905a2f556bf617f1a9" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../_static/jupyter-sphinx.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/thebelab.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=f8ac5af1" />
+  
+  <!-- So that users can add custom icons -->
+  <script defer src="../_static/scripts/fontawesome.js?digest=90905a2f556bf617f1a9"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=90905a2f556bf617f1a9" />
+<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=90905a2f556bf617f1a9" />
+
+    <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../_static/thebelab-helper.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+    <script defer="defer" src="https://cdn.jsdelivr.net/npm/mathjax@4/tex-mml-chtml.js"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'usage/native_covariance';</script>
+    <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Experimental code" href="../experimental/index.html" />
+    <link rel="prev" title="Concrete RHIME Model" href="concrete_rhime_model.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="" />
+  
+    
+    <script src="../_static/searchtools.js"></script>
+    <script src="../_static/language_data.js"></script>
+    <script src="../searchindex.js"></script>
+  
+  </head>
+  <body data-default-mode="">
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+  
+  
+  
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header id="pst-header" class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../index.html">
+  
+  
+  
+  
+  
+  
+    <p class="title logo__title">openghg_inversions  documentation</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    <div class="me-auto navbar-header-items__center">
+      
+        <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="usage.html">
+    Using OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../experimental/index.html">
+    Experimental code
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../reference/modules.html">
+    openghg_inversions
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+      
+    </div>
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+    <button class="pst-navbar-icon sidebar-toggle secondary-toggle" aria-label="On this page">
+      <span class="fa-solid fa-outdent"></span>
+    </button>
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+      <div class="sidebar-header-items__center">
+        
+          
+          
+            <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="usage.html">
+    Using OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../experimental/index.html">
+    Experimental code
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../reference/modules.html">
+    openghg_inversions
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+          
+        
+      </div>
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item pst-sidebar-collapse"><button id="pst-collapse-sidebar-button" aria-expanded="true" aria-controls="pst-primary-sidebar">
+  <svg class="pst-icon" role="img" aria-hidden="true" focusable="false" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+    <path fill="currentColor" d="M3 15.5C2.36232 15.5 1.74874 15.2564 1.28478 14.8189C0.820828 14.3815 0.541576 13.7832 0.504167 13.1467L0.5 13L0.5 3C0.499965 2.36232 0.743605 1.74874 1.18107 1.28478C1.61854 0.820828 2.21676 0.541576 2.85333 0.504167L3 0.5L13 0.5C13.6377 0.499965 14.2513 0.743605 14.7152 1.18107C15.1792 1.61854 15.4584 2.21676 15.4958 2.85333L15.5 3L15.5 13C15.5 13.6377 15.2564 14.2513 14.8189 14.7152C14.3815 15.1792 13.7832 15.4584 13.1467 15.4958L13 15.5L3 15.5ZM3 13.8333L10.5 13.8333L10.5 2.16667L3 2.16667C2.79589 2.16669 2.59889 2.24163 2.44636 2.37726C2.29383 2.5129 2.19638 2.69979 2.1725 2.9025L2.16667 3L2.16667 13C2.16669 13.2041 2.24163 13.4011 2.37726 13.5536C2.5129 13.7062 2.69979 13.8036 2.9025 13.8275L3 13.8333ZM6.65583 10.325L6.5775 10.2558L4.91083 8.58917C4.76735 8.44567 4.68116 8.25476 4.66843 8.05223C4.65569 7.84971 4.71729 7.6495 4.84167 7.48917L4.91083 7.41083L6.5775 5.74417C6.72747 5.59471 6.9287 5.50794 7.14032 5.50148C7.35194 5.49502 7.55809 5.56935 7.7169 5.70937C7.8757 5.8494 7.97525 6.04463 7.99533 6.25539C8.01541 6.46616 7.95451 6.67667 7.825 6.84417L7.75583 6.9225L6.67917 8L7.75583 9.0775C7.89931 9.22099 7.98551 9.41191 7.99824 9.61443C8.01097 9.81695 7.94938 10.0172 7.825 10.1775L7.75583 10.2558C7.61234 10.3993 7.42142 10.4855 7.2189 10.4982C7.01638 10.511 6.81617 10.4494 6.65583 10.325Z"/>
+  </svg>
+  <span class="pst-collapse-sidebar-label">Collapse Sidebar</span>
+  <span class="pst-expand-sidebar-label">Expand Sidebar</span>
+</button></div>
+        <div class="sidebar-primary-item">
+
+<nav class="bd-docs-nav bd-links"
+     aria-label="Section Navigation">
+  <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
+  <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation and Setup</a></li>
+<li class="toctree-l1"><a class="reference internal" href="getting_started.html">Getting started with OpenGHG Inversions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="cli.html">Running RHIME from the command line</a></li>
+<li class="toctree-l1"><a class="reference internal" href="grouped_basis_layout.html">Grouped basis and state metadata</a></li>
+<li class="toctree-l1"><a class="reference internal" href="rhime.html">RHIME Terminology And Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="customising_rhime.html">Customising a RHIME likelihood</a></li>
+<li class="toctree-l1"><a class="reference internal" href="concrete_rhime_model.html">Concrete RHIME Model</a></li>
+<li class="toctree-l1 current active"><a class="current reference internal" href="#">Native Covariance Projection</a></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+      <div class="sidebar-primary-item">
+<div id="ethical-ad-placement"
+      class="flat"
+      data-ea-publisher="readthedocs"
+      data-ea-type="readthedocs-sidebar"
+      data-ea-manual="true">
+</div></div>
+  </div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="usage.html" class="nav-link">Using OpenGHG Inversions</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Native Covariance Projection</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="native-covariance-projection">
+<h1>Native Covariance Projection<a class="headerlink" href="#native-covariance-projection" title="Link to this heading">#</a></h1>
+<p>The native covariance projection API prepares labelled covariance and
+observation product blocks for reducing a gridded scaling state. It keeps basis
+geometry, native covariance, and retained-state semantics separate, and never
+constructs a dense native-grid covariance matrix. This is the low-level OPE-17
+boundary: it is not connected to RHIME input preparation or likelihoods, and
+its product blocks are not the complete coherent-reduction artifact planned by
+OPE-18.</p>
+<section id="component-overview">
+<h2>Component overview<a class="headerlink" href="#component-overview" title="Link to this heading">#</a></h2>
+<p>The classes have the following distinct roles.</p>
+<div class="pst-scrollable-table-container"><table class="table">
+<colgroup>
+<col style="width: 28.0%" />
+<col style="width: 72.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Component</p></th>
+<th class="head"><p>Responsibility</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">BasisOperator</span></code></p></td>
+<td><p>Owns basis geometry and retained-state labels. For a single source,
+<code class="docutils literal notranslate"><span class="pre">basis_matrix</span></code> is the bucket prolongation <span class="math notranslate nohighlight">\(U_{\mathrm{bucket}}\)</span>.
+A gathered multisource matrix is a spatial template; the basis-side
+<code class="docutils literal notranslate"><span class="pre">native_prolongation</span></code> adapter expands it onto a canonical explicit
+native source dimension. In both cases, the transpose does not define
+the retained restriction <span class="math notranslate nohighlight">\(\Pi\)</span>.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">InvertibleNativeCovarianceAction</span></code></p></td>
+<td><p>Structural interface for a labelled, self-adjoint positive-definite
+<span class="math notranslate nohighlight">\(B\)</span>, including its compatible inverse solve, without constructing
+a dense native covariance matrix. The kernel trusts this semantic
+contract rather than globally certifying a matrix-free action.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">SeparableExponentialCovariance</span></code></p></td>
+<td><p>Concrete latitude/longitude covariance action. Optional class labels
+set cross-class covariance to zero; this alone does not assert
+probabilistic independence outside a joint Gaussian model.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">IndependentSourceCovariance</span></code></p></td>
+<td><p>Composes ordered, source-specific spatial covariances into a
+block-diagonal native covariance. Its blocks currently must be
+<code class="docutils literal notranslate"><span class="pre">SeparableExponentialCovariance</span></code> instances. Covariance application
+and solves use the common action interface; only multisource basis
+expansion needs a separate source-aware path.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">RetainedProjectionStrategy</span></code></p></td>
+<td><p>Pi-first policy interface that chooses the authoritative labelled
+restriction <span class="math notranslate nohighlight">\(\Pi\)</span>. The kernel derives its covariance-natural
+prolongation <span class="math notranslate nohighlight">\(U_*\)</span>.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">PreserveBucketProlongation</span></code></p></td>
+<td><p>Current strategy implementation. It uses
+<span class="math notranslate nohighlight">\(U_{\mathrm{bucket}}\)</span> to derive the compatible authoritative
+restriction <span class="math notranslate nohighlight">\(\Pi_U\)</span>; the kernel still derives <span class="math notranslate nohighlight">\(U_*\)</span> from
+that returned restriction.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">RetainedProjection</span></code></p></td>
+<td><p>Frozen value dataclass returned by a strategy. It carries
+<span class="math notranslate nohighlight">\(\Pi\)</span> and the strategy identifier; it is not a protocol, and its
+contained xarray object remains mutable.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">project_native_covariance</span></code></p></td>
+<td><p>Validates and combines <span class="math notranslate nohighlight">\(H\)</span>, <span class="math notranslate nohighlight">\(B\)</span>, basis geometry, and a
+projection strategy.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">NativeCovarianceProducts</span></code></p></td>
+<td><p>Frozen in-memory result dataclass containing the labelled product
+blocks. Its contained xarray objects remain mutable. Durable identity,
+schema design, and persistence are deferred to OPE-40.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>The data flow is:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>BasisOperator ──&gt; U_bucket ─┐
+                           ├─&gt; RetainedProjectionStrategy
+covariance action ──&gt; B ───┘              │
+                                          v
+                           RetainedProjection(Pi)
+                                          │
+native sensitivity H ─────────────────────┤
+covariance action B ──────────────────────┤
+                                          v
+                           project_native_covariance
+                                          │
+                                          v
+                           NativeCovarianceProducts
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">FluxWeightedBasis</span></code> is a data-preparation wrapper that pairs an operator
+with a flux field for sensitivity projection and flux reconstruction. It does
+not define <span class="math notranslate nohighlight">\(\Pi\)</span>, apply native covariance, or own covariance transforms.
+By the time this API is called, <span class="math notranslate nohighlight">\(H\)</span> already contains footprint times
+prior flux, so both the native and retained states are multiplicative
+scalings.</p>
+</section>
+<section id="projection-and-centring">
+<h2>Projection and centring<a class="headerlink" href="#projection-and-centring" title="Link to this heading">#</a></h2>
+<p>Let the native scaling state have mean <span class="math notranslate nohighlight">\(m\)</span> and covariance <span class="math notranslate nohighlight">\(B\)</span>:</p>
+<div class="math notranslate nohighlight">
+\[\operatorname{E}[x] = m,
+\qquad
+\operatorname{Cov}(x) = B,
+\qquad
+\delta x = x - m.\]</div>
+<p>For a retained restriction <span class="math notranslate nohighlight">\(\Pi\)</span>, define</p>
+<div class="math notranslate nohighlight">
+\[\alpha = \Pi x,
+\qquad
+\delta\alpha = \alpha - \Pi m = \Pi\,\delta x,
+\qquad
+C_\alpha = \Pi B \Pi^\mathsf{T}.\]</div>
+<p>The covariance-natural prolongation associated with that restriction is</p>
+<div class="math notranslate nohighlight">
+\[U_* = B \Pi^\mathsf{T} C_\alpha^{-1}.\]</div>
+<p>The full affine lift is therefore</p>
+<div class="math notranslate nohighlight">
+\[\widehat{x}(\alpha)
+= m + U_*\delta\alpha
+= m + U_*(\alpha - \Pi m),\]</div>
+<p>not the uncentred expression <span class="math notranslate nohighlight">\(U_*\alpha\)</span>. For a joint Gaussian model
+this lift is <span class="math notranslate nohighlight">\(\operatorname{E}[x\mid\alpha]\)</span>. Without Gaussianity it is
+the linear-Bayes lift determined by the first two moments.</p>
+<p>In general, <span class="math notranslate nohighlight">\(U_*\)</span>, <span class="math notranslate nohighlight">\(U_{\mathrm{bucket}}\)</span>, and
+<span class="math notranslate nohighlight">\(\Pi^\mathsf{T}\)</span> are different operators. The initial strategy preserves
+the established bucket-scaling interpretation by choosing</p>
+<div class="math notranslate nohighlight">
+\[\Pi_U =
+\left(U_{\mathrm{bucket}}^\mathsf{T} B^{-1}
+U_{\mathrm{bucket}}\right)^{-1}
+U_{\mathrm{bucket}}^\mathsf{T} B^{-1}.\]</div>
+<p>This gives <span class="math notranslate nohighlight">\(\Pi_U U_{\mathrm{bucket}} = I\)</span> and
+<span class="math notranslate nohighlight">\(U_* = U_{\mathrm{bucket}}\)</span>; the latter identity follows from the
+kernel’s generic derivation <span class="math notranslate nohighlight">\(U_* = B\Pi^\mathsf{T}C_\alpha^{-1}\)</span>, not
+from a strategy-supplied lift. OPE-17 returns <span class="math notranslate nohighlight">\(C_\alpha\)</span>,
+<span class="math notranslate nohighlight">\(H U_*\)</span>, <span class="math notranslate nohighlight">\(H B \Pi^\mathsf{T}\)</span>, and either dense
+<span class="math notranslate nohighlight">\(H B H^\mathsf{T}\)</span> or its diagonal.</p>
+</section>
+<section id="what-ope-17-does-not-construct">
+<h2>What OPE-17 does not construct<a class="headerlink" href="#what-ope-17-does-not-construct" title="Link to this heading">#</a></h2>
+<p>The exact Gaussian reduction also needs</p>
+<div class="math notranslate nohighlight">
+\[B_\perp
+= B - U_* C_\alpha U_*^\mathsf{T},\]</div>
+<p>and the centred conditional observation model</p>
+<div class="math notranslate nohighlight">
+\[y \mid \alpha \sim \mathcal N\!\left(
+Hm + H U_*(\alpha - \Pi m),
+R + H B_\perp H^\mathsf{T}
+\right).\]</div>
+<p>OPE-18 owns that solve-based transformation, unresolved covariance, and the
+single coherent artifact that binds prior, forward, residual, reconstruction,
+and state-treatment information. The OPE-17 product blocks are inputs to that
+work; they must not be described or persisted as though they were already the
+complete artifact. Arbitrary reporting-function products <span class="math notranslate nohighlight">\(Q\)</span>,
+low-rank-plus-diagonal numerical views, and likelihood integration are also
+outside this API.</p>
+</section>
+<section id="units-and-persistence-boundary">
+<h2>Units and persistence boundary<a class="headerlink" href="#units-and-persistence-boundary" title="Link to this heading">#</a></h2>
+<p>Native and retained scaling perturbations are dimensionless. Accordingly,
+<span class="math notranslate nohighlight">\(\Pi\)</span>, <span class="math notranslate nohighlight">\(U_*\)</span>, and <span class="math notranslate nohighlight">\(C_\alpha\)</span> carry units <code class="docutils literal notranslate"><span class="pre">1</span></code>;
+<span class="math notranslate nohighlight">\(H U_*\)</span> and <span class="math notranslate nohighlight">\(H B\Pi^\mathsf{T}\)</span> inherit the sensitivity units;
+and <span class="math notranslate nohighlight">\(H B H^\mathsf{T}\)</span> (including its diagonal view) carries their
+square. This low-level result is in-memory only. OPE-40 owns durable identities,
+typed coordinate persistence, schema compatibility, and DataTree/NetCDF I/O.</p>
+</section>
+<section id="memory-and-execution-boundary">
+<h2>Memory and execution boundary<a class="headerlink" href="#memory-and-execution-boundary" title="Link to this heading">#</a></h2>
+<p>The structured covariance action stores axis factors rather than dense native
+<span class="math notranslate nohighlight">\(B\)</span>, but the numerical product kernel is otherwise eager. The upstream
+pipeline must materialize the related sensitivity and canonical basis
+prolongation together before calling it; lazy inputs are rejected rather than
+computed implicitly. A custom restriction may remain sparse or Dask-backed
+until the explicit projection boundary, where it is materialized and densified
+once. The eager restriction is then reused across retained-state
+right-hand-side blocks, avoiding repeated execution of its lazy graph. For
+native size <span class="math notranslate nohighlight">\(N\)</span>, retained size
+<span class="math notranslate nohighlight">\(d\)</span>, and observation count <span class="math notranslate nohighlight">\(M\)</span>, important dense storage includes
+<span class="math notranslate nohighlight">\(M N\)</span> for <span class="math notranslate nohighlight">\(H\)</span>, <span class="math notranslate nohighlight">\(N d\)</span> for each native-by-retained array,
+<span class="math notranslate nohighlight">\(d^2\)</span> for retained products, and either <span class="math notranslate nohighlight">\(M^2\)</span> for dense
+<span class="math notranslate nohighlight">\(H B H^\mathsf{T}\)</span> or <span class="math notranslate nohighlight">\(M\)</span> for its diagonal.</p>
+<p><code class="docutils literal notranslate"><span class="pre">observation_batch_size</span></code> is an eager execution setting, not an xarray or
+Dask chunk size. Each batch applies <span class="math notranslate nohighlight">\(B\)</span> to a group of columns from
+<span class="math notranslate nohighlight">\(H^\mathsf{T}\)</span>, limiting the temporary <span class="math notranslate nohighlight">\(N\)</span>-by-batch working set.
+The same setting bounds explicit custom-restriction right-hand-side blocks.
+Dense batches still fill a preallocated complete quadratic observation
+covariance. Changing the batch size changes execution only, not the scientific
+inputs or requested numerical form.</p>
+</section>
+<section id="correspondence-with-verification-games">
+<h2>Correspondence with <code class="docutils literal notranslate"><span class="pre">verification-games</span></code><a class="headerlink" href="#correspondence-with-verification-games" title="Link to this heading">#</a></h2>
+<p>OPE-17 deliberately ports only the reusable lower-level prototype boundary.
+The recent 14-site production runs define retained coefficients with a
+source-blocked, absolute-prior-flux-weighted mean. For source <span class="math notranslate nohighlight">\(s\)</span>, region
+<span class="math notranslate nohighlight">\(r\)</span>, and native cell <span class="math notranslate nohighlight">\(i\)</span>, let</p>
+<div class="math notranslate nohighlight">
+\[q_{si} = \bar F^{\mathrm{UOB\,BASE}}_{si} A_i,
+\qquad
+\Pi_{(s,r),(s',i)} =
+\mathbf 1[s=s']\,\mathbf 1[i\in r]\,
+\frac{|q_{si}|}{\sum_{j\in r}|q_{sj}|}.\]</div>
+<p>Thus each row is nonnegative, sums to one, and averages native scaling factors
+within exactly one source and one active region. This physical restriction is
+chosen independently of <span class="math notranslate nohighlight">\(B\)</span>; the covariance then determines
+<span class="math notranslate nohighlight">\(C_\alpha\)</span> and <span class="math notranslate nohighlight">\(U_*\)</span>. The prototype also supports a distinct
+signed-flux-total policy, but that is not the current 14-site production
+setting. Both policies require a supplied-<span class="math notranslate nohighlight">\(\Pi\)</span>-first OGI strategy.</p>
+<div class="pst-scrollable-table-container"><table class="table">
+<colgroup>
+<col style="width: 31.0%" />
+<col style="width: 21.0%" />
+<col style="width: 48.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Prototype capability</p></th>
+<th class="head"><p>OPE-17 status</p></th>
+<th class="head"><p>Correspondence</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Separable exponential covariance action, optional class blocking, and
+batched <span class="math notranslate nohighlight">\(\Pi B\Pi^\mathsf{T}\)</span>,
+<span class="math notranslate nohighlight">\(H B\Pi^\mathsf{T}\)</span>, and <span class="math notranslate nohighlight">\(H B H^\mathsf{T}\)</span> products</p></td>
+<td><p>Faithful port</p></td>
+<td><p>Re-expressed as labelled xarray actions and product objects; OPE-17 also
+supports ordered independent-source blocks.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Choose a physical restriction <span class="math notranslate nohighlight">\(\Pi\)</span> first, then derive its
+covariance-natural lift. Current 14-site production uses the
+absolute-prior-flux-weighted regional mean above.</p></td>
+<td><p>Deliberate difference</p></td>
+<td><p>The first OPE-17 strategy is compatibility-oriented: it uses
+<span class="math notranslate nohighlight">\(U_{\mathrm{bucket}}\)</span> internally to derive <span class="math notranslate nohighlight">\(\Pi_U\)</span>. The
+strategy interface itself is Pi-first, so later policies may supply a
+physical restriction directly.</p></td>
+</tr>
+<tr class="row-even"><td><p>Cross-source covariance, arbitrary reporting functionals <span class="math notranslate nohighlight">\(Q\)</span>,
+<span class="math notranslate nohighlight">\(B_\perp\)</span> products, coherent likelihood reduction, reconstruction,
+and covariance approximation</p></td>
+<td><p>Not ported</p></td>
+<td><p>These remain prototype or downstream OPE-18 work and must not be inferred
+from the presence of OPE-17 product blocks.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="api-reference">
+<h2>API reference<a class="headerlink" href="#api-reference" title="Link to this heading">#</a></h2>
+<p>See <a class="reference internal" href="../reference/openghg_inversions.native_covariance.html#module-openghg_inversions.native_covariance" title="openghg_inversions.native_covariance"><code class="xref py py-mod docutils literal notranslate"><span class="pre">openghg_inversions.native_covariance</span></code></a>,
+<a class="reference internal" href="../reference/openghg_inversions.source_covariance.html#module-openghg_inversions.source_covariance" title="openghg_inversions.source_covariance"><code class="xref py py-mod docutils literal notranslate"><span class="pre">openghg_inversions.source_covariance</span></code></a>, and
+<a class="reference internal" href="../reference/openghg_inversions.basis.covariance_products.html#module-openghg_inversions.basis.covariance_products" title="openghg_inversions.basis.covariance_products"><code class="xref py py-mod docutils literal notranslate"><span class="pre">openghg_inversions.basis.covariance_products</span></code></a> for the public interfaces.</p>
+</section>
+</section>
+
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="concrete_rhime_model.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">Concrete RHIME Model</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="../experimental/index.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">Experimental code</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+                <dialog id="pst-secondary-sidebar-modal"></dialog>
+                <div id="pst-secondary-sidebar" class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#component-overview">Component overview</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#projection-and-centring">Projection and centring</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#what-ope-17-does-not-construct">What OPE-17 does not construct</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#units-and-persistence-boundary">Units and persistence boundary</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#memory-and-execution-boundary">Memory and execution boundary</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#correspondence-with-verification-games">Correspondence with <code class="docutils literal notranslate"><span class="pre">verification-games</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#api-reference">API reference</a></li>
+</ul>
+  </nav></div>
+
+  <div class="sidebar-secondary-item">
+
+  <div class="tocsection sourcelink">
+    <a href="../_sources/usage/native_covariance.rst.txt">
+      <i class="fa-solid fa-file-lines"></i> Show Source
+    </a>
+  </div>
+</div>
+
+</div></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../_static/scripts/bootstrap.js?digest=90905a2f556bf617f1a9"></script>
+<script defer src="../_static/scripts/pydata-sphinx-theme.js?digest=90905a2f556bf617f1a9"></script>
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+
+  <p class="copyright">
+    
+      © Copyright 2025, Eric Saboya and Brendan Murphy.
+      <br/>
+    
+  </p>
+</div>
+      
+        <div class="footer-item">
+
+  <p class="sphinx-version">
+    Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 9.0.4.
+    <br/>
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+    <div class="footer-items__end">
+      
+        <div class="footer-item">
+<p class="theme-version">
+  <!-- # L10n: Setting the PST URL as an argument as this does not need to be localized -->
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.20.0.
+</p></div>
+      
+    </div>
+  
+</div>
+
+  </footer>
+  </body>
+</html>
