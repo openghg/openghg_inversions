@@ -1,5 +1,9 @@
 # Clean Up Inversions Refactor
 
+> **Status:** Historical plan. Do not use this note as an active delivery
+> roadmap. The P0 readability plan and its model-family expansion companion are
+> authoritative.
+>
 > **Priority update (2026-08-14):** The P0
 > [`run_rhime` readability and modifiability plan](run_rhime_readability_and_modifiability.md)
 > supersedes this note wherever it assumes that routing old configurations

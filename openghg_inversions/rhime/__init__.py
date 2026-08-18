@@ -21,21 +21,24 @@ from openghg_inversions.models.rhime_likelihood import (
     build_gaussian_rhime_likelihood,
     build_rhime_observation_state,
 )
+from openghg_inversions.observation_error import select_aggregation_error_mode
 
 from .builders import RhimeModelBuilder, RhimeModelBuilderContext, RhimeModelBuildResult
+from .materialization import materialize_pymc_inputs
 from .params import params_from_config, resolve_flux_sources
-from .runner import (
-    RhimeResult,
+from .preparation import (
     assemble_rhime_inputs,
-    build_multisector_rhime_model,
     build_rhime_basis,
     build_rhime_sensitivities,
-    build_standard_rhime_model,
     filter_rhime_observations,
+    retrieve_or_reload_rhime_data,
+)
+from .runner import (
+    RhimeResult,
+    build_multisector_rhime_model,
+    build_standard_rhime_model,
     make_multisector_rhime_result,
     make_standard_rhime_result,
-    materialize_pymc_inputs,
-    retrieve_or_reload_rhime_data,
     resolve_rhime_options,
     run_rhime,
     run_rhime_from_prepared_inputs,
@@ -80,5 +83,6 @@ __all__ = [
     "run_rhime_from_prepared_inputs",
     "run_rhime_multisector",
     "sample_rhime_model",
+    "select_aggregation_error_mode",
     "with_prepared_rhime_sites",
 ]

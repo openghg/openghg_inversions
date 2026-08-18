@@ -1,5 +1,19 @@
 # Repository Guidance
 
+## RHIME architecture and scientific model development
+
+New RHIME work must follow the simplicity and locality rules in
+`docs/development/rhime_model_development.rst`. In particular, keep model
+runners procedural, keep concrete model construction readable in scientific
+order, use ordinary callable components, forward resolved values explicitly,
+and accept small duplication when it keeps a model recipe understandable.
+
+The active delivery roadmap is
+`docs/plans/run_rhime_readability_and_modifiability.md`. Near-term 6 km nested-
+domain, CO2-family, and verification-games feature landing is recorded in
+`docs/plans/rhime_model_family_expansion.md`. These documents supersede the
+semantic-compiler plans as production architecture.
+
 ## Numerical array ownership and execution
 
 Treat xarray objects as borrowed and potentially Dask-backed. Do not mutate

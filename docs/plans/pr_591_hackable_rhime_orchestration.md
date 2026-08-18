@@ -11,6 +11,13 @@ PR 591 changes RHIME from a convenient but largely monolithic runner into a
 set of importable handoffs. A custom script can now reuse the supported
 building blocks without copying private preparation or PyMC orchestration.
 
+This makes the orchestration hackable; it does not yet make arbitrary
+whole-model replacement low-ceremony. The built-in model stage accepts the
+supported likelihood-builder seam, but a complete divergent PyMC graph still
+owns a ``RhimeModelBuildResult`` containing semantic roles and declared output
+capabilities. Colocating and simplifying that graph contract remains W5/W6
+work.
+
 The high-level runners remain the recommended path for ordinary inversions:
 
 - ``run_rhime`` for standard single-sector runs;
@@ -18,7 +25,8 @@ The high-level runners remain the recommended path for ordinary inversions:
 - ``run_rhime_from_prepared_inputs`` for replaying already prepared inputs.
 
 The new stages are for an advanced developer who needs to inspect, time,
-cache, replace, or deliberately reorder a portion of the workflow.
+cache, replace a stage whose public contract fits, or deliberately reorder a
+portion of the workflow.
 
 ## Visible spine
 
@@ -56,8 +64,13 @@ from openghg_inversions.rhime import (
 )
 ```
 
-``RhimeMergedData`` is also public. It carries the merged per-site data and
-the site-aligned acquisition metadata needed by later stages.
+``RhimeMergedData`` is also public from
+``openghg_inversions.inversion_data``. It carries the merged per-site data and
+the site-aligned acquisition metadata needed by later stages:
+
+```python
+from openghg_inversions.inversion_data import RhimeMergedData
+```
 
 ## Default order is a recipe, not a state machine
 
@@ -76,11 +89,12 @@ are real dependency constraints:
 
 There is deliberately **no** corresponding rule saying that basis generation
 must occur after filtering. That is the documented default and the intended
-scientific workflow, but a custom runner can choose another recipe. It then
-owns the meaning and regression tests for that choice.
+scientific workflow, but the current stage signatures permit a custom runner
+to choose another recipe. That composition is not yet contract-tested; the
+custom runner owns its scientific meaning and regression tests.
 
-For example, this is mechanically valid and reproduces the historical
-basis-before-filter shape:
+For example, the following derives or loads the basis from unfiltered coverage
+while retaining the current filter-before-sensitivity order:
 
 ```python
 setup = resolve_rhime_options(params=params, multisector=False)
@@ -97,6 +111,11 @@ site_data = build_rhime_sensitivities(
 prepared = assemble_rhime_inputs(filtered, basis, site_data, setup.data_args)
 run_spec = with_prepared_rhime_sites(setup.run_spec, prepared)
 ```
+
+This does **not** reproduce the complete v0.6 execution order: v0.6 constructed
+``H``/``H_bc`` before filtering, whereas this recipe constructs sensitivities
+from the filtered data. It reproduces only the choice to generate the basis
+from unfiltered coverage.
 
 For a generated weighted basis this may be scientifically different from the
 default: filtering can change retained observations, footprints, or retained
@@ -148,14 +167,15 @@ lazy-first, eager-retry policy:
 3. remove empty sites and keep all site metadata aligned.
 
 Unlike 0.6, this happens before basis projection and before construction of
-``H``/``H_bc``. An eager retry can still be costly because raw footprint and
-flux fields may be large, but it avoids unnecessarily materializing the
-derived sensitivity arrays first.
+``H``/``H_bc``. An eager retry can still be costly because per-site footprint,
+observation, and forward-model fields may be large, but it avoids unnecessarily
+materializing the derived sensitivity arrays first.
 
 ``materialize_pymc_inputs`` is not a filtering workaround. It occurs after
-assembly, materializes the model-owned variables and selected aggregation-error
-representation, and preserves the canonical prepared xarray/Dask inputs. It
-cannot make a pre-basis filter work.
+assembly, materializes the model-owned variables, the selected aggregation-error
+representation, and any matching marginal-standard-deviation diagnostic, and
+preserves the canonical prepared xarray/Dask inputs. It cannot make a pre-basis
+filter work.
 
 ### Deliberate eager filtering in a custom runner
 
@@ -217,6 +237,27 @@ Future RHIME documentation should answer these explicitly.
    configuration when the current fallback retries all ``ValueError`` cases?
 6. Should the project add contract tests for basis-before-filter custom
    recipes, Dask retry behaviour, and selective eager filtering?
+
+The follow-up work has distinct owners:
+
+- OPE-44 should turn the default copied spine into tested executable source and
+  render that source into the customization guide rather than promoting the
+  hand-written snippets here.
+- OPE-54 should reuse that source shape for a tested project-owned basis stage,
+  proving that the public spine can supply a new version of one step rather
+  than merely record the default recipe.
+- OPE-46 should own filtering/basis ordering, eager-retry policy, and any
+  filter dependency or computation contract, including cached or externally
+  supplied preparation products.
+- OPE-47 should make the concrete PyMC graph and its semantic/output contract
+  easier to reach and modify. The follow-on model-input requirements plan
+  describes how components should derive the labelled input bill of materials
+  used for validation, PyMC materialization, and replay in
+  [RHIME model input requirements and prepared artifacts](rhime_model_input_requirements_and_artifacts.md).
+- OPE-55 should bind prepared data to a serialized model/run specification for
+  standard replay without making reusable preparation caches model-specific.
+- OPE-49 should consolidate the proven examples and historical context into
+  the final modification-focused developer documentation.
 
 These questions are the value of the visible spine: customisation is now
 possible in a standalone script, and its assumptions can be made explicit and

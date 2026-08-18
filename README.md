@@ -36,10 +36,32 @@ pixi run -e dev test
 pixi run -e dev lint
 pixi run -e dev typecheck
 pixi run -e dev tox
+pixi run -e dev docs-preview
 ```
 
 The `tox` Pixi task runs the fast default tox set (current OpenGHG plus Ruff)
 in parallel without an interactive spinner.
+
+The `docs-preview` task builds the Sphinx documentation with `tox -e docs`,
+serves it at `http://127.0.0.1:8765/`, and opens it in Safari on macOS. Keep the
+command running while reading the docs and press Ctrl-C to stop the server. To
+use another port or avoid opening Safari, run, for example:
+
+```bash
+pixi run -e dev docs-preview --port 8766 --no-open
+```
+
+Preview output is built in a temporary directory and removed when the server
+stops. `uv run python scripts/preview_docs.py clean` removes any legacy
+`docs/_build` output.
+
+With the default uv development dependency group, the equivalent command is:
+
+```bash
+uv run python scripts/preview_docs.py
+uv run python scripts/preview_docs.py --port 8766 --no-open
+uv run python scripts/preview_docs.py clean
+```
 
 To run the optional real country-file HDF5 smoke check on a machine that
 can access the ACRG country files, set the country directory and run the

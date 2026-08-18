@@ -119,7 +119,6 @@ class RhimePreparedInputs:
             locations, must instead remain observation-aligned arrays. Such
             arrays may be carried alongside the inversion arrays without
             implying that model builders consume them.
-
     Raises:
         ValueError: If site metadata, measurement indexing, or multi-source
             labels are inconsistent.
@@ -142,7 +141,6 @@ class RhimePreparedInputs:
                 MultiIndex and integer site indicators.
             basis_functions: Retained basis object and its provenance.
             site_metadata: Authoritative site-indexed metadata dataset.
-
         Raises:
             ValueError: If the prepared-input semantic invariants do not hold.
         """
@@ -999,9 +997,7 @@ def _scale_satellite_bc_sensitivity_to_column_signal(
 
     with xr.set_options(keep_attrs="default"):
         raw_column = (
-            inv_inputs["mf"]
-            + inv_inputs["mf_prior_factor"]
-            + inv_inputs["mf_prior_upper_level_factor"]
+            inv_inputs["mf"] + inv_inputs["mf_prior_factor"] + inv_inputs["mf_prior_upper_level_factor"]
         )
         # TODO(#553): This is a deliberate BC-scaling workaround while the
         # retrieval information needed for an exact corrected-column transform

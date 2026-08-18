@@ -2,10 +2,12 @@
 
 Date: 2026-08-11
 
-Status: proposed delivery sequence for review; focused ownership issues
-[#573](https://github.com/openghg/openghg_inversions/issues/573)--
-[#576](https://github.com/openghg/openghg_inversions/issues/576) were opened
-on 2026-08-10. PR ownership remains a project-owner decision.
+Status: archived as a production delivery sequence on 2026-08-18. The
+[`run_rhime` readability plan](run_rhime_readability_and_modifiability.md) and
+the [model-family expansion plan](rhime_model_family_expansion.md) are the
+active production roadmaps. This document remains evidence for the scientific
+native-covariance, coherent-reduction, aggregation-error, and linked-channel
+work; its semantic-model and compiler sequence is not being adopted.
 
 ## Purpose
 

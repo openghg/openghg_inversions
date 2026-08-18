@@ -740,6 +740,10 @@ than 100,000 cells require a structured covariance representation, such as a
 Kronecker product, whose projected products can be evaluated without realizing
 the full native covariance.
 
+The low-level :doc:`native_covariance` API supplies this structured native
+covariance action and its covariance-compatible projected product blocks. It
+is a preparation interface and is not yet connected to the RHIME likelihood.
+
 This component does **not** perform the native-to-reduced uncertainty
 transformation or remove state coordinates. That work must transform the prior
 uncertainty, forward operator, and aggregation error together. The coherent
@@ -847,8 +851,13 @@ compatibility output formats, but new workflows should save and load DataTree
 files. It translates legacy option names to the modern ``run_rhime`` API and
 uses the legacy filename convention. New scripts and new configs should use
 ``openghg-inversions run-rhime`` or ``run_rhime(...)`` directly.
-This compatibility route no longer preserves the exact historical
-``fixedbasisMCMC`` / ``inferpymc`` passthrough behaviour. Use release ``0.6`` or
-earlier if you need the old fixedbasis implementation.
+For temporary reproduction of historical products, pass
+``--legacy-fixedbasis`` to ``run_hbmcmc.py``. This explicit opt-in sends the
+untranslated INI parameters to ``fixedbasisMCMC``; a missing output format or
+the old ``hbmcmc`` / ``hbmcmc_postprocessing`` names select the historical
+``inferpymc_postprocessouts`` product and filename. An explicit
+``output_format="legacy"`` still selects the modern legacy-format adapter.
+The command prints a prominent warning, raises on unsupported options, and
+does not fall back to RHIME if the legacy run fails.
 Direct ``fixedbasisMCMC(...)`` calls are a temporary legacy Python path, not a
 wrapper around ``run_rhime(...)``.
