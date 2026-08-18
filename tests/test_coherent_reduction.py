@@ -300,16 +300,16 @@ def test_invalid_basis_grid_fails_without_executing_lazy_inputs() -> None:
 
 
 def test_related_lazy_inputs_materialize_one_shared_graph_once() -> None:
-    """The named eager boundary jointly computes related mean and sensitivity arrays."""
+    """The eager boundary jointly computes related mean, sensitivity, and basis."""
     _, native_mean, sensitivity, _, covariance, prolongation = _raw_projected_problem()
     executions = 0
 
     @delayed
-    def produce_inputs() -> tuple[np.ndarray, np.ndarray]:
-        """Return both native inputs from one recorded upstream task."""
+    def produce_inputs() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Return all related native inputs from one recorded upstream task."""
         nonlocal executions
         executions += 1
-        return native_mean.values, sensitivity.values
+        return native_mean.values, sensitivity.values, prolongation.values
 
     payload = produce_inputs()
     lazy_mean = native_mean.copy(
@@ -318,10 +318,13 @@ def test_related_lazy_inputs_materialize_one_shared_graph_once() -> None:
     lazy_sensitivity = sensitivity.copy(
         data=da.from_delayed(payload[1], shape=sensitivity.shape, dtype=sensitivity.dtype)
     )
+    lazy_prolongation = prolongation.copy(
+        data=da.from_delayed(payload[2], shape=prolongation.shape, dtype=prolongation.dtype)
+    )
 
     result = reduce_native_gaussian(
         covariance=covariance,
-        basis_prolongation=prolongation,
+        basis_prolongation=lazy_prolongation,
         state_dim="state",
         native_mean=lazy_mean,
         native_sensitivity=lazy_sensitivity,
@@ -535,6 +538,9 @@ def test_full_retention_accepts_roundoff_around_zero_unresolved_covariance() -> 
     )
 
     np.testing.assert_allclose(result.unresolved_observation_covariance, 0.0, atol=1e-12)
+    np.linalg.cholesky(
+        result.unresolved_observation_covariance.values + 0.01 * np.eye(3)
+    )
 
 
 def test_two_basis_choices_recover_projected_posteriors_and_equal_evidence() -> None:

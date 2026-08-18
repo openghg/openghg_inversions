@@ -68,9 +68,10 @@ def reduce_native_gaussian(
 ) -> CoherentGaussianReduction:
     """Prepare the exact centred Gaussian model for one ``B/H/Pi/m`` set.
 
-    This is a named eager numerical boundary. ``native_mean`` and
-    ``native_sensitivity`` may be Dask-backed; they are materialized together
-    so a shared graph is executed once. Inputs are borrowed and are not mutated.
+    This is a named eager numerical boundary. ``native_mean``,
+    ``native_sensitivity``, and ``basis_prolongation`` may be Dask-backed; their
+    payloads are materialized together so a shared graph is executed once.
+    Inputs are borrowed and are not mutated.
 
     The inputs must use the covariance action's native dimensions and carry
     exactly matching indexed coordinates on shared dimensions. Unit conversion
@@ -80,7 +81,7 @@ def reduce_native_gaussian(
 
     Args:
         covariance: Invertible labelled native covariance action ``B``.
-        basis_prolongation: Canonical eager basis prolongation used by the
+        basis_prolongation: Canonical labelled basis prolongation used by the
             retained projection strategy.
         state_dim: Retained-state dimension shared by the prolongation and
             restriction.
@@ -115,9 +116,15 @@ def reduce_native_gaussian(
     )
     dense_mean = to_dense(mean)
     dense_sensitivity = to_dense(sensitivity)
-    mean_data, sensitivity_data = compute(dense_mean.data, dense_sensitivity.data)
+    dense_prolongation = to_dense(prolongation)
+    mean_data, sensitivity_data, prolongation_data = compute(
+        dense_mean.data,
+        dense_sensitivity.data,
+        dense_prolongation.data,
+    )
     mean = mean.copy(data=mean_data)
     sensitivity = sensitivity.copy(data=sensitivity_data)
+    prolongation = prolongation.copy(data=prolongation_data)
 
     products = project_native_covariance(
         covariance=covariance,
