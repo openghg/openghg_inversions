@@ -57,12 +57,32 @@ __all__ = [
 
 _PREPARATION_PROVENANCE_OPTIONS = (
     "species",
+    "sites",
     "domain",
+    "averaging_period",
     "start_date",
     "end_date",
+    "output_name",
     "flux_sources",
+    "split_by_sectors",
+    "bc_store",
+    "obs_store",
+    "footprint_store",
+    "emissions_store",
+    "met_model",
+    "fp_model",
+    "fp_height",
+    "fp_species",
+    "inlet",
+    "instrument",
+    "max_level",
+    "calibration_scale",
+    "obs_data_level",
+    "platform",
+    "use_tracer",
     "filters",
     "use_bc",
+    "bc_input",
     "bc_freq",
     "min_error",
     "min_error_options",
@@ -70,8 +90,17 @@ _PREPARATION_PROVENANCE_OPTIONS = (
     "basis_algorithm",
     "nbasis",
     "fp_basis_case",
+    "basis_directory",
     "bc_basis_case",
+    "bc_basis_directory",
+    "country_directory",
     "fix_basis_outer_regions",
+    "reload_merged_data",
+    "save_merged_data",
+    "merged_data_dir",
+    "merged_data_name",
+    "basis_output_path",
+    "flux_non_finite_check",
 )
 
 
@@ -83,6 +112,12 @@ def _json_preparation_value(value: Any) -> Any:
         return {str(key): _json_preparation_value(item) for key, item in value.items()}
     if isinstance(value, tuple | list):
         return [_json_preparation_value(item) for item in value]
+    if isinstance(value, slice):
+        return {
+            "start": _json_preparation_value(value.start),
+            "stop": _json_preparation_value(value.stop),
+            "step": _json_preparation_value(value.step),
+        }
     return value
 
 
@@ -93,19 +128,32 @@ def _preparation_metadata(
     basis_functions: BasisFunctions,
 ) -> dict[str, Any]:
     """Describe the model-independent preparation that owns an assembled cache."""
+    missing_options = [name for name in _PREPARATION_PROVENANCE_OPTIONS if name not in data_args]
+    if missing_options:
+        raise ValueError(
+            "RHIME preparation metadata requires resolved preparation options; "
+            f"missing {missing_options!r}."
+        )
     metadata = {
-        name: _json_preparation_value(data_args[name])
-        for name in _PREPARATION_PROVENANCE_OPTIONS
-        if name in data_args
+        name: _json_preparation_value(data_args[name]) for name in _PREPARATION_PROVENANCE_OPTIONS
     }
     metadata.update(
         {
             "stage": "assembled_rhime_inputs",
             "sites": list(merged.sites),
             "averaging_period": list(merged.averaging_period),
+            "inlet": _json_preparation_value(merged.site_options.inlet),
+            "fp_height": _json_preparation_value(merged.site_options.fp_height),
+            "instrument": _json_preparation_value(merged.site_options.instrument),
+            "platform": _json_preparation_value(merged.site_options.platform),
+            "obs_data_level": _json_preparation_value(merged.site_options.obs_data_level),
+            "met_model": _json_preparation_value(merged.site_options.met_model),
+            "max_level": _json_preparation_value(merged.site_options.max_level),
             "split_by_sectors": bool(merged.fp_all.get(".split_by_sectors", False)),
             "basis_artifact_source": basis_functions.basis_artifact_source or "generated",
-            "basis_artifact_path": getattr(basis_functions, "basis_artifact_path", None),
+            "basis_artifact_path": _json_preparation_value(
+                getattr(basis_functions, "basis_artifact_path", None)
+            ),
         }
     )
     return metadata
@@ -128,11 +176,27 @@ def _validate_external_merged_data(
             f"External RHIME merged data contains site(s) outside the resolved run: {unexpected_sites!r}."
         )
 
-    stored_multisector = merged_data.fp_all.get(".split_by_sectors")
-    if stored_multisector is not None and bool(stored_multisector) != multisector:
+    retained_sites = set(merged_data.sites)
+    stored_sites = {str(name).upper() for name in merged_data.fp_all if not str(name).startswith(".")}
+    missing_site_data = sorted(retained_sites - stored_sites)
+    undeclared_site_data = sorted(stored_sites - retained_sites)
+    if missing_site_data or undeclared_site_data:
+        raise ValueError(
+            "External RHIME merged data site contents do not match its retained site metadata: "
+            f"missing site data {missing_site_data!r}; undeclared site data {undeclared_site_data!r}."
+        )
+
+    if ".split_by_sectors" not in merged_data.fp_all:
+        raise ValueError(
+            "External RHIME merged data must declare an explicit '.split_by_sectors' sector layout."
+        )
+    stored_multisector = merged_data.fp_all[".split_by_sectors"]
+    if type(stored_multisector) is not bool:
+        raise ValueError("External RHIME merged data '.split_by_sectors' must be a boolean.")
+    if stored_multisector != multisector:
         raise ValueError(
             "External RHIME merged data has an incompatible sector layout: "
-            f"artifact split_by_sectors={bool(stored_multisector)!r}, "
+            f"artifact split_by_sectors={stored_multisector!r}, "
             f"runner multisector={multisector!r}."
         )
     return merged_data
@@ -170,29 +234,29 @@ def retrieve_or_reload_rhime_data(
             output_name=data_args["output_name"],
             flux_sources=data_args["flux_sources"],
             split_by_sectors=multisector,
-            bc_store=data_args.get("bc_store", "user"),
-            obs_store=data_args.get("obs_store", "user"),
-            footprint_store=data_args.get("footprint_store", "user"),
-            emissions_store=data_args.get("emissions_store", "user"),
-            met_model=data_args.get("met_model"),
-            fp_model=data_args.get("fp_model"),
-            fp_height=data_args.get("fp_height"),
-            fp_species=data_args.get("fp_species"),
-            inlet=data_args.get("inlet"),
-            instrument=data_args.get("instrument"),
-            max_level=data_args.get("max_level"),
-            calibration_scale=data_args.get("calibration_scale"),
-            obs_data_level=data_args.get("obs_data_level"),
-            platform=data_args.get("platform"),
-            use_tracer=data_args.get("use_tracer", False),
-            use_bc=data_args.get("use_bc", True),
-            bc_input=data_args.get("bc_input"),
-            averaging_error=data_args.get("averaging_error", True),
-            reload_merged_data=data_args.get("reload_merged_data", False),
-            save_merged_data=data_args.get("save_merged_data", False),
-            merged_data_dir=data_args.get("merged_data_dir"),
-            merged_data_name=data_args.get("merged_data_name"),
-            flux_non_finite_check=data_args.get("flux_non_finite_check", "lazy"),
+            bc_store=data_args["bc_store"],
+            obs_store=data_args["obs_store"],
+            footprint_store=data_args["footprint_store"],
+            emissions_store=data_args["emissions_store"],
+            met_model=data_args["met_model"],
+            fp_model=data_args["fp_model"],
+            fp_height=data_args["fp_height"],
+            fp_species=data_args["fp_species"],
+            inlet=data_args["inlet"],
+            instrument=data_args["instrument"],
+            max_level=data_args["max_level"],
+            calibration_scale=data_args["calibration_scale"],
+            obs_data_level=data_args["obs_data_level"],
+            platform=data_args["platform"],
+            use_tracer=data_args["use_tracer"],
+            use_bc=data_args["use_bc"],
+            bc_input=data_args["bc_input"],
+            averaging_error=data_args["averaging_error"],
+            reload_merged_data=data_args["reload_merged_data"],
+            save_merged_data=data_args["save_merged_data"],
+            merged_data_dir=data_args["merged_data_dir"],
+            merged_data_name=data_args["merged_data_name"],
+            flux_non_finite_check=data_args["flux_non_finite_check"],
         )
 
 
@@ -206,7 +270,7 @@ def filter_rhime_observations(
     returns a new merged-data handoff when filtering changes data and never
     constructs basis functions or model inputs.
     """
-    filters = data_args.get("filters")
+    filters = data_args["filters"]
     with timed(
         "rhime.prepare_inputs.obs_filtering",
         sites=len(merged.sites),
@@ -225,9 +289,9 @@ def build_rhime_basis(
     basis algorithm.  It treats ``merged`` as borrowed and does not build
     sensitivities.
     """
-    basis_algorithm = data_args.get("basis_algorithm", "weighted")
-    nbasis = data_args.get("nbasis", 100)
-    fp_basis_case = data_args.get("fp_basis_case")
+    basis_algorithm = data_args["basis_algorithm"]
+    nbasis = data_args["nbasis"]
+    fp_basis_case = data_args["fp_basis_case"]
     with timed(
         "rhime.prepare_inputs.basis_build",
         basis_algorithm=basis_algorithm,
@@ -238,16 +302,16 @@ def build_rhime_basis(
             basis_algorithm=basis_algorithm,
             nbasis=nbasis,
             fp_basis_case=fp_basis_case,
-            basis_directory=data_args.get("basis_directory"),
-            country_directory=data_args.get("country_directory"),
+            basis_directory=data_args["basis_directory"],
+            country_directory=data_args["country_directory"],
             fp_all=merged.fp_all,
             species=data_args["species"],
             domain=data_args["domain"],
             start_date=data_args["start_date"],
-            fix_outer_regions=data_args.get("fix_basis_outer_regions", False),
+            fix_outer_regions=data_args["fix_basis_outer_regions"],
             emissions_name=data_args["flux_sources"],
             outputname=data_args["output_name"],
-            output_path=data_args.get("basis_output_path"),
+            output_path=data_args["basis_output_path"],
         )
 
 
@@ -271,10 +335,10 @@ def build_rhime_sensitivities(
             domain=data_args["domain"],
             split_by_sectors=multisector,
             flux_sources=data_args["flux_sources"],
-            use_bc=data_args.get("use_bc", True),
-            bc_basis_case=data_args.get("bc_basis_case", "NESW"),
+            use_bc=data_args["use_bc"],
+            bc_basis_case=data_args["bc_basis_case"],
             bc_basis_directory=inversion_preparation._bc_basis_directory_arg(
-                data_args.get("bc_basis_directory")
+                data_args["bc_basis_directory"]
             ),
         )
 
@@ -295,14 +359,14 @@ def assemble_rhime_inputs(
     """
     owned_site_data = {site: dataset.copy(deep=False) for site, dataset in site_data.items()}
     inversion_preparation._set_domain_attrs(owned_site_data, merged.sites, data_args["domain"])
-    min_error_options = normalise_min_error_options(data_args.get("min_error_options"))
+    min_error_options = normalise_min_error_options(data_args["min_error_options"])
     with timed("rhime.prepare_inputs.make_inv_inputs", sites=len(merged.sites)):
         inv_inputs = inversion_preparation._make_inv_inputs(
             fp_data=owned_site_data,
             sites=merged.sites,
             start_date=data_args["start_date"],
-            bc_freq=data_args.get("bc_freq"),
-            min_error=data_args.get("min_error", 0.0),
+            bc_freq=data_args["bc_freq"],
+            min_error=data_args["min_error"],
             calculate_min_error=None,
             min_error_per_site=min_error_options["by_site"],
         )
@@ -311,7 +375,7 @@ def assemble_rhime_inputs(
         sites=merged.sites,
         platform=merged.platform,
     )
-    inversion_preparation._warn_for_nan_inputs(inv_inputs, use_bc=data_args.get("use_bc", True))
+    inversion_preparation._warn_for_nan_inputs(inv_inputs, use_bc=data_args["use_bc"])
     basis_source = basis_functions.basis_artifact_source or "generated"
     log_timing(
         "rhime.prepare_inputs.prepared_dims",

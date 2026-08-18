@@ -1359,15 +1359,26 @@ def test_assemble_rhime_inputs_preserves_borrowed_site_datasets(
     )
     monkeypatch.setattr(prep_module, "_warn_for_nan_inputs", lambda *args, **kwargs: None)
 
-    rhime_public.assemble_rhime_inputs(
+    setup = rhime_public.resolve_rhime_options(
+        params={
+            "species": "ch4",
+            "sites": ["TAC"],
+            "averaging_period": ["1h"],
+            "domain": "EUROPE",
+            "start_date": "2019-01-01",
+            "end_date": "2019-01-02",
+            "output_name": "borrowed-test",
+            "flux_sources": ["total-ukghg-edgar7"],
+            "output_format": "none",
+            "use_bc": False,
+        },
+        multisector=False,
+    )
+    prepared = rhime_public.assemble_rhime_inputs(
         merged,
         _fake_basis_functions(),
         site_data,
-        {
-            "domain": "EUROPE",
-            "start_date": "2019-01-01",
-            "use_bc": False,
-        },
+        setup.data_args,
     )
 
     assert supplied.attrs == {"source": "caller"}
@@ -1375,6 +1386,12 @@ def test_assemble_rhime_inputs_preserves_borrowed_site_datasets(
     assert captured["TAC"] is not supplied
     assert captured["TAC"].attrs == {"source": "caller", "Domain": "EUROPE"}
     assert captured["TAC"]["mf"].data is lazy_mf
+    assert prepared.preparation_metadata["basis_algorithm"] == "weighted"
+    assert prepared.preparation_metadata["nbasis"] == 100
+    for selector in ("inlet", "instrument", "platform", "fp_height"):
+        assert prepared.preparation_metadata[selector] == [None]
+    assert prepared.preparation_metadata["fp_model"] is None
+    assert prepared.preparation_metadata["calibration_scale"] is None
 
 
 def test_prepared_replay_computes_selected_error_only_at_pymc_boundary(
@@ -1433,9 +1450,13 @@ def test_prepared_replay_computes_selected_error_only_at_pymc_boundary(
 
 def test_explicit_preparation_option_ownership_matches_current_preparer() -> None:
     """The explicit routing schema deliberately tracks the accepted preparation API."""
-    assert rhime_params.RHIME_PREPARATION_OPTION_NAMES == frozenset(
-        inspect.signature(prepare_rhime_inputs).parameters
-    )
+    parameters = inspect.signature(prepare_rhime_inputs).parameters
+    assert rhime_params.RHIME_PREPARATION_OPTION_NAMES == frozenset(parameters)
+    assert rhime_params.RHIME_PREPARATION_DEFAULTS == {
+        name: parameter.default
+        for name, parameter in parameters.items()
+        if parameter.default is not inspect.Parameter.empty
+    }
 
 
 def test_build_rhime_multisector_model_uses_sector_names_for_variables(
@@ -2735,6 +2756,41 @@ def test_external_merged_data_fails_at_retrieval_for_incompatible_layout() -> No
         )
 
 
+@pytest.mark.parametrize(
+    ("fp_all", "message"),
+    [
+        ({".split_by_sectors": False}, "missing site data"),
+        ({"TAC": xr.Dataset()}, "explicit.*split_by_sectors"),
+    ],
+)
+def test_external_merged_data_requires_promised_contents_and_layout(
+    fp_all: dict[str, Any],
+    message: str,
+) -> None:
+    """External handoffs fail at retrieval when site data or layout provenance is absent."""
+    merged = prep_module.RhimeMergedData(
+        fp_all=fp_all,
+        site_options=prep_module._SiteOptions.from_inputs(
+            sites=["TAC"],
+            averaging_period=["1h"],
+            inlet=None,
+            fp_height=None,
+            instrument=None,
+            platform=None,
+            obs_data_level=None,
+            met_model=None,
+            max_level=None,
+        ),
+    )
+
+    with pytest.raises(ValueError, match=message):
+        rhime_public.retrieve_or_reload_rhime_data(
+            {"sites": ["TAC"]},
+            multisector=False,
+            merged_data=merged,
+        )
+
+
 def test_public_stages_compose_as_complete_external_runner(monkeypatch: pytest.MonkeyPatch) -> None:
     """Real public handoffs compose a full runner without private glue or manifests."""
     site_options = prep_module._SiteOptions.from_inputs(
@@ -3421,6 +3477,12 @@ def test_rhime_runner_setup_builds_specs_before_preparation(tmp_path: Path) -> N
 
     assert setup.data_args["flux_sources"] == ["ff-source", "gpp-source", "ter-source", "ocean-source"]
     assert setup.data_args["split_by_sectors"] is True
+    assert setup.data_args["basis_algorithm"] == "weighted"
+    assert setup.data_args["nbasis"] == 100
+    assert setup.data_args["bc_basis_case"] == "NESW"
+    assert setup.data_args["min_error_options"] == {"by_site": False}
+    for selector in ("inlet", "instrument", "platform", "fp_model", "fp_height", "calibration_scale"):
+        assert setup.data_args[selector] is None
     assert "sector_sources" not in setup.data_args
     assert "sigma_freq" not in setup.data_args
     assert setup.run_spec.sites == ("TAC",)
