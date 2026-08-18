@@ -4367,7 +4367,6 @@ def test_satellite_rhime_template_matches_modern_input_schema() -> None:
     setup = rhime_params.make_rhime_runner_setup(
         params=normalized,
         multisector=False,
-        data_param_names=set(inspect.signature(prepare_rhime_inputs).parameters),
     )
     assert setup.run_spec.sites == ("GOSAT-BRAZIL",)
     assert setup.data_args["platform"] == ["satellite"]
