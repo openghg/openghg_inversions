@@ -3370,6 +3370,37 @@ def test_rhime_runner_setup_builds_specs_before_preparation(tmp_path: Path) -> N
     assert setup.run_spec.model.builder_strategy == "compiled"
 
 
+def test_rhime_acquisition_forwards_satellite_footprint_mode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The public runner stage must not drop the time-resolved selector."""
+    captured: dict[str, Any] = {}
+    expected = object()
+
+    def fake_prepare_merged_data(**kwargs: Any) -> object:
+        captured.update(kwargs)
+        return expected
+
+    monkeypatch.setattr(prep_module, "_prepare_merged_data", fake_prepare_merged_data)
+    data_args = {
+        "species": "co2",
+        "sites": ["OCO2-EASTASIA"],
+        "domain": "EASTASIA",
+        "averaging_period": ["1H"],
+        "start_date": "2022-03-31 04:00:00",
+        "end_date": "2022-04-01 04:08:10",
+        "output_name": "satellite_multisector",
+        "flux_sources": ["anth", "resp", "gpp_atm"],
+        "time_resolved": [True],
+    }
+
+    actual = rhime_module.retrieve_or_reload_rhime_data(data_args, multisector=True)
+
+    assert actual is expected
+    assert captured["time_resolved"] == [True]
+    assert captured["split_by_sectors"] is True
+
+
 def test_rhime_runner_setup_rejects_unknown_builder_strategy() -> None:
     """Invalid builder selection fails during setup, before data preparation."""
     params = {

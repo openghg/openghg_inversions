@@ -16,6 +16,11 @@ import pandas as pd
 import pytest
 
 from openghg_inversions.inversion_data.preparation import RhimePreparedInputs, prepare_rhime_inputs
+from openghg_inversions.rhime import (
+    RhimeSampler,
+    resolve_rhime_options,
+    run_rhime_from_prepared_inputs,
+)
 
 
 _DATA_STORE = Path(
@@ -144,3 +149,38 @@ def test_real_oco2_store_prepares_time_resolved_multisector_columns(
 
     assert prepared.site_metadata.site.values.tolist() == ["OCO2-EASTASIA"]
     assert prepared.site_metadata.averaging_period.values.tolist() == ["1H"]
+
+
+@pytest.mark.slow
+def test_real_oco2_prepared_inputs_run_through_multisector_model(
+    real_oco2_prepared_inputs: RhimePreparedInputs,
+) -> None:
+    """Sample the prepared satellite columns through the public RHIME model path."""
+    setup = resolve_rhime_options(
+        params={
+            "species": "co2",
+            "sites": ["OCO2-EASTASIA"],
+            "averaging_period": ["1H"],
+            "domain": "EASTASIA",
+            "start_date": "2022-03-31 04:00:00",
+            "end_date": "2022-04-01 04:08:10",
+            "output_name": "oco2_eastasia_6obs_3sector_model_test",
+            "output_format": "none",
+            "flux_sources": list(_FLUX_SOURCES),
+            "x_prior": {"pdf": "normal", "mu": 1.0, "sigma": 0.5},
+            "use_bc": True,
+            "no_model_error": True,
+        },
+        multisector=True,
+    )
+    result = run_rhime_from_prepared_inputs(
+        prepared_inputs=real_oco2_prepared_inputs,
+        run_spec=setup.run_spec,
+        sampler=RhimeSampler(draws=1, tune=0, chains=1, progressbar=False),
+    )
+
+    assert result.inv_inputs.sizes["nmeasure"] == 6
+    assert tuple(result.inv_inputs.source.values) == _FLUX_SOURCES
+    assert {"x_anth", "x_resp", "x_gpp_atm"}.issubset(result.idata.posterior)
+    assert result.model_build_result is not None
+    assert result.model_build_result.variable_roles["flux_scale:anth"] == "x_anth"
