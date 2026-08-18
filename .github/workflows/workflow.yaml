@@ -5,10 +5,14 @@ on:
     branches: [main, devel]
     tags:
     - '*'
+    paths-ignore:
+      - 'CHANGELOG.md'
+      - 'newsfragments/**'
   pull_request:
     branches: [main, devel]
     paths-ignore:
       - 'CHANGELOG.md'
+      - 'newsfragments/**'
   # Allow manual runs from the Actions UI with the same matrix as automatic runs
   workflow_dispatch:
 

@@ -82,6 +82,18 @@ The tox test environments do not require a C++ compiler. PyTensor can use its
 Python implementations when no compiler is configured, so automated agents do
 not need to load a compiler module before running tests.
 
+## Release notes
+
+Use Towncrier fragments for user-visible changes. Agents must add a concise
+`newsfragments/<issue>.<type>.md` file rather than editing `CHANGELOG.md`
+directly; use `+` in place of an issue number when there is no tracked issue.
+Choose one of `feature`, `bugfix`, `doc`, `removal`, or `misc` for `<type>`.
+The existing `CHANGELOG.md` remains the published, human-readable changelog
+for users and developers. During release preparation, a maintainer runs
+`towncrier build --version <version> --yes` to prepend the collected notes, commits
+the generated changelog, and then creates the GitHub release. The PyPI release
+workflow verifies that no unassembled fragments remain.
+
 For cluster test runs, prefer a writable node-local PyTensor cache such as
 `base_compiledir=${TMPDIR:-/tmp}/pytensor-${USER}`. Add it as a
 comma-separated `PYTENSOR_FLAGS` entry without discarding existing flags or

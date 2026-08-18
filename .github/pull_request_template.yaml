@@ -6,5 +6,5 @@
 - [ ] Closes #xxxx (Replace xxxx with the Github issue number)
 - [ ] Tests added and passing
 - [ ] Documentation and tutorials updated/added
-- [ ] Added an entry to the `CHANGELOG.md` file
+- [ ] Added a Towncrier news fragment in `newsfragments/` for user-visible changes (agents must use this; do not edit `CHANGELOG.md` directly)
 - [ ] Added any new requirements to `requirements.txt`
