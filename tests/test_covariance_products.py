@@ -555,6 +555,40 @@ def test_square_products_preserve_typed_row_and_column_indexes(multiindex: bool)
         assert matrix.coords["time_cov"].attrs["semantic_role"] == "sample_time"
 
 
+def test_retained_state_multiindex_survives_the_eager_boundary() -> None:
+    """Payload materialization preserves retained-state index structure."""
+    covariance, basis_operator, h, _ = _problem()
+    prolongation = basis_operator.native_prolongation(h, native_dims=covariance.native_dims)
+    state_index = pd.MultiIndex.from_tuples(
+        [("z-source", 7), ("a-source", 2)],
+        names=("source", "region"),
+    )
+    state_coordinates = {
+        str(name): coordinate
+        for name, coordinate in prolongation.coords.items()
+        if "state" not in coordinate.dims
+    }
+    prolongation = xr.DataArray(
+        prolongation.data,
+        dims=prolongation.dims,
+        coords=state_coordinates,
+        attrs=prolongation.attrs,
+    ).assign_coords(xr.Coordinates.from_pandas_multiindex(state_index, "state"))
+
+    products = project_native_covariance(
+        covariance=covariance,
+        basis_prolongation=prolongation,
+        state_dim="state",
+        native_sensitivity=h,
+        observation_dim="observation",
+    )
+
+    assert products.restriction.indexes["state"].equals(state_index)
+    assert products.prolongation.indexes["state"].equals(state_index)
+    assert products.state_covariance.indexes["state"].equals(state_index)
+    assert list(products.state_covariance.indexes["state_cov"]) == list(state_index)
+
+
 def test_product_kernel_avoids_throwaway_covariance_application(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -33,7 +33,6 @@ else:
 
 from dask.base import compute
 import numpy as np
-import pandas as pd
 from scipy.linalg import cho_factor, cho_solve
 import xarray as xr
 
@@ -141,24 +140,23 @@ class PreserveBucketProlongation:
                 "The bucket prolongation contains redundant retained states; "
                 "U.T B^-1 U must be positive definite"
             ) from exc
+        state_coordinates = {
+            str(name): coordinate
+            for name, coordinate in prolongation.coords.items()
+            if set(coordinate.dims).issubset({state_dim})
+        }
         state_covariance = xr.DataArray(
             covariance_values,
             dims=(state_dim, state_column_dim),
+            coords={
+                **state_coordinates,
+                **renamed_column_coordinates(
+                    prolongation,
+                    row_dim=state_dim,
+                    column_dim=state_column_dim,
+                ),
+            },
             attrs={"units": "1"},
-        )
-        state_index = prolongation.get_index(state_dim)
-        if isinstance(state_index, pd.MultiIndex):
-            state_covariance = state_covariance.assign_coords(
-                xr.Coordinates.from_pandas_multiindex(state_index, state_dim)
-            )
-        else:
-            state_covariance = state_covariance.assign_coords({state_dim: prolongation.coords[state_dim]})
-        state_covariance = state_covariance.assign_coords(
-            renamed_column_coordinates(
-                prolongation,
-                row_dim=state_dim,
-                column_dim=state_column_dim,
-            )
         )
         restriction = xr.dot(state_covariance, precision_prolongation, dim=state_column_dim).transpose(
             state_dim, *native_dims
@@ -269,7 +267,14 @@ def project_native_covariance(
         join="exact",
         copy=False,
     )
-    sensitivity, prolongation = compute(to_dense(sensitivity), to_dense(prolongation))
+    dense_sensitivity = to_dense(sensitivity)
+    dense_prolongation = to_dense(prolongation)
+    sensitivity_data, prolongation_data = compute(
+        dense_sensitivity.data,
+        dense_prolongation.data,
+    )
+    sensitivity = sensitivity.copy(data=sensitivity_data)
+    prolongation = prolongation.copy(data=prolongation_data)
 
     projection_strategy = strategy if strategy is not None else PreserveBucketProlongation()
     projection = projection_strategy.projection(
@@ -506,7 +511,9 @@ def _prepare_projection(
         join="exact",
         copy=False,
     )
-    (restriction,) = compute(to_dense(restriction))
+    dense_restriction = to_dense(restriction)
+    (restriction_data,) = compute(dense_restriction.data)
+    restriction = restriction.copy(data=restriction_data)
     values = np.asarray(restriction.values)
     if np.iscomplexobj(values) or not np.all(np.isfinite(values)):
         raise ValueError("Projection strategy restriction must contain finite real values")
