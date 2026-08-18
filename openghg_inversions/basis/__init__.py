@@ -1,16 +1,16 @@
 """Basis construction, projection, and retained covariance-product interfaces.
 
-The package exposes built-in basis algorithms and their weight-first building
-blocks, retained :class:`BasisFunctions` artifacts, prior-width projection
-helpers, and the public retained covariance-product API. Project-owned
-workflows may compose the algorithms and convert flat labels with
-``basis_functions_from_fp_all_flat_basis`` while preserving current-run flux
-and avoiding private preparation internals.
+The package provides basis-generation functions, flux-weighted preparation
+wrappers, prior-width projection helpers, and the public OPE-17 retained
+covariance-product API.
 
 Basis operators own grid/state geometry: their bucket matrix is a prolongation
 from retained scalings to the native grid, not an automatic retained
-restriction. ``BasisFunctions`` pairs that geometry with flux for sensitivity
-projection and reconstruction; it does not own native covariance transforms.
+restriction. ``FluxWeightedBasis``, exported here as ``BasisFunctions``, pairs
+that geometry with flux for sensitivity projection and reconstruction; it does
+not own native covariance transforms. Project-owned workflows can compose the
+basis algorithms and use ``basis_functions_from_fp_all_flat_basis`` to attach
+current-run flux without importing private preparation functions.
 
 Native covariance actions live in :mod:`openghg_inversions.native_covariance`
 and :mod:`openghg_inversions.source_covariance`. The interfaces re-exported
@@ -18,10 +18,6 @@ here choose a compatible restriction/prolongation pair and prepare labelled
 product blocks. They are a low-level input to later coherent reduction and do
 not themselves construct the centred reduced likelihood, unresolved
 covariance, or a complete coherent-reduction artifact.
-
-``basis_weights_from_fp_all`` computes a derived two-dimensional weight field
-in memory. Artifact loaders similarly load and close their files rather than
-retaining live file handles.
 """
 
 from ._functions import (
