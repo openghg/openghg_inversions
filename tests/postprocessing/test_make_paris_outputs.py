@@ -24,8 +24,39 @@ from openghg_inversions.postprocessing.make_paris_outputs import (
     _paris_sector_name_by_suffix,
     _sector_country_posterior_covariances_kg,
     _single_sector_country_trace_kg,
+    paris_concentration_outputs,
     paris_flux_output,
 )
+
+
+_LATEST_FLUX_DIMENSION_ORDER = {
+    "percentile": 0,
+    "sector_2": 1,
+    "sector": 2,
+    "country": 3,
+    "country_2": 4,
+    "time": 5,
+    "latitude": 6,
+    "longitude": 7,
+}
+
+
+def _assert_latest_flux_dimension_order(ds: xr.Dataset) -> None:
+    """Assert that emitted flux variables use the CF template dimension order.
+
+    Args:
+        ds: Latest-template PARIS flux dataset to validate.
+
+    Raises:
+        AssertionError: If time bounds or another variable violates the
+            template dimension order.
+    """
+    for name, variable in ds.data_vars.items():
+        if name == "time_bnds":
+            assert variable.dims == ("time", "nbnds")
+            continue
+        expected = tuple(sorted(variable.dims, key=_LATEST_FLUX_DIMENSION_ORDER.__getitem__))
+        assert variable.dims == expected, name
 
 
 def _flux_nonfinite_metadata(data: xr.DataArray | xr.Dataset) -> FluxNonFiniteMetadata:
@@ -158,8 +189,15 @@ def test_latest_paris_flux_output_processes_multisector_sectors(
     assert flux_outputs["flux_ff_posterior_inversion_grid"].attrs == {
         "units": "mol m-2 s-1",
         "long_name": "posterior flux of  ch4 for ff on the inversion grid",
-        "cell_methods": "time:mean area:mean",
+        "cell_methods": "time: mean area: mean",
     }
+    assert flux_outputs.time_bnds.attrs == {}
+    assert flux_outputs.attrs["Conventions"] == "CF-1.8"
+    assert "conventions" not in flux_outputs.attrs
+    assert flux_outputs.attrs["source"].strip()
+    assert flux_outputs.attrs["comment"].strip()
+    assert flux_outputs.attrs["references"].strip()
+    _assert_latest_flux_dimension_order(flux_outputs)
     assert tuple(flux_outputs.country.values) == PARIS_LATEST_COUNTRIES
     assert flux_outputs["flux_ff_posterior"].dtype == np.dtype("float32")
     assert flux_outputs["covariance_flux_ff_posterior_country"].dtype == np.dtype("float32")
@@ -207,7 +245,9 @@ def test_latest_paris_flux_output_processes_multisector_sectors(
     largest_country = int(np.asarray(expected_sector_country.data.todense()).argmax())
     expected_sector_variance = np.asarray(expected_sector_country.data.todense())[largest_country] ** 2
     np.testing.assert_allclose(
-        flux_outputs["covariance_flux_ff_posterior_country"].values[
+        flux_outputs["covariance_flux_ff_posterior_country"]
+        .transpose("time", "country", "country_2")
+        .values[
             0,
             largest_country,
             largest_country,
@@ -216,25 +256,30 @@ def test_latest_paris_flux_output_processes_multisector_sectors(
         rtol=1e-6,
     )
     for flux_label in ("total", "ff", "ocean"):
-        covariance = flux_outputs[f"covariance_flux_{flux_label}_posterior_country"].values
-        stdev = flux_outputs[f"stdev_flux_{flux_label}_posterior_country"].values
+        covariance = flux_outputs[f"covariance_flux_{flux_label}_posterior_country"].transpose(
+            "time", "country", "country_2"
+        )
+        stdev = flux_outputs[f"stdev_flux_{flux_label}_posterior_country"].transpose("time", "country")
         np.testing.assert_allclose(
-            np.diagonal(covariance, axis1=1, axis2=2),
-            stdev**2,
+            np.diagonal(covariance.values, axis1=1, axis2=2),
+            stdev.values**2,
             rtol=1e-6,
         )
-        assert np.isfinite(covariance).all()
+        assert np.isfinite(covariance.values).all()
 
-    sector_cross_covariance = flux_outputs["covariance_flux_sectors_posterior_country"].values
+    sector_cross_covariance = flux_outputs["covariance_flux_sectors_posterior_country"].transpose(
+        "time", "country", "sector", "sector_2"
+    )
     for sector_index, sector_name in enumerate(("ff", "ocean")):
         np.testing.assert_allclose(
-            sector_cross_covariance[:, :, sector_index, sector_index],
-            flux_outputs[f"stdev_flux_{sector_name}_posterior_country"].values ** 2,
+            sector_cross_covariance.values[:, :, sector_index, sector_index],
+            flux_outputs[f"stdev_flux_{sector_name}_posterior_country"].transpose("time", "country").values
+            ** 2,
             rtol=1e-6,
         )
-    assert np.isfinite(sector_cross_covariance).all()
+    assert np.isfinite(sector_cross_covariance.values).all()
     np.testing.assert_allclose(
-        flux_outputs["covariance_flux_sectors_posterior_country"].values[
+        sector_cross_covariance.values[
             0,
             largest_country,
             0,
@@ -249,12 +294,16 @@ def test_latest_paris_flux_output_processes_multisector_sectors(
     flux_outputs.to_netcdf(flux_file)
     with xr.open_dataset(flux_file) as reloaded_flux:
         assert tuple(reloaded_flux.sector.values) == ("ff", "ocean")
+        assert tuple(reloaded_flux.sector_2.values) == ("ff", "ocean")
         assert tuple(reloaded_flux.country.values) == PARIS_LATEST_COUNTRIES
+        assert tuple(reloaded_flux.country_2.values) == PARIS_LATEST_COUNTRIES
+        assert reloaded_flux.country_2.attrs == reloaded_flux.country.attrs
+        assert reloaded_flux.sector_2.attrs == reloaded_flux.sector.attrs
         covariance_dims = {
-            "covariance_flux_total_posterior_country": ("time", "country", "country"),
-            "covariance_flux_ff_posterior_country": ("time", "country", "country"),
-            "covariance_flux_ocean_posterior_country": ("time", "country", "country"),
-            "covariance_flux_sectors_posterior_country": ("time", "country", "sector", "sector"),
+            "covariance_flux_total_posterior_country": ("country", "country_2", "time"),
+            "covariance_flux_ff_posterior_country": ("country", "country_2", "time"),
+            "covariance_flux_ocean_posterior_country": ("country", "country_2", "time"),
+            "covariance_flux_sectors_posterior_country": ("sector_2", "sector", "country", "time"),
         }
         for variable_name, expected_dims in covariance_dims.items():
             expected = flux_outputs[variable_name]
@@ -264,6 +313,57 @@ def test_latest_paris_flux_output_processes_multisector_sectors(
             assert actual.dtype == np.dtype("float32")
             assert actual.attrs == expected.attrs
             np.testing.assert_allclose(actual.values, expected.values, rtol=1e-6)
+        assert reloaded_flux.time_bnds.attrs == {}
+        assert reloaded_flux.attrs["Conventions"] == "CF-1.8"
+        assert "conventions" not in reloaded_flux.attrs
+        _assert_latest_flux_dimension_order(reloaded_flux)
+    with xr.open_dataset(flux_file, decode_cf=False) as raw_flux:
+        assert raw_flux.attrs["Conventions"] == "CF-1.8"
+        assert "conventions" not in raw_flux.attrs
+        assert raw_flux.time_bnds.attrs == {}
+        for coordinate in ("time", "latitude", "longitude", "percentile"):
+            assert "_FillValue" not in raw_flux[coordinate].attrs
+        assert raw_flux.latitude.dtype == np.dtype("float64")
+        assert raw_flux.longitude.dtype == np.dtype("float64")
+
+
+def test_latest_paris_concentration_has_cf_metadata(
+    multisector_postprocessing_inv_out: Callable[..., InversionOutput],
+    tmp_path: Path,
+) -> None:
+    """Latest concentration output carries the revised CF metadata contract."""
+    inv_out = multisector_postprocessing_inv_out()
+    inv_out.run_metadata["split_by_sectors"] = False
+    for group_name, values in (("prior", [9.0, 11.0]), ("posterior", [10.0, 12.0])):
+        group = getattr(inv_out.trace, group_name)
+        group["y"] = (("chain", "draw", "nmeasure"), np.asarray(values)[None, :, None])
+        group["epsilon"] = (("chain", "draw", "nmeasure"), np.ones((1, 2, 1)))
+    inv_out.inv_inputs["altitude"] = ("nmeasure", [100.0])
+    inv_out.inv_inputs["altitude_model"] = ("nmeasure", [125.0])
+
+    result = paris_concentration_outputs(inv_out, template_version="latest")
+
+    assert result.time_bnds.attrs == {}
+    assert result.altitude.attrs["positive"] == "up"
+    assert result.altitude_model.attrs["positive"] == "up"
+    assert result.attrs["Conventions"] == "CF-1.8"
+    assert "conventions" not in result.attrs
+    assert result.attrs["source"].strip()
+    assert "site" not in result.variables
+    assert result.attrs["comment"].strip()
+    assert result.attrs["references"].strip()
+
+    concentration_file = tmp_path / "latest_concentration.nc"
+    result.to_netcdf(concentration_file)
+    with xr.open_dataset(concentration_file) as reloaded:
+        assert reloaded.attrs["Conventions"] == "CF-1.8"
+        assert "conventions" not in reloaded.attrs
+    with xr.open_dataset(concentration_file, decode_cf=False) as raw:
+        assert raw.attrs["Conventions"] == "CF-1.8"
+        assert "conventions" not in raw.attrs
+        assert raw.time_bnds.attrs == {}
+        assert "_FillValue" not in raw.percentile.attrs
+        assert "site" not in raw.variables
 
 
 def test_multisector_country_covariance_promotes_float32_traces(
@@ -464,26 +564,34 @@ def test_latest_paris_flux_output_renames_overlapping_sector_suffixes_exactly(
         assert f"flux_{sector_name}_posterior_country" in flux_outputs
         assert flux_outputs[variable_name].dtype == np.dtype("float32")
         assert flux_outputs[variable_name].attrs["long_name"] == (f"posterior ch4 fluxes from {sector_name}")
-        assert flux_outputs[variable_name].attrs["cell_methods"] == "time:mean area:mean"
+        assert flux_outputs[variable_name].attrs["cell_methods"] == "time: mean area: mean"
 
     assert "flux_energy_waste_posterior" not in flux_outputs
     assert "flux_total_ff_posterior" not in flux_outputs
     for flux_label in ("total", *expected_names):
-        covariance = flux_outputs[f"covariance_flux_{flux_label}_posterior_country"].values
-        stdev = flux_outputs[f"stdev_flux_{flux_label}_posterior_country"].values
-        assert np.isfinite(covariance).all()
+        covariance = flux_outputs[f"covariance_flux_{flux_label}_posterior_country"].transpose(
+            "time", "country", "country_2"
+        )
+        stdev = flux_outputs[f"stdev_flux_{flux_label}_posterior_country"].transpose("time", "country")
+        assert np.isfinite(covariance.values).all()
         np.testing.assert_allclose(
-            np.diagonal(covariance, axis1=1, axis2=2),
-            stdev**2,
+            np.diagonal(covariance.values, axis1=1, axis2=2),
+            stdev.values**2,
             rtol=1e-6,
         )
     assert np.isfinite(flux_outputs["covariance_flux_sectors_posterior_country"].values).all()
     total_variance = np.diagonal(
-        flux_outputs["covariance_flux_total_posterior_country"].values,
+        flux_outputs["covariance_flux_total_posterior_country"]
+        .transpose("time", "country", "country_2")
+        .values,
         axis1=1,
         axis2=2,
     )
-    sector_variance = flux_outputs["covariance_flux_sectors_posterior_country"].values.sum(axis=(2, 3))
+    sector_variance = (
+        flux_outputs["covariance_flux_sectors_posterior_country"]
+        .transpose("time", "country", "sector", "sector_2")
+        .values.sum(axis=(2, 3))
+    )
     np.testing.assert_allclose(total_variance, sector_variance, rtol=1e-6)
 
 
