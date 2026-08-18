@@ -15,9 +15,9 @@ current-run flux without importing private preparation functions.
 Native covariance actions live in :mod:`openghg_inversions.native_covariance`
 and :mod:`openghg_inversions.source_covariance`. The interfaces re-exported
 here choose a compatible restriction/prolongation pair and prepare labelled
-product blocks. They are a low-level input to later coherent reduction and do
-not themselves construct the centred reduced likelihood, unresolved
-covariance, or a complete coherent-reduction artifact.
+product blocks. They are low-level inputs to
+:mod:`openghg_inversions.coherent_reduction` and do not themselves construct
+the centred reduced likelihood or unresolved covariance.
 """
 
 from ._functions import (

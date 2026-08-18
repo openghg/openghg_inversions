@@ -13,3 +13,4 @@ Using OpenGHG Inversions
    customising_rhime
    concrete_rhime_model
    native_covariance
+   coherent_reduction

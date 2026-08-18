@@ -6,8 +6,8 @@ observation product blocks for reducing a gridded scaling state. It keeps basis
 geometry, native covariance, and retained-state semantics separate, and never
 constructs a dense native-grid covariance matrix. This is the low-level OPE-17
 boundary: it is not connected to RHIME input preparation or likelihoods, and
-its product blocks are not the complete coherent-reduction artifact planned by
-OPE-18.
+its product blocks are inputs to the separate :doc:`coherent_reduction`
+operation rather than a complete coherent-reduction result by themselves.
 
 Component overview
 ------------------
@@ -174,13 +174,12 @@ and the centred conditional observation model
    R + H B_\perp H^\mathsf{T}
    \right).
 
-OPE-18 owns that solve-based transformation, unresolved covariance, and the
-single coherent artifact that binds prior, forward, residual, reconstruction,
-and state-treatment information. The OPE-17 product blocks are inputs to that
-work; they must not be described or persisted as though they were already the
-complete artifact. Arbitrary reporting-function products :math:`Q`,
-low-rank-plus-diagonal numerical views, and likelihood integration are also
-outside this API.
+The :doc:`coherent_reduction` operation owns the first exact solve-based
+transformation, centred forward model, and unresolved observation covariance.
+The OPE-17 product blocks are inputs to that work; they must not be described or
+persisted as though they were already the complete result. Arbitrary
+reporting-function products :math:`Q`, low-rank-plus-diagonal numerical views,
+and likelihood integration are also outside this API.
 
 Units and persistence boundary
 ------------------------------
