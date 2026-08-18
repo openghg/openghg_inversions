@@ -12,7 +12,7 @@ import xarray as xr
 
 from examples.rhime_cookiecutter.my_inversion import likelihoods
 from examples.rhime_cookiecutter.my_inversion import runner as consumer_runner
-import openghg_inversions.rhime.runner as rhime_runner
+import openghg_inversions.rhime.standard as rhime_runner
 
 
 def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PLR0915

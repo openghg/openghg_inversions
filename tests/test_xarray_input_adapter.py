@@ -11,6 +11,7 @@ import pandas as pd
 import pytest
 import xarray as xr
 
+import openghg_inversions.rhime.multisector as rhime_multisector
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.inversion_data import prepare_rhime_inputs_from_xarray
 from openghg_inversions.models.rhime import RhimeModelSpec, SectorSpec
@@ -931,10 +932,7 @@ def test_unequal_source_regions_round_trip_and_execute(
 
     monkeypatch.setattr("openghg_inversions.rhime.runner.retrieve_or_reload_rhime_data", fail_prepare)
     monkeypatch.setattr(RhimeSampler, "sample", lambda self, model: az.InferenceData())
-    monkeypatch.setattr(
-        "openghg_inversions.rhime.runner.make_multisector_output_bundle",
-        skip_diagnostics,
-    )
+    monkeypatch.setattr(rhime_multisector, "make_multisector_output_bundle", skip_diagnostics)
 
     result = run_rhime_from_prepared_inputs(prepared_inputs=loaded, run_spec=run_spec)
 

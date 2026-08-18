@@ -9,12 +9,15 @@ from typing import Any, cast
 
 import arviz as az
 import numpy as np
+import pymc as pm
 import xarray as xr
 
 from openghg_inversions._timing import timed
+from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.inversion_data import RhimePreparedInputs
 from openghg_inversions.models import RhimeModelSpec
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
+from openghg_inversions.rhime.builders import RhimeModelBuildResult
 from openghg_inversions.rhime.sampling import RhimeSampler
 from openghg_inversions.rhime.specs import OutputFilenameConvention, RhimeOutputSpec, RhimeRunSpec
 from openghg_inversions.serialization import reset_serialisation_multiindexes
@@ -28,6 +31,32 @@ class RhimeOutputBundle:
     inv_out: InversionOutput | None = None
     outputs: dict[str, Any] = field(default_factory=dict)
     output_metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class RhimeResult:
+    """Complete result of a standard or multisector RHIME recipe."""
+
+    run_spec: RhimeRunSpec
+    model_spec: RhimeModelSpec
+    output_spec: RhimeOutputSpec
+    inv_inputs: xr.Dataset
+    idata: az.InferenceData
+    output_metadata: dict[str, Any] = field(default_factory=dict)
+    outputs: dict[str, Any] = field(default_factory=dict)
+    basis_functions: BasisFunctions | None = None
+    model: pm.Model | None = None
+    inv_out: InversionOutput | None = None
+    sampler: RhimeSampler = field(default_factory=RhimeSampler)
+    model_build_result: RhimeModelBuildResult | None = None
+
+
+def apply_output_bundle(result: RhimeResult, bundle: RhimeOutputBundle) -> None:
+    """Attach newly constructed output products to a recipe result."""
+    if bundle.inv_out is not None:
+        result.inv_out = bundle.inv_out
+    result.outputs.update(bundle.outputs)
+    result.output_metadata.update(bundle.output_metadata)
 
 
 def _structured_metadata(value: Any) -> Any:

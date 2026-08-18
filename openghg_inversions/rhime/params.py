@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
+from openghg_inversions._timing import log_timing, timer_seconds, timer_start
 from openghg_inversions.config import config
 from openghg_inversions.model_error import normalise_min_error_options
 from openghg_inversions.models import (
@@ -108,6 +109,18 @@ RHIME_PREPARATION_OPTION_NAMES = frozenset(
         "flux_non_finite_check",
     }
 )
+
+
+def resolve_rhime_options(
+    *,
+    params: Mapping[str, Any],
+    multisector: bool,
+) -> RhimeRunnerSetup:
+    """Normalize raw options into preparation, model, sampling, and output settings."""
+    timing_start = timer_start()
+    setup = make_rhime_runner_setup(params=params, multisector=multisector)
+    log_timing("rhime.runner_setup", timer_seconds(timing_start), multisector=multisector)
+    return setup
 
 # Resolve stage defaults once, before the scientific recipe starts.  Keeping
 # this mapping beside the explicit routing schema makes ``data_args`` a

@@ -13,7 +13,8 @@ import pymc as pm
 import pytest
 import xarray as xr
 
-import openghg_inversions.rhime.runner as rhime_runner
+import openghg_inversions.rhime.multisector as rhime_multisector
+import openghg_inversions.rhime.standard as rhime_standard
 from openghg_inversions.basis.basis_functions import (
     BASIS_ARTIFACT_PATH_ATTR,
     BASIS_ARTIFACT_SOURCE_ATTR,
@@ -562,10 +563,10 @@ def test_real_prepared_inputs_save_load_and_run_without_repreparation(
         observed["output_prepared"] = kwargs["prepared"]
         return RhimeOutputBundle(outputs={"loaded": True})
 
-    monkeypatch.setattr(rhime_runner, "retrieve_or_reload_rhime_data", fail_preparation)
-    monkeypatch.setattr(rhime_runner, "build_rhime_model_from_spec", fake_builder)
+    monkeypatch.setattr(rhime_standard, "retrieve_or_reload_rhime_data", fail_preparation)
+    monkeypatch.setattr(rhime_standard, "build_rhime_model_from_spec", fake_builder)
     monkeypatch.setattr(RhimeSampler, "sample", fake_sample)
-    monkeypatch.setattr(rhime_runner, "make_standard_output_bundle", fake_outputs)
+    monkeypatch.setattr(rhime_standard, "make_standard_output_bundle", fake_outputs)
 
     result = run_rhime_from_prepared_inputs(
         prepared_inputs=loaded,
@@ -914,10 +915,10 @@ def test_loaded_prepared_inputs_run_through_existing_seam(
         observed["output_idata"] = kwargs["idata"]
         return RhimeOutputBundle(outputs={"loaded": True})
 
-    monkeypatch.setattr(rhime_runner, "retrieve_or_reload_rhime_data", fail_preparation)
-    monkeypatch.setattr(rhime_runner, "build_rhime_model_from_spec", fake_builder)
+    monkeypatch.setattr(rhime_standard, "retrieve_or_reload_rhime_data", fail_preparation)
+    monkeypatch.setattr(rhime_standard, "build_rhime_model_from_spec", fake_builder)
     monkeypatch.setattr(RhimeSampler, "sample", fake_sample)
-    monkeypatch.setattr(rhime_runner, "make_standard_output_bundle", fake_outputs)
+    monkeypatch.setattr(rhime_standard, "make_standard_output_bundle", fake_outputs)
 
     result = run_rhime_from_prepared_inputs(
         prepared_inputs=loaded,
@@ -1022,9 +1023,9 @@ def test_multisource_order_survives_load_run_and_reconstruction(
         )
         return RhimeOutputBundle(outputs={"postprocessed": True})
 
-    monkeypatch.setattr(rhime_runner, "build_rhime_multisector_model_from_spec", fake_builder)
+    monkeypatch.setattr(rhime_multisector, "build_rhime_multisector_model_from_spec", fake_builder)
     monkeypatch.setattr(RhimeSampler, "sample", fake_sample)
-    monkeypatch.setattr(rhime_runner, "make_multisector_output_bundle", fake_outputs)
+    monkeypatch.setattr(rhime_multisector, "make_multisector_output_bundle", fake_outputs)
 
     result = run_rhime_from_prepared_inputs(
         prepared_inputs=loaded,
