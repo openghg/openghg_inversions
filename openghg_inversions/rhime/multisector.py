@@ -191,12 +191,50 @@ def run_rhime_multisector(
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
     **kwargs: Any,
 ) -> RhimeResult:
-    """Run the source-resolved multisector RHIME scientific recipe.
+    """Run a shared-basis multi-sector RHIME inversion.
 
     The visible process is resolve → retrieve/reload → filter → basis →
     sensitivities → assemble → materialize → build → sample → result/output.
     This module keeps source layout validation and sector-aware outputs beside
     that process instead of hiding them behind standard/multisector branching.
+
+    Args:
+        config_file: Optional INI configuration file. Values in ``kwargs``
+            override values read from this file.
+        merged_data: Optional externally supplied source-resolved merged
+            scientific data. Passing it bypasses OpenGHG acquisition and
+            merged-cache I/O, then resumes at filtering after validation.
+        likelihood_builder: Optional Python-only callable invoked with a
+            ``RhimeLikelihoodContext`` in the active PyMC model and returning
+            ``RhimeLikelihoodResult``. The result declares semantic variable
+            roles, supported output formats, and JSON-compatible metadata;
+            roles drive predictive selection and output compatibility is
+            validated before sampling. The callable is never read from
+            configuration or stored in run/model specifications.
+        **kwargs: RHIME run parameters using snake-case names. Multi-sector
+            runs require at least two ``flux_sources`` and may include a
+            complete ``sector_priors`` mapping keyed by sector name. When model
+            sector labels differ from OpenGHG source values, pass
+            ``sector_sources`` as a one-to-one mapping from sector name to one
+            unique value in ``flux_sources``. Legacy ``emissions_name`` is
+            accepted only as a compatibility alias when ``flux_sources`` is
+            absent.
+
+    Returns:
+        Modern RHIME result containing canonical inputs, InferenceData, specs,
+        output metadata, and sector diagnostics.
+
+    Raises:
+        TypeError: If a likelihood builder is not callable or returns the
+            wrong result type.
+        ValueError: If required parameters are missing, unsupported parameters
+            are supplied, fewer than two flux sources are provided, or
+            likelihood roles, metadata, or requested-output compatibility are
+            invalid.
+
+    Notes:
+        A non-callable likelihood builder is rejected before configuration is
+        parsed or data is acquired, prepared, or materialized.
     """
     validate_likelihood_builder(likelihood_builder)
     params = (
@@ -210,7 +248,7 @@ def run_rhime_multisector(
     merged = retrieve_or_reload_rhime_data(
         setup.data_args,
         multisector=True,
-        **({} if merged_data is None else {"merged_data": merged_data}),
+        merged_data=merged_data,
     )
     filtered = filter_rhime_observations(merged, setup.data_args)
     basis_functions = build_rhime_basis(filtered, setup.data_args)

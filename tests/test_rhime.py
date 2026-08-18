@@ -2611,6 +2611,17 @@ def test_ordinary_runners_expose_keyword_only_likelihood_builder(runner: Callabl
 
 
 @pytest.mark.parametrize("runner", [run_rhime, run_rhime_multisector])
+def test_ordinary_runner_docstrings_explain_public_handoffs(runner: Callable[..., Any]) -> None:
+    """Public help retains details hidden behind the keyword option surface."""
+    docstring = inspect.getdoc(runner)
+    assert docstring is not None
+    for documented_input in ("config_file", "merged_data", "likelihood_builder", "**kwargs"):
+        assert documented_input in docstring
+    assert "Returns:" in docstring
+    assert "Raises:" in docstring
+
+
+@pytest.mark.parametrize("runner", [run_rhime, run_rhime_multisector])
 def test_ordinary_runners_reject_noncallable_likelihood_before_config_and_preparation(
     monkeypatch: pytest.MonkeyPatch,
     runner: Callable[..., RhimeResult],
@@ -5556,9 +5567,15 @@ def test_run_rhime_leaves_scalar_averaging_period_for_shared_preparation(
     """Ensure scalar averaging periods reach shared preparation unchanged."""
     captured_averaging_period: object = None
 
-    def fake_retrieve(data_args: dict[str, object], *, multisector: bool) -> None:
+    def fake_retrieve(
+        data_args: dict[str, object],
+        *,
+        multisector: bool,
+        merged_data: RhimeMergedData | None = None,
+    ) -> None:
         """Capture acquisition options before any data access."""
         nonlocal captured_averaging_period
+        assert merged_data is None
         captured_averaging_period = data_args["averaging_period"]
         raise RuntimeError("stop after data argument capture")
 
@@ -8093,7 +8110,7 @@ output_format = "inv_out"
     monkeypatch.setattr(
         rhime_standard,
         "retrieve_or_reload_rhime_data",
-        lambda data_args, *, multisector: merged,
+        lambda data_args, *, multisector, merged_data=None: merged,
     )
     monkeypatch.setattr(rhime_standard, "filter_rhime_observations", lambda value, data_args: filtered)
     monkeypatch.setattr(rhime_standard, "build_rhime_basis", lambda value, data_args: basis)
