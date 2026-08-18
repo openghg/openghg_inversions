@@ -525,6 +525,14 @@ def bucket_basis_from_weights(
     delegates to the existing land/sea-aware weighted algorithm for
     compatibility.
 
+    ``weights`` may cover only part of the full domain grid (e.g. when
+    restricted to an inner region via a mask, as with
+    ``fix_basis_outer_regions``). The land/sea class map is therefore loaded
+    with its coordinates and aligned to ``weights`` here, before the
+    coordinate-blind bucket-splitting algorithm runs on raw arrays; without
+    this alignment, a cropped/offset ``weights`` grid would be paired with
+    land/sea values read from the wrong part of the domain.
+
     Args:
         weights: Two-dimensional basis weight field.
         start_date: Start date of the inversion period.
@@ -538,12 +546,19 @@ def bucket_basis_from_weights(
     """
     weights = _sanitize_generated_basis_weights(weights, algorithm="weighted bucket", require_nonzero=True)
     weights = _normalise_weights_by_nonzero_max(weights)
+    country_classes = load_country_region_classes(domain, country_directory)
+    country_classes = _spatial_field_on_weights_grid(
+        weights,
+        country_classes,
+        candidate_name="country",
+    )
     func = partial(
         weighted_algorithm,
         nregion=nbasis,
         bucket=1,
         domain=domain,
         country_directory=country_directory,
+        landsea_indices=country_classes.to_numpy(),
     )
     bucket_basis = xr.apply_ufunc(func, weights)
     return _finalise_generated_basis(bucket_basis, start_date=start_date, domain=domain)

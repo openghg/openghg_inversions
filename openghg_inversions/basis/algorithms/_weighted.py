@@ -19,6 +19,7 @@ from pathlib import Path
 import numpy as np
 import xarray as xr
 
+
 logger = logging.getLogger(__name__)
 
 
@@ -36,27 +37,19 @@ def load_landsea_indices(domain: str, country_directory: str | None = None) -> n
     Returns:
         np.ndarray: Array containing 0 (where there is sea) and 1 (where there is land).
     """
-    default_dir = Path(__file__).parent if country_directory is None else Path(country_directory)
-    
-    # Try standard naming convention first
-    landsea_path = default_dir / f"country-land-sea_{domain}.nc"
-    
-    # If standard name not found and domain is EUROPE, try the special UKMO filename
-    if not landsea_path.exists() and domain == "EUROPE":
+    default_dir = Path(__file__).parent
+    if country_directory is not None:
+        landsea_path = Path(country_directory) / f"country-land-sea_{domain}.nc"
+    elif domain == "EUROPE":
         landsea_path = default_dir / "country-EUROPE-UKMO-landsea-2023.nc"
-    
-    # If still not found, warn and try EUROPE as fallback
-    if not landsea_path.exists():
-        logger.warning(
-            f"No land-sea file found for domain {domain}. Defaulting to EUROPE."
-        )
-        landsea_path = default_dir / "country-land-sea_EUROPE.nc"
+    else:
+        landsea_path = default_dir / f"country-land-sea_{domain}.nc"
         if not landsea_path.exists():
+            logger.warning(
+                f"No land-sea file found for domain {domain}. Defaulting to EUROPE (country-EUROPE-UKMO-landsea-2023.nc)"
+            )
             landsea_path = default_dir / "country-EUROPE-UKMO-landsea-2023.nc"
-    
-    landsea_array = xr.open_dataset(landsea_path)["country"].values
-    
-    return landsea_array
+    return xr.open_dataset(landsea_path)["country"].values
 
 
 def bucket_value_split(
@@ -207,7 +200,13 @@ class AxisAlignedWeightedSplitStrategy:
         return best
 
 
-def get_nregions(bucket: float, grid: np.ndarray, domain: str, country_directory: str | None = None) -> int:
+def get_nregions(
+    bucket: float,
+    grid: np.ndarray,
+    domain: str,
+    country_directory: str | None = None,
+    landsea_indices: np.ndarray | None = None,
+) -> int:
     """Optimize bucket value to number of desired regions.
 
     Args:
@@ -221,15 +220,26 @@ def get_nregions(bucket: float, grid: np.ndarray, domain: str, country_directory
             Domain across which to calculate basis functions.
         country_directory:
             Directory containing land-sea files. If None, will use default files.
+        landsea_indices:
+            Optional pre-loaded land-sea array already aligned to ``grid``'s
+            coordinates. When omitted, the full-domain file for ``domain`` is
+            loaded and assumed to align 1-to-1 with ``grid`` from its origin;
+            this only holds when ``grid`` covers the full domain.
 
     Return :
         number of basis functions for bucket value
     """
-    return np.max(bucket_split_landsea_basis(grid, bucket, domain, country_directory, lat_bounds, lon_bounds))
+    return np.max(bucket_split_landsea_basis(grid, bucket, domain, country_directory, landsea_indices))
 
 
 def optimize_nregions(
-    bucket: float, grid: np.ndarray, nregion: int, tol: int, domain: str, country_directory: str | None = None
+    bucket: float,
+    grid: np.ndarray,
+    nregion: int,
+    tol: int,
+    domain: str,
+    country_directory: str | None = None,
+    landsea_indices: np.ndarray | None = None,
 ) -> float:
     """Optimize bucket value to obtain nregion basis functions
     within +/- tol.
@@ -250,6 +260,9 @@ def optimize_nregions(
             Domain across which to calculate basis functions.
         country_directory:
             Directory containing land-sea files. If None, will use default files.
+        landsea_indices:
+            Optional pre-loaded land-sea array already aligned to ``grid``'s
+            coordinates. See :func:`get_nregions`.
 
     Return :
         Optimized bucket value
@@ -261,7 +274,7 @@ def optimize_nregions(
     for _ in range(10):
         # try 1000 iterations
         for j in range(1000):
-            current_nregion = get_nregions(current_bucket, grid, domain, country_directory, lat_bounds, lon_bounds)
+            current_nregion = get_nregions(current_bucket, grid, domain, country_directory, landsea_indices)
 
             if current_nregion <= nregion + current_tol and current_nregion >= nregion - current_tol:
                 print(
@@ -283,7 +296,11 @@ def optimize_nregions(
 
 
 def bucket_split_landsea_basis(
-    grid: np.ndarray, bucket: float, domain: str, country_directory: str | None = None
+    grid: np.ndarray,
+    bucket: float,
+    domain: str,
+    country_directory: str | None = None,
+    landsea_indices: np.ndarray | None = None,
 ) -> np.ndarray:
     """Same as bucket_split_basis but includes
     land-sea split. i.e. basis functions cannot overlap sea and land.
@@ -299,35 +316,28 @@ def bucket_split_landsea_basis(
             Domain across which to calculate basis functions.
         country_directory:
             Directory containing land-sea files. If None, will use default files.
+        landsea_indices:
+            Optional pre-loaded land-sea array already aligned to ``grid``'s
+            coordinates and the same shape as ``grid``. When omitted, the
+            full-domain file for ``domain`` is loaded and indexed from its
+            origin (0, 0); this is only correct when ``grid`` covers the full
+            domain. Callers that pass a ``grid`` cropped or offset relative to
+            the full domain (e.g. an inner region selected via a mask) must
+            supply an already-aligned ``landsea_indices`` array, otherwise the
+            land/sea split will be read from the wrong part of the domain.
 
     Returns:
         2D array with basis function values
 
     """
-    landsea_indices = load_landsea_indices(domain, country_directory=country_directory)
-    
-    # If coordinate bounds provided, crop landsea_indices to match inner region
-    if lat_bounds is not None and lon_bounds is not None:
-        # Load full domain as xarray to use coordinate-based indexing
-        # Use same path resolution logic as load_landsea_indices
-        default_dir = Path(__file__).parent if country_directory is None else Path(country_directory)
-        landsea_path = default_dir / f"country-land-sea_{domain}.nc"
-        
-        if not landsea_path.exists() and domain == "EUROPE":
-            landsea_path = default_dir / "country-EUROPE-UKMO-landsea-2023.nc"
-        
-        landsea_full_xr = xr.open_dataset(landsea_path)["country"]
-        landsea_crop = landsea_full_xr.sel(
-            lat=slice(lat_bounds[0], lat_bounds[1]),
-            lon=slice(lon_bounds[0], lon_bounds[1])
+    if landsea_indices is None:
+        landsea_indices = load_landsea_indices(domain, country_directory=country_directory)
+    if landsea_indices.shape != grid.shape:
+        raise ValueError(
+            f"landsea_indices shape {landsea_indices.shape} does not match grid shape {grid.shape}; "
+            "the land-sea array must be aligned/cropped to the same coordinates as `grid` before calling "
+            "bucket_split_landsea_basis."
         )
-        landsea_indices = landsea_crop.values
-    
-    # Handle any remaining shape mismatch
-    if grid.shape != landsea_indices.shape:
-        if grid.shape == landsea_indices.shape[::-1]:
-            landsea_indices = landsea_indices.T
-    
     myregions = bucket_value_split(grid, bucket)
 
     mybasis_function = np.zeros(shape=grid.shape)
@@ -336,14 +346,9 @@ def bucket_split_landsea_basis(
         ymin, ymax = myregions[i][0], myregions[i][1]
         xmin, xmax = myregions[i][2], myregions[i][3]
 
-        landsea_slice = landsea_indices[ymin:ymax, xmin:xmax]
-        inds_y0, inds_x0 = np.where(landsea_slice == 0)
-        inds_y1, inds_x1 = np.where(landsea_slice == 1)
-        
-        # Debug on first region
-        if i == 0:
-            pass
-        
+        inds_y0, inds_x0 = np.where(landsea_indices[ymin:ymax, xmin:xmax] == 0)
+        inds_y1, inds_x1 = np.where(landsea_indices[ymin:ymax, xmin:xmax] == 1)
+
         count = np.max(mybasis_function)
 
         if len(inds_y0) != 0:
@@ -355,7 +360,7 @@ def bucket_split_landsea_basis(
             count += 1
             for j in range(len(inds_y1)):
                 mybasis_function[inds_y1[j] + ymin, inds_x1[j] + xmin] = count
-    
+
     return mybasis_function
 
 
@@ -366,6 +371,7 @@ def nregion_landsea_basis(
     tol: int = 1,
     domain: str = "EUROPE",
     country_directory: str | None = None,
+    landsea_indices: np.ndarray | None = None,
 ) -> np.ndarray:
     """Obtain basis function with nregions (for land-sea split).
 
@@ -388,11 +394,15 @@ def nregion_landsea_basis(
             Domain across which to calculate basis functions.
         country_directory:
             Directory containing land-sea files. If None, will use default files.
+        landsea_indices:
+            Optional pre-loaded land-sea array already aligned to ``grid``'s
+            coordinates. Required when ``grid`` does not cover the full
+            domain from its origin (e.g. when only an inner region is being
+            split); see :func:`bucket_split_landsea_basis`.
 
     Returns:
         basis_function: 2D basis function array
     """
-    bucket_opt = optimize_nregions(bucket, grid, nregion, tol, domain, country_directory, lat_bounds, lon_bounds)
-    basis_function = bucket_split_landsea_basis(grid, bucket_opt, domain, country_directory, lat_bounds, lon_bounds)
-    
+    bucket_opt = optimize_nregions(bucket, grid, nregion, tol, domain, country_directory, landsea_indices)
+    basis_function = bucket_split_landsea_basis(grid, bucket_opt, domain, country_directory, landsea_indices)
     return basis_function
