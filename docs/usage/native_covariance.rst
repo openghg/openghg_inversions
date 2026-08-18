@@ -28,8 +28,10 @@ The classes have the following distinct roles.
        native source dimension. In both cases, the transpose does not define
        the retained restriction :math:`\Pi`.
    * - ``InvertibleNativeCovarianceAction``
-     - Structural interface for applying :math:`B` and solving systems in
-       :math:`B` without constructing a dense native covariance matrix.
+     - Structural interface for a labelled, self-adjoint positive-definite
+       :math:`B`, including its compatible inverse solve, without constructing
+       a dense native covariance matrix. The kernel trusts this semantic
+       contract rather than globally certifying a matrix-free action.
    * - ``SeparableExponentialCovariance``
      - Concrete latitude/longitude covariance action. Optional class labels
        set cross-class covariance to zero; this alone does not assert
@@ -41,16 +43,18 @@ The classes have the following distinct roles.
        and solves use the common action interface; only multisource basis
        expansion needs a separate source-aware path.
    * - ``RetainedProjectionStrategy``
-     - Policy interface that chooses a compatible restriction :math:`\Pi` and
-       covariance-natural prolongation :math:`U_*`.
+     - Pi-first policy interface that chooses the authoritative labelled
+       restriction :math:`\Pi`. The kernel derives its covariance-natural
+       prolongation :math:`U_*`.
    * - ``PreserveBucketProlongation``
-     - Current structural implementation of the strategy interface. It fixes
-       :math:`U_* = U_{\mathrm{bucket}}` and derives the compatible
-       :math:`\Pi_U`.
+     - Current strategy implementation. It uses
+       :math:`U_{\mathrm{bucket}}` to derive the compatible authoritative
+       restriction :math:`\Pi_U`; the kernel still derives :math:`U_*` from
+       that returned restriction.
    * - ``RetainedProjection``
      - Frozen value dataclass returned by a strategy. It carries
-       :math:`(\Pi, U_*)` and the strategy identifier; it is not a protocol,
-       and its contained xarray objects remain mutable.
+       :math:`\Pi` and the strategy identifier; it is not a protocol, and its
+       contained xarray object remains mutable.
    * - ``project_native_covariance``
      - Validates and combines :math:`H`, :math:`B`, basis geometry, and a
        projection strategy.
@@ -67,7 +71,7 @@ The data flow is:
                               ├─> RetainedProjectionStrategy
    covariance action ──> B ───┘              │
                                              v
-                              RetainedProjection(Pi, U_*)
+                              RetainedProjection(Pi)
                                              │
    native sensitivity H ─────────────────────┤
    covariance action B ──────────────────────┤
@@ -137,7 +141,9 @@ the established bucket-scaling interpretation by choosing
    U_{\mathrm{bucket}}^\mathsf{T} B^{-1}.
 
 This gives :math:`\Pi_U U_{\mathrm{bucket}} = I` and
-:math:`U_* = U_{\mathrm{bucket}}`. OPE-17 returns :math:`C_\alpha`,
+:math:`U_* = U_{\mathrm{bucket}}`; the latter identity follows from the
+kernel's generic derivation :math:`U_* = B\Pi^\mathsf{T}C_\alpha^{-1}`, not
+from a strategy-supplied lift. OPE-17 returns :math:`C_\alpha`,
 :math:`H U_*`, :math:`H B \Pi^\mathsf{T}`, and either dense
 :math:`H B H^\mathsf{T}` or its diagonal.
 
@@ -243,9 +249,10 @@ setting. Both policies require a supplied-:math:`\Pi`-first OGI strategy.
        covariance-natural lift. Current 14-site production uses the
        absolute-prior-flux-weighted regional mean above.
      - Deliberate difference
-     - The first OPE-17 strategy is compatibility-oriented: it fixes
-       :math:`U_{\mathrm{bucket}}` first and derives :math:`\Pi_U`. The strategy
-       interface leaves room for a future :math:`\Pi`-first policy.
+     - The first OPE-17 strategy is compatibility-oriented: it uses
+       :math:`U_{\mathrm{bucket}}` internally to derive :math:`\Pi_U`. The
+       strategy interface itself is Pi-first, so later policies may supply a
+       physical restriction directly.
    * - Cross-source covariance, arbitrary reporting functionals :math:`Q`,
        :math:`B_\perp` products, coherent likelihood reduction, reconstruction,
        and covariance approximation

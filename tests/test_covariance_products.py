@@ -123,7 +123,6 @@ def test_preserve_bucket_strategy_derives_compatible_restriction() -> None:
     )
 
     assert projection.strategy == "preserve_bucket_prolongation"
-    assert projection.prolongation.dims == ("lat", "lon", "state")
     assert projection.restriction.dims == ("state", "lat", "lon")
     assert projection.restriction.state.values.tolist() == [0, 1]
     np.testing.assert_allclose(
@@ -137,11 +136,10 @@ def test_preserve_bucket_strategy_derives_compatible_restriction() -> None:
     )
 
 
-def test_retained_projection_public_contract_contains_only_pi_u_and_strategy() -> None:
-    """External projection results expose only restriction, prolongation, and strategy."""
+def test_retained_projection_public_contract_contains_only_pi_and_strategy() -> None:
+    """External projection results expose only restriction and strategy."""
     assert tuple(RetainedProjection.__dataclass_fields__) == (
         "restriction",
-        "prolongation",
         "strategy",
     )
 
@@ -384,21 +382,58 @@ def test_diagonal_observation_covariance_rejects_overflow() -> None:
             )
 
 
+@pytest.mark.parametrize("output", ["dense", "diagonal"])
+@pytest.mark.parametrize("invalid_output", ["complex", "nonfinite"])
+def test_covariance_products_reject_invalid_covariance_action_output(
+    monkeypatch: pytest.MonkeyPatch,
+    output: str,
+    invalid_output: str,
+) -> None:
+    """Dense and diagonal paths reject complex or non-finite B RHS before casting."""
+    covariance, basis_operator, h, _ = _problem()
+    original_apply = type(covariance).apply
+
+    def invalid_apply(self, rhs):
+        """Corrupt only observation covariance actions, leaving Pi derivation valid."""
+        rhs_dim = next(dim for dim in rhs.dims if dim not in covariance.native_dims)
+        if not str(rhs_dim).startswith("observation"):
+            return original_apply(self, rhs)
+        if invalid_output == "complex":
+            return rhs.astype(complex) * (1.0 + 1.0j)
+        return xr.full_like(rhs, np.nan)
+
+    monkeypatch.setattr(type(covariance), "apply", invalid_apply)
+
+    with pytest.raises(ValueError, match="finite real|complex|non-finite"):
+        _project(
+            covariance,
+            basis_operator,
+            h,
+            observation_covariance=output,
+        )
+
+
+@pytest.mark.parametrize(
+    "target_values",
+    [[1e20, -1.0, 1.0], [1e-20, -1e-20, 1e-20]],
+    ids=["unrelated-huge-positive", "small-scale-no-unit-floor"],
+)
 def test_diagonal_observation_covariance_uses_per_observation_negative_tolerance(
     monkeypatch: pytest.MonkeyPatch,
+    target_values: list[float],
 ) -> None:
-    """An unrelated huge positive variance cannot make negative one acceptable."""
+    """Negative tolerance is local, scale-invariant, and has no absolute unit floor."""
     covariance, basis_operator, h, _ = _problem()
     original_apply = type(covariance).apply
 
     def mixed_scale_apply(self, rhs):
-        """Return observation variances of approximately 1e20, -1, and 1."""
+        """Return the parameterized observation variances."""
         rhs_dim = next(dim for dim in rhs.dims if dim not in covariance.native_dims)
         if not str(rhs_dim).startswith("observation"):
             return original_apply(self, rhs)
         squared_norm = (rhs * rhs).sum(dim=list(covariance.native_dims))
         target = xr.DataArray(
-            [1e20, -1.0, 1.0],
+            target_values,
             dims=rhs_dim,
             coords={rhs_dim: rhs.coords[rhs_dim]},
         )
@@ -486,7 +521,6 @@ def test_lazy_custom_restriction_is_materialized_in_explicit_rhs_blocks() -> Non
             )
             return RetainedProjection(
                 valid.restriction.chunk({state_dim: 1}),
-                valid.prolongation,
                 "lazy_restriction",
             )
 
@@ -542,7 +576,7 @@ def test_single_chunk_lazy_restriction_is_materialized_once() -> None:
                 coords=valid.restriction.coords,
                 attrs=valid.restriction.attrs,
             )
-            return RetainedProjection(restriction, valid.prolongation, "single_chunk")
+            return RetainedProjection(restriction, "single_chunk")
 
     _project(
         covariance,
@@ -684,34 +718,6 @@ def test_each_dense_matrix_diagnostic_uses_one_eigendecomposition(
     assert "minimum_eigenvalue" in products.native_observation_covariance.attrs
 
 
-def test_projection_strategy_must_return_covariance_natural_prolongation() -> None:
-    """Custom strategies cannot return a Pi/U pair that violates B Pi.T = U C_alpha."""
-    covariance, basis_operator, h, _ = _problem()
-
-    class IncoherentStrategy:
-        """Perturb an otherwise compatible prolongation to violate the invariant."""
-
-        def projection(self, covariance, basis_prolongation, *, native_dims, state_dim):
-            """Return a deliberately incoherent restriction/prolongation pair."""
-            valid = PreserveBucketProlongation().projection(
-                covariance,
-                basis_prolongation,
-                native_dims=native_dims,
-                state_dim=state_dim,
-            )
-            return RetainedProjection(valid.restriction, 2.0 * valid.prolongation, "incoherent")
-
-    for sigma in (covariance.sigma, 1e-8):
-        scaled = SeparableExponentialCovariance(
-            covariance.latitude,
-            covariance.longitude,
-            sigma=sigma,
-            correlation_length=covariance.correlation_length,
-        )
-        with pytest.raises(ValueError, match="incoherent|B Pi"):
-            _project(scaled, basis_operator, h, strategy=IncoherentStrategy())
-
-
 def test_projection_strategy_protocol_accepts_structural_implementations() -> None:
     """A compatible strategy is accepted without inheriting from the public protocol."""
     covariance, basis_operator, h, _ = _problem()
@@ -727,17 +733,16 @@ def test_projection_strategy_protocol_accepts_structural_implementations() -> No
                 native_dims=native_dims,
                 state_dim=state_dim,
             )
-            return RetainedProjection(
-                projection.restriction,
-                projection.prolongation,
-                "delegating_strategy",
-            )
+            return RetainedProjection(projection.restriction, "delegating_strategy")
 
     strategy: RetainedProjectionStrategy = DelegatingStrategy()
 
+    expected = _project(covariance, basis_operator, h)
     products = _project(covariance, basis_operator, h, strategy=strategy)
 
     assert products.strategy == "delegating_strategy"
+    xr.testing.assert_allclose(products.prolongation, expected.prolongation)
+    xr.testing.assert_allclose(products.state_covariance, expected.state_covariance)
 
 
 def test_false_valued_structural_strategy_is_invoked() -> None:
@@ -762,7 +767,7 @@ def test_false_valued_structural_strategy_is_invoked() -> None:
                 native_dims=native_dims,
                 state_dim=state_dim,
             )
-            return RetainedProjection(valid.restriction, valid.prolongation, "false_valued")
+            return RetainedProjection(valid.restriction, "false_valued")
 
     products = _project(covariance, basis_operator, h, strategy=FalseValuedStrategy())
 
@@ -770,17 +775,13 @@ def test_false_valued_structural_strategy_is_invoked() -> None:
     assert products.strategy == "false_valued"
 
 
-@pytest.mark.parametrize("coordinate_role", ["state", "native"])
-def test_custom_projection_rejects_conflicting_semantic_auxiliary_coordinates(
-    coordinate_role: str,
-) -> None:
-    """Pi and U cannot attach contradictory state or native semantic metadata."""
+def test_custom_projection_rejects_conflicting_native_auxiliary_coordinates() -> None:
+    """Pi native semantic metadata must match the canonical native reference."""
     covariance, basis_operator, h, _ = _problem()
-    if coordinate_role == "native":
-        h = h.assign_coords(cell_area=(("lat", "lon"), np.arange(6).reshape(3, 2)))
+    h = h.assign_coords(cell_area=(("lat", "lon"), np.arange(6).reshape(3, 2)))
 
     class ConflictingAuxiliaryStrategy:
-        """Return a valid numerical pair with contradictory semantic coordinates."""
+        """Return valid Pi values with contradictory semantic coordinates."""
 
         def projection(self, covariance, basis_prolongation, *, native_dims, state_dim):
             """Relabel one semantic auxiliary without changing numerical values."""
@@ -790,15 +791,10 @@ def test_custom_projection_rejects_conflicting_semantic_auxiliary_coordinates(
                 native_dims=native_dims,
                 state_dim=state_dim,
             )
-            if coordinate_role == "state":
-                restriction = valid.restriction.assign_coords(group=(state_dim, ["a", "b"]))
-                prolongation = valid.prolongation.assign_coords(group=(state_dim, ["b", "a"]))
-            else:
-                restriction = valid.restriction.assign_coords(
-                    cell_area=(("lat", "lon"), np.arange(6).reshape(3, 2) + 1)
-                )
-                prolongation = valid.prolongation
-            return RetainedProjection(restriction, prolongation, "conflicting_auxiliary")
+            restriction = valid.restriction.assign_coords(
+                cell_area=(("lat", "lon"), np.arange(6).reshape(3, 2) + 1)
+            )
+            return RetainedProjection(restriction, "conflicting_auxiliary")
 
     with pytest.raises(ValueError, match="auxiliary|coordinate|group|cell_area"):
         _project(covariance, basis_operator, h, strategy=ConflictingAuxiliaryStrategy())
@@ -822,54 +818,46 @@ def test_projection_strategy_names_must_be_nonempty() -> None:
                 native_dims=native_dims,
                 state_dim=state_dim,
             )
-            return RetainedProjection(valid.restriction, valid.prolongation, "")
+            return RetainedProjection(valid.restriction, "")
 
     with pytest.raises(ValueError, match="non-empty"):
         _project(covariance, basis_operator, h, strategy=EmptyNameStrategy())
 
 
-@pytest.mark.parametrize("role", ["restriction", "prolongation"])
-def test_projection_strategy_rejects_complex_arrays(role: str) -> None:
-    """Projection products use real covariance algebra and reject complex strategy arrays."""
+def test_projection_strategy_rejects_complex_restriction() -> None:
+    """Projection strategies use real covariance algebra and reject complex Pi."""
     covariance, basis_operator, h, _ = _problem()
 
     class ComplexStrategy:
-        """Add an imaginary component to one otherwise valid projection array."""
+        """Add an imaginary component to an otherwise valid restriction."""
 
         def projection(self, covariance, basis_prolongation, *, native_dims, state_dim):
-            """Return a deliberately complex restriction or prolongation."""
+            """Return a deliberately complex restriction."""
             valid = PreserveBucketProlongation().projection(
                 covariance,
                 basis_prolongation,
                 native_dims=native_dims,
                 state_dim=state_dim,
             )
-            restriction = valid.restriction
-            prolongation = valid.prolongation
-            if role == "restriction":
-                restriction = restriction.astype(complex) + 1j
-            else:
-                prolongation = prolongation.astype(complex) + 1j
-            return RetainedProjection(restriction, prolongation, "complex")
+            restriction = valid.restriction.astype(complex) + 1j
+            return RetainedProjection(restriction, "complex")
 
     with pytest.raises(ValueError, match="finite real"):
         _project(covariance, basis_operator, h, strategy=ComplexStrategy())
 
 
-@pytest.mark.parametrize("role", ["restriction", "prolongation"])
 @pytest.mark.parametrize("coordinate_change", ["mismatch", "reordered", "empty-intersection"])
 def test_custom_projection_requires_exact_native_coordinates(
-    role: str,
     coordinate_change: str,
 ) -> None:
-    """Custom Pi and U native labels must match before product alignment or contraction."""
+    """Custom Pi native labels must match before product alignment or contraction."""
     covariance, basis_operator, h, _ = _problem()
 
     class RelabelledStrategy:
-        """Relabel one projection array to exercise strict native-coordinate checks."""
+        """Relabel Pi to exercise strict native-coordinate checks."""
 
         def projection(self, covariance, basis_prolongation, *, native_dims, state_dim):
-            """Return a coherent numeric pair with deliberately invalid latitude labels."""
+            """Return numeric Pi with deliberately invalid latitude labels."""
             valid = PreserveBucketProlongation().projection(
                 covariance,
                 basis_prolongation,
@@ -883,30 +871,24 @@ def test_custom_projection_requires_exact_native_coordinates(
                 invalid_latitude = latitude + 1000.0
             else:
                 invalid_latitude = latitude + 0.25
-            restriction = valid.restriction
-            prolongation = valid.prolongation
-            if role == "restriction":
-                restriction = restriction.assign_coords(lat=invalid_latitude)
-            else:
-                prolongation = prolongation.assign_coords(lat=invalid_latitude)
-            return RetainedProjection(restriction, prolongation, "relabeled")
+            restriction = valid.restriction.assign_coords(lat=invalid_latitude)
+            return RetainedProjection(restriction, "relabeled")
 
     with pytest.raises(ValueError, match=r"native coordinate 'lat'.*exactly match"):
         _project(covariance, basis_operator, h, strategy=RelabelledStrategy())
 
 
 def test_projection_strategy_must_return_full_rank_restriction() -> None:
-    """A formally compatible zero Pi/U pair is rejected because C_alpha is singular."""
+    """A zero authoritative Pi is rejected because derived C_alpha is singular."""
     covariance, basis_operator, h, _ = _problem()
 
     class SingularStrategy:
-        """Return a zero restriction and prolongation with the expected dimensions."""
+        """Return a zero restriction with the expected dimensions."""
 
         def projection(self, covariance, basis_prolongation, *, native_dims, state_dim):
             """Return a deliberately singular retained projection."""
             return RetainedProjection(
                 xr.zeros_like(basis_prolongation.transpose(state_dim, *native_dims)),
-                xr.zeros_like(basis_prolongation),
                 "singular",
             )
 

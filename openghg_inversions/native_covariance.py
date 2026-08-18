@@ -74,7 +74,14 @@ __all__ = [
 
 
 class NativeCovarianceAction(Protocol):
-    """Structural interface for a labelled native covariance action."""
+    """Structural interface for a labelled self-adjoint PSD covariance action.
+
+    Implementations represent a real, self-adjoint positive-semidefinite
+    operator ``B`` on the labelled native state. They must preserve RHS layout
+    and labels and return finite real values for finite real inputs. Consumers
+    may trust these semantic guarantees without globally materializing or
+    certifying the matrix-free operator.
+    """
 
     @property
     def native_dims(self) -> tuple[str, ...]:
@@ -100,7 +107,12 @@ class NativeCovarianceAction(Protocol):
 
 
 class InvertibleNativeCovarianceAction(NativeCovarianceAction, Protocol):
-    """Native covariance action that can also solve systems in ``B``."""
+    """Positive-definite native covariance action with a compatible inverse.
+
+    In addition to :class:`NativeCovarianceAction` semantics, ``B`` is positive
+    definite and :meth:`solve` implements the inverse compatible with
+    :meth:`apply` on the same labelled native state.
+    """
 
     def solve(self, rhs: xr.DataArray) -> xr.DataArray:
         """Return labelled ``B^-1 rhs`` while preserving the input layout.
