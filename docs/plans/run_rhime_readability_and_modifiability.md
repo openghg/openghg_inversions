@@ -220,7 +220,10 @@ characterized, converge toward:
 
 ```text
 openghg_inversions/rhime/
-  runner.py       public run_rhime functions and visible stage sequence
+  standard.py     standard run_rhime recipe and standard-only choices
+  multisector.py  multisector recipe and source-resolved choices
+  prepared.py     advanced prepared-input entry point
+  runner.py       compatibility re-exports only
   preparation.py RHIME-specific retrieval/filter/basis/input orchestration
   model.py        model options, concrete PyMC graph, and graph contract
   sampling.py     shared PyMC sampling mechanics
@@ -410,6 +413,16 @@ W2a merged in PR
   metadata.
 - Name and test every mutation, filesystem, and eager-computation boundary.
 - Keep lower-level shared data access and basis algorithms reusable.
+
+### W4b — split standard and multisector recipes
+
+- Keep the complete standard execution order in ``rhime/standard.py`` and the
+  complete source-resolved execution order in ``rhime/multisector.py``.
+- Retain meaningful forwarding in both recipes so their scientific process and
+  differences can be read without navigating a generic runner framework.
+- Preserve ``run_rhime_from_prepared_inputs`` as the explicit advanced route
+  that starts after backend-neutral preparation.
+- Keep ``rhime/runner.py`` only as a compatibility import surface.
 
 ### W5 — colocate the concrete model and graph contract
 

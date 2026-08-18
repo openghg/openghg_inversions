@@ -21,6 +21,7 @@ as the scientific transformation from merged observations to labelled inputs.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import replace
 from typing import Any
 
 import xarray as xr
@@ -31,6 +32,7 @@ from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs
 from openghg_inversions.inversion_data import preparation as inversion_preparation
 from openghg_inversions.model_error import normalise_min_error_options
+from openghg_inversions.rhime.specs import RhimeRunSpec
 
 __all__ = [
     "assemble_rhime_inputs",
@@ -38,7 +40,20 @@ __all__ = [
     "build_rhime_sensitivities",
     "filter_rhime_observations",
     "retrieve_or_reload_rhime_data",
+    "with_prepared_rhime_sites",
 ]
+
+
+def with_prepared_rhime_sites(
+    run_spec: RhimeRunSpec,
+    prepared: RhimePreparedInputs,
+) -> RhimeRunSpec:
+    """Align run provenance to the observations retained by preparation."""
+    return replace(
+        run_spec,
+        sites=tuple(prepared.sites),
+        averaging_period=tuple(prepared.averaging_period),
+    )
 
 
 def retrieve_or_reload_rhime_data(

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import inspect
 from dataclasses import replace
 from pathlib import Path
@@ -29,9 +30,12 @@ import openghg_inversions.rhime.materialization as rhime_materialization
 import openghg_inversions.rhime.outputs as rhime_outputs
 import openghg_inversions.rhime.params as rhime_params
 import openghg_inversions.rhime.preparation as rhime_preparation
+import openghg_inversions.rhime.prepared as rhime_prepared
 import openghg_inversions.rhime.runner as rhime_module
 import openghg_inversions.rhime.sampling as rhime_sampling
 import openghg_inversions.rhime.specs as rhime_specs
+import openghg_inversions.rhime.standard as rhime_standard
+import openghg_inversions.rhime.multisector as rhime_multisector
 from openghg_inversions.basis.basis_functions import (
     BASIS_ARTIFACT_PATH_ATTR,
     BASIS_ARTIFACT_SOURCE_ATTR,
@@ -1412,7 +1416,7 @@ def test_prepared_replay_computes_selected_error_only_at_pymc_boundary(
         basis_functions=_fake_basis_functions(),
         site_metadata=_prepared_site_metadata(),
     )
-    original_select = rhime_module.select_aggregation_error_mode
+    original_select = rhime_prepared.select_aggregation_error_mode
     selection_snapshots: list[tuple[str, ...]] = []
 
     def select_without_computing(data: xr.Dataset, mode: str) -> str:
@@ -1429,11 +1433,11 @@ def test_prepared_replay_computes_selected_error_only_at_pymc_boundary(
         assert executions == ["covariance"]
         return build_result
 
-    monkeypatch.setattr(rhime_module, "select_aggregation_error_mode", select_without_computing)
+    monkeypatch.setattr(rhime_prepared, "select_aggregation_error_mode", select_without_computing)
     monkeypatch.setattr(rhime_materialization, "select_aggregation_error_mode", select_without_computing)
-    monkeypatch.setattr(rhime_module, "build_standard_rhime_model", build)
-    monkeypatch.setattr(rhime_module, "sample_rhime_model", lambda *args, **kwargs: _minimal_output_idata())
-    monkeypatch.setattr(rhime_module, "make_standard_rhime_result", lambda **kwargs: expected)
+    monkeypatch.setattr(rhime_prepared, "build_standard_rhime_model", build)
+    monkeypatch.setattr(rhime_prepared, "sample_rhime_model", lambda *args, **kwargs: _minimal_output_idata())
+    monkeypatch.setattr(rhime_prepared, "make_standard_rhime_result", lambda **kwargs: expected)
 
     result = run_rhime_from_prepared_inputs(prepared_inputs=prepared, run_spec=run_spec)
 
@@ -2392,15 +2396,15 @@ def test_run_rhime_from_prepared_inputs_routes_without_preparation(
     monkeypatch.setattr(prep_module, "prepare_rhime_inputs", fail_prepare)
     monkeypatch.setattr(rhime_module, "resolve_rhime_options", fail_setup)
     monkeypatch.setattr(rhime_module, "params_from_config", fail_config)
-    monkeypatch.setattr(rhime_module, "materialize_pymc_inputs", materialize)
+    monkeypatch.setattr(rhime_prepared, "materialize_pymc_inputs", materialize)
     monkeypatch.setattr(
-        rhime_module,
+        rhime_prepared,
         "build_standard_rhime_model" if sector_count == 1 else "build_multisector_rhime_model",
         build,
     )
-    monkeypatch.setattr(rhime_module, "sample_rhime_model", sample)
+    monkeypatch.setattr(rhime_prepared, "sample_rhime_model", sample)
     monkeypatch.setattr(
-        rhime_module,
+        rhime_prepared,
         "make_standard_rhime_result" if sector_count == 1 else "make_multisector_rhime_result",
         make_result,
     )
@@ -2469,6 +2473,7 @@ def test_public_rhime_runners_follow_named_stage_order(
     idata = _minimal_output_idata()
     expected = cast(RhimeResult, SimpleNamespace(route=runner_name))
     calls: list[str] = []
+    recipe_module = rhime_multisector if multisector else rhime_standard
 
     def resolve(*, params: dict[str, Any], multisector: bool) -> Any:
         """Record public option resolution."""
@@ -2560,24 +2565,24 @@ def test_public_rhime_runners_follow_named_stage_order(
         calls.append("result")
         return expected
 
-    monkeypatch.setattr(rhime_module, "resolve_rhime_options", resolve)
-    monkeypatch.setattr(rhime_module, "retrieve_or_reload_rhime_data", retrieve)
-    monkeypatch.setattr(rhime_module, "filter_rhime_observations", filter_observations)
-    monkeypatch.setattr(rhime_module, "build_rhime_basis", build_basis)
-    monkeypatch.setattr(rhime_module, "build_rhime_sensitivities", build_sensitivities)
-    monkeypatch.setattr(rhime_module, "assemble_rhime_inputs", assemble)
-    monkeypatch.setattr(rhime_module, "with_prepared_rhime_sites", align)
-    monkeypatch.setattr(rhime_module, "materialize_pymc_inputs", materialize)
-    monkeypatch.setattr(rhime_module, build_stage, build)
-    monkeypatch.setattr(rhime_module, "sample_rhime_model", sample)
-    monkeypatch.setattr(rhime_module, result_stage, result)
+    monkeypatch.setattr(recipe_module, "resolve_rhime_options", resolve)
+    monkeypatch.setattr(recipe_module, "retrieve_or_reload_rhime_data", retrieve)
+    monkeypatch.setattr(recipe_module, "filter_rhime_observations", filter_observations)
+    monkeypatch.setattr(recipe_module, "build_rhime_basis", build_basis)
+    monkeypatch.setattr(recipe_module, "build_rhime_sensitivities", build_sensitivities)
+    monkeypatch.setattr(recipe_module, "assemble_rhime_inputs", assemble)
+    monkeypatch.setattr(recipe_module, "with_prepared_rhime_sites", align)
+    monkeypatch.setattr(recipe_module, "materialize_pymc_inputs", materialize)
+    monkeypatch.setattr(recipe_module, build_stage, build)
+    monkeypatch.setattr(recipe_module, "sample_rhime_model", sample)
+    monkeypatch.setattr(recipe_module, result_stage, result)
 
     runner_kwargs: dict[str, Any] = {"species": "ch4"}
     if external_data:
         runner_kwargs["merged_data"] = external_merged
     if custom_likelihood:
         runner_kwargs["likelihood_builder"] = build_absolute_sigma_gaussian_likelihood
-    actual = getattr(rhime_module, runner_name)(**runner_kwargs)
+    actual = getattr(recipe_module, runner_name)(**runner_kwargs)
 
     assert actual is expected
     assert calls == [
@@ -2603,6 +2608,17 @@ def test_ordinary_runners_expose_keyword_only_likelihood_builder(runner: Callabl
     assert parameters["likelihood_builder"].kind is inspect.Parameter.KEYWORD_ONLY
     assert parameters["merged_data"].kind is inspect.Parameter.KEYWORD_ONLY
     assert "model_builder" not in parameters
+
+
+@pytest.mark.parametrize("runner", [run_rhime, run_rhime_multisector])
+def test_ordinary_runner_docstrings_explain_public_handoffs(runner: Callable[..., Any]) -> None:
+    """Public help retains details hidden behind the keyword option surface."""
+    docstring = inspect.getdoc(runner)
+    assert docstring is not None
+    for documented_input in ("config_file", "merged_data", "likelihood_builder", "**kwargs"):
+        assert documented_input in docstring
+    assert "Returns:" in docstring
+    assert "Raises:" in docstring
 
 
 @pytest.mark.parametrize("runner", [run_rhime, run_rhime_multisector])
@@ -2677,6 +2693,38 @@ def test_rhime_public_package_exports_supported_orchestration_stages() -> None:
     for name in stage_names:
         assert getattr(rhime_public, name) is getattr(rhime_module, name)
         assert name in rhime_public.__all__
+
+
+def test_standard_and_multisector_runners_are_owned_by_readable_recipe_modules() -> None:
+    """Compatibility imports do not retain a hidden scientific workflow."""
+    assert run_rhime.__module__ == "openghg_inversions.rhime.standard"
+    assert run_rhime_multisector.__module__ == "openghg_inversions.rhime.multisector"
+    assert run_rhime_from_prepared_inputs.__module__ == "openghg_inversions.rhime.prepared"
+
+    runner_tree = ast.parse(Path(rhime_module.__file__).read_text(encoding="utf-8"))
+    assert not any(isinstance(node, ast.FunctionDef | ast.ClassDef) for node in runner_tree.body)
+
+
+@pytest.mark.parametrize("recipe", [run_rhime, run_rhime_multisector])
+def test_each_rhime_recipe_keeps_the_scientific_process_visible(recipe: Callable[..., Any]) -> None:
+    """A recipe reader can see every scientific handoff in execution order."""
+    source = inspect.getsource(recipe)
+    multisector = recipe is run_rhime_multisector
+    stages = (
+        "resolve_rhime_options",
+        "retrieve_or_reload_rhime_data",
+        "filter_rhime_observations",
+        "build_rhime_basis",
+        "build_rhime_sensitivities",
+        "assemble_rhime_inputs",
+        "with_prepared_rhime_sites",
+        "materialize_pymc_inputs",
+        "build_multisector_rhime_model" if multisector else "build_standard_rhime_model",
+        "sample_rhime_model",
+        "make_multisector_rhime_result" if multisector else "make_standard_rhime_result",
+    )
+    positions = [source.index(stage) for stage in stages]
+    assert positions == sorted(positions)
 
 
 def test_rhime_public_package_exports_aggregation_error_mode_selector() -> None:
@@ -2782,7 +2830,7 @@ def test_public_stages_compose_as_complete_external_runner(monkeypatch: pytest.M
         lambda **kwargs: site_data_fixture,
     )
     monkeypatch.setattr(prep_module, "_make_inv_inputs", lambda **kwargs: inv_inputs_fixture)
-    monkeypatch.setattr(rhime_module, "build_rhime_model_from_spec", lambda *args, **kwargs: built_model)
+    monkeypatch.setattr(rhime_standard, "build_rhime_model_from_spec", lambda *args, **kwargs: built_model)
     monkeypatch.setattr(RhimeSampler, "sample", lambda self, model: idata)
 
     setup = rhime_public.resolve_rhime_options(
@@ -2891,7 +2939,7 @@ def test_run_rhime_from_prepared_inputs_accepts_complete_model_builder(
         raise AssertionError("complete model builders must not materialize prepared inputs")
 
     monkeypatch.setattr(RhimeSampler, "sample", fake_sample)
-    monkeypatch.setattr(rhime_module, "materialize_pymc_inputs", fail_materialization)
+    monkeypatch.setattr(rhime_prepared, "materialize_pymc_inputs", fail_materialization)
     result = run_rhime_from_prepared_inputs(
         prepared_inputs=prepared,
         run_spec=run_spec,
@@ -3100,12 +3148,12 @@ def test_run_rhime_rejects_unsupported_custom_likelihood_output_before_sampling(
         """Prove compatibility validation precedes sampler execution."""
         raise AssertionError("unsupported likelihood output must fail before sampling")
 
-    monkeypatch.setattr(rhime_module, "resolve_rhime_options", lambda **kwargs: setup)
-    monkeypatch.setattr(rhime_module, "retrieve_or_reload_rhime_data", lambda *args, **kwargs: object())
-    monkeypatch.setattr(rhime_module, "filter_rhime_observations", lambda *args, **kwargs: object())
-    monkeypatch.setattr(rhime_module, "build_rhime_basis", lambda *args, **kwargs: prepared.basis_functions)
-    monkeypatch.setattr(rhime_module, "build_rhime_sensitivities", lambda *args, **kwargs: object())
-    monkeypatch.setattr(rhime_module, "assemble_rhime_inputs", lambda *args, **kwargs: prepared)
+    monkeypatch.setattr(rhime_standard, "resolve_rhime_options", lambda **kwargs: setup)
+    monkeypatch.setattr(rhime_standard, "retrieve_or_reload_rhime_data", lambda *args, **kwargs: object())
+    monkeypatch.setattr(rhime_standard, "filter_rhime_observations", lambda *args, **kwargs: object())
+    monkeypatch.setattr(rhime_standard, "build_rhime_basis", lambda *args, **kwargs: prepared.basis_functions)
+    monkeypatch.setattr(rhime_standard, "build_rhime_sensitivities", lambda *args, **kwargs: object())
+    monkeypatch.setattr(rhime_standard, "assemble_rhime_inputs", lambda *args, **kwargs: prepared)
     monkeypatch.setattr(RhimeSampler, "sample", fail_sample)
 
     with pytest.raises(ValueError) as exc_info:
@@ -3160,8 +3208,8 @@ def test_run_rhime_from_prepared_inputs_rejects_layout_mode_mismatch_before_exec
     def fail_execution(*args: Any, **kwargs: Any) -> None:
         raise AssertionError("layout validation must precede model building and sampling")
 
-    monkeypatch.setattr(rhime_module, "build_rhime_model_from_spec", fail_execution)
-    monkeypatch.setattr(rhime_module, "build_rhime_multisector_model_from_spec", fail_execution)
+    monkeypatch.setattr(rhime_standard, "build_rhime_model_from_spec", fail_execution)
+    monkeypatch.setattr(rhime_multisector, "build_rhime_multisector_model_from_spec", fail_execution)
     monkeypatch.setattr(RhimeSampler, "sample", fail_execution)
 
     with pytest.raises(ValueError, match="split_by_sectors.*must agree"):
@@ -3212,8 +3260,8 @@ def test_run_rhime_from_prepared_inputs_rejects_flag_h_layout_mismatch_before_ex
     def fail_execution(*args: Any, **kwargs: Any) -> None:
         raise AssertionError("H layout validation must precede model building and sampling")
 
-    monkeypatch.setattr(rhime_module, "build_rhime_model_from_spec", fail_execution)
-    monkeypatch.setattr(rhime_module, "build_rhime_multisector_model_from_spec", fail_execution)
+    monkeypatch.setattr(rhime_standard, "build_rhime_model_from_spec", fail_execution)
+    monkeypatch.setattr(rhime_multisector, "build_rhime_multisector_model_from_spec", fail_execution)
     monkeypatch.setattr(RhimeSampler, "sample", fail_execution)
 
     with pytest.raises(ValueError, match="split_by_sectors.*prepared `H` layout"):
@@ -3255,7 +3303,7 @@ def test_run_rhime_from_prepared_inputs_defaults_sampler_and_skips_none_output_w
         assert model is built_model
         return _minimal_output_idata()
 
-    monkeypatch.setattr(rhime_module, "build_rhime_model_from_spec", lambda *args: built_model)
+    monkeypatch.setattr(rhime_standard, "build_rhime_model_from_spec", lambda *args: built_model)
     monkeypatch.setattr(RhimeSampler, "sample", fake_sample)
 
     result = run_rhime_from_prepared_inputs(prepared_inputs=prepared, run_spec=run_spec)
@@ -3320,8 +3368,8 @@ def test_run_rhime_from_prepared_inputs_validates_output_before_execution(
     def fail_execution(*args: Any, **kwargs: Any) -> None:
         raise AssertionError("output validation must precede model building and sampling")
 
-    monkeypatch.setattr(rhime_module, "build_rhime_model_from_spec", fail_execution)
-    monkeypatch.setattr(rhime_module, "build_rhime_multisector_model_from_spec", fail_execution)
+    monkeypatch.setattr(rhime_standard, "build_rhime_model_from_spec", fail_execution)
+    monkeypatch.setattr(rhime_multisector, "build_rhime_multisector_model_from_spec", fail_execution)
     monkeypatch.setattr(RhimeSampler, "sample", fail_execution)
 
     with pytest.raises(ValueError, match=expected_error):
@@ -4573,7 +4621,7 @@ def test_prepared_multisector_runner_accepts_gathered_source_specific_basis_layo
         lambda self, model: _minimal_output_idata(),
     )
     monkeypatch.setattr(
-        rhime_module,
+        rhime_multisector,
         "make_multisector_output_bundle",
         lambda **kwargs: rhime_outputs.RhimeOutputBundle(),
     )
@@ -4649,7 +4697,7 @@ def test_multisector_runner_rejects_shared_basis_h_layout_mismatch() -> None:
         ValueError,
         match="Retained source-specific basis.*basis has 1 regions.*prepared H has 2",
     ):
-        rhime_module._validate_multisector_basis_layout(
+        rhime_multisector._validate_multisector_basis_layout(
             _fake_basis_functions(),
             model_spec,
             inv_inputs,
@@ -5519,13 +5567,19 @@ def test_run_rhime_leaves_scalar_averaging_period_for_shared_preparation(
     """Ensure scalar averaging periods reach shared preparation unchanged."""
     captured_averaging_period: object = None
 
-    def fake_retrieve(data_args: dict[str, object], *, multisector: bool) -> None:
+    def fake_retrieve(
+        data_args: dict[str, object],
+        *,
+        multisector: bool,
+        merged_data: RhimeMergedData | None = None,
+    ) -> None:
         """Capture acquisition options before any data access."""
         nonlocal captured_averaging_period
+        assert merged_data is None
         captured_averaging_period = data_args["averaging_period"]
         raise RuntimeError("stop after data argument capture")
 
-    monkeypatch.setattr(rhime_module, "retrieve_or_reload_rhime_data", fake_retrieve)
+    monkeypatch.setattr(rhime_standard, "retrieve_or_reload_rhime_data", fake_retrieve)
 
     with pytest.raises(RuntimeError, match="stop after data argument capture"):
         run_rhime(
@@ -8054,27 +8108,27 @@ output_format = "inv_out"
         return cast(RhimeResult, SimpleNamespace())
 
     monkeypatch.setattr(
-        rhime_module,
+        rhime_standard,
         "retrieve_or_reload_rhime_data",
-        lambda data_args, *, multisector: merged,
+        lambda data_args, *, multisector, merged_data=None: merged,
     )
-    monkeypatch.setattr(rhime_module, "filter_rhime_observations", lambda value, data_args: filtered)
-    monkeypatch.setattr(rhime_module, "build_rhime_basis", lambda value, data_args: basis)
+    monkeypatch.setattr(rhime_standard, "filter_rhime_observations", lambda value, data_args: filtered)
+    monkeypatch.setattr(rhime_standard, "build_rhime_basis", lambda value, data_args: basis)
     monkeypatch.setattr(
-        rhime_module,
+        rhime_standard,
         "build_rhime_sensitivities",
         lambda value, actual_basis, data_args, *, multisector: site_data,
     )
-    monkeypatch.setattr(rhime_module, "assemble_rhime_inputs", fake_assemble)
+    monkeypatch.setattr(rhime_standard, "assemble_rhime_inputs", fake_assemble)
     monkeypatch.setattr(rhime_params, "normalise_rhime_params", track_normalise)
     monkeypatch.setattr(
-        rhime_module,
+        rhime_standard,
         "materialize_pymc_inputs",
         lambda value, *, aggregation_error_mode: value.inv_inputs,
     )
-    monkeypatch.setattr(rhime_module, "build_standard_rhime_model", fake_build)
-    monkeypatch.setattr(rhime_module, "sample_rhime_model", lambda *args, **kwargs: idata)
-    monkeypatch.setattr(rhime_module, "make_standard_rhime_result", fake_result)
+    monkeypatch.setattr(rhime_standard, "build_standard_rhime_model", fake_build)
+    monkeypatch.setattr(rhime_standard, "sample_rhime_model", lambda *args, **kwargs: idata)
+    monkeypatch.setattr(rhime_standard, "make_standard_rhime_result", fake_result)
 
     main(
         [

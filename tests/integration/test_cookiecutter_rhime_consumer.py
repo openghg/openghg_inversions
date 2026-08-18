@@ -12,7 +12,7 @@ import xarray as xr
 
 from examples.rhime_cookiecutter.my_inversion import likelihoods
 from examples.rhime_cookiecutter.my_inversion import runner as consumer_runner
-import openghg_inversions.rhime.runner as rhime_runner
+import openghg_inversions.rhime.standard as rhime_runner
 
 
 def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PLR0915
@@ -53,9 +53,15 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
         calls.append("resolve")
         return setup
 
-    def retrieve(data_args: dict[str, Any], *, multisector: bool) -> Any:
+    def retrieve(
+        data_args: dict[str, Any],
+        *,
+        multisector: bool,
+        merged_data: Any = None,
+    ) -> Any:
         assert data_args is setup.data_args
         assert multisector is False
+        assert merged_data is None
         calls.append("retrieve")
         return merged
 
