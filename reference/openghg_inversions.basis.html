@@ -459,17 +459,26 @@
 <p>Basis construction, projection, and retained covariance-product interfaces.</p>
 <p>The package provides basis-generation functions, flux-weighted preparation
 wrappers, prior-width projection helpers, and the public OPE-17 retained
-covariance-product API. Basis operators own grid/state geometry: their bucket
-matrix is a prolongation from retained scalings to the native grid, not an
-automatic retained restriction. <code class="docutils literal notranslate"><span class="pre">FluxWeightedBasis</span></code> pairs that geometry with
-flux for sensitivity projection and reconstruction; it does not own native
-covariance transforms.</p>
+covariance-product API.</p>
+<p>Basis operators own grid/state geometry: their bucket matrix is a prolongation
+from retained scalings to the native grid, not an automatic retained
+restriction. <code class="docutils literal notranslate"><span class="pre">FluxWeightedBasis</span></code>, exported here as <code class="docutils literal notranslate"><span class="pre">BasisFunctions</span></code>, pairs
+that geometry with flux for sensitivity projection and reconstruction; it does
+not own native covariance transforms. Project-owned workflows can compose the
+basis algorithms and use <code class="docutils literal notranslate"><span class="pre">basis_functions_from_fp_all_flat_basis</span></code> to attach
+current-run flux without importing private preparation functions.</p>
 <p>Native covariance actions live in <a class="reference internal" href="openghg_inversions.native_covariance.html#module-openghg_inversions.native_covariance" title="openghg_inversions.native_covariance"><code class="xref py py-mod docutils literal notranslate"><span class="pre">openghg_inversions.native_covariance</span></code></a>
 and <a class="reference internal" href="openghg_inversions.source_covariance.html#module-openghg_inversions.source_covariance" title="openghg_inversions.source_covariance"><code class="xref py py-mod docutils literal notranslate"><span class="pre">openghg_inversions.source_covariance</span></code></a>. The interfaces re-exported
 here choose a compatible restriction/prolongation pair and prepare labelled
 product blocks. They are a low-level input to later coherent reduction and do
 not themselves construct the centred reduced likelihood, unresolved
 covariance, or a complete coherent-reduction artifact.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="openghg_inversions.basis.BasisFunctions">
+<span class="sig-prename descclassname"><span class="pre">openghg_inversions.basis.</span></span><span class="sig-name descname"><span class="pre">BasisFunctions</span></span><a class="headerlink" href="#openghg_inversions.basis.BasisFunctions" title="Link to this definition">#</a></dt>
+<dd><p>alias of <a class="reference internal" href="openghg_inversions.basis.basis_functions.html#openghg_inversions.basis.basis_functions.FluxWeightedBasis" title="openghg_inversions.basis.basis_functions.FluxWeightedBasis"><code class="xref py py-class docutils literal notranslate"><span class="pre">FluxWeightedBasis</span></code></a></p>
+</dd></dl>
+
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.basis.NativeCovarianceProducts">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">openghg_inversions.basis.</span></span><span class="sig-name descname"><span class="pre">NativeCovarianceProducts</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">restriction</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">prolongation</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">state_covariance</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">effective_observation_operator</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">observation_state_cross_covariance</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">native_observation_covariance</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">strategy</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">observation_covariance_view</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><span class="pre">Literal</span></a><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'dense'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'diagonal'</span></span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.NativeCovarianceProducts" title="Link to this definition">#</a></dt>
@@ -632,6 +641,45 @@ this mutable DataArray.</p></li>
 </dl>
 </dd></dl>
 
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.basis.basis_functions_from_fp_all_flat_basis">
+<span class="sig-prename descclassname"><span class="pre">openghg_inversions.basis.</span></span><span class="sig-name descname"><span class="pre">basis_functions_from_fp_all_flat_basis</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">fp_all</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">basis_flat</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.14)"><span class="pre">Mapping</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">metadata</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.14)"><span class="pre">Mapping</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><span class="pre">Any</span></a><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="openghg_inversions.basis.basis_functions.html#openghg_inversions.basis.basis_functions.FluxWeightedBasis" title="openghg_inversions.basis.basis_functions.FluxWeightedBasis"><span class="pre">FluxWeightedBasis</span></a></span></span><a class="headerlink" href="#openghg_inversions.basis.basis_functions_from_fp_all_flat_basis" title="Link to this definition">#</a></dt>
+<dd><p>Compatibility adapter that constructs a basis object from flat basis data.</p>
+<p>This is also the public handoff for project-owned flat-basis algorithms in
+copied RHIME runners. A single two-dimensional array defines a shared
+spatial basis. A source-keyed mapping defines source-specific bases and is
+restricted and ordered to match runtime flux sources when <code class="docutils literal notranslate"><span class="pre">fp_all</span></code> is
+sector resolved. In both cases the retained flux is reconstructed from the
+current <code class="docutils literal notranslate"><span class="pre">fp_all</span></code> input rather than from the flat-basis producer.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>fp_all</strong> – Legacy merged-data dictionary containing a <code class="docutils literal notranslate"><span class="pre">&quot;.flux&quot;</span></code> side
+channel and optional <code class="docutils literal notranslate"><span class="pre">&quot;.split_by_sectors&quot;</span></code> flag.</p></li>
+<li><p><strong>basis_flat</strong> – Two-dimensional shared flat basis array, or source-keyed
+two-dimensional flat basis arrays, produced by a compatible basis
+algorithm or legacy loading path.</p></li>
+<li><p><strong>metadata</strong> – Optional namespaced metadata to carry on the basis object.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A retained <code class="docutils literal notranslate"><span class="pre">BasisFunctions</span></code> object with flux reconstructed from
+<code class="docutils literal notranslate"><span class="pre">fp_all</span></code>.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#TypeError" title="(in Python v3.14)"><strong>TypeError</strong></a> – If a runtime flux entry or basis input has an unsupported
+    type.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If runtime flux is missing or inconsistent, a
+    source-specific basis omits a runtime source, or basis labels and
+    dimensions violate the retained-basis contract.</p></li>
+<li><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.AlignmentError.html#xarray.AlignmentError" title="(in xarray v2026.7.0)"><strong>xarray.AlignmentError</strong></a> – If basis and current-run flux grids are not
+    physically compatible.</p></li>
+</ul>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py function">
@@ -1738,6 +1786,7 @@ allocated across the inner classes. Null outer cells remain label
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.BasisFunctions"><code class="docutils literal notranslate"><span class="pre">BasisFunctions</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.NativeCovarianceProducts"><code class="docutils literal notranslate"><span class="pre">NativeCovarianceProducts</span></code></a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.NativeCovarianceProducts.effective_observation_operator"><code class="docutils literal notranslate"><span class="pre">NativeCovarianceProducts.effective_observation_operator</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.NativeCovarianceProducts.native_observation_covariance"><code class="docutils literal notranslate"><span class="pre">NativeCovarianceProducts.native_observation_covariance</span></code></a></li>
@@ -1763,6 +1812,7 @@ allocated across the inner classes. Null outer cells remain label
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.RetainedProjectionStrategy.projection"><code class="docutils literal notranslate"><span class="pre">RetainedProjectionStrategy.projection()</span></code></a></li>
 </ul>
 </li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.basis_functions_from_fp_all_flat_basis"><code class="docutils literal notranslate"><span class="pre">basis_functions_from_fp_all_flat_basis()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.basis_functions_wrapper"><code class="docutils literal notranslate"><span class="pre">basis_functions_wrapper()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.basis_weights_from_fp_all"><code class="docutils literal notranslate"><span class="pre">basis_weights_from_fp_all()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.bucket_basis_from_weights"><code class="docutils literal notranslate"><span class="pre">bucket_basis_from_weights()</span></code></a></li>

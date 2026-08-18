@@ -830,22 +830,37 @@ metadata values.</p>
 <dt class="sig sig-object py" id="openghg_inversions.basis.basis_functions.basis_functions_from_fp_all_flat_basis">
 <span class="sig-prename descclassname"><span class="pre">openghg_inversions.basis.basis_functions.</span></span><span class="sig-name descname"><span class="pre">basis_functions_from_fp_all_flat_basis</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">fp_all</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">basis_flat</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.14)"><span class="pre">Mapping</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">metadata</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.14)"><span class="pre">Mapping</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><span class="pre">Any</span></a><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#openghg_inversions.basis.basis_functions.FluxWeightedBasis" title="openghg_inversions.basis.basis_functions.FluxWeightedBasis"><span class="pre">FluxWeightedBasis</span></a></span></span><a class="headerlink" href="#openghg_inversions.basis.basis_functions.basis_functions_from_fp_all_flat_basis" title="Link to this definition">#</a></dt>
 <dd><p>Compatibility adapter that constructs a basis object from flat basis data.</p>
-<p>Legacy flat basis artifacts remain readable for a transition period, but
-modern preparation and postprocessing should consume the returned
-<code class="docutils literal notranslate"><span class="pre">BasisFunctions</span></code> object rather than the flat representation directly.</p>
+<p>This is also the public handoff for project-owned flat-basis algorithms in
+copied RHIME runners. A single two-dimensional array defines a shared
+spatial basis. A source-keyed mapping defines source-specific bases and is
+restricted and ordered to match runtime flux sources when <code class="docutils literal notranslate"><span class="pre">fp_all</span></code> is
+sector resolved. In both cases the retained flux is reconstructed from the
+current <code class="docutils literal notranslate"><span class="pre">fp_all</span></code> input rather than from the flat-basis producer.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>fp_all</strong> – Legacy merged-data dictionary containing a <code class="docutils literal notranslate"><span class="pre">&quot;.flux&quot;</span></code> side
 channel and optional <code class="docutils literal notranslate"><span class="pre">&quot;.split_by_sectors&quot;</span></code> flag.</p></li>
-<li><p><strong>basis_flat</strong> – Flat basis array, or source-keyed flat basis arrays, from
-the legacy basis-generation/loading path.</p></li>
+<li><p><strong>basis_flat</strong> – Two-dimensional shared flat basis array, or source-keyed
+two-dimensional flat basis arrays, produced by a compatible basis
+algorithm or legacy loading path.</p></li>
 <li><p><strong>metadata</strong> – Optional namespaced metadata to carry on the basis object.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>A retained <code class="docutils literal notranslate"><span class="pre">BasisFunctions</span></code> object with flux reconstructed from
 <code class="docutils literal notranslate"><span class="pre">fp_all</span></code>.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#TypeError" title="(in Python v3.14)"><strong>TypeError</strong></a> – If a runtime flux entry or basis input has an unsupported
+    type.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If runtime flux is missing or inconsistent, a
+    source-specific basis omits a runtime source, or basis labels and
+    dimensions violate the retained-basis contract.</p></li>
+<li><p><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.AlignmentError.html#xarray.AlignmentError" title="(in xarray v2026.7.0)"><strong>xarray.AlignmentError</strong></a> – If basis and current-run flux grids are not
+    physically compatible.</p></li>
+</ul>
 </dd>
 </dl>
 </dd></dl>
