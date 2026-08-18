@@ -17,6 +17,18 @@ likelihood builder outside configuration and serializable specifications. Its
 declared variable roles drive predictive selection, its output capabilities
 are validated before sampling, and only safe callable identity plus
 JSON-compatible metadata are retained as provenance.
+The public stage sequence is resolve, retrieve or reload, filter and align
+sites, build the basis, build sensitivities, assemble labelled inputs, align
+run metadata, materialize model inputs, build, sample, and construct the
+result. Canonical xarray and Dask inputs remain borrowed until the named
+materialization boundary; acquisition, sampling, and result stages may perform
+documented I/O.
+
+``run_rhime`` and ``run_rhime_multisector`` accept an optional Python-only
+likelihood builder outside configuration and serializable specifications. Its
+declared variable roles drive predictive selection, its output capabilities
+are validated before sampling, and only safe callable identity plus
+JSON-compatible metadata are retained as provenance.
 
 Terminology used by the RHIME API:
 
