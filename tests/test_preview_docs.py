@@ -16,8 +16,15 @@ def test_parse_args_uses_non_mkdocs_default_and_accepts_overrides() -> None:
 
     assert defaults.port == 8765
     assert defaults.no_open is False
+    assert defaults.command == "preview"
     assert overridden.port == 9123
     assert overridden.no_open is True
+    assert overridden.command == "preview"
+
+
+def test_parse_args_accepts_the_clean_command() -> None:
+    """The clean command needs no preview-server options."""
+    assert preview_docs._parse_args(["clean"]).command == "clean"
 
 
 def test_port_rejects_values_outside_the_tcp_range() -> None:
@@ -39,13 +46,42 @@ def test_build_docs_runs_the_documentation_tox_environment(monkeypatch: pytest.M
 
     monkeypatch.setattr(preview_docs.subprocess, "run", run_fake)
 
-    assert preview_docs._build_docs() == 7
-    assert calls == [
-        (
-            ["tox", "-e", "docs"],
-            {"cwd": preview_docs._REPOSITORY_ROOT, "check": False},
-        )
-    ]
+    source_directory = Path("/tmp/docs-source")
+    build_directory = Path("/tmp/docs-build")
+
+    assert preview_docs._build_docs(source_directory, build_directory) == 7
+    assert len(calls) == 1
+    command, kwargs = calls[0]
+    assert command == ["tox", "-e", "docs"]
+    assert kwargs["cwd"] == preview_docs._REPOSITORY_ROOT
+    assert kwargs["check"] is False
+    assert kwargs["env"]["DOCS_SOURCE_DIR"] == str(source_directory)
+    assert kwargs["env"]["DOCS_BUILD_DIR"] == str(build_directory)
+
+
+def test_clean_docs_removes_only_the_generated_build_directory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Cleaning removes the generated Sphinx output when it exists."""
+    build_directory = tmp_path / "docs" / "_build"
+    build_directory.mkdir(parents=True)
+    generated_file = build_directory / "index.html"
+    generated_file.touch()
+    monkeypatch.setattr(preview_docs, "_BUILD_DIRECTORY", build_directory)
+
+    preview_docs._clean_docs()
+
+    assert not build_directory.exists()
+
+
+def test_main_cleans_without_building_or_serving(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The clean command must not invoke the docs build or HTTP server."""
+    calls = []
+    monkeypatch.setattr(preview_docs, "_clean_docs", lambda: calls.append("clean"))
+    monkeypatch.setattr(
+        preview_docs, "_build_docs", lambda source, build: pytest.fail("build should not run")
+    )
+
+    assert preview_docs.main(["clean"]) == 0
+    assert calls == ["clean"]
 
 
 def test_open_safari_reports_a_failed_launch(
@@ -140,15 +176,45 @@ def test_main_stops_when_the_documentation_build_fails(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """A failed docs build returns its status without starting the server."""
-    monkeypatch.setattr(preview_docs, "_build_docs", lambda: 4)
+    monkeypatch.setattr(preview_docs, "_build_docs", lambda source, build: 4)
 
-    def fail_to_serve(port, *, open_safari):
+    def fail_to_serve(port, *, open_safari, build_directory):
         raise AssertionError("server should not start after a failed build")
 
     monkeypatch.setattr(preview_docs, "_serve_docs", fail_to_serve)
 
     assert preview_docs.main([]) == 4
     assert "Documentation build failed" in capsys.readouterr().err
+
+
+def test_main_builds_and_serves_from_a_temporary_directory(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Preview generation must not write to the repository documentation directory."""
+    paths = {}
+
+    def build_fake(source_directory: Path, build_directory: Path) -> int:
+        paths["source"] = source_directory
+        paths["build"] = build_directory
+        assert source_directory != preview_docs._DOCS_DIRECTORY
+        assert build_directory != preview_docs._BUILD_DIRECTORY
+        assert (source_directory / "conf.py").exists()
+        build_directory.mkdir()
+        return 0
+
+    def serve_fake(port, *, open_safari, build_directory):
+        assert port == 9123
+        assert open_safari is False
+        assert build_directory == paths["build"]
+        assert build_directory.exists()
+        return 0
+
+    monkeypatch.setattr(preview_docs, "_build_docs", build_fake)
+    monkeypatch.setattr(preview_docs, "_serve_docs", serve_fake)
+
+    assert preview_docs.main(["--port", "9123", "--no-open"]) == 0
+    assert not paths["source"].exists()
+    assert not paths["build"].exists()
 
 
 @pytest.mark.parametrize(
@@ -170,10 +236,10 @@ def test_main_selects_browser_behavior_for_platform_and_option(
     The explicit no-open option must suppress it on macOS as well.
     """
     serve_calls = []
-    monkeypatch.setattr(preview_docs, "_build_docs", lambda: 0)
+    monkeypatch.setattr(preview_docs, "_build_docs", lambda source, build: 0)
     monkeypatch.setattr(preview_docs.sys, "platform", platform)
 
-    def serve_fake(port, *, open_safari):
+    def serve_fake(port, *, open_safari, build_directory):
         serve_calls.append((port, open_safari))
         return 0
 

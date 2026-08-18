@@ -7,6 +7,9 @@ import numpy as np
 import pytest
 import xarray as xr
 
+from openghg_inversions.basis.covariance_products import project_native_covariance
+from openghg_inversions.basis.operators import MultiSourceBucketBasisOperator
+from openghg_inversions.array_ops import to_dense
 from openghg_inversions.native_covariance import SeparableExponentialCovariance
 from openghg_inversions.source_covariance import IndependentSourceCovariance
 
@@ -66,6 +69,28 @@ def _dense_block_diagonal(covariance: IndependentSourceCovariance) -> np.ndarray
         result[offset:stop, offset:stop] = block
         offset = stop
     return result
+
+
+def _basis(covariance: IndependentSourceCovariance) -> MultiSourceBucketBasisOperator:
+    """Construct the gathered bucket basis used only by Slice C product tests."""
+    component = covariance.source_covariances["z-source"]
+    latitude = component.latitude
+    longitude = component.longitude
+    return MultiSourceBucketBasisOperator(
+        {
+            "z-source": xr.DataArray(
+                [[1, 1], [2, 2]],
+                dims=("lat", "lon"),
+                coords={"lat": latitude, "lon": longitude},
+            ),
+            "a-source": xr.DataArray(
+                [[1, 1], [1, 1]],
+                dims=("lat", "lon"),
+                coords={"lat": latitude, "lon": longitude},
+            ),
+        },
+        state_dim="state",
+    )
 
 
 def test_independent_source_action_and_serialization_preserve_order() -> None:
@@ -277,3 +302,107 @@ def test_deserialization_rejects_contradictory_source_blocked_state() -> None:
 
     with pytest.raises(ValueError, match="contradicts"):
         IndependentSourceCovariance.from_dataset(dataset)
+
+
+def test_gathered_source_products_match_block_diagonal_dense_oracle() -> None:
+    """Ragged source states keep insertion order and zero cross-source covariance."""
+    covariance, native_sensitivity = _problem()
+    basis = _basis(covariance)
+    basis_prolongation = to_dense(
+        basis.native_prolongation(
+            native_sensitivity,
+            native_dims=covariance.native_dims,
+        )
+    ).compute()
+    products = project_native_covariance(
+        covariance=covariance,
+        basis_prolongation=basis_prolongation,
+        state_dim=basis.meta.state_dim,
+        native_sensitivity=native_sensitivity,
+        observation_dim="observation",
+        observation_batch_size=1,
+    )
+    dense_b = _dense_block_diagonal(covariance)
+    h = native_sensitivity.values.reshape(3, 8)
+
+    base = basis.basis_matrix.transpose("lat", "lon", "state").compute()
+    base_values = np.asarray(base.data.todense())
+    state_sources = np.asarray(base.coords["source"].values)
+    u = np.zeros((2, 2, 2, base.sizes["state"]))
+    for source_index, source in enumerate(covariance.source_labels):
+        u[source_index] = base_values * (state_sources == source)[None, None, :]
+    u = u.reshape(8, base.sizes["state"])
+    c_alpha = np.linalg.inv(u.T @ np.linalg.solve(dense_b, u))
+    pi = c_alpha @ np.linalg.solve(dense_b, u).T
+
+    assert products.state_covariance.coords["source"].values.tolist() == [
+        "z-source",
+        "z-source",
+        "a-source",
+    ]
+    np.testing.assert_allclose(products.restriction.values.reshape(3, 8), pi, atol=1e-11)
+    np.testing.assert_allclose(products.state_covariance, c_alpha, atol=1e-11)
+    np.testing.assert_allclose(products.effective_observation_operator, h @ u, atol=1e-11)
+    np.testing.assert_allclose(
+        products.observation_state_cross_covariance,
+        h @ dense_b @ pi.T,
+        atol=1e-11,
+    )
+    np.testing.assert_allclose(products.native_observation_covariance, h @ dense_b @ h.T, atol=1e-11)
+    np.testing.assert_allclose(pi @ u, np.eye(3), atol=1e-11)
+
+
+def test_multisource_native_prolongation_preserves_native_auxiliary_coordinates() -> None:
+    """Canonical gathered U retains source, spatial, state, and scalar metadata."""
+    covariance, native_sensitivity = _problem()
+    basis = _basis(covariance)
+    native_layout = native_sensitivity.assign_coords(
+        inventory=("native_source", ["EDGAR", "GFAS"]),
+        cell_area=(
+            ("native_source", "lat", "lon"),
+            np.arange(8).reshape(2, 2, 2),
+        ),
+        grid_mapping="latitude_longitude",
+    )
+
+    prolongation = basis.native_prolongation(
+        native_layout,
+        native_dims=covariance.native_dims,
+    )
+
+    assert prolongation.dims == ("native_source", "lat", "lon", "state")
+    xr.testing.assert_identical(prolongation.coords["inventory"], native_layout.coords["inventory"])
+    xr.testing.assert_identical(prolongation.coords["cell_area"], native_layout.coords["cell_area"])
+    assert prolongation.coords["grid_mapping"].item() == "latitude_longitude"
+    assert prolongation.coords["source"].values.tolist() == [
+        "z-source",
+        "z-source",
+        "a-source",
+    ]
+
+
+def test_multisource_native_prolongation_requires_canonical_source_order() -> None:
+    """Canonical gathered U rejects a native layout with reordered source labels."""
+    covariance, native_sensitivity = _problem()
+    basis = _basis(covariance)
+    reordered = native_sensitivity.isel(native_source=[1, 0])
+
+    with pytest.raises(ValueError, match="source|coordinate|align|order"):
+        basis.native_prolongation(reordered, native_dims=covariance.native_dims)
+
+
+def test_multisource_native_prolongation_rejects_source_dimension_level_collision() -> None:
+    """A native source dimension cannot reuse the gathered state source-level name."""
+    covariance, native_sensitivity = _problem()
+    colliding_covariance = IndependentSourceCovariance(
+        covariance.source_covariances,
+        source_dim="source",
+    )
+    colliding_sensitivity = native_sensitivity.rename(native_source="source")
+    basis = _basis(covariance)
+
+    with pytest.raises(ValueError, match="source.*dimension|MultiIndex|level|collision"):
+        basis.native_prolongation(
+            colliding_sensitivity,
+            native_dims=colliding_covariance.native_dims,
+        )

@@ -21,6 +21,7 @@ from openghg_inversions.models.rhime_likelihood import (
     build_gaussian_rhime_likelihood,
     build_rhime_observation_state,
 )
+from openghg_inversions.observation_error import select_aggregation_error_mode
 
 from .builders import RhimeModelBuilder, RhimeModelBuilderContext, RhimeModelBuildResult
 from .params import params_from_config, resolve_flux_sources
@@ -80,5 +81,6 @@ __all__ = [
     "run_rhime_from_prepared_inputs",
     "run_rhime_multisector",
     "sample_rhime_model",
+    "select_aggregation_error_mode",
     "with_prepared_rhime_sites",
 ]

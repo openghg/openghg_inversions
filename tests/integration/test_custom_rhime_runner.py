@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import importlib.util
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -10,12 +9,39 @@ from typing import Any
 import pytest
 import xarray as xr
 
+from examples.rhime_customisation import likelihoods
+from examples.rhime_customisation import runner as custom_runner
+from examples.rhime_customisation import run_with_likelihood as short_runner
 
-_RUNNER_PATH = Path(__file__).parents[2] / "examples" / "rhime_customisation" / "runner.py"
-_RUNNER_SPEC = importlib.util.spec_from_file_location("rhime_customisation_runner", _RUNNER_PATH)
-assert _RUNNER_SPEC is not None and _RUNNER_SPEC.loader is not None
-custom_runner = importlib.util.module_from_spec(_RUNNER_SPEC)
-_RUNNER_SPEC.loader.exec_module(custom_runner)
+
+def test_short_and_full_examples_share_likelihood_and_supported_output(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The preferred form selects the full runner's likelihood and output mode."""
+    config_file = tmp_path / "rhime.ini"
+    expected = object()
+    seen: dict[str, Any] = {}
+
+    def run_rhime(**kwargs: Any) -> Any:
+        """Capture the preferred one-call example without executing RHIME."""
+        seen.update(kwargs)
+        return expected
+
+    monkeypatch.setattr(short_runner, "run_rhime", run_rhime)
+    result = short_runner.run_with_likelihood(
+        config_file=config_file,
+        output_format="none",
+    )
+
+    assert result is expected
+    assert short_runner.likelihood_builder is likelihoods.likelihood_builder
+    assert custom_runner.likelihood_builder is likelihoods.likelihood_builder
+    assert seen == {
+        "config_file": config_file,
+        "likelihood_builder": custom_runner.likelihood_builder,
+        "output_format": "none",
+    }
 
 
 @pytest.mark.parametrize("reload_merged_data", [False, True])
@@ -135,11 +161,11 @@ def test_custom_runner_uses_supported_stages_for_acquisition_and_reload(
         return model_inputs
 
     def build(**kwargs: Any) -> Any:
-        """Record the custom absolute-sigma likelihood handoff."""
+        """Record the project-owned Student-t likelihood handoff."""
         assert kwargs["prepared"] is prepared
         assert kwargs["model_inputs"] is model_inputs
         assert kwargs["run_spec"] is aligned_spec
-        assert kwargs["likelihood_builder"] is custom_runner.build_absolute_sigma_gaussian_likelihood
+        assert kwargs["likelihood_builder"] is custom_runner.likelihood_builder
         calls.append("build")
         return build_result
 
@@ -157,7 +183,7 @@ def test_custom_runner_uses_supported_stages_for_acquisition_and_reload(
         assert kwargs["sampler"] is sampler
         assert kwargs["model_build_result"] is build_result
         assert kwargs["idata"] is idata
-        assert kwargs["likelihood_builder"] is custom_runner.build_absolute_sigma_gaussian_likelihood
+        assert kwargs["likelihood_builder"] is custom_runner.likelihood_builder
         assert kwargs["build_and_sample_seconds"] >= 0.0
         calls.append("result")
         return expected_result

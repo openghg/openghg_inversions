@@ -1,11 +1,15 @@
-"""Public extension contracts for complete RHIME model builders."""
+"""Public model-build contracts and validation for RHIME customizations.
+
+The validation applies both to complete-model builders and to built-in model
+results that wrap a custom likelihood builder.
+"""
 
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 import json
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 import pymc as pm
 
@@ -13,9 +17,7 @@ from openghg_inversions.inversion_data import RhimePreparedInputs
 from openghg_inversions.rhime.specs import OutputFormat, RhimeRunSpec
 
 
-_OUTPUT_FORMATS: frozenset[OutputFormat] = frozenset(
-    {"none", "inv_out", "basic", "paris", "legacy"}
-)
+_OUTPUT_FORMATS: frozenset[OutputFormat] = frozenset({"none", "inv_out", "basic", "paris", "legacy"})
 
 
 @dataclass(frozen=True)
@@ -66,8 +68,7 @@ class RhimeModelBuildResult:
         """Copy and validate the serializable portion of the result."""
         if not isinstance(self.model, pm.Model):
             raise TypeError(
-                "`RhimeModelBuildResult.model` must be a `pymc.Model`; "
-                f"got {type(self.model).__name__}."
+                f"`RhimeModelBuildResult.model` must be a `pymc.Model`; got {type(self.model).__name__}."
             )
 
         roles = {str(role): str(name) for role, name in self.variable_roles.items()}
@@ -116,10 +117,31 @@ def validate_model_build_result(
     result: RhimeModelBuildResult,
     *,
     context: RhimeModelBuilderContext,
+    builder_kind: Literal["model", "likelihood"] = "model",
 ) -> None:
-    """Validate a custom build result before sampling or postprocessing."""
+    """Validate a custom build result before sampling or postprocessing.
+
+    Args:
+        result: Complete model build result to validate.
+        context: Prepared inputs and run settings for the active model build.
+        builder_kind: Customization seam responsible for the result. This is
+            used only to label the unsupported-output diagnostic; it does not
+            change validation.
+
+    Raises:
+        ValueError: If the requested output is unsupported or declared
+            variable roles are incomplete or refer to absent variables.
+    """
     output_format = context.run_spec.output.output_format
     if output_format not in result.supported_output_formats:
+        if builder_kind == "likelihood":
+            raise ValueError(
+                "Custom RHIME likelihood builder does not declare "
+                f"output_format={output_format!r} compatible. Declared formats: "
+                f"{list(result.supported_output_formats)!r}. Use output_format='none' or "
+                "return `RhimeLikelihoodResult` with the requested format in "
+                "`supported_output_formats`."
+            )
         raise ValueError(
             f"Custom RHIME model builder does not declare output_format={output_format!r} compatible. "
             f"Declared formats: {list(result.supported_output_formats)!r}. Use output_format='none' or "
@@ -127,9 +149,7 @@ def validate_model_build_result(
         )
 
     available_names = set(result.model.named_vars) | set(context.prepared_inputs.inv_inputs.variables)
-    missing = {
-        role: name for role, name in result.variable_roles.items() if name not in available_names
-    }
+    missing = {role: name for role, name in result.variable_roles.items() if name not in available_names}
     if missing:
         details = ", ".join(f"{role}={name!r}" for role, name in sorted(missing.items()))
         raise ValueError(

@@ -1,52 +1,46 @@
-"""Basis operator classes
+"""Labelled basis geometry operators for retained scaling states.
 
-Design goals
-------------
-1) Separate the *partition/aggregation operator* (basis functions) from any *flux weighting*.
-   - The basis operator represents a linear map from a grid (lat/lon) to a reduced state space.
-   - Flux weighting (multiplying by flux on the grid, interpolation to maps, covariance transforms)
-     is handled by ``FluxWeightedBasis`` so that:
-       * sensitivity(fp_x_flux) does not require flux (since fp_x_flux is already precomputed),
-       * but flux-aware operations remain available when needed.
+A :class:`BasisOperator` separates bucket geometry from flux weighting and
+native covariance. For one source, :attr:`BasisOperator.basis_matrix` is the
+bucket prolongation ``U_bucket`` with native-grid rows and retained-state
+columns. A gathered multisource matrix is the spatial membership template from
+which :meth:`BasisOperator.native_prolongation` expands a canonical
+source-native ``U_bucket``. Its transpose is not automatically the retained
+restriction ``Pi``.
 
-2) Canonical "state" dimension.
-   - Operators expose a single state dimension (default name: "state").
-   - In multisource/multisector cases with ragged per-source region counts, the state coordinate
-     becomes a ragged MultiIndex over (source, region_in_source). This avoids padding with zeros.
+``FluxWeightedBasis`` handles flux weighting for sensitivity projection and
+flux reconstruction. Native covariance actions, retained restrictions, and
+covariance product transforms instead belong to
+:mod:`openghg_inversions.native_covariance`,
+:mod:`openghg_inversions.source_covariance`, and
+:mod:`openghg_inversions.basis.covariance_products`.
 
-3) Minimal metadata (BasisMeta).
-   - We only need to know which dims to dot over (grid_dims) and the state_dim name.
-   - Source-labeled arrays are aligned against the state MultiIndex by concrete
-     subclasses rather than inferred from metadata.
+Operators expose one canonical state dimension, named ``"state"`` by default.
+Multisource operators represent ragged per-source region counts with a
+MultiIndex over source and region-within-source, avoiding padded state arrays.
+:class:`BasisMeta` records only the grid dimensions and state-dimension name;
+concrete operators perform any source-label alignment.
 
-4) Serialization via xarray.DataTree.
-   - BasisOperator.to_datatree() returns a self-describing DataTree with schema/kind/version attrs.
-   - BasisOperator.decode_datatree(dt) dispatches to the correct registered subclass based on dt.attrs["kind"].
-   - For multisource operators, the canonical serialized representation stores one source-labelled
-     `basis_flat` array. Readers retain compatibility with the earlier per-source child layout.
+Serialization uses self-describing :class:`xarray.DataTree` objects with
+schema, kind, and version metadata. Multisource operators store one
+source-labelled ``basis_flat`` array while readers retain compatibility with
+the earlier per-source child layout.
 
-How to use
-----------
-- Construct a basis operator:
-    op = BucketBasisOperator(basis_flat)                         # single-sector
-    op = MultiSourceBucketBasisOperator({"a": bf_a, "b": bf_b})   # ragged multisource
+Examples:
+    Construct operators, compute a sensitivity, and round-trip one operator::
 
-- Compute sensitivities:
-    H = op.sensitivity(fp_x_flux)
+        op = BucketBasisOperator(basis_flat)
+        multisource_op = MultiSourceBucketBasisOperator({"a": bf_a, "b": bf_b})
+        sensitivity = op.sensitivity(fp_x_flux)
+        restored = BasisOperator.decode_datatree(op.to_datatree())
 
-  where fp_x_flux is an xarray.DataArray with at least the grid dims (lat, lon), and typically time.
-  In multisource workflows, fp_x_flux often has a separate dimension "source".
-  The multisource operator aligns those labels against the "source" level of
-  the state MultiIndex.
+    ``fp_x_flux`` contains the configured grid dimensions and typically time.
+    In multisource workflows it may also have a ``source`` dimension, whose
+    labels the multisource operator aligns to the state MultiIndex.
 
-- Serialize/deserialize:
-    dt = op.to_datatree()
-    op2 = BasisOperator.decode_datatree(dt)
-
-Notes
------
-- Currently, basis operators cannot have a time dimension. If the input flat array has
-  a time dimension with more than one coordinate value, an error is raised.
+Note:
+    Basis geometry cannot currently vary through time. A singleton time
+    dimension is dropped; a longer time dimension raises :class:`ValueError`.
 """
 
 from __future__ import annotations
@@ -160,13 +154,12 @@ class BasisMeta:
 class BasisOperator(ABC):
     """Abstract basis operator.
 
-    Concrete subclasses must define:
-    - meta (grid dims + state dim)
-    - basis_matrix: one-hot/dummy matrix with dims (*grid_dims, state_dim)
-    - to_datatree / from_datatree
+    Concrete subclasses provide operator metadata, a bucket prolongation
+    ``U_bucket`` whose ordered dimensions are the grid dimensions followed by
+    the state dimension, and DataTree serialization methods.
 
-    The default sensitivity implementation assumes fp_x_flux has the grid dims and
-    any extra dims (e.g. time, source) are preserved.
+    The default sensitivity implementation requires ``fp_x_flux`` to contain
+    the grid dimensions and preserves extra dimensions such as time or source.
     """
 
     # stable kind string used for serialization dispatch
@@ -184,17 +177,21 @@ class BasisOperator(ABC):
     @property
     @abstractmethod
     def basis_matrix(self) -> xr.DataArray:
-        """Dummy matrix mapping grid -> state.
+        """Return the bucket prolongation ``U_bucket`` from state to grid.
 
-        Expected dims: (*grid_dims, state_dim)
-        (state_dim may be a MultiIndex coordinate)
+        Its ordered dimensions are the configured grid dimensions followed by
+        the state dimension, which may carry a MultiIndex coordinate.
+
+        Multiplying this matrix by a state vector reconstructs a native scaling
+        field. Although its transpose has the shape of a restriction, it is not
+        generally the covariance-compatible retained restriction ``Pi``.
         """
         raise NotImplementedError
 
     def sensitivity(self, fp_x_flux: xr.DataArray, fillna: bool = True) -> xr.DataArray:
         """Computes the sensitivity matrix ("H") by dotting over the grid.
 
-        This implements the common bucket-basis reduction:
+        This implements the common bucket-basis forward operator ``H U_bucket``:
 
         - `fp_x_flux` is a gridded quantity with dimensions that include
           `meta.grid_dims` (typically `lat` and `lon`) and usually a `time` dimension.
@@ -229,6 +226,47 @@ class BasisOperator(ABC):
             else:
                 h = h.transpose(self.meta.state_dim, ...)
         return h
+
+    def native_prolongation(
+        self,
+        native_layout: xr.DataArray,
+        *,
+        native_dims: tuple[str, ...],
+    ) -> xr.DataArray:
+        """Return the bucket prolongation on a canonical labelled native grid.
+
+        This basis-side operation aligns geometry only. It preserves the
+        basis matrix's lazy or sparse storage and does not choose an execution
+        or covariance materialization policy.
+
+        Args:
+            native_layout: Array carrying the canonical native coordinates and
+                compatible auxiliary coordinates. It may contain additional
+                non-native dimensions.
+            native_dims: Ordered native dimensions required by the covariance
+                action.
+
+        Returns:
+            Potentially lazy ``U_bucket`` with dimensions
+            ``(*native_dims, meta.state_dim)``.
+
+        Raises:
+            ValueError: If this single-source basis does not span exactly the
+                requested native dimensions or their indexes do not match.
+        """
+        if native_dims != self.meta.grid_dims:
+            raise ValueError(
+                "A single-source basis requires native_dims to equal its grid dimensions; "
+                f"got {native_dims!r} and {self.meta.grid_dims!r}"
+            )
+        result = self.basis_matrix.transpose(*native_dims, self.meta.state_dim)
+        _require_exact_native_indexes(result, native_layout, native_dims=native_dims)
+        return _assign_compatible_native_coordinates(
+            result,
+            native_layout,
+            native_dims=native_dims,
+            protected_dims={self.meta.state_dim},
+        ).rename("prolongation")
 
     def interpolate(self, state: xr.DataArray, weights: xr.DataArray | None = None) -> xr.DataArray:
         """Interpolates/reconstructs a gridded field from a state vector.
@@ -354,6 +392,42 @@ def drop_singleton_time(da: xr.DataArray, *, name: str = "basis_flat") -> xr.Dat
 
     # Use squeeze to remove the dim (and drop the coordinate variable if it becomes scalar).
     return da.squeeze("time", drop=True)
+
+
+def _require_exact_native_indexes(
+    array: xr.DataArray,
+    native_layout: xr.DataArray,
+    *,
+    native_dims: tuple[str, ...],
+) -> None:
+    """Require exact ordered native indexes without implicit reindexing."""
+    for dim in native_dims:
+        if dim not in native_layout.dims or dim not in native_layout.coords:
+            raise ValueError(f"native_layout is missing native coordinate {dim!r}")
+        if dim not in array.dims or dim not in array.coords:
+            raise ValueError(f"basis prolongation is missing native coordinate {dim!r}")
+        if not array.get_index(dim).equals(native_layout.get_index(dim)):
+            raise ValueError(f"basis prolongation native coordinate {dim!r} must exactly match native_layout")
+
+
+def _assign_compatible_native_coordinates(
+    array: xr.DataArray,
+    native_layout: xr.DataArray,
+    *,
+    native_dims: tuple[str, ...],
+    protected_dims: set[str],
+) -> xr.DataArray:
+    """Attach layout coordinates defined only on native axes or scalars."""
+    native_dim_set = set(native_dims)
+    coordinates: dict[str, xr.DataArray] = {}
+    for raw_name, coordinate in native_layout.coords.items():
+        name = str(raw_name)
+        if name in protected_dims or not set(coordinate.dims).issubset(native_dim_set):
+            continue
+        if name in array.coords and name not in native_dim_set:
+            continue
+        coordinates[name] = coordinate
+    return array.assign_coords(coordinates)
 
 
 def _canonicalise_multisource_basis_grids(
@@ -521,7 +595,11 @@ class BucketBasisOperator(BasisOperator):
 
     @property
     def basis_matrix(self) -> xr.DataArray:
-        """Basis matrix."""
+        """Return ``U_bucket``, mapping retained scalings to native scalings.
+
+        The dimensions are native grid by retained state. Its transpose is not
+        generally the compatible retained restriction ``Pi``.
+        """
         return self._basis_matrix
 
     @property
@@ -756,7 +834,14 @@ class MultiSourceBucketBasisOperator(BasisOperator):
 
     @property
     def basis_matrix(self) -> xr.DataArray:
-        """Basis matrix."""
+        """Return the gathered spatial template for multisource ``U_bucket``.
+
+        The dimensions are spatial grid by retained state; source identity is
+        carried by the ragged state coordinate. :meth:`native_prolongation`
+        expands an explicit source-native dimension and zeros cross-source
+        columns. This template's transpose is not the compatible retained
+        restriction ``Pi``.
+        """
         return self._basis_matrix
 
     @property
@@ -768,6 +853,72 @@ class MultiSourceBucketBasisOperator(BasisOperator):
             ragged state MultiIndex.
         """
         return tuple(self.basis_flat)
+
+    def native_prolongation(
+        self,
+        native_layout: xr.DataArray,
+        *,
+        native_dims: tuple[str, ...],
+    ) -> xr.DataArray:
+        """Expand the gathered basis to a labelled source-native prolongation.
+
+        Args:
+            native_layout: Canonical native layout carrying an explicit source
+                dimension and native-compatible auxiliary coordinates.
+            native_dims: Ordered native dimensions. The first must be this
+                operator's source dimension and the remainder its grid dims.
+
+        Returns:
+            Potentially lazy ``U_bucket`` with zero cross-source columns and
+            dimensions ``(*native_dims, meta.state_dim)``.
+
+        Raises:
+            ValueError: If dimensions, source labels, or native indexes are
+                incompatible with this multisource basis.
+        """
+        if len(native_dims) != len(self.meta.grid_dims) + 1 or native_dims[1:] != self.meta.grid_dims:
+            raise ValueError(
+                "A multisource basis requires one native source dimension followed by its "
+                f"grid dimensions; got {native_dims!r}"
+            )
+        native_source_dim = native_dims[0]
+        base = self.basis_matrix.transpose(*self.meta.grid_dims, self.meta.state_dim)
+        state_index = base.get_index(self.meta.state_dim)
+        state_level_names = {str(name) for name in getattr(state_index, "names", ()) if name is not None}
+        if native_source_dim in state_level_names:
+            raise ValueError(
+                f"Native source dimension {native_source_dim!r} collides with a retained-state "
+                "MultiIndex level; use distinct native and retained source dimension names"
+            )
+        _require_exact_native_indexes(base, native_layout, native_dims=self.meta.grid_dims)
+        if native_source_dim not in native_layout.coords:
+            raise ValueError(f"native_layout is missing source coordinate {native_source_dim!r}")
+        native_sources = native_layout.coords[native_source_dim]
+        expected_source_order = list(self.source_labels)
+        if native_sources.values.tolist() != expected_source_order:
+            raise ValueError(
+                "native_layout source coordinate must exactly match the basis source order; "
+                f"got {native_sources.values.tolist()!r}, expected {expected_source_order!r}"
+            )
+        # Use a positional state variable for broadcasting. Carrying the
+        # MultiIndex level coordinate itself into the comparison would add a
+        # second, equivalent ``state`` index and make xarray reject alignment.
+        state_sources = xr.DataArray(
+            np.asarray(base.coords[self.source_dim].values),
+            dims=self.meta.state_dim,
+        )
+        missing = set(state_sources.values.tolist()) - set(native_sources.values.tolist())
+        if missing:
+            raise ValueError(f"Basis state sources are absent from native_layout: {sorted(missing)!r}")
+        source_mask = native_sources == state_sources
+        result = (base * source_mask).transpose(*native_dims, self.meta.state_dim)
+        result = _assign_compatible_native_coordinates(
+            result,
+            native_layout,
+            native_dims=native_dims,
+            protected_dims={self.meta.state_dim, native_source_dim},
+        )
+        return result.rename("prolongation")
 
     def _stacked_basis_flat(self) -> xr.DataArray:
         """Stack source bases on a common labeled grid, retaining common attributes.
