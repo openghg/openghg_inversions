@@ -95,11 +95,14 @@ calculation's canonical units, and dequantify if the numerical kernel requires
 ordinary arrays. Pint owns dimensional compatibility and conversion; xarray
 independently owns coordinate alignment.
 
-Do not reproduce unit algebra with attribute-string construction and then
-revalidate those derived strings throughout a kernel. If a kernel accepts
-dequantified values, document their canonical-unit contract and trust the
-preparation boundary. Handle missing or incompatible units once where the
-independent data is normalized.
+After that conversion, a kernel may propagate or derive ``units`` attributes
+to document known output algebra (for example, covariance has squared
+sensitivity units). Treat those strings as descriptive metadata, not as
+dimensional validation. Do not construct unit strings and then revalidate them
+throughout a kernel as a substitute for Pint. If a kernel accepts dequantified
+values, document their canonical-unit contract and trust the preparation
+boundary. Handle missing or incompatible units once where the independent data
+is normalized.
 
 Tests rather than production assertions
 ---------------------------------------

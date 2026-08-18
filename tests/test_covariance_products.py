@@ -189,6 +189,11 @@ def test_products_match_dense_oracle_and_coherent_forward_model() -> None:
         "TAC-1",
         "RGL-1",
     ]
+    reciprocal_condition = products.state_covariance.attrs[
+        "estimated_reciprocal_condition_number"
+    ]
+    assert 0.0 < reciprocal_condition <= 1.0
+    assert products.state_covariance.attrs["condition_number_norm"] == "1"
 
 
 def test_covariance_natural_prolongation_is_the_bucket_prolongation() -> None:
@@ -685,6 +690,33 @@ def test_projection_strategy_must_return_full_rank_restriction() -> None:
 
     with pytest.raises(ValueError, match="empty retained state|positive definite|full rank"):
         _project(covariance, basis_operator, h, strategy=SingularStrategy())
+
+
+def test_nearly_redundant_projection_reports_unstable_retained_solve() -> None:
+    """A cheap retained-space condition estimate diagnoses near-duplicate states."""
+    covariance, basis_operator, h, _ = _problem()
+
+    class NearlyRedundantStrategy:
+        """Make two retained functionals numerically indistinguishable."""
+
+        def projection(self, covariance, basis_prolongation, *, native_dims, state_dim):
+            """Return a full-rank but ill-conditioned restriction."""
+            valid = PreserveBucketProlongation().projection(
+                covariance,
+                basis_prolongation,
+                native_dims=native_dims,
+                state_dim=state_dim,
+            )
+            first = valid.restriction.isel({state_dim: 0}, drop=True)
+            second = first + 1e-5 * valid.restriction.isel({state_dim: 1}, drop=True)
+            restriction = xr.concat(
+                [first, second],
+                dim=xr.IndexVariable(state_dim, valid.restriction[state_dim].values),
+            ).transpose(state_dim, *native_dims)
+            return RetainedProjection(restriction, "nearly_redundant")
+
+    with pytest.raises(ValueError, match="too ill-conditioned|non-redundant"):
+        _project(covariance, basis_operator, h, strategy=NearlyRedundantStrategy())
 
 
 def test_projection_strategy_restriction_must_be_real() -> None:

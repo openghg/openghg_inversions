@@ -1,10 +1,11 @@
 """Labelled in-memory native-covariance products for retained scaling states.
 
-This module is an eager numerical kernel. Callers supply a canonical, eager
-native sensitivity ``H`` and basis prolongation ``U``; basis operators own any
-source expansion and the pipeline owns materialization. Custom restrictions
-may remain sparse or Dask-backed until the named projection boundary, where
-they are materialized once and reused by all retained-state RHS blocks.
+This module is an eager numerical kernel. Callers supply a canonical native
+sensitivity ``H`` and basis prolongation ``U``; basis operators own any source
+expansion. Their payloads may remain sparse or Dask-backed until the named
+projection boundary, where related arrays are materialized together. Custom
+restrictions are likewise materialized once and reused by all retained-state
+RHS blocks.
 
 For native covariance ``B`` and retained restriction ``Pi``, the kernel returns
 ``C_alpha = Pi B Pi.T``, ``H U_*``, ``H B Pi.T``, and ``H B H.T`` (or its
@@ -34,6 +35,7 @@ else:
 from dask.base import compute
 import numpy as np
 from scipy.linalg import cho_factor, cho_solve
+from scipy.linalg.lapack import dpocon
 import xarray as xr
 
 from openghg_inversions._labelled_matrices import (
@@ -43,6 +45,9 @@ from openghg_inversions._labelled_matrices import (
 )
 from openghg_inversions.array_ops import to_dense
 from openghg_inversions.native_covariance import InvertibleNativeCovarianceAction
+
+
+MIN_RETAINED_RECIPROCAL_CONDITION = float(np.sqrt(np.finfo(np.float64).eps))
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -227,10 +232,10 @@ def project_native_covariance(
 
     Args:
         covariance: Labelled native covariance action with a compatible solve.
-        basis_prolongation: Canonical eager ``U`` from the basis-side native
+        basis_prolongation: Canonical labelled ``U`` from the basis-side native
             expansion boundary.
         state_dim: Retained-state dimension shared by ``U`` and ``Pi``.
-        native_sensitivity: Canonical eager native sensitivity ``H``.
+        native_sensitivity: Canonical labelled native sensitivity ``H``.
         observation_dim: Observation dimension in ``H``.
         observation_covariance: Return dense ``H B H.T`` or its diagonal.
         observation_batch_size: Positive integral number of covariance
@@ -316,13 +321,17 @@ def project_native_covariance(
         mathematical_name="C_alpha",
         units="1",
     )
-    prolongation = _derive_covariance_natural_prolongation(
+    prolongation, reciprocal_condition = _derive_covariance_natural_prolongation(
         projection.restriction,
         state_covariance,
         b_pi_t,
         native_dims=native_dims,
         state_dim=state_dim,
         state_column_dim=state_column_dim,
+    )
+    state_covariance = state_covariance.assign_attrs(
+        estimated_reciprocal_condition_number=reciprocal_condition,
+        condition_number_norm="1",
     )
     h_units = sensitivity.attrs.get("units")
     linear_units = {"units": h_units} if h_units is not None else {}
@@ -366,7 +375,7 @@ def _apply_restriction_blocks(
     state_dim: str,
     column_dim: str,
     rhs_block_size: int,
-) -> xr.DataArray:
+) -> tuple[xr.DataArray, float]:
     """Apply covariance to explicit dense retained-state RHS blocks."""
     blocks: list[xr.DataArray] = []
     for start in range(0, restriction.sizes[state_dim], rhs_block_size):
@@ -543,7 +552,8 @@ def _derive_covariance_natural_prolongation(
         state_column_dim: Distinct retained-state column dimension.
 
     Returns:
-        The dimensionless covariance-natural prolongation ``U_*``.
+        The dimensionless covariance-natural prolongation ``U_*`` and the
+        estimated reciprocal 1-norm condition number of ``C_alpha``.
 
     Raises:
         ValueError: If ``C_alpha`` cannot be factored as positive definite.
@@ -551,6 +561,22 @@ def _derive_covariance_natural_prolongation(
     covariance_values = np.asarray(state_covariance.values, dtype=np.float64)
     try:
         factor = cho_factor(covariance_values, lower=True, check_finite=True)
+        reciprocal_condition, condition_info = dpocon(
+            factor[0],
+            np.linalg.norm(covariance_values, ord=1),
+            uplo="L",
+        )
+        if condition_info != 0:
+            raise np.linalg.LinAlgError(
+                f"LAPACK condition estimation failed with info={condition_info}"
+            )
+        if reciprocal_condition < MIN_RETAINED_RECIPROCAL_CONDITION:
+            raise ValueError(
+                "C_alpha is too ill-conditioned for a stable retained solve "
+                f"(estimated reciprocal 1-norm condition {reciprocal_condition:.3e}; "
+                f"minimum {MIN_RETAINED_RECIPROCAL_CONDITION:.3e}); use a "
+                "non-redundant retained restriction"
+            )
         b_pi_values = np.asarray(b_pi_t.transpose(*native_dims, state_column_dim).values)
         native_shape = tuple(b_pi_t.sizes[dim] for dim in native_dims)
         solved = cho_solve(
@@ -582,4 +608,4 @@ def _derive_covariance_natural_prolongation(
             "units": "1",
         },
         name="prolongation",
-    )
+    ), float(reciprocal_condition)
