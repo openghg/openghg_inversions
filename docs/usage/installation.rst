@@ -46,12 +46,17 @@ Use a different port or disable automatic browser opening if needed:
 
    pixi run -e dev docs-preview --port 8766 --no-open
 
+Preview output is built in a temporary directory and removed when the server
+stops. ``uv run python scripts/preview_docs.py clean`` removes any legacy
+``docs/_build`` output.
+
 With the default uv development dependency group, use:
 
 .. code:: bash
 
    uv run python scripts/preview_docs.py
    uv run python scripts/preview_docs.py --port 8766 --no-open
+   uv run python scripts/preview_docs.py clean
 
 To run the optional real country-file HDF5 smoke check on a machine that
 can access the ACRG country files, set the country directory and run the
