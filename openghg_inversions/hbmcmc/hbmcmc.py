@@ -746,6 +746,7 @@ def fixedbasisMCMC(
     paris_postprocessing: bool = False,
     paris_postprocessing_kwargs: dict | None = None,
     power: dict | float = 1.99,
+    time_resolved: Sequence[bool | None] | bool | None = None,
     return_basis_objects: bool = False,
     **kwargs,
 ) -> xr.Dataset | dict | InversionOutput:
@@ -774,6 +775,9 @@ def fixedbasisMCMC(
         fp_height: Inlet height modelled for sites in the LPDM, either scalar
             or aligned to ``sites``.
         fp_species: Species name associated with footprints in the object store.
+        time_resolved: Select integrated (``False``) or time-resolved
+            high-frequency (``True``) footprints, either scalar or aligned to
+            ``sites``. ``None`` leaves the OpenGHG search unconstrained.
         emissions_name: List of keyword "source" args used for retrieving emissions files
             from 'emissions_store'.
         inlet: Observation inlet selector, either scalar or aligned to
@@ -955,6 +959,7 @@ def fixedbasisMCMC(
         fp_model=fp_model,
         fp_height=fp_height,
         fp_species=fp_species,
+        time_resolved=time_resolved,
         inlet=inlet,
         instrument=instrument,
         max_level=max_level,

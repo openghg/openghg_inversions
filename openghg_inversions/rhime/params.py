@@ -78,6 +78,7 @@ RHIME_PREPARATION_OPTION_NAMES = frozenset(
         "fp_model",
         "fp_height",
         "fp_species",
+        "time_resolved",
         "inlet",
         "instrument",
         "max_level",

@@ -338,7 +338,8 @@ for the current compatibility arguments.
 Arguments affecting the data using in the inversion:
 - `sites`: a list of the sites to use in the inversion. Other information applied on a site-to-site basis that is presented in lists must be in the same order as used in the `sites` list.
 - `inlet`: a list of inlets for each site. If only one inlet is available for a given site and species, then `None` may be used as the value for that site. If there are a range of inlet heights at a single site, and these should correspond to a single footprint release height, then you may use, for instance, `slice(140, 160)` to combine inlet heights between 140 and 160 meters into a single timeseries of observations.
--`instrument`, `fp_height`, `obs_data_level`, and `met_model` must either be lists of the same length as `sites`, or a single value may be supplied and will be converted to a list of the correct length.
+- `instrument`, `fp_height`, `obs_data_level`, and `met_model` must either be lists of the same length as `sites`, or a single value may be supplied and will be converted to a list of the correct length.
+- `time_resolved`: use `False` to select integrated footprints or `True` to select time-resolved high-frequency footprints. A scalar applies to every site, a list must align with `sites`, and `None` leaves the OpenGHG search unconstrained. For CO2, OpenGHG uses its existing high-time-resolution convolution for time-resolved footprints.
 
 
 Arguments affecting the inverse model:

@@ -2,8 +2,10 @@ from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
+import pytest
 import xarray as xr
 
+import openghg_inversions.inversion_data.scenario as scenario_module
 from openghg_inversions.inversion_data.scenario import _snap_footprint_times_to_obs
 
 
@@ -79,3 +81,41 @@ def test_snap_footprint_times_to_obs_skips_ambiguous_matches() -> None:
     _snap_footprint_times_to_obs(obs_data, footprint_data)
 
     np.testing.assert_array_equal(footprint_data.data.time.values, footprint_times.values)
+
+
+def test_satellite_scenario_forwards_multisector(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Satellite column construction retains site multisector behavior."""
+    init_kwargs: dict[str, object] = {}
+    merge_kwargs: dict[str, object] = {}
+    expected = xr.Dataset({"fp_x_flux_sectoral": (("source", "time"), [[1.0], [2.0]])})
+
+    class FakeModelScenario:
+        def __init__(self, **kwargs: object) -> None:
+            init_kwargs.update(kwargs)
+
+        def footprints_data_merge(self, **kwargs: object) -> xr.Dataset:
+            merge_kwargs.update(kwargs)
+            return expected
+
+    monkeypatch.setattr(
+        "openghg_inversions.inversion_data.scenario.ModelScenario", FakeModelScenario
+    )
+    times = pd.DatetimeIndex(["2023-01-01"])
+    obs_data = SimpleNamespace(data=xr.Dataset(coords={"time": times}))
+    footprint_data = SimpleNamespace(data=xr.Dataset({"fp": ("time", [1.0])}, coords={"time": times}))
+
+    result = scenario_module.merged_scenario_data(
+        obs_data=obs_data,  # type: ignore[arg-type]
+        footprint_data=footprint_data,  # type: ignore[arg-type]
+        flux_dict={"sector-a": object(), "sector-b": object()},  # type: ignore[dict-item]
+        platform="satellite",
+        max_level=20,
+        split_by_sectors=True,
+    )
+
+    assert result is expected
+    assert init_kwargs["obs_column"] is obs_data
+    assert init_kwargs["max_level"] == 20
+    assert merge_kwargs["split_by_sectors"] is True

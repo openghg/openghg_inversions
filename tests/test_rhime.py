@@ -19,6 +19,7 @@ from dask.callbacks import Callback
 
 from examples.rhime_customisation import likelihoods as example_likelihoods
 import openghg_inversions.hbmcmc.inversion_pymc as legacy_mcmc
+import openghg_inversions.config.config as config_module
 import openghg_inversions.inversion_data.preparation as prep_module
 import openghg_inversions.models as models
 import openghg_inversions.models._rhime_compiler as rhime_compiler_module
@@ -383,6 +384,7 @@ def _site_options(
     obs_data_level: list[str | None] | str | None = None,
     met_model: list[str | None] | str | None = None,
     max_level: list[int | None] | int | None = None,
+    time_resolved: list[bool | None] | bool | None = None,
 ) -> prep_module._SiteOptions:
     """Build normalized site-aligned options for private preparation tests."""
     return prep_module._SiteOptions.from_inputs(
@@ -395,6 +397,7 @@ def _site_options(
         obs_data_level=obs_data_level,
         met_model=met_model,
         max_level=max_level,
+        time_resolved=time_resolved,
     )
 
 
@@ -3323,6 +3326,9 @@ def test_rhime_runner_setup_builds_specs_before_preparation(tmp_path: Path) -> N
         "sample_kwargs": {"random_seed": 42},
         "posterior_predictive_kwargs": {"random_seed": 43},
         "builder_strategy": "compiled",
+        "platform": "satellite",
+        "max_level": 20,
+        "time_resolved": True,
     }
 
     setup = rhime_params.make_rhime_runner_setup(
@@ -3332,6 +3338,9 @@ def test_rhime_runner_setup_builds_specs_before_preparation(tmp_path: Path) -> N
 
     assert setup.data_args["flux_sources"] == ["ff-source", "gpp-source", "ter-source", "ocean-source"]
     assert setup.data_args["split_by_sectors"] is True
+    assert setup.data_args["platform"] == "satellite"
+    assert setup.data_args["max_level"] == 20
+    assert setup.data_args["time_resolved"] is True
     assert "sector_sources" not in setup.data_args
     assert "sigma_freq" not in setup.data_args
     assert setup.run_spec.sites == ("TAC",)
@@ -3359,6 +3368,37 @@ def test_rhime_runner_setup_builds_specs_before_preparation(tmp_path: Path) -> N
     assert setup.run_spec.model.sigma_freq == "8D"
     assert setup.run_spec.model.sigma_freq_anchor == "2019-01-01"
     assert setup.run_spec.model.builder_strategy == "compiled"
+
+
+def test_rhime_acquisition_forwards_satellite_footprint_mode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The public runner stage must not drop the time-resolved selector."""
+    captured: dict[str, Any] = {}
+    expected = object()
+
+    def fake_prepare_merged_data(**kwargs: Any) -> object:
+        captured.update(kwargs)
+        return expected
+
+    monkeypatch.setattr(prep_module, "_prepare_merged_data", fake_prepare_merged_data)
+    data_args = {
+        "species": "co2",
+        "sites": ["OCO2-EASTASIA"],
+        "domain": "EASTASIA",
+        "averaging_period": ["1H"],
+        "start_date": "2022-03-31 04:00:00",
+        "end_date": "2022-04-01 04:08:10",
+        "output_name": "satellite_multisector",
+        "flux_sources": ["anth", "resp", "gpp_atm"],
+        "time_resolved": [True],
+    }
+
+    actual = rhime_module.retrieve_or_reload_rhime_data(data_args, multisector=True)
+
+    assert actual is expected
+    assert captured["time_resolved"] == [True]
+    assert captured["split_by_sectors"] is True
 
 
 def test_rhime_runner_setup_rejects_unknown_builder_strategy() -> None:
@@ -4295,6 +4335,44 @@ def test_new_rhime_docs_use_flux_sources_for_examples() -> None:
     assert "Legacy compatibility spelling" in rhime_doc
 
 
+def test_satellite_rhime_template_matches_modern_input_schema() -> None:
+    """The satellite example uses the same keys and value shapes as modern RHIME."""
+    generic_path = Path("openghg_inversions/config/templates/rhime_template.ini")
+    satellite_path = Path(
+        "openghg_inversions/hbmcmc/config/openghg_hbmcmc_input_satellite_template.ini"
+    )
+    generic = config_module.all_param(
+        str(generic_path), exclude_not_found=False, allow_new=True
+    )
+    satellite = config_module.all_param(
+        str(satellite_path), exclude_not_found=False, allow_new=True
+    )
+
+    assert set(satellite) == set(generic)
+    assert satellite["sites"] == ["GOSAT-BRAZIL"]
+    assert satellite["platform"] == ["satellite"]
+    assert satellite["inlet"] == ["column"]
+    assert satellite["fp_height"] == ["column"]
+    assert satellite["max_level"] == [3]
+    assert satellite["output_format"] == "paris"
+    assert satellite["paris_postprocessing_kwargs"] == {
+        "template_version": "latest",
+        "country_selections": None,
+    }
+    assert "emissions_name" not in satellite
+    assert "nit" not in satellite
+    assert "nchain" not in satellite
+
+    normalized = params_from_config(satellite_path)
+    setup = rhime_params.make_rhime_runner_setup(
+        params=normalized,
+        multisector=False,
+    )
+    assert setup.run_spec.sites == ("GOSAT-BRAZIL",)
+    assert setup.data_args["platform"] == ["satellite"]
+    assert setup.data_args["max_level"] == [3]
+
+
 def test_cleanup_plan_records_issue_400_decisions() -> None:
     """The cleanup plan records current PR decisions without example completions."""
     plan_doc = Path("docs/plans/clean_up_inversions_refactor.md").read_text(encoding="utf-8")
@@ -5075,6 +5153,7 @@ def test_prepare_merged_data_reload_keeps_all_options_aligned(
         obs_data_level=["level-tac", "level-mhd", "level-rgl"],
         met_model=["met-tac", "met-mhd", "met-rgl"],
         max_level=[10, 20, 30],
+        time_resolved=[True, False, None],
         reload_merged_data=True,
         merged_data_dir=str(tmp_path),
         use_bc=False,
@@ -5090,6 +5169,7 @@ def test_prepare_merged_data_reload_keeps_all_options_aligned(
         obs_data_level=["level-mhd"],
         met_model=["met-mhd"],
         max_level=[20],
+        time_resolved=[False],
     )
     assert set(merged.fp_all) == {"MHD", ".species", ".split_by_sectors", ".units"}
 
@@ -5107,6 +5187,7 @@ def test_site_options_direct_construction_enforces_immutable_alignment() -> None
             obs_data_level=(None, None),
             met_model=(None, None),
             max_level=(None, None),
+            time_resolved=(None, None),
         )
 
     options = _site_options(["TAC"], averaging_period=["1H"])
@@ -5159,6 +5240,7 @@ def test_prepare_merged_data_retrieval_keeps_requested_metadata_authoritative(
         obs_data_level=["level-tac", "level-mhd", "level-rgl"],
         met_model=["met-tac", "met-mhd", "met-rgl"],
         max_level=[10, 20, 30],
+        time_resolved=[False, True, False],
         use_bc=False,
     )
 
@@ -5172,6 +5254,7 @@ def test_prepare_merged_data_retrieval_keeps_requested_metadata_authoritative(
         obs_data_level=["level-tac", "level-rgl"],
         met_model=["met-tac", "met-rgl"],
         max_level=[10, 30],
+        time_resolved=[False, False],
     )
 
 

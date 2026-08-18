@@ -49,6 +49,41 @@ def expand_site_option(
     return values
 
 
+def expand_site_boolean_option(
+    value: Iterable[bool | None] | bool | None,
+    *,
+    nsites: int,
+    name: str,
+) -> tuple[bool | None, ...]:
+    """Broadcast an optional boolean or validate one value per site.
+
+    Boolean site options are kept separate from :func:`expand_site_option`,
+    whose general scalar contract deliberately rejects booleans as ambiguous
+    integer-like values.
+    """
+    if nsites < 0:
+        raise ValueError(f"`nsites` must be non-negative, got {nsites}.")
+
+    if value is None or isinstance(value, bool):
+        return (value,) * nsites
+    if isinstance(value, str | bytes | Mapping | AbstractSet):
+        raise ValueError(f"`{name}` must be a boolean, a site-aligned iterable of booleans, or None.")
+
+    try:
+        values = tuple(cast(Iterable[Any], value))
+    except TypeError as exc:
+        raise ValueError(
+            f"`{name}` must be a boolean, a site-aligned iterable of booleans, or None."
+        ) from exc
+
+    if len(values) != nsites:
+        raise ValueError(f"List {name} does not have specified length: {len(values)} != {nsites}.")
+    invalid = [item for item in values if item is not None and not isinstance(item, bool)]
+    if invalid:
+        raise ValueError(f"`{name}` entries must be booleans or None. Invalid value(s): {invalid!r}.")
+    return cast(tuple[bool | None, ...], values)
+
+
 def is_column_observation(inlet: object, platform: object) -> bool:
     """Return whether one inlet/platform pair explicitly selects column data."""
     return isinstance(inlet, str) and inlet.lower() == "column" or is_column_platform(platform)
