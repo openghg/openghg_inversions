@@ -520,20 +520,33 @@ def basis_functions_from_fp_all_flat_basis(
 ) -> FluxWeightedBasis:
     """Compatibility adapter that constructs a basis object from flat basis data.
 
-    Legacy flat basis artifacts remain readable for a transition period, but
-    modern preparation and postprocessing should consume the returned
-    ``BasisFunctions`` object rather than the flat representation directly.
+    This is also the public handoff for project-owned flat-basis algorithms in
+    copied RHIME runners. A single two-dimensional array defines a shared
+    spatial basis. A source-keyed mapping defines source-specific bases and is
+    restricted and ordered to match runtime flux sources when ``fp_all`` is
+    sector resolved. In both cases the retained flux is reconstructed from the
+    current ``fp_all`` input rather than from the flat-basis producer.
 
     Args:
         fp_all: Legacy merged-data dictionary containing a ``".flux"`` side
             channel and optional ``".split_by_sectors"`` flag.
-        basis_flat: Flat basis array, or source-keyed flat basis arrays, from
-            the legacy basis-generation/loading path.
+        basis_flat: Two-dimensional shared flat basis array, or source-keyed
+            two-dimensional flat basis arrays, produced by a compatible basis
+            algorithm or legacy loading path.
         metadata: Optional namespaced metadata to carry on the basis object.
 
     Returns:
         A retained ``BasisFunctions`` object with flux reconstructed from
         ``fp_all``.
+
+    Raises:
+        TypeError: If a runtime flux entry or basis input has an unsupported
+            type.
+        ValueError: If runtime flux is missing or inconsistent, a
+            source-specific basis omits a runtime source, or basis labels and
+            dimensions violate the retained-basis contract.
+        xarray.AlignmentError: If basis and current-run flux grids are not
+            physically compatible.
     """
     flux = flux_from_fp_all(fp_all)
     if isinstance(basis_flat, Mapping):
