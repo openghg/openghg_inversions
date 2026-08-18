@@ -123,6 +123,7 @@ def _guarded_basis(
         ValueError: If zero-filled weights do not have a positive finite
             maximum, or geometry, allocation, or guarded splitting is invalid.
     """
+    # 1. Turn the filtered footprints and flux into one spatial importance map.
     weights = basis_weights_from_fp_all(
         merged.fp_all,
         data_args.get("flux_sources"),
@@ -134,11 +135,13 @@ def _guarded_basis(
         raise ValueError("Project basis weights must have a positive finite maximum.")
     normalized_weights = finite_weights / maximum
 
+    # 2. Define scientific boundaries that no basis region may cross.
     region_classes = _land_ocean_classes(
         domain=data_args["domain"],
         country_directory=data_args.get("country_directory"),
     )
     geometry = LatLonGridGeometry.from_dataarray(normalized_weights)
+    # 3. Compose the split algorithm and its shape/connectivity safeguards.
     strategy = ConnectedComponentSplitStrategy(
         split_strategy=GreedySplitStrategy(
             split_step=ConnectedComponentPartitionStep(
@@ -155,6 +158,7 @@ def _guarded_basis(
         ),
         connectivity=1,
     )
+    # 4. Allocate and split regions within the land/ocean classes.
     basis_flat = (
         region_constrained_basis(
             normalized_weights,
@@ -176,6 +180,7 @@ def _guarded_basis(
         "openghg_inversions:project_basis_weights": "basis_weights_from_fp_all_abs_flux_normalized",
     }
     basis_flat.attrs.update(provenance)
+    # 5. Attach the current flux so standard RHIME sensitivity code can use it.
     return basis_functions_from_fp_all_flat_basis(
         fp_all=merged.fp_all,
         basis_flat=basis_flat,
@@ -277,6 +282,10 @@ def run_custom_rhime(
 
     merged = retrieve_or_reload_rhime_data(setup.data_args, multisector=False)
     filtered = filter_rhime_observations(merged, setup.data_args)
+
+    # CUSTOMISATION POINT: the standard runner calls build_rhime_basis here.
+    # This project function either loads a saved basis or composes the guarded
+    # basis-building tools above. Every stage after this call is standard RHIME.
     basis_functions = build_project_basis(
         filtered,
         dict(setup.data_args),

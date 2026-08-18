@@ -1,12 +1,38 @@
-Customising a RHIME likelihood
-==============================
+Customising RHIME
+=================
 
-Preferred: pass a Python likelihood
------------------------------------
+RHIME is built from reusable functions for data preparation, basis
+construction, model construction, sampling, and output. This is a deliberate
+design choice: when the standard workflow does not express the science you
+need, you should be able to start from a working example and replace the
+smallest relevant part.
+
+The examples on this page use a procedural style. Data is passed from one
+function to the next in the order that the inversion runs, so readers do not
+need to design a new class hierarchy or framework before changing a model.
+Some library functions return structured objects that group related values,
+but the examples show how to use those objects directly.
+
+Reusing the components does not make every custom workflow automatic. A
+replacement function is responsible for the scientific choices it introduces,
+and a deeper change may also need different data preparation. The remaining
+RHIME stages can only validate the inputs and assumptions covered by their
+documented interfaces.
+
+Choose the smallest starting point that fits the change:
+
+* To change only the likelihood, pass a Python function to ``run_rhime``.
+* To change a preparation stage such as basis construction, copy the visible
+  runner and replace that stage.
+* To start from prepared data or replace the complete model, use
+  ``run_rhime_from_prepared_inputs``.
+
+Change the likelihood with a Python function
+--------------------------------------------
 
 For an ordinary likelihood variation, keep RHIME's complete
-acquisition-to-output workflow and pass one direct-Python callable to
-``run_rhime``. The callable is deliberately unavailable to INI files: it is
+acquisition-to-output workflow and pass one Python function to ``run_rhime``.
+The function is deliberately unavailable to INI files: it is
 not imported from configuration or stored in a run or model specification.
 
 The complete integration is one named argument:
@@ -21,34 +47,41 @@ The complete integration is one named argument:
        likelihood_builder=likelihood_builder,
    )
 
-A builder is called as ``likelihood_builder(context)`` while the PyMC model is
-active and returns ``RhimeLikelihoodResult``. Its semantic roles drive
-predictive sampling, its supported output formats are validated before
-sampling, and its metadata must be JSON-compatible. The ordinary caller does
-not construct the context, a specification, or a role/output manifest.
+RHIME calls the function as ``likelihood_builder(context)`` while constructing
+the PyMC model. It returns a
+:class:`~openghg_inversions.models.RhimeLikelihoodResult`, which contains the
+new observed variable and the small amount of information RHIME needs for
+sampling and output. An ordinary caller does not construct the context or
+these supporting records.
 
 Editable likelihood
 ~~~~~~~~~~~~~~~~~~~
 
-The tested project-owned example replaces RHIME's Gaussian observation
-distribution with Student-t while reusing RHIME's current mean and error
+The following example replaces RHIME's Gaussian observation distribution with
+a Student-t distribution while reusing RHIME's current mean and error
 construction:
 
 .. literalinclude:: ../../examples/rhime_customisation/likelihoods.py
    :language: python
    :linenos:
 
-The callable's safe module and qualified name, together with its
-JSON-compatible likelihood metadata, are recorded in result and serialized
-output provenance. Executable Python code is not serialized.
+RHIME records the function's module and name, together with its likelihood
+metadata, in the result and in saved output. It does not copy the Python source
+code into the output, so a project should keep the source and environment used
+for an inversion.
 
-The example makes those owned invariants explicit: ``student_y`` is declared
-as the ``concentration`` role, RHIME's ``epsilon`` remains the ``model_error``
-role, only ``none`` and ``inv_out`` outputs are declared compatible, and the
-Student-t family and degrees of freedom are recorded as JSON metadata. It
-rejects dense and low-rank aggregation covariance because the example uses an
-independent Student-t distribution; supporting those modes would require a
-multivariate likelihood rather than a hidden approximation.
+The returned ``RhimeLikelihoodResult`` maps standard meanings to the PyMC
+variable names used by this model. For example, it tells RHIME that
+``student_y`` is the modelled concentration and ``epsilon`` is the model-error
+scale. Sampling and output code can then find these quantities even though the
+custom model uses different names. It also lists the output formats that have
+been checked with this likelihood; this example supports no file output
+(``none``) and the ``inv_out`` format. The Student-t family and degrees of
+freedom are stored as simple metadata.
+
+The example rejects dense and low-rank aggregation covariance because it uses
+an independent Student-t distribution. Supporting those aggregation-error
+modes would require a multivariate likelihood.
 
 Optional project CLI
 ~~~~~~~~~~~~~~~~~~~~
@@ -70,8 +103,8 @@ standard multi-sector model retains sector flux components and roles, then
 passes their combined observation mean to the likelihood, so no special case
 or semantic compromise is required.
 
-Advanced: copy the complete runner
-----------------------------------
+Copy the complete runner
+------------------------
 
 The copied runner below is an advanced, version-coupled escape hatch for
 scientific changes beyond the likelihood seam. It makes the major stages
@@ -83,8 +116,9 @@ preparation graph.
 The deliberate change is the likelihood passed to
 ``build_standard_rhime_model``: the example selects the same project-owned
 Student-t builder as the preferred form. Acquisition, filtering, basis
-construction, labelled input assembly, the eager PyMC boundary, sampling,
-predictive selection, filenames, and output handling remain library-owned.
+construction, labelled input assembly, conversion of delayed arrays for PyMC,
+sampling, predictive selection, filenames, and output handling remain
+library-owned.
 
 In a project created with the `OpenGHG project cookiecutter
 <https://github.com/openghg/openghg-project-cookiecutter>`_, copy the preferred
@@ -113,15 +147,15 @@ cannot drift apart.
    :language: python
    :linenos:
 
-Advanced: compose a custom basis stage
---------------------------------------
+Compose a custom basis stage
+----------------------------
 
 The second complete runner replaces one call in the preparation spine:
 ``build_project_basis`` replaces ``build_rhime_basis``. The project function
 composes public basis primitives instead of selecting a built-in basis
 algorithm. It:
 
-* derives and normalizes a two-dimensional weight field with
+* derives and normalises a two-dimensional weight field with
   ``basis_weights_from_fp_all``;
 * loads the public country grid and reduces positive country codes to ``land``
   and the remaining cells to ``ocean``;
@@ -152,13 +186,14 @@ have not been constructed yet, so the example uses the public
 and class composition.
 
 The flat labels and retained object record namespaced provenance for the class
-policy, normalized weight source, connected balanced-inertial strategy,
+policy, normalised weight source, connected balanced-inertial strategy,
 connectivity, and eccentricity threshold. Those fields travel with a saved
 ``BasisFunctions`` artifact and make the project choice inspectable later.
 
 Acquisition, filtering, sensitivity construction, labelled input assembly,
-the standard likelihood and model, the eager PyMC boundary, sampling,
-predictive selection, filenames, and output handling remain library-owned.
+the standard likelihood and model, conversion of delayed arrays for PyMC,
+sampling, predictive selection, filenames, and output handling remain
+library-owned.
 
 The project owns the scientific validity of its classification, coverage,
 region count, eccentricity threshold, and split policy. ``BasisFunctions`` and
@@ -182,22 +217,27 @@ RHIME option resolution::
    python -m package_name.custom_basis_runner config.ini \
        --max-child-pca-eccentricity 10
 
-``BasisFunctions.load`` eagerly loads the saved operator, metadata, and flux,
-then closes the artifact. The serialized flux is deliberately retained. Use
+``BasisFunctions.load`` loads the saved operator, metadata, and flux into
+memory, then closes the artifact. The saved flux is deliberately retained. Use
 the standard public ``load_basis_functions`` helper instead when loading a
 named RHIME basis cache that should take its retained flux from the current
 ``fp_all`` acquisition.
 
-Without an artifact, basis generation is a named eager boundary: the public
-weight adapter eagerly materializes a derived two-dimensional weight field
-from borrowed inputs; normalization, geometry construction, country-class
-loading, and guarded region splitting then compute eager class and label
-fields. Before that boundary, the filtered xarray objects are borrowed and may
-be Dask-backed. The compatibility adapter retains the current run's flux with
-the generated labels at this visible runner boundary, and the resulting
-``BasisFunctions`` object flows unchanged through sensitivity construction and
-labelled assembly. Model arrays are materialized separately and explicitly by
-``materialize_pymc_inputs``.
+Without an artifact, the basis-building function computes the arrays needed by
+the splitting algorithm. Before that point, the filtered xarray objects may
+still defer their calculations with Dask. The function derives and normalises
+the two-dimensional weights, loads the country classes, constructs the
+geometry, and creates the region labels. It then combines the labels with the
+current run's flux in a ``BasisFunctions`` object. That object flows unchanged
+through sensitivity construction and labelled assembly. The arrays needed by
+PyMC are converted separately by ``materialize_pymc_inputs`` immediately
+before model construction.
+
+The customisation is concentrated in ``_guarded_basis``. The runner's one
+deliberate substitution is marked by an inline comment where
+``build_project_basis`` replaces the standard ``build_rhime_basis`` call. The
+complete source remains below because the test suite executes the same file
+that the documentation displays.
 
 Copy ``examples/rhime_customisation/custom_basis_runner.py`` to
 ``src/<package_name>/custom_basis_runner.py`` and keep the project basis rule
