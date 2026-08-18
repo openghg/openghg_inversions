@@ -828,13 +828,8 @@ def test_bucket_basis_function(tac_ch4_data_args, raw_data_path):
     xr.testing.assert_allclose(basis_func, basis_func_reloaded.basis)
 
 
-def test_fixed_outer_region_basis_function(tac_ch4_data_args, raw_data_path):
-    """Check if fixed outer region basis created with seed 42 and TAC CH4 args matches
-    a basis created with the same arguments and saved to file.
-
-    This is to check against changes in the code from when this test was made
-    (2 Sep 2024)
-    """
+def test_fixed_outer_region_basis_function(tac_ch4_data_args):
+    """Fixed outer labels are retained and inner labels respect land/sea classes."""
     fp_all, *_ = data_processing_surface_notracer(**tac_ch4_data_args)
     emissions_name = next(iter(fp_all[".flux"].keys()))
     basis_func = fixed_outer_regions_basis(
@@ -845,15 +840,22 @@ def test_fixed_outer_region_basis_function(tac_ch4_data_args, raw_data_path):
         basis_algorithm="weighted",
     )
 
-    basis_func_reloaded = basis(
-        domain="EUROPE",
-        basis_case="fixed_outer_region_ch4-test_basis",
-        basis_directory=raw_data_path / "basis",
+    labels = basis_func.squeeze("time", drop=True)
+    outer_regions = load_intem_outer_regions("EUROPE")
+    _, outer_regions = xr.align(labels, outer_regions, join="override")
+    inner_mask = outer_regions == outer_regions.max()
+    outer_mask = ~inner_mask
+    np.testing.assert_array_equal(
+        labels.values[outer_mask.values],
+        (outer_regions + 1).values[outer_mask.values],
     )
+    assert labels.values[inner_mask.values].min() > labels.values[outer_mask.values].max()
 
-    # TODO: create new "fixed" basis function file, since we've switched basis functions from
-    # dataset to data array
-    xr.testing.assert_allclose(basis_func, basis_func_reloaded.basis)
+    landsea = load_country_region_classes("EUROPE")
+    _, landsea = xr.align(labels, landsea, join="override")
+    for label in np.unique(labels.values[inner_mask.values]):
+        classes = np.unique(landsea.values[inner_mask.values & (labels.values == label)])
+        assert len(classes) == 1
 
 
 def _tiny_region_constrained_fp_all() -> tuple[dict, xr.DataArray]:
@@ -1137,6 +1139,76 @@ def test_fixed_outer_regions_accepts_direct_outer_map_path(tmp_path):
     )
     assert isinstance(retained, BasisFunctions)
     assert bool((retained.flat_basis() > 0).all())
+
+
+def test_fixed_outer_weighted_basis_crops_landsea_mask_to_inner_region(monkeypatch, tmp_path):
+    """Fixed-outer weighted generation aligns land/sea classes before cropping."""
+    fp_all, region_classes = _tiny_region_constrained_fp_all()
+    outer_values = np.array(
+        [
+            [0, 0, 1, 1],
+            [0, 2, 2, 1],
+            [0, 2, 2, 1],
+            [0, 0, 1, 1],
+        ],
+        dtype=int,
+    )
+    landsea_values = np.array(
+        [
+            [0, 0, 1, 1],
+            [0, 0, 1, 1],
+            [0, 1, 0, 1],
+            [0, 0, 1, 1],
+        ],
+        dtype=int,
+    )
+    outer_path = tmp_path / "outer_region_definition_TEST.nc"
+    xr.Dataset(
+        {"region": (region_classes.dims, outer_values)},
+        coords=region_classes.coords,
+    ).to_netcdf(outer_path)
+    xr.Dataset(
+        {"country": (region_classes.dims, landsea_values)},
+        coords=region_classes.coords,
+    ).to_netcdf(tmp_path / "country-land-sea_TEST.nc")
+    seen: dict[str, np.ndarray] = {}
+
+    def fake_weighted_basis(
+        fp_all,
+        start_date,
+        domain,
+        emissions_name=None,
+        nbasis=100,
+        country_directory=None,
+        abs_flux=False,
+        mask=None,
+        landsea_indices=None,
+    ):
+        del fp_all, domain, emissions_name, nbasis, country_directory, abs_flux
+        assert mask is not None
+        assert landsea_indices is not None
+        seen["landsea"] = landsea_indices
+        inner = xr.ones_like(mask.where(mask, drop=True), dtype=int)
+        return inner.expand_dims(time=[pd.Timestamp(start_date)], axis=-1)
+
+    monkeypatch.setitem(
+        basis_functions,
+        "weighted",
+        basis_functions["weighted"]._replace(algorithm=fake_weighted_basis),
+    )
+
+    result = fixed_outer_regions_basis(
+        fp_all=fp_all,
+        start_date="2020-01-01",
+        basis_algorithm="weighted",
+        domain="TEST",
+        emissions_name=["total"],
+        country_directory=str(tmp_path),
+        outer_regions_path=outer_path,
+    )
+
+    np.testing.assert_array_equal(seen["landsea"], landsea_values[1:3, 1:3])
+    assert result.shape == (1, 4, 4)
 
 
 def test_region_constrained_fixed_outer_basis_from_weights_allocates_inner_only():

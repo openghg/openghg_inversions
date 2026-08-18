@@ -66,3 +66,26 @@ def test_weighted_basis_rejects_landsea_shape_mismatch(tmp_path) -> None:
             domain="NESTED",
             country_directory=str(tmp_path),
         )
+
+
+def test_weighted_basis_accepts_pre_aligned_subdomain_landsea_mask(monkeypatch) -> None:
+    grid = np.array([[4.0, 3.0], [2.0, 1.0]])
+    landsea = np.array([[0, 1], [0, 1]])
+
+    def fail_load(*args, **kwargs):
+        raise AssertionError("A supplied land/sea mask must not trigger full-domain loading.")
+
+    monkeypatch.setattr(
+        "openghg_inversions.basis.algorithms._weighted.load_landsea_indices",
+        fail_load,
+    )
+
+    labels = bucket_split_landsea_basis(
+        grid,
+        bucket=5.0,
+        domain="EUROPE",
+        landsea_indices=landsea,
+    )
+
+    assert labels.shape == grid.shape
+    _assert_labels_do_not_cross_classes(labels, landsea)
