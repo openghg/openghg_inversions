@@ -20,6 +20,10 @@
   [#455](https://github.com/openghg/openghg_inversions/issues/455)
 
 - Added direct-Python RHIME likelihood and complete-model builder contracts.
+  The top-level `run_rhime` and `run_rhime_multisector` entry points now accept
+  a keyword-only `likelihood_builder` callable, so ordinary acquisition-to-output
+  runs can replace the observation component without constructing prepared
+  inputs or a complete model.
   Custom builders declare semantic variable roles, supported output formats,
   and serializable provenance metadata, which are validated before sampling
   and preserved in inversion outputs. Built-in concrete, compiled, and
