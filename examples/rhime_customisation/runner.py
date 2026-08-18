@@ -1,7 +1,7 @@
 """Advanced copy-and-modify runner for a standard RHIME inversion.
 
-This example deliberately replaces RHIME's default likelihood with the public
-absolute-sigma Gaussian helper.  The orchestration is intentionally copied so
+This example deliberately replaces RHIME's default likelihood with a
+project-owned Student-t builder. The orchestration is intentionally copied so
 that a project can make deeper scientific changes while continuing to reuse
 the supported acquisition, preparation, model, sampling, and output stages.
 Use :func:`run_custom_rhime` from Python or :func:`main` from the command line.
@@ -22,7 +22,6 @@ from typing import Any
 from openghg_inversions.rhime import (
     RhimeResult,
     assemble_rhime_inputs,
-    build_absolute_sigma_gaussian_likelihood,
     build_rhime_basis,
     build_rhime_sensitivities,
     build_standard_rhime_model,
@@ -36,13 +35,15 @@ from openghg_inversions.rhime import (
     with_prepared_rhime_sites,
 )
 
+from .likelihoods import likelihood_builder
+
 
 def run_custom_rhime(
     *,
     config_file: str | Path | None = None,
     **kwargs: Any,
 ) -> RhimeResult:
-    """Run standard RHIME with an absolute-sigma Gaussian likelihood.
+    """Run standard RHIME with a project-owned Student-t likelihood.
 
     Args:
         config_file: Optional RHIME INI configuration file.
@@ -52,9 +53,15 @@ def run_custom_rhime(
     Returns:
         The sampled result and any outputs requested by the RHIME options.
 
+    Raises:
+        TypeError: If the likelihood builder returns an invalid result type.
+        ValueError: If required options are missing, aggregation or output is
+            unsupported, or likelihood roles or metadata are invalid.
+
     Notes:
-        This workflow may retrieve or reload data, eagerly materializes PyMC
-        model inputs, runs sampling, and writes outputs requested by the
+        This workflow may retrieve or reload data, materializes related model
+        arrays together at the named PyMC boundary without mutating canonical
+        prepared inputs, runs sampling, and writes outputs requested by the
         resolved RHIME options.
     """
     params = (
@@ -86,7 +93,7 @@ def run_custom_rhime(
         model_inputs=model_inputs,
         run_spec=run_spec,
         # This is the deliberate scientific replacement in the copied runner.
-        likelihood_builder=build_absolute_sigma_gaussian_likelihood,
+        likelihood_builder=likelihood_builder,
     )
     idata = sample_rhime_model(
         model_build_result,
@@ -101,7 +108,7 @@ def run_custom_rhime(
         model_build_result=model_build_result,
         idata=idata,
         build_and_sample_seconds=perf_counter() - build_and_sample_start,
-        likelihood_builder=build_absolute_sigma_gaussian_likelihood,
+        likelihood_builder=likelihood_builder,
     )
 
 

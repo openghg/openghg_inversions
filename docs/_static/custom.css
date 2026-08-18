@@ -1,0 +1,14 @@
+/*
+ * PyData Sphinx Theme caps both the page and article widths. That keeps prose
+ * narrow, but it also means widening the browser cannot give long examples
+ * more room and forces unnecessary horizontal scrolling. Let the standard
+ * responsive layout use the available viewport; code blocks retain the
+ * theme's overflow behaviour as a fallback on genuinely narrow screens.
+ */
+.bd-page-width {
+  max-width: none;
+}
+
+.bd-main .bd-content .bd-article-container {
+  max-width: none;
+}

@@ -17,6 +17,7 @@ import xarray as xr
 from pytensor.compile.mode import Mode
 from dask.callbacks import Callback
 
+from examples.rhime_customisation import likelihoods as example_likelihoods
 import openghg_inversions.hbmcmc.inversion_pymc as legacy_mcmc
 import openghg_inversions.inversion_data.preparation as prep_module
 import openghg_inversions.models as models
@@ -998,6 +999,85 @@ def test_build_rhime_model_accepts_student_t_likelihood_builder(
         "concentration": "student_y",
         "model_error": "epsilon",
     }
+
+
+def test_editable_example_builder_returns_student_t_contract(
+    rhime_inv_inputs: xr.Dataset,
+    builder_args: dict[str, Any],
+) -> None:
+    """The project-owned example returns its documented Student-t contract."""
+    example_model = build_rhime_model(
+        rhime_inv_inputs,
+        **builder_args,
+        likelihood_builder=example_likelihoods.likelihood_builder,
+    )
+    example_result = rhime_models_module.get_rhime_likelihood_result(example_model)
+
+    assert example_likelihoods.likelihood_builder.__module__ == example_likelihoods.__name__
+    assert isinstance(example_result, RhimeLikelihoodResult)
+    assert example_result.variable_roles == {
+        "concentration": "student_y",
+        "model_error": "epsilon",
+    }
+    assert example_result.supported_output_formats == ("none", "inv_out")
+    assert example_result.metadata == {"family": "student_t", "degrees_of_freedom": 4.0}
+    assert type(example_model["student_y"].owner.op).__name__ == "StudentTRV"
+
+
+@pytest.mark.parametrize("aggregation_error_mode", ["dense", "low_rank"])
+def test_editable_example_builder_rejects_correlated_aggregation_error(
+    aggregation_error_mode: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The independent Student-t example rejects correlated error representations."""
+    data = _minimal_output_inv_inputs()
+    data["min_error"] = xr.zeros_like(data["mf"])
+    if aggregation_error_mode == "dense":
+        data["aggregation_error_covariance"] = (
+            ("nmeasure", "nmeasure_cov"),
+            np.eye(data.sizes["nmeasure"]),
+        )
+    else:
+        data["low_rank_factor"] = (
+            ("nmeasure", "aggregation_rank"),
+            np.ones((data.sizes["nmeasure"], 1)),
+        )
+        data["diagonal_residual_variance"] = (
+            "nmeasure",
+            np.zeros(data.sizes["nmeasure"]),
+        )
+    sigma_alignment = SigmaAlignment.from_frequency(
+        data["site_indicator"],
+        frequency="3h",
+        anchor_time="2019-01-01",
+    )
+    selected_modes: list[str] = []
+    original_select = example_likelihoods.select_aggregation_error_mode
+
+    def select_mode(data: xr.Dataset, requested: Any) -> Any:
+        """Record the cheap public preflight used by the example."""
+        selected_modes.append(requested)
+        return original_select(data, requested)
+
+    monkeypatch.setattr(example_likelihoods, "select_aggregation_error_mode", select_mode)
+
+    with pm.Model(coords={"nmeasure": np.arange(data.sizes["nmeasure"])}) as model:
+        context = RhimeLikelihoodContext(
+            data=data,
+            flux_mean=pm.math.constant(np.zeros(data.sizes["nmeasure"])),
+            boundary_mean=None,
+            offset=None,
+            sigma_alignment=sigma_alignment,
+            sigma_prior={"pdf": "uniform", "lower": 0.1, "upper": 10.0},
+            power=1.99,
+            pollution_events_from_obs=False,
+            no_model_error=False,
+            aggregation_error_mode=cast(Any, aggregation_error_mode),
+        )
+        with pytest.raises(ValueError, match="assumes independent observations"):
+            example_likelihoods.likelihood_builder(context)
+    assert selected_modes == [aggregation_error_mode]
+    assert model.named_vars == {}
 
 
 @pytest.mark.rhime_contract
@@ -2318,10 +2398,24 @@ def test_run_rhime_from_prepared_inputs_routes_without_preparation(
 
 
 @pytest.mark.parametrize(
-    ("runner_name", "build_stage", "result_stage", "multisector"),
+    ("runner_name", "build_stage", "result_stage", "multisector", "custom_likelihood"),
     [
-        ("run_rhime", "build_standard_rhime_model", "make_standard_rhime_result", False),
-        ("run_rhime_multisector", "build_multisector_rhime_model", "make_multisector_rhime_result", True),
+        ("run_rhime", "build_standard_rhime_model", "make_standard_rhime_result", False, False),
+        ("run_rhime", "build_standard_rhime_model", "make_standard_rhime_result", False, True),
+        (
+            "run_rhime_multisector",
+            "build_multisector_rhime_model",
+            "make_multisector_rhime_result",
+            True,
+            False,
+        ),
+        (
+            "run_rhime_multisector",
+            "build_multisector_rhime_model",
+            "make_multisector_rhime_result",
+            True,
+            True,
+        ),
     ],
 )
 def test_public_rhime_runners_follow_named_stage_order(
@@ -2330,8 +2424,9 @@ def test_public_rhime_runners_follow_named_stage_order(
     build_stage: str,
     result_stage: str,
     multisector: bool,
+    custom_likelihood: bool,
 ) -> None:
-    """Standard and multisector recipes call their named public stages in order."""
+    """Ordinary recipes preserve stage handoffs with default or custom likelihoods."""
     _, _, run_spec = _minimal_output_specs(output_format="none")
     prepared = RhimePreparedInputs(
         inv_inputs=_minimal_output_inv_inputs(),
@@ -2410,16 +2505,22 @@ def test_public_rhime_runners_follow_named_stage_order(
 
     def build(**kwargs: Any) -> RhimeModelBuildResult:
         """Record the recipe-specific public model build."""
+        expected_builder = build_absolute_sigma_gaussian_likelihood if custom_likelihood else None
+        assert kwargs["likelihood_builder"] is expected_builder
         calls.append("build")
         return build_result
 
     def sample(*args: Any, **kwargs: Any) -> az.InferenceData:
         """Record public sampling."""
+        assert args == (build_result, sampler)
+        assert kwargs == {"use_variable_roles": custom_likelihood}
         calls.append("sample")
         return idata
 
     def result(**kwargs: Any) -> RhimeResult:
         """Record the recipe-specific public result stage."""
+        expected_builder = build_absolute_sigma_gaussian_likelihood if custom_likelihood else None
+        assert kwargs["likelihood_builder"] is expected_builder
         calls.append("result")
         return expected
 
@@ -2435,7 +2536,10 @@ def test_public_rhime_runners_follow_named_stage_order(
     monkeypatch.setattr(rhime_module, "sample_rhime_model", sample)
     monkeypatch.setattr(rhime_module, result_stage, result)
 
-    actual = getattr(rhime_module, runner_name)(species="ch4")
+    runner_kwargs: dict[str, Any] = {"species": "ch4"}
+    if custom_likelihood:
+        runner_kwargs["likelihood_builder"] = build_absolute_sigma_gaussian_likelihood
+    actual = getattr(rhime_module, runner_name)(**runner_kwargs)
 
     assert actual is expected
     assert calls == [
@@ -2451,6 +2555,66 @@ def test_public_rhime_runners_follow_named_stage_order(
         "sample",
         "result",
     ]
+
+
+@pytest.mark.parametrize("runner", [run_rhime, run_rhime_multisector])
+def test_ordinary_runners_expose_keyword_only_likelihood_builder(runner: Callable[..., Any]) -> None:
+    """Ordinary runners expose likelihood_builder as keyword-only and omit model_builder."""
+    parameters = inspect.signature(runner).parameters
+
+    assert parameters["likelihood_builder"].kind is inspect.Parameter.KEYWORD_ONLY
+    assert "model_builder" not in parameters
+
+
+@pytest.mark.parametrize("runner", [run_rhime, run_rhime_multisector])
+def test_ordinary_runners_reject_noncallable_likelihood_before_config_and_preparation(
+    monkeypatch: pytest.MonkeyPatch,
+    runner: Callable[..., RhimeResult],
+) -> None:
+    """Non-callable likelihoods fail before config, acquisition, or materialization."""
+
+    def fail_stage(*args: Any, **kwargs: Any) -> None:
+        """Prove no downstream runner boundary is entered."""
+        raise AssertionError("invalid likelihood must fail at the public boundary")
+
+    for stage in (
+        "params_from_config",
+        "resolve_rhime_options",
+        "retrieve_or_reload_rhime_data",
+        "assemble_rhime_inputs",
+        "materialize_pymc_inputs",
+    ):
+        monkeypatch.setattr(rhime_module, stage, fail_stage)
+
+    with pytest.raises(TypeError, match="likelihood_builder.*callable"):
+        runner(
+            config_file=Path("unused.ini"),
+            likelihood_builder=cast(Any, "not-a-callable"),
+        )
+
+
+def test_prepared_runner_rejects_noncallable_likelihood_before_validation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Prepared-input runs reject invalid likelihoods before touching borrowed inputs."""
+    _, _, run_spec = _minimal_output_specs(output_format="none")
+    prepared = RhimePreparedInputs(
+        inv_inputs=_minimal_output_inv_inputs(),
+        basis_functions=_fake_basis_functions(),
+        site_metadata=_prepared_site_metadata(),
+    )
+
+    def fail_validation(self: RhimePreparedInputs) -> RhimePreparedInputs:
+        """Prove the borrowed prepared object remains untouched."""
+        raise AssertionError("invalid likelihood must fail before prepared validation")
+
+    monkeypatch.setattr(RhimePreparedInputs, "validated", fail_validation)
+    with pytest.raises(TypeError, match="likelihood_builder.*callable"):
+        run_rhime_from_prepared_inputs(
+            prepared_inputs=prepared,
+            run_spec=run_spec,
+            likelihood_builder=cast(Any, 42),
+        )
 
 
 def test_rhime_public_package_exports_supported_orchestration_stages() -> None:
@@ -2474,6 +2638,12 @@ def test_rhime_public_package_exports_supported_orchestration_stages() -> None:
     for name in stage_names:
         assert getattr(rhime_public, name) is getattr(rhime_module, name)
         assert name in rhime_public.__all__
+
+
+def test_rhime_public_package_exports_aggregation_error_mode_selector() -> None:
+    """Likelihood examples can preflight covariance mode through the RHIME API."""
+    assert rhime_public.select_aggregation_error_mode is rhime_module.select_aggregation_error_mode
+    assert "select_aggregation_error_mode" in rhime_public.__all__
 
 
 def test_public_stages_compose_as_complete_external_runner(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2668,6 +2838,39 @@ def test_complete_model_builder_validates_aggregation_error_before_execution() -
     assert built_contexts == []
 
 
+@pytest.mark.parametrize(
+    "build_stage",
+    [rhime_module.build_standard_rhime_model, rhime_module.build_multisector_rhime_model],
+)
+def test_public_build_stages_reject_simultaneous_model_and_likelihood_builders(
+    build_stage: Callable[..., RhimeModelBuildResult],
+) -> None:
+    """Public build stages reject ambiguous builder ownership before either executes."""
+    _, _, run_spec = _minimal_output_specs(output_format="none")
+    prepared = RhimePreparedInputs(
+        inv_inputs=_minimal_output_inv_inputs(),
+        basis_functions=_fake_basis_functions(),
+        site_metadata=_prepared_site_metadata(),
+    )
+    builder_calls: list[RhimeModelBuilderContext] = []
+
+    def complete_model_builder(context: RhimeModelBuilderContext) -> RhimeModelBuildResult:
+        """Record any erroneous complete-model builder execution."""
+        builder_calls.append(context)
+        return RhimeModelBuildResult(model=pm.Model(), variable_roles={"concentration": "y"})
+
+    with pytest.raises(ValueError, match="either.*model_builder.*likelihood_builder"):
+        build_stage(
+            prepared=prepared,
+            model_inputs=prepared.inv_inputs,
+            run_spec=run_spec,
+            model_builder=complete_model_builder,
+            likelihood_builder=build_absolute_sigma_gaussian_likelihood,
+        )
+
+    assert builder_calls == []
+
+
 def test_likelihood_builder_provenance_is_saved_with_result_metadata(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2747,6 +2950,67 @@ def test_custom_model_builder_rejects_undeclared_output_before_sampling(
             run_spec=run_spec,
             model_builder=sampling_only_builder,
         )
+
+
+@pytest.mark.rhime_contract
+def test_run_rhime_rejects_unsupported_custom_likelihood_output_before_sampling(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Ordinary custom likelihoods reject unsupported output before sampling."""
+    model_spec, _, run_spec = _minimal_output_specs(output_format="inv_out")
+    model_spec = replace(model_spec, use_bc=False)
+    run_spec = replace(run_spec, model=model_spec)
+    inv_inputs = _minimal_output_inv_inputs()
+    inv_inputs["H"] = inv_inputs["H"].assign_coords(source=model_spec.sectors[0].flux_source)
+    inv_inputs["min_error"] = xr.zeros_like(inv_inputs["mf"])
+    prepared = RhimePreparedInputs(
+        inv_inputs=inv_inputs,
+        basis_functions=_fake_basis_functions(),
+        site_metadata=_prepared_site_metadata(),
+    )
+    setup = SimpleNamespace(
+        data_args={"species": "ch4"},
+        run_spec=run_spec,
+        sampler=RhimeSampler(),
+    )
+
+    def sampling_only_likelihood(context: RhimeLikelihoodContext) -> RhimeLikelihoodResult:
+        """Build a valid likelihood that supports sampling-only runs."""
+        state = build_rhime_observation_state(context)
+        likelihood = pm.Normal(
+            "sampling_only_y",
+            mu=state.mean,
+            sigma=state.error_scale,
+            observed=state.observed,
+            dims=context.output_dim,
+        )
+        return RhimeLikelihoodResult(
+            likelihood=likelihood,
+            error_scale=state.error_scale,
+            variable_roles={"concentration": "sampling_only_y", "model_error": "epsilon"},
+            supported_output_formats=("none",),
+        )
+
+    def fail_sample(*args: Any, **kwargs: Any) -> None:
+        """Prove compatibility validation precedes sampler execution."""
+        raise AssertionError("unsupported likelihood output must fail before sampling")
+
+    monkeypatch.setattr(rhime_module, "resolve_rhime_options", lambda **kwargs: setup)
+    monkeypatch.setattr(rhime_module, "retrieve_or_reload_rhime_data", lambda *args, **kwargs: object())
+    monkeypatch.setattr(rhime_module, "filter_rhime_observations", lambda *args, **kwargs: object())
+    monkeypatch.setattr(rhime_module, "build_rhime_basis", lambda *args, **kwargs: prepared.basis_functions)
+    monkeypatch.setattr(rhime_module, "build_rhime_sensitivities", lambda *args, **kwargs: object())
+    monkeypatch.setattr(rhime_module, "assemble_rhime_inputs", lambda *args, **kwargs: prepared)
+    monkeypatch.setattr(RhimeSampler, "sample", fail_sample)
+
+    with pytest.raises(ValueError) as exc_info:
+        run_rhime(species="ch4", likelihood_builder=sampling_only_likelihood)
+
+    diagnostic = str(exc_info.value).lower()
+    assert "likelihood" in diagnostic
+    assert "model builder" not in diagnostic
+    assert "build result" not in diagnostic
+    assert "output_format='inv_out'" in diagnostic
 
 
 @pytest.mark.parametrize(
@@ -5816,6 +6080,44 @@ output_name = "test"
 
 
 @pytest.mark.rhime_contract
+def test_run_rhime_rejects_configured_likelihood_builder_before_retrieval(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """INI files cannot resolve Python likelihood callables or start retrieval."""
+    config_file = tmp_path / "rhime.ini"
+    config_file.write_text(
+        """
+[INPUT.MEASUREMENTS]
+species = "ch4"
+sites = ["TAC"]
+averaging_period = ["1h"]
+start_date = "2019-01-01"
+end_date = "2019-01-02"
+
+[INPUT.PRIORS]
+domain = "EUROPE"
+flux_sources = ["total-ukghg-edgar7"]
+
+[RHIME.MCMC]
+likelihood_builder = "some.module.callable"
+
+[RHIME.OUTPUT]
+output_name = "test"
+""",
+        encoding="utf-8",
+    )
+
+    def fail_retrieval(*args: Any, **kwargs: Any) -> None:
+        """Prove invalid executable configuration fails before acquisition."""
+        raise AssertionError("configured likelihood builders must fail before retrieval")
+
+    monkeypatch.setattr(rhime_module, "retrieve_or_reload_rhime_data", fail_retrieval)
+    with pytest.raises(ValueError, match="likelihood_builder"):
+        run_rhime(config_file=config_file)
+
+
+@pytest.mark.rhime_contract
 def test_run_rhime_rejects_unknown_parameter_before_data_preparation(tmp_path: Path) -> None:
     """Reject unknown acquisition parameters before preparation begins."""
     args = {
@@ -7314,14 +7616,16 @@ def test_run_rhime_multisector_rejects_single_flux_source(tac_ch4_data_args, tmp
 
 
 @pytest.mark.rhime_contract
+@pytest.mark.parametrize("custom_likelihood", [False, True])
 def test_run_rhime_api_smoke(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     tac_ch4_data_args: dict[str, Any],
     tmp_path: Path,
     default_bc_basis_directory: Path,
+    custom_likelihood: bool,
 ) -> None:
-    """Run a custom prior, exact observation metadata, timings, and output round-trip."""
+    """Run default and custom likelihoods through acquisition and output round-trip."""
     args = tac_ch4_data_args.copy()
     args.update(
         {
@@ -7344,14 +7648,31 @@ def test_run_rhime_api_smoke(
         }
     )
 
-    def fake_sample(self: RhimeSampler, model: pm.Model) -> az.InferenceData:
-        """Return deterministic scale and modeled-concentration posteriors."""
+    def ordinary_absolute_sigma(context: RhimeLikelihoodContext) -> RhimeLikelihoodResult:
+        """Vary only the ordinary runner's observation likelihood."""
+        return build_absolute_sigma_gaussian_likelihood(context)
+
+    def fake_sample(
+        self: RhimeSampler,
+        model: pm.Model,
+        *,
+        variable_roles: dict[str, str] | None = None,
+    ) -> az.InferenceData:
+        """Return deterministic posteriors after checking predictive role selection."""
         assert self.draws == 1
+        if custom_likelihood:
+            assert variable_roles is not None
+            assert variable_roles["concentration"] == "y"
+        else:
+            assert variable_roles is None
         return _posterior_only_idata(model, ("x", "mu"))
 
     monkeypatch.setattr(RhimeSampler, "sample", fake_sample)
 
-    result = run_rhime(**args)
+    runner_kwargs: dict[str, Any] = {}
+    if custom_likelihood:
+        runner_kwargs["likelihood_builder"] = ordinary_absolute_sigma
+    result = run_rhime(**args, **runner_kwargs)
 
     assert isinstance(result, RhimeResult)
     assert result.model is not None
@@ -7391,12 +7712,26 @@ def test_run_rhime_api_smoke(
     assert "inversion_output" in result.outputs
     assert isinstance(result.inv_out, InversionOutput)
     assert result.output_metadata["inversion_output_contract"] == "modern"
+    assert result.model_build_result is not None
+    if custom_likelihood:
+        assert result.output_metadata["likelihood_builder"]["qualname"].endswith("ordinary_absolute_sigma")
+        assert result.model_build_result.metadata["likelihood"]["family"] == ("absolute_sigma_gaussian")
+    else:
+        assert "likelihood_builder" not in result.output_metadata
     output_file = tmp_path / "rhime_test2019-01-01_inversion_output.nc"
     assert output_file.exists()
     reloaded = InversionOutput.load(output_file)
     assert reloaded.species == "ch4"
     assert reloaded.domain == args["domain"]
     assert isinstance(reloaded.basis_functions, BasisFunctions)
+    if custom_likelihood:
+        assert (
+            reloaded.model_metadata["builder"]["likelihood_builder"]
+            == result.output_metadata["likelihood_builder"]
+        )
+        assert reloaded.model_metadata["builder"]["likelihood"]["sigma_interpretation"] == "absolute"
+    else:
+        assert "likelihood_builder" not in reloaded.model_metadata["builder"]
     xr.testing.assert_identical(reloaded.inv_inputs, result.inv_inputs)
     xr.testing.assert_identical(reloaded.trace.posterior, result.idata.posterior)
 
@@ -7423,13 +7758,15 @@ def test_run_rhime_api_smoke(
 
 
 @pytest.mark.rhime_contract
+@pytest.mark.parametrize("custom_likelihood", [False, True])
 def test_run_rhime_multisector_api_smoke(
     monkeypatch: pytest.MonkeyPatch,
     tac_ch4_data_args: dict[str, Any],
     tmp_path: Path,
     default_bc_basis_directory: Path,
+    custom_likelihood: bool,
 ) -> None:
-    """Exercise the multi-sector public API with deterministic sampling."""
+    """Exercise default and custom likelihoods through the multi-sector API."""
     args = tac_ch4_data_args.copy()
     args.update(
         {
@@ -7461,19 +7798,42 @@ def test_run_rhime_multisector_api_smoke(
     )
     args.pop("emissions_name")
 
-    def fake_sample(self: RhimeSampler, model: pm.Model) -> az.InferenceData:
-        """Return deterministic posterior scale factors for both sectors."""
+    def multisector_absolute_sigma(context: RhimeLikelihoodContext) -> RhimeLikelihoodResult:
+        """Vary only the multi-sector observation likelihood."""
+        return build_absolute_sigma_gaussian_likelihood(context)
+
+    def fake_sample(
+        self: RhimeSampler,
+        model: pm.Model,
+        *,
+        variable_roles: dict[str, str] | None = None,
+    ) -> az.InferenceData:
+        """Return deterministic scale factors after checking declared roles."""
         assert self.draws == 1
+        if custom_likelihood:
+            assert variable_roles is not None
+            assert variable_roles["concentration"] == "y"
+            assert variable_roles["flux_scale:FF"] == "x_ff"
+            assert variable_roles["flux_scale:ocean"] == "x_ocean"
+        else:
+            assert variable_roles is None
         return _posterior_only_idata(model, ("x_ff", "x_ocean"))
 
     monkeypatch.setattr(RhimeSampler, "sample", fake_sample)
 
-    result = run_rhime_multisector(**args)
+    runner_kwargs: dict[str, Any] = {}
+    if custom_likelihood:
+        runner_kwargs["likelihood_builder"] = multisector_absolute_sigma
+    result = run_rhime_multisector(**args, **runner_kwargs)
 
     assert isinstance(result, RhimeResult)
     assert isinstance(result.basis_functions, BasisFunctions)
     assert not hasattr(result, "basis_objects")
     assert result.run_spec.split_by_sectors is True
+    if custom_likelihood:
+        assert result.output_metadata["likelihood_builder"]["qualname"].endswith("multisector_absolute_sigma")
+    else:
+        assert "likelihood_builder" not in result.output_metadata
     assert [sector.name for sector in result.model_spec.sectors] == ["FF", "ocean"]
     assert result.model_spec.sectors[0].x_prior == {
         "pdf": "uniform",
