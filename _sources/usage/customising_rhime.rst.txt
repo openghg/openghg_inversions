@@ -22,10 +22,31 @@ documented interfaces.
 Choose the smallest starting point that fits the change:
 
 * To change only the likelihood, pass a Python function to ``run_rhime``.
+* To resume from externally supplied merged observations, footprints, and
+  fluxes, pass a borrowed ``RhimeMergedData`` object as ``merged_data``.
 * To change a preparation stage such as basis construction, copy the visible
   runner and replace that stage.
 * To start from prepared data or replace the complete model, use
   ``run_rhime_from_prepared_inputs``.
+
+Resume from cached or external scientific data
+----------------------------------------------
+
+``run_rhime`` and ``run_rhime_multisector`` accept ``merged_data`` as a
+Python-only handoff.  It bypasses OpenGHG acquisition and merged-cache I/O,
+checks the single- or multi-sector layout, and then re-enters the visible
+recipe at filtering::
+
+   result = run_rhime(
+       config_file="config.ini",
+       merged_data=my_merged_data,
+   )
+
+The supplied ``RhimeMergedData`` and its xarray or Dask arrays remain borrowed.
+Filtering returns a replacement handoff when it changes observations; basis
+construction and labelled assembly consume that result without mutating the
+external object.  A normal ``reload_merged_data`` request instead belongs to
+the same retrieval stage and may read a configured artifact from disk.
 
 Change the likelihood with a Python function
 --------------------------------------------

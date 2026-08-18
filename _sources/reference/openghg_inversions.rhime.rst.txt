@@ -12,8 +12,10 @@ openghg\_inversions.rhime
    :maxdepth: 4
 
    openghg_inversions.rhime.builders
+   openghg_inversions.rhime.materialization
    openghg_inversions.rhime.outputs
    openghg_inversions.rhime.params
+   openghg_inversions.rhime.preparation
    openghg_inversions.rhime.runner
    openghg_inversions.rhime.sampling
    openghg_inversions.rhime.specs

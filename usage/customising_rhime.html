@@ -403,11 +403,31 @@ documented interfaces.</p>
 <p>Choose the smallest starting point that fits the change:</p>
 <ul class="simple">
 <li><p>To change only the likelihood, pass a Python function to <code class="docutils literal notranslate"><span class="pre">run_rhime</span></code>.</p></li>
+<li><p>To resume from externally supplied merged observations, footprints, and
+fluxes, pass a borrowed <code class="docutils literal notranslate"><span class="pre">RhimeMergedData</span></code> object as <code class="docutils literal notranslate"><span class="pre">merged_data</span></code>.</p></li>
 <li><p>To change a preparation stage such as basis construction, copy the visible
 runner and replace that stage.</p></li>
 <li><p>To start from prepared data or replace the complete model, use
 <code class="docutils literal notranslate"><span class="pre">run_rhime_from_prepared_inputs</span></code>.</p></li>
 </ul>
+<section id="resume-from-cached-or-external-scientific-data">
+<h2>Resume from cached or external scientific data<a class="headerlink" href="#resume-from-cached-or-external-scientific-data" title="Link to this heading">#</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">run_rhime</span></code> and <code class="docutils literal notranslate"><span class="pre">run_rhime_multisector</span></code> accept <code class="docutils literal notranslate"><span class="pre">merged_data</span></code> as a
+Python-only handoff.  It bypasses OpenGHG acquisition and merged-cache I/O,
+checks the single- or multi-sector layout, and then re-enters the visible
+recipe at filtering:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">result</span> <span class="o">=</span> <span class="n">run_rhime</span><span class="p">(</span>
+    <span class="n">config_file</span><span class="o">=</span><span class="s2">"config.ini"</span><span class="p">,</span>
+    <span class="n">merged_data</span><span class="o">=</span><span class="n">my_merged_data</span><span class="p">,</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p>The supplied <code class="docutils literal notranslate"><span class="pre">RhimeMergedData</span></code> and its xarray or Dask arrays remain borrowed.
+Filtering returns a replacement handoff when it changes observations; basis
+construction and labelled assembly consume that result without mutating the
+external object.  A normal <code class="docutils literal notranslate"><span class="pre">reload_merged_data</span></code> request instead belongs to
+the same retrieval stage and may read a configured artifact from disk.</p>
+</section>
 <section id="change-the-likelihood-with-a-python-function">
 <h2>Change the likelihood with a Python function<a class="headerlink" href="#change-the-likelihood-with-a-python-function" title="Link to this heading">#</a></h2>
 <p>For an ordinary likelihood variation, keep RHIME’s complete
@@ -1591,6 +1611,7 @@ option.</p>
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#resume-from-cached-or-external-scientific-data">Resume from cached or external scientific data</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#change-the-likelihood-with-a-python-function">Change the likelihood with a Python function</a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#editable-likelihood">Editable likelihood</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#optional-project-cli">Optional project CLI</a></li>
