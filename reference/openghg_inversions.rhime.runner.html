@@ -33,6 +33,7 @@
     <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
     <link rel="stylesheet" type="text/css" href="../_static/jupyter-sphinx.css" />
     <link rel="stylesheet" type="text/css" href="../_static/thebelab.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=f8ac5af1" />
   
   <!-- So that users can add custom icons -->
   <script defer src="../_static/scripts/fontawesome.js?digest=90905a2f556bf617f1a9"></script>
@@ -469,6 +470,11 @@ run metadata, materialize model inputs, build, sample, and construct the
 result. Canonical xarray and Dask inputs remain borrowed until the named
 materialization boundary; acquisition, sampling, and result stages may perform
 documented I/O.</p>
+<p><code class="docutils literal notranslate"><span class="pre">run_rhime</span></code> and <code class="docutils literal notranslate"><span class="pre">run_rhime_multisector</span></code> accept an optional Python-only
+likelihood builder outside configuration and serializable specifications. Its
+declared variable roles drive predictive selection, its output capabilities
+are validated before sampling, and only safe callable identity plus
+JSON-compatible metadata are retained as provenance.</p>
 <p>Terminology used by the RHIME API:</p>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">species</span></code> is the primary gas or tracer name used for object-store lookup
@@ -1119,9 +1125,12 @@ explicit and documented.</p>
 <li><p><strong>prepared</strong> – Canonical prepared inputs and source-specific basis metadata.</p></li>
 <li><p><strong>model_inputs</strong> – Materialized PyMC inputs.</p></li>
 <li><p><strong>run_spec</strong> – Retained-site-aligned multi-sector run specification.</p></li>
-<li><p><strong>model_builder</strong> – Optional advanced complete-model builder.</p></li>
+<li><p><strong>model_builder</strong> – Optional advanced complete-model builder. Mutually
+exclusive with <code class="docutils literal notranslate"><span class="pre">likelihood_builder</span></code>; when both are supplied the
+stage rejects them before either executes.</p></li>
 <li><p><strong>likelihood_builder</strong> – Optional likelihood builder used by the built-in
-model.</p></li>
+model. Mutually exclusive with <code class="docutils literal notranslate"><span class="pre">model_builder</span></code>; when both are
+supplied the stage rejects them before either executes.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
@@ -1129,8 +1138,10 @@ model.</p></li>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#TypeError" title="(in Python v3.14)"><strong>TypeError</strong></a> – If a complete-model builder returns the wrong type.</p></li>
-<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If basis state coordinates or builder contracts disagree.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#TypeError" title="(in Python v3.14)"><strong>TypeError</strong></a> – If a complete-model builder or likelihood builder returns
+    the wrong result type.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If both builder seams are supplied or basis state
+    coordinates or builder contracts disagree.</p></li>
 </ul>
 </dd>
 </dl>
@@ -1196,9 +1207,12 @@ returned manifest is stage-owned, so copied runners need not construct one.</p>
 later outputs.</p></li>
 <li><p><strong>model_inputs</strong> – Materialized PyMC inputs.</p></li>
 <li><p><strong>run_spec</strong> – Retained-site-aligned run specification.</p></li>
-<li><p><strong>model_builder</strong> – Optional advanced complete-model builder.</p></li>
+<li><p><strong>model_builder</strong> – Optional advanced complete-model builder. Mutually
+exclusive with <code class="docutils literal notranslate"><span class="pre">likelihood_builder</span></code>; when both are supplied the
+stage rejects them before either executes.</p></li>
 <li><p><strong>likelihood_builder</strong> – Optional likelihood builder used by the built-in
-model.</p></li>
+model. Mutually exclusive with <code class="docutils literal notranslate"><span class="pre">model_builder</span></code>; when both are
+supplied the stage rejects them before either executes.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
@@ -1206,8 +1220,10 @@ model.</p></li>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#TypeError" title="(in Python v3.14)"><strong>TypeError</strong></a> – If a complete-model builder returns the wrong type.</p></li>
-<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If builder roles or output capabilities are invalid.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#TypeError" title="(in Python v3.14)"><strong>TypeError</strong></a> – If a complete-model builder or likelihood builder returns
+    the wrong result type.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If both builder seams are supplied or builder roles or
+    output capabilities are invalid.</p></li>
 </ul>
 </dd>
 </dl>
@@ -1424,13 +1440,20 @@ progress, and emit warnings. It does not mutate <code class="docutils literal no
 
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.runner.run_rhime">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.rhime.runner.</span></span><span class="sig-name descname"><span class="pre">run_rhime</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">config_file</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><span class="pre">Path</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><span class="pre">Any</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#openghg_inversions.rhime.runner.RhimeResult" title="openghg_inversions.rhime.runner.RhimeResult"><span class="pre">RhimeResult</span></a></span></span><a class="headerlink" href="#openghg_inversions.rhime.runner.run_rhime" title="Link to this definition">#</a></dt>
+<span class="sig-prename descclassname"><span class="pre">openghg_inversions.rhime.runner.</span></span><span class="sig-name descname"><span class="pre">run_rhime</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">config_file</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><span class="pre">Path</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">likelihood_builder</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.models.rhime_likelihood.html#openghg_inversions.models.rhime_likelihood.RhimeLikelihoodBuilder" title="openghg_inversions.models.rhime_likelihood.RhimeLikelihoodBuilder"><span class="pre">RhimeLikelihoodBuilder</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><span class="pre">Any</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#openghg_inversions.rhime.runner.RhimeResult" title="openghg_inversions.rhime.runner.RhimeResult"><span class="pre">RhimeResult</span></a></span></span><a class="headerlink" href="#openghg_inversions.rhime.runner.run_rhime" title="Link to this definition">#</a></dt>
 <dd><p>Run a standard single-sector RHIME inversion.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>config_file</strong> – Optional INI configuration file. Values in <code class="docutils literal notranslate"><span class="pre">kwargs</span></code>
 override values read from this file.</p></li>
+<li><p><strong>likelihood_builder</strong> – Optional Python-only callable invoked with a
+<code class="docutils literal notranslate"><span class="pre">RhimeLikelihoodContext</span></code> in the active PyMC model and returning
+<code class="docutils literal notranslate"><span class="pre">RhimeLikelihoodResult</span></code>. The result declares semantic variable
+roles, supported output formats, and JSON-compatible metadata;
+roles drive predictive selection and output compatibility is
+validated before sampling. The callable is never read from
+configuration or stored in run/model specifications.</p></li>
 <li><p><strong>**kwargs</strong> – RHIME run parameters using snake-case names, such as
 <code class="docutils literal notranslate"><span class="pre">output_path</span></code>, <code class="docutils literal notranslate"><span class="pre">output_name</span></code>, <code class="docutils literal notranslate"><span class="pre">flux_sources</span></code>, and
 <code class="docutils literal notranslate"><span class="pre">x_prior</span></code>. <code class="docutils literal notranslate"><span class="pre">species</span></code> names the primary gas or tracer used for
@@ -1445,10 +1468,18 @@ absent.</p></li>
 output metadata, and generated outputs.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If required parameters are missing, unsupported parameters
-    are supplied, or the flux-source count is invalid.</p>
+<dd class="field-odd"><ul class="simple">
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#TypeError" title="(in Python v3.14)"><strong>TypeError</strong></a> – If a likelihood builder is not callable or returns the
+    wrong result type.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If required parameters are missing, unsupported parameters
+    are supplied, the flux-source count is invalid, or likelihood
+    roles, metadata, or requested-output compatibility are invalid.</p></li>
+</ul>
 </dd>
 </dl>
+<p class="rubric">Notes</p>
+<p>A non-callable likelihood builder is rejected before configuration is
+parsed or data is acquired, prepared, or materialized.</p>
 </dd></dl>
 
 <dl class="py function">
@@ -1482,23 +1513,37 @@ both error construction and the observed distribution.</p></li>
 requested outputs.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If both builder seams are supplied, the model specification
+<dd class="field-odd"><ul class="simple">
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#TypeError" title="(in Python v3.14)"><strong>TypeError</strong></a> – If <code class="docutils literal notranslate"><span class="pre">likelihood_builder</span></code> is not callable, or either
+    builder returns the wrong result type.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If both builder seams are supplied, the model specification
     contains no sectors, the sector
     count, prepared <code class="docutils literal notranslate"><span class="pre">H</span></code> layout, and prepared-data layout flag
-    disagree, or output settings are invalid.</p>
+    disagree, or output settings are invalid.</p></li>
+</ul>
 </dd>
 </dl>
+<p class="rubric">Notes</p>
+<p>A non-callable likelihood builder is rejected before prepared inputs
+are validated, materialized, or otherwise touched.</p>
 </dd></dl>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.runner.run_rhime_multisector">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.rhime.runner.</span></span><span class="sig-name descname"><span class="pre">run_rhime_multisector</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">config_file</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><span class="pre">Path</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><span class="pre">Any</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#openghg_inversions.rhime.runner.RhimeResult" title="openghg_inversions.rhime.runner.RhimeResult"><span class="pre">RhimeResult</span></a></span></span><a class="headerlink" href="#openghg_inversions.rhime.runner.run_rhime_multisector" title="Link to this definition">#</a></dt>
+<span class="sig-prename descclassname"><span class="pre">openghg_inversions.rhime.runner.</span></span><span class="sig-name descname"><span class="pre">run_rhime_multisector</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">config_file</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><span class="pre">Path</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">likelihood_builder</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.models.rhime_likelihood.html#openghg_inversions.models.rhime_likelihood.RhimeLikelihoodBuilder" title="openghg_inversions.models.rhime_likelihood.RhimeLikelihoodBuilder"><span class="pre">RhimeLikelihoodBuilder</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><span class="pre">Any</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#openghg_inversions.rhime.runner.RhimeResult" title="openghg_inversions.rhime.runner.RhimeResult"><span class="pre">RhimeResult</span></a></span></span><a class="headerlink" href="#openghg_inversions.rhime.runner.run_rhime_multisector" title="Link to this definition">#</a></dt>
 <dd><p>Run a shared-basis multi-sector RHIME inversion.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>config_file</strong> – Optional INI configuration file. Values in <code class="docutils literal notranslate"><span class="pre">kwargs</span></code>
 override values read from this file.</p></li>
+<li><p><strong>likelihood_builder</strong> – Optional Python-only callable invoked with a
+<code class="docutils literal notranslate"><span class="pre">RhimeLikelihoodContext</span></code> in the active PyMC model and returning
+<code class="docutils literal notranslate"><span class="pre">RhimeLikelihoodResult</span></code>. The result declares semantic variable
+roles, supported output formats, and JSON-compatible metadata;
+roles drive predictive selection and output compatibility is
+validated before sampling. The callable is never read from
+configuration or stored in run/model specifications.</p></li>
 <li><p><strong>**kwargs</strong> – RHIME run parameters using snake-case names. Multi-sector
 runs require at least two <code class="docutils literal notranslate"><span class="pre">flux_sources</span></code> and may include
 a complete <code class="docutils literal notranslate"><span class="pre">sector_priors</span></code> mapping keyed by sector name. When
@@ -1514,10 +1559,19 @@ absent.</p></li>
 output metadata, and sector diagnostics.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If required parameters are missing, unsupported parameters
-    are supplied, or fewer than two flux sources are provided.</p>
+<dd class="field-odd"><ul class="simple">
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#TypeError" title="(in Python v3.14)"><strong>TypeError</strong></a> – If a likelihood builder is not callable or returns the
+    wrong result type.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If required parameters are missing, unsupported parameters
+    are supplied, fewer than two flux sources are provided, or
+    likelihood roles, metadata, or requested-output compatibility are
+    invalid.</p></li>
+</ul>
 </dd>
 </dl>
+<p class="rubric">Notes</p>
+<p>A non-callable likelihood builder is rejected before configuration is
+parsed or data is acquired, prepared, or materialized.</p>
 </dd></dl>
 
 <dl class="py function">

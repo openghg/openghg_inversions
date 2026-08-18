@@ -33,6 +33,7 @@
     <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
     <link rel="stylesheet" type="text/css" href="../_static/jupyter-sphinx.css" />
     <link rel="stylesheet" type="text/css" href="../_static/thebelab.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=f8ac5af1" />
   
   <!-- So that users can add custom icons -->
   <script defer src="../_static/scripts/fontawesome.js?digest=90905a2f556bf617f1a9"></script>
@@ -305,7 +306,7 @@
 <li class="toctree-l1"><a class="reference internal" href="cli.html">Running RHIME from the command line</a></li>
 <li class="toctree-l1"><a class="reference internal" href="grouped_basis_layout.html">Grouped basis and state metadata</a></li>
 <li class="toctree-l1"><a class="reference internal" href="rhime.html">RHIME Terminology And Quickstart</a></li>
-<li class="toctree-l1"><a class="reference internal" href="customising_rhime.html">Customising the complete RHIME workflow</a></li>
+<li class="toctree-l1"><a class="reference internal" href="customising_rhime.html">Customising a RHIME likelihood</a></li>
 <li class="toctree-l1"><a class="reference internal" href="concrete_rhime_model.html">Concrete RHIME Model</a></li>
 </ul>
 </div>
@@ -395,6 +396,19 @@ tools used by the repository:</p>
 pixi<span class="w"> </span>run<span class="w"> </span>-e<span class="w"> </span>dev<span class="w"> </span>lint
 pixi<span class="w"> </span>run<span class="w"> </span>-e<span class="w"> </span>dev<span class="w"> </span>typecheck
 pixi<span class="w"> </span>run<span class="w"> </span>-e<span class="w"> </span>dev<span class="w"> </span>tox
+pixi<span class="w"> </span>run<span class="w"> </span>-e<span class="w"> </span>dev<span class="w"> </span>docs-preview
+</pre></div>
+</div>
+<p>The <code class="docutils literal notranslate"><span class="pre">docs-preview</span></code> task builds the Sphinx documentation with <code class="docutils literal notranslate"><span class="pre">tox</span> <span class="pre">-e</span> <span class="pre">docs</span></code>,
+serves it at <code class="docutils literal notranslate"><span class="pre">http://127.0.0.1:8765/</span></code>, and opens it in Safari on macOS. Keep
+the task running while reading the docs and press Ctrl-C to stop the server.
+Use a different port or disable automatic browser opening if needed:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pixi<span class="w"> </span>run<span class="w"> </span>-e<span class="w"> </span>dev<span class="w"> </span>docs-preview<span class="w"> </span>--port<span class="w"> </span><span class="m">8766</span><span class="w"> </span>--no-open
+</pre></div>
+</div>
+<p>With the default uv development dependency group, use:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>scripts/preview_docs.py
+uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>scripts/preview_docs.py<span class="w"> </span>--port<span class="w"> </span><span class="m">8766</span><span class="w"> </span>--no-open
 </pre></div>
 </div>
 <p>To run the optional real country-file HDF5 smoke check on a machine that

@@ -33,6 +33,7 @@
     <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
     <link rel="stylesheet" type="text/css" href="../_static/jupyter-sphinx.css" />
     <link rel="stylesheet" type="text/css" href="../_static/thebelab.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=f8ac5af1" />
   
   <!-- So that users can add custom icons -->
   <script defer src="../_static/scripts/fontawesome.js?digest=90905a2f556bf617f1a9"></script>
@@ -457,7 +458,9 @@
                   
   <section id="module-openghg_inversions.rhime.builders">
 <span id="openghg-inversions-rhime-builders"></span><h1>openghg_inversions.rhime.builders<a class="headerlink" href="#module-openghg_inversions.rhime.builders" title="Link to this heading">#</a></h1>
-<p>Public extension contracts for complete RHIME model builders.</p>
+<p>Public model-build contracts and validation for RHIME customizations.</p>
+<p>The validation applies both to complete-model builders and to built-in model
+results that wrap a custom likelihood builder.</p>
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.builders.RhimeModelBuildResult">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">openghg_inversions.rhime.builders.</span></span><span class="sig-name descname"><span class="pre">RhimeModelBuildResult</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="pre">model:</span> <span class="pre">~pymc.model.core.Model,</span> <span class="pre">variable_roles:</span> <span class="pre">~collections.abc.Mapping[str,</span> <span class="pre">str],</span> <span class="pre">supported_output_formats:</span> <span class="pre">tuple[~typing.Literal['none',</span> <span class="pre">'inv_out',</span> <span class="pre">'basic',</span> <span class="pre">'paris',</span> <span class="pre">'legacy'],</span> <span class="pre">...]</span> <span class="pre">=</span> <span class="pre">('none',),</span> <span class="pre">metadata:</span> <span class="pre">~collections.abc.Mapping[str,</span> <span class="pre">~typing.Any]</span> <span class="pre">=</span> <span class="pre">&lt;factory&gt;</span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.builders.RhimeModelBuildResult" title="Link to this definition">#</a></dt>
@@ -553,8 +556,23 @@ sector resolved.</p></li>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.builders.validate_model_build_result">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.rhime.builders.</span></span><span class="sig-name descname"><span class="pre">validate_model_build_result</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">result</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#openghg_inversions.rhime.builders.RhimeModelBuildResult" title="openghg_inversions.rhime.builders.RhimeModelBuildResult"><span class="pre">RhimeModelBuildResult</span></a></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">context</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#openghg_inversions.rhime.builders.RhimeModelBuilderContext" title="openghg_inversions.rhime.builders.RhimeModelBuilderContext"><span class="pre">RhimeModelBuilderContext</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span></span><a class="headerlink" href="#openghg_inversions.rhime.builders.validate_model_build_result" title="Link to this definition">#</a></dt>
+<span class="sig-prename descclassname"><span class="pre">openghg_inversions.rhime.builders.</span></span><span class="sig-name descname"><span class="pre">validate_model_build_result</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">result</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#openghg_inversions.rhime.builders.RhimeModelBuildResult" title="openghg_inversions.rhime.builders.RhimeModelBuildResult"><span class="pre">RhimeModelBuildResult</span></a></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">context</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#openghg_inversions.rhime.builders.RhimeModelBuilderContext" title="openghg_inversions.rhime.builders.RhimeModelBuilderContext"><span class="pre">RhimeModelBuilderContext</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">builder_kind</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><span class="pre">Literal</span></a><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'model'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'likelihood'</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'model'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span></span><a class="headerlink" href="#openghg_inversions.rhime.builders.validate_model_build_result" title="Link to this definition">#</a></dt>
 <dd><p>Validate a custom build result before sampling or postprocessing.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>result</strong> – Complete model build result to validate.</p></li>
+<li><p><strong>context</strong> – Prepared inputs and run settings for the active model build.</p></li>
+<li><p><strong>builder_kind</strong> – Customization seam responsible for the result. This is
+used only to label the unsupported-output diagnostic; it does not
+change validation.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If the requested output is unsupported or declared
+    variable roles are incomplete or refer to absent variables.</p>
+</dd>
+</dl>
 </dd></dl>
 
 </section>

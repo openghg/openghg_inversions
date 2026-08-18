@@ -33,6 +33,7 @@
     <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
     <link rel="stylesheet" type="text/css" href="../_static/jupyter-sphinx.css" />
     <link rel="stylesheet" type="text/css" href="../_static/thebelab.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=f8ac5af1" />
   
   <!-- So that users can add custom icons -->
   <script defer src="../_static/scripts/fontawesome.js?digest=90905a2f556bf617f1a9"></script>
@@ -52,7 +53,7 @@
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
     <link rel="next" title="Experimental code" href="../experimental/index.html" />
-    <link rel="prev" title="Customising the complete RHIME workflow" href="customising_rhime.html" />
+    <link rel="prev" title="Customising a RHIME likelihood" href="customising_rhime.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="" />
@@ -306,7 +307,7 @@
 <li class="toctree-l1"><a class="reference internal" href="cli.html">Running RHIME from the command line</a></li>
 <li class="toctree-l1"><a class="reference internal" href="grouped_basis_layout.html">Grouped basis and state metadata</a></li>
 <li class="toctree-l1"><a class="reference internal" href="rhime.html">RHIME Terminology And Quickstart</a></li>
-<li class="toctree-l1"><a class="reference internal" href="customising_rhime.html">Customising the complete RHIME workflow</a></li>
+<li class="toctree-l1"><a class="reference internal" href="customising_rhime.html">Customising a RHIME likelihood</a></li>
 <li class="toctree-l1 current active"><a class="current reference internal" href="#">Concrete RHIME Model</a></li>
 </ul>
 </div>
@@ -685,9 +686,11 @@ component namespaces are not implemented. They are tracked in
 </section>
 <section id="alternative-models-and-likelihoods">
 <h2>Alternative models and likelihoods<a class="headerlink" href="#alternative-models-and-likelihoods" title="Link to this heading">#</a></h2>
-<p>Direct-Python likelihood and complete-model builders enter only at
-<code class="docutils literal notranslate"><span class="pre">run_rhime_from_prepared_inputs</span></code>. Callables are deliberately not stored on
-<code class="docutils literal notranslate"><span class="pre">RhimeModelSpec</span></code>, so model and run specs remain serializable. There is no
+<p>Direct-Python likelihood builders enter through <code class="docutils literal notranslate"><span class="pre">run_rhime</span></code>,
+<code class="docutils literal notranslate"><span class="pre">run_rhime_multisector</span></code>, or <code class="docutils literal notranslate"><span class="pre">run_rhime_from_prepared_inputs</span></code>.
+Complete-model builders remain available only at the prepared-input boundary.
+Callables are never read from configuration or stored on <code class="docutils literal notranslate"><span class="pre">RhimeModelSpec</span></code> or
+<code class="docutils literal notranslate"><span class="pre">RhimeRunSpec</span></code>, so model and run specs remain serializable. There is no
 entry-point or config-file plugin registry.</p>
 <p>A likelihood builder owns the complete observation component, including its
 error construction and observed distribution. Its labelled
@@ -696,71 +699,26 @@ optional boundary and offset means, sigma alignment and prior, the power and
 error policies, aggregation-error mode, and output dimension. This boundary
 avoids a misleading contract in which the runner builds half an error model
 before calling user code.</p>
-<p>For the absolute-sigma Gaussian above, no custom modelling function is needed:</p>
+<p>For the absolute-sigma Gaussian above, pass the helper directly to the
+ordinary runner:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
     <span class="n">build_absolute_sigma_gaussian_likelihood</span><span class="p">,</span>
-    <span class="n">run_rhime_from_prepared_inputs</span><span class="p">,</span>
+    <span class="n">run_rhime</span><span class="p">,</span>
 <span class="p">)</span>
 
-<span class="n">result</span> <span class="o">=</span> <span class="n">run_rhime_from_prepared_inputs</span><span class="p">(</span>
-    <span class="n">prepared_inputs</span><span class="o">=</span><span class="n">prepared</span><span class="p">,</span>
-    <span class="n">run_spec</span><span class="o">=</span><span class="n">run_spec</span><span class="p">,</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">run_rhime</span><span class="p">(</span>
+    <span class="n">config_file</span><span class="o">=</span><span class="s2">"config.ini"</span><span class="p">,</span>
     <span class="n">likelihood_builder</span><span class="o">=</span><span class="n">build_absolute_sigma_gaussian_likelihood</span><span class="p">,</span>
 <span class="p">)</span>
 </pre></div>
 </div>
-<p>Set <code class="docutils literal notranslate"><span class="pre">add_offset=True</span></code> and <code class="docutils literal notranslate"><span class="pre">offset_args={&quot;per_site&quot;:</span> <span class="pre">False}</span></code> on
-<code class="docutils literal notranslate"><span class="pre">RhimeModelSpec</span></code> to combine it with one global scalar offset. The default
-<code class="docutils literal notranslate"><span class="pre">per_site=True</span></code> retains the existing site or site-period offset design.</p>
-<p>The helper <code class="docutils literal notranslate"><span class="pre">build_rhime_observation_state</span></code> is available when only the
-distribution should change. For example, this replaces Normal observations
-with a Student-t distribution while retaining the current RHIME mean and error
-scale:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">pymc</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pm</span>
-
-<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
-    <span class="n">RhimeLikelihoodContext</span><span class="p">,</span>
-    <span class="n">RhimeLikelihoodResult</span><span class="p">,</span>
-    <span class="n">RhimeSampler</span><span class="p">,</span>
-    <span class="n">build_rhime_observation_state</span><span class="p">,</span>
-    <span class="n">run_rhime_from_prepared_inputs</span><span class="p">,</span>
-<span class="p">)</span>
-
-
-<span class="k">def</span><span class="w"> </span><span class="nf">student_t_likelihood</span><span class="p">(</span>
-    <span class="n">context</span><span class="p">:</span> <span class="n">RhimeLikelihoodContext</span><span class="p">,</span>
-<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">RhimeLikelihoodResult</span><span class="p">:</span>
-    <span class="n">state</span> <span class="o">=</span> <span class="n">build_rhime_observation_state</span><span class="p">(</span><span class="n">context</span><span class="p">)</span>
-    <span class="k">if</span> <span class="n">state</span><span class="o">.</span><span class="n">aggregation_error</span><span class="o">.</span><span class="n">mode</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">{</span><span class="s2">"none"</span><span class="p">,</span> <span class="s2">"diagonal"</span><span class="p">}:</span>
-        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"This Student-t model assumes independent observations."</span><span class="p">)</span>
-    <span class="n">observed</span> <span class="o">=</span> <span class="n">pm</span><span class="o">.</span><span class="n">StudentT</span><span class="p">(</span>
-        <span class="s2">"student_y"</span><span class="p">,</span>
-        <span class="n">nu</span><span class="o">=</span><span class="mf">4.0</span><span class="p">,</span>
-        <span class="n">mu</span><span class="o">=</span><span class="n">state</span><span class="o">.</span><span class="n">mean</span><span class="p">,</span>
-        <span class="n">sigma</span><span class="o">=</span><span class="n">state</span><span class="o">.</span><span class="n">error_scale</span><span class="p">,</span>
-        <span class="n">observed</span><span class="o">=</span><span class="n">state</span><span class="o">.</span><span class="n">observed</span><span class="p">,</span>
-        <span class="n">dims</span><span class="o">=</span><span class="n">context</span><span class="o">.</span><span class="n">output_dim</span><span class="p">,</span>
-    <span class="p">)</span>
-    <span class="k">return</span> <span class="n">RhimeLikelihoodResult</span><span class="p">(</span>
-        <span class="n">likelihood</span><span class="o">=</span><span class="n">observed</span><span class="p">,</span>
-        <span class="n">error_scale</span><span class="o">=</span><span class="n">state</span><span class="o">.</span><span class="n">error_scale</span><span class="p">,</span>
-        <span class="n">variable_roles</span><span class="o">=</span><span class="p">{</span>
-            <span class="s2">"concentration"</span><span class="p">:</span> <span class="s2">"student_y"</span><span class="p">,</span>
-            <span class="s2">"model_error"</span><span class="p">:</span> <span class="s2">"epsilon"</span><span class="p">,</span>
-        <span class="p">},</span>
-        <span class="n">supported_output_formats</span><span class="o">=</span><span class="p">(</span><span class="s2">"none"</span><span class="p">,</span> <span class="s2">"inv_out"</span><span class="p">),</span>
-        <span class="n">metadata</span><span class="o">=</span><span class="p">{</span><span class="s2">"family"</span><span class="p">:</span> <span class="s2">"student_t"</span><span class="p">,</span> <span class="s2">"degrees_of_freedom"</span><span class="p">:</span> <span class="mf">4.0</span><span class="p">},</span>
-    <span class="p">)</span>
-
-
-<span class="n">result</span> <span class="o">=</span> <span class="n">run_rhime_from_prepared_inputs</span><span class="p">(</span>
-    <span class="n">prepared_inputs</span><span class="o">=</span><span class="n">prepared</span><span class="p">,</span>
-    <span class="n">run_spec</span><span class="o">=</span><span class="n">run_spec</span><span class="p">,</span>
-    <span class="n">sampler</span><span class="o">=</span><span class="n">RhimeSampler</span><span class="p">(</span><span class="n">draws</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span> <span class="n">tune</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span> <span class="n">chains</span><span class="o">=</span><span class="mi">4</span><span class="p">),</span>
-    <span class="n">likelihood_builder</span><span class="o">=</span><span class="n">student_t_likelihood</span><span class="p">,</span>
-<span class="p">)</span>
-</pre></div>
-</div>
+<p>Pass <code class="docutils literal notranslate"><span class="pre">add_offset=True</span></code> and <code class="docutils literal notranslate"><span class="pre">offset_args={&quot;per_site&quot;:</span> <span class="pre">False}</span></code> as Python or
+configuration options to combine it with one global scalar offset. The
+default <code class="docutils literal notranslate"><span class="pre">per_site=True</span></code> retains the existing site or site-period offset
+design.</p>
+<p>Keep scientific customization implementations in one tested location. The
+<a class="reference internal" href="customising_rhime.html"><span class="doc">Customising a RHIME likelihood</span></a> guide contains the editable Student-t example and the
+minimal ordinary-runner call; this concrete-model page does not duplicate it.</p>
 <p><code class="docutils literal notranslate"><span class="pre">RhimeSampler</span></code> receives the returned role manifest. Posterior-predictive
 settings may use a semantic role such as <code class="docutils literal notranslate"><span class="pre">&quot;concentration&quot;</span></code>. For backwards
 compatibility, its default <code class="docutils literal notranslate"><span class="pre">&quot;y&quot;</span></code> request resolves to the declared
@@ -890,7 +848,7 @@ that path without importing private compiler objects.</p>
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">Customising the complete RHIME workflow</p>
+        <p class="prev-next-title">Customising a RHIME likelihood</p>
       </div>
     </a>
     <a class="right-next"
