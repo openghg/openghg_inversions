@@ -9,7 +9,7 @@ from collections.abc import Hashable
 from functools import partial
 from numbers import Integral
 from pathlib import Path
-from typing import Literal, cast
+from typing import Any, Literal, cast
 
 import numpy as np
 import pandas as pd
@@ -518,6 +518,7 @@ def bucket_basis_from_weights(
     *,
     nbasis: int = 100,
     country_directory: str | None = None,
+    landsea_indices: np.ndarray | None = None,
 ) -> xr.DataArray:
     """Create a legacy weighted bucket basis field from precomputed 2D weights.
 
@@ -531,6 +532,7 @@ def bucket_basis_from_weights(
         domain: Domain across which to calculate basis functions.
         nbasis: Desired number of basis regions.
         country_directory: Optional directory containing land/sea files.
+        landsea_indices: Optional pre-aligned land/sea mask for ``weights``.
 
     Returns:
         Basis field with ``lat``/``lon`` dimensions, a singleton ``time``
@@ -538,13 +540,15 @@ def bucket_basis_from_weights(
     """
     weights = _sanitize_generated_basis_weights(weights, algorithm="weighted bucket", require_nonzero=True)
     weights = _normalise_weights_by_nonzero_max(weights)
-    func = partial(
-        weighted_algorithm,
-        nregion=nbasis,
-        bucket=1,
-        domain=domain,
-        country_directory=country_directory,
-    )
+    algorithm_kwargs: dict[str, Any] = {
+        "nregion": nbasis,
+        "bucket": 1,
+        "domain": domain,
+        "country_directory": country_directory,
+    }
+    if landsea_indices is not None:
+        algorithm_kwargs["landsea_indices"] = landsea_indices
+    func = partial(weighted_algorithm, **algorithm_kwargs)
     bucket_basis = xr.apply_ufunc(func, weights)
     return _finalise_generated_basis(bucket_basis, start_date=start_date, domain=domain)
 
@@ -979,6 +983,7 @@ def bucket_basis_function(
     country_directory: str | None = None,
     abs_flux: bool = False,
     mask: xr.DataArray | None = None,
+    landsea_indices: np.ndarray | None = None,
 ) -> xr.DataArray:
     """Create a basis field with the legacy weighted bucket algorithm.
 
@@ -1000,6 +1005,8 @@ def bucket_basis_function(
         abs_flux: If true, use absolute flux values when constructing weights.
         mask: Optional Boolean spatial mask for fitting basis functions over a
             sub-region.
+        landsea_indices: Optional pre-aligned land/sea mask for the selected
+            sub-region.
 
     Returns:
         Basis field with ``lat``/``lon`` dimensions, a singleton ``time``
@@ -1012,6 +1019,7 @@ def bucket_basis_function(
         domain,
         nbasis=nbasis,
         country_directory=country_directory,
+        landsea_indices=landsea_indices,
     )
 
 
@@ -1193,6 +1201,7 @@ def fixed_outer_regions_basis(
     country_directory: str | None = None,
     abs_flux: bool = False,
     *,
+    outer_regions_path: str | Path | None = None,
     region_classes: xr.DataArray | None = None,
     region_allocation: AllocationMode = "weight",
     min_regions_per_class: int = 1,
@@ -1226,6 +1235,9 @@ def fixed_outer_regions_basis(
             InTEM outer-region file. When omitted, default package files are
             used.
         abs_flux: If true, use absolute flux values when constructing weights.
+        outer_regions_path: Optional direct path to the fixed outer-region
+            NetCDF file. When omitted, the packaged
+            ``outer_region_definition_<domain>.nc`` file is used.
         region_classes: Region or country class field used only with
             ``basis_algorithm="region_constrained"``. File loading should
             happen before calling this helper.
@@ -1249,7 +1261,10 @@ def fixed_outer_regions_basis(
     Returns:
         Basis field with fixed outer labels and generated inner labels.
     """
-    if country_directory is None:
+    if outer_regions_path is not None:
+        intem_regions_path = Path(outer_regions_path)
+        logger.info(f"Loading InTEM outer region file for domain {domain} from {intem_regions_path}.")
+    elif country_directory is None:
         logger.info(f"Loading default InTEM outer region file for domain {domain}.")
         intem_regions_path = Path(__file__).parent / f"outer_region_definition_{domain}.nc"
     else:
@@ -1267,6 +1282,16 @@ def fixed_outer_regions_basis(
 
     basis_function = basis_functions[basis_algorithm].algorithm
     algorithm_kwargs = {"country_directory": country_directory, "abs_flux": abs_flux, "mask": mask}
+    if basis_algorithm == "weighted":
+        landsea_classes = load_country_region_classes(domain, country_directory=country_directory)
+        landsea_classes = normalize_spatial_grid(
+            intem_regions,
+            landsea_classes,
+            reference_name="fixed outer-region map",
+            candidate_name="land/sea class map",
+        )
+        inner_landsea = landsea_classes.where(mask, drop=True)
+        algorithm_kwargs["landsea_indices"] = inner_landsea.to_numpy()
     if basis_algorithm == "region_constrained":
         algorithm_kwargs.update(
             {

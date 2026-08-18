@@ -477,6 +477,145 @@ def build_rhime_model(
     return model
 
 
+def build_nested_rhime_model(
+    inv_inputs: xr.Dataset,
+    *,
+    sigma_alignment: SigmaAlignment,
+    outer_x_prior: dict | None = None,
+    inner_x_prior: dict | None = None,
+    bc_prior: dict | None = None,
+    sigma_prior: dict | None = None,
+    offset_prior: dict | None = None,
+    add_offset: bool = False,
+    use_bc: bool = True,
+    pollution_events_from_obs: bool = False,
+    no_model_error: bool = False,
+    aggregation_error_mode: AggregationErrorMode = "auto",
+    offset_args: dict | None = None,
+    power: dict | float = 1.99,
+    outer_state_activity: StateActivity | None = None,
+    inner_state_activity: StateActivity | None = None,
+    bc_state_activity: StateActivity | None = None,
+    likelihood_builder: RhimeLikelihoodBuilder | None = None,
+) -> pm.Model:
+    """Build a two-grid nested-domain RHIME model.
+
+    ``H`` and ``H_inner`` retain independent labelled state dimensions.  The
+    two forward-model contributions are constructed separately and summed in
+    observation space, so the inner grid is never coerced onto the outer grid
+    or represented as a same-grid emissions sector.
+
+    Args:
+        inv_inputs: Canonical inversion inputs containing ``H`` and
+            ``H_inner`` aligned on ``nmeasure``.
+        sigma_alignment: Backend-neutral site and period alignment for sigma.
+        outer_x_prior: Prior for outer-domain flux scaling factors.
+        inner_x_prior: Prior for inner-domain flux scaling factors. Defaults to
+            a copy of ``outer_x_prior`` (or the standard RHIME prior).
+        bc_prior: Prior specification for boundary-condition scaling factors.
+        sigma_prior: Prior specification for model-error terms.
+        offset_prior: Prior specification for optional offsets.
+        add_offset: Whether to include an offset term.
+        use_bc: Whether to include boundary-condition terms from the outer
+            domain.
+        pollution_events_from_obs: Whether error scaling uses observations.
+        no_model_error: Whether to suppress explicit model-error terms.
+        aggregation_error_mode: Aggregation-error representation to use.
+        offset_args: Extra keyword arguments for the offset component.
+        power: Likelihood error-scaling exponent or prior.
+        outer_state_activity: Optional outer-domain state policy.
+        inner_state_activity: Optional inner-domain state policy.
+        bc_state_activity: Optional boundary-condition state policy.
+        likelihood_builder: Optional complete observation-component builder.
+
+    Returns:
+        Fully assembled PyMC model with ``x_outer``, ``x_inner``, their
+        separate contributions, and their summed ``mu``.
+
+    Raises:
+        KeyError: If either domain sensitivity is absent.
+        ValueError: If the two sensitivities do not share the same labelled
+            measurement coordinate or do not have distinct state dimensions.
+    """
+    if "H" not in inv_inputs or "H_inner" not in inv_inputs:
+        raise KeyError("Nested RHIME inputs must contain both `H` and `H_inner`.")
+
+    outer_sensitivity = inv_inputs["H"]
+    inner_sensitivity = inv_inputs["H_inner"]
+    outer_state_dims = [str(dim) for dim in outer_sensitivity.dims if dim != "nmeasure"]
+    inner_state_dims = [str(dim) for dim in inner_sensitivity.dims if dim != "nmeasure"]
+    if len(outer_state_dims) != 1 or len(inner_state_dims) != 1:
+        raise ValueError(
+            "Nested RHIME sensitivities must each have `nmeasure` and exactly one state "
+            f"dimension; H state dims={outer_state_dims!r}, H_inner state dims={inner_state_dims!r}."
+        )
+    if outer_state_dims[0] == inner_state_dims[0]:
+        raise ValueError(
+            "Nested RHIME outer and inner sensitivities require distinct state-dimension names; "
+            f"both use {outer_state_dims[0]!r}."
+        )
+    if not outer_sensitivity.get_index("nmeasure").equals(inner_sensitivity.get_index("nmeasure")):
+        raise ValueError("Nested RHIME H and H_inner must have identical labelled nmeasure indexes.")
+
+    prepared_outer_prior, prepared_bc_prior, prepared_sigma_prior, prepared_offset_prior = (
+        _prepare_builder_priors(
+            x_prior=outer_x_prior,
+            bc_prior=bc_prior,
+            sigma_prior=sigma_prior,
+            offset_prior=offset_prior,
+        )
+    )
+    prepared_inner_prior = prepared_outer_prior.copy() if inner_x_prior is None else inner_x_prior.copy()
+
+    with pm.Model() as model:
+        attach_coord_registry(model, CoordRegistry())
+        outer_component = add_state_linear_component(
+            outer_sensitivity,
+            data_name="hx_outer",
+            prior_args=prepared_outer_prior,
+            var_name="x_outer",
+            output_name="mu_outer",
+            output_dim="nmeasure",
+            compute_deterministic=True,
+            state_activity=outer_state_activity,
+        )
+        inner_component = add_state_linear_component(
+            inner_sensitivity,
+            data_name="hx_inner",
+            prior_args=prepared_inner_prior,
+            var_name="x_inner",
+            output_name="mu_inner",
+            output_dim="nmeasure",
+            compute_deterministic=True,
+            state_activity=inner_state_activity,
+        )
+        mu = pm.Deterministic(
+            "mu",
+            outer_component.output + inner_component.output,
+            dims="nmeasure",
+        )
+        likelihood_result = _add_rhime_observation_components(
+            inv_inputs,
+            mu=mu,
+            sigma_alignment=sigma_alignment,
+            bc_prior=prepared_bc_prior,
+            sigma_prior=prepared_sigma_prior,
+            offset_prior=prepared_offset_prior,
+            add_offset=add_offset,
+            use_bc=use_bc,
+            bc_state_activity=bc_state_activity,
+            pollution_events_from_obs=pollution_events_from_obs,
+            no_model_error=no_model_error,
+            aggregation_error_mode=aggregation_error_mode,
+            offset_args=offset_args,
+            power=power,
+            likelihood_builder=likelihood_builder,
+        )
+        setattr(model, _LIKELIHOOD_RESULT_ATTR, likelihood_result)
+
+    return model
+
+
 def _build_compiled_rhime_model(
     inv_inputs: xr.Dataset,
     *,
@@ -590,6 +729,63 @@ def build_rhime_model_from_spec(
         sigma_alignment=sigma_alignment,
         x_prior=dict(sector.x_prior),
         state_activity=state_activity,
+        bc_prior=model_spec.bc_prior,
+        bc_state_activity=model_spec.bc_state_activity,
+        sigma_prior=model_spec.sigma_prior,
+        offset_prior=model_spec.offset_prior,
+        add_offset=model_spec.add_offset,
+        use_bc=model_spec.use_bc,
+        pollution_events_from_obs=model_spec.pollution_events_from_obs,
+        no_model_error=model_spec.no_model_error,
+        aggregation_error_mode=model_spec.aggregation_error_mode,
+        offset_args=model_spec.offset_args,
+        power=model_spec.power,
+        likelihood_builder=likelihood_builder,
+    )
+
+
+def build_nested_rhime_model_from_spec(
+    inv_inputs: xr.Dataset,
+    model_spec: RhimeModelSpec,
+    *,
+    inner_x_prior: dict[str, Any] | None = None,
+    inner_state_activity: StateActivity | None = None,
+    likelihood_builder: RhimeLikelihoodBuilder | None = None,
+) -> pm.Model:
+    """Build a two-grid nested-domain model from a standard RHIME spec.
+
+    Nested domains are spatial resolutions of one emissions source, not
+    emissions sectors. Consequently the current nested builder requires the
+    standard one-sector spec and the concrete construction strategy.
+    """
+    if len(model_spec.sectors) != 1:
+        raise ValueError("Nested RHIME model specs must include exactly one emissions sector.")
+    if model_spec.builder_strategy != "concrete":
+        raise ValueError("Nested RHIME currently supports only builder_strategy='concrete'.")
+
+    sector = model_spec.sectors[0]
+    sigma_alignment = SigmaAlignment.from_frequency(
+        inv_inputs["site_indicator"],
+        frequency=model_spec.sigma_freq,
+        per_site=model_spec.sigma_per_site,
+        anchor_time=model_spec.sigma_freq_anchor,
+    )
+    outer_state_activity = model_spec.state_activity
+    if model_spec.sector_state_activities is not None:
+        outer_state_activity = model_spec.sector_state_activities.get(
+            sector.name,
+            outer_state_activity,
+        )
+    if sector.state_activity is not None:
+        outer_state_activity = sector.state_activity
+
+    return build_nested_rhime_model(
+        inv_inputs,
+        sigma_alignment=sigma_alignment,
+        outer_x_prior=dict(sector.x_prior),
+        inner_x_prior=inner_x_prior,
+        outer_state_activity=outer_state_activity,
+        inner_state_activity=inner_state_activity,
         bc_prior=model_spec.bc_prior,
         bc_state_activity=model_spec.bc_state_activity,
         sigma_prior=model_spec.sigma_prior,

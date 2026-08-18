@@ -1606,6 +1606,7 @@ def prepare_rhime_inputs(
     bc_basis_case: str = "NESW",
     bc_basis_directory: str | Path | None = None,
     country_directory: str | None = None,
+    outer_regions_path: str | Path | None = None,
     bc_input: str | None = None,
     basis_algorithm: str = "weighted",
     nbasis: int = 100,
@@ -1655,6 +1656,8 @@ def prepare_rhime_inputs(
             ``sites``.
         max_level: Maximum column level, either scalar or aligned to ``sites``.
             Entries must be integers or ``None``.
+        outer_regions_path: Optional direct path to the fixed outer-region map
+            used when ``fix_basis_outer_regions`` is true.
         min_error: Numeric minimum error or ``"residual"``/``"percentile"``
             calculation method.
         min_error_options: Calculated minimum-error options. The only supported
@@ -1726,6 +1729,7 @@ def prepare_rhime_inputs(
             fp_basis_case=fp_basis_case,
             basis_directory=basis_directory,
             country_directory=country_directory,
+            outer_regions_path=outer_regions_path,
             fp_all=filtered_merged.fp_all,
             species=species,
             domain=domain,

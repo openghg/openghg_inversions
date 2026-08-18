@@ -47,6 +47,13 @@ def _run_rhime_multisector_command(args: argparse.Namespace) -> None:
     run_rhime_multisector(config_file=args.config, **_command_kwargs(args))
 
 
+def _run_rhime_nested_command(args: argparse.Namespace) -> None:
+    """Run the nested-domain RHIME command with lazy imports for fast help output."""
+    from openghg_inversions.rhime import run_rhime_nested
+
+    run_rhime_nested(config_file=args.config, **_command_kwargs(args))
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build the OpenGHG inversions CLI argument parser.
 
@@ -65,6 +72,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_run_args(run_multi_parser)
     run_multi_parser.set_defaults(func=_run_rhime_multisector_command)
+
+    run_nested_parser = subparsers.add_parser(
+        "run-rhime-nested", help="Run a two-grid nested-domain RHIME inversion"
+    )
+    _add_run_args(run_nested_parser)
+    run_nested_parser.set_defaults(func=_run_rhime_nested_command)
 
     return parser
 
