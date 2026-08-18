@@ -4,6 +4,14 @@
 
 ## Code changes
 
+- Moved RHIME retrieval, filtering, basis, sensitivity, labelled assembly, and
+  PyMC materialization into a cohesive preparation module while keeping their
+  scientific order visible in the runners. `run_rhime` and
+  `run_rhime_multisector` can now resume from borrowed external
+  `RhimeMergedData` without OpenGHG or cache I/O while preserving the existing
+  prepared-input serialization contract.
+  [OPE-46](https://linear.app/openghg-inversions/issue/OPE-46/p0-w4-split-rhime-preparation-into-named-scientific-stages)
+
 - Updated the latest PARIS flux and concentration NetCDF outputs to follow the
   revised CF schema, including canonical dimension order, distinct secondary
   covariance axes, valid `cell_methods`, positive-up altitude metadata,
