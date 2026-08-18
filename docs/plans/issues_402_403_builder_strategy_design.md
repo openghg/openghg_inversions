@@ -2,7 +2,11 @@
 
 Date: 2026-07-24
 
-Status: second-pass architecture notes, not a formal implementation plan.
+Status: historical design evidence. Issues #402 and #403 are closed. The
+source/sector/state terminology and narrow concrete behavior remain useful;
+the semantic-core and compiler roadmap is superseded by
+[`run_rhime_readability_and_modifiability.md`](run_rhime_readability_and_modifiability.md)
+and [`rhime_model_family_expansion.md`](rhime_model_family_expansion.md).
 
 ## Scope And Evidence
 

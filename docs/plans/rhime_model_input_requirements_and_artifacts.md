@@ -114,7 +114,30 @@ partly repeated by replay, materialization, and model construction.
 
 The requirements object is an internal derived contract, not a stage registry,
 dependency-injection mechanism, or caller-authored manifest. Ordinary custom
-runners should receive it from the selected model spec and pass it through.
+runners should not construct or thread it through every stage. The concrete
+model/materialization boundary should derive and consume it internally, while
+advanced callers may inspect it for validation and diagnostics.
+
+### Configuration option ownership is a separate contract
+
+Model input requirements describe labelled scientific arrays. They must not be
+used as the schema for all user configuration, because component functions also
+receive derived arrays and PyMC terms that are not INI options.
+
+User options should instead be grouped explicitly by the scientific component
+that owns them. For example:
+
+- `bc_prior` and `bc_freq` belong to the baseline component;
+- `sigma_prior`, `sigma_freq`, and `sigma_per_site` belong to the model-data
+  mismatch component; and
+- aggregation-error representation and preparation options belong to the
+  aggregation-error component.
+
+A first implementation may record this ownership in small option-name tuples
+or a documentation table. It may use the information to validate INI files and
+keep templates current. Do not infer the configuration schema from every
+runtime function parameter, and do not introduce a component class hierarchy
+or generic routing engine to hold it.
 
 ### Replayable run artifact
 
@@ -194,21 +217,21 @@ or project-specific steps.
 3. **OPE-47 — component-owned requirements.** Colocate the concrete model
    graph, component contracts, output roles, and the derived model input bill
    of materials. Make that contract drive validation and PyMC materialization.
-4. **OPE-55 / W5b — serialized model-bound replay.** Define the versioned
-   replay bundle that binds prepared data to a serialized model/run
+4. **OPE-48 — outputs and reconstruction.** Consume the same backend-neutral
+   scientific roles and concrete model contract for output compatibility and
+   reconstruction. This work does not wait for serialized replay.
+5. **OPE-55 / W5b — serialized model-bound replay, in parallel.** Define the
+   versioned replay bundle that binds prepared data to a serialized model/run
    specification without turning reusable caches into model-specific
-   artifacts.
-5. **OPE-48 — outputs and reconstruction.** Consume the same model contract
-   for output compatibility and reconstruction, and preserve the replay
-   boundary.
+   artifacts. This branch may proceed after OPE-47 but does not block OPE-48.
 6. **OPE-49 — user-facing consolidation.** Document choosing between standard
    options, a low-ceremony seam, a custom stage, a prepared-data cache, and an
    re-executable model-bound run.
 
 OPE-55 is the concrete P0 delivery slice for GitHub issue #415 and the broader
 component and reproducible-run-bundle roadmap tracked by OPE-21. It should
-remain incremental and must not wait for, or introduce, a general semantic
-kernel.
+remain incremental, must not wait for or introduce a general semantic kernel,
+and is not a prerequisite for W6.
 
 ## Acceptance evidence
 

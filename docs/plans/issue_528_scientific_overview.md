@@ -9,6 +9,13 @@ what the next implementation should preserve.
 
 Status snapshot: OpenGHG Inversions `devel` at `7665d41`, 10 August 2026.
 
+> **Architecture status (2026-08-18):** Retain this document's scientific
+> account of native covariance, coherent reduction, aggregation error, and
+> linked observation channels. Its semantic-model/compiler delivery proposal
+> is superseded by the production
+> [`run_rhime` readability plan](run_rhime_readability_and_modifiability.md)
+> and [model-family expansion plan](rhime_model_family_expansion.md).
+
 The central proposal is:
 
 > Define one probability model at its scientifically meaningful native
