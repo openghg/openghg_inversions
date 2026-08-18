@@ -638,6 +638,176 @@ passes their combined observation mean to the likelihood, so no special case
 or semantic compromise is required.</p>
 </section>
 </section>
+<section id="use-the-seam-from-a-generated-project">
+<h2>Use the seam from a generated project<a class="headerlink" href="#use-the-seam-from-a-generated-project" title="Link to this heading">#</a></h2>
+<p>Create a normal downstream package with the current <a class="reference external" href="https://github.com/openghg/openghg-project-cookiecutter">OpenGHG project
+cookiecutter</a>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">uvx</span> <span class="n">cookiecutter</span> <span class="n">gh</span><span class="p">:</span><span class="n">openghg</span><span class="o">/</span><span class="n">openghg</span><span class="o">-</span><span class="n">project</span><span class="o">-</span><span class="n">cookiecutter</span>
+</pre></div>
+</div>
+<p>The template already declares <code class="docutils literal notranslate"><span class="pre">openghg</span></code> and <code class="docutils literal notranslate"><span class="pre">openghg_inversions</span></code> as
+dependencies and creates a <code class="docutils literal notranslate"><span class="pre">src</span></code> layout. Add the project-owned files beside
+the generated package’s existing modules, without copying any OpenGHG
+Inversions implementation:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">src</span><span class="o">/</span><span class="n">my_inversion</span><span class="o">/</span>
+  <span class="fm">__init__</span><span class="o">.</span><span class="n">py</span>
+  <span class="n">likelihoods</span><span class="o">.</span><span class="n">py</span>
+  <span class="n">runner</span><span class="o">.</span><span class="n">py</span>
+<span class="n">tests</span><span class="o">/</span>
+  <span class="n">test_runner</span><span class="o">.</span><span class="n">py</span>
+</pre></div>
+</div>
+<p>Put only the scientific change in <code class="docutils literal notranslate"><span class="pre">likelihoods.py</span></code>:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos"> 1</span><span class="sd">"""Project-owned scientific variation for a cookiecutter-generated package."""</span>
+<span class="linenos"> 2</span>
+<span class="linenos"> 3</span><span class="kn">import</span><span class="w"> </span><span class="nn">pymc</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pm</span>
+<span class="linenos"> 4</span>
+<span class="linenos"> 5</span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+<span class="linenos"> 6</span>    <span class="n">RhimeLikelihoodContext</span><span class="p">,</span>
+<span class="linenos"> 7</span>    <span class="n">RhimeLikelihoodResult</span><span class="p">,</span>
+<span class="linenos"> 8</span>    <span class="n">build_rhime_observation_state</span><span class="p">,</span>
+<span class="linenos"> 9</span>    <span class="n">select_aggregation_error_mode</span><span class="p">,</span>
+<span class="linenos">10</span><span class="p">)</span>
+<span class="linenos">11</span>
+<span class="linenos">12</span>
+<span class="linenos">13</span><span class="k">def</span><span class="w"> </span><span class="nf">likelihood_builder</span><span class="p">(</span><span class="n">context</span><span class="p">:</span> <span class="n">RhimeLikelihoodContext</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">RhimeLikelihoodResult</span><span class="p">:</span>
+<span class="linenos">14</span><span class="w">    </span><span class="sd">"""Build an independent Student-t observation likelihood for RHIME.</span>
+<span class="linenos">15</span>
+<span class="linenos">16</span><span class="sd">    Args:</span>
+<span class="linenos">17</span><span class="sd">        context: Labelled RHIME means, observations, and error settings for</span>
+<span class="linenos">18</span><span class="sd">            the active PyMC model.</span>
+<span class="linenos">19</span>
+<span class="linenos">20</span><span class="sd">    Returns:</span>
+<span class="linenos">21</span><span class="sd">        Student-t observation variable and the public roles, output support,</span>
+<span class="linenos">22</span><span class="sd">        and provenance metadata needed by the library-owned runner.</span>
+<span class="linenos">23</span>
+<span class="linenos">24</span><span class="sd">    Raises:</span>
+<span class="linenos">25</span><span class="sd">        ValueError: If aggregation error requires a multivariate likelihood.</span>
+<span class="linenos">26</span><span class="sd">    """</span>
+<span class="linenos">27</span>    <span class="n">aggregation_error_mode</span> <span class="o">=</span> <span class="n">select_aggregation_error_mode</span><span class="p">(</span>
+<span class="linenos">28</span>        <span class="n">context</span><span class="o">.</span><span class="n">data</span><span class="p">,</span>
+<span class="linenos">29</span>        <span class="n">context</span><span class="o">.</span><span class="n">aggregation_error_mode</span><span class="p">,</span>
+<span class="linenos">30</span>    <span class="p">)</span>
+<span class="linenos">31</span>    <span class="k">if</span> <span class="n">aggregation_error_mode</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">{</span><span class="s2">"none"</span><span class="p">,</span> <span class="s2">"diagonal"</span><span class="p">}:</span>
+<span class="linenos">32</span>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"This Student-t model assumes independent observations."</span><span class="p">)</span>
+<span class="linenos">33</span>
+<span class="linenos">34</span>    <span class="n">state</span> <span class="o">=</span> <span class="n">build_rhime_observation_state</span><span class="p">(</span><span class="n">context</span><span class="p">)</span>
+<span class="linenos">35</span>    <span class="n">observed</span> <span class="o">=</span> <span class="n">pm</span><span class="o">.</span><span class="n">StudentT</span><span class="p">(</span>
+<span class="linenos">36</span>        <span class="s2">"student_y"</span><span class="p">,</span>
+<span class="linenos">37</span>        <span class="n">nu</span><span class="o">=</span><span class="mf">4.0</span><span class="p">,</span>
+<span class="linenos">38</span>        <span class="n">mu</span><span class="o">=</span><span class="n">state</span><span class="o">.</span><span class="n">mean</span><span class="p">,</span>
+<span class="linenos">39</span>        <span class="n">sigma</span><span class="o">=</span><span class="n">state</span><span class="o">.</span><span class="n">error_scale</span><span class="p">,</span>
+<span class="linenos">40</span>        <span class="n">observed</span><span class="o">=</span><span class="n">state</span><span class="o">.</span><span class="n">observed</span><span class="p">,</span>
+<span class="linenos">41</span>        <span class="n">dims</span><span class="o">=</span><span class="n">context</span><span class="o">.</span><span class="n">output_dim</span><span class="p">,</span>
+<span class="linenos">42</span>    <span class="p">)</span>
+<span class="linenos">43</span>    <span class="k">return</span> <span class="n">RhimeLikelihoodResult</span><span class="p">(</span>
+<span class="linenos">44</span>        <span class="n">likelihood</span><span class="o">=</span><span class="n">observed</span><span class="p">,</span>
+<span class="linenos">45</span>        <span class="n">error_scale</span><span class="o">=</span><span class="n">state</span><span class="o">.</span><span class="n">error_scale</span><span class="p">,</span>
+<span class="linenos">46</span>        <span class="n">variable_roles</span><span class="o">=</span><span class="p">{</span>
+<span class="linenos">47</span>            <span class="s2">"concentration"</span><span class="p">:</span> <span class="s2">"student_y"</span><span class="p">,</span>
+<span class="linenos">48</span>            <span class="s2">"model_error"</span><span class="p">:</span> <span class="s2">"epsilon"</span><span class="p">,</span>
+<span class="linenos">49</span>        <span class="p">},</span>
+<span class="linenos">50</span>        <span class="n">supported_output_formats</span><span class="o">=</span><span class="p">(</span><span class="s2">"none"</span><span class="p">,</span> <span class="s2">"inv_out"</span><span class="p">),</span>
+<span class="linenos">51</span>        <span class="n">metadata</span><span class="o">=</span><span class="p">{</span><span class="s2">"family"</span><span class="p">:</span> <span class="s2">"student_t"</span><span class="p">,</span> <span class="s2">"degrees_of_freedom"</span><span class="p">:</span> <span class="mf">4.0</span><span class="p">},</span>
+<span class="linenos">52</span>    <span class="p">)</span>
+<span class="linenos">53</span>
+<span class="linenos">54</span>
+<span class="linenos">55</span><span class="n">__all__</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"likelihood_builder"</span><span class="p">]</span>
+</pre></div>
+</div>
+<p>Keep project-level invocation in <code class="docutils literal notranslate"><span class="pre">runner.py</span></code>. Its one library call owns no
+retrieval, filtering, basis, input assembly, sampling, predictive selection,
+or output implementation:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos"> 1</span><span class="sd">"""Run RHIME from a cookiecutter-generated project package."""</span>
+<span class="linenos"> 2</span>
+<span class="linenos"> 3</span><span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+<span class="linenos"> 4</span>
+<span class="linenos"> 5</span><span class="kn">import</span><span class="w"> </span><span class="nn">argparse</span>
+<span class="linenos"> 6</span><span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">Sequence</span>
+<span class="linenos"> 7</span><span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="linenos"> 8</span><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<span class="linenos"> 9</span><span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span>
+<span class="linenos">10</span>
+<span class="linenos">11</span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="n">RhimeResult</span><span class="p">,</span> <span class="n">run_rhime</span>
+<span class="linenos">12</span>
+<span class="linenos">13</span><span class="kn">from</span><span class="w"> </span><span class="nn">.likelihoods</span><span class="w"> </span><span class="kn">import</span> <span class="n">likelihood_builder</span>
+<span class="linenos">14</span>
+<span class="linenos">15</span>
+<span class="linenos">16</span><span class="k">def</span><span class="w"> </span><span class="nf">run</span><span class="p">(</span>
+<span class="linenos">17</span>    <span class="o">*</span><span class="p">,</span>
+<span class="linenos">18</span>    <span class="n">config_file</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="linenos">19</span>    <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
+<span class="linenos">20</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">RhimeResult</span><span class="p">:</span>
+<span class="linenos">21</span><span class="w">    </span><span class="sd">"""Run ordinary RHIME with this project's likelihood.</span>
+<span class="linenos">22</span>
+<span class="linenos">23</span><span class="sd">    Args:</span>
+<span class="linenos">24</span><span class="sd">        config_file: Optional RHIME INI configuration file.</span>
+<span class="linenos">25</span><span class="sd">        **kwargs: Standard RHIME option names overriding the configuration.</span>
+<span class="linenos">26</span>
+<span class="linenos">27</span><span class="sd">    Returns:</span>
+<span class="linenos">28</span><span class="sd">        The library-owned RHIME result and any requested supported output.</span>
+<span class="linenos">29</span><span class="sd">    """</span>
+<span class="linenos">30</span>    <span class="k">return</span> <span class="n">run_rhime</span><span class="p">(</span>
+<span class="linenos">31</span>        <span class="n">config_file</span><span class="o">=</span><span class="n">config_file</span><span class="p">,</span>
+<span class="linenos">32</span>        <span class="n">likelihood_builder</span><span class="o">=</span><span class="n">likelihood_builder</span><span class="p">,</span>
+<span class="linenos">33</span>        <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+<span class="linenos">34</span>    <span class="p">)</span>
+<span class="linenos">35</span>
+<span class="linenos">36</span>
+<span class="linenos">37</span><span class="k">def</span><span class="w"> </span><span class="nf">_json_object</span><span class="p">(</span><span class="n">value</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+<span class="linenos">38</span><span class="w">    </span><span class="sd">"""Parse JSON command-line overrides as an object."""</span>
+<span class="linenos">39</span>    <span class="k">try</span><span class="p">:</span>
+<span class="linenos">40</span>        <span class="n">parsed</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+<span class="linenos">41</span>    <span class="k">except</span> <span class="n">json</span><span class="o">.</span><span class="n">JSONDecodeError</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+<span class="linenos">42</span>        <span class="k">raise</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentTypeError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"invalid JSON: </span><span class="si">{</span><span class="n">exc</span><span class="o">.</span><span class="n">msg</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">exc</span>
+<span class="linenos">43</span>    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">parsed</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+<span class="linenos">44</span>        <span class="k">raise</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentTypeError</span><span class="p">(</span><span class="s2">"--kwargs must decode to a JSON object"</span><span class="p">)</span>
+<span class="linenos">45</span>    <span class="k">return</span> <span class="n">parsed</span>
+<span class="linenos">46</span>
+<span class="linenos">47</span>
+<span class="linenos">48</span><span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">(</span><span class="n">argv</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">RhimeResult</span><span class="p">:</span>
+<span class="linenos">49</span><span class="w">    </span><span class="sd">"""Parse project CLI arguments and run the customized inversion."""</span>
+<span class="linenos">50</span>    <span class="n">parser</span> <span class="o">=</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">(</span><span class="n">description</span><span class="o">=</span><span class="vm">__doc__</span><span class="p">)</span>
+<span class="linenos">51</span>    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">"config_file"</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="n">Path</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">"RHIME INI configuration file"</span><span class="p">)</span>
+<span class="linenos">52</span>    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+<span class="linenos">53</span>        <span class="s2">"--kwargs"</span><span class="p">,</span>
+<span class="linenos">54</span>        <span class="nb">type</span><span class="o">=</span><span class="n">_json_object</span><span class="p">,</span>
+<span class="linenos">55</span>        <span class="n">default</span><span class="o">=</span><span class="p">{},</span>
+<span class="linenos">56</span>        <span class="n">metavar</span><span class="o">=</span><span class="s2">"JSON"</span><span class="p">,</span>
+<span class="linenos">57</span>        <span class="n">help</span><span class="o">=</span><span class="s2">"additional RHIME options as a JSON object"</span><span class="p">,</span>
+<span class="linenos">58</span>    <span class="p">)</span>
+<span class="linenos">59</span>    <span class="n">args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">parse_args</span><span class="p">(</span><span class="n">argv</span><span class="p">)</span>
+<span class="linenos">60</span>    <span class="k">return</span> <span class="n">run</span><span class="p">(</span><span class="n">config_file</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">config_file</span><span class="p">,</span> <span class="o">**</span><span class="n">args</span><span class="o">.</span><span class="n">kwargs</span><span class="p">)</span>
+<span class="linenos">61</span>
+<span class="linenos">62</span>
+<span class="linenos">63</span><span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">"__main__"</span><span class="p">:</span>
+<span class="linenos">64</span>    <span class="n">main</span><span class="p">()</span>
+</pre></div>
+</div>
+<p>After <code class="docutils literal notranslate"><span class="pre">uv</span> <span class="pre">sync</span> <span class="pre">--extra</span> <span class="pre">dev</span></code>, run the module with a normal RHIME INI file:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">uv</span> <span class="n">run</span> <span class="n">python</span> <span class="o">-</span><span class="n">m</span> <span class="n">my_inversion</span><span class="o">.</span><span class="n">runner</span> <span class="n">inversion</span><span class="o">.</span><span class="n">ini</span> \
+    <span class="o">--</span><span class="n">kwargs</span> <span class="s1">'{"output_path": "outputs", "output_format": "inv_out"}'</span>
+</pre></div>
+</div>
+<p>An optional console command can point directly at the same <code class="docutils literal notranslate"><span class="pre">main</span></code> function.
+Add this table to the generated <code class="docutils literal notranslate"><span class="pre">pyproject.toml</span></code>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">[</span><span class="n">project</span><span class="o">.</span><span class="n">scripts</span><span class="p">]</span>
+<span class="n">my</span><span class="o">-</span><span class="n">inversion</span> <span class="o">=</span> <span class="s2">"my_inversion.runner:main"</span>
+</pre></div>
+</div>
+<p>Then the equivalent command is:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">uv</span> <span class="n">run</span> <span class="n">my</span><span class="o">-</span><span class="n">inversion</span> <span class="n">inversion</span><span class="o">.</span><span class="n">ini</span> \
+    <span class="o">--</span><span class="n">kwargs</span> <span class="s1">'{"output_path": "outputs", "output_format": "inv_out"}'</span>
+</pre></div>
+</div>
+<p>The example and its package-shaped test use only documented names from
+<code class="docutils literal notranslate"><span class="pre">openghg_inversions.rhime</span></code>. The dependency direction is therefore the
+generated project to OpenGHG Inversions; OpenGHG Inversions does not import the
+consumer package. Pin the release or commit used for a scientific run in the
+downstream project’s lockfile. An optional RHIME recipe or generated-project
+CI in the generic cookiecutter would be a separate cross-repository change and
+is not required for this workflow.</p>
+</section>
 <section id="copy-the-complete-runner">
 <h2>Copy the complete runner<a class="headerlink" href="#copy-the-complete-runner" title="Link to this heading">#</a></h2>
 <p>The copied runner below is an advanced, version-coupled escape hatch for
@@ -1412,6 +1582,7 @@ option.</p>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#optional-project-cli">Optional project CLI</a></li>
 </ul>
 </li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#use-the-seam-from-a-generated-project">Use the seam from a generated project</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#copy-the-complete-runner">Copy the complete runner</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#compose-a-custom-basis-stage">Compose a custom basis stage</a></li>
 </ul>

@@ -103,6 +103,64 @@ standard multi-sector model retains sector flux components and roles, then
 passes their combined observation mean to the likelihood, so no special case
 or semantic compromise is required.
 
+Use the seam from a generated project
+-------------------------------------
+
+Create a normal downstream package with the current `OpenGHG project
+cookiecutter <https://github.com/openghg/openghg-project-cookiecutter>`_::
+
+   uvx cookiecutter gh:openghg/openghg-project-cookiecutter
+
+The template already declares ``openghg`` and ``openghg_inversions`` as
+dependencies and creates a ``src`` layout. Add the project-owned files beside
+the generated package's existing modules, without copying any OpenGHG
+Inversions implementation::
+
+   src/my_inversion/
+     __init__.py
+     likelihoods.py
+     runner.py
+   tests/
+     test_runner.py
+
+Put only the scientific change in ``likelihoods.py``:
+
+.. literalinclude:: ../../examples/rhime_cookiecutter/my_inversion/likelihoods.py
+   :language: python
+   :linenos:
+
+Keep project-level invocation in ``runner.py``. Its one library call owns no
+retrieval, filtering, basis, input assembly, sampling, predictive selection,
+or output implementation:
+
+.. literalinclude:: ../../examples/rhime_cookiecutter/my_inversion/runner.py
+   :language: python
+   :linenos:
+
+After ``uv sync --extra dev``, run the module with a normal RHIME INI file::
+
+   uv run python -m my_inversion.runner inversion.ini \
+       --kwargs '{"output_path": "outputs", "output_format": "inv_out"}'
+
+An optional console command can point directly at the same ``main`` function.
+Add this table to the generated ``pyproject.toml``::
+
+   [project.scripts]
+   my-inversion = "my_inversion.runner:main"
+
+Then the equivalent command is::
+
+   uv run my-inversion inversion.ini \
+       --kwargs '{"output_path": "outputs", "output_format": "inv_out"}'
+
+The example and its package-shaped test use only documented names from
+``openghg_inversions.rhime``. The dependency direction is therefore the
+generated project to OpenGHG Inversions; OpenGHG Inversions does not import the
+consumer package. Pin the release or commit used for a scientific run in the
+downstream project's lockfile. An optional RHIME recipe or generated-project
+CI in the generic cookiecutter would be a separate cross-repository change and
+is not required for this workflow.
+
 Copy the complete runner
 ------------------------
 
