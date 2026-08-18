@@ -375,7 +375,7 @@ def _apply_restriction_blocks(
     state_dim: str,
     column_dim: str,
     rhs_block_size: int,
-) -> tuple[xr.DataArray, float]:
+) -> xr.DataArray:
     """Apply covariance to explicit dense retained-state RHS blocks."""
     blocks: list[xr.DataArray] = []
     for start in range(0, restriction.sizes[state_dim], rhs_block_size):
@@ -537,7 +537,7 @@ def _derive_covariance_natural_prolongation(
     native_dims: tuple[str, ...],
     state_dim: str,
     state_column_dim: str,
-) -> xr.DataArray:
+) -> tuple[xr.DataArray, float]:
     """Derive labelled ``U_* = B Pi.T C_alpha^-1`` from authoritative ``Pi``.
 
     The result has dimensions ``(*native_dims, state_dim)`` and preserves
