@@ -178,18 +178,13 @@ def test_default_configuration_round_trips_through_dataset() -> None:
         ),
         pytest.param(
             lambda rhs: rhs.drop_indexes("lon").drop_vars("lon"),
-            "coordinate|longitude|lon",
+            "lon",
             id="missing-coordinate",
-        ),
-        pytest.param(
-            lambda rhs: rhs.where(~((rhs.lat == 0.25) & (rhs.lon == 10.0))),
-            "finite|NaN",
-            id="non-finite-values",
         ),
     ],
 )
-def test_action_rejects_invalid_rhs_labels_and_values(bad_rhs, message: str) -> None:
-    """The action rejects ambiguous alignment and non-finite numerical inputs."""
+def test_action_requires_labelled_aligned_rhs(bad_rhs, message: str) -> None:
+    """The public action requires its configured labelled native grid."""
     latitude, longitude = _coordinates()
     covariance = _covariance()
     rhs = xr.DataArray(

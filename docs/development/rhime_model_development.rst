@@ -206,6 +206,7 @@ serialization must happen at named boundaries and must not be hidden behind a
 property or model framework.
 
 Further guidance is in
+``docs/development/validation_and_xarray.rst``,
 ``docs/plans/numerical_data_ownership_and_execution_boundaries.md`` and the
 active ``run_rhime`` plan in
 ``docs/plans/run_rhime_readability_and_modifiability.md``.

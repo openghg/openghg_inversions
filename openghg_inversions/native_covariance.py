@@ -312,7 +312,7 @@ class SeparableExponentialCovariance:
             ValueError: If native dimensions or coordinates are missing or
                 misaligned, or if values are non-numeric or non-finite.
         """
-        matrix, original_dims, rhs_dims = self._validated_matrix(rhs)
+        matrix, original_dims, rhs_dims = self._aligned_matrix(rhs)
         applied = self._apply_matrix(matrix)
         return self._restore(applied, rhs, original_dims, rhs_dims)
 
@@ -337,7 +337,7 @@ class SeparableExponentialCovariance:
             numpy.linalg.LinAlgError: If a class-blocked iterative solve does
                 not converge.
         """
-        matrix, original_dims, rhs_dims = self._validated_matrix(rhs)
+        matrix, original_dims, rhs_dims = self._aligned_matrix(rhs)
         if len(self._class_masks) <= 1:
             solved = self._solve_separable(matrix)
         else:
@@ -565,8 +565,8 @@ class SeparableExponentialCovariance:
             solved[..., rhs_index] = solution.reshape(n_lat, n_lon)
         return solved
 
-    def _validated_matrix(self, rhs: xr.DataArray) -> tuple[np.ndarray, tuple[str, ...], tuple[str, ...]]:
-        """Validate and eagerly reshape a labelled right-hand side.
+    def _aligned_matrix(self, rhs: xr.DataArray) -> tuple[np.ndarray, tuple[str, ...], tuple[str, ...]]:
+        """Align and eagerly reshape a labelled right-hand side.
 
         Args:
             rhs: Candidate right-hand side containing the native dimensions.
@@ -576,28 +576,27 @@ class SeparableExponentialCovariance:
             ordered non-native right-hand-side dimensions.
 
         Raises:
-            TypeError: If ``rhs`` is not an xarray data array.
             ValueError: If native dimensions or coordinates are missing or
-                misaligned, or if values are non-numeric or non-finite.
+                cannot be aligned exactly with the configured grid.
         """
-        if not isinstance(rhs, xr.DataArray):
-            raise TypeError("rhs must be an xarray.DataArray")
-        for dim, expected in zip(self.native_dims, (self._latitude, self._longitude), strict=True):
-            if dim not in rhs.dims:
-                raise ValueError(f"rhs is missing native dimension {dim!r}")
-            if dim not in rhs.coords:
-                raise ValueError(f"rhs is missing coordinate labels for native dimension {dim!r}")
-            actual_values = np.asarray(rhs.coords[dim].values)
-            if actual_values.shape != expected.shape or not np.array_equal(actual_values, expected.values):
-                raise ValueError(f"rhs coordinate {dim!r} does not align with the covariance grid")
         original_dims = tuple(str(dim) for dim in rhs.dims)
         rhs_dims = tuple(dim for dim in original_dims if dim not in self.native_dims)
         transposed = rhs.transpose(*self.native_dims, *rhs_dims)
+        # xr.align treats an unindexed dimension as positional when its size
+        # matches, but this public action requires an explicitly labelled grid.
+        for dim in self.native_dims:
+            if dim not in transposed.indexes:
+                raise ValueError(f"rhs is missing indexed native coordinate {dim!r}")
+        grid = xr.Dataset(
+            coords={
+                self.native_dims[0]: self._latitude,
+                self.native_dims[1]: self._longitude,
+            }
+        )
+        # The action is positional below this point. Exact alignment prevents
+        # applying it to values from a different native grid.
+        transposed, _ = xr.align(transposed, grid, join="exact", copy=False)
         values = np.asarray(transposed.values)
-        if not np.issubdtype(values.dtype, np.number):
-            raise ValueError("rhs values must be numeric")
-        if not np.all(np.isfinite(values)):
-            raise ValueError("rhs values must be finite (no NaN or infinity)")
         n_lat = self._latitude.size
         n_lon = self._longitude.size
         n_rhs = int(np.prod([transposed.sizes[dim] for dim in rhs_dims], dtype=np.intp))

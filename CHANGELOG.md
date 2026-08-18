@@ -24,7 +24,10 @@
   covariance, covariance-compatible restriction/prolongation operators,
   dense or diagonal observation covariance products, a basis-owned canonical
   multisource expansion, explicit eager execution boundaries, and a units
-  contract for dimensionless scaling states. Product persistence and durable
+  contract for dimensionless scaling states. The numerical path uses one
+  explicit xarray alignment/materialization boundary and trusts the products
+  constructed within it; repository guidance now documents this validation
+  policy and common labelled-array patterns. Product persistence and durable
   identities are deferred to OPE-40. This is the low-level native covariance
   foundation tracked by Linear OPE-17; centred coherent reduction, unresolved
   covariance, and likelihood integration are follow-up work.
