@@ -4,6 +4,13 @@
 
 ## Code changes
 
+- Updated the latest PARIS flux and concentration NetCDF outputs to follow the
+  revised CF schema, including canonical dimension order, distinct secondary
+  covariance axes, valid `cell_methods`, positive-up altitude metadata,
+  attribute-free time bounds, and non-empty global metadata. Legacy PARIS
+  templates remain unchanged. [#597](https://github.com/openghg/openghg_inversions/pull/597),
+  [OPE-56](https://linear.app/openghg-inversions/issue/OPE-56)
+
 - Added experimental static borrowed-reference markers for NumPy arrays and
   xarray data arrays. The markers preserve runtime identity and lazy backing
   while allowing Pyright and Mypy to diagnose selected in-place mutations;
