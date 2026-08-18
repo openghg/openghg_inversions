@@ -33,6 +33,7 @@ def make_basis_functions(
     fp_basis_case: str | None = None,
     basis_directory: str | None = None,
     country_directory: str | None = None,
+    outer_regions_path: str | Path | None = None,
     outputname: str | None = None,
     output_path: str | None = None,
     basis_output_format: Literal["legacy", "datatree"] = "legacy",
@@ -74,6 +75,9 @@ def make_basis_functions(
             artifacts.
         country_directory: Optional directory containing auxiliary land/sea and
             InTEM outer-region files used by generated basis algorithms.
+        outer_regions_path: Optional direct path to a fixed outer-region map.
+            Used only when ``fix_outer_regions`` is true and takes precedence
+            over the default or ``country_directory`` lookup.
         outputname: Optional output-name component used when saving generated
             basis artifacts.
         output_path: Optional directory where generated basis artifacts should
@@ -146,6 +150,7 @@ def make_basis_functions(
                 emissions_name,
                 nbasis,
                 country_directory,
+                outer_regions_path=outer_regions_path,
                 region_classes=region_classes,
                 region_allocation=region_allocation,
                 min_regions_per_class=min_regions_per_class,

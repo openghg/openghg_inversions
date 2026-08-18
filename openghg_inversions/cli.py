@@ -55,6 +55,13 @@ def _merge_paris_outputs_command(args: argparse.Namespace) -> None:
     merge_paris_outputs(args.input_files, args.output, output_type=output_type)
 
 
+def _run_rhime_nested_command(args: argparse.Namespace) -> None:
+    """Run the nested-domain RHIME command with lazy imports for fast help output."""
+    from openghg_inversions.rhime import run_rhime_nested
+
+    run_rhime_nested(config_file=args.config, **_command_kwargs(args))
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build the OpenGHG inversions CLI argument parser.
 
@@ -86,6 +93,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Output type to select (auto-detected when omitted; 'conc' is an alias)",
     )
     merge_parser.set_defaults(func=_merge_paris_outputs_command)
+
+    run_nested_parser = subparsers.add_parser(
+        "run-rhime-nested", help="Run a two-grid nested-domain RHIME inversion"
+    )
+    _add_run_args(run_nested_parser)
+    run_nested_parser.set_defaults(func=_run_rhime_nested_command)
 
     return parser
 
