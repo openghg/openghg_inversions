@@ -32,8 +32,6 @@ from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInpu
 from openghg_inversions.inversion_data import preparation as inversion_preparation
 from openghg_inversions.model_error import normalise_min_error_options
 
-from ._validation import validate_external_merged_data
-
 __all__ = [
     "assemble_rhime_inputs",
     "build_rhime_basis",
@@ -52,17 +50,20 @@ def retrieve_or_reload_rhime_data(
     """Retrieve, reload, or accept externally supplied merged RHIME data.
 
     Passing ``merged_data`` is the explicit no-I/O path.  The object remains
-    borrowed and is returned unchanged after site and sector-layout validation.
+    borrowed and is returned unchanged after a sector-layout compatibility check.
     Otherwise this stage may read OpenGHG stores or a local merged artifact,
     optionally write merged data, sanitize flux arrays, print progress, and
     emit warnings.  ``data_args`` is never mutated.
     """
     if merged_data is not None:
-        return validate_external_merged_data(
-            merged_data,
-            requested_sites=data_args["sites"],
-            multisector=multisector,
-        )
+        stored_multisector = bool(merged_data.fp_all.get(".split_by_sectors", False))
+        if stored_multisector != multisector:
+            raise ValueError(
+                "External RHIME merged data has an incompatible sector layout: "
+                f"artifact split_by_sectors={stored_multisector!r}, "
+                f"runner multisector={multisector!r}."
+            )
+        return merged_data
 
     with timed(
         "rhime.prepare_inputs.merged_data",

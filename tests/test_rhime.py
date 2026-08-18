@@ -2706,7 +2706,7 @@ def test_external_merged_data_bypasses_acquisition_without_mutation(
         attrs={"provenance": "external-test"},
     )
     merged = prep_module.RhimeMergedData(
-        fp_all={"TAC": site_data, ".split_by_sectors": False},
+        fp_all={"TAC": site_data, "MHD": xr.Dataset(), ".split_by_sectors": False},
         site_options=site_options,
     )
 
@@ -2744,41 +2744,6 @@ def test_external_merged_data_fails_at_retrieval_for_incompatible_layout() -> No
     )
 
     with pytest.raises(ValueError, match="incompatible sector layout"):
-        rhime_public.retrieve_or_reload_rhime_data(
-            {"sites": ["TAC"]},
-            multisector=False,
-            merged_data=merged,
-        )
-
-
-@pytest.mark.parametrize(
-    ("fp_all", "message"),
-    [
-        ({".split_by_sectors": False}, "missing site data"),
-        ({"TAC": xr.Dataset()}, "explicit.*split_by_sectors"),
-    ],
-)
-def test_external_merged_data_requires_promised_contents_and_layout(
-    fp_all: dict[str, Any],
-    message: str,
-) -> None:
-    """External handoffs fail at retrieval when site data or layout provenance is absent."""
-    merged = prep_module.RhimeMergedData(
-        fp_all=fp_all,
-        site_options=prep_module._SiteOptions.from_inputs(
-            sites=["TAC"],
-            averaging_period=["1h"],
-            inlet=None,
-            fp_height=None,
-            instrument=None,
-            platform=None,
-            obs_data_level=None,
-            met_model=None,
-            max_level=None,
-        ),
-    )
-
-    with pytest.raises(ValueError, match=message):
         rhime_public.retrieve_or_reload_rhime_data(
             {"sites": ["TAC"]},
             multisector=False,

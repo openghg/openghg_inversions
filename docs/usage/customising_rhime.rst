@@ -34,8 +34,8 @@ Resume from cached or external scientific data
 
 ``run_rhime`` and ``run_rhime_multisector`` accept ``merged_data`` as a
 Python-only handoff.  It bypasses OpenGHG acquisition and merged-cache I/O,
-validates the retained sites and single- or multi-sector layout, and then
-re-enters the visible recipe at filtering::
+checks the single- or multi-sector layout, and then re-enters the visible
+recipe at filtering::
 
    result = run_rhime(
        config_file="config.ini",

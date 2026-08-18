@@ -906,8 +906,7 @@ def run_rhime(
         merged_data: Optional externally supplied merged scientific data.
             Passing this borrowed handoff bypasses OpenGHG acquisition and
             merged-cache I/O, then resumes at the visible filtering stage.
-            The retrieval stage validates its sites and sector layout without
-            mutating it.
+            The retrieval stage checks its sector layout without mutating it.
         likelihood_builder: Optional Python-only callable invoked with a
             ``RhimeLikelihoodContext`` in the active PyMC model and returning
             ``RhimeLikelihoodResult``. The result declares semantic variable
