@@ -9,6 +9,7 @@ Using OpenGHG Inversions
    conceptual_inversion
    model_recipes
    standard_model_family
+   nested_domain_model_family
    co2_model_family
    running_and_validating
    shared_scientific_concepts

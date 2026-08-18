@@ -45,10 +45,11 @@ def load_landsea_indices(domain: str, country_directory: str | None = None) -> n
     else:
         landsea_path = default_dir / f"country-land-sea_{domain}.nc"
         if not landsea_path.exists():
-            logger.warning(
-                f"No land-sea file found for domain {domain}. Defaulting to EUROPE (country-EUROPE-UKMO-landsea-2023.nc)"
+            raise FileNotFoundError(
+                f"No default land-sea file found for domain {domain}. Use "
+                "basis_algorithm='quadtree' or provide `country_directory` containing "
+                f"country-land-sea_{domain}.nc."
             )
-            landsea_path = default_dir / "country-EUROPE-UKMO-landsea-2023.nc"
     return xr.open_dataset(landsea_path)["country"].values
 
 
@@ -298,6 +299,11 @@ def bucket_split_landsea_basis(
 
     """
     landsea_indices = load_landsea_indices(domain, country_directory=country_directory)
+    if landsea_indices.shape != grid.shape:
+        raise ValueError(
+            f"Land-sea mask shape {landsea_indices.shape} does not match basis grid shape "
+            f"{grid.shape} for domain {domain}."
+        )
     myregions = bucket_value_split(grid, bucket)
 
     mybasis_function = np.zeros(shape=grid.shape)

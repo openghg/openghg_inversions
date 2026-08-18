@@ -45,9 +45,7 @@ _SIGMA_OPTIONS = {
 }
 _POLLUTION_EVENT_OPTIONS = {"pollution_events_from_obs", "power"}
 _MINIMUM_ERROR_FLOOR_OPTIONS = {"use_minimum_error_floor"}
-_LIKELIHOOD_OPTIONS = (
-    _SIGMA_OPTIONS | _POLLUTION_EVENT_OPTIONS | _MINIMUM_ERROR_FLOOR_OPTIONS
-)
+_LIKELIHOOD_OPTIONS = _SIGMA_OPTIONS | _POLLUTION_EVENT_OPTIONS | _MINIMUM_ERROR_FLOOR_OPTIONS
 
 _ALIASES = {
     "outputpath": "output_path",
@@ -57,6 +55,7 @@ _ALIASES = {
     "sigprior": "sigma_prior",
     "offsetprior": "offset_prior",
     "emissions_name": "flux_sources",
+    "outer_region_definition_file": "outer_regions_path",
 }
 _OUTPUT_FORMAT_ALIASES = {
     "hbmcmc": "legacy",
@@ -109,6 +108,7 @@ RHIME_PREPARATION_OPTION_NAMES = frozenset(
         "bc_basis_case",
         "bc_basis_directory",
         "country_directory",
+        "outer_regions_path",
         "bc_input",
         "basis_algorithm",
         "nbasis",
@@ -138,6 +138,7 @@ def resolve_rhime_options(
     setup = make_rhime_runner_setup(params=params, multisector=multisector)
     log_timing("rhime.runner_setup", timer_seconds(timing_start), multisector=multisector)
     return setup
+
 
 # Resolve stage defaults once, before the scientific recipe starts.  Keeping
 # this mapping beside the explicit routing schema makes ``data_args`` a
