@@ -1,9 +1,10 @@
 """Build and locally preview the project's Sphinx documentation.
 
-The script runs the repository's ``tox -e docs`` environment before serving
-the generated HTML from ``docs/_build`` on the IPv4 loopback interface. On
-macOS it opens the preview URL in Safari unless browser opening is disabled.
-The server runs until interrupted and does not expose the preview to other
+The ``preview`` command runs the repository's ``tox -e docs`` environment in
+a temporary directory before serving the generated HTML on the IPv4 loopback
+interface. The ``clean`` command removes legacy ``docs/_build`` output. On
+macOS the preview opens in Safari unless browser opening is disabled. The
+server runs until interrupted and does not expose the preview to other
 machines on the network. Call :func:`main` or run the script directly; the
 default port is 8765, ``--port`` overrides it, and ``--no-open`` suppresses
 Safari.
@@ -15,14 +16,18 @@ import argparse
 from collections.abc import Sequence
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
+import tempfile
 
 
 _DEFAULT_PORT = 8765
 _HOST = "127.0.0.1"
 _REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+_DOCS_DIRECTORY = _REPOSITORY_ROOT / "docs"
 _BUILD_DIRECTORY = _REPOSITORY_ROOT / "docs" / "_build"
 
 
@@ -37,24 +42,42 @@ def _port(value: str) -> int:
 def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     """Parse command-line arguments for the documentation preview."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
+    subparsers = parser.add_subparsers(dest="command")
+    preview_parser = subparsers.add_parser("preview", help="build and serve the documentation")
+    preview_parser.add_argument(
         "--port",
         type=_port,
         default=_DEFAULT_PORT,
         help=f"loopback port for the preview server (default: {_DEFAULT_PORT})",
     )
-    parser.add_argument(
+    preview_parser.add_argument(
         "--no-open",
         action="store_true",
         help="do not open the preview in Safari on macOS",
     )
-    return parser.parse_args(argv)
+    subparsers.add_parser("clean", help="remove generated documentation output")
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    if not arguments or arguments[0].startswith("-"):
+        arguments.insert(0, "preview")
+    return parser.parse_args(arguments)
 
 
-def _build_docs() -> int:
+def _clean_docs() -> None:
+    """Remove the documentation build output without touching source files."""
+    shutil.rmtree(_BUILD_DIRECTORY, ignore_errors=True)
+
+
+def _build_docs(source_directory: Path, build_directory: Path) -> int:
     """Build the HTML documentation and return the tox process exit code."""
     print("Building documentation with tox -e docs ...", flush=True)
-    result = subprocess.run(["tox", "-e", "docs"], cwd=_REPOSITORY_ROOT, check=False)
+    environment = {
+        **os.environ,
+        "DOCS_SOURCE_DIR": str(source_directory),
+        "DOCS_BUILD_DIR": str(build_directory),
+    }
+    result = subprocess.run(
+        ["tox", "-e", "docs"], cwd=_REPOSITORY_ROOT, check=False, env=environment
+    )
     return result.returncode
 
 
@@ -68,7 +91,7 @@ def _open_safari(url: str) -> None:
         print(f"Could not open Safari automatically; visit {url}", file=sys.stderr)
 
 
-def _serve_docs(port: int, *, open_safari: bool) -> int:
+def _serve_docs(port: int, *, open_safari: bool, build_directory: Path | None = None) -> int:
     """Serve the built documentation until interrupted.
 
     Args:
@@ -79,7 +102,9 @@ def _serve_docs(port: int, *, open_safari: bool) -> int:
         Zero when serving ends normally or after a keyboard interrupt, or one
         when the server cannot bind to the requested port.
     """
-    handler = partial(SimpleHTTPRequestHandler, directory=str(_BUILD_DIRECTORY))
+    handler = partial(
+        SimpleHTTPRequestHandler, directory=str(build_directory or _BUILD_DIRECTORY)
+    )
     try:
         server = ThreadingHTTPServer((_HOST, port), handler)
     except OSError as error:
@@ -103,8 +128,9 @@ def _serve_docs(port: int, *, open_safari: bool) -> int:
 def main(argv: Sequence[str] | None = None) -> int:
     """Build and serve the project documentation until interrupted.
 
-    This writes the Sphinx output to ``docs/_build``, prints the preview URL,
-    and may open Safari on macOS.
+    With the default ``preview`` command, this writes the Sphinx output to a
+    temporary directory, prints the preview URL, and may open Safari on macOS.
+    The ``clean`` command removes legacy output in ``docs/_build`` instead.
 
     Args:
         argv: Optional command-line arguments. When omitted, arguments are read
@@ -115,12 +141,26 @@ def main(argv: Sequence[str] | None = None) -> int:
         successful build.
     """
     args = _parse_args(argv)
-    build_status = _build_docs()
-    if build_status:
-        print("Documentation build failed; preview server was not started.", file=sys.stderr)
-        return build_status
+    if args.command == "clean":
+        _clean_docs()
+        return 0
 
-    return _serve_docs(args.port, open_safari=sys.platform == "darwin" and not args.no_open)
+    with tempfile.TemporaryDirectory(prefix="openghg-inversions-docs-") as temporary_directory:
+        temporary_path = Path(temporary_directory)
+        source_directory = temporary_path / "source"
+        build_directory = temporary_path / "build"
+        shutil.copytree(_DOCS_DIRECTORY, source_directory, ignore=shutil.ignore_patterns("_build"))
+
+        build_status = _build_docs(source_directory, build_directory)
+        if build_status:
+            print("Documentation build failed; preview server was not started.", file=sys.stderr)
+            return build_status
+
+        return _serve_docs(
+            args.port,
+            open_safari=sys.platform == "darwin" and not args.no_open,
+            build_directory=build_directory,
+        )
 
 
 if __name__ == "__main__":
