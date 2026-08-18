@@ -46,15 +46,11 @@ from pathlib import Path
 from typing import Any, cast
 
 import arviz as az
-from dask import compute as dask_compute
-from dask.array import Array as DaskArray
 import pandas as pd
 import pymc as pm
 import xarray as xr
 
-from openghg_inversions._timing import log_timing, timed, timer_seconds, timer_start
-from openghg_inversions.array_ops import to_dense
-from openghg_inversions.basis import make_basis_functions
+from openghg_inversions._timing import log_timing, timer_seconds, timer_start
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.rhime.outputs import (
     RhimeOutputBundle,
@@ -63,6 +59,14 @@ from openghg_inversions.rhime.outputs import (
 )
 from . import params as rhime_params
 from .params import params_from_config, resolve_flux_sources
+from .preparation import (
+    assemble_rhime_inputs,
+    build_rhime_basis,
+    build_rhime_sensitivities,
+    filter_rhime_observations,
+    materialize_pymc_inputs,
+    retrieve_or_reload_rhime_data,
+)
 from .sampling import RhimeSampler
 from .specs import (
     RhimeOutputSpec,
@@ -72,8 +76,6 @@ from .specs import (
     validate_output_path_settings,
 )
 from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs
-from openghg_inversions.inversion_data import preparation as rhime_preparation
-from openghg_inversions.model_error import normalise_min_error_options
 from openghg_inversions.models import (
     RhimeLikelihoodBuilder,
     RhimeModelSpec,
@@ -83,15 +85,7 @@ from openghg_inversions.models import (
     get_rhime_likelihood_result,
 )
 from openghg_inversions.models._rhime_flux import _select_sector_design
-from openghg_inversions.observation_error import (
-    AGGREGATION_ERROR_COVARIANCE,
-    AGGREGATION_ERROR_SD,
-    DIAGONAL_RESIDUAL_VARIANCE,
-    LOW_RANK_FACTOR,
-    AggregationErrorMode,
-    resolve_aggregation_error,
-    select_aggregation_error_mode,
-)
+from openghg_inversions.observation_error import resolve_aggregation_error, select_aggregation_error_mode
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from .builders import (
     RhimeModelBuilder,
@@ -256,236 +250,6 @@ def resolve_rhime_options(
     return setup
 
 
-def retrieve_or_reload_rhime_data(
-    data_args: Mapping[str, Any],
-    *,
-    multisector: bool,
-) -> RhimeMergedData:
-    """Retrieve or reload merged RHIME data and align requested site options.
-
-    This supported acquisition stage may read OpenGHG stores or a local merged
-    artifact, optionally write merged data, sanitize flux arrays, print
-    progress, and emit warnings. It does not mutate ``data_args``.
-
-    Args:
-        data_args: Resolved preparation options.
-        multisector: Whether acquisition retains source-resolved flux data.
-
-    Returns:
-        Merged site data with aligned retained-site options.
-    """
-    with timed(
-        "rhime.prepare_inputs.merged_data",
-        sites=len(data_args["sites"]),
-        split_by_sectors=multisector,
-    ):
-        return rhime_preparation._prepare_merged_data(
-            species=data_args["species"],
-            sites=data_args["sites"],
-            domain=data_args["domain"],
-            averaging_period=data_args["averaging_period"],
-            start_date=data_args["start_date"],
-            end_date=data_args["end_date"],
-            output_name=data_args["output_name"],
-            flux_sources=data_args["flux_sources"],
-            split_by_sectors=multisector,
-            bc_store=data_args.get("bc_store", "user"),
-            obs_store=data_args.get("obs_store", "user"),
-            footprint_store=data_args.get("footprint_store", "user"),
-            emissions_store=data_args.get("emissions_store", "user"),
-            met_model=data_args.get("met_model"),
-            fp_model=data_args.get("fp_model"),
-            fp_height=data_args.get("fp_height"),
-            fp_species=data_args.get("fp_species"),
-            inlet=data_args.get("inlet"),
-            instrument=data_args.get("instrument"),
-            max_level=data_args.get("max_level"),
-            calibration_scale=data_args.get("calibration_scale"),
-            obs_data_level=data_args.get("obs_data_level"),
-            platform=data_args.get("platform"),
-            use_tracer=data_args.get("use_tracer", False),
-            use_bc=data_args.get("use_bc", True),
-            bc_input=data_args.get("bc_input"),
-            averaging_error=data_args.get("averaging_error", True),
-            reload_merged_data=data_args.get("reload_merged_data", False),
-            save_merged_data=data_args.get("save_merged_data", False),
-            merged_data_dir=data_args.get("merged_data_dir"),
-            merged_data_name=data_args.get("merged_data_name"),
-            flux_non_finite_check=data_args.get("flux_non_finite_check", "lazy"),
-        )
-
-
-def filter_rhime_observations(
-    merged: RhimeMergedData,
-    data_args: Mapping[str, Any],
-) -> RhimeMergedData:
-    """Filter observations and remove empty sites with aligned metadata.
-
-    The supported stage may compute site data if a filter cannot operate
-    lazily. It returns a new merged-data handoff when filtering changes data
-    and never constructs basis functions or model inputs.
-
-    Args:
-        merged: Borrowed merged data from acquisition.
-        data_args: Resolved options containing the optional filter selection.
-
-    Returns:
-        Filtered merged data with empty sites and their aligned options removed.
-
-    Raises:
-        ValueError: If filtering removes every requested site.
-    """
-    filters = data_args.get("filters")
-    with timed(
-        "rhime.prepare_inputs.obs_filtering",
-        sites=len(merged.sites),
-        filters=filters is not None,
-    ):
-        return rhime_preparation._filter_merged_inversion_data(merged=merged, filters=filters)
-
-
-def build_rhime_basis(
-    merged: RhimeMergedData,
-    data_args: Mapping[str, Any],
-) -> BasisFunctions:
-    """Load or fit the retained RHIME basis for filtered observations.
-
-    This supported stage may read or write basis artifacts and may execute the
-    selected basis algorithm. It does not alter ``merged`` or build
-    sensitivities.
-
-    Args:
-        merged: Filtered merged observations and flux data.
-        data_args: Resolved basis and run-identification options.
-
-    Returns:
-        Retained basis functions and artifact provenance.
-    """
-    basis_algorithm = data_args.get("basis_algorithm", "weighted")
-    nbasis = data_args.get("nbasis", 100)
-    fp_basis_case = data_args.get("fp_basis_case")
-    with timed(
-        "rhime.prepare_inputs.basis_build",
-        basis_algorithm=basis_algorithm,
-        nbasis=nbasis,
-        fp_basis_case=fp_basis_case,
-    ):
-        return make_basis_functions(
-            basis_algorithm=basis_algorithm,
-            nbasis=nbasis,
-            fp_basis_case=fp_basis_case,
-            basis_directory=data_args.get("basis_directory"),
-            country_directory=data_args.get("country_directory"),
-            fp_all=merged.fp_all,
-            species=data_args["species"],
-            domain=data_args["domain"],
-            start_date=data_args["start_date"],
-            fix_outer_regions=data_args.get("fix_basis_outer_regions", False),
-            emissions_name=data_args["flux_sources"],
-            outputname=data_args["output_name"],
-            output_path=data_args.get("basis_output_path"),
-        )
-
-
-def build_rhime_sensitivities(
-    merged: RhimeMergedData,
-    basis_functions: BasisFunctions,
-    data_args: Mapping[str, Any],
-    *,
-    multisector: bool,
-) -> dict[str, xr.Dataset]:
-    """Apply the retained basis and optional boundary-condition sensitivity.
-
-    This supported stage creates per-site dataset copies, computes the basis
-    projection, and may load boundary-condition basis data. It preserves the
-    filtered merged-data handoff.
-
-    Args:
-        merged: Filtered merged data borrowed from the previous stage.
-        basis_functions: Retained basis to apply to flux sensitivities.
-        data_args: Resolved domain and boundary-condition basis options.
-        multisector: Whether sensitivities retain source-resolved state.
-
-    Returns:
-        Per-site datasets containing labelled flux and optional boundary-
-        condition sensitivities.
-    """
-    with timed("rhime.prepare_inputs.footprint_sensitivity_total", sites=len(merged.sites)):
-        return rhime_preparation._rhime_site_data_from_basis_functions(
-            merged=merged,
-            basis_functions=basis_functions,
-            domain=data_args["domain"],
-            split_by_sectors=multisector,
-            flux_sources=data_args["flux_sources"],
-            use_bc=data_args.get("use_bc", True),
-            bc_basis_case=data_args.get("bc_basis_case", "NESW"),
-            bc_basis_directory=rhime_preparation._bc_basis_directory_arg(data_args.get("bc_basis_directory")),
-        )
-
-
-def assemble_rhime_inputs(
-    merged: RhimeMergedData,
-    basis_functions: BasisFunctions,
-    site_data: dict[str, xr.Dataset],
-    data_args: Mapping[str, Any],
-) -> RhimePreparedInputs:
-    """Assemble and validate labelled canonical RHIME inputs.
-
-    This supported stage attaches domain metadata, assembles observation-
-    aligned arrays, applies the existing satellite boundary-condition scale,
-    and eagerly checks ``H`` and optional ``H_bc`` for NaNs. It returns the
-    durable prepared-input handoff without crossing the PyMC boundary. Supplied
-    site datasets remain borrowed; metadata is attached to shallow copies that
-    preserve their underlying array and Dask graphs.
-
-    Args:
-        merged: Filtered data and retained site metadata.
-        basis_functions: Basis used to create ``site_data``.
-        site_data: Per-site observations and sensitivities.
-        data_args: Resolved assembly, minimum-error, and run options.
-
-    Returns:
-        Validated canonical inputs with retained basis and site metadata.
-    """
-    owned_site_data = {site: dataset.copy(deep=False) for site, dataset in site_data.items()}
-    rhime_preparation._set_domain_attrs(owned_site_data, merged.sites, data_args["domain"])
-    min_error_options = normalise_min_error_options(data_args.get("min_error_options"))
-    with timed("rhime.prepare_inputs.make_inv_inputs", sites=len(merged.sites)):
-        inv_inputs = rhime_preparation._make_inv_inputs(
-            fp_data=owned_site_data,
-            sites=merged.sites,
-            start_date=data_args["start_date"],
-            bc_freq=data_args.get("bc_freq"),
-            min_error=data_args.get("min_error", 0.0),
-            calculate_min_error=None,
-            min_error_per_site=min_error_options["by_site"],
-        )
-    inv_inputs = rhime_preparation._scale_satellite_bc_sensitivity_to_column_signal(
-        inv_inputs,
-        sites=merged.sites,
-        platform=merged.platform,
-    )
-    rhime_preparation._warn_for_nan_inputs(inv_inputs, use_bc=data_args.get("use_bc", True))
-    basis_source = basis_functions.basis_artifact_source or "generated"
-    log_timing(
-        "rhime.prepare_inputs.prepared_dims",
-        0.0,
-        nmeasure=inv_inputs.sizes.get("nmeasure"),
-        sites=len(merged.sites),
-        regions=inv_inputs.sizes.get("region"),
-        sources=inv_inputs.sizes.get("source"),
-        basis_source=basis_source,
-    )
-    return RhimePreparedInputs(
-        inv_inputs=inv_inputs,
-        basis_functions=basis_functions,
-        site_metadata=rhime_preparation._make_site_metadata(
-            sites=merged.sites,
-            averaging_period=merged.averaging_period,
-        ),
-    )
-
-
 def with_prepared_rhime_sites(
     run_spec: RhimeRunSpec,
     prepared: RhimePreparedInputs,
@@ -565,89 +329,6 @@ def _validate_multisector_basis_layout(
         raise ValueError(
             "Retained source-specific basis state coordinates do not match prepared H; " + details + "."
         )
-
-
-_MODEL_INPUT_VARIABLES = (
-    "H",
-    "H_bc",
-    "mf",
-    "mf_error",
-    "min_error",
-    "site_indicator",
-)
-
-
-def materialize_pymc_inputs(
-    prepared: RhimePreparedInputs,
-    *,
-    aggregation_error_mode: AggregationErrorMode,
-) -> xr.Dataset:
-    """Materialize related PyMC input arrays together without mutating preparation.
-
-    This supported backend-boundary stage converts sparse chunk payloads with
-    :func:`to_dense`, computes the model-owned arrays in one shared Dask operation,
-    and places them in a shallow dataset copy. The canonical prepared dataset,
-    its Dask arrays, and their chunking remain caller-owned and unchanged.
-    Only the selected aggregation-error representation is materialized;
-    dormant dense or low-rank forms remain lazy. Lazy auxiliary coordinates
-    attached to selected arrays are computed in the same graph and retained
-    in the model-owned copy, avoiding discarded work and later recomputation.
-    The canonical prepared dataset and unrelated coordinates remain unchanged.
-
-    Args:
-        prepared: Canonical RHIME inputs borrowed from preparation or replay.
-        aggregation_error_mode: Aggregation-error representation selected by
-            the resolved model specification. ``auto`` chooses the richest
-            available representation; ``none`` ignores aggregation error;
-            ``dense`` uses the full covariance; ``low_rank`` uses a factor
-            plus diagonal residual; and ``diagonal`` uses per-observation
-            standard deviations only.
-
-    Returns:
-        A dataset copy whose available model input variables are dense and
-        eager, with all other variables shared from ``prepared``.
-    """
-    timing_start = timer_start()
-    inv_inputs = prepared.inv_inputs
-    selected_error_mode = select_aggregation_error_mode(inv_inputs, aggregation_error_mode)
-    aggregation_names: tuple[str, ...]
-    if selected_error_mode == "dense":
-        aggregation_names = (AGGREGATION_ERROR_COVARIANCE, AGGREGATION_ERROR_SD)
-    elif selected_error_mode == "low_rank":
-        aggregation_names = (LOW_RANK_FACTOR, DIAGONAL_RESIDUAL_VARIANCE, AGGREGATION_ERROR_SD)
-    elif selected_error_mode == "diagonal":
-        aggregation_names = (AGGREGATION_ERROR_SD,)
-    else:
-        aggregation_names = ()
-    names = [name for name in (*_MODEL_INPUT_VARIABLES, *aggregation_names) if name in inv_inputs]
-    coordinate_names = sorted(
-        {
-            str(coordinate_name)
-            for name in names
-            for coordinate_name, coordinate in inv_inputs[name].coords.items()
-            if isinstance(coordinate.data, DaskArray)
-        }
-    )
-    computed = dask_compute(
-        *(to_dense(inv_inputs[name]).data for name in names),
-        *(inv_inputs.coords[name].data for name in coordinate_names),
-    )
-    dense_data = dict(zip(names, computed[: len(names)], strict=True))
-    dense_coordinates = dict(zip(coordinate_names, computed[len(names) :], strict=True))
-    variables = dict(inv_inputs.variables)
-    for name, data in {**dense_data, **dense_coordinates}.items():
-        variables[name] = variables[name].copy(deep=False, data=data)
-    # Public Dataset reconstruction paths rebuild indexes and may compute lazy
-    # auxiliary coordinates. This xarray fast path swaps only model-owned
-    # Variables while preserving the borrowed coordinate and index objects.
-    model_inputs = inv_inputs._replace(variables=variables)
-    log_timing(
-        "rhime.model_inputs_materialize",
-        timer_seconds(timing_start),
-        variables=names,
-        coordinates=coordinate_names,
-    )
-    return model_inputs
 
 
 def _validated_custom_model_build(
@@ -1213,6 +894,7 @@ def run_rhime_from_prepared_inputs(
 def run_rhime(
     *,
     config_file: str | Path | None = None,
+    merged_data: RhimeMergedData | None = None,
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
     **kwargs: Any,
 ) -> RhimeResult:
@@ -1221,6 +903,11 @@ def run_rhime(
     Args:
         config_file: Optional INI configuration file. Values in ``kwargs``
             override values read from this file.
+        merged_data: Optional externally supplied merged scientific data.
+            Passing this borrowed handoff bypasses OpenGHG acquisition and
+            merged-cache I/O, then resumes at the visible filtering stage.
+            The retrieval stage validates its sites and sector layout without
+            mutating it.
         likelihood_builder: Optional Python-only callable invoked with a
             ``RhimeLikelihoodContext`` in the active PyMC model and returning
             ``RhimeLikelihoodResult``. The result declares semantic variable
@@ -1260,7 +947,15 @@ def run_rhime(
     setup = resolve_rhime_options(params=params, multisector=False)
 
     preparation_start = timer_start()
-    merged = retrieve_or_reload_rhime_data(setup.data_args, multisector=False)
+    merged = (
+        retrieve_or_reload_rhime_data(setup.data_args, multisector=False)
+        if merged_data is None
+        else retrieve_or_reload_rhime_data(
+            setup.data_args,
+            multisector=False,
+            merged_data=merged_data,
+        )
+    )
     filtered = filter_rhime_observations(merged, setup.data_args)
     basis_functions = build_rhime_basis(filtered, setup.data_args)
     site_data = build_rhime_sensitivities(
@@ -1314,6 +1009,7 @@ def run_rhime(
 def run_rhime_multisector(
     *,
     config_file: str | Path | None = None,
+    merged_data: RhimeMergedData | None = None,
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
     **kwargs: Any,
 ) -> RhimeResult:
@@ -1322,6 +1018,9 @@ def run_rhime_multisector(
     Args:
         config_file: Optional INI configuration file. Values in ``kwargs``
             override values read from this file.
+        merged_data: Optional externally supplied source-resolved merged
+            scientific data. Passing it bypasses OpenGHG acquisition and
+            merged-cache I/O, then resumes at filtering after validation.
         likelihood_builder: Optional Python-only callable invoked with a
             ``RhimeLikelihoodContext`` in the active PyMC model and returning
             ``RhimeLikelihoodResult``. The result declares semantic variable
@@ -1363,7 +1062,15 @@ def run_rhime_multisector(
     setup = resolve_rhime_options(params=params, multisector=True)
 
     preparation_start = timer_start()
-    merged = retrieve_or_reload_rhime_data(setup.data_args, multisector=True)
+    merged = (
+        retrieve_or_reload_rhime_data(setup.data_args, multisector=True)
+        if merged_data is None
+        else retrieve_or_reload_rhime_data(
+            setup.data_args,
+            multisector=True,
+            merged_data=merged_data,
+        )
+    )
     filtered = filter_rhime_observations(merged, setup.data_args)
     basis_functions = build_rhime_basis(filtered, setup.data_args)
     site_data = build_rhime_sensitivities(

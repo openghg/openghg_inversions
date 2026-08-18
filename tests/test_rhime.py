@@ -27,6 +27,7 @@ import openghg_inversions.postprocessing.inversion_output as inversion_output_mo
 import openghg_inversions.rhime as rhime_public
 import openghg_inversions.rhime.outputs as rhime_outputs
 import openghg_inversions.rhime.params as rhime_params
+import openghg_inversions.rhime.preparation as rhime_preparation
 import openghg_inversions.rhime.runner as rhime_module
 import openghg_inversions.rhime.sampling as rhime_sampling
 import openghg_inversions.rhime.specs as rhime_specs
@@ -42,7 +43,7 @@ from openghg_inversions.flux_sanitization import (
     FluxNonFiniteMetadata,
     NonFiniteFluxWarning,
 )
-from openghg_inversions.inversion_data import RhimePreparedInputs, prepare_rhime_inputs
+from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs, prepare_rhime_inputs
 from openghg_inversions.inversion_inputs import make_inv_inputs
 from openghg_inversions.models import (
     RhimeLikelihoodContext,
@@ -1417,6 +1418,7 @@ def test_prepared_replay_computes_selected_error_only_at_pymc_boundary(
         return build_result
 
     monkeypatch.setattr(rhime_module, "select_aggregation_error_mode", select_without_computing)
+    monkeypatch.setattr(rhime_preparation, "select_aggregation_error_mode", select_without_computing)
     monkeypatch.setattr(rhime_module, "build_standard_rhime_model", build)
     monkeypatch.setattr(rhime_module, "sample_rhime_model", lambda *args, **kwargs: _minimal_output_idata())
     monkeypatch.setattr(rhime_module, "make_standard_rhime_result", lambda **kwargs: expected)
@@ -2398,15 +2400,24 @@ def test_run_rhime_from_prepared_inputs_routes_without_preparation(
 
 
 @pytest.mark.parametrize(
-    ("runner_name", "build_stage", "result_stage", "multisector", "custom_likelihood"),
+    (
+        "runner_name",
+        "build_stage",
+        "result_stage",
+        "multisector",
+        "custom_likelihood",
+        "external_data",
+    ),
     [
-        ("run_rhime", "build_standard_rhime_model", "make_standard_rhime_result", False, False),
-        ("run_rhime", "build_standard_rhime_model", "make_standard_rhime_result", False, True),
+        ("run_rhime", "build_standard_rhime_model", "make_standard_rhime_result", False, False, False),
+        ("run_rhime", "build_standard_rhime_model", "make_standard_rhime_result", False, False, True),
+        ("run_rhime", "build_standard_rhime_model", "make_standard_rhime_result", False, True, False),
         (
             "run_rhime_multisector",
             "build_multisector_rhime_model",
             "make_multisector_rhime_result",
             True,
+            False,
             False,
         ),
         (
@@ -2415,6 +2426,7 @@ def test_run_rhime_from_prepared_inputs_routes_without_preparation(
             "make_multisector_rhime_result",
             True,
             True,
+            False,
         ),
     ],
 )
@@ -2425,6 +2437,7 @@ def test_public_rhime_runners_follow_named_stage_order(
     result_stage: str,
     multisector: bool,
     custom_likelihood: bool,
+    external_data: bool,
 ) -> None:
     """Ordinary recipes preserve stage handoffs with default or custom likelihoods."""
     _, _, run_spec = _minimal_output_specs(output_format="none")
@@ -2447,12 +2460,19 @@ def test_public_rhime_runners_follow_named_stage_order(
         return setup
 
     merged = cast(Any, object())
+    external_merged = cast(RhimeMergedData, object())
     filtered = cast(Any, object())
     basis = cast(Any, object())
     site_data = cast(Any, object())
 
-    def retrieve(data_args: dict[str, Any], *, multisector: bool) -> Any:
-        """Record public acquisition."""
+    def retrieve(
+        data_args: dict[str, Any],
+        *,
+        multisector: bool,
+        merged_data: RhimeMergedData | None = None,
+    ) -> Any:
+        """Record ordinary acquisition or external-data validation."""
+        assert merged_data is (external_merged if external_data else None)
         calls.append("retrieve")
         return merged
 
@@ -2537,6 +2557,8 @@ def test_public_rhime_runners_follow_named_stage_order(
     monkeypatch.setattr(rhime_module, result_stage, result)
 
     runner_kwargs: dict[str, Any] = {"species": "ch4"}
+    if external_data:
+        runner_kwargs["merged_data"] = external_merged
     if custom_likelihood:
         runner_kwargs["likelihood_builder"] = build_absolute_sigma_gaussian_likelihood
     actual = getattr(rhime_module, runner_name)(**runner_kwargs)
@@ -2559,10 +2581,11 @@ def test_public_rhime_runners_follow_named_stage_order(
 
 @pytest.mark.parametrize("runner", [run_rhime, run_rhime_multisector])
 def test_ordinary_runners_expose_keyword_only_likelihood_builder(runner: Callable[..., Any]) -> None:
-    """Ordinary runners expose likelihood_builder as keyword-only and omit model_builder."""
+    """Ordinary runners expose Python-only handoffs and omit model_builder."""
     parameters = inspect.signature(runner).parameters
 
     assert parameters["likelihood_builder"].kind is inspect.Parameter.KEYWORD_ONLY
+    assert parameters["merged_data"].kind is inspect.Parameter.KEYWORD_ONLY
     assert "model_builder" not in parameters
 
 
@@ -2646,6 +2669,72 @@ def test_rhime_public_package_exports_aggregation_error_mode_selector() -> None:
     assert "select_aggregation_error_mode" in rhime_public.__all__
 
 
+def test_external_merged_data_bypasses_acquisition_without_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An external scientific handoff re-enters at retrieval without store or cache I/O."""
+    site_options = prep_module._SiteOptions.from_inputs(
+        sites=["TAC"],
+        averaging_period=["1h"],
+        inlet=None,
+        fp_height=None,
+        instrument=None,
+        platform=None,
+        obs_data_level=None,
+        met_model=None,
+        max_level=None,
+    )
+    site_data = xr.Dataset(
+        {"mf": ("time", [1.0])},
+        coords={"time": pd.to_datetime(["2019-01-01"])},
+        attrs={"provenance": "external-test"},
+    )
+    merged = prep_module.RhimeMergedData(
+        fp_all={"TAC": site_data, ".split_by_sectors": False},
+        site_options=site_options,
+    )
+
+    def fail_acquisition(**kwargs: Any) -> None:
+        raise AssertionError("external merged data must bypass acquisition")
+
+    monkeypatch.setattr(prep_module, "_prepare_merged_data", fail_acquisition)
+    result = rhime_public.retrieve_or_reload_rhime_data(
+        {"sites": ["TAC"]},
+        multisector=False,
+        merged_data=merged,
+    )
+
+    assert result is merged
+    assert result.fp_all["TAC"] is site_data
+    assert result.fp_all["TAC"].attrs == {"provenance": "external-test"}
+
+
+def test_external_merged_data_fails_at_retrieval_for_incompatible_layout() -> None:
+    """The owning retrieval stage rejects a cache from the other recipe layout."""
+    site_options = prep_module._SiteOptions.from_inputs(
+        sites=["TAC"],
+        averaging_period=["1h"],
+        inlet=None,
+        fp_height=None,
+        instrument=None,
+        platform=None,
+        obs_data_level=None,
+        met_model=None,
+        max_level=None,
+    )
+    merged = prep_module.RhimeMergedData(
+        fp_all={"TAC": xr.Dataset(), ".split_by_sectors": True},
+        site_options=site_options,
+    )
+
+    with pytest.raises(ValueError, match="incompatible sector layout"):
+        rhime_public.retrieve_or_reload_rhime_data(
+            {"sites": ["TAC"]},
+            multisector=False,
+            merged_data=merged,
+        )
+
+
 def test_public_stages_compose_as_complete_external_runner(monkeypatch: pytest.MonkeyPatch) -> None:
     """Real public handoffs compose a full runner without private glue or manifests."""
     site_options = prep_module._SiteOptions.from_inputs(
@@ -2670,7 +2759,7 @@ def test_public_stages_compose_as_complete_external_runner(monkeypatch: pytest.M
     idata = _minimal_output_idata()
 
     monkeypatch.setattr(prep_module, "_prepare_merged_data", lambda **kwargs: merged_fixture)
-    monkeypatch.setattr(rhime_module, "make_basis_functions", lambda **kwargs: basis_fixture)
+    monkeypatch.setattr(rhime_preparation, "make_basis_functions", lambda **kwargs: basis_fixture)
     monkeypatch.setattr(
         prep_module,
         "_rhime_site_data_from_basis_functions",
