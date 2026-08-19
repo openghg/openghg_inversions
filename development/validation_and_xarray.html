@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>Developing RHIME models &#8212; openghg_inversions  documentation</title>
+    <title>Validation and labelled-array patterns &#8212; openghg_inversions  documentation</title>
   
   
   
@@ -47,12 +47,12 @@
     <script src="../_static/thebelab-helper.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
-    <script>DOCUMENTATION_OPTIONS.pagename = 'development/rhime_model_development';</script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'development/validation_and_xarray';</script>
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="Validation and labelled-array patterns" href="validation_and_xarray.html" />
-    <link rel="prev" title="Developing OpenGHG Inversions" href="index.html" />
+    <link rel="next" title="Experimental code" href="../experimental/index.html" />
+    <link rel="prev" title="Developing RHIME models" href="rhime_model_development.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="" />
@@ -314,8 +314,8 @@
      aria-label="Section Navigation">
   <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
   <div class="bd-toc-item navbar-nav"><ul class="current nav bd-sidenav">
-<li class="toctree-l1 current active"><a class="current reference internal" href="#">Developing RHIME models</a></li>
-<li class="toctree-l1"><a class="reference internal" href="validation_and_xarray.html">Validation and labelled-array patterns</a></li>
+<li class="toctree-l1"><a class="reference internal" href="rhime_model_development.html">Developing RHIME models</a></li>
+<li class="toctree-l1 current active"><a class="current reference internal" href="#">Validation and labelled-array patterns</a></li>
 </ul>
 </div>
 </nav></div>
@@ -359,7 +359,7 @@
     
     <li class="breadcrumb-item"><a href="index.html" class="nav-link">Developing OpenGHG Inversions</a></li>
     
-    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Developing RHIME models</span></li>
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Validation and labelled-array patterns</span></li>
   </ul>
 </nav>
 </div>
@@ -376,196 +376,119 @@
 <div id="searchbox"></div>
                 <article class="bd-article">
                   
-  <section id="developing-rhime-models">
-<h1>Developing RHIME models<a class="headerlink" href="#developing-rhime-models" title="Link to this heading">#</a></h1>
-<section id="purpose">
-<h2>Purpose<a class="headerlink" href="#purpose" title="Link to this heading">#</a></h2>
-<p>RHIME is maintained for atmospheric scientists who need to read, adapt, and
-cite the model code. Its production architecture therefore favours code
-locality and a visible scientific narrative over a generic model framework.</p>
-<p>The target style is a <strong>procedural shell with a concept-oriented functional
-core</strong>. The useful quality of the release-0.6 <code class="docutils literal notranslate"><span class="pre">fixedbasisMCMC</span></code> workflow was
-that a scientist could inspect one imperative recipe and then follow plainly
-named scientific functions. New RHIME code should provide that reading
-experience without restoring the old monolithic function, mutable dictionaries,
-parallel-list state, or implicit <code class="docutils literal notranslate"><span class="pre">**kwargs</span></code> forwarding.</p>
-</section>
-<section id="core-principles">
-<h2>Core principles<a class="headerlink" href="#core-principles" title="Link to this heading">#</a></h2>
-<p>The following principles are requirements for production RHIME development:</p>
+  <section id="validation-and-labelled-array-patterns">
+<h1>Validation and labelled-array patterns<a class="headerlink" href="#validation-and-labelled-array-patterns" title="Link to this heading">#</a></h1>
+<p>Scientific code should make its equations and data flow easy to inspect.
+Validate in proportion to the failure prevented, and establish compatibility
+once at the boundary that first combines independently prepared data. Do not
+make every numerical function distrust canonical objects produced locally by
+this package.</p>
+<section id="choose-the-validation-boundary">
+<h2>Choose the validation boundary<a class="headerlink" href="#choose-the-validation-boundary" title="Link to this heading">#</a></h2>
+<p>Public APIs should document their required dimensions, coordinates, units,
+and numerical assumptions. Put checks at the boundary which owns those
+assumptions:</p>
 <ul class="simple">
-<li><p>Top-level orchestration is procedural and readable from top to bottom.</p></li>
-<li><p>Model construction appears in mathematical and scientific order.</p></li>
-<li><p>Functions use scientifically meaningful names and explicit inputs.</p></li>
-<li><p>Components remain directly callable; configuration and registries are
-optional conveniences.</p></li>
-<li><p>Small duplication is acceptable when it keeps alternative scientific
-workflows visible.</p></li>
-<li><p>Dataclasses are reserved for concrete scientific concepts or durable
-boundaries.</p></li>
-<li><p>Configuration is normalized once at the boundary. Values are forwarded
-explicitly after that boundary.</p></li>
-<li><p>Tiny registries are appropriate for homogeneous families such as filters.</p></li>
-<li><p>Private numerical helpers are acceptable, but reading the main path must not
-require reconstructing a framework.</p></li>
-<li><p>Scientists should be able to copy a runner or component and modify it
-locally.</p></li>
+<li><p>use static types for ordinary Python type contracts; do not add routine
+<code class="docutils literal notranslate"><span class="pre">isinstance</span></code> checks only to improve errors for callers which ignore type
+checking;</p></li>
+<li><p>normalize configuration and user choices once at the runner boundary;</p></li>
+<li><p>align and normalize independently sourced xarray inputs at ingestion,
+preparation, or a named scientific composition boundary;</p></li>
+<li><p>check results from dynamic extensions, such as custom strategies, where
+they re-enter package code;</p></li>
+<li><p>let the operation that needs an invariant enforce it: check a positive
+batch size before batching, and let a required Cholesky factorization report
+a matrix which cannot be used as positive definite; and</p></li>
+<li><p>validate serialized or cached artifacts in their loader against a published
+schema, rather than repeating those checks in every downstream kernel.</p></li>
 </ul>
-<p>The review test is:</p>
-<blockquote>
-<div><p>A scientist familiar with release-0.6 <code class="docutils literal notranslate"><span class="pre">fixedbasisMCMC</span></code> should be able to
-read a runner, open one nearby concrete model function, and replace one
-ordinary component whose interface explains what RHIME supplies. They should
-not need to learn a compiler, dependency-injection system, manifest, or
-framework lifecycle first.</p>
-</div></blockquote>
+<p>After such a boundary, trust locally constructed intermediates. In particular,
+avoid repeatedly checking types, dimensions, finite values, derived unit
+attributes, construction identities, or solve residuals at each layer. Avoid
+full eigendecompositions merely to pre-validate a factorization which the
+algorithm performs anyway. A one-use <code class="docutils literal notranslate"><span class="pre">_require_*</span></code> helper is usually a sign
+that validation is obscuring the equations.</p>
+<p>Keep a production check when it defines scientific policy, protects an I/O or
+extension boundary, prevents a library’s permissive behaviour from changing
+the calculation’s meaning, or gives a materially clearer failure before
+expensive or irreversible work. Otherwise, an equation-level test is often
+the clearer home for the invariant.</p>
 </section>
-<section id="model-recipes">
-<h2>Model recipes<a class="headerlink" href="#model-recipes" title="Link to this heading">#</a></h2>
-<p>A production <strong>model recipe</strong> contains a named procedural runner and a readable
-concrete model builder. A recipe may reuse preparation, numerical, sampling,
-and output functions, but it owns the scientific order in which they are
-composed.</p>
-<p>Near-term model development may produce several explicit recipes. This is an
-intentional way to deliver tested and citable scientific models before their
-actual similarities are known. Do not introduce a generic pipeline or model
-registry to control this proliferation in advance.</p>
-<p>Use these rules when extending RHIME:</p>
-<ol class="arabic simple">
-<li><p>Add an option to an existing component when data preparation, state sharing,
-observation channels, and outputs retain the same shape and meaning.</p></li>
-<li><p>Add a named model recipe when any of those structures changes. A repeated
-orchestration sequence is acceptable.</p></li>
-<li><p>Extract a shared component after the same scientific equations and option
-meanings occur in at least two production recipes.</p></li>
-<li><p>Keep callable extension points, such as <code class="docutils literal notranslate"><span class="pre">likelihood_builder</span></code>, as useful
-incubation and project-specific escape hatches.</p></li>
-<li><p>Graduate a recurring paper-facing variant into a tested, named in-tree
-recipe so the released OpenGHG Inversions version and DOI identify its
-implementation.</p></li>
-<li><p>Reconsider a registry or framework only after real model recipes demonstrate
-stable repeated structure.</p></li>
-</ol>
-<p>Each public recipe should provide:</p>
+<section id="transpose-align-compute">
+<h2>Transpose, align, compute<a class="headerlink" href="#transpose-align-compute" title="Link to this heading">#</a></h2>
+<p>For independently prepared labelled arrays, the usual strict pattern is:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">mean</span> <span class="o">=</span> <span class="n">mean</span><span class="o">.</span><span class="n">transpose</span><span class="p">(</span><span class="o">*</span><span class="n">native_dims</span><span class="p">)</span>
+<span class="n">sensitivity</span> <span class="o">=</span> <span class="n">sensitivity</span><span class="o">.</span><span class="n">transpose</span><span class="p">(</span><span class="n">observation_dim</span><span class="p">,</span> <span class="o">*</span><span class="n">native_dims</span><span class="p">)</span>
+<span class="n">basis</span> <span class="o">=</span> <span class="n">basis</span><span class="o">.</span><span class="n">transpose</span><span class="p">(</span><span class="o">*</span><span class="n">native_dims</span><span class="p">,</span> <span class="n">state_dim</span><span class="p">)</span>
+
+<span class="c1"># xr.dot otherwise uses an inner join and could silently discard cells.</span>
+<span class="n">mean</span><span class="p">,</span> <span class="n">sensitivity</span><span class="p">,</span> <span class="n">basis</span> <span class="o">=</span> <span class="n">xr</span><span class="o">.</span><span class="n">align</span><span class="p">(</span>
+    <span class="n">mean</span><span class="p">,</span>
+    <span class="n">sensitivity</span><span class="p">,</span>
+    <span class="n">basis</span><span class="p">,</span>
+    <span class="n">join</span><span class="o">=</span><span class="s2">"exact"</span><span class="p">,</span>
+    <span class="n">copy</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">mean</span><span class="p">,</span> <span class="n">sensitivity</span><span class="p">,</span> <span class="n">basis</span> <span class="o">=</span> <span class="n">dask</span><span class="o">.</span><span class="n">compute</span><span class="p">(</span>
+    <span class="n">to_dense</span><span class="p">(</span><span class="n">mean</span><span class="p">),</span>
+    <span class="n">to_dense</span><span class="p">(</span><span class="n">sensitivity</span><span class="p">),</span>
+    <span class="n">to_dense</span><span class="p">(</span><span class="n">basis</span><span class="p">),</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">transpose</span></code> states the semantic dimension order and naturally rejects
+missing or extra dimensions. Use <code class="docutils literal notranslate"><span class="pre">...</span></code> only when extra dimensions are part
+of the contract. <code class="docutils literal notranslate"><span class="pre">xr.align(...,</span> <span class="pre">join=&quot;exact&quot;,</span> <span class="pre">copy=False)</span></code> is the ordinary
+strict compatibility check; always use the arrays it returns. Select
+<code class="docutils literal notranslate"><span class="pre">inner</span></code>, <code class="docutils literal notranslate"><span class="pre">outer</span></code>, <code class="docutils literal notranslate"><span class="pre">left</span></code>, <code class="docutils literal notranslate"><span class="pre">right</span></code>, or <code class="docutils literal notranslate"><span class="pre">override</span></code> only when that join
+is an explicit scientific policy, and comment non-obvious choices. Use
+<code class="docutils literal notranslate"><span class="pre">xr.broadcast</span></code> when broadcasting is intentional.</p>
+<p>Exact alignment compares indexes when they exist, but does not require every
+dimension to have an index. When later code selects or dispatches by label,
+require an indexed dimension coordinate once at that public boundary.</p>
+<p>Keep labelled xarray operations until labels have performed their alignment
+role. Convert to NumPy at a named eager, SciPy, PyMC, or serialization
+boundary. Materialize related Dask-backed arrays together so shared graphs are
+not executed repeatedly. Indexed dimension coordinates are normally eager;
+avoid inspecting lazy auxiliary-coordinate payloads merely for validation.</p>
+</section>
+<section id="units">
+<h2>Units<a class="headerlink" href="#units" title="Link to this heading">#</a></h2>
+<p>OpenGHG normally supplies unit metadata, and importing OpenGHG enables
+pint-xarray. At the preparation or composition boundary for independently
+sourced quantities, quantify them, convert compatible quantities to the
+calculation’s canonical units, and dequantify if the numerical kernel requires
+ordinary arrays. Pint owns dimensional compatibility and conversion; xarray
+independently owns coordinate alignment.</p>
+<p>After that conversion, a kernel may propagate or derive <code class="docutils literal notranslate"><span class="pre">units</span></code> attributes
+to document known output algebra (for example, covariance has squared
+sensitivity units). Treat those strings as descriptive metadata, not as
+dimensional validation. Do not construct unit strings and then revalidate them
+throughout a kernel as a substitute for Pint. If a kernel accepts dequantified
+values, document their canonical-unit contract and trust the preparation
+boundary. Handle missing or incompatible units once where the independent data
+is normalized.</p>
+</section>
+<section id="tests-rather-than-production-assertions">
+<h2>Tests rather than production assertions<a class="headerlink" href="#tests-rather-than-production-assertions" title="Link to this heading">#</a></h2>
+<p>Use tests to establish scientific identities against an independent oracle,
+strict and intentionally permissive alignment behaviour, unit conversion and
+incompatibility at the unit boundary, lazy execution boundaries, and genuine
+algorithm failures such as rank deficiency. Avoid tests whose only purpose is
+corrupting a package-created intermediate dataclass unless that object is a
+supported external or deserialization boundary.</p>
+<p>During review, ask:</p>
 <ul class="simple">
-<li><p>one obvious runner and concrete model builder;</p></li>
-<li><p>a runnable configuration or example stored beside the recipe or in an
-obviously parallel <code class="docutils literal notranslate"><span class="pre">rhime/config</span></code> layout;</p></li>
-<li><p>focused tests of its equations and an end-to-end smoke test;</p></li>
-<li><p>a description of inputs, outputs, assumptions, and limitations; and</p></li>
-<li><p>the relevant scientific citation and model provenance.</p></li>
+<li><p>Where was this input first normalized?</p></li>
+<li><p>Is this check defending a real boundary or distrusting local construction?</p></li>
+<li><p>Can xarray alignment, Pint, static typing, or the numerical operation express
+the requirement directly?</p></li>
+<li><p>Does the check unexpectedly compute lazy data?</p></li>
+<li><p>Does it obscure the scientific equation?</p></li>
+<li><p>Would a test document the invariant more clearly?</p></li>
 </ul>
-<p>The current model-family expansion plan is recorded in
-<code class="docutils literal notranslate"><span class="pre">docs/plans/rhime_model_family_expansion.md</span></code>.</p>
-</section>
-<section id="components-and-composite-components">
-<h2>Components and composite components<a class="headerlink" href="#components-and-composite-components" title="Link to this heading">#</a></h2>
-<p>A component represents a concept used when discussing the scientific model.
-Examples include basis functions, a flux contribution, a baseline, pollution
-events, model-data mismatch error, aggregation error, and a likelihood.</p>
-<p>A component does not have to be mathematically atomic. A baseline may combine
-mapped boundary conditions, an offset, and fixed outer-domain fluxes. A
-likelihood may combine measurement error, aggregation error, model-data
-mismatch, pollution-event treatment, and a probability distribution. A
-multisector flux component may combine several forward terms that are all
-pollution contributions to one observation model.</p>
-<p>Prefer a normal function for a component. A composite function may call nearby
-smaller functions, but its public name, options, inputs, and output should
-describe the scientific concept. Keep a model-specific composite beside its
-recipe until another production recipe uses the same equations and meanings.</p>
-<p>Do not require inheritance, registration, a semantic graph, or a manifest to
-author an ordinary component. A dataclass is justified when it is itself a
-recognizable product, such as <code class="docutils literal notranslate"><span class="pre">BasisFunctions</span></code> or a prepared handoff joining
-two aligned observation channels. It is not justified solely to shorten a
-function signature.</p>
-</section>
-<section id="configuration-ownership">
-<h2>Configuration ownership<a class="headerlink" href="#configuration-ownership" title="Link to this heading">#</a></h2>
-<p>Runtime scientific inputs and user configuration options are different
-contracts:</p>
-<ul class="simple">
-<li><p>Function signatures should describe runtime values such as observations,
-sensitivities, basis functions, priors, and existing PyMC terms.</p></li>
-<li><p>Configuration documentation should group user choices by the scientific
-component that owns them.</p></li>
-</ul>
-<p>For example, <code class="docutils literal notranslate"><span class="pre">bc_prior</span></code> and <code class="docutils literal notranslate"><span class="pre">bc_freq</span></code> belong to the baseline component,
-while <code class="docutils literal notranslate"><span class="pre">sigma_prior</span></code>, <code class="docutils literal notranslate"><span class="pre">sigma_freq</span></code>, and <code class="docutils literal notranslate"><span class="pre">sigma_per_site</span></code> belong to the
-model-data mismatch component. A component may publish a small explicit tuple
-or table of owned option names. Do not infer the user configuration schema from
-every argument in its runtime function signature.</p>
-<p>Configuration parsing should:</p>
-<ul class="simple">
-<li><p>translate legacy spellings and normalize values once at the runner boundary;</p></li>
-<li><p>reject unknown and unused options;</p></li>
-<li><p>preserve model-specific sections when names repeat across channels; and</p></li>
-<li><p>pass resolved values explicitly to the functions that own them.</p></li>
-</ul>
-<p>New RHIME templates should not be added to the legacy <code class="docutils literal notranslate"><span class="pre">hbmcmc/config</span></code> tree or
-to an unrelated global template collection. Prefer
-<code class="docutils literal notranslate"><span class="pre">openghg_inversions/rhime/config/&lt;recipe-name&gt;.ini</span></code> so the config layout
-mirrors the model recipe layout. A complex recipe implemented as a subpackage
-may keep a small model-specific resolver in that subpackage. Migrate the
-existing standard template only with a compatibility plan; it is not a
-prerequisite for adding a new model.</p>
-<p>It is acceptable for a stage function to have a moderately long keyword-only
-signature. Do not replace honest parameters with an ambient context object or
-forward <code class="docutils literal notranslate"><span class="pre">**kwargs</span></code> through the scientific pipeline.</p>
-</section>
-<section id="model-input-requirements">
-<h2>Model input requirements<a class="headerlink" href="#model-input-requirements" title="Link to this heading">#</a></h2>
-<p>Some components also require named arrays at the PyMC materialization boundary.
-When an ordinary function signature cannot describe those requirements early
-enough, use a small constant or pure function beside the component. This
-information may drive early validation and coordinated materialization.</p>
-<p>It is not a caller-authored manifest and must not determine execution order.
-Ordinary runners should not construct or thread a requirements object through
-the pipeline merely to satisfy a framework contract.</p>
-</section>
-<section id="state-and-source-selection">
-<h2>State and source selection<a class="headerlink" href="#state-and-source-selection" title="Link to this heading">#</a></h2>
-<p>Sector/source validation and state-vector grouping are genuine reusable
-scientific operations. They should be implemented as plainly named functions
-over labelled data and retained artifacts. They must remain independent of a
-compiler plan so nested-domain, multisector, and linked-tracer recipes can use
-them directly.</p>
-<p>Different resolutions, basis partitions, sources, and observation channels
-must retain explicit labels. Do not encode these meanings only in variable
-suffixes, array positions, or generated backend names.</p>
-</section>
-<section id="scientific-variable-roles">
-<h2>Scientific variable roles<a class="headerlink" href="#scientific-variable-roles" title="Link to this heading">#</a></h2>
-<p>Postprocessing should identify quantities by a small backend-neutral scientific
-role, not by a PyMC variable name. Roles such as <code class="docutils literal notranslate"><span class="pre">modelled_concentration</span></code>,
-<code class="docutils literal notranslate"><span class="pre">pollution_concentration</span></code>, <code class="docutils literal notranslate"><span class="pre">baseline_concentration</span></code>, <code class="docutils literal notranslate"><span class="pre">flux_scaling</span></code>, and
-<code class="docutils literal notranslate"><span class="pre">model_data_mismatch</span></code> are analogous to project-level CF <code class="docutils literal notranslate"><span class="pre">standard_name</span></code>
-values: they describe meaning while allowing each backend to use convenient
-local names.</p>
-<p>A model or backend adapter may provide a plain mapping from these roles to its
-actual variables. This is an output and postprocessing contract, not a semantic
-model or compiler manifest. Keep the vocabulary small, documented, and driven
-by real consumers. Document one scientific definition and the dimensional or
-unit expectations needed by consumers for each role. The role identifies a
-quantity; it does not prescribe a PyMC name, analytic-result field, storage
-layout, or execution step.</p>
-<p>Preparation should remain backend-neutral through labelled scientific inputs
-and coherent-reduction products. Cross an explicit boundary only when a
-backend-specific representation is required. PyMC and analytic-Gaussian
-builders should be able to share preparation and scientific role definitions
-without pretending that their internal values or execution lifecycles are the
-same.</p>
-</section>
-<section id="numerical-boundaries">
-<h2>Numerical boundaries<a class="headerlink" href="#numerical-boundaries" title="Link to this heading">#</a></h2>
-<p>The repository’s xarray ownership rules still apply. Inputs are borrowed and
-may be Dask-backed. Copying, eager computation, densification, persistence, and
-serialization must happen at named boundaries and must not be hidden behind a
-property or model framework.</p>
-<p>Further guidance is in
-<code class="docutils literal notranslate"><span class="pre">docs/development/validation_and_xarray.rst</span></code>,
-<code class="docutils literal notranslate"><span class="pre">docs/plans/numerical_data_ownership_and_execution_boundaries.md</span></code> and the
-active <code class="docutils literal notranslate"><span class="pre">run_rhime</span></code> plan in
-<code class="docutils literal notranslate"><span class="pre">docs/plans/run_rhime_readability_and_modifiability.md</span></code>.</p>
 </section>
 </section>
 
@@ -580,20 +503,20 @@ active <code class="docutils literal notranslate"><span class="pre">run_rhime</s
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="index.html"
+       href="rhime_model_development.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">Developing OpenGHG Inversions</p>
+        <p class="prev-next-title">Developing RHIME models</p>
       </div>
     </a>
     <a class="right-next"
-       href="validation_and_xarray.html"
+       href="../experimental/index.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">Validation and labelled-array patterns</p>
+        <p class="prev-next-title">Experimental code</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -616,22 +539,17 @@ active <code class="docutils literal notranslate"><span class="pre">run_rhime</s
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#purpose">Purpose</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#core-principles">Core principles</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#model-recipes">Model recipes</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#components-and-composite-components">Components and composite components</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#configuration-ownership">Configuration ownership</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#model-input-requirements">Model input requirements</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#state-and-source-selection">State and source selection</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#scientific-variable-roles">Scientific variable roles</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#numerical-boundaries">Numerical boundaries</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#choose-the-validation-boundary">Choose the validation boundary</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#transpose-align-compute">Transpose, align, compute</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#units">Units</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#tests-rather-than-production-assertions">Tests rather than production assertions</a></li>
 </ul>
   </nav></div>
 
   <div class="sidebar-secondary-item">
 
   <div class="tocsection sourcelink">
-    <a href="../_sources/development/rhime_model_development.rst.txt">
+    <a href="../_sources/development/validation_and_xarray.rst.txt">
       <i class="fa-solid fa-file-lines"></i> Show Source
     </a>
   </div>

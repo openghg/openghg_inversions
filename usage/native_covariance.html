@@ -525,6 +525,13 @@ kernel’s generic derivation <span class="math notranslate nohighlight">\(U_* =
 from a strategy-supplied lift. OPE-17 returns <span class="math notranslate nohighlight">\(C_\alpha\)</span>,
 <span class="math notranslate nohighlight">\(H U_*\)</span>, <span class="math notranslate nohighlight">\(H B \Pi^\mathsf{T}\)</span>, and either dense
 <span class="math notranslate nohighlight">\(H B H^\mathsf{T}\)</span> or its diagonal.</p>
+<p>The retained solve also records a cheap LAPACK reciprocal 1-norm condition
+estimate while its Cholesky factor is already available. A restriction whose
+retained covariance is effectively rank deficient at float64 precision is
+rejected with a basis-design diagnostic. This is not an eigendecomposition of
+the observation-sized covariance, nor a requirement that the unresolved
+aggregation covariance be independently factorable before observation and
+model-error covariance are added.</p>
 </section>
 <section id="what-ope-17-does-not-construct">
 <h2>What OPE-17 does not construct<a class="headerlink" href="#what-ope-17-does-not-construct" title="Link to this heading">#</a></h2>
@@ -552,18 +559,21 @@ outside this API.</p>
 <span class="math notranslate nohighlight">\(\Pi\)</span>, <span class="math notranslate nohighlight">\(U_*\)</span>, and <span class="math notranslate nohighlight">\(C_\alpha\)</span> carry units <code class="docutils literal notranslate"><span class="pre">1</span></code>;
 <span class="math notranslate nohighlight">\(H U_*\)</span> and <span class="math notranslate nohighlight">\(H B\Pi^\mathsf{T}\)</span> inherit the sensitivity units;
 and <span class="math notranslate nohighlight">\(H B H^\mathsf{T}\)</span> (including its diagonal view) carries their
-square. This low-level result is in-memory only. OPE-40 owns durable identities,
+square as descriptive output metadata. Dimensional compatibility and
+conversion of independently sourced quantities belong to the preparation
+boundary and use OpenGHG’s Pint registry; these derived attributes are not a
+substitute for quantification. This low-level result is in-memory only. OPE-40 owns durable identities,
 typed coordinate persistence, schema compatibility, and DataTree/NetCDF I/O.</p>
 </section>
 <section id="memory-and-execution-boundary">
 <h2>Memory and execution boundary<a class="headerlink" href="#memory-and-execution-boundary" title="Link to this heading">#</a></h2>
 <p>The structured covariance action stores axis factors rather than dense native
 <span class="math notranslate nohighlight">\(B\)</span>, but the numerical product kernel is otherwise eager. The upstream
-pipeline must materialize the related sensitivity and canonical basis
-prolongation together before calling it; lazy inputs are rejected rather than
-computed implicitly. A custom restriction may remain sparse or Dask-backed
-until the explicit projection boundary, where it is materialized and densified
-once. The eager restriction is then reused across retained-state
+pipeline may pass a related sensitivity and canonical basis prolongation with
+sparse or Dask-backed payloads; the explicit projection boundary densifies
+them where needed and materializes them together. A custom restriction may
+also remain sparse or Dask-backed until it is selected, when it is materialized
+and densified once. The eager restriction is then reused across retained-state
 right-hand-side blocks, avoiding repeated execution of its lazy graph. For
 native size <span class="math notranslate nohighlight">\(N\)</span>, retained size
 <span class="math notranslate nohighlight">\(d\)</span>, and observation count <span class="math notranslate nohighlight">\(M\)</span>, important dense storage includes

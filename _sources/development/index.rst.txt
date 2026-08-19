@@ -8,3 +8,4 @@ development. They are normative for new RHIME work.
    :maxdepth: 2
 
    rhime_model_development
+   validation_and_xarray

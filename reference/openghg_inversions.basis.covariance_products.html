@@ -479,11 +479,12 @@
   <section id="module-openghg_inversions.basis.covariance_products">
 <span id="openghg-inversions-basis-covariance-products"></span><h1>openghg_inversions.basis.covariance_products<a class="headerlink" href="#module-openghg_inversions.basis.covariance_products" title="Link to this heading">#</a></h1>
 <p>Labelled in-memory native-covariance products for retained scaling states.</p>
-<p>This module is an eager numerical kernel. Callers supply a canonical, eager
-native sensitivity <code class="docutils literal notranslate"><span class="pre">H</span></code> and basis prolongation <code class="docutils literal notranslate"><span class="pre">U</span></code>; basis operators own any
-source expansion and the pipeline owns materialization. Custom restrictions
-may remain sparse or Dask-backed until the named projection boundary, where
-they are materialized once and reused by all retained-state RHS blocks.</p>
+<p>This module is an eager numerical kernel. Callers supply a canonical native
+sensitivity <code class="docutils literal notranslate"><span class="pre">H</span></code> and basis prolongation <code class="docutils literal notranslate"><span class="pre">U</span></code>; basis operators own any source
+expansion. Their payloads may remain sparse or Dask-backed until the named
+projection boundary, where related arrays are materialized together. Custom
+restrictions are likewise materialized once and reused by all retained-state
+RHS blocks.</p>
 <p>For native covariance <code class="docutils literal notranslate"><span class="pre">B</span></code> and retained restriction <code class="docutils literal notranslate"><span class="pre">Pi</span></code>, the kernel returns
 <code class="docutils literal notranslate"><span class="pre">C_alpha</span> <span class="pre">=</span> <span class="pre">Pi</span> <span class="pre">B</span> <span class="pre">Pi.T</span></code>, <code class="docutils literal notranslate"><span class="pre">H</span> <span class="pre">U_*</span></code>, <code class="docutils literal notranslate"><span class="pre">H</span> <span class="pre">B</span> <span class="pre">Pi.T</span></code>, and <code class="docutils literal notranslate"><span class="pre">H</span> <span class="pre">B</span> <span class="pre">H.T</span></code> (or its
 diagonal). Strategies return authoritative <code class="docutils literal notranslate"><span class="pre">Pi</span></code>; the kernel derives
@@ -665,10 +666,10 @@ this mutable DataArray.</p></li>
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>covariance</strong> – Labelled native covariance action with a compatible solve.</p></li>
-<li><p><strong>basis_prolongation</strong> – Canonical eager <code class="docutils literal notranslate"><span class="pre">U</span></code> from the basis-side native
+<li><p><strong>basis_prolongation</strong> – Canonical labelled <code class="docutils literal notranslate"><span class="pre">U</span></code> from the basis-side native
 expansion boundary.</p></li>
 <li><p><strong>state_dim</strong> – Retained-state dimension shared by <code class="docutils literal notranslate"><span class="pre">U</span></code> and <code class="docutils literal notranslate"><span class="pre">Pi</span></code>.</p></li>
-<li><p><strong>native_sensitivity</strong> – Canonical eager native sensitivity <code class="docutils literal notranslate"><span class="pre">H</span></code>.</p></li>
+<li><p><strong>native_sensitivity</strong> – Canonical labelled native sensitivity <code class="docutils literal notranslate"><span class="pre">H</span></code>.</p></li>
 <li><p><strong>observation_dim</strong> – Observation dimension in <code class="docutils literal notranslate"><span class="pre">H</span></code>.</p></li>
 <li><p><strong>observation_covariance</strong> – Return dense <code class="docutils literal notranslate"><span class="pre">H</span> <span class="pre">B</span> <span class="pre">H.T</span></code> or its diagonal.</p></li>
 <li><p><strong>observation_batch_size</strong> – Positive integral number of covariance
@@ -682,18 +683,14 @@ bucket-preserving restriction.</p></li>
 restriction, and prolongation have units <code class="docutils literal notranslate"><span class="pre">&quot;1&quot;</span></code>. Products linear in
 <code class="docutils literal notranslate"><span class="pre">H</span></code> inherit its units; observation covariance uses squared <code class="docutils literal notranslate"><span class="pre">H</span></code>
 units when supplied.</p>
-<p>The kernel trusts the covariance action’s declared self-adjoint
-positive-definite semantics; it does not globally certify a
-matrix-free <code class="docutils literal notranslate"><span class="pre">B</span></code>. Runtime checks diagnose only the requested products
-and covariance-action outputs encountered here.</p>
+<p>The kernel trusts the covariance action’s declared real,
+self-adjoint, positive-definite semantics. It does not globally
+certify a matrix-free <code class="docutils literal notranslate"><span class="pre">B</span></code> or revalidate products constructed here.</p>
 </p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#TypeError" title="(in Python v3.14)"><strong>TypeError</strong></a> – If <code class="docutils literal notranslate"><span class="pre">observation_batch_size</span></code> is not an integral non-Boolean.</p></li>
-<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If arrays are lazy, labels or dimensions disagree, values
-    are invalid, or an option is unsupported.</p></li>
-</ul>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If labelled inputs cannot be exactly aligned, the batch
+    size is not positive, or a required Cholesky factorization fails.</p>
 </dd>
 </dl>
 </dd></dl>
