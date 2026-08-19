@@ -6,6 +6,7 @@ import pytest
 import xarray as xr
 from scipy.stats import multivariate_normal
 
+from openghg_inversions.models.additive_sigma import build_additive_sigma_error
 from openghg_inversions.models.coords import CoordRegistry, attach_coord_registry
 from openghg_inversions.models.likelihoods import add_gaussian_observation_likelihood
 from openghg_inversions.models.pollution_event import build_pollution_event_error
@@ -211,6 +212,54 @@ def test_no_model_error_omits_unused_sigma_by_default() -> None:
         )
 
     assert "sigma" not in model.named_vars
+
+
+def test_additive_sigma_error_adds_mismatch_variance_and_applies_marginal_floor() -> None:
+    """The reusable additive component follows its variance equation."""
+    data = _base_data()
+    data["min_error"] = ("nmeasure", np.array([0.0, 1.0, 0.0]))
+    data["aggregation_error_sd"] = ("nmeasure", np.array([0.1, 0.2, 0.3]))
+    sigma_alignment = SigmaAlignment.from_frequency(
+        data["site_indicator"], frequency=None, per_site=False
+    )
+    with pm.Model(coords={"nmeasure": np.arange(3)}) as model:
+        attach_coord_registry(model, CoordRegistry())
+        state = build_additive_sigma_error(
+            data,
+            sigma_alignment=sigma_alignment,
+            sigma_prior={"pdf": "uniform", "lower": 0.5, "upper": 0.500001},
+            no_model_error=False,
+            aggregation_error_mode="diagonal",
+        )
+
+    sigma = np.asarray(model.named_vars["sigma"].eval()).item()
+    unconstrained_scale = np.sqrt(
+        data["mf_error"].values ** 2
+        + sigma**2
+        + data["aggregation_error_sd"].values ** 2
+    )
+    expected_scale = np.maximum(unconstrained_scale, data["min_error"].values)
+    np.testing.assert_allclose(state.error_scale.eval(), expected_scale)
+
+
+def test_additive_sigma_error_omits_sigma_when_model_error_is_disabled() -> None:
+    """The modern no-mismatch form has no disconnected sigma variable."""
+    data = _base_data()
+    sigma_alignment = SigmaAlignment.from_frequency(
+        data["site_indicator"], frequency=None, per_site=False
+    )
+    with pm.Model(coords={"nmeasure": np.arange(3)}) as model:
+        attach_coord_registry(model, CoordRegistry())
+        state = build_additive_sigma_error(
+            data,
+            sigma_alignment=sigma_alignment,
+            sigma_prior={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
+            no_model_error=True,
+            aggregation_error_mode="none",
+        )
+
+    assert "sigma" not in model.named_vars
+    np.testing.assert_allclose(state.error_scale.eval(), data["mf_error"].values)
 
 
 def test_observation_derived_pollution_event_subtracts_complete_baseline() -> None:

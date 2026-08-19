@@ -106,18 +106,18 @@ an independent Student-t distribution. Supporting those aggregation-error
 modes would require a multivariate likelihood.
 
 The same example module also contains
-``absolute_sigma_likelihood_builder``. It treats ``sigma`` as an absolute
-observation-scale standard deviation rather than multiplying it by a
-pollution event. This alternative is kept in editable project code because it
-is a different scientific model, not another name for the standard RHIME
-likelihood. It explicitly rejects aggregation covariance and can be selected
-in the same way::
+``additive_sigma_likelihood_builder``. It uses the reusable
+``models.additive_sigma`` component, which adds ``sigma**2`` directly to the
+reported observation-error variance rather than multiplying sigma by a
+pollution event. The callback is editable project code, while the scientific
+error component is available to other production models, including CO2 model
+recipes. Explicitly selected aggregation covariance is supported::
 
-   from my_project.likelihoods import absolute_sigma_likelihood_builder
+   from my_project.likelihoods import additive_sigma_likelihood_builder
 
    result = run_rhime(
        config_file="config.ini",
-       likelihood_builder=absolute_sigma_likelihood_builder,
+       likelihood_builder=additive_sigma_likelihood_builder,
    )
 
 Optional project CLI

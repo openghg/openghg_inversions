@@ -339,23 +339,23 @@ modelled concentration, the pollution contribution and complete baseline used
 for pollution-event scaling, prepared observations, sigma alignment and prior,
 error policies, aggregation-error mode, and output dimension.
 
-The editable example in :doc:`customising_rhime` includes an absolute-sigma
-Gaussian as project-owned code. Pass that function directly to the ordinary
-runner:
+The editable example in :doc:`customising_rhime` combines the reusable
+additive-sigma error component with a Gaussian likelihood. Pass that adapter
+directly to the ordinary runner:
 
 .. code-block:: python
 
-   from my_project.likelihoods import absolute_sigma_likelihood_builder
+   from my_project.likelihoods import additive_sigma_likelihood_builder
    from openghg_inversions.rhime import run_rhime
 
    result = run_rhime(
        config_file="config.ini",
-       likelihood_builder=absolute_sigma_likelihood_builder,
+       likelihood_builder=additive_sigma_likelihood_builder,
    )
 
-This model treats ``sigma`` as an absolute observation-scale standard
-deviation and rejects aggregation covariance. It is not part of the ordinary
-pollution-event-scaled model.
+This model adds ``sigma**2`` to observation-error variance and supports the
+same explicitly selected fixed aggregation covariance representations. It is
+not part of the ordinary pollution-event-scaled model.
 
 Pass ``add_offset=True`` and ``offset_args={"per_site": False}`` as Python or
 configuration options to combine it with one global scalar offset. The

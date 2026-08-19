@@ -11,4 +11,5 @@ openghg\_inversions.models
 .. toctree::
    :maxdepth: 4
 
+   openghg_inversions.models.additive_sigma
    openghg_inversions.models.state_activity

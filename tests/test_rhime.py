@@ -84,7 +84,7 @@ from openghg_inversions.rhime import (
     run_rhime_multisector,
 )
 from examples.rhime_customisation.likelihoods import (
-    absolute_sigma_likelihood_builder as build_absolute_sigma_gaussian_likelihood,
+    additive_sigma_likelihood_builder,
 )
 from openghg_inversions.rhime.multisector import (
     _build_multisector_rhime_model_from_spec,
@@ -2222,7 +2222,7 @@ def test_public_rhime_runners_follow_named_stage_order(
 
     def build(**kwargs: Any) -> RhimeModelBuildResult:
         """Record the recipe-specific public model build."""
-        expected_builder = build_absolute_sigma_gaussian_likelihood if custom_likelihood else None
+        expected_builder = additive_sigma_likelihood_builder if custom_likelihood else None
         assert kwargs["likelihood_builder"] is expected_builder
         calls.append("build")
         return build_result
@@ -2236,7 +2236,7 @@ def test_public_rhime_runners_follow_named_stage_order(
 
     def result(**kwargs: Any) -> RhimeResult:
         """Record the recipe-specific public result stage."""
-        expected_builder = build_absolute_sigma_gaussian_likelihood if custom_likelihood else None
+        expected_builder = additive_sigma_likelihood_builder if custom_likelihood else None
         assert kwargs["likelihood_builder"] is expected_builder
         calls.append("result")
         return expected
@@ -2257,7 +2257,7 @@ def test_public_rhime_runners_follow_named_stage_order(
     if external_data:
         runner_kwargs["merged_data"] = external_merged
     if custom_likelihood:
-        runner_kwargs["likelihood_builder"] = build_absolute_sigma_gaussian_likelihood
+        runner_kwargs["likelihood_builder"] = additive_sigma_likelihood_builder
     actual = getattr(recipe_module, runner_name)(**runner_kwargs)
 
     assert actual is expected
@@ -2694,7 +2694,7 @@ def test_public_build_stages_reject_simultaneous_model_and_likelihood_builders(
             model_inputs=prepared.inv_inputs,
             run_spec=run_spec,
             model_builder=complete_model_builder,
-            likelihood_builder=build_absolute_sigma_gaussian_likelihood,
+            likelihood_builder=additive_sigma_likelihood_builder,
         )
 
     assert builder_calls == []
@@ -2722,7 +2722,7 @@ def test_likelihood_builder_provenance_is_saved_with_result_metadata(
     )
 
     def verification_gaussian(context: RhimeLikelihoodContext) -> RhimeLikelihoodResult:
-        return build_absolute_sigma_gaussian_likelihood(context)
+        return additive_sigma_likelihood_builder(context)
 
     def fake_sample(
         self: RhimeSampler,
@@ -2744,11 +2744,11 @@ def test_likelihood_builder_provenance_is_saved_with_result_metadata(
 
     assert result.output_metadata["likelihood_builder"]["qualname"].endswith("verification_gaussian")
     assert result.model_build_result is not None
-    assert result.model_build_result.metadata["likelihood"]["family"] == ("absolute_sigma_gaussian")
+    assert result.model_build_result.metadata["likelihood"]["family"] == ("additive_sigma_gaussian")
     assert result.inv_out is not None
     saved_builder = result.inv_out.model_metadata["builder"]
     assert saved_builder["likelihood_builder"] == result.output_metadata["likelihood_builder"]
-    assert saved_builder["likelihood"]["sigma_interpretation"] == "absolute"
+    assert saved_builder["likelihood"]["sigma_interpretation"] == "additive_variance"
 
 
 def test_custom_model_builder_rejects_undeclared_output_before_sampling(
@@ -7397,9 +7397,9 @@ def test_run_rhime_api_smoke(
         }
     )
 
-    def ordinary_absolute_sigma(context: RhimeLikelihoodContext) -> RhimeLikelihoodResult:
+    def ordinary_additive_sigma(context: RhimeLikelihoodContext) -> RhimeLikelihoodResult:
         """Vary only the ordinary runner's observation likelihood."""
-        return build_absolute_sigma_gaussian_likelihood(context)
+        return additive_sigma_likelihood_builder(context)
 
     def fake_sample(
         self: RhimeSampler,
@@ -7420,7 +7420,7 @@ def test_run_rhime_api_smoke(
 
     runner_kwargs: dict[str, Any] = {}
     if custom_likelihood:
-        runner_kwargs["likelihood_builder"] = ordinary_absolute_sigma
+        runner_kwargs["likelihood_builder"] = ordinary_additive_sigma
     result = run_rhime(**args, **runner_kwargs)
 
     assert isinstance(result, RhimeResult)
@@ -7463,8 +7463,8 @@ def test_run_rhime_api_smoke(
     assert result.output_metadata["inversion_output_contract"] == "modern"
     assert result.model_build_result is not None
     if custom_likelihood:
-        assert result.output_metadata["likelihood_builder"]["qualname"].endswith("ordinary_absolute_sigma")
-        assert result.model_build_result.metadata["likelihood"]["family"] == ("absolute_sigma_gaussian")
+        assert result.output_metadata["likelihood_builder"]["qualname"].endswith("ordinary_additive_sigma")
+        assert result.model_build_result.metadata["likelihood"]["family"] == ("additive_sigma_gaussian")
     else:
         assert "likelihood_builder" not in result.output_metadata
     output_file = tmp_path / "rhime_test2019-01-01_inversion_output.nc"
@@ -7547,9 +7547,9 @@ def test_run_rhime_multisector_api_smoke(
     )
     args.pop("emissions_name")
 
-    def multisector_absolute_sigma(context: RhimeLikelihoodContext) -> RhimeLikelihoodResult:
+    def multisector_additive_sigma(context: RhimeLikelihoodContext) -> RhimeLikelihoodResult:
         """Vary only the multi-sector observation likelihood."""
-        return build_absolute_sigma_gaussian_likelihood(context)
+        return additive_sigma_likelihood_builder(context)
 
     def fake_sample(
         self: RhimeSampler,
@@ -7572,7 +7572,7 @@ def test_run_rhime_multisector_api_smoke(
 
     runner_kwargs: dict[str, Any] = {}
     if custom_likelihood:
-        runner_kwargs["likelihood_builder"] = multisector_absolute_sigma
+        runner_kwargs["likelihood_builder"] = multisector_additive_sigma
     result = run_rhime_multisector(**args, **runner_kwargs)
 
     assert isinstance(result, RhimeResult)
@@ -7580,7 +7580,7 @@ def test_run_rhime_multisector_api_smoke(
     assert not hasattr(result, "basis_objects")
     assert result.run_spec.split_by_sectors is True
     if custom_likelihood:
-        assert result.output_metadata["likelihood_builder"]["qualname"].endswith("multisector_absolute_sigma")
+        assert result.output_metadata["likelihood_builder"]["qualname"].endswith("multisector_additive_sigma")
     else:
         assert "likelihood_builder" not in result.output_metadata
     assert [sector.name for sector in result.model_spec.sectors] == ["FF", "ocean"]

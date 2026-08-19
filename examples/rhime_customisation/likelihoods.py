@@ -10,9 +10,8 @@ not build a model, retrieve data, sample, or write outputs.
 """
 
 import pymc as pm
-import pytensor.tensor as pt
-
-from openghg_inversions.models.components import add_model_data, add_sigma_component
+from openghg_inversions.models.additive_sigma import build_additive_sigma_error
+from openghg_inversions.models.likelihoods import add_gaussian_observation_likelihood
 from openghg_inversions.models.pollution_event import build_pollution_event_error
 from openghg_inversions.observation_error import select_aggregation_error_mode
 from openghg_inversions.rhime import RhimeLikelihoodContext, RhimeLikelihoodResult
@@ -82,60 +81,40 @@ def likelihood_builder(context: RhimeLikelihoodContext) -> RhimeLikelihoodResult
     )
 
 
-def absolute_sigma_likelihood_builder(
+def additive_sigma_likelihood_builder(
     context: RhimeLikelihoodContext,
 ) -> RhimeLikelihoodResult:
-    """Build an independent Gaussian with absolute model-data mismatch.
+    """Build a Gaussian with additive model-data-mismatch variance.
 
-    This project-owned example deliberately supports no aggregation-error
-    covariance. Its observation-scale mismatch is ``sigma`` itself, rather
-    than RHIME's pollution-event-scaled ``pollution_event * sigma``.
+    The reusable model component adds ``sigma**2`` directly to reported
+    observation-error variance. This differs from pollution-event scaling,
+    where mismatch depends on the modelled or observed pollution enhancement.
     """
-    aggregation_error_mode = select_aggregation_error_mode(
+    state = build_additive_sigma_error(
         context.data,
-        context.aggregation_error_mode,
+        sigma_alignment=context.sigma_alignment,
+        sigma_prior=context.sigma_prior,
+        no_model_error=context.no_model_error,
+        aggregation_error_mode=context.aggregation_error_mode,
+        output_dim=context.output_dim,
     )
-    if aggregation_error_mode != "none":
-        raise ValueError("This absolute-sigma example assumes independent observations.")
-
-    observed = add_model_data(context.data["mf"].transpose(context.output_dim), "Y")
-    measurement_error = add_model_data(
-        context.data["mf_error"].transpose(context.output_dim),
-        "error",
-    )
-    minimum_error = add_model_data(
-        context.data["min_error"].transpose(context.output_dim),
-        "min_error",
-    )
-    variance = measurement_error**2
-    if not context.no_model_error:
-        sigma = add_sigma_component(
-            context.sigma_alignment,
-            prior_args=dict(context.sigma_prior),
-        )
-        variance = variance + sigma**2
-    epsilon = pm.Deterministic(
-        "epsilon",
-        pt.maximum(pt.sqrt(variance), minimum_error),
-        dims=context.output_dim,
-    )
-    likelihood = pm.Normal(
-        "y",
-        mu=context.mean,
-        sigma=epsilon,
-        observed=observed,
-        dims=context.output_dim,
+    likelihood = add_gaussian_observation_likelihood(
+        observed=state.observed,
+        mean=context.mean,
+        independent_variance=state.independent_variance,
+        aggregation_error=state.aggregation_error,
+        output_dim=context.output_dim,
     )
     return RhimeLikelihoodResult(
         likelihood=likelihood,
-        error_scale=epsilon,
+        error_scale=state.error_scale,
         variable_roles={"concentration": "y", "model_error": "epsilon"},
         supported_output_formats=("none", "inv_out", "basic", "paris", "legacy"),
         metadata={
-            "family": "absolute_sigma_gaussian",
-            "sigma_interpretation": "absolute",
+            "family": "additive_sigma_gaussian",
+            "sigma_interpretation": "additive_variance",
         },
     )
 
 
-__all__ = ["absolute_sigma_likelihood_builder", "likelihood_builder"]
+__all__ = ["additive_sigma_likelihood_builder", "likelihood_builder"]
