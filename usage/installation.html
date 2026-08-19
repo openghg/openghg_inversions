@@ -425,9 +425,10 @@ Use a different port or disable automatic browser opening if needed:</p>
 <p>Preview output is built in a temporary directory and removed when the server
 stops. <code class="docutils literal notranslate"><span class="pre">uv</span> <span class="pre">run</span> <span class="pre">python</span> <span class="pre">scripts/preview_docs.py</span> <span class="pre">clean</span></code> removes any legacy
 <code class="docutils literal notranslate"><span class="pre">docs/_build</span></code> output.</p>
-<p>With the default uv development dependency group, use:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>scripts/preview_docs.py
-uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>scripts/preview_docs.py<span class="w"> </span>--port<span class="w"> </span><span class="m">8766</span><span class="w"> </span>--no-open
+<p>The default uv group is intentionally limited to pytest and Ruff. To opt into
+the larger development group for documentation work, use:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>run<span class="w"> </span>--group<span class="w"> </span>uv_dev<span class="w"> </span>python<span class="w"> </span>scripts/preview_docs.py
+uv<span class="w"> </span>run<span class="w"> </span>--group<span class="w"> </span>uv_dev<span class="w"> </span>python<span class="w"> </span>scripts/preview_docs.py<span class="w"> </span>--port<span class="w"> </span><span class="m">8766</span><span class="w"> </span>--no-open
 uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>scripts/preview_docs.py<span class="w"> </span>clean
 </pre></div>
 </div>
