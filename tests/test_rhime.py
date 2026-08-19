@@ -7478,7 +7478,10 @@ def test_run_rhime_api_smoke(
             reloaded.model_metadata["builder"]["likelihood_builder"]
             == result.output_metadata["likelihood_builder"]
         )
-        assert reloaded.model_metadata["builder"]["likelihood"]["sigma_interpretation"] == "absolute"
+        assert (
+            reloaded.model_metadata["builder"]["likelihood"]["sigma_interpretation"]
+            == "additive_variance"
+        )
     else:
         assert "likelihood_builder" not in reloaded.model_metadata["builder"]
     xr.testing.assert_identical(reloaded.inv_inputs, result.inv_inputs)
