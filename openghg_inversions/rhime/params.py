@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
+from openghg_inversions._timing import log_timing, timer_seconds, timer_start
 from openghg_inversions.config import config
 from openghg_inversions.model_error import normalise_min_error_options
 from openghg_inversions.models import (
@@ -108,6 +109,62 @@ RHIME_PREPARATION_OPTION_NAMES = frozenset(
         "flux_non_finite_check",
     }
 )
+
+
+def resolve_rhime_options(
+    *,
+    params: Mapping[str, Any],
+    multisector: bool,
+) -> RhimeRunnerSetup:
+    """Normalize raw options into preparation, model, sampling, and output settings."""
+    timing_start = timer_start()
+    setup = make_rhime_runner_setup(params=params, multisector=multisector)
+    log_timing("rhime.runner_setup", timer_seconds(timing_start), multisector=multisector)
+    return setup
+
+# Resolve stage defaults once, before the scientific recipe starts.  Keeping
+# this mapping beside the explicit routing schema makes ``data_args`` a
+# complete, inspectable preparation contract rather than asking individual
+# stages to infer omitted values independently.
+RHIME_PREPARATION_DEFAULTS: dict[str, Any] = {
+    "split_by_sectors": False,
+    "bc_store": "user",
+    "obs_store": "user",
+    "footprint_store": "user",
+    "emissions_store": "user",
+    "met_model": None,
+    "fp_model": None,
+    "fp_height": None,
+    "fp_species": None,
+    "inlet": None,
+    "instrument": None,
+    "max_level": None,
+    "calibration_scale": None,
+    "obs_data_level": None,
+    "platform": None,
+    "use_tracer": False,
+    "use_bc": True,
+    "fp_basis_case": None,
+    "basis_directory": None,
+    "bc_basis_case": "NESW",
+    "bc_basis_directory": None,
+    "country_directory": None,
+    "bc_input": None,
+    "basis_algorithm": "weighted",
+    "nbasis": 100,
+    "filters": None,
+    "fix_basis_outer_regions": False,
+    "averaging_error": True,
+    "bc_freq": None,
+    "reload_merged_data": False,
+    "save_merged_data": False,
+    "merged_data_dir": None,
+    "merged_data_name": None,
+    "basis_output_path": None,
+    "min_error": 0.0,
+    "min_error_options": None,
+    "flux_non_finite_check": "lazy",
+}
 
 
 @dataclass(frozen=True)
@@ -724,6 +781,7 @@ def make_rhime_runner_setup(
     )
 
     data_candidate_args = {
+        **RHIME_PREPARATION_DEFAULTS,
         **remaining,
         "species": species,
         "sites": sites,
@@ -738,4 +796,5 @@ def make_rhime_runner_setup(
     data_args = {
         name: value for name, value in data_candidate_args.items() if name in RHIME_PREPARATION_OPTION_NAMES
     }
+    data_args["min_error_options"] = normalise_min_error_options(data_args["min_error_options"])
     return RhimeRunnerSetup(run_spec=run_spec, sampler=sampler, data_args=data_args)

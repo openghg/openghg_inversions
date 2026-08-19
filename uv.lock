@@ -3007,6 +3007,10 @@ jupyter = [
 ]
 
 [package.dev-dependencies]
+local = [
+    { name = "pytest" },
+    { name = "ruff" },
+]
 uv-dev = [
     { name = "openghg-inversions", extra = ["dev", "jupyter"] },
     { name = "tox" },
@@ -3041,6 +3045,10 @@ requires-dist = [
 provides-extras = ["jupyter", "dev"]
 
 [package.metadata.requires-dev]
+local = [
+    { name = "pytest" },
+    { name = "ruff", specifier = "==0.16.0" },
+]
 uv-dev = [
     { name = "openghg-inversions", extras = ["jupyter", "dev"] },
     { name = "tox", specifier = ">=4.24" },

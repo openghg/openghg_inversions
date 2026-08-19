@@ -43,8 +43,37 @@ Terminology
 ``emissions_name``
    Legacy compatibility spelling accepted only when ``flux_sources`` is absent.
 
+Configuring PyTensor precision
+------------------------------
+
+A fresh OpenGHG Inversions PyMC or RHIME process defaults PyTensor to
+``float32``. This keeps float32 footprint sensitivities from being promoted
+when observations or errors arrive from preparation as float64. Because
+PyTensor configuration is process-wide, graph precision is not a
+``RhimeModelSpec`` option and must be selected before importing PyTensor,
+PyMC, or OpenGHG Inversions.
+
+Set PyTensor's native environment flag to opt into a float64 graph::
+
+   PYTENSOR_FLAGS="floatX=float64,warn_float64=ignore" python inversion.py
+
+An explicitly configured or already-imported PyTensor runtime is never
+overwritten. In a notebook, set the environment flag before library imports
+and restart the kernel when changing precision. Storage precision, graph
+precision, and numerically sensitive accumulation precision are separate
+concerns; components may promote specific calculations without requiring the
+whole graph or prepared-data cache to use float64.
+
 Python API
 ----------
+
+The stable package imports below are unchanged. Scientists who want to inspect
+or copy a complete implementation can read
+``openghg_inversions.rhime.standard`` or
+``openghg_inversions.rhime.multisector`` directly; each module shows its whole
+scientific process from option resolution through output construction.
+``openghg_inversions.rhime.runner`` remains as an import-compatibility module
+and contains no workflow implementation.
 
 .. code-block:: python
 
