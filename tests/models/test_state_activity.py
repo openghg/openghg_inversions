@@ -14,21 +14,24 @@ from openghg_inversions.basis import project_basis_prior_stdev
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.models import (
     CoordRegistry,
-    RhimeModelSpec,
-    SectorSpec,
     StateActivity,
     active_prior_args,
     add_state_linear_component,
     attach_coord_registry,
-    build_rhime_model,
-    build_rhime_model_from_spec,
-    build_rhime_multisector_model,
     detect_zero_sensitivity,
-    build_rhime_multisector_model_from_spec,
     resolve_state_activity,
 )
 from openghg_inversions.models.components import add_linear_component, resolve_model_variable
 from openghg_inversions.models.components import add_state_vector
+from openghg_inversions.rhime.multisector import (
+    _build_multisector_rhime_model_from_spec as build_rhime_multisector_model_from_spec,
+    build_multisector_rhime_model as build_rhime_multisector_model,
+)
+from openghg_inversions.rhime.specs import RhimeModelSpec, SectorSpec
+from openghg_inversions.rhime.standard import (
+    _build_standard_rhime_model_from_spec as build_rhime_model_from_spec,
+    build_standard_rhime_model as build_rhime_model,
+)
 from openghg_inversions.sigma import SigmaAlignment
 
 
@@ -567,13 +570,21 @@ def test_multisector_rhime_can_freeze_a_sector_and_use_array_priors() -> None:
     model = build_rhime_multisector_model(
         inputs,
         sigma_alignment=_sigma_alignment(inputs),
-        sectors=["FF", "ocean"],
-        sector_sources={"FF": "ff-source", "ocean": "ocean-source"},
-        sector_priors={
-            "FF": {"pdf": "normal", "mu": 1.0, "sigma": 0.2},
-            "ocean": {"pdf": "normal", "mu": ocean_mu, "sigma": 0.3},
-        },
-        sector_state_activities={"FF": StateActivity(active=False)},
+        sectors=(
+            SectorSpec(
+                name="FF",
+                flux_source="ff-source",
+                x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.2},
+                variable_suffix="ff",
+                state_activity=StateActivity(active=False),
+            ),
+            SectorSpec(
+                name="ocean",
+                flux_source="ocean-source",
+                x_prior={"pdf": "normal", "mu": ocean_mu, "sigma": 0.3},
+                variable_suffix="ocean",
+            ),
+        ),
         use_bc=False,
         no_model_error=True,
     )
@@ -582,7 +593,9 @@ def test_multisector_rhime_can_freeze_a_sector_and_use_array_priors() -> None:
     assert "x_ocean_active" in model.named_vars
     np.testing.assert_allclose(model.named_vars["x_ff"].eval(), np.ones(4))
     assert model.named_vars["x_ocean"].eval().shape == (4,)
-    assert model.named_vars["mu"].eval().shape == (2,)
+    assert model.named_vars["mu_ff"].eval().shape == (2,)
+    assert model.named_vars["mu_ocean"].eval().shape == (2,)
+    assert "mu" not in model.named_vars
 
 
 def test_multisector_rhime_spec_honors_shared_and_per_sector_activity() -> None:
@@ -601,6 +614,7 @@ def test_multisector_rhime_spec_honors_shared_and_per_sector_activity() -> None:
                 flux_source="ff-source",
                 x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.2},
                 variable_suffix="ff",
+                state_activity=StateActivity(active=False, fixed_value=2.0),
             ),
             SectorSpec(
                 name="ocean",
@@ -612,7 +626,6 @@ def test_multisector_rhime_spec_honors_shared_and_per_sector_activity() -> None:
         use_bc=False,
         no_model_error=True,
         state_activity=StateActivity(active=False, fixed_value=3.0),
-        sector_state_activities={"FF": StateActivity(active=False, fixed_value=2.0)},
     )
 
     model = build_rhime_multisector_model_from_spec(_model_inputs(multi_h), model_spec)

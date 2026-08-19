@@ -1,12 +1,6 @@
 Concrete RHIME Model
 ====================
 
-.. note::
-
-   This is a draft description of the current RHIME PyMC model and its
-   customization boundary. Code under ``openghg_inversions.models._rhime_compiler``
-   is private implementation machinery, not a public model-definition API.
-
 This page makes the model graph behind :func:`run_rhime` and
 :func:`run_rhime_multisector` explicit. It has two purposes:
 
@@ -17,9 +11,10 @@ This page makes the model graph behind :func:`run_rhime` and
 The current builders
 --------------------
 
-:data:`~openghg_inversions.models.rhime.RhimeBuilderStrategy` defines the two
-public strategy values used by ``RhimeModelSpec``. Direct composition is the
-default:
+Each recipe directly composes one readable concrete graph. The standard graph
+lives beside :func:`run_rhime` in ``openghg_inversions.rhime.standard``; the
+multisector graph lives beside :func:`run_rhime_multisector` in
+``openghg_inversions.rhime.multisector``:
 
 .. code-block:: text
 
@@ -30,50 +25,16 @@ default:
    -> boundary, offset, error, and likelihood components
    -> PyMC model
 
-Set ``builder_strategy="compiled"`` on the spec to opt into the alternative
-path:
-
-.. code-block:: text
-
-   RhimeModelSpec + canonical inversion inputs
-   -> private flux compilation plan
-   -> flux states and forward terms
-   -> total flux contribution, mu
-   -> the same boundary, offset, error, and likelihood components
-   -> PyMC model
-
-The compiler is retained as experimental machinery for developing a more
-general semantic representation. It currently covers only the linear flux part
-of one observation channel. Both paths use the same source/sector resolution,
-gathered ragged-state handling, and prior selection before constructing the
-PyMC graph. They preserve the same public variable names and dimensions.
-
 .. _rhime-builder-stability:
 
 Stability contract
 ------------------
 
-The concrete builders are the readable reference implementations. Their
+The concrete builders are the production reference implementations. Their
 explicit PyMC code is the primary model definition for scientific review,
-auditing, and user confidence. ``builder_strategy="concrete"`` therefore
-remains the default.
-
-The compiled strategy is a public opt-in extension and regression-checking
-path. Its plan and compiler objects remain private and may evolve, but
-``builder_strategy="compiled"`` and the externally meaningful graph contract
-for unchanged components are stable. That contract includes named variables,
-dimensions and scientific coordinates, registered model data, deterministic
-contributions, and seeded prior-predictive behaviour.
-
-There is no automatic fallback between strategies. A failure in the selected
-strategy stops model construction. If a future compiler feature intentionally
-changes part of the graph, that divergence should be explicit, narrowly scoped,
-and covered by a focused test; components outside that feature should continue
-to match the concrete reference implementation.
-
-Source/design resolution and the boundary, offset, error, and likelihood
-components remain shared. This keeps parity meaningful and avoids independent
-copies silently drifting while compiler extensions are developed.
+auditing, and user confidence. Shared source selection and ordinary scientific
+components remain separate helpers, while model-specific composition stays in
+the recipe that runs it.
 
 Standard single-flux model
 --------------------------
@@ -112,46 +73,59 @@ mean of the observed distribution is therefore
 
 where omitted components are left out of the sum.
 
-The default RHIME error model uses observation error, a minimum error, and an
-observation-aligned model-error scale ``sigma``. Unless
-``pollution_events_from_obs`` is selected,
+The ordinary model preserves the pollution-event fractional-error equation
+used by ``run_hbmcmc.py``. Aggregation error is disabled by default. Let
+:math:`P` be the pollution event and let ``sigma`` be the observation-aligned
+fractional model-error parameter. With the default
+``pollution_events_from_obs=False``,
 
 .. math::
 
-   \epsilon =
-   \max\left(
-     \sqrt{
-       \mathrm{error}^2 +
-       \left(\left|\mu\right|\sigma\right)^{\mathrm{power}}
-     },
+   P &= |\mu|, \\
+   \epsilon &= \max\left(
+     \sqrt{\mathrm{error}^2 + (P\sigma)^{\mathrm{power}}},
      \mathrm{min\_error}
+   \right), \\
+   y &\sim \mathcal{N}(\mu_{\mathrm{obs}}, \epsilon^2).
+
+When ``pollution_events_from_obs=True``, the modern recipe derives the
+pollution event from observations after removing the complete baseline,
+including any boundary and offset contributions. Thus
+:math:`P=|Y-(\mu_{bc}+\mathrm{offset})|` when a baseline exists; without one,
+it uses :math:`P=|Y|+10^{-6}\operatorname{mean}(Y)`.
+
+The ``run_hbmcmc.py`` compatibility path retains its historical boundary-only
+variant: :math:`P=|Y-\mu_{bc}|`, even when an offset is also included in
+:math:`\mu_{\mathrm{obs}}`. That exception preserves existing configurations;
+it is not the scientific default for new RHIME recipes.
+
+With ``no_model_error=True``, the sampled fractional-error contribution is
+omitted and the likelihood scale is the observation error, protected only by
+the historical very-small numerical floor. ``min_error`` is not applied in
+that branch.
+
+Aggregation covariance is an explicit advanced opt-in. If a caller selects a
+prepared covariance :math:`C_{agg}` with marginal variance
+:math:`v_{agg}=\operatorname{diag}(C_{agg})`, the marginal floor and observed
+distribution become
+
+.. math::
+
+   v_{raw} &= \mathrm{error}^2 + (P\sigma)^{\mathrm{power}}, \\
+   v_{ind} &= v_{raw} + \max\left(
+     \mathrm{min\_error}^2-v_{raw}-v_{agg}, 0
+   \right), \\
+   \epsilon &= \sqrt{v_{ind}+v_{agg}}, \\
+   y &\sim \mathcal{N}\left(
+     \mu_{\mathrm{obs}}, \operatorname{diag}(v_{ind})+C_{agg}
    \right).
 
-The current observed distribution is
-
-.. math::
-
-   y \sim \mathcal{N}(\mu_{\mathrm{obs}}, \epsilon).
-
-The opt-in ``build_absolute_sigma_gaussian_likelihood`` instead treats sigma
-as an absolute observation-scale standard deviation:
-
-.. math::
-
-   \epsilon_{\mathrm{absolute}} =
-   \max\left(
-     \sqrt{
-       \mathrm{error}^2 +
-       \mathrm{aggregation\_error}^2 +
-       \sigma^2
-     },
-     \mathrm{min\_error}
-   \right).
-
-Diagonal aggregation error uses ``aggregation_error_sd`` directly. Dense and
-low-rank representations retain their full covariance while applying the same
-marginal standard-deviation floor. This alternative is explicit and does not
-change the historical RHIME default.
+Selecting aggregation error says only that this fixed covariance should enter
+the likelihood. It does not perform, imply, or verify a coherent prior and
+forward-model transformation. Covariance obtained by marginalising native
+states must therefore be supplied together with the matching transformed
+prior and forward operator. Merely finding an aggregation-error array in
+prepared inputs does not opt a run into this model.
 
 The default priors are:
 
@@ -232,10 +206,11 @@ helpers:
 
    from openghg_inversions.models import (
        CoordRegistry,
-       add_inferpymc_likelihood_component,
        add_linear_component,
        attach_coord_registry,
    )
+   from openghg_inversions.models.likelihoods import add_gaussian_observation_likelihood
+   from openghg_inversions.models.pollution_event import build_pollution_event_error
    from openghg_inversions.sigma import SigmaAlignment
 
    x_prior = {
@@ -277,12 +252,27 @@ helpers:
            output_name="mu_bc",
            output_dim="nmeasure",
        )
-       add_inferpymc_likelihood_component(
+       pollution_mean = flux.output
+       baseline_mean = boundary.output
+       modelled_mean = pollution_mean + baseline_mean
+
+       error_state = build_pollution_event_error(
            inv_inputs,
-           mu=flux.output,
-           mu_bc=boundary.output,
-           sigprior=sigma_prior,
+           pollution_mean=pollution_mean,
+           pollution_event_baseline=baseline_mean,
            sigma_alignment=sigma_alignment,
+           sigma_prior=sigma_prior,
+           power=1.99,
+           pollution_events_from_obs=False,
+           no_model_error=False,
+           aggregation_error_mode="none",
+           output_dim="nmeasure",
+       )
+       add_gaussian_observation_likelihood(
+           observed=error_state.observed,
+           mean=modelled_mean,
+           independent_variance=error_state.independent_variance,
+           aggregation_error=error_state.aggregation_error,
            output_dim="nmeasure",
        )
 
@@ -310,8 +300,7 @@ are not required to be the same strings.
 
 Every sector state and every reparameterization-generated latent must have a
 unique backend name. Concrete composition relies on PyMC to reject duplicate
-generated names. The opt-in compiler performs whole-plan name and observation
-layout checks before mutating the active model.
+generated names.
 
 Names and generated names
 -------------------------
@@ -323,14 +312,13 @@ reparameterized lognormal requested as ``x_ff`` creates both ``x_ff`` and
 
 Both names should be treated as reserved for that prior. No data variable,
 other state, forward-term deterministic, or total should use either name. PyMC
-enforces this during concrete composition; the opt-in compiler detects it
-during flux-plan preflight. The shared observation-component helper still
-relies on conventional names for boundary, offset, error, and likelihood
-components; there is not yet one allocator for the complete model namespace.
+enforces this during concrete composition. The shared observation-component
+helper still relies on conventional names for boundary, offset, error, and
+likelihood components; there is not yet one allocator for the complete model
+namespace.
 
-Knowledge of the ``_latent`` suffix is also duplicated between the compiler
-and ``parse_prior``. Generated-name reporting, whole-model allocation, and
-component namespaces are not implemented. They are tracked in
+Generated-name reporting, whole-model allocation, and component namespaces are
+not implemented. They are tracked in
 `issue #532 <https://github.com/openghg/openghg_inversions/issues/532>`_.
 
 Alternative models and likelihoods
@@ -343,28 +331,32 @@ Callables are never read from configuration or stored on ``RhimeModelSpec`` or
 ``RhimeRunSpec``, so model and run specs remain serializable. There is no
 entry-point or config-file plugin registry.
 
-A likelihood builder owns the complete observation component, including its
-error construction and observed distribution. Its labelled
-``RhimeLikelihoodContext`` contains the prepared observations, flux mean,
-optional boundary and offset means, sigma alignment and prior, the power and
-error policies, aggregation-error mode, and output dimension. This boundary
-avoids a misleading contract in which the runner builds half an error model
-before calling user code.
+A concrete recipe owns the complete forward-model mean: pollution, baseline,
+and optional offset contributions are composed visibly before the likelihood
+seam. A likelihood builder owns error construction and the observed
+distribution. RHIME passes the completed concentration, pollution contribution,
+pollution-event baseline, prepared observations, sigma alignment and prior, error
+policies, aggregation-error mode, and output dimension as explicit arguments.
+The builder adds and returns the canonical observed variable ``y`` and also
+adds the canonical marginal error scale ``epsilon``.
 
-For the absolute-sigma Gaussian above, pass the helper directly to the
-ordinary runner:
+The editable example in :doc:`customising_rhime` imports the small RHIME
+adapter for the installed additive-sigma Gaussian likelihood. Pass that
+adapter directly to the ordinary runner:
 
 .. code-block:: python
 
-   from openghg_inversions.rhime import (
-       build_absolute_sigma_gaussian_likelihood,
-       run_rhime,
-   )
+   from my_project.likelihoods import additive_sigma_likelihood_builder
+   from openghg_inversions.rhime import run_rhime
 
    result = run_rhime(
        config_file="config.ini",
-       likelihood_builder=build_absolute_sigma_gaussian_likelihood,
+       likelihood_builder=additive_sigma_likelihood_builder,
    )
+
+This model adds ``sigma**2`` to observation-error variance and supports the
+same explicitly selected fixed aggregation covariance representations. It is
+not part of the ordinary pollution-event-scaled model.
 
 Pass ``add_offset=True`` and ``offset_args={"per_site": False}`` as Python or
 configuration options to combine it with one global scalar offset. The
@@ -375,12 +367,8 @@ Keep scientific customization implementations in one tested location. The
 :doc:`customising_rhime` guide contains the editable Student-t example and the
 minimal ordinary-runner call; this concrete-model page does not duplicate it.
 
-``RhimeSampler`` receives the returned role manifest. Posterior-predictive
-settings may use a semantic role such as ``"concentration"``. For backwards
-compatibility, its default ``"y"`` request resolves to the declared
-``concentration`` name when a custom model has no variable named ``y``.
-``RhimeLikelihoodResult.metadata`` must be JSON serializable. The runner saves
-it with the model metadata and automatically records the likelihood builder's
+Ordinary likelihood builders keep the ``y`` and ``epsilon`` names used by
+sampling and postprocessing. The runner records the likelihood builder's
 module and qualified name, so direct-Python likelihoods remain identifiable in
 persisted inversion outputs.
 
@@ -467,8 +455,9 @@ The compatibility rules are explicit:
 The built-in standard and multisector builders produce the same
 ``RhimeModelBuildResult`` contract on ``RhimeResult.model_build_result``. Their
 sector roles use keys such as ``flux_scale:FF`` and
-``flux_contribution:FF``. Existing builder functions continue returning a
-plain ``pm.Model`` for source compatibility.
+``flux_contribution:FF``. The low-level recipe builders return a plain
+``pm.Model``; the corresponding ``*_model_result`` wrappers add the runner and
+output metadata contract.
 
 The more general semantic model and observation-channel representation remains
 tracked in `issue #528 <https://github.com/openghg/openghg_inversions/issues/528>`_.
@@ -486,8 +475,8 @@ Supported low-level components
    Public functions in ``openghg_inversions.models`` can be composed inside a
    user-owned ``pm.Model`` as shown above.
 
-Private implementation
-   ``_FluxPlan``, ``_StatePlan``, ``_ForwardTermPlan``, and
-   ``_compile_loop_sum`` may change while the semantic model representation is
-   developed. Set ``RhimeModelSpec(builder_strategy="compiled")`` to exercise
-   that path without importing private compiler objects.
+Recipe-local model composition
+   Copy or modify the readable concrete builder in
+   ``openghg_inversions.rhime.standard`` or
+   ``openghg_inversions.rhime.multisector`` when an existing option or shared
+   component is insufficient.

@@ -24,7 +24,16 @@ DIAGONAL_RESIDUAL_VARIANCE = "diagonal_residual_variance"
 
 @dataclass(frozen=True)
 class AggregationError:
-    """Validated aggregation-error representation selected for a likelihood."""
+    """Validated aggregation-error representation selected for a likelihood.
+
+    Args:
+        mode: Concrete covariance representation.
+        marginal_variance: Observation-aligned covariance diagonal.
+        covariance: Optional dense covariance matrix.
+        factor: Optional low-rank covariance factor.
+        diagonal_variance: Optional independent residual variance for a
+            low-rank representation.
+    """
 
     mode: Literal["none", "dense", "low_rank", "diagonal"]
     marginal_variance: np.ndarray
@@ -34,6 +43,18 @@ class AggregationError:
 
 
 def _numeric_finite(name: str, array: xr.DataArray) -> np.ndarray:
+    """Return numeric finite array values or raise a labelled error.
+
+    Args:
+        name: Scientific input name used in diagnostics.
+        array: Labelled values to materialize and validate.
+
+    Returns:
+        Materialized NumPy values.
+
+    Raises:
+        ValueError: If values are non-numeric or non-finite.
+    """
     values = np.asarray(array.values)
     if not np.issubdtype(values.dtype, np.number):
         raise ValueError(f"Aggregation-error input {name!r} must be numeric.")
@@ -49,6 +70,21 @@ def _validate_vector(
     output_dim: str,
     nonnegative: bool = True,
 ) -> tuple[xr.DataArray, np.ndarray]:
+    """Validate one observation-aligned aggregation-error vector.
+
+    Args:
+        data: Dataset owning the vector and observation dimension.
+        name: Vector variable name.
+        output_dim: Required observation dimension.
+        nonnegative: Whether negative values are invalid.
+
+    Returns:
+        Original labelled vector and its materialized numeric values.
+
+    Raises:
+        ValueError: If the vector has invalid dimensions, alignment, values,
+            or sign.
+    """
     array = data[name]
     if array.dims != (output_dim,):
         raise ValueError(
@@ -68,7 +104,18 @@ def validate_observation_error_inputs(
     *,
     output_dim: str = "nmeasure",
 ) -> None:
-    """Validate observations and independent diagonal error inputs."""
+    """Validate observations and independent diagonal error inputs.
+
+    Args:
+        data: Prepared inversion inputs containing ``mf``, ``mf_error``, and
+            ``min_error``.
+        output_dim: Observation dimension required on each validated input.
+
+    Raises:
+        ValueError: If a required input is absent, not an observation-aligned
+            vector, non-numeric, non-finite, or negative where an error must
+            be non-negative.
+    """
     if "mf" not in data:
         raise ValueError("Canonical inversion inputs must contain 'mf'.")
     if data["mf"].dims != (output_dim,):
@@ -137,6 +184,22 @@ def resolve_aggregation_error(
     ``aggregation_error_sd`` because that vector is commonly retained as a
     marginal diagnostic beside the exact covariance.  Supplying both dense and
     low-rank forms is ambiguous and therefore requires an explicit selection.
+
+    Args:
+        data: Prepared inversion inputs containing the requested aggregation-
+            error representation.
+        mode: Representation to use, or ``"auto"`` to select from available
+            inputs.
+        output_dim: Observation dimension used by error vectors and the first
+            covariance dimension.
+        covariance_dim: Second dimension required for a dense covariance.
+
+    Returns:
+        Validated aggregation-error arrays and their marginal variance.
+
+    Raises:
+        ValueError: If the selected inputs are absent, malformed, inconsistent,
+            non-finite, or not a valid covariance representation.
     """
     if output_dim not in data.dims:
         raise ValueError(f"Prepared inputs have no observation dimension {output_dim!r}.")
@@ -228,7 +291,17 @@ def _validate_marginal_sd(
     *,
     output_dim: str,
 ) -> None:
-    """Validate an optional marginal-SD diagnostic beside structured input."""
+    """Validate an optional marginal-SD diagnostic beside structured input.
+
+    Args:
+        data: Prepared inputs that may contain ``aggregation_error_sd``.
+        marginal_variance: Diagonal of the selected structured covariance.
+        output_dim: Observation dimension required on the diagnostic.
+
+    Raises:
+        ValueError: If the diagnostic is invalid or disagrees with the selected
+            covariance diagonal.
+    """
     if AGGREGATION_ERROR_SD not in data:
         return
     _, values = _validate_vector(data, AGGREGATION_ERROR_SD, output_dim=output_dim)

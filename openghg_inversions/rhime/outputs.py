@@ -15,11 +15,15 @@ import xarray as xr
 from openghg_inversions._timing import timed
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.inversion_data import RhimePreparedInputs
-from openghg_inversions.models import RhimeModelSpec
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.rhime.builders import RhimeModelBuildResult
 from openghg_inversions.rhime.sampling import RhimeSampler
-from openghg_inversions.rhime.specs import OutputFilenameConvention, RhimeOutputSpec, RhimeRunSpec
+from openghg_inversions.rhime.specs import (
+    OutputFilenameConvention,
+    RhimeModelSpec,
+    RhimeOutputSpec,
+    RhimeRunSpec,
+)
 from openghg_inversions.serialization import reset_serialisation_multiindexes
 from openghg_inversions.utils import ncdf_encoding, write_netcdf_preserving_bounds_attrs
 
@@ -52,7 +56,12 @@ class RhimeResult:
 
 
 def apply_output_bundle(result: RhimeResult, bundle: RhimeOutputBundle) -> None:
-    """Attach newly constructed output products to a recipe result."""
+    """Attach newly constructed output products to a recipe result.
+
+    Args:
+        result: Mutable recipe result receiving generated products.
+        bundle: Output artifact and metadata bundle to attach.
+    """
     if bundle.inv_out is not None:
         result.inv_out = bundle.inv_out
     result.outputs.update(bundle.outputs)
@@ -116,7 +125,20 @@ def _define_output_filename(
     filename_convention: OutputFilenameConvention = "rhime",
     ext: str = ".nc",
 ) -> Path:
-    """Create a derived NetCDF filename using the selected convention."""
+    """Create a derived NetCDF filename using the selected convention.
+
+    Args:
+        output_path: Destination directory.
+        species: Primary gas or tracer name.
+        domain: Model domain name.
+        output_name: User-selected product name.
+        start_date: Inversion start date.
+        filename_convention: RHIME or legacy filename ordering.
+        ext: Filename extension including its leading dot.
+
+    Returns:
+        Complete derived-output path.
+    """
     if filename_convention == "legacy":
         filename = f"{species.upper()}_{domain}_{output_name}_{start_date}{ext}"
     else:
@@ -133,7 +155,22 @@ def _define_derived_output_filename(
     start_date: str,
     ext: str = ".nc",
 ) -> Path:
-    """Create a derived-output filename using the requested convention."""
+    """Create a derived-output filename using the requested convention.
+
+    Args:
+        output_spec: Output paths and filename convention.
+        species: Primary gas or tracer name.
+        domain: Model domain name.
+        output_name: User-selected product name.
+        start_date: Inversion start date.
+        ext: Filename extension including its leading dot.
+
+    Returns:
+        Complete derived-output path.
+
+    Raises:
+        ValueError: If no output directory was supplied.
+    """
     if output_spec.output_path is None:
         raise ValueError("An output path is required when saving RHIME outputs.")
     return _define_output_filename(
@@ -197,7 +234,21 @@ def _make_inversion_output(
     variable_roles: Mapping[str, str] | None = None,
     builder_metadata: Mapping[str, Any] | None = None,
 ) -> InversionOutput:
-    """Create the modern RHIME InversionOutput without fixedbasis legacy adapters."""
+    """Create a modern InversionOutput without fixedbasis legacy adapters.
+
+    Args:
+        prepared: Retained canonical inputs and basis functions.
+        idata: Sampled posterior and predictive groups.
+        run_spec: Resolved run metadata.
+        model_spec: Scientific model settings to retain.
+        output_spec: Output settings to retain.
+        sampler: Optional sampler metadata.
+        variable_roles: Optional semantic-to-concrete model variable mapping.
+        builder_metadata: Optional serializable builder provenance.
+
+    Returns:
+        Complete modern inversion-output artifact.
+    """
     model_metadata = cast(dict[str, Any], _structured_metadata(asdict(model_spec)))
     if variable_roles is not None:
         model_metadata["variable_roles"] = dict(variable_roles)
@@ -258,7 +309,22 @@ def make_standard_output_bundle(
     variable_roles: Mapping[str, str] | None = None,
     builder_metadata: Mapping[str, Any] | None = None,
 ) -> RhimeOutputBundle:
-    """Create and optionally save standard RHIME outputs."""
+    """Create and optionally save standard RHIME outputs.
+
+    Args:
+        output_spec: Output format, save settings, and destination paths.
+        run_spec: Resolved run settings and dates.
+        model_spec: Standard model settings recorded with outputs.
+        idata: Sampled posterior and predictive groups.
+        prepared: Retained canonical inputs and basis functions.
+        country_file: Optional country mask for derived products.
+        sampler: Optional sampler metadata to retain.
+        variable_roles: Optional semantic-to-concrete model variable mapping.
+        builder_metadata: Optional serializable builder provenance.
+
+    Returns:
+        Generated inversion output, derived products, and save metadata.
+    """
     if output_spec.output_format == "none":
         return RhimeOutputBundle()
 
@@ -401,7 +467,21 @@ def make_multisector_output_bundle(
     variable_roles: Mapping[str, str] | None = None,
     builder_metadata: Mapping[str, Any] | None = None,
 ) -> RhimeOutputBundle:
-    """Create and optionally save transitional multi-sector RHIME outputs."""
+    """Create and optionally save multisector RHIME outputs.
+
+    Args:
+        output_spec: Output format, save settings, and destination paths.
+        run_spec: Resolved run settings and dates.
+        model_spec: Multisector model settings recorded with outputs.
+        idata: Sampled posterior and predictive groups.
+        prepared: Retained source-resolved inputs and basis functions.
+        country_file: Optional country mask for derived products.
+        variable_roles: Optional semantic-to-concrete model variable mapping.
+        builder_metadata: Optional serializable builder provenance.
+
+    Returns:
+        Generated inversion output, sector products, and save metadata.
+    """
     with timed("rhime.output.inversion_output_create", output_format=output_spec.output_format):
         inv_out_for_outputs = _make_inversion_output(
             prepared=prepared,

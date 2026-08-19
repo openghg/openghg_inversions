@@ -21,7 +21,20 @@ _PERIOD_INDEX_NAME = "sigma_period_index"
 
 
 def _normalise_index(index: xr.DataArray, name: str) -> xr.DataArray:
-    """Return an eager, non-negative integer index with a canonical name."""
+    """Return an eager, non-negative integer index with a canonical name.
+
+    Args:
+        index: Observation-aligned index values.
+        name: Canonical output name and diagnostic label.
+
+    Returns:
+        Copied eager integer index with ``name``.
+
+    Raises:
+        TypeError: If ``index`` is not an xarray DataArray.
+        ValueError: If it is empty, misaligned, non-integral, or outside the
+            supported non-negative integer range.
+    """
     if not isinstance(index, xr.DataArray):
         raise TypeError(f"{name} must be an xarray.DataArray.")
     if index.dims != (_OBS_DIM,) or index.size == 0:

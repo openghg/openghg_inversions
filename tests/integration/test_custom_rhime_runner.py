@@ -172,7 +172,7 @@ def test_custom_runner_uses_supported_stages_for_acquisition_and_reload(
     def sample(*args: Any, **kwargs: Any) -> Any:
         """Record public sampling."""
         assert args == (build_result, sampler)
-        assert kwargs == {"use_variable_roles": True}
+        assert kwargs == {}
         calls.append("sample")
         return idata
 
@@ -197,7 +197,7 @@ def test_custom_runner_uses_supported_stages_for_acquisition_and_reload(
     monkeypatch.setattr(custom_runner, "assemble_rhime_inputs", assemble)
     monkeypatch.setattr(custom_runner, "with_prepared_rhime_sites", align)
     monkeypatch.setattr(custom_runner, "materialize_pymc_inputs", materialize)
-    monkeypatch.setattr(custom_runner, "build_standard_rhime_model", build)
+    monkeypatch.setattr(custom_runner, "build_standard_rhime_model_result", build)
     monkeypatch.setattr(custom_runner, "sample_rhime_model", sample)
     monkeypatch.setattr(custom_runner, "make_standard_rhime_result", make_result)
 

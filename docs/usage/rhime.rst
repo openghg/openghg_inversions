@@ -72,8 +72,6 @@ or copy a complete implementation can read
 ``openghg_inversions.rhime.standard`` or
 ``openghg_inversions.rhime.multisector`` directly; each module shows its whole
 scientific process from option resolution through output construction.
-``openghg_inversions.rhime.runner`` remains as an import-compatibility module
-and contains no workflow implementation.
 
 .. code-block:: python
 
@@ -141,7 +139,7 @@ model, output, and sampler specifications:
 
 .. code-block:: python
 
-   from openghg_inversions.models import RhimeModelSpec, SectorSpec
+   from openghg_inversions.rhime import RhimeModelSpec, SectorSpec
    from openghg_inversions.inversion_data import RhimePreparedInputs
    from openghg_inversions.rhime import (
        RhimeOutputSpec,
@@ -195,13 +193,13 @@ output settings are validated before model construction or sampling. Output
 side effects are still controlled by ``RhimeOutputSpec``.
 
 Aggregation-error covariance
------------------------------
+----------------------------
 
-Modern RHIME can add fixed aggregation error to the observation covariance
-without changing the raw ``mf_error`` values. Attach these arrays only after
-observation filtering, averaging, global site gathering, and basis projection,
-so both covariance axes match the final ``nmeasure`` ordering. Prepared inputs
-may contain one of:
+Aggregation error is disabled by default. An advanced run may explicitly add
+fixed aggregation error to the observation covariance without changing the
+raw ``mf_error`` values. Attach these arrays only after observation filtering,
+averaging, global site gathering, and basis projection, so both covariance
+axes match the final ``nmeasure`` ordering. Prepared inputs may contain one of:
 
 * ``aggregation_error_covariance(nmeasure, nmeasure_cov)`` for the exact dense
   covariance;
@@ -214,9 +212,16 @@ may contain one of:
 Dense and low-rank forms are the primary representations. If a matching
 ``aggregation_error_sd`` diagnostic is present beside either one, RHIME
 validates it against the structured covariance diagonal but does not replace
-the structured likelihood with it. ``aggregation_error_mode="auto"`` selects
-the available structured form first; set ``"dense"``, ``"low_rank"``,
-``"diagonal"``, or ``"none"`` for an explicit comparison run.
+the structured likelihood with it. Select ``aggregation_error_mode="dense"``,
+``"low_rank"``, or ``"diagonal"`` to opt into a representation. ``"auto"``
+is also an explicit opt-in that selects an available structured form first;
+merely placing an array in prepared inputs does not enable it. The default
+``"none"`` ignores prepared aggregation-error arrays.
+
+This likelihood option does not perform or certify a coherent prior
+transformation. If aggregation covariance represents states removed by a
+native-to-reduced transformation, the caller must also supply the matching
+transformed prior and forward operator as one coherent preparation product.
 
 The minimum-error setting remains a floor on total marginal standard
 deviation, including aggregation error, while off-diagonal covariance is left
@@ -232,14 +237,8 @@ The concrete PyMC graph, its variable names, an equivalent construction from
 public model components, and links to tracked extension work are described in
 :doc:`concrete_rhime_model`.
 
-RHIME uses direct composition of the concrete standard or multisector model by
-default. The private semantic-plan compiler remains available for development
-and parity testing by setting ``builder_strategy="compiled"`` on
-``RhimeModelSpec`` or in ``[RHIME.OPTIONS]``. There is no automatic fallback:
-an error in the selected strategy stops the run. The concrete model is the
-readable reference implementation; the compiled strategy is the opt-in
-extension path and must preserve the externally meaningful graph contract for
-components it does not intentionally change. See
+RHIME directly composes the concrete standard or multisector model in its
+corresponding recipe module. See
 :ref:`the concrete model stability contract <rhime-builder-stability>` for the
 full contract.
 
@@ -400,7 +399,7 @@ prepared object:
 
 .. code-block:: python
 
-   from openghg_inversions.models import RhimeModelSpec, SectorSpec
+   from openghg_inversions.rhime import RhimeModelSpec, SectorSpec
    from openghg_inversions.rhime import (
        RhimeOutputSpec,
        RhimeRunSpec,
@@ -518,9 +517,6 @@ New RHIME config files should use ``flux_sources``:
    [INPUT.PRIORS]
    domain = "EUROPE"
    flux_sources = ["total-ukghg-edgar7"]
-
-   [RHIME.OPTIONS]
-   builder_strategy = "concrete"
 
    [RHIME.OUTPUT]
    output_path = "outputs"
@@ -667,7 +663,8 @@ containing the value ``"outer"``:
 
 .. code-block:: python
 
-   from openghg_inversions.models import StateActivity, build_rhime_model
+   from openghg_inversions.models import StateActivity
+   from openghg_inversions.rhime.standard import build_standard_rhime_model
    from openghg_inversions.sigma import SigmaAlignment
 
    state_policy = StateActivity(
@@ -677,24 +674,21 @@ containing the value ``"outer"``:
    sigma_alignment = SigmaAlignment.from_frequency(
        inv_inputs["site_indicator"],
    )
-   model = build_rhime_model(
+   model = build_standard_rhime_model(
        inv_inputs,
        sigma_alignment=sigma_alignment,
        x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.5},
        state_activity=state_policy,
    )
 
-For multisector builders, use ``state_activity`` as a shared policy or
-``sector_state_activities`` for sector-name overrides;
-``StateActivity(active=False)`` freezes a complete sector. Programmatic
-prepared-input runs may set a shared policy on ``RhimeModelSpec`` and use its
-``sector_state_activities`` mapping for overrides. The canonical per-sector
-policy is ``SectorSpec(state_activity=...)`` and takes precedence over that
-mapping. RHIME config-file syntax and persisted activity-reason tables remain
-follow-up work.
-Each prior dictionary in ``sector_priors`` supports the same scalar,
-full-state array, and labelled ``DataArray`` parameter forms; labelled values
-must match the selected sector's state coordinate exactly.
+The direct multisector builder accepts one ordered sequence of ``SectorSpec``
+objects. Each sector carries its source, backend suffix, prior, and optional
+``state_activity`` override; the builder's ``state_activity`` argument supplies
+the shared policy. ``StateActivity(active=False)`` freezes a complete sector.
+RHIME config-file syntax and persisted activity-reason tables remain follow-up
+work. Each ``SectorSpec.x_prior`` supports the same scalar, full-state array,
+and labelled ``DataArray`` parameter forms; labelled values must match the
+selected sector's state coordinate exactly.
 
 For low-level model construction, first inspect a labelled design with
 ``detect_zero_sensitivity``, then combine the returned mask with a
@@ -819,13 +813,14 @@ retain their gathered ``(source, region_in_source)`` state coordinate.
        calibrate_basis_prior_stdev,
        project_basis_prior_stdev,
    )
+   from openghg_inversions.rhime.standard import build_standard_rhime_model
 
    x_prior_stdev = project_basis_prior_stdev(
        basis_functions,
        area_grid=cell_area,
        grid_cell_prior_stdev=grid_prior_sd,
    )
-   model = build_rhime_model(
+   model = build_standard_rhime_model(
        inv_inputs,
        x_prior={"pdf": "normal", "mu": 1.0, "sigma": x_prior_stdev},
    )

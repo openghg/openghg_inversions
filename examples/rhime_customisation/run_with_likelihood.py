@@ -39,9 +39,11 @@ def run_with_likelihood(
         The sampled result and any outputs requested by the RHIME options.
 
     Raises:
-        TypeError: If the likelihood builder returns an invalid result type.
-        ValueError: If required options are missing, aggregation or output is
-            unsupported, or likelihood roles or metadata are invalid.
+        TypeError: If the likelihood builder does not return a PyTensor
+            variable.
+        ValueError: If required options are missing, aggregation error is
+            unsupported, or the likelihood omits canonical ``y`` or
+            ``epsilon`` variables.
 
     Notes:
         This workflow may retrieve or reload data, materializes related model

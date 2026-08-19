@@ -81,14 +81,14 @@
   a keyword-only `likelihood_builder` callable, so ordinary acquisition-to-output
   runs can replace the observation component without constructing prepared
   inputs or a complete model.
-  Custom builders declare semantic variable roles, supported output formats,
-  and serializable provenance metadata, which are validated before sampling
-  and preserved in inversion outputs. Built-in concrete, compiled, and
-  multisector models use the same result contract, while the sampler resolves
-  posterior predictives by semantic role. Likelihood results now retain
-  serializable metadata and the runner persists custom likelihood-builder
-  identity. An opt-in absolute-sigma Gaussian implements observation variance
-  from measurement, aggregation, and inferred sigma terms with a minimum-error
+  Ordinary likelihood builders receive explicit scientific inputs, add the
+  canonical ``y`` and ``epsilon`` variables, and return ``y``. Complete-model
+  builders instead return a result declaring semantic variable roles,
+  supported output formats, and serializable provenance metadata; built-in
+  standard and multisector graphs use the same complete-model result contract.
+  The runner records custom likelihood-builder identity in inversion outputs.
+  An opt-in additive-sigma Gaussian implements observation variance from
+  measurement, aggregation, and inferred sigma terms with a minimum-error
   floor, and offsets can use one global scalar as an alternative to the
   existing site designs. The tox workflow now runs PyTensor tests without
   requiring or loading a C++ compiler module.
@@ -189,21 +189,19 @@
   new wrapper falls back to its historical multi-child component decomposition
   when no valid binary repair exists.
   [#545](https://github.com/openghg/openghg_inversions/issues/545)
-- Made direct composition of concrete standard and multisector RHIME models
-  the default builder strategy. The semantic flux-plan compiler remains
-  available as an explicit `builder_strategy="compiled"` opt-in on
-  `RhimeModelSpec` and in RHIME configuration, while both paths share the same
-  source selection, gathered ragged-state handling, and sector-prior
-  validation. The concrete builders are the readable reference
-  implementations; compiler internals remain private, and unchanged graph
-  components are continuously checked against that reference contract.
+- Moved the concrete standard and multisector RHIME graphs beside their
+  procedural recipe runners and removed the semantic flux compiler and
+  `builder_strategy` dispatch. Pure source, sector, prior, and state-activity
+  resolution remains shared inside the RHIME package, while each production
+  graph stays readable in scientific order in its owning recipe module. The
+  recipes now compose pollution, baseline, and offset contributions before the
+  likelihood seam, and expose one clearly named concrete builder per recipe.
 - Added a tox PyTensor compiler preflight that automatically loads
   `gcc/12.3.0-sknc` on Rocky Linux or recognized Blue Pebble hosts when the
   compiler setting is empty, supports configurable module/compiler overrides,
   and fails before pytest when `pytensor.config.cxx` remains empty instead of
   allowing extremely slow C++-free PyMC test runs.
-- Added a shared RHIME flux-plan/compiler seam for standard and multisector
-  builders, and routed explicit sector-to-source mappings plus complete
+- Routed explicit sector-to-source mappings plus complete
   per-sector priors through multisector preparation and model specifications.
   Source-specific ragged state blocks remain gathered over
   `(source, region_in_source)`, scalar source provenance remains single-sector,

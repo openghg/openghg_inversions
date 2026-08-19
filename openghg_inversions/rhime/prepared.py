@@ -6,16 +6,15 @@ import pandas as pd
 
 from openghg_inversions._timing import timer_seconds, timer_start
 from openghg_inversions.inversion_data import RhimePreparedInputs
-from openghg_inversions.models import RhimeLikelihoodBuilder
 from openghg_inversions.observation_error import (
     resolve_aggregation_error,
     select_aggregation_error_mode,
 )
 
-from ._model_building import validate_likelihood_builder
-from .builders import RhimeModelBuilder
+from ._model_building import validate_likelihood_builder_argument
+from .builders import RhimeLikelihoodBuilder, RhimeModelBuilder
 from .materialization import materialize_pymc_inputs
-from .multisector import build_multisector_rhime_model, make_multisector_rhime_result
+from .multisector import build_multisector_rhime_model_result, make_multisector_rhime_result
 from .outputs import RhimeResult
 from .preparation import with_prepared_rhime_sites
 from .sampling import RhimeSampler, sample_rhime_model
@@ -25,7 +24,7 @@ from .specs import (
     validate_output_format,
     validate_output_path_settings,
 )
-from .standard import build_standard_rhime_model, make_standard_rhime_result
+from .standard import build_standard_rhime_model_result, make_standard_rhime_result
 
 
 def run_rhime_from_prepared_inputs(
@@ -42,8 +41,25 @@ def run_rhime_from_prepared_inputs(
     construction, sensitivity construction, and labelled-input assembly. It
     validates the retained scientific layout before crossing the PyMC
     materialization boundary.
+
+    Args:
+        prepared_inputs: Validated canonical inversion inputs and retained
+            basis functions.
+        run_spec: Resolved model, output, and run settings.
+        sampler: Optional sampler configuration; defaults to ``RhimeSampler``.
+        model_builder: Optional complete-model callable for advanced graphs.
+        likelihood_builder: Optional ordinary likelihood callable used with
+            the built-in graph.
+
+    Returns:
+        Sampled result with any requested output products attached.
+
+    Raises:
+        ValueError: If layouts, extension points, aggregation error, or output
+            settings are inconsistent.
+        TypeError: If an extension point has an invalid callable contract.
     """
-    validate_likelihood_builder(likelihood_builder)
+    validate_likelihood_builder_argument(likelihood_builder)
     if model_builder is not None and likelihood_builder is not None:
         raise ValueError("Pass either `model_builder` or `likelihood_builder`, not both.")
     prepared_inputs = prepared_inputs.validated()
@@ -118,7 +134,7 @@ def run_rhime_from_prepared_inputs(
     build_and_sample_start = timer_start()
 
     if multisector:
-        model_build_result = build_multisector_rhime_model(
+        model_build_result = build_multisector_rhime_model_result(
             prepared=prepared_inputs,
             model_inputs=model_inputs,
             run_spec=run_spec,
@@ -126,7 +142,7 @@ def run_rhime_from_prepared_inputs(
             likelihood_builder=likelihood_builder,
         )
     else:
-        model_build_result = build_standard_rhime_model(
+        model_build_result = build_standard_rhime_model_result(
             prepared=prepared_inputs,
             model_inputs=model_inputs,
             run_spec=run_spec,
@@ -136,7 +152,6 @@ def run_rhime_from_prepared_inputs(
     idata = sample_rhime_model(
         model_build_result,
         active_sampler,
-        use_variable_roles=model_builder is not None or likelihood_builder is not None,
     )
     build_and_sample_seconds = timer_seconds(build_and_sample_start)
 

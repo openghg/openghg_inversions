@@ -21,18 +21,21 @@ NutsSampler = Literal["pymc", "nutpie", "numpyro", "blackjax"]
 def sample_rhime_model(
     model_build_result: RhimeModelBuildResult,
     sampler: RhimeSampler,
-    *,
-    use_variable_roles: bool = False,
 ) -> az.InferenceData:
-    """Sample a built RHIME graph and retain the named sampler boundary."""
+    """Sample a built RHIME graph at the named sampler boundary.
+
+    Args:
+        model_build_result: Concrete graph and semantic variable roles.
+        sampler: Configured sampler used for posterior and predictive draws.
+
+    Returns:
+        Sampled posterior and predictive groups.
+    """
     timing_start = timer_start()
-    if use_variable_roles:
-        idata = sampler.sample(
-            model_build_result.model,
-            variable_roles=model_build_result.variable_roles,
-        )
-    else:
-        idata = sampler.sample(model_build_result.model)
+    idata = sampler.sample(
+        model_build_result.model,
+        variable_roles=model_build_result.variable_roles,
+    )
     log_timing(
         "rhime.sampler_total",
         timer_seconds(timing_start),

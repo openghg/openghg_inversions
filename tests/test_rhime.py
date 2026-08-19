@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-import ast
 import inspect
+import subprocess
+import sys
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -15,23 +16,21 @@ import pandas as pd
 import pymc as pm
 import pytest
 import xarray as xr
-from pytensor.compile.mode import Mode
 from dask.callbacks import Callback
 
 from examples.rhime_customisation import likelihoods as example_likelihoods
 import openghg_inversions.hbmcmc.inversion_pymc as legacy_mcmc
 import openghg_inversions.inversion_data.preparation as prep_module
 import openghg_inversions.models as models
-import openghg_inversions.models._rhime_compiler as rhime_compiler_module
-import openghg_inversions.models.rhime as rhime_models_module
 import openghg_inversions.postprocessing.inversion_output as inversion_output_module
 import openghg_inversions.rhime as rhime_public
+import openghg_inversions.rhime.builders as rhime_builders
 import openghg_inversions.rhime.materialization as rhime_materialization
+import openghg_inversions.rhime._model_building as rhime_model_building
 import openghg_inversions.rhime.outputs as rhime_outputs
 import openghg_inversions.rhime.params as rhime_params
 import openghg_inversions.rhime.preparation as rhime_preparation
 import openghg_inversions.rhime.prepared as rhime_prepared
-import openghg_inversions.rhime.runner as rhime_module
 import openghg_inversions.rhime.sampling as rhime_sampling
 import openghg_inversions.rhime.specs as rhime_specs
 import openghg_inversions.rhime.standard as rhime_standard
@@ -50,25 +49,12 @@ from openghg_inversions.flux_sanitization import (
 )
 from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs, prepare_rhime_inputs
 from openghg_inversions.inversion_inputs import make_inv_inputs
-from openghg_inversions.models import (
-    RhimeLikelihoodContext,
-    RhimeLikelihoodResult,
-    StateActivity,
-    build_absolute_sigma_gaussian_likelihood,
-    build_rhime_model,
-    build_rhime_observation_state,
-    build_rhime_model_from_spec,
-    build_rhime_multisector_model,
-    build_rhime_multisector_model_from_spec,
-    safe_pymc_name,
+from openghg_inversions.models import StateActivity
+from openghg_inversions.models._flux import safe_pymc_name
+from openghg_inversions.models.pollution_event import (
+    build_pollution_event_error,
+    build_pollution_event_gaussian_likelihood,
 )
-from openghg_inversions.models._rhime_compiler import (
-    _compile_loop_sum,
-    _FluxPlan,
-    _ForwardTermPlan,
-    _StatePlan,
-)
-from openghg_inversions.models.coords import CoordRegistry, attach_coord_registry
 from openghg_inversions.postprocessing._basis_products import (
     BASIS_ARTIFACT_PATH_OUTPUT_ATTR,
     BASIS_ARTIFACT_SOURCE_LOADED_DATATREE,
@@ -77,7 +63,10 @@ from openghg_inversions.postprocessing._basis_products import (
     BASIS_RECONSTRUCTION_PATH_ATTR,
 )
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
-from openghg_inversions.postprocessing.make_outputs import observation_inputs_for_outputs
+from openghg_inversions.postprocessing.make_outputs import (
+    make_concentration_outputs,
+    observation_inputs_for_outputs,
+)
 from openghg_inversions.postprocessing.make_paris_outputs import PARIS_LATEST_COUNTRIES
 from openghg_inversions.rhime import (
     RhimeModelBuilderContext,
@@ -93,6 +82,15 @@ from openghg_inversions.rhime import (
     run_rhime,
     run_rhime_from_prepared_inputs,
     run_rhime_multisector,
+)
+from openghg_inversions.rhime.likelihoods import additive_sigma_likelihood_builder
+from openghg_inversions.rhime.multisector import (
+    _build_multisector_rhime_model_from_spec,
+    build_multisector_rhime_model as build_rhime_multisector_model,
+)
+from openghg_inversions.rhime.standard import (
+    _build_standard_rhime_model_from_spec,
+    build_standard_rhime_model as build_rhime_model,
 )
 from openghg_inversions.sigma import SigmaAlignment
 
@@ -149,6 +147,62 @@ def builder_args(rhime_inv_inputs: xr.Dataset) -> dict:
     }
 
 
+def _sector(
+    name: str,
+    *,
+    source: str | None = None,
+    suffix: str | None = None,
+    prior: dict[str, Any] | None = None,
+    state_activity: StateActivity | None = None,
+) -> SectorSpec:
+    """Create a concise sector specification for direct-builder tests."""
+    return SectorSpec(
+        name=name,
+        flux_source=name if source is None else source,
+        x_prior={"pdf": "normal", "mu": 1.0, "sigma": 1.0} if prior is None else prior,
+        variable_suffix=safe_pymc_name(name) if suffix is None else suffix,
+        state_activity=state_activity,
+    )
+
+
+def _multisector_args(builder_args: dict[str, Any]) -> dict[str, Any]:
+    """Return shared direct-builder arguments after priors move onto sectors."""
+    result = dict(builder_args)
+    result.pop("x_prior", None)
+    return result
+
+
+def build_rhime_observation_state(
+    data: xr.Dataset,
+    /,
+    *,
+    mean: Any,
+    pollution_mean: Any,
+    pollution_event_baseline: Any,
+    sigma_alignment: SigmaAlignment,
+    sigma_prior: dict[str, Any],
+    power: dict[str, Any] | float,
+    pollution_events_from_obs: bool,
+    no_model_error: bool,
+    aggregation_error_mode: Any,
+    output_dim: str,
+) -> Any:
+    """Build the built-in error state from explicit likelihood inputs."""
+    del mean
+    return build_pollution_event_error(
+        data,
+        pollution_mean=pollution_mean,
+        pollution_event_baseline=pollution_event_baseline,
+        sigma_alignment=sigma_alignment,
+        sigma_prior=sigma_prior,
+        power=power,
+        pollution_events_from_obs=pollution_events_from_obs,
+        no_model_error=no_model_error,
+        aggregation_error_mode=aggregation_error_mode,
+        output_dim=output_dim,
+    )
+
+
 def _assert_model_dot_matches_numpy(
     model: pm.Model,
     *,
@@ -156,7 +210,7 @@ def _assert_model_dot_matches_numpy(
     design_name: str,
     state_name: str,
 ) -> None:
-    """Compare compiled and NumPy matrix products at dtype-aware precision."""
+    """Compare the model and NumPy matrix products at dtype-aware precision."""
     actual = model[output_name].eval()
     expected = model[design_name].get_value() @ model[state_name].eval()
     tolerance = 100 * max(np.finfo(actual.dtype).eps, np.finfo(expected.dtype).eps)
@@ -411,6 +465,7 @@ def _minimal_output_inv_inputs() -> xr.Dataset:
             "H": (("region", "nmeasure"), [[1.0]]),
             "mf": ("nmeasure", [10.0]),
             "mf_error": ("nmeasure", [1.0]),
+            "min_error": ("nmeasure", [0.0]),
             "mf_repeatability": ("nmeasure", [0.5]),
             "mf_variability": ("nmeasure", [0.25]),
             "site_indicator": ("nmeasure", [0]),
@@ -657,277 +712,6 @@ class _DynamicSectorSpyBasisFunctions(_SpyBasisFunctions):
         )
 
 
-def test_compile_loop_sum_reuses_state_and_sums_named_terms() -> None:
-    """One shared state feeds named coefficient-scaled terms and their total."""
-    coords = {"region": ["r0", "r1"], "nmeasure": ["obs0", "obs1", "obs2"]}
-    design_a = xr.DataArray(
-        [[1.0, 2.0, 3.0], [0.5, 1.0, 1.5]],
-        dims=("region", "nmeasure"),
-        coords=coords,
-    )
-    design_b = xr.DataArray(
-        [[4.0, 3.0, 2.0], [1.0, 2.0, 3.0]],
-        dims=("region", "nmeasure"),
-        coords=coords,
-    )
-    plan = _FluxPlan(
-        states=(
-            _StatePlan(
-                state_id="shared",
-                variable_name="x_shared",
-                prior_args={"pdf": "uniform", "lower": 1.0, "upper": 2.0},
-            ),
-        ),
-        terms=(
-            _ForwardTermPlan(
-                term_id="term_a",
-                state_id="shared",
-                design=design_a,
-                data_name="h_a",
-                deterministic_name="mu_a",
-            ),
-            _ForwardTermPlan(
-                term_id="term_b",
-                state_id="shared",
-                design=design_b,
-                data_name="h_b",
-                deterministic_name="mu_b",
-                coefficient=-0.25,
-            ),
-        ),
-    )
-
-    with pm.Model() as model:
-        attach_coord_registry(model, CoordRegistry())
-        compiled = _compile_loop_sum(plan)
-        trace = pm.sample_prior_predictive(
-            draws=3,
-            var_names=["x_shared", "mu_a", "mu_b", "mu"],
-            random_seed=402,
-            compile_kwargs={"mode": Mode(linker="py", optimizer="fast_run")},
-        )
-
-    assert [rv.name for rv in model.free_RVs].count("x_shared") == 1
-    assert compiled.states["shared"] is model["x_shared"]
-    assert compiled.latents["shared"] is model["x_shared"]
-    assert compiled.terms["term_a"] is model["mu_a"]
-    assert compiled.terms["term_b"] is model["mu_b"]
-    prior = cast(Any, trace).prior
-    assert set(prior.data_vars) == {"x_shared", "mu_a", "mu_b", "mu"}
-    trace_coords = {"region": prior["region"], "nmeasure": prior["nmeasure"]}
-    expected_a = xr.dot(
-        prior["x_shared"],
-        design_a.assign_coords(trace_coords),
-        dim="region",
-    )
-    expected_b = -0.25 * xr.dot(
-        prior["x_shared"],
-        design_b.assign_coords(trace_coords),
-        dim="region",
-    )
-    xr.testing.assert_allclose(
-        prior["mu_a"],
-        expected_a.transpose(*prior["mu_a"].dims).rename("mu_a"),
-    )
-    xr.testing.assert_allclose(
-        prior["mu_b"],
-        expected_b.transpose(*prior["mu_b"].dims).rename("mu_b"),
-    )
-    xr.testing.assert_allclose(
-        prior["mu"],
-        (prior["mu_a"] + prior["mu_b"]).rename("mu"),
-    )
-
-
-def test_compile_loop_sum_separates_user_state_from_reparameterized_latent() -> None:
-    """Compiled state metadata distinguishes the physical state from its latent."""
-    design = xr.DataArray(
-        [[1.0]],
-        dims=("region", "nmeasure"),
-        coords={"region": [0], "nmeasure": [0]},
-    )
-    plan = _FluxPlan(
-        states=(
-            _StatePlan(
-                state_id="flux",
-                variable_name="x_flux",
-                prior_args={
-                    "pdf": "lognormal",
-                    "mean": 1.0,
-                    "stdev": 0.2,
-                    "reparameterise": True,
-                },
-            ),
-        ),
-        terms=(
-            _ForwardTermPlan(
-                term_id="flux",
-                state_id="flux",
-                design=design,
-                data_name="h_flux",
-                deterministic_name="mu",
-            ),
-        ),
-    )
-
-    with pm.Model() as model:
-        attach_coord_registry(model, CoordRegistry())
-        compiled = _compile_loop_sum(plan)
-
-    assert compiled.states["flux"] is model["x_flux"]
-    assert compiled.latents["flux"] is model["x_flux_latent"]
-
-
-@pytest.mark.parametrize(
-    ("state_id", "coefficient", "prior_args", "error"),
-    [
-        ("missing", 1.0, {"pdf": "normal", "mu": 1.0, "sigma": 0.2}, "unknown state IDs"),
-        ("shared", np.inf, {"pdf": "normal", "mu": 1.0, "sigma": 0.2}, "finite scalar"),
-        ("shared", 1.0, {"pdf": "not-a-distribution"}, "prior.*invalid"),
-    ],
-)
-def test_compile_loop_sum_rejects_invalid_plan_before_graph_mutation(
-    state_id: str,
-    coefficient: float,
-    prior_args: dict[str, Any],
-    error: str,
-) -> None:
-    """Invalid references, coefficients, and priors do not mutate the active graph."""
-    design = xr.DataArray(
-        [[1.0]],
-        dims=("region", "nmeasure"),
-        coords={"region": [0], "nmeasure": [0]},
-    )
-    plan = _FluxPlan(
-        states=(
-            _StatePlan(
-                state_id="shared",
-                variable_name="x_shared",
-                prior_args=prior_args,
-            ),
-        ),
-        terms=(
-            _ForwardTermPlan(
-                term_id="term",
-                state_id=state_id,
-                design=design,
-                data_name="h_term",
-                deterministic_name="mu_term",
-                coefficient=coefficient,
-            ),
-        ),
-    )
-
-    with pm.Model() as model, pytest.raises(ValueError, match=error):
-        _compile_loop_sum(plan)
-
-    assert model.named_vars == {}
-
-
-def test_compile_loop_sum_rejects_global_coordinate_conflicts_before_mutation() -> None:
-    """Repeated backend dimensions must carry one globally consistent coordinate."""
-    obs = ["obs0", "obs1"]
-    plan = _FluxPlan(
-        states=(
-            _StatePlan("a", "x_a", {"pdf": "normal", "mu": 1.0, "sigma": 0.2}),
-            _StatePlan("b", "x_b", {"pdf": "normal", "mu": 1.0, "sigma": 0.2}),
-        ),
-        terms=(
-            _ForwardTermPlan(
-                "a",
-                "a",
-                xr.DataArray(
-                    np.ones((2, 2)),
-                    dims=("region", "nmeasure"),
-                    coords={"region": ["a0", "a1"], "nmeasure": obs},
-                ),
-                "h_a",
-                "mu_a",
-            ),
-            _ForwardTermPlan(
-                "b",
-                "b",
-                xr.DataArray(
-                    np.ones((2, 2)),
-                    dims=("region", "nmeasure"),
-                    coords={"region": ["b0", "b1"], "nmeasure": obs},
-                ),
-                "h_b",
-                "mu_b",
-            ),
-        ),
-    )
-
-    with (
-        pm.Model() as model,
-        pytest.raises(ValueError, match="incompatible global coordinates"),
-    ):
-        _compile_loop_sum(plan)
-
-    assert model.named_vars == {}
-
-
-def test_compile_loop_sum_preserves_term_order_independent_of_state_order() -> None:
-    """The strategy follows term order while reusing independently declared states."""
-    design = xr.DataArray(
-        [[1.0]],
-        dims=("region", "nmeasure"),
-        coords={"region": [0], "nmeasure": [0]},
-    )
-    plan = _FluxPlan(
-        states=(
-            _StatePlan("b", "x_b", {"pdf": "normal", "mu": 1.0, "sigma": 0.2}),
-            _StatePlan("a", "x_a", {"pdf": "normal", "mu": 1.0, "sigma": 0.2}),
-        ),
-        terms=(
-            _ForwardTermPlan("a1", "a", design, "h_a1", "mu_a1"),
-            _ForwardTermPlan("b1", "b", design, "h_b1", "mu_b1"),
-            _ForwardTermPlan("a2", "a", design, "h_a2", "mu_a2"),
-        ),
-    )
-
-    with pm.Model():
-        compiled = _compile_loop_sum(plan)
-
-    assert list(compiled.terms) == ["a1", "b1", "a2"]
-
-
-def test_compile_loop_sum_resolves_zero_activity_across_shared_state_terms() -> None:
-    """A shared state is pruned only when every effective term column is zero."""
-    coords = {"region": ["first", "second", "zero"], "nmeasure": [0, 1]}
-    plan = _FluxPlan(
-        states=(_StatePlan("shared", "x_shared", {"pdf": "normal", "mu": 1.0, "sigma": 0.2}),),
-        terms=(
-            _ForwardTermPlan(
-                "first",
-                "shared",
-                xr.DataArray(
-                    [[1.0, 2.0], [0.0, 0.0], [0.0, 0.0]], dims=("region", "nmeasure"), coords=coords
-                ),
-                "h_first",
-                "mu_first",
-            ),
-            _ForwardTermPlan(
-                "second",
-                "shared",
-                xr.DataArray(
-                    [[0.0, 0.0], [3.0, 4.0], [0.0, 0.0]], dims=("region", "nmeasure"), coords=coords
-                ),
-                "h_second",
-                "mu_second",
-            ),
-        ),
-    )
-
-    with pm.Model() as model:
-        attach_coord_registry(model, CoordRegistry())
-        compiled = _compile_loop_sum(plan)
-
-    np.testing.assert_array_equal(model["x_shared_is_active"].eval(), [True, True, False])
-    assert model["x_shared_active"].eval().shape == (2,)
-    assert compiled.latents["shared"] is model["x_shared_active"]
-
-
 @pytest.mark.rhime_contract
 def test_build_rhime_model_contains_expected_variables(
     rhime_inv_inputs: xr.Dataset, builder_args: dict
@@ -970,27 +754,73 @@ def test_build_rhime_model_contains_expected_variables(
     }
 
 
+def test_preserved_legacy_likelihood_excludes_offset_from_error_scale(
+    rhime_inv_inputs: xr.Dataset,
+    builder_args: dict,
+) -> None:
+    """The run_hbmcmc compatibility equation keeps offset out of PEFO only."""
+    model = build_rhime_model(
+        rhime_inv_inputs,
+        **{
+            **builder_args,
+            "add_offset": True,
+            "power": 2.0,
+            "preserve_legacy_likelihood": True,
+        },
+    )
+    likelihood_mean = model["y"].owner.inputs[-2]
+    (
+        observed,
+        observation_error,
+        pollution_mean,
+        boundary_mean,
+        offset,
+        sigma,
+        site_index,
+        period_index,
+        epsilon,
+        total_mean,
+    ) = pm.draw(
+        [
+            model["Y"],
+            model["error"],
+            model["mu"],
+            model["mu_bc"],
+            model["offset"],
+            model["sigma"],
+            model["sigma_site_index"],
+            model["sigma_period_index"],
+            model["epsilon"],
+            likelihood_mean,
+        ],
+        draws=1,
+        random_seed=219,
+    )
+
+    observation_sigma = sigma[site_index, period_index]
+    expected_epsilon = np.sqrt(
+        observation_error**2 + (np.abs(observed - boundary_mean) * observation_sigma) ** 2
+    )
+    np.testing.assert_allclose(epsilon, expected_epsilon)
+    np.testing.assert_allclose(total_mean, pollution_mean + boundary_mean + offset)
+
+
 def test_build_rhime_model_accepts_student_t_likelihood_builder(
     rhime_inv_inputs: xr.Dataset,
     builder_args: dict,
 ) -> None:
-    """A user-owned likelihood can reuse RHIME's error scale and rename the observed RV."""
+    """A user-owned likelihood can reuse RHIME's error scale with canonical names."""
 
-    def student_t_builder(context: RhimeLikelihoodContext) -> RhimeLikelihoodResult:
-        state = build_rhime_observation_state(context)
-        likelihood = pm.StudentT(
-            "student_y",
+    def student_t_builder(data: xr.Dataset, /, **kwargs: Any) -> Any:
+        """Build a Student-t observation distribution from explicit inputs."""
+        state = build_rhime_observation_state(data, **kwargs)
+        return pm.StudentT(
+            "y",
             nu=4.0,
-            mu=state.mean,
+            mu=kwargs["mean"],
             sigma=state.error_scale,
             observed=state.observed,
-            dims=context.output_dim,
-        )
-        return RhimeLikelihoodResult(
-            likelihood=likelihood,
-            error_scale=state.error_scale,
-            variable_roles={"concentration": "student_y", "model_error": "epsilon"},
-            supported_output_formats=("none", "inv_out", "basic", "paris", "legacy"),
+            dims=kwargs["output_dim"],
         )
 
     model = build_rhime_model(
@@ -999,35 +829,105 @@ def test_build_rhime_model_accepts_student_t_likelihood_builder(
         likelihood_builder=student_t_builder,
     )
 
-    assert "student_y" in model.named_vars
-    assert "y" not in model.named_vars
-    assert rhime_models_module.get_rhime_likelihood_result(model).variable_roles == {
-        "concentration": "student_y",
-        "model_error": "epsilon",
-    }
+    assert "y" in model.named_vars
+    assert type(model["y"].owner.op).__name__ == "StudentTRV"
 
 
-def test_editable_example_builder_returns_student_t_contract(
+def test_multisector_model_uses_falsey_likelihood_builder(
+    multisector_inv_inputs: xr.Dataset,
+    builder_args: dict,
+) -> None:
+    """A callable's truth value does not control likelihood selection."""
+    calls: list[xr.Dataset] = []
+
+    class FalseyLikelihood:
+        """Callable likelihood whose false truth value must be ignored."""
+
+        def __bool__(self) -> bool:
+            """Return false to exercise explicit optional-builder selection."""
+            return False
+
+        def __call__(self, data: xr.Dataset, /, **kwargs: Any) -> Any:
+            """Record invocation and build the canonical likelihood."""
+            calls.append(data)
+            return build_pollution_event_gaussian_likelihood(data, **kwargs)
+
+    model = build_rhime_multisector_model(
+        multisector_inv_inputs,
+        sectors=(
+            _sector("total-ukghg-edgar7", prior=builder_args["x_prior"]),
+            _sector("sector-2", prior=builder_args["x_prior"]),
+        ),
+        likelihood_builder=FalseyLikelihood(),
+        **_multisector_args(builder_args),
+    )
+
+    assert len(calls) == 1
+    assert calls[0] is multisector_inv_inputs
+    assert "y" in model.named_vars
+
+
+@pytest.mark.parametrize("multisector", [False, True])
+def test_recipe_passes_completed_forward_mean_to_custom_likelihood(
+    rhime_inv_inputs: xr.Dataset,
+    multisector_inv_inputs: xr.Dataset,
+    builder_args: dict[str, Any],
+    multisector: bool,
+) -> None:
+    """Custom likelihoods receive pollution plus the complete baseline mean."""
+    calls: list[dict[str, Any]] = []
+
+    def capture_inputs(data: xr.Dataset, /, **kwargs: Any) -> Any:
+        """Capture explicit scientific inputs and build the default likelihood."""
+        calls.append(kwargs)
+        return build_pollution_event_gaussian_likelihood(data, **kwargs)
+
+    kwargs = {**builder_args, "add_offset": True, "likelihood_builder": capture_inputs}
+    if multisector:
+        model = build_rhime_multisector_model(
+            multisector_inv_inputs,
+            sectors=(
+                _sector("total-ukghg-edgar7", prior=builder_args["x_prior"]),
+                _sector("sector-2", prior=builder_args["x_prior"]),
+            ),
+            **_multisector_args(kwargs),
+        )
+    else:
+        model = build_rhime_model(rhime_inv_inputs, **kwargs)
+
+    assert len(calls) == 1
+    call = calls[0]
+    assert call["pollution_event_baseline"] is not None
+    mean, pollution, baseline, boundary, offset = pm.draw(
+        [
+            call["mean"],
+            call["pollution_mean"],
+            call["pollution_event_baseline"],
+            model["mu_bc"],
+            model["offset"],
+        ],
+        draws=1,
+        random_seed=123,
+    )
+    np.testing.assert_allclose(baseline, boundary + offset, rtol=5e-7, atol=1e-5)
+    np.testing.assert_allclose(mean, pollution + baseline, rtol=5e-7, atol=1e-5)
+    assert "mu_baseline" not in model.named_vars
+    if multisector:
+        assert "mu" not in model.named_vars
+
+
+def test_editable_example_builder_adds_canonical_student_t_likelihood(
     rhime_inv_inputs: xr.Dataset,
     builder_args: dict[str, Any],
 ) -> None:
-    """The project-owned example returns its documented Student-t contract."""
+    """The project-owned example adds its documented Student-t likelihood."""
     example_model = build_rhime_model(
         rhime_inv_inputs,
         **builder_args,
         likelihood_builder=example_likelihoods.likelihood_builder,
     )
-    example_result = rhime_models_module.get_rhime_likelihood_result(example_model)
-
     assert example_likelihoods.likelihood_builder.__module__ == example_likelihoods.__name__
-    assert isinstance(example_result, RhimeLikelihoodResult)
-    assert example_result.variable_roles == {
-        "concentration": "student_y",
-        "model_error": "epsilon",
-    }
-    assert example_result.supported_output_formats == ("none", "inv_out")
-    assert example_result.metadata == {"family": "student_t", "degrees_of_freedom": 4.0}
-    assert type(example_model["student_y"].owner.op).__name__ == "StudentTRV"
+    assert type(example_model["y"].owner.op).__name__ == "StudentTRV"
 
 
 @pytest.mark.parametrize("aggregation_error_mode", ["dense", "low_rank"])
@@ -1068,20 +968,20 @@ def test_editable_example_builder_rejects_correlated_aggregation_error(
     monkeypatch.setattr(example_likelihoods, "select_aggregation_error_mode", select_mode)
 
     with pm.Model(coords={"nmeasure": np.arange(data.sizes["nmeasure"])}) as model:
-        context = RhimeLikelihoodContext(
-            data=data,
-            flux_mean=pm.math.constant(np.zeros(data.sizes["nmeasure"])),
-            boundary_mean=None,
-            offset=None,
-            sigma_alignment=sigma_alignment,
-            sigma_prior={"pdf": "uniform", "lower": 0.1, "upper": 10.0},
-            power=1.99,
-            pollution_events_from_obs=False,
-            no_model_error=False,
-            aggregation_error_mode=cast(Any, aggregation_error_mode),
-        )
         with pytest.raises(ValueError, match="assumes independent observations"):
-            example_likelihoods.likelihood_builder(context)
+            example_likelihoods.likelihood_builder(
+                data,
+                mean=pm.math.constant(np.zeros(data.sizes["nmeasure"])),
+                pollution_mean=pm.math.constant(np.zeros(data.sizes["nmeasure"])),
+                pollution_event_baseline=None,
+                sigma_alignment=sigma_alignment,
+                sigma_prior={"pdf": "uniform", "lower": 0.1, "upper": 10.0},
+                power=1.99,
+                pollution_events_from_obs=False,
+                no_model_error=False,
+                aggregation_error_mode=cast(Any, aggregation_error_mode),
+                output_dim="nmeasure",
+            )
     assert selected_modes == [aggregation_error_mode]
     assert model.named_vars == {}
 
@@ -1107,6 +1007,7 @@ def test_build_rhime_model_accepts_global_scalar_offset(
         "offset_latent",
         "site_indicator",
     }
+    assert "mu_baseline" not in model.named_vars
     assert "offset_latent" not in model.named_vars_to_dims
     assert model.named_vars_to_dims["offset"] == ("nmeasure",)
     assert model["offset_latent"].ndim == 0
@@ -1124,8 +1025,15 @@ def test_build_rhime_multisector_model_contains_expected_variables(
     multisector_inv_inputs: xr.Dataset, builder_args: dict
 ) -> None:
     """Freeze the exact multi-sector built-model variable and dimension inventory."""
-    sectors = ["total-ukghg-edgar7", "sector-2"]
-    model = build_rhime_multisector_model(multisector_inv_inputs, sectors=sectors, **builder_args)
+    sectors = (
+        _sector("total-ukghg-edgar7", prior=builder_args["x_prior"]),
+        _sector("sector-2", prior=builder_args["x_prior"]),
+    )
+    model = build_rhime_multisector_model(
+        multisector_inv_inputs,
+        sectors=sectors,
+        **_multisector_args(builder_args),
+    )
 
     assert set(model.named_vars) == {
         "Y",
@@ -1136,7 +1044,6 @@ def test_build_rhime_multisector_model_contains_expected_variables(
         "hx_sector_2",
         "hx_total_ukghg_edgar7",
         "min_error",
-        "mu",
         "x_total_ukghg_edgar7",
         "mu_total_ukghg_edgar7",
         "x_sector_2",
@@ -1156,7 +1063,6 @@ def test_build_rhime_multisector_model_contains_expected_variables(
         "hx_sector_2": ("nmeasure", "region"),
         "hx_total_ukghg_edgar7": ("nmeasure", "region"),
         "min_error": ("nmeasure",),
-        "mu": ("nmeasure",),
         "mu_bc": ("nmeasure",),
         "mu_sector_2": ("nmeasure",),
         "mu_total_ukghg_edgar7": ("nmeasure",),
@@ -1398,6 +1304,7 @@ def test_prepared_replay_computes_selected_error_only_at_pymc_boundary(
 ) -> None:
     """Replay selects lazily, then executes a selected Dask covariance exactly once."""
     model_spec, _, run_spec = _minimal_output_specs(output_format="none")
+    model_spec = replace(model_spec, use_bc=False)
     model_spec = replace(model_spec, aggregation_error_mode="dense")
     run_spec = replace(run_spec, model=model_spec)
     executions: list[str] = []
@@ -1435,7 +1342,7 @@ def test_prepared_replay_computes_selected_error_only_at_pymc_boundary(
 
     monkeypatch.setattr(rhime_prepared, "select_aggregation_error_mode", select_without_computing)
     monkeypatch.setattr(rhime_materialization, "select_aggregation_error_mode", select_without_computing)
-    monkeypatch.setattr(rhime_prepared, "build_standard_rhime_model", build)
+    monkeypatch.setattr(rhime_prepared, "build_standard_rhime_model_result", build)
     monkeypatch.setattr(rhime_prepared, "sample_rhime_model", lambda *args, **kwargs: _minimal_output_idata())
     monkeypatch.setattr(rhime_prepared, "make_standard_rhime_result", lambda **kwargs: expected)
 
@@ -1462,17 +1369,23 @@ def test_build_rhime_multisector_model_uses_sector_names_for_variables(
     multisector_inv_inputs: xr.Dataset, builder_args: dict
 ) -> None:
     """Distinct sector priors retain named states and additive mu deterministics."""
-    sector_priors = {
-        "FF": {"pdf": "uniform", "lower": 1.0, "upper": 2.0},
-        "ocean": {"pdf": "uniform", "lower": 10.0, "upper": 11.0},
-    }
     model = build_rhime_multisector_model(
         multisector_inv_inputs,
-        sectors=["FF", "ocean"],
-        sector_sources={"FF": "total-ukghg-edgar7", "ocean": "sector-2"},
-        sector_variable_suffixes={"FF": "ff", "ocean": "ocean"},
-        sector_priors=sector_priors,
-        **builder_args,
+        sectors=(
+            _sector(
+                "FF",
+                source="total-ukghg-edgar7",
+                suffix="ff",
+                prior={"pdf": "uniform", "lower": 1.0, "upper": 2.0},
+            ),
+            _sector(
+                "ocean",
+                source="sector-2",
+                suffix="ocean",
+                prior={"pdf": "uniform", "lower": 10.0, "upper": 11.0},
+            ),
+        ),
+        **_multisector_args(builder_args),
     )
 
     expected_trace_names = {
@@ -1480,7 +1393,6 @@ def test_build_rhime_multisector_model_uses_sector_names_for_variables(
         "mu_ff",
         "x_ocean",
         "mu_ocean",
-        "mu",
     }
     expected_model_names = expected_trace_names | {
         "bc",
@@ -1505,7 +1417,6 @@ def test_build_rhime_multisector_model_uses_sector_names_for_variables(
     assert set(prior.data_vars) == expected_trace_names
     assert np.all((prior["x_ff"] >= 1.0) & (prior["x_ff"] <= 2.0))
     assert np.all((prior["x_ocean"] >= 10.0) & (prior["x_ocean"] <= 11.0))
-    np.testing.assert_allclose(prior["mu"], prior["mu_ff"] + prior["mu_ocean"])
 
 
 def test_build_rhime_multisector_model_selects_sources_by_label(
@@ -1517,13 +1428,19 @@ def test_build_rhime_multisector_model_selects_sources_by_label(
 
     model = build_rhime_multisector_model(
         reversed_inputs,
-        sectors=["FF", "ocean"],
-        sector_sources={"FF": "total-ukghg-edgar7", "ocean": "sector-2"},
-        sector_priors={
-            "FF": {"pdf": "normal", "mu": 1.0, "sigma": 0.2},
-            "ocean": {"pdf": "normal", "mu": 1.0, "sigma": 0.3},
-        },
-        **builder_args,
+        sectors=(
+            _sector(
+                "FF",
+                source="total-ukghg-edgar7",
+                prior={"pdf": "normal", "mu": 1.0, "sigma": 0.2},
+            ),
+            _sector(
+                "ocean",
+                source="sector-2",
+                prior={"pdf": "normal", "mu": 1.0, "sigma": 0.3},
+            ),
+        ),
+        **_multisector_args(builder_args),
     )
 
     expected_ff = reversed_inputs["H"].sel(source="total-ukghg-edgar7").transpose("nmeasure", "region")
@@ -1532,11 +1449,11 @@ def test_build_rhime_multisector_model_selects_sources_by_label(
     np.testing.assert_allclose(model["hx_ocean"].get_value(), expected_ocean.values)
 
 
-def test_concrete_and_compiled_multisector_models_accept_gathered_ragged_states(
+def test_multisector_model_accepts_gathered_ragged_states(
     multisector_inv_inputs: xr.Dataset,
     builder_args: dict,
 ) -> None:
-    """Both builders preserve and restore labelled source-specific states."""
+    """The concrete recipe preserves and restores labelled source-specific states."""
     ff_labels = ["north", "south"]
     ocean_labels = ["atlantic", "pacific", "indian"]
     state_index = pd.MultiIndex.from_tuples(
@@ -1571,70 +1488,55 @@ def test_concrete_and_compiled_multisector_models_accept_gathered_ragged_states(
     )
 
     kwargs = {
-        "sectors": ["FF", "ocean"],
-        "sector_sources": {"FF": "ff-inventory", "ocean": "ocean-inventory"},
-        "sector_priors": {
-            "FF": {
-                "pdf": "uniform",
-                "lower": xr.DataArray(
-                    [20.0, 10.0],
-                    dims="state",
-                    coords={"state": ["south", "north"]},
-                ),
-                "upper": xr.DataArray(
-                    [21.0, 11.0],
-                    dims="state",
-                    coords={"state": ["south", "north"]},
-                ),
-            },
-            "ocean": {"pdf": "normal", "mu": 1.0, "sigma": 0.3},
-        },
-        "sector_state_activities": {
-            "FF": StateActivity(active=ff_active, fixed_value=ff_fixed),
-            "ocean": StateActivity(fixed_groups=("fixed",)),
-        },
-        **builder_args,
+        "sectors": (
+            _sector(
+                "FF",
+                source="ff-inventory",
+                prior={
+                    "pdf": "uniform",
+                    "lower": xr.DataArray(
+                        [20.0, 10.0],
+                        dims="state",
+                        coords={"state": ["south", "north"]},
+                    ),
+                    "upper": xr.DataArray(
+                        [21.0, 11.0],
+                        dims="state",
+                        coords={"state": ["south", "north"]},
+                    ),
+                },
+                state_activity=StateActivity(active=ff_active, fixed_value=ff_fixed),
+            ),
+            _sector(
+                "ocean",
+                source="ocean-inventory",
+                prior={"pdf": "normal", "mu": 1.0, "sigma": 0.3},
+                state_activity=StateActivity(fixed_groups=("fixed",)),
+            ),
+        ),
+        **_multisector_args(builder_args),
     }
     model = build_rhime_multisector_model(inv_inputs, **kwargs)
-    compiled = rhime_models_module._build_compiled_rhime_multisector_model(
-        inv_inputs,
-        **kwargs,
-    )
 
-    assert set(model.named_vars) == set(compiled.named_vars)
-    assert model.named_vars_to_dims == compiled.named_vars_to_dims
     np.testing.assert_allclose(model["hx_ff"].get_value(), values[:2].T)
     np.testing.assert_allclose(model["hx_ocean"].get_value(), values[2:].T)
-    np.testing.assert_allclose(compiled["hx_ff"].get_value(), values[:2].T)
-    np.testing.assert_allclose(compiled["hx_ocean"].get_value(), values[2:].T)
-    np.testing.assert_allclose(model["hbc"].get_value(), compiled["hbc"].get_value())
     assert model.named_vars_to_dims["x_ff"] == ("state_ff",)
     assert model.named_vars_to_dims["x_ocean"] == ("state_ocean",)
-    assert compiled.named_vars_to_dims["x_ff"] == ("state_ff",)
-    assert compiled.named_vars_to_dims["x_ocean"] == ("state_ocean",)
     assert model.coords["state_ff"] == (0, 1)
     assert model.coords["state_ocean"] == (0, 1, 2)
-    assert compiled.coords["state_ff"] == (0, 1)
-    assert compiled.coords["state_ocean"] == (0, 1, 2)
 
-    concrete_registry = models.get_coord_registry(model)
-    compiled_registry = models.get_coord_registry(compiled)
-    assert concrete_registry is not None
-    assert compiled_registry is not None
-    for registry in (concrete_registry, compiled_registry):
-        assert list(registry.original_coords["state_ff"]) == ff_labels
-        assert list(registry.original_coords["state_ocean"]) == ocean_labels
-        assert registry.original_coords["nmeasure"].equals(inv_inputs.indexes["nmeasure"])
-        np.testing.assert_array_equal(registry.auxiliary_coords["basis_group_ff"], ["fixed", "active"])
-        np.testing.assert_array_equal(
-            registry.auxiliary_coords["basis_group_ocean"],
-            ["fixed", "active", "active"],
-        )
-        assert list(registry.original_coords["state_ff_x_ff_active"]) == ["north"]
-        assert list(registry.original_coords["state_ocean_x_ocean_active"]) == [
-            "pacific",
-            "indian",
-        ]
+    registry = models.get_coord_registry(model)
+    assert registry is not None
+    assert list(registry.original_coords["state_ff"]) == ff_labels
+    assert list(registry.original_coords["state_ocean"]) == ocean_labels
+    assert registry.original_coords["nmeasure"].equals(inv_inputs.indexes["nmeasure"])
+    np.testing.assert_array_equal(registry.auxiliary_coords["basis_group_ff"], ["fixed", "active"])
+    np.testing.assert_array_equal(
+        registry.auxiliary_coords["basis_group_ocean"],
+        ["fixed", "active", "active"],
+    )
+    assert list(registry.original_coords["state_ff_x_ff_active"]) == ["north"]
+    assert list(registry.original_coords["state_ocean_x_ocean_active"]) == ["pacific", "indian"]
 
     var_names = [
         "x_ff_active",
@@ -1643,42 +1545,22 @@ def test_concrete_and_compiled_multisector_models_accept_gathered_ragged_states(
         "x_ocean_active",
         "x_ocean",
         "mu_ocean",
-        "mu",
     ]
     with model:
-        concrete_prior = pm.sample_prior_predictive(
+        prior = pm.sample_prior_predictive(
             draws=2,
             var_names=var_names,
             random_seed=535,
         )
-    with compiled:
-        compiled_prior = pm.sample_prior_predictive(
-            draws=2,
-            var_names=var_names,
-            random_seed=535,
-        )
-    concrete_prior = models.restore_inferencedata_coords(
-        cast(az.InferenceData, concrete_prior),
-        concrete_registry,
-    )
-    compiled_prior = models.restore_inferencedata_coords(
-        cast(az.InferenceData, compiled_prior),
-        compiled_registry,
-    )
-    concrete_dataset = concrete_prior.prior
-    compiled_dataset = compiled_prior.prior
-    xr.testing.assert_allclose(concrete_dataset, compiled_dataset)
-    assert list(concrete_dataset["state_ff"].values) == ff_labels
-    assert list(concrete_dataset["state_ocean"].values) == ocean_labels
-    assert list(concrete_dataset["state_ff_x_ff_active"].values) == ["north"]
-    assert list(concrete_dataset["state_ocean_x_ocean_active"].values) == ["pacific", "indian"]
-    assert np.all((concrete_dataset["x_ff_active"] >= 10.0) & (concrete_dataset["x_ff_active"] <= 11.0))
-    np.testing.assert_allclose(concrete_dataset["x_ff"].sel(state_ff="south"), 2.0)
-    assert concrete_dataset.indexes["nmeasure"].equals(inv_inputs.indexes["nmeasure"])
-    xr.testing.assert_allclose(
-        concrete_dataset["mu"],
-        concrete_dataset["mu_ff"] + concrete_dataset["mu_ocean"],
-    )
+    prior = models.restore_inferencedata_coords(cast(az.InferenceData, prior), registry)
+    dataset = prior.prior
+    assert list(dataset["state_ff"].values) == ff_labels
+    assert list(dataset["state_ocean"].values) == ocean_labels
+    assert list(dataset["state_ff_x_ff_active"].values) == ["north"]
+    assert list(dataset["state_ocean_x_ocean_active"].values) == ["pacific", "indian"]
+    assert np.all((dataset["x_ff_active"] >= 10.0) & (dataset["x_ff_active"] <= 11.0))
+    np.testing.assert_allclose(dataset["x_ff"].sel(state_ff="south"), 2.0)
+    assert dataset.indexes["nmeasure"].equals(inv_inputs.indexes["nmeasure"])
 
 
 def test_build_rhime_multisector_model_rejects_ungathered_source_state(
@@ -1702,9 +1584,11 @@ def test_build_rhime_multisector_model_rejects_ungathered_source_state(
     with pytest.raises(ValueError, match="MultiIndex containing a 'source' level"):
         build_rhime_multisector_model(
             inv_inputs,
-            sectors=["FF", "ocean"],
-            sector_sources={"FF": "ff-inventory", "ocean": "ocean-inventory"},
-            **builder_args,
+            sectors=(
+                _sector("FF", source="ff-inventory"),
+                _sector("ocean", source="ocean-inventory"),
+            ),
+            **_multisector_args(builder_args),
         )
 
 
@@ -1736,9 +1620,11 @@ def test_build_rhime_multisector_model_rejects_duplicate_gathered_states(
     with pytest.raises(ValueError, match="unique state labels.*duplicate state.*ff-inventory"):
         build_rhime_multisector_model(
             inv_inputs,
-            sectors=["FF", "ocean"],
-            sector_sources={"FF": "ff-inventory", "ocean": "ocean-inventory"},
-            **builder_args,
+            sectors=(
+                _sector("FF", source="ff-inventory"),
+                _sector("ocean", source="ocean-inventory"),
+            ),
+            **_multisector_args(builder_args),
         )
 
 
@@ -1750,7 +1636,14 @@ def test_build_rhime_multisector_model_rejects_duplicate_prepared_sources(
     duplicate_sources = multisector_inv_inputs.sel(source=["total-ukghg-edgar7", "total-ukghg-edgar7"])
 
     with pytest.raises(ValueError, match="duplicate source 'total-ukghg-edgar7'"):
-        build_rhime_multisector_model(duplicate_sources, **builder_args)
+        build_rhime_multisector_model(
+            duplicate_sources,
+            sectors=(
+                _sector("total-ukghg-edgar7"),
+                _sector("sector-2"),
+            ),
+            **_multisector_args(builder_args),
+        )
 
 
 def test_build_rhime_multisector_model_rejects_padded_source_regions(
@@ -1775,9 +1668,11 @@ def test_build_rhime_multisector_model_rejects_padded_source_regions(
     ):
         build_rhime_multisector_model(
             padded_inputs,
-            sectors=["FF", "ocean"],
-            sector_sources={"FF": "total-ukghg-edgar7", "ocean": "sector-2"},
-            **builder_args,
+            sectors=(
+                _sector("FF", source="total-ukghg-edgar7"),
+                _sector("ocean", source="sector-2"),
+            ),
+            **_multisector_args(builder_args),
         )
 
 
@@ -1794,9 +1689,11 @@ def test_build_rhime_multisector_model_allows_prior_only_regions(
 
     model = build_rhime_multisector_model(
         inv_inputs,
-        sectors=["FF", "ocean"],
-        sector_sources={"FF": "total-ukghg-edgar7", "ocean": "sector-2"},
-        **builder_args,
+        sectors=(
+            _sector("FF", source="total-ukghg-edgar7"),
+            _sector("ocean", source="sector-2"),
+        ),
+        **_multisector_args(builder_args),
     )
 
     assert "x_ff" in model.named_vars
@@ -1810,9 +1707,11 @@ def test_build_rhime_multisector_model_rejects_duplicate_sector_source_mappings(
     with pytest.raises(ValueError, match="source 'total-ukghg-edgar7'.*\\['FF', 'other'\\]"):
         build_rhime_multisector_model(
             multisector_inv_inputs,
-            sectors=["FF", "other"],
-            sector_sources={"FF": "total-ukghg-edgar7", "other": "total-ukghg-edgar7"},
-            **builder_args,
+            sectors=(
+                _sector("FF", source="total-ukghg-edgar7"),
+                _sector("other", source="total-ukghg-edgar7"),
+            ),
+            **_multisector_args(builder_args),
         )
 
 
@@ -1824,44 +1723,25 @@ def test_build_rhime_multisector_model_names_sector_and_missing_source(
     with pytest.raises(ValueError, match="sector 'FF' -> source 'missing-inventory'"):
         build_rhime_multisector_model(
             multisector_inv_inputs,
-            sectors=["FF", "ocean"],
-            sector_sources={"FF": "missing-inventory", "ocean": "sector-2"},
-            **builder_args,
+            sectors=(
+                _sector("FF", source="missing-inventory"),
+                _sector("ocean", source="sector-2"),
+            ),
+            **_multisector_args(builder_args),
         )
 
 
-@pytest.mark.parametrize(
-    ("sector_priors", "error_fragment"),
-    [
-        (
-            {"FF": {"pdf": "normal", "mu": 1.0, "sigma": 0.2}},
-            "missing sector prior\\(s\\): \\['ocean'\\]",
-        ),
-        (
-            {
-                "FF": {"pdf": "normal", "mu": 1.0, "sigma": 0.2},
-                "ocean": {"pdf": "normal", "mu": 1.0, "sigma": 0.3},
-                "typo": {"pdf": "normal", "mu": 1.0, "sigma": 0.4},
-            },
-            "unused sector prior key\\(s\\): \\['typo'\\]",
-        ),
-    ],
-)
-def test_build_rhime_multisector_model_requires_exact_sector_prior_keys(
-    multisector_inv_inputs: xr.Dataset,
-    builder_args: dict,
-    sector_priors: dict[str, dict[str, Any]],
-    error_fragment: str,
-) -> None:
-    """Explicit per-sector priors must be complete and contain no unused keys."""
-    with pytest.raises(ValueError, match=error_fragment):
-        build_rhime_multisector_model(
-            multisector_inv_inputs,
-            sectors=["FF", "ocean"],
-            sector_sources={"FF": "total-ukghg-edgar7", "ocean": "sector-2"},
-            sector_priors=sector_priors,
-            **builder_args,
-        )
+def test_direct_multisector_builder_has_one_sector_argument() -> None:
+    """Sector specifications replace parallel source, suffix, prior, and policy maps."""
+    parameters = inspect.signature(build_rhime_multisector_model).parameters
+    assert "sectors" in parameters
+    assert {
+        "sector_sources",
+        "sector_variable_suffixes",
+        "sector_priors",
+        "sector_state_activities",
+        "x_prior",
+    }.isdisjoint(parameters)
 
 
 def test_concrete_multisector_model_rejects_reparameterized_name_collisions(
@@ -1879,156 +1759,74 @@ def test_concrete_multisector_model_rejects_reparameterized_name_collisions(
     with pytest.raises(ValueError, match="x_ff_latent.*already exists"):
         build_rhime_multisector_model(
             multisector_inv_inputs,
-            sectors=["FF", "other"],
-            sector_sources={"FF": "total-ukghg-edgar7", "other": "sector-2"},
-            sector_variable_suffixes={"FF": "ff", "other": "ff_latent"},
-            sector_priors={"FF": reparameterized_prior, "other": reparameterized_prior},
-            **builder_args,
+            sectors=(
+                _sector(
+                    "FF",
+                    source="total-ukghg-edgar7",
+                    suffix="ff",
+                    prior=reparameterized_prior,
+                ),
+                _sector(
+                    "other",
+                    source="sector-2",
+                    suffix="ff_latent",
+                    prior=reparameterized_prior,
+                ),
+            ),
+            **_multisector_args(builder_args),
         )
 
 
-def test_compiled_multisector_model_preflights_reparameterized_name_collisions(
-    multisector_inv_inputs: xr.Dataset,
-    builder_args: dict,
-) -> None:
-    """The opt-in compiler retains whole-plan generated-name validation."""
-    reparameterized_prior = {
-        "pdf": "lognormal",
-        "mean": 1.0,
-        "stdev": 0.2,
-        "reparameterise": True,
-    }
-
-    with pytest.raises(ValueError, match="backend names"):
-        rhime_models_module._build_compiled_rhime_multisector_model(
-            multisector_inv_inputs,
-            sectors=["FF", "other"],
-            sector_sources={"FF": "total-ukghg-edgar7", "other": "sector-2"},
-            sector_variable_suffixes={"FF": "ff", "other": "ff_latent"},
-            sector_priors={"FF": reparameterized_prior, "other": reparameterized_prior},
-            **builder_args,
-        )
 
 
-def test_public_rhime_builders_default_to_concrete_construction(
-    monkeypatch: pytest.MonkeyPatch,
-    rhime_inv_inputs: xr.Dataset,
-    multisector_inv_inputs: xr.Dataset,
-    builder_args: dict,
-) -> None:
-    """Public concrete builders do not invoke the private compiler."""
-
-    def fail_compile(plan: _FluxPlan) -> Any:
-        raise AssertionError("Concrete builders must not invoke the flux compiler.")
-
-    monkeypatch.setattr(rhime_models_module, "_compile_loop_sum", fail_compile)
-
-    build_rhime_model(rhime_inv_inputs, **builder_args)
-    build_rhime_multisector_model(
-        multisector_inv_inputs,
-        sectors=["FF", "ocean"],
-        sector_sources={"FF": "total-ukghg-edgar7", "ocean": "sector-2"},
-        sector_variable_suffixes={"FF": "ff", "ocean": "ocean"},
-        **builder_args,
-    )
-
-    model_spec = RhimeModelSpec(species="ch4", domain="EUROPE", sectors=())
-    assert model_spec.builder_strategy == "concrete"
-    assert (
-        inspect.signature(RhimeModelSpec).parameters["builder_strategy"].kind
-        is inspect.Parameter.KEYWORD_ONLY
-    )
 
 
-def test_opt_in_compiled_builders_share_loop_sum_compiler(
-    monkeypatch: pytest.MonkeyPatch,
-    rhime_inv_inputs: xr.Dataset,
-    multisector_inv_inputs: xr.Dataset,
-    builder_args: dict,
-) -> None:
-    """Both opt-in builders normalize fluxes through the private compiler."""
-    captured_plans: list[_FluxPlan] = []
-
-    def compile_spy(plan: _FluxPlan) -> Any:
-        captured_plans.append(plan)
-        return rhime_compiler_module._compile_loop_sum(plan)
-
-    monkeypatch.setattr(rhime_models_module, "_compile_loop_sum", compile_spy)
-
-    rhime_models_module._build_compiled_rhime_model(rhime_inv_inputs, **builder_args)
-    rhime_models_module._build_compiled_rhime_multisector_model(
-        multisector_inv_inputs,
-        sectors=["FF", "ocean"],
-        sector_sources={"FF": "total-ukghg-edgar7", "ocean": "sector-2"},
-        sector_variable_suffixes={"FF": "ff", "ocean": "ocean"},
-        **builder_args,
-    )
-
-    assert len(captured_plans) == 2
-    standard_plan, multisector_plan = captured_plans
-    assert [state.variable_name for state in standard_plan.states] == ["x"]
-    assert [term.deterministic_name for term in standard_plan.terms] == ["mu"]
-    assert [state.variable_name for state in multisector_plan.states] == ["x_ff", "x_ocean"]
-    assert [term.deterministic_name for term in multisector_plan.terms] == ["mu_ff", "mu_ocean"]
 
 
-def test_concrete_and_compiled_standard_models_are_equivalent(
+def test_standard_model_preserves_reparameterized_prior_and_forward_equation(
     rhime_inv_inputs: xr.Dataset,
     builder_args: dict,
 ) -> None:
-    """Float32 sensitivities and the default reparameterized prior retain parity."""
+    """The concrete graph preserves its reparameterized prior and forward equation."""
     inv_inputs = rhime_inv_inputs.copy()
     inv_inputs["H"] = inv_inputs["H"].astype(np.float32)
     kwargs = {**builder_args, "x_prior": None}
-    concrete = build_rhime_model(inv_inputs, **kwargs)
-    compiled = rhime_models_module._build_compiled_rhime_model(inv_inputs, **kwargs)
+    model = build_rhime_model(inv_inputs, **kwargs)
 
-    assert set(concrete.named_vars) == set(compiled.named_vars)
-    assert concrete.named_vars_to_dims == compiled.named_vars_to_dims
-    assert {"x", "x_latent", "mu"}.issubset(concrete.named_vars)
-    assert concrete.named_vars_to_dims["x"] == concrete.named_vars_to_dims["x_latent"]
-    np.testing.assert_allclose(concrete["hx"].get_value(), compiled["hx"].get_value())
-    np.testing.assert_allclose(concrete["hbc"].get_value(), compiled["hbc"].get_value())
-    assert concrete["hx"].get_value().dtype == np.dtype("float32")
-    assert compiled["hx"].get_value().dtype == np.dtype("float32")
+    assert {"x", "x_latent", "mu"}.issubset(model.named_vars)
+    assert model.named_vars_to_dims["x"] == model.named_vars_to_dims["x_latent"]
+    np.testing.assert_allclose(model["hx"].get_value(), inv_inputs["H"].T.values)
+    np.testing.assert_allclose(model["hbc"].get_value(), inv_inputs["H_bc"].T.values)
 
     var_names = ["x_latent", "x", "mu", "mu_bc", "sigma", "epsilon"]
-    with concrete:
-        concrete_prior = pm.sample_prior_predictive(
+    with model:
+        prior = pm.sample_prior_predictive(
             draws=2,
             var_names=var_names,
             random_seed=402,
         )
-    with compiled:
-        compiled_prior = pm.sample_prior_predictive(
-            draws=2,
-            var_names=var_names,
-            random_seed=402,
-        )
-    concrete_dataset = cast(Any, concrete_prior).prior
-    compiled_dataset = cast(Any, compiled_prior).prior
-    xr.testing.assert_allclose(concrete_dataset, compiled_dataset)
+    prior_dataset = cast(Any, prior).prior
 
     registered_h = xr.DataArray(
-        concrete["hx"].get_value(),
+        model["hx"].get_value(),
         dims=("nmeasure", "region"),
         coords={
-            "nmeasure": concrete_dataset["nmeasure"],
-            "region": concrete_dataset["region"],
+            "nmeasure": prior_dataset["nmeasure"],
+            "region": prior_dataset["region"],
         },
     )
-    expected_mu = xr.dot(concrete_dataset["x"], registered_h, dim="region")
+    expected_mu = xr.dot(prior_dataset["x"], registered_h, dim="region")
     xr.testing.assert_allclose(
-        concrete_dataset["mu"],
-        expected_mu.transpose(*concrete_dataset["mu"].dims).rename("mu"),
+        prior_dataset["mu"],
+        expected_mu.transpose(*prior_dataset["mu"].dims).rename("mu"),
     )
 
 
-def test_concrete_and_compiled_standard_models_prune_exact_zero_states(
+def test_standard_model_prunes_exact_zero_states(
     rhime_inv_inputs: xr.Dataset,
     builder_args: dict,
 ) -> None:
-    """Concrete and compiled graphs retain full state around an active prior."""
+    """The concrete graph retains full state around an active prior."""
     inv_inputs = rhime_inv_inputs.copy(deep=True)
     first_region = inv_inputs["H"].coords["region"][0]
     inv_inputs["H"].loc[{"region": first_region}] = 0.0
@@ -2039,37 +1837,20 @@ def test_concrete_and_compiled_standard_models_prune_exact_zero_states(
         "state_activity": StateActivity(),
     }
 
-    concrete = build_rhime_model(inv_inputs, **kwargs)
-    compiled = rhime_models_module._build_compiled_rhime_model(inv_inputs, **kwargs)
+    model = build_rhime_model(inv_inputs, **kwargs)
 
-    assert set(concrete.named_vars) == set(compiled.named_vars)
-    assert concrete.named_vars_to_dims == compiled.named_vars_to_dims
-    np.testing.assert_array_equal(
-        concrete["x_is_active"].eval(),
-        compiled["x_is_active"].eval(),
-    )
-    assert not bool(concrete["x_is_active"].eval()[0])
-    assert concrete["x_active"] in concrete.free_RVs
-    assert compiled["x_active"] in compiled.free_RVs
-    with concrete:
-        concrete_prior = pm.sample_prior_predictive(
+    assert not bool(model["x_is_active"].eval()[0])
+    assert model["x_active"] in model.free_RVs
+    with model:
+        prior = pm.sample_prior_predictive(
             draws=2,
             var_names=["x_active", "x", "mu"],
             random_seed=417,
         )
-    with compiled:
-        compiled_prior = pm.sample_prior_predictive(
-            draws=2,
-            var_names=["x_active", "x", "mu"],
-            random_seed=417,
-        )
-    xr.testing.assert_allclose(
-        cast(Any, concrete_prior).prior,
-        cast(Any, compiled_prior).prior,
-    )
+    assert cast(Any, prior).prior["mu"].shape[-1] == inv_inputs.sizes["nmeasure"]
 
 
-def test_concrete_and_compiled_models_support_all_fixed_flux_and_bc(
+def test_standard_model_supports_all_fixed_flux_and_bc(
     rhime_inv_inputs: xr.Dataset,
     builder_args: dict,
 ) -> None:
@@ -2081,30 +1862,16 @@ def test_concrete_and_compiled_models_support_all_fixed_flux_and_bc(
         "bc_state_activity": StateActivity(active=False, fixed_value=1.5),
     }
 
-    concrete = build_rhime_model(rhime_inv_inputs, **kwargs)
-    compiled = rhime_models_module._build_compiled_rhime_model(rhime_inv_inputs, **kwargs)
+    model = build_rhime_model(rhime_inv_inputs, **kwargs)
 
-    assert set(concrete.named_vars) == set(compiled.named_vars)
-    assert concrete.named_vars_to_dims == compiled.named_vars_to_dims
-    for model in (concrete, compiled):
-        assert model["x"] not in model.free_RVs
-        assert model["bc"] not in model.free_RVs
-        assert "x_active" not in model.named_vars
-        assert "bc_active" not in model.named_vars
-        np.testing.assert_allclose(model["x"].eval(), 2.0)
-        np.testing.assert_allclose(model["bc"].eval(), 1.5)
-        _assert_model_dot_matches_numpy(
-            model,
-            output_name="mu",
-            design_name="hx",
-            state_name="x",
-        )
-        _assert_model_dot_matches_numpy(
-            model,
-            output_name="mu_bc",
-            design_name="hbc",
-            state_name="bc",
-        )
+    assert model["x"] not in model.free_RVs
+    assert model["bc"] not in model.free_RVs
+    assert "x_active" not in model.named_vars
+    assert "bc_active" not in model.named_vars
+    np.testing.assert_allclose(model["x"].eval(), 2.0)
+    np.testing.assert_allclose(model["bc"].eval(), 1.5)
+    _assert_model_dot_matches_numpy(model, output_name="mu", design_name="hx", state_name="x")
+    _assert_model_dot_matches_numpy(model, output_name="mu_bc", design_name="hbc", state_name="bc")
 
 
 def test_bc_activity_is_opt_in_and_restores_exact_zero_columns(
@@ -2122,88 +1889,125 @@ def test_bc_activity_is_opt_in_and_restores_exact_zero_columns(
     assert "bc_active" not in default_model.named_vars
     assert "bc_is_active" not in default_model.named_vars
 
-    for model in (
-        build_rhime_model(inv_inputs, bc_state_activity=StateActivity(), **kwargs),
-        rhime_models_module._build_compiled_rhime_model(
-            inv_inputs,
-            bc_state_activity=StateActivity(),
-            **kwargs,
-        ),
-    ):
-        assert model["bc_active"] in model.free_RVs
-        assert model["bc"] not in model.free_RVs
-        assert not bool(model["bc_is_active"].eval()[0])
-        assert model["bc"].eval()[0] == 1.0
-        registry = models.get_coord_registry(model)
-        assert registry is not None
-        assert list(registry.original_coords["bc_region_bc_active"]) == list(
-            inv_inputs["H_bc"].indexes["bc_region"][1:]
-        )
-        _assert_model_dot_matches_numpy(
-            model,
-            output_name="mu_bc",
-            design_name="hbc",
-            state_name="bc",
-        )
+    model = build_rhime_model(inv_inputs, bc_state_activity=StateActivity(), **kwargs)
+    assert model["bc_active"] in model.free_RVs
+    assert model["bc"] not in model.free_RVs
+    assert not bool(model["bc_is_active"].eval()[0])
+    assert model["bc"].eval()[0] == 1.0
+    registry = models.get_coord_registry(model)
+    assert registry is not None
+    assert list(registry.original_coords["bc_region_bc_active"]) == list(
+        inv_inputs["H_bc"].indexes["bc_region"][1:]
+    )
+    _assert_model_dot_matches_numpy(model, output_name="mu_bc", design_name="hbc", state_name="bc")
 
 
-def test_compiled_multisector_model_rejects_unknown_state_activity_sector(
+
+
+def test_multisector_model_preserves_additive_semantics(
     multisector_inv_inputs: xr.Dataset,
     builder_args: dict,
 ) -> None:
-    """Compiler normalization rejects activity overrides for absent sectors."""
-    with pytest.raises(ValueError, match="unknown sector.*missing"):
-        rhime_models_module._build_compiled_rhime_multisector_model(
-            multisector_inv_inputs,
-            sectors=["FF", "ocean"],
-            sector_sources={"FF": "total-ukghg-edgar7", "ocean": "sector-2"},
-            sector_state_activities={"missing": StateActivity(active=False)},
-            **builder_args,
-        )
+    """The concrete multisector graph preserves additive semantics."""
+    captured: dict[str, Any] = {}
 
+    def capture_likelihood(data: xr.Dataset, /, **kwargs: Any) -> Any:
+        """Capture the unnamed pollution sum used by the likelihood."""
+        captured.update(kwargs)
+        return build_pollution_event_gaussian_likelihood(data, **kwargs)
 
-def test_concrete_and_compiled_multisector_models_are_equivalent(
-    multisector_inv_inputs: xr.Dataset,
-    builder_args: dict,
-) -> None:
-    """Concrete and compiled multisector graphs preserve additive semantics."""
     kwargs = {
-        "sectors": ["FF", "ocean"],
-        "sector_sources": {"FF": "total-ukghg-edgar7", "ocean": "sector-2"},
-        "sector_variable_suffixes": {"FF": "ff", "ocean": "ocean"},
-        **builder_args,
+        "sectors": (
+            _sector("FF", source="total-ukghg-edgar7", suffix="ff"),
+            _sector("ocean", source="sector-2", suffix="ocean"),
+        ),
+        "likelihood_builder": capture_likelihood,
+        **_multisector_args(builder_args),
     }
-    concrete = build_rhime_multisector_model(multisector_inv_inputs, **kwargs)
-    compiled = rhime_models_module._build_compiled_rhime_multisector_model(
-        multisector_inv_inputs,
-        **kwargs,
+    model = build_rhime_multisector_model(multisector_inv_inputs, **kwargs)
+
+    pollution, ff, ocean = pm.draw(
+        [captured["pollution_mean"], model["mu_ff"], model["mu_ocean"]],
+        draws=2,
+        random_seed=403,
+    )
+    np.testing.assert_allclose(pollution, ff + ocean)
+    assert "mu" not in model.named_vars
+
+
+@pytest.mark.parametrize(
+    ("use_bc", "add_offset", "preserve_legacy", "expected_baseline"),
+    [
+        (True, False, False, "mu_bc"),
+        (False, True, False, "offset"),
+        (True, True, False, None),
+        (True, True, True, "mu_bc"),
+        (False, False, False, None),
+    ],
+)
+def test_builtin_baseline_roles_describe_persisted_terms(
+    use_bc: bool,
+    add_offset: bool,
+    preserve_legacy: bool,
+    expected_baseline: str | None,
+) -> None:
+    """Whole-model roles do not invent a persisted complete baseline."""
+    model_spec, _, _ = _minimal_output_specs(output_format="none")
+    model_spec = replace(model_spec, use_bc=use_bc, add_offset=add_offset)
+
+    result = rhime_model_building.builtin_model_build_result(
+        pm.Model(),
+        model_spec=model_spec,
+        multisector=False,
+        input_names=_minimal_output_inv_inputs().data_vars,
+        preserve_legacy_baseline=preserve_legacy,
     )
 
-    assert set(concrete.named_vars) == set(compiled.named_vars)
-    assert concrete.named_vars_to_dims == compiled.named_vars_to_dims
-    for name in ("hx_ff", "hx_ocean", "hbc"):
-        np.testing.assert_allclose(concrete[name].get_value(), compiled[name].get_value())
+    assert result.variable_roles.get("baseline") == expected_baseline
+    assert ("boundary" in result.variable_roles) is use_bc
+    assert ("offset" in result.variable_roles) is add_offset
 
-    var_names = ["x_ff", "mu_ff", "x_ocean", "mu_ocean", "mu"]
-    with concrete:
-        concrete_prior = pm.sample_prior_predictive(
-            draws=2,
-            var_names=var_names,
-            random_seed=403,
-        )
-    with compiled:
-        compiled_prior = pm.sample_prior_predictive(
-            draws=2,
-            var_names=var_names,
-            random_seed=403,
-        )
-    concrete_dataset = cast(Any, concrete_prior).prior
-    compiled_dataset = cast(Any, compiled_prior).prior
-    xr.testing.assert_allclose(concrete_dataset, compiled_dataset)
-    xr.testing.assert_allclose(
-        concrete_dataset["mu"],
-        concrete_dataset["mu_ff"] + concrete_dataset["mu_ocean"],
+
+def test_whole_model_validation_accepts_decomposed_baseline_roles() -> None:
+    """Derived outputs need boundary and offset terms, not a persisted sum."""
+    model_spec, _, base_run_spec = _minimal_output_specs(output_format="basic")
+    model_spec = replace(model_spec, use_bc=True, add_offset=True)
+    run_spec = replace(base_run_spec, model=model_spec)
+    prepared = RhimePreparedInputs(
+        inv_inputs=_minimal_output_inv_inputs(),
+        basis_functions=_fake_basis_functions(),
+        site_metadata=_prepared_site_metadata(),
     )
+    with pm.Model() as model:
+        for name in ("y", "epsilon", "x", "mu", "hx", "bc", "hbc", "mu_bc", "offset"):
+            pm.Data(name, np.zeros(1))
+    result = RhimeModelBuildResult(
+        model=model,
+        variable_roles={
+            "observation": "mf",
+            "observation_error": "mf_error",
+            "observation_repeatability": "mf_repeatability",
+            "observation_variability": "mf_variability",
+            "minimum_error": "min_error",
+            "concentration": "y",
+            "model_error": "epsilon",
+            "flux_scale": "x",
+            "flux_contribution": "mu",
+            "emissions_sensitivity": "hx",
+            "baseline_scale": "bc",
+            "baseline_sensitivity": "hbc",
+            "boundary": "mu_bc",
+            "offset": "offset",
+        },
+        supported_output_formats=("none", "basic"),
+    )
+    context = RhimeModelBuilderContext(
+        prepared_inputs=prepared,
+        run_spec=run_spec,
+        multisector=False,
+    )
+
+    rhime_builders.validate_model_build_result(result, context=context)
 
 
 def test_build_rhime_multisector_model_requires_multiple_sectors(
@@ -2212,21 +2016,51 @@ def test_build_rhime_multisector_model_requires_multiple_sectors(
     with pytest.raises(ValueError, match="at least two sectors"):
         build_rhime_multisector_model(
             multisector_inv_inputs,
-            sectors=["total-ukghg-edgar7"],
-            **builder_args,
+            sectors=(_sector("total-ukghg-edgar7"),),
+            **_multisector_args(builder_args),
         )
 
 
-def test_models_exports_rhime_builders() -> None:
-    assert models.build_rhime_model is build_rhime_model
-    assert models.build_rhime_model_from_spec is build_rhime_model_from_spec
-    assert models.build_rhime_multisector_model is build_rhime_multisector_model
-    assert models.build_rhime_multisector_model_from_spec is build_rhime_multisector_model_from_spec
-    assert models.safe_pymc_name is safe_pymc_name
-    assert isinstance(models.DEFAULT_X_PRIOR, dict)
-    assert isinstance(models.DEFAULT_BC_PRIOR, dict)
-    assert isinstance(models.DEFAULT_SIGMA_PRIOR, dict)
-    assert isinstance(models.DEFAULT_OFFSET_PRIOR, dict)
+def test_concrete_rhime_builders_are_owned_by_recipe_modules() -> None:
+    assert build_rhime_model.__module__ == "openghg_inversions.rhime.standard"
+    assert _build_standard_rhime_model_from_spec.__module__ == "openghg_inversions.rhime.standard"
+    assert build_rhime_multisector_model.__module__ == "openghg_inversions.rhime.multisector"
+    assert _build_multisector_rhime_model_from_spec.__module__ == "openghg_inversions.rhime.multisector"
+    assert rhime_public.build_standard_rhime_model is build_rhime_model
+    assert rhime_public.build_multisector_rhime_model is build_rhime_multisector_model
+
+    rhime_specific_names = {
+        "RhimeModelSpec",
+        "SectorSpec",
+        "DEFAULT_X_PRIOR",
+        "safe_pymc_name",
+    }
+    assert rhime_specific_names.isdisjoint(vars(models))
+    assert "_build_standard_rhime_model_from_spec" not in rhime_public.__all__
+    assert "_build_multisector_rhime_model_from_spec" not in rhime_public.__all__
+    assert "build_rhime_model" not in rhime_public.__all__
+    assert "build_rhime_multisector_model" not in rhime_public.__all__
+
+
+@pytest.mark.parametrize(
+    "module_name",
+    [
+        "openghg_inversions.models",
+        "openghg_inversions.rhime",
+        "openghg_inversions.rhime.standard",
+        "openghg_inversions.rhime.multisector",
+    ],
+)
+def test_rhime_modules_import_independently_in_fresh_process(module_name: str) -> None:
+    """Recipe imports do not rely on a preloaded models-to-RHIME facade."""
+    completed = subprocess.run(
+        [sys.executable, "-c", f"import {module_name}"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr
 
 
 def test_resolve_flux_sources_prefers_new_name() -> None:
@@ -2245,6 +2079,13 @@ def test_direct_sector_spec_records_source_backing() -> None:
 
     assert sector.name == "FF"
     assert sector.flux_source == "ff-inventory"
+
+
+def test_rhime_model_spec_has_no_legacy_strategy_or_activity_mapping() -> None:
+    """The model spec keeps one graph and one shared state-activity policy."""
+    parameters = inspect.signature(RhimeModelSpec).parameters
+    assert "builder_strategy" not in parameters
+    assert "sector_state_activities" not in parameters
 
 
 def test_public_rhime_dataclasses_keep_existing_positional_order() -> None:
@@ -2292,7 +2133,6 @@ def test_public_rhime_dataclasses_keep_existing_positional_order() -> None:
 
     assert run_spec.split_by_sectors is True
     assert model_spec.state_activity is None
-    assert model_spec.sector_state_activities is None
     assert not hasattr(run_spec, "sampler")
     assert not hasattr(run_spec, "sampling")
     assert result.output_metadata == output_metadata
@@ -2355,12 +2195,6 @@ def test_run_rhime_from_prepared_inputs_routes_without_preparation(
     def fail_prepare(**kwargs: Any) -> None:
         raise AssertionError("prepared runs must not call prepare_rhime_inputs")
 
-    def fail_setup(**kwargs: Any) -> None:
-        raise AssertionError("prepared runs must not normalize runner parameters")
-
-    def fail_config(*args: Any, **kwargs: Any) -> None:
-        raise AssertionError("prepared runs must not normalize config parameters")
-
     def materialize(
         actual_prepared: RhimePreparedInputs,
         *,
@@ -2394,12 +2228,10 @@ def test_run_rhime_from_prepared_inputs_routes_without_preparation(
         return expected_result
 
     monkeypatch.setattr(prep_module, "prepare_rhime_inputs", fail_prepare)
-    monkeypatch.setattr(rhime_module, "resolve_rhime_options", fail_setup)
-    monkeypatch.setattr(rhime_module, "params_from_config", fail_config)
     monkeypatch.setattr(rhime_prepared, "materialize_pymc_inputs", materialize)
     monkeypatch.setattr(
         rhime_prepared,
-        "build_standard_rhime_model" if sector_count == 1 else "build_multisector_rhime_model",
+        "build_standard_rhime_model_result" if sector_count == 1 else "build_multisector_rhime_model_result",
         build,
     )
     monkeypatch.setattr(rhime_prepared, "sample_rhime_model", sample)
@@ -2429,12 +2261,12 @@ def test_run_rhime_from_prepared_inputs_routes_without_preparation(
         "external_data",
     ),
     [
-        ("run_rhime", "build_standard_rhime_model", "make_standard_rhime_result", False, False, False),
-        ("run_rhime", "build_standard_rhime_model", "make_standard_rhime_result", False, False, True),
-        ("run_rhime", "build_standard_rhime_model", "make_standard_rhime_result", False, True, False),
+        ("run_rhime", "build_standard_rhime_model_result", "make_standard_rhime_result", False, False, False),
+        ("run_rhime", "build_standard_rhime_model_result", "make_standard_rhime_result", False, False, True),
+        ("run_rhime", "build_standard_rhime_model_result", "make_standard_rhime_result", False, True, False),
         (
             "run_rhime_multisector",
-            "build_multisector_rhime_model",
+            "build_multisector_rhime_model_result",
             "make_multisector_rhime_result",
             True,
             False,
@@ -2442,7 +2274,7 @@ def test_run_rhime_from_prepared_inputs_routes_without_preparation(
         ),
         (
             "run_rhime_multisector",
-            "build_multisector_rhime_model",
+            "build_multisector_rhime_model_result",
             "make_multisector_rhime_result",
             True,
             True,
@@ -2546,7 +2378,7 @@ def test_public_rhime_runners_follow_named_stage_order(
 
     def build(**kwargs: Any) -> RhimeModelBuildResult:
         """Record the recipe-specific public model build."""
-        expected_builder = build_absolute_sigma_gaussian_likelihood if custom_likelihood else None
+        expected_builder = additive_sigma_likelihood_builder if custom_likelihood else None
         assert kwargs["likelihood_builder"] is expected_builder
         calls.append("build")
         return build_result
@@ -2554,13 +2386,13 @@ def test_public_rhime_runners_follow_named_stage_order(
     def sample(*args: Any, **kwargs: Any) -> az.InferenceData:
         """Record public sampling."""
         assert args == (build_result, sampler)
-        assert kwargs == {"use_variable_roles": custom_likelihood}
+        assert kwargs == {}
         calls.append("sample")
         return idata
 
     def result(**kwargs: Any) -> RhimeResult:
         """Record the recipe-specific public result stage."""
-        expected_builder = build_absolute_sigma_gaussian_likelihood if custom_likelihood else None
+        expected_builder = additive_sigma_likelihood_builder if custom_likelihood else None
         assert kwargs["likelihood_builder"] is expected_builder
         calls.append("result")
         return expected
@@ -2581,7 +2413,7 @@ def test_public_rhime_runners_follow_named_stage_order(
     if external_data:
         runner_kwargs["merged_data"] = external_merged
     if custom_likelihood:
-        runner_kwargs["likelihood_builder"] = build_absolute_sigma_gaussian_likelihood
+        runner_kwargs["likelihood_builder"] = additive_sigma_likelihood_builder
     actual = getattr(recipe_module, runner_name)(**runner_kwargs)
 
     assert actual is expected
@@ -2632,6 +2464,7 @@ def test_ordinary_runners_reject_noncallable_likelihood_before_config_and_prepar
         """Prove no downstream runner boundary is entered."""
         raise AssertionError("invalid likelihood must fail at the public boundary")
 
+    recipe_module = rhime_multisector if runner is run_rhime_multisector else rhime_standard
     for stage in (
         "params_from_config",
         "resolve_rhime_options",
@@ -2639,7 +2472,7 @@ def test_ordinary_runners_reject_noncallable_likelihood_before_config_and_prepar
         "assemble_rhime_inputs",
         "materialize_pymc_inputs",
     ):
-        monkeypatch.setattr(rhime_module, stage, fail_stage)
+        monkeypatch.setattr(recipe_module, stage, fail_stage)
 
     with pytest.raises(TypeError, match="likelihood_builder.*callable"):
         runner(
@@ -2683,26 +2516,35 @@ def test_rhime_public_package_exports_supported_orchestration_stages() -> None:
         "assemble_rhime_inputs",
         "with_prepared_rhime_sites",
         "materialize_pymc_inputs",
-        "build_standard_rhime_model",
-        "build_multisector_rhime_model",
+        "build_standard_rhime_model_result",
+        "build_multisector_rhime_model_result",
         "sample_rhime_model",
         "make_standard_rhime_result",
         "make_multisector_rhime_result",
     )
 
     for name in stage_names:
-        assert getattr(rhime_public, name) is getattr(rhime_module, name)
         assert name in rhime_public.__all__
+        assert getattr(rhime_public, name) is not None
 
 
 def test_standard_and_multisector_runners_are_owned_by_readable_recipe_modules() -> None:
-    """Compatibility imports do not retain a hidden scientific workflow."""
+    """The public runners are owned directly by readable recipe modules."""
     assert run_rhime.__module__ == "openghg_inversions.rhime.standard"
     assert run_rhime_multisector.__module__ == "openghg_inversions.rhime.multisector"
     assert run_rhime_from_prepared_inputs.__module__ == "openghg_inversions.rhime.prepared"
 
-    runner_tree = ast.parse(Path(rhime_module.__file__).read_text(encoding="utf-8"))
-    assert not any(isinstance(node, ast.FunctionDef | ast.ClassDef) for node in runner_tree.body)
+
+def test_rhime_package_does_not_reexport_cross_owner_components() -> None:
+    """Reusable model and error components remain under their owner modules."""
+    cross_owner_names = {
+        "add_additive_sigma_gaussian_likelihood",
+        "build_pollution_event_gaussian_likelihood",
+        "select_aggregation_error_mode",
+    }
+
+    assert cross_owner_names.isdisjoint(rhime_public.__all__)
+    assert cross_owner_names.isdisjoint(vars(rhime_public))
 
 
 @pytest.mark.parametrize("recipe", [run_rhime, run_rhime_multisector])
@@ -2719,18 +2561,12 @@ def test_each_rhime_recipe_keeps_the_scientific_process_visible(recipe: Callable
         "assemble_rhime_inputs",
         "with_prepared_rhime_sites",
         "materialize_pymc_inputs",
-        "build_multisector_rhime_model" if multisector else "build_standard_rhime_model",
+        "build_multisector_rhime_model_result" if multisector else "build_standard_rhime_model_result",
         "sample_rhime_model",
         "make_multisector_rhime_result" if multisector else "make_standard_rhime_result",
     )
     positions = [source.index(stage) for stage in stages]
     assert positions == sorted(positions)
-
-
-def test_rhime_public_package_exports_aggregation_error_mode_selector() -> None:
-    """Likelihood examples can preflight covariance mode through the RHIME API."""
-    assert rhime_public.select_aggregation_error_mode is rhime_module.select_aggregation_error_mode
-    assert "select_aggregation_error_mode" in rhime_public.__all__
 
 
 def test_external_merged_data_bypasses_acquisition_without_mutation(
@@ -2819,7 +2655,6 @@ def test_public_stages_compose_as_complete_external_runner(monkeypatch: pytest.M
     basis_fixture = _fake_basis_functions()
     site_data_fixture = {"TAC": xr.Dataset(coords={"time": pd.to_datetime(["2019-01-01"])})}
     inv_inputs_fixture = _minimal_output_inv_inputs()
-    built_model = pm.Model()
     idata = _minimal_output_idata()
 
     monkeypatch.setattr(prep_module, "_prepare_merged_data", lambda **kwargs: merged_fixture)
@@ -2830,8 +2665,7 @@ def test_public_stages_compose_as_complete_external_runner(monkeypatch: pytest.M
         lambda **kwargs: site_data_fixture,
     )
     monkeypatch.setattr(prep_module, "_make_inv_inputs", lambda **kwargs: inv_inputs_fixture)
-    monkeypatch.setattr(rhime_standard, "build_rhime_model_from_spec", lambda *args, **kwargs: built_model)
-    monkeypatch.setattr(RhimeSampler, "sample", lambda self, model: idata)
+    monkeypatch.setattr(RhimeSampler, "sample", lambda self, model, **kwargs: idata)
 
     setup = rhime_public.resolve_rhime_options(
         params={
@@ -2868,7 +2702,7 @@ def test_public_stages_compose_as_complete_external_runner(monkeypatch: pytest.M
         prepared,
         aggregation_error_mode=run_spec.model.aggregation_error_mode,
     )
-    build_result = rhime_public.build_standard_rhime_model(
+    build_result = rhime_public.build_standard_rhime_model_result(
         prepared=prepared,
         model_inputs=model_inputs,
         run_spec=run_spec,
@@ -2885,7 +2719,7 @@ def test_public_stages_compose_as_complete_external_runner(monkeypatch: pytest.M
 
     assert result.inv_inputs is prepared.inv_inputs
     assert result.model_build_result is build_result
-    assert build_result.model is built_model
+    assert "y" in build_result.model.named_vars
     assert result.idata is idata
 
 
@@ -2993,7 +2827,7 @@ def test_complete_model_builder_validates_aggregation_error_before_execution() -
 
 @pytest.mark.parametrize(
     "build_stage",
-    [rhime_module.build_standard_rhime_model, rhime_module.build_multisector_rhime_model],
+    [rhime_standard.build_standard_rhime_model_result, rhime_multisector.build_multisector_rhime_model_result],
 )
 def test_public_build_stages_reject_simultaneous_model_and_likelihood_builders(
     build_stage: Callable[..., RhimeModelBuildResult],
@@ -3018,7 +2852,7 @@ def test_public_build_stages_reject_simultaneous_model_and_likelihood_builders(
             model_inputs=prepared.inv_inputs,
             run_spec=run_spec,
             model_builder=complete_model_builder,
-            likelihood_builder=build_absolute_sigma_gaussian_likelihood,
+            likelihood_builder=additive_sigma_likelihood_builder,
         )
 
     assert builder_calls == []
@@ -3027,7 +2861,7 @@ def test_public_build_stages_reject_simultaneous_model_and_likelihood_builders(
 def test_likelihood_builder_provenance_is_saved_with_result_metadata(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Saved output identifies a custom likelihood callable and its declared family."""
+    """Saved output identifies the ordinary custom likelihood callable."""
     model_spec, _, run_spec = _minimal_output_specs(output_format="inv_out")
     model_spec = replace(
         model_spec,
@@ -3045,8 +2879,9 @@ def test_likelihood_builder_provenance_is_saved_with_result_metadata(
         site_metadata=_prepared_site_metadata(),
     )
 
-    def verification_gaussian(context: RhimeLikelihoodContext) -> RhimeLikelihoodResult:
-        return build_absolute_sigma_gaussian_likelihood(context)
+    def verification_gaussian(data: xr.Dataset, /, **kwargs: Any) -> Any:
+        """Delegate to the installed additive-sigma likelihood."""
+        return additive_sigma_likelihood_builder(data, **kwargs)
 
     def fake_sample(
         self: RhimeSampler,
@@ -3068,11 +2903,9 @@ def test_likelihood_builder_provenance_is_saved_with_result_metadata(
 
     assert result.output_metadata["likelihood_builder"]["qualname"].endswith("verification_gaussian")
     assert result.model_build_result is not None
-    assert result.model_build_result.metadata["likelihood"]["family"] == ("absolute_sigma_gaussian")
     assert result.inv_out is not None
     saved_builder = result.inv_out.model_metadata["builder"]
     assert saved_builder["likelihood_builder"] == result.output_metadata["likelihood_builder"]
-    assert saved_builder["likelihood"]["sigma_interpretation"] == "absolute"
 
 
 def test_custom_model_builder_rejects_undeclared_output_before_sampling(
@@ -3105,11 +2938,55 @@ def test_custom_model_builder_rejects_undeclared_output_before_sampling(
         )
 
 
-@pytest.mark.rhime_contract
-def test_run_rhime_rejects_unsupported_custom_likelihood_output_before_sampling(
+def test_custom_model_builder_rejects_incomplete_derived_output_roles(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Ordinary custom likelihoods reject unsupported output before sampling."""
+    """Whole-model validation checks actual roles for derived output formats."""
+    model_spec, _, base_run_spec = _minimal_output_specs(output_format="basic")
+    model_spec = replace(model_spec, use_bc=False)
+    run_spec = replace(
+        base_run_spec,
+        model=model_spec,
+        output=RhimeOutputSpec(output_format="basic", save_inversion_output=False),
+    )
+    prepared = RhimePreparedInputs(
+        inv_inputs=_minimal_output_inv_inputs(),
+        basis_functions=_fake_basis_functions(),
+        site_metadata=_prepared_site_metadata(),
+    )
+
+    def incomplete_builder(context: RhimeModelBuilderContext) -> RhimeModelBuildResult:
+        """Declare derived-output support without its required error roles."""
+        with pm.Model() as model:
+            pm.Normal(
+                "custom_y",
+                observed=context.prepared_inputs.inv_inputs["mf"].values,
+            )
+        return RhimeModelBuildResult(
+            model=model,
+            variable_roles={"concentration": "custom_y"},
+            supported_output_formats=("none", "basic"),
+        )
+
+    monkeypatch.setattr(
+        RhimeSampler,
+        "sample",
+        lambda *args, **kwargs: pytest.fail("role validation must precede sampling"),
+    )
+
+    with pytest.raises(ValueError, match="requires variable roles absent"):
+        run_rhime_from_prepared_inputs(
+            prepared_inputs=prepared,
+            run_spec=run_spec,
+            model_builder=incomplete_builder,
+        )
+
+
+@pytest.mark.rhime_contract
+def test_run_rhime_rejects_noncanonical_custom_likelihood_before_sampling(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Ordinary custom likelihoods must create canonical graph variables."""
     model_spec, _, run_spec = _minimal_output_specs(output_format="inv_out")
     model_spec = replace(model_spec, use_bc=False)
     run_spec = replace(run_spec, model=model_spec)
@@ -3127,26 +3004,20 @@ def test_run_rhime_rejects_unsupported_custom_likelihood_output_before_sampling(
         sampler=RhimeSampler(),
     )
 
-    def sampling_only_likelihood(context: RhimeLikelihoodContext) -> RhimeLikelihoodResult:
-        """Build a valid likelihood that supports sampling-only runs."""
-        state = build_rhime_observation_state(context)
-        likelihood = pm.Normal(
+    def noncanonical_likelihood(data: xr.Dataset, /, **kwargs: Any) -> Any:
+        """Build an intentionally noncanonical likelihood variable."""
+        state = build_rhime_observation_state(data, **kwargs)
+        return pm.Normal(
             "sampling_only_y",
-            mu=state.mean,
+            mu=kwargs["mean"],
             sigma=state.error_scale,
             observed=state.observed,
-            dims=context.output_dim,
-        )
-        return RhimeLikelihoodResult(
-            likelihood=likelihood,
-            error_scale=state.error_scale,
-            variable_roles={"concentration": "sampling_only_y", "model_error": "epsilon"},
-            supported_output_formats=("none",),
+            dims=kwargs["output_dim"],
         )
 
     def fail_sample(*args: Any, **kwargs: Any) -> None:
         """Prove compatibility validation precedes sampler execution."""
-        raise AssertionError("unsupported likelihood output must fail before sampling")
+        raise AssertionError("invalid likelihood must fail before sampling")
 
     monkeypatch.setattr(rhime_standard, "resolve_rhime_options", lambda **kwargs: setup)
     monkeypatch.setattr(rhime_standard, "retrieve_or_reload_rhime_data", lambda *args, **kwargs: object())
@@ -3156,14 +3027,8 @@ def test_run_rhime_rejects_unsupported_custom_likelihood_output_before_sampling(
     monkeypatch.setattr(rhime_standard, "assemble_rhime_inputs", lambda *args, **kwargs: prepared)
     monkeypatch.setattr(RhimeSampler, "sample", fail_sample)
 
-    with pytest.raises(ValueError) as exc_info:
-        run_rhime(species="ch4", likelihood_builder=sampling_only_likelihood)
-
-    diagnostic = str(exc_info.value).lower()
-    assert "likelihood" in diagnostic
-    assert "model builder" not in diagnostic
-    assert "build result" not in diagnostic
-    assert "output_format='inv_out'" in diagnostic
+    with pytest.raises(ValueError, match="must name its observed concentration variable `y`"):
+        run_rhime(species="ch4", likelihood_builder=noncanonical_likelihood)
 
 
 @pytest.mark.parametrize(
@@ -3208,8 +3073,8 @@ def test_run_rhime_from_prepared_inputs_rejects_layout_mode_mismatch_before_exec
     def fail_execution(*args: Any, **kwargs: Any) -> None:
         raise AssertionError("layout validation must precede model building and sampling")
 
-    monkeypatch.setattr(rhime_standard, "build_rhime_model_from_spec", fail_execution)
-    monkeypatch.setattr(rhime_multisector, "build_rhime_multisector_model_from_spec", fail_execution)
+    monkeypatch.setattr(rhime_standard, "_build_standard_rhime_model_from_spec", fail_execution)
+    monkeypatch.setattr(rhime_multisector, "_build_multisector_rhime_model_from_spec", fail_execution)
     monkeypatch.setattr(RhimeSampler, "sample", fail_execution)
 
     with pytest.raises(ValueError, match="split_by_sectors.*must agree"):
@@ -3260,8 +3125,8 @@ def test_run_rhime_from_prepared_inputs_rejects_flag_h_layout_mismatch_before_ex
     def fail_execution(*args: Any, **kwargs: Any) -> None:
         raise AssertionError("H layout validation must precede model building and sampling")
 
-    monkeypatch.setattr(rhime_standard, "build_rhime_model_from_spec", fail_execution)
-    monkeypatch.setattr(rhime_multisector, "build_rhime_multisector_model_from_spec", fail_execution)
+    monkeypatch.setattr(rhime_standard, "_build_standard_rhime_model_from_spec", fail_execution)
+    monkeypatch.setattr(rhime_multisector, "_build_multisector_rhime_model_from_spec", fail_execution)
     monkeypatch.setattr(RhimeSampler, "sample", fail_execution)
 
     with pytest.raises(ValueError, match="split_by_sectors.*prepared `H` layout"):
@@ -3275,6 +3140,7 @@ def test_run_rhime_from_prepared_inputs_defaults_sampler_and_skips_none_output_w
 ) -> None:
     """Prepared standard runs default the sampler and write nothing for none output."""
     model_spec, _, run_spec = _minimal_output_specs(output_format="none")
+    model_spec = replace(model_spec, use_bc=False)
     output_spec = RhimeOutputSpec(
         output_format="none",
         output_path=str(tmp_path),
@@ -3295,15 +3161,19 @@ def test_run_rhime_from_prepared_inputs_defaults_sampler_and_skips_none_output_w
         basis_functions=_fake_basis_functions(),
         site_metadata=_prepared_site_metadata(),
     )
-    built_model = pm.Model()
     sampled_with: list[RhimeSampler] = []
 
-    def fake_sample(self: RhimeSampler, model: pm.Model) -> az.InferenceData:
+    def fake_sample(
+        self: RhimeSampler,
+        model: pm.Model,
+        *,
+        variable_roles: dict[str, str],
+    ) -> az.InferenceData:
         sampled_with.append(self)
-        assert model is built_model
+        assert "y" in model.named_vars
+        assert variable_roles["concentration"] == "y"
         return _minimal_output_idata()
 
-    monkeypatch.setattr(rhime_standard, "build_rhime_model_from_spec", lambda *args: built_model)
     monkeypatch.setattr(RhimeSampler, "sample", fake_sample)
 
     result = run_rhime_from_prepared_inputs(prepared_inputs=prepared, run_spec=run_spec)
@@ -3368,8 +3238,8 @@ def test_run_rhime_from_prepared_inputs_validates_output_before_execution(
     def fail_execution(*args: Any, **kwargs: Any) -> None:
         raise AssertionError("output validation must precede model building and sampling")
 
-    monkeypatch.setattr(rhime_standard, "build_rhime_model_from_spec", fail_execution)
-    monkeypatch.setattr(rhime_multisector, "build_rhime_multisector_model_from_spec", fail_execution)
+    monkeypatch.setattr(rhime_standard, "_build_standard_rhime_model_from_spec", fail_execution)
+    monkeypatch.setattr(rhime_multisector, "_build_multisector_rhime_model_from_spec", fail_execution)
     monkeypatch.setattr(RhimeSampler, "sample", fail_execution)
 
     with pytest.raises(ValueError, match=expected_error):
@@ -3475,7 +3345,6 @@ def test_rhime_runner_setup_builds_specs_before_preparation(tmp_path: Path) -> N
         "chains": "3",
         "sample_kwargs": {"random_seed": 42},
         "posterior_predictive_kwargs": {"random_seed": 43},
-        "builder_strategy": "compiled",
     }
 
     setup = rhime_params.make_rhime_runner_setup(
@@ -3517,11 +3386,10 @@ def test_rhime_runner_setup_builds_specs_before_preparation(tmp_path: Path) -> N
     assert setup.run_spec.model.sectors[1].x_prior == {"pdf": "normal", "mu": 0.7, "sigma": 0.2}
     assert setup.run_spec.model.sigma_freq == "8D"
     assert setup.run_spec.model.sigma_freq_anchor == "2019-01-01"
-    assert setup.run_spec.model.builder_strategy == "compiled"
 
 
-def test_rhime_runner_setup_rejects_unknown_builder_strategy() -> None:
-    """Invalid builder selection fails during setup, before data preparation."""
+def test_rhime_runner_setup_rejects_removed_builder_strategy() -> None:
+    """The former compiled strategy is no longer accepted by configuration."""
     params = {
         "species": "ch4",
         "sites": ["TAC"],
@@ -3535,7 +3403,7 @@ def test_rhime_runner_setup_rejects_unknown_builder_strategy() -> None:
         "builder_strategy": "fallback",
     }
 
-    with pytest.raises(ValueError, match="builder_strategy.*concrete.*compiled"):
+    with pytest.raises(ValueError, match="Unsupported RHIME parameter.*builder_strategy"):
         rhime_params.make_rhime_runner_setup(
             params=params,
             multisector=False,
@@ -3575,7 +3443,7 @@ def test_rhime_normalises_legacy_output_format_aliases(
     assert params["output_format"] == expected_output_format
 
 
-def test_build_rhime_model_from_spec_forwards_single_sector_prior(
+def test__build_standard_rhime_model_from_spec_forwards_single_sector_prior(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Forward sector activity and priors and construct sigma alignment."""
@@ -3589,7 +3457,7 @@ def test_build_rhime_model_from_spec_forwards_single_sector_prior(
         seen["kwargs"] = kwargs
         return sentinel
 
-    monkeypatch.setattr(rhime_models_module, "build_rhime_model", fake_build_rhime_model)
+    monkeypatch.setattr(rhime_standard, "build_standard_rhime_model", fake_build_rhime_model)
     inv_inputs = _minimal_output_inv_inputs()
     model_spec = RhimeModelSpec(
         species="ch4",
@@ -3610,7 +3478,7 @@ def test_build_rhime_model_from_spec_forwards_single_sector_prior(
         sigma_freq_anchor="2019-01-01",
     )
 
-    model = build_rhime_model_from_spec(inv_inputs, model_spec)
+    model = _build_standard_rhime_model_from_spec(inv_inputs, model_spec)
 
     assert model is sentinel
     assert seen["inv_inputs"] is inv_inputs
@@ -3626,7 +3494,7 @@ def test_build_rhime_model_from_spec_forwards_single_sector_prior(
     np.testing.assert_array_equal(alignment.period_index, np.array([0]))
 
 
-def test_build_rhime_model_from_spec_requires_one_sector() -> None:
+def test__build_standard_rhime_model_from_spec_requires_one_sector() -> None:
     """The standard spec wrapper rejects multi-sector specs."""
     model_spec = RhimeModelSpec(
         species="ch4",
@@ -3638,56 +3506,17 @@ def test_build_rhime_model_from_spec_requires_one_sector() -> None:
     )
 
     with pytest.raises(ValueError, match="exactly one sector"):
-        build_rhime_model_from_spec(_minimal_inv_inputs(), model_spec)
+        _build_standard_rhime_model_from_spec(_minimal_inv_inputs(), model_spec)
 
 
-def test_build_rhime_model_from_spec_dispatches_compiled_opt_in(
+
+def test__build_multisector_rhime_model_from_spec_forwards_sector_specs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A serializable model-spec option selects the private compiler path."""
-    sentinel = cast(pm.Model, object())
-    seen: dict[str, Any] = {}
-
-    def fake_compiled_builder(inv_inputs: xr.Dataset, **kwargs: Any) -> pm.Model:
-        seen["inv_inputs"] = inv_inputs
-        seen["kwargs"] = kwargs
-        return sentinel
-
-    monkeypatch.setattr(
-        rhime_models_module,
-        "_build_compiled_rhime_model",
-        fake_compiled_builder,
-    )
-    inv_inputs = _minimal_output_inv_inputs()
-    model_spec = RhimeModelSpec(
-        species="ch4",
-        domain="EUROPE",
-        sectors=(
-            SectorSpec(
-                "FF",
-                "ff-inventory",
-                {"pdf": "normal", "mu": 1.0, "sigma": 0.2},
-                "ff",
-            ),
-        ),
-        builder_strategy="compiled",
-    )
-
-    model = build_rhime_model_from_spec(inv_inputs, model_spec)
-
-    assert model is sentinel
-    assert seen["inv_inputs"] is inv_inputs
-    assert seen["kwargs"]["x_prior"] == {"pdf": "normal", "mu": 1.0, "sigma": 0.2}
-
-
-def test_build_rhime_multisector_model_from_spec_preserves_sector_source_mapping(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Spec wrapper preserves source mappings and activity precedence."""
+    """Spec wrapper forwards the complete sector declarations unchanged."""
     sentinel = cast(pm.Model, object())
     seen: dict[str, Any] = {}
     shared_activity = StateActivity(fixed_value=3.0)
-    mapped_activity = StateActivity(active=False, fixed_value=2.0)
     ff_activity = StateActivity(fixed_groups=("outer",))
     bc_activity = StateActivity(active=False)
 
@@ -3696,11 +3525,7 @@ def test_build_rhime_multisector_model_from_spec_preserves_sector_source_mapping
         seen["kwargs"] = kwargs
         return sentinel
 
-    monkeypatch.setattr(
-        rhime_models_module,
-        "build_rhime_multisector_model",
-        fake_build_rhime_multisector_model,
-    )
+    monkeypatch.setattr(rhime_multisector, "build_multisector_rhime_model", fake_build_rhime_multisector_model)
     inv_inputs = _minimal_output_inv_inputs()
     model_spec = RhimeModelSpec(
         species="ch4",
@@ -3722,83 +3547,26 @@ def test_build_rhime_multisector_model_from_spec_preserves_sector_source_mapping
         ),
         bc_state_activity=bc_activity,
         state_activity=shared_activity,
-        sector_state_activities={"FF": mapped_activity, "ocean": mapped_activity},
     )
 
-    model = build_rhime_multisector_model_from_spec(inv_inputs, model_spec)
+    model = _build_multisector_rhime_model_from_spec(inv_inputs, model_spec)
 
     assert model is sentinel
     assert seen["inv_inputs"] is inv_inputs
-    assert seen["kwargs"]["sectors"] == ["FF", "ocean"]
-    assert seen["kwargs"]["sector_sources"] == {"FF": "ff-inventory", "ocean": "ocean-inventory"}
-    assert seen["kwargs"]["sector_variable_suffixes"] == {"FF": "ff", "ocean": "ocean"}
-    assert seen["kwargs"]["sector_priors"] == {
-        "FF": {"pdf": "normal", "mu": 1.0, "sigma": 0.2},
-        "ocean": {"pdf": "normal", "mu": 1.0, "sigma": 0.3},
-    }
+    assert seen["kwargs"]["sectors"] is model_spec.sectors
+    assert {
+        "sector_sources",
+        "sector_variable_suffixes",
+        "sector_priors",
+        "sector_state_activities",
+    }.isdisjoint(seen["kwargs"])
     assert seen["kwargs"]["state_activity"] is shared_activity
-    assert seen["kwargs"]["sector_state_activities"] == {
-        "FF": ff_activity,
-        "ocean": mapped_activity,
-    }
     assert seen["kwargs"]["bc_state_activity"] is bc_activity
     assert isinstance(seen["kwargs"]["sigma_alignment"], SigmaAlignment)
 
 
-def test_build_rhime_multisector_model_from_spec_dispatches_compiled_opt_in(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """The multisector spec wrapper selects compilation only when requested."""
-    sentinel = cast(pm.Model, object())
-    seen: dict[str, Any] = {}
-
-    def fake_compiled_builder(inv_inputs: xr.Dataset, **kwargs: Any) -> pm.Model:
-        seen["inv_inputs"] = inv_inputs
-        seen["kwargs"] = kwargs
-        return sentinel
-
-    monkeypatch.setattr(
-        rhime_models_module,
-        "_build_compiled_rhime_multisector_model",
-        fake_compiled_builder,
-    )
-    inv_inputs = _minimal_output_inv_inputs()
-    model_spec = RhimeModelSpec(
-        species="ch4",
-        domain="EUROPE",
-        sectors=(
-            SectorSpec(
-                "FF",
-                "ff-inventory",
-                {"pdf": "normal", "mu": 1.0, "sigma": 0.2},
-                "ff",
-            ),
-            SectorSpec(
-                "ocean",
-                "ocean-inventory",
-                {"pdf": "normal", "mu": 1.0, "sigma": 0.3},
-                "ocean",
-            ),
-        ),
-        builder_strategy="compiled",
-    )
-
-    model = build_rhime_multisector_model_from_spec(inv_inputs, model_spec)
-
-    assert model is sentinel
-    assert seen["inv_inputs"] is inv_inputs
-    assert seen["kwargs"]["sectors"] == ["FF", "ocean"]
 
 
-def test_rhime_model_spec_rejects_unknown_builder_strategy() -> None:
-    """Invalid graph-construction modes fail at model-spec construction."""
-    with pytest.raises(ValueError, match="builder_strategy.*concrete.*compiled"):
-        RhimeModelSpec(
-            species="ch4",
-            domain="EUROPE",
-            sectors=(),
-            builder_strategy=cast(Any, "fallback"),
-        )
 
 
 @pytest.mark.rhime_contract
@@ -4115,8 +3883,8 @@ output_name = "test"
     assert params["flux_sources"] == ["legacy-source"]
 
 
-def test_params_from_config_parses_builder_strategy(tmp_path: Path) -> None:
-    """A real RHIME INI file preserves the requested model-builder strategy."""
+def test_params_from_config_rejects_removed_builder_strategy(tmp_path: Path) -> None:
+    """A real RHIME INI file rejects the former compiled strategy."""
     config_file = tmp_path / "rhime.ini"
     config_file.write_text(
         """
@@ -4142,8 +3910,8 @@ output_name = "test"
     )
 
     params = params_from_config(config_file)
-
-    assert params["builder_strategy"] == "compiled"
+    with pytest.raises(ValueError, match="Unsupported RHIME parameter.*builder_strategy"):
+        rhime_params.resolve_rhime_options(params=params, multisector=False)
 
 
 @pytest.mark.parametrize("prior_name", ["x_prior", "bc_prior", "sigma_prior", "offset_prior"])
@@ -4185,7 +3953,7 @@ def test_run_rhime_rejects_string_prior_before_data_preparation(
     def fail_prepare(**kwargs):
         raise AssertionError("retrieve_or_reload_rhime_data should not be called")
 
-    monkeypatch.setattr(rhime_module, "retrieve_or_reload_rhime_data", fail_prepare)
+    monkeypatch.setattr(rhime_standard, "retrieve_or_reload_rhime_data", fail_prepare)
 
     with pytest.raises(ValueError, match="x_prior"):
         run_rhime(
@@ -4219,7 +3987,7 @@ def test_run_rhime_rejects_malformed_min_error_options_before_data_preparation(
     def fail_prepare(**kwargs):
         raise AssertionError("retrieve_or_reload_rhime_data should not be called")
 
-    monkeypatch.setattr(rhime_module, "retrieve_or_reload_rhime_data", fail_prepare)
+    monkeypatch.setattr(rhime_standard, "retrieve_or_reload_rhime_data", fail_prepare)
 
     with pytest.raises(ValueError, match="min_error_options"):
         run_rhime(
@@ -4244,7 +4012,7 @@ def test_run_rhime_rejects_malformed_power_before_data_preparation(
     def fail_prepare(**kwargs):
         raise AssertionError("retrieve_or_reload_rhime_data should not be called")
 
-    monkeypatch.setattr(rhime_module, "retrieve_or_reload_rhime_data", fail_prepare)
+    monkeypatch.setattr(rhime_standard, "retrieve_or_reload_rhime_data", fail_prepare)
 
     with pytest.raises(ValueError, match="power"):
         run_rhime(
@@ -4269,7 +4037,7 @@ def test_run_rhime_multisector_rejects_non_mapping_sector_prior_values(
     def fail_prepare(**kwargs):
         raise AssertionError("retrieve_or_reload_rhime_data should not be called")
 
-    monkeypatch.setattr(rhime_module, "retrieve_or_reload_rhime_data", fail_prepare)
+    monkeypatch.setattr(rhime_multisector, "retrieve_or_reload_rhime_data", fail_prepare)
 
     with pytest.raises(ValueError, match="sector_priors"):
         run_rhime_multisector(
@@ -4294,7 +4062,7 @@ def test_run_rhime_multisector_rejects_source_keyed_xprior_before_data_preparati
     def fail_prepare(**kwargs):
         raise AssertionError("retrieve_or_reload_rhime_data should not be called")
 
-    monkeypatch.setattr(rhime_module, "retrieve_or_reload_rhime_data", fail_prepare)
+    monkeypatch.setattr(rhime_multisector, "retrieve_or_reload_rhime_data", fail_prepare)
 
     with pytest.raises(ValueError, match="source-keyed priors"):
         run_rhime_multisector(
@@ -4322,7 +4090,7 @@ def test_run_rhime_multisector_rejects_non_mapping_sector_sources(
     def fail_prepare(**kwargs):
         raise AssertionError("retrieve_or_reload_rhime_data should not be called")
 
-    monkeypatch.setattr(rhime_module, "retrieve_or_reload_rhime_data", fail_prepare)
+    monkeypatch.setattr(rhime_multisector, "retrieve_or_reload_rhime_data", fail_prepare)
 
     with pytest.raises(ValueError, match="sector_sources"):
         run_rhime_multisector(
@@ -4342,7 +4110,7 @@ def test_run_rhime_multisector_rejects_non_mapping_sector_sources(
 def test_run_rhime_multisector_rejects_duplicate_sanitized_sector_names() -> None:
     """Duplicate PyMC suffixes fail during setup, before RHIME data preparation."""
     with pytest.raises(ValueError, match="duplicate sanitized name"):
-        rhime_module.resolve_rhime_options(
+        rhime_params.resolve_rhime_options(
             params={
                 "species": "ch4",
                 "sites": ["TAC"],
@@ -4368,7 +4136,7 @@ def test_resolve_flux_sources_rejects_duplicates() -> None:
 def test_run_rhime_multisector_rejects_duplicate_sector_source_mappings() -> None:
     """Current independent sector states require distinct source sensitivities."""
     with pytest.raises(ValueError, match="source 'ff-inventory'.*\\['FF', 'other'\\]"):
-        rhime_module.resolve_rhime_options(
+        rhime_params.resolve_rhime_options(
             params={
                 "species": "ch4",
                 "sites": ["TAC"],
@@ -4411,7 +4179,7 @@ def test_run_rhime_multisector_rejects_inexact_sector_prior_keys(
 ) -> None:
     """Missing and unused sector prior keys fail before data preparation."""
     with pytest.raises(ValueError, match=error_fragment):
-        rhime_module.resolve_rhime_options(
+        rhime_params.resolve_rhime_options(
             params={
                 "species": "ch4",
                 "sites": ["TAC"],
@@ -4440,8 +4208,8 @@ def test_new_rhime_docs_use_flux_sources_for_examples() -> None:
     assert "flux_sources" in readme
     assert "flux_sources" in template
     assert "sector_sources" in template
-    assert 'builder_strategy = "concrete"' in template
-    assert 'builder_strategy="compiled"' in rhime_doc
+    assert "builder_strategy" not in template
+    assert "builder_strategy" not in rhime_doc
     assert "emissions_name =" not in rhime_doc
     assert "emissions_name =" not in readme
     assert "emissions_name =" not in template
@@ -4466,7 +4234,8 @@ def test_cleanup_plan_records_issue_400_decisions() -> None:
     assert "RhimeSampler" in plan_doc
     assert "openghg_inversions.rhime.runner" in plan_doc
     assert "openghg_inversions.rhime.model_specs" not in plan_doc
-    assert "openghg_inversions.models.rhime" in plan_doc
+    assert "openghg_inversions.rhime.specs" in plan_doc
+    assert "openghg_inversions.models.rhime" not in plan_doc
     assert "prior-predictive-only" in plan_doc
     assert "Deferred Issue #431 data-preparation spec" in plan_doc
     assert "should not introduce `RhimeDataSpec`" in plan_doc
@@ -4618,7 +4387,7 @@ def test_prepared_multisector_runner_accepts_gathered_source_specific_basis_layo
     monkeypatch.setattr(
         RhimeSampler,
         "sample",
-        lambda self, model: _minimal_output_idata(),
+        lambda self, model, **kwargs: _minimal_output_idata(),
     )
     monkeypatch.setattr(
         rhime_multisector,
@@ -6277,7 +6046,7 @@ output_name = "test"
         """Prove invalid executable configuration fails before acquisition."""
         raise AssertionError("configured likelihood builders must fail before retrieval")
 
-    monkeypatch.setattr(rhime_module, "retrieve_or_reload_rhime_data", fail_retrieval)
+    monkeypatch.setattr(rhime_standard, "retrieve_or_reload_rhime_data", fail_retrieval)
     with pytest.raises(ValueError, match="likelihood_builder"):
         run_rhime(config_file=config_file)
 
@@ -6568,13 +6337,16 @@ def test_make_standard_output_bundle_returns_outputs_without_mutating_result() -
 
 
 def test_output_bundle_serializes_state_activity_spec() -> None:
-    """Concrete per-sector policy dictionaries remain valid output metadata."""
+    """A concrete per-sector policy remains valid output metadata."""
     _, output_spec, run_spec = _minimal_output_specs()
+    sector = replace(
+        run_spec.model.sectors[0],
+        state_activity=StateActivity(active=False, fixed_value=2.0),
+    )
     model_spec = RhimeModelSpec(
         species="ch4",
         domain="EUROPE",
-        sectors=run_spec.model.sectors,
-        sector_state_activities={"FF": StateActivity(active=False, fixed_value=2.0)},
+        sectors=(sector,),
     )
     prepared = RhimePreparedInputs(
         inv_inputs=_minimal_output_inv_inputs(),
@@ -6592,7 +6364,7 @@ def test_output_bundle_serializes_state_activity_spec() -> None:
     )
 
     assert bundle.inv_out is not None
-    policy = bundle.inv_out.model_metadata["sector_state_activities"]["FF"]
+    policy = bundle.inv_out.model_metadata["sectors"][0]["state_activity"]
     assert policy["active"] is False
     assert policy["fixed_value"] == 2.0
 
@@ -6777,7 +6549,7 @@ def test_default_model_inversion_output_save_load_roundtrip(tmp_path: Path) -> N
     assert reloaded.run_metadata["basis_artifact_source"] == "unit-test"
     assert reloaded.provenance["basis_representation"] == "operator-backed"
     assert reloaded.output_metadata["output_format"] == "inv_out"
-    assert reloaded.model_metadata["builder_strategy"] == "concrete"
+    assert "builder_strategy" not in reloaded.model_metadata
     assert reloaded.trace.attrs["burn"] == 1000
     assert cast(Any, reloaded.trace).posterior.attrs["burn"] == 1000
     xr.testing.assert_identical(reloaded.inv_inputs, prepared.inv_inputs)
@@ -6809,7 +6581,6 @@ def test_modern_inversion_output_save_load_roundtrip(tmp_path: Path) -> None:
             ),
         ),
         bc_state_activity=StateActivity(active=False, fixed_value=np.array(0.75)),
-        builder_strategy="compiled",
     )
     run_spec = RhimeRunSpec(
         "2019-06-01",
@@ -6856,7 +6627,7 @@ def test_modern_inversion_output_save_load_roundtrip(tmp_path: Path) -> None:
     assert reloaded.basis_functions.basis_artifact_path == basis_artifact_path
     assert reloaded.provenance["basis_representation"] == "operator-backed"
     assert reloaded.output_metadata["output_format"] == "inv_out"
-    assert reloaded.model_metadata["builder_strategy"] == "compiled"
+    assert "builder_strategy" not in reloaded.model_metadata
     saved_activity = reloaded.model_metadata["sectors"][0]["state_activity"]
     assert saved_activity["active"] == {
         "dims": ["region"],
@@ -7239,6 +7010,75 @@ def test_basic_output_processes_modern_output(europe_country_file: Path) -> None
     assert "y_posterior_predictive_mean" in outputs
     assert "flux_posterior_mean" in outputs
     assert "country_posterior_mean" in outputs
+
+
+def test_paris_baseline_convention_prefers_boundary_plus_offset(
+    europe_country_file: Path,
+) -> None:
+    """A broader complete baseline does not silently redefine the PARIS BC field."""
+    base = _modern_postprocessing_inv_out(europe_country_file)
+    trace = base.trace.copy()
+    for group_name in ("posterior", "prior"):
+        group = getattr(trace, group_name)
+        boundary = group["mu_bc"]
+        group["offset"] = xr.full_like(boundary, 0.2)
+        group["mu_baseline"] = boundary + group["offset"] + 0.7
+
+    inv_out = replace(
+        base,
+        trace=trace,
+        model_metadata={
+            **base.model_metadata,
+            "variable_roles": {
+                "baseline": "mu_baseline",
+                "boundary": "mu_bc",
+                "offset": "offset",
+            },
+        },
+    )
+
+    outputs = make_concentration_outputs(
+        inv_out,
+        stats=["mean"],
+        combine_bc_and_offset=True,
+    )
+
+    np.testing.assert_allclose(outputs["mu_bc_posterior_mean"], 0.3)
+    np.testing.assert_allclose(outputs["offset_posterior_mean"], 0.2)
+
+
+def test_paris_baseline_convention_reports_offset_only_as_baseline(
+    europe_country_file: Path,
+) -> None:
+    """An offset-only model reports the bias separately and as its full baseline."""
+    base = _modern_postprocessing_inv_out(europe_country_file)
+    groups: dict[str, xr.Dataset] = {}
+    for group_name in base.trace.groups():
+        source_group = getattr(base.trace, group_name)
+        group = source_group.drop_vars("mu_bc", errors="ignore")
+        if group_name in {"posterior", "prior"}:
+            group["offset"] = xr.full_like(source_group["mu_bc"], 0.2)
+        groups[group_name] = group
+    trace = cast(Any, az.InferenceData)(**groups)
+    inv_out = replace(
+        base,
+        trace=trace,
+        model_metadata={
+            **base.model_metadata,
+            "use_bc": False,
+            "add_offset": True,
+            "variable_roles": {"baseline": "offset", "offset": "offset"},
+        },
+    )
+
+    outputs = make_concentration_outputs(
+        inv_out,
+        stats=["mean"],
+        combine_bc_and_offset=True,
+    )
+
+    np.testing.assert_allclose(outputs["mu_bc_posterior_mean"], 0.2)
+    np.testing.assert_allclose(outputs["offset_posterior_mean"], 0.2)
 
 
 def test_basic_output_uses_variable_roles_for_renamed_model_variables(
@@ -7817,9 +7657,9 @@ def test_run_rhime_api_smoke(
         }
     )
 
-    def ordinary_absolute_sigma(context: RhimeLikelihoodContext) -> RhimeLikelihoodResult:
+    def ordinary_additive_sigma(data: xr.Dataset, /, **kwargs: Any) -> Any:
         """Vary only the ordinary runner's observation likelihood."""
-        return build_absolute_sigma_gaussian_likelihood(context)
+        return additive_sigma_likelihood_builder(data, **kwargs)
 
     def fake_sample(
         self: RhimeSampler,
@@ -7829,18 +7669,15 @@ def test_run_rhime_api_smoke(
     ) -> az.InferenceData:
         """Return deterministic posteriors after checking predictive role selection."""
         assert self.draws == 1
-        if custom_likelihood:
-            assert variable_roles is not None
-            assert variable_roles["concentration"] == "y"
-        else:
-            assert variable_roles is None
+        assert variable_roles is not None
+        assert variable_roles["concentration"] == "y"
         return _posterior_only_idata(model, ("x", "mu"))
 
     monkeypatch.setattr(RhimeSampler, "sample", fake_sample)
 
     runner_kwargs: dict[str, Any] = {}
     if custom_likelihood:
-        runner_kwargs["likelihood_builder"] = ordinary_absolute_sigma
+        runner_kwargs["likelihood_builder"] = ordinary_additive_sigma
     result = run_rhime(**args, **runner_kwargs)
 
     assert isinstance(result, RhimeResult)
@@ -7883,8 +7720,7 @@ def test_run_rhime_api_smoke(
     assert result.output_metadata["inversion_output_contract"] == "modern"
     assert result.model_build_result is not None
     if custom_likelihood:
-        assert result.output_metadata["likelihood_builder"]["qualname"].endswith("ordinary_absolute_sigma")
-        assert result.model_build_result.metadata["likelihood"]["family"] == ("absolute_sigma_gaussian")
+        assert result.output_metadata["likelihood_builder"]["qualname"].endswith("ordinary_additive_sigma")
     else:
         assert "likelihood_builder" not in result.output_metadata
     output_file = tmp_path / "rhime_test2019-01-01_inversion_output.nc"
@@ -7898,7 +7734,6 @@ def test_run_rhime_api_smoke(
             reloaded.model_metadata["builder"]["likelihood_builder"]
             == result.output_metadata["likelihood_builder"]
         )
-        assert reloaded.model_metadata["builder"]["likelihood"]["sigma_interpretation"] == "absolute"
     else:
         assert "likelihood_builder" not in reloaded.model_metadata["builder"]
     xr.testing.assert_identical(reloaded.inv_inputs, result.inv_inputs)
@@ -7967,9 +7802,9 @@ def test_run_rhime_multisector_api_smoke(
     )
     args.pop("emissions_name")
 
-    def multisector_absolute_sigma(context: RhimeLikelihoodContext) -> RhimeLikelihoodResult:
+    def multisector_additive_sigma(data: xr.Dataset, /, **kwargs: Any) -> Any:
         """Vary only the multi-sector observation likelihood."""
-        return build_absolute_sigma_gaussian_likelihood(context)
+        return additive_sigma_likelihood_builder(data, **kwargs)
 
     def fake_sample(
         self: RhimeSampler,
@@ -7979,20 +7814,17 @@ def test_run_rhime_multisector_api_smoke(
     ) -> az.InferenceData:
         """Return deterministic scale factors after checking declared roles."""
         assert self.draws == 1
-        if custom_likelihood:
-            assert variable_roles is not None
-            assert variable_roles["concentration"] == "y"
-            assert variable_roles["flux_scale:FF"] == "x_ff"
-            assert variable_roles["flux_scale:ocean"] == "x_ocean"
-        else:
-            assert variable_roles is None
+        assert variable_roles is not None
+        assert variable_roles["concentration"] == "y"
+        assert variable_roles["flux_scale:FF"] == "x_ff"
+        assert variable_roles["flux_scale:ocean"] == "x_ocean"
         return _posterior_only_idata(model, ("x_ff", "x_ocean"))
 
     monkeypatch.setattr(RhimeSampler, "sample", fake_sample)
 
     runner_kwargs: dict[str, Any] = {}
     if custom_likelihood:
-        runner_kwargs["likelihood_builder"] = multisector_absolute_sigma
+        runner_kwargs["likelihood_builder"] = multisector_additive_sigma
     result = run_rhime_multisector(**args, **runner_kwargs)
 
     assert isinstance(result, RhimeResult)
@@ -8000,7 +7832,7 @@ def test_run_rhime_multisector_api_smoke(
     assert not hasattr(result, "basis_objects")
     assert result.run_spec.split_by_sectors is True
     if custom_likelihood:
-        assert result.output_metadata["likelihood_builder"]["qualname"].endswith("multisector_absolute_sigma")
+        assert result.output_metadata["likelihood_builder"]["qualname"].endswith("multisector_additive_sigma")
     else:
         assert "likelihood_builder" not in result.output_metadata
     assert [sector.name for sector in result.model_spec.sectors] == ["FF", "ocean"]
@@ -8126,7 +7958,7 @@ output_format = "inv_out"
         "materialize_pymc_inputs",
         lambda value, *, aggregation_error_mode: value.inv_inputs,
     )
-    monkeypatch.setattr(rhime_standard, "build_standard_rhime_model", fake_build)
+    monkeypatch.setattr(rhime_standard, "build_standard_rhime_model_result", fake_build)
     monkeypatch.setattr(rhime_standard, "sample_rhime_model", lambda *args, **kwargs: idata)
     monkeypatch.setattr(rhime_standard, "make_standard_rhime_result", fake_result)
 
