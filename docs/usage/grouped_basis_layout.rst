@@ -178,7 +178,4 @@ in-memory, lower-level Python API and does not infer a remainder.
 
 Separate group-specific weight or sensitivity construction, grouped priors,
 public RHIME configuration, and a full extension API are outside this contract.
-Those broader changes remain tracked by `GitHub issue #456
-<https://github.com/openghg/openghg_inversions/issues/456>`_ and `Linear
-OPE-25
-<https://linear.app/openghg-inversions/issue/OPE-25/pressure-test-grouped-innerouter-state-layouts>`_.
+Those broader changes are outside the implemented layout API described here.

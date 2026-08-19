@@ -20,7 +20,7 @@ Here :math:`\epsilon` is independent of :math:`x`, and :math:`R` denotes its
 valid observation-plus-model-error covariance in the prepared observation
 representation.
 
-The low-level :doc:`native_covariance` operation constructs
+The :doc:`native_covariance` projection constructs
 :math:`C_\alpha = \Pi B\Pi^\mathsf{T}`,
 :math:`H_\alpha`, and :math:`HBH^\mathsf{T}`. Coherent reduction constructs
 those linked products locally, then returns
@@ -44,6 +44,15 @@ without constructing an inverse, then returns the centred conditional model
 
 All three retained quantities---the prior, effective forward operator, and
 unresolved covariance---come from the same product set.
+
+The current function accepts a basis prolongation :math:`U`. With the default
+strategy, it constructs the compatible restriction :math:`\Pi_U` using
+:math:`B`, so that the covariance-derived prolongation :math:`U_*` equals the
+supplied basis prolongation. A custom projection strategy can already choose
+:math:`\Pi`, although callers must still supply the basis argument. A future
+interface may accept either operator directly and construct its compatible
+counterpart. The restriction and prolongation are related through :math:`B`;
+they are not generally transposes of one another.
 
 Preparing the exact result
 --------------------------
@@ -69,59 +78,50 @@ and sensitivity through one operation:
    effective_operator = reduction.effective_observation_operator
    unresolved_covariance = reduction.unresolved_observation_covariance
 
-The operation is a named eager boundary. Related Dask-backed mean, sensitivity,
-and basis-prolongation payloads are densified lazily where necessary and
-materialized together. The covariance product blocks are built and reduced
-locally, so a sensitivity cannot be substituted after projection. The result
-fields are eager xarray arrays with explicit retained and observation labels.
+Calling ``reduce_native_gaussian`` computes any Dask-backed mean, sensitivity,
+and basis-prolongation data. Related arrays are computed together, and the
+returned xarray arrays are eager with explicit retained-state and observation
+labels.
 
-Boundary contract and limits
-----------------------------
+Assumptions and limitations
+---------------------------
 
-The public operation transposes inputs into their declared scientific roles
-and performs one exact xarray alignment before computing. This is deliberate:
-xarray dot products otherwise use an inner join and could silently omit native
-cells with unmatched labels. Products created by that operation are trusted by
-the nearby equation kernel rather than validated a second time.
+The native coordinates of the mean, sensitivity, and basis prolongation must
+match exactly. The function checks this before computing because xarray dot
+products would otherwise use an inner join and could silently omit unmatched
+native cells.
 
-Unit conversion belongs to the upstream OpenGHG/pint-xarray preparation
-boundary. The native mean and basis describe dimensionless scaling, and the
-sensitivity must already be expressed in the desired observation units. The
-reducer propagates those prepared unit attributes; it does not compare
-manufactured unit strings as a substitute for Pint dimensional analysis.
-The current single-DataArray interface requires all stacked observations to
-have one common prepared unit. Thus the present linked CO2/O2 case may use
-jointly converted ppm channels, but ppm CO2 must not yet be stacked directly
-with delta(O2/N2) observations expressed in per meg.
+The native mean and basis describe dimensionless scaling factors. Convert the
+sensitivity to the required observation units with OpenGHG's Pint registry
+before calling the function. All rows of the current observation DataArray
+share one ``units`` attribute, so differently represented observations must
+not be stacked directly. For example, ppm rows cannot currently be combined
+with delta(O2/N2) rows expressed in per meg.
 
-The retained restriction must be full rank, so :math:`C_\alpha` is positive
-definite. Covariance-product construction uses the existing retained-space
-Cholesky factor to estimate its reciprocal condition cheaply and rejects an
-effectively rank-deficient retained basis; it does not choose a pseudoinverse.
-The unresolved covariance :math:`A` is the exact aggregation-error covariance
-for the Gaussian model above. It is symmetrized to remove floating-point
-asymmetry, but is not separately eigendecomposed or clipped. Likelihood
-construction owns checking/factorizing the scientifically relevant total
-:math:`R + A`; a reasonable :math:`R` commonly absorbs harmless roundoff in
-:math:`A`, but cannot repair a genuinely unstable retained solve.
-Any later low-rank-plus-diagonal approximation should therefore be assessed
-through the total likelihood covariance and its log density, especially when
-:math:`R` contains little or no model-mismatch error.
+The retained states must not be redundant. The projection obtains a cheap
+condition estimate while factorizing :math:`C_\alpha` and rejects a numerically
+ill-conditioned retained covariance. This usually means that two or more
+retained basis states describe nearly the same native variation.
 
-This exact contract is Gaussian. Reusing its moments for a LogNormal retained
-state requires an explicit moment/linear-Bayes closure, and a positive sampled
-state requires a separately established nonnegative physical restriction.
-The default covariance-natural restriction is not guaranteed to preserve
-positivity.
+For the Gaussian model above, :math:`A` is the aggregation-error covariance.
+The function does not add observation or model-error covariance :math:`R`;
+likelihood construction must use the total :math:`R + A`. Small numerical
+negative eigenvalues in :math:`A` may be harmless once a suitable :math:`R` is
+included, but observation error cannot repair an unstable retained-state
+solve. Assess any low-rank-plus-diagonal approximation using the total
+likelihood covariance and its log density, particularly when model-mismatch
+error is small.
 
-This operation does not add observation error :math:`R`, construct a
-likelihood, approximate :math:`A` as low-rank plus diagonal, serialize the
-result, or reconstruct arbitrary native functionals. Those are separate
-scientific or persistence boundaries. In particular, durable coherent-result
-identity and storage belong to OPE-40. Until then, the in-memory result must be
-kept as one handoff: do not substitute :math:`A` independently or add a second
-error term representing the same unresolved flux. Adding another covariance
-component assumes its error is independent (zero cross-covariance) unless the
-cross terms are represented explicitly.
+The conditional model is exact for a Gaussian native state and error
+independent of that state. Using the resulting moments with a LogNormal
+retained state is a moment-matched approximation. A positive sampled state
+requires a separately established nonnegative physical restriction; the
+default restriction is not guaranteed to preserve positivity.
+
+The function does not construct a likelihood, approximate :math:`A`, serialize
+the result, or reconstruct arbitrary native quantities. Do not add another
+error term representing the same unresolved flux. Adding covariance components
+also assumes that their errors are independent unless their cross-covariances
+are included explicitly.
 
 See :mod:`openghg_inversions.coherent_reduction` for the public interface.

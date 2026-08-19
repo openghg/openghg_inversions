@@ -4,8 +4,8 @@ Native Covariance Projection
 The native covariance projection API prepares labelled covariance and
 observation product blocks for reducing a gridded scaling state. It keeps basis
 geometry, native covariance, and retained-state semantics separate, and never
-constructs a dense native-grid covariance matrix. This is the low-level OPE-17
-boundary: it is not connected to RHIME input preparation or likelihoods, and
+constructs a dense native-grid covariance matrix. This low-level operation is
+not connected to RHIME input preparation or likelihoods, and
 its product blocks are inputs to the separate :doc:`coherent_reduction`
 operation rather than a complete coherent-reduction result by themselves.
 
@@ -30,7 +30,7 @@ The classes have the following distinct roles.
    * - ``InvertibleNativeCovarianceAction``
      - Structural interface for a labelled, self-adjoint positive-definite
        :math:`B`, including its compatible inverse solve, without constructing
-       a dense native covariance matrix. The kernel trusts this semantic
+       a dense native covariance matrix. The calculation trusts this semantic
        contract rather than globally certifying a matrix-free action.
    * - ``SeparableExponentialCovariance``
      - Concrete latitude/longitude covariance action. Optional class labels
@@ -44,12 +44,12 @@ The classes have the following distinct roles.
        expansion needs a separate source-aware path.
    * - ``RetainedProjectionStrategy``
      - Pi-first policy interface that chooses the authoritative labelled
-       restriction :math:`\Pi`. The kernel derives its covariance-natural
+       restriction :math:`\Pi`. The calculation derives its covariance-natural
        prolongation :math:`U_*`.
    * - ``PreserveBucketProlongation``
      - Current strategy implementation. It uses
        :math:`U_{\mathrm{bucket}}` to derive the compatible authoritative
-       restriction :math:`\Pi_U`; the kernel still derives :math:`U_*` from
+       restriction :math:`\Pi_U`; the calculation still derives :math:`U_*` from
        that returned restriction.
    * - ``RetainedProjection``
      - Frozen value dataclass returned by a strategy. It carries
@@ -61,7 +61,7 @@ The classes have the following distinct roles.
    * - ``NativeCovarianceProducts``
      - Frozen in-memory result dataclass containing the labelled product
        blocks. Its contained xarray objects remain mutable. Durable identity,
-       schema design, and persistence are deferred to OPE-40.
+       schema design, and persistence are not part of this API.
 
 The data flow is:
 
@@ -142,21 +142,21 @@ the established bucket-scaling interpretation by choosing
 
 This gives :math:`\Pi_U U_{\mathrm{bucket}} = I` and
 :math:`U_* = U_{\mathrm{bucket}}`; the latter identity follows from the
-kernel's generic derivation :math:`U_* = B\Pi^\mathsf{T}C_\alpha^{-1}`, not
-from a strategy-supplied lift. OPE-17 returns :math:`C_\alpha`,
+calculation's generic derivation :math:`U_* = B\Pi^\mathsf{T}C_\alpha^{-1}`, not
+from a strategy-supplied lift. The projection returns :math:`C_\alpha`,
 :math:`H U_*`, :math:`H B \Pi^\mathsf{T}`, and either dense
 :math:`H B H^\mathsf{T}` or its diagonal.
 
 The retained solve also records a cheap LAPACK reciprocal 1-norm condition
 estimate while its Cholesky factor is already available. A restriction whose
-retained covariance is effectively rank deficient at float64 precision is
-rejected with a basis-design diagnostic. This is not an eigendecomposition of
-the observation-sized covariance, nor a requirement that the unresolved
+retained covariance is numerically ill-conditioned is rejected with a
+basis-design diagnostic. This is not an eigendecomposition of the
+observation-sized covariance, nor a requirement that the unresolved
 aggregation covariance be independently factorable before observation and
 model-error covariance are added.
 
-What OPE-17 does not construct
-------------------------------
+What projection does not construct
+----------------------------------
 
 The exact Gaussian reduction also needs
 
@@ -176,13 +176,13 @@ and the centred conditional observation model
 
 The :doc:`coherent_reduction` operation owns the first exact solve-based
 transformation, centred forward model, and unresolved observation covariance.
-The OPE-17 product blocks are inputs to that work; they must not be described or
+These product blocks are inputs to that work; they must not be described or
 persisted as though they were already the complete result. Arbitrary
 reporting-function products :math:`Q`, low-rank-plus-diagonal numerical views,
 and likelihood integration are also outside this API.
 
-Units and persistence boundary
-------------------------------
+Units and persistence
+---------------------
 
 Native and retained scaling perturbations are dimensionless. Accordingly,
 :math:`\Pi`, :math:`U_*`, and :math:`C_\alpha` carry units ``1``;
@@ -190,20 +190,21 @@ Native and retained scaling perturbations are dimensionless. Accordingly,
 and :math:`H B H^\mathsf{T}` (including its diagonal view) carries their
 square as descriptive output metadata. Dimensional compatibility and
 conversion of independently sourced quantities belong to the preparation
-boundary and use OpenGHG's Pint registry; these derived attributes are not a
-substitute for quantification. This low-level result is in-memory only. OPE-40 owns durable identities,
-typed coordinate persistence, schema compatibility, and DataTree/NetCDF I/O.
+step and use OpenGHG's Pint registry; these derived attributes are not a
+substitute for quantification. This low-level result is in-memory only;
+durable identities, schema compatibility, and DataTree/NetCDF I/O are separate
+serialization concerns.
 
-Memory and execution boundary
------------------------------
+Memory use and lazy inputs
+--------------------------
 
 The structured covariance action stores axis factors rather than dense native
-:math:`B`, but the numerical product kernel is otherwise eager. The upstream
-pipeline may pass a related sensitivity and canonical basis prolongation with
-sparse or Dask-backed payloads; the explicit projection boundary densifies
-them where needed and materializes them together. A custom restriction may
-also remain sparse or Dask-backed until it is selected, when it is materialized
-and densified once. The eager restriction is then reused across retained-state
+:math:`B`, but the product calculation is otherwise eager. Callers may pass a
+related sensitivity and canonical basis prolongation with sparse or Dask-backed
+data; ``project_native_covariance`` densifies them where needed and computes
+them together. A custom restriction may also remain sparse or Dask-backed
+until it is selected, when it is computed and densified once. The resulting
+restriction is then reused across retained-state
 right-hand-side blocks, avoiding repeated execution of its lazy graph. For
 native size :math:`N`, retained size
 :math:`d`, and observation count :math:`M`, important dense storage includes
@@ -222,7 +223,7 @@ inputs or requested numerical form.
 Correspondence with ``verification-games``
 -------------------------------------------
 
-OPE-17 deliberately ports only the reusable lower-level prototype boundary.
+This API ports only the reusable lower-level prototype calculation.
 The recent 14-site production runs define retained coefficients with a
 source-blocked, absolute-prior-flux-weighted mean. For source :math:`s`, region
 :math:`r`, and native cell :math:`i`, let
@@ -240,26 +241,26 @@ within exactly one source and one active region. This physical restriction is
 chosen independently of :math:`B`; the covariance then determines
 :math:`C_\alpha` and :math:`U_*`. The prototype also supports a distinct
 signed-flux-total policy, but that is not the current 14-site production
-setting. Both policies require a supplied-:math:`\Pi`-first OGI strategy.
+setting. Both policies require a supplied-:math:`\Pi`-first strategy.
 
 .. list-table::
    :header-rows: 1
    :widths: 31 21 48
 
    * - Prototype capability
-     - OPE-17 status
+     - Current status
      - Correspondence
    * - Separable exponential covariance action, optional class blocking, and
        batched :math:`\Pi B\Pi^\mathsf{T}`,
        :math:`H B\Pi^\mathsf{T}`, and :math:`H B H^\mathsf{T}` products
      - Faithful port
-     - Re-expressed as labelled xarray actions and product objects; OPE-17 also
+     - Re-expressed as labelled xarray actions and product objects; the API also
        supports ordered independent-source blocks.
    * - Choose a physical restriction :math:`\Pi` first, then derive its
        covariance-natural lift. Current 14-site production uses the
        absolute-prior-flux-weighted regional mean above.
      - Deliberate difference
-     - The first OPE-17 strategy is compatibility-oriented: it uses
+     - The current default strategy is compatibility-oriented: it uses
        :math:`U_{\mathrm{bucket}}` internally to derive :math:`\Pi_U`. The
        strategy interface itself is Pi-first, so later policies may supply a
        physical restriction directly.
@@ -267,8 +268,8 @@ setting. Both policies require a supplied-:math:`\Pi`-first OGI strategy.
        :math:`B_\perp` products, coherent likelihood reduction, reconstruction,
        and covariance approximation
      - Not ported
-     - These remain prototype or downstream OPE-18 work and must not be inferred
-       from the presence of OPE-17 product blocks.
+     - These remain prototype or downstream work and must not be inferred from
+       the presence of covariance product blocks.
 
 API reference
 -------------
