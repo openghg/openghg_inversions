@@ -20,6 +20,7 @@ from dask.callbacks import Callback
 
 from examples.rhime_customisation import likelihoods as example_likelihoods
 import openghg_inversions.hbmcmc.inversion_pymc as legacy_mcmc
+import openghg_inversions.hbmcmc.preparation as fixedbasis_preparation
 import openghg_inversions.inversion_data.preparation as prep_module
 import openghg_inversions.models as models
 import openghg_inversions.postprocessing.inversion_output as inversion_output_module
@@ -4642,21 +4643,25 @@ def test_fixedbasis_preparation_adds_anchored_legacy_sigma_index(
     )
     basis_functions = _fake_basis_functions()
 
-    monkeypatch.setattr(prep_module, "_prepare_merged_data", lambda **kwargs: merged)
+    monkeypatch.setattr(fixedbasis_preparation, "_prepare_merged_data", lambda **kwargs: merged)
     monkeypatch.setattr(
-        prep_module,
+        fixedbasis_preparation,
         "basis_functions_wrapper",
         lambda **kwargs: (fp_data, {"emissions": basis_functions}),
     )
     monkeypatch.setattr(
-        prep_module,
+        fixedbasis_preparation,
         "_apply_filters_and_drop_empty_sites",
         lambda **kwargs: (fp_data, _site_options(["TAC"], averaging_period=["1H"])),
     )
-    monkeypatch.setattr(prep_module, "_set_domain_attrs", lambda *args, **kwargs: None)
-    monkeypatch.setattr(prep_module, "_make_inv_inputs", lambda **kwargs: inv_inputs.copy())
+    monkeypatch.setattr(fixedbasis_preparation, "_set_domain_attrs", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        fixedbasis_preparation,
+        "_make_inv_inputs",
+        lambda **kwargs: inv_inputs.copy(),
+    )
 
-    prepared = prep_module.prepare_fixedbasis_inversion_data(
+    prepared = fixedbasis_preparation.prepare_fixedbasis_inversion_data(
         species="ch4",
         sites=["TAC"],
         domain="EUROPE",
@@ -4689,20 +4694,20 @@ def test_fixedbasis_preparation_uses_platform_for_sites_retained_after_filtering
     retained_options = merged.site_options.select_indices([1])
     captured: dict[str, object] = {}
 
-    monkeypatch.setattr(prep_module, "_prepare_merged_data", lambda **kwargs: merged)
+    monkeypatch.setattr(fixedbasis_preparation, "_prepare_merged_data", lambda **kwargs: merged)
     monkeypatch.setattr(
-        prep_module,
+        fixedbasis_preparation,
         "basis_functions_wrapper",
         lambda **kwargs: (fp_data, {"emissions": _fake_basis_functions()}),
     )
     monkeypatch.setattr(
-        prep_module,
+        fixedbasis_preparation,
         "_apply_filters_and_drop_empty_sites",
         lambda **kwargs: (fp_data, retained_options),
     )
-    monkeypatch.setattr(prep_module, "_set_domain_attrs", lambda *args, **kwargs: None)
+    monkeypatch.setattr(fixedbasis_preparation, "_set_domain_attrs", lambda *args, **kwargs: None)
     monkeypatch.setattr(
-        prep_module,
+        fixedbasis_preparation,
         "_make_inv_inputs",
         lambda **kwargs: _minimal_prepared_inv_inputs(sites=("OCO2-EASTASIA",)),
     )
@@ -4711,9 +4716,13 @@ def test_fixedbasis_preparation_uses_platform_for_sites_retained_after_filtering
         captured.update(kwargs)
         return inv_inputs
 
-    monkeypatch.setattr(prep_module, "_scale_satellite_bc_sensitivity_to_column_signal", capture_scaling)
+    monkeypatch.setattr(
+        fixedbasis_preparation,
+        "_scale_satellite_bc_sensitivity_to_column_signal",
+        capture_scaling,
+    )
 
-    prep_module.prepare_fixedbasis_inversion_data(
+    fixedbasis_preparation.prepare_fixedbasis_inversion_data(
         species="co2",
         sites=["TAC", "OCO2-EASTASIA"],
         domain="EASTASIA",
