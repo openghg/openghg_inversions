@@ -24,6 +24,7 @@ openghg\_inversions
 
    openghg_inversions.array_ops
    openghg_inversions.borrowed
+   openghg_inversions.coherent_reduction
    openghg_inversions.correlated_state
    openghg_inversions.convert
    openghg_inversions.filters
