@@ -75,6 +75,27 @@ Source/design resolution and the boundary, offset, error, and likelihood
 components remain shared. This keeps parity meaningful and avoids independent
 copies silently drifting while compiler extensions are developed.
 
+PyTensor precision at process startup
+-------------------------------------
+
+A fresh OpenGHG Inversions PyMC or RHIME process defaults PyTensor to
+``float32``. This keeps float32 footprint sensitivities from being promoted
+when observations or errors arrive from preparation as float64. Because
+PyTensor configuration is process-wide, graph precision is not a
+``RhimeModelSpec`` option and must be selected before importing PyTensor,
+PyMC, or OpenGHG Inversions.
+
+Set PyTensor's native environment flag to opt into a float64 graph::
+
+   PYTENSOR_FLAGS="floatX=float64,warn_float64=ignore" python inversion.py
+
+An explicitly configured or already-imported PyTensor runtime is never
+overwritten. In a notebook, set the environment flag before library imports
+and restart the kernel when changing precision. Storage precision, graph
+precision, and numerically sensitive accumulation precision are separate
+concerns; components may promote specific calculations without requiring the
+whole graph or prepared-data cache to use float64.
+
 Standard single-flux model
 --------------------------
 
