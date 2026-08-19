@@ -396,6 +396,7 @@
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.array_ops.html">openghg_inversions.array_ops</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.borrowed.html">openghg_inversions.borrowed</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.cli.html">openghg_inversions.cli</a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.coherent_reduction.html">openghg_inversions.coherent_reduction</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.convert.html">openghg_inversions.convert</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.correlated_state.html">openghg_inversions.correlated_state</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.filters.html">openghg_inversions.filters</a></li>
@@ -489,9 +490,9 @@ current-run flux without importing private preparation functions.</p>
 <p>Native covariance actions live in <a class="reference internal" href="openghg_inversions.native_covariance.html#module-openghg_inversions.native_covariance" title="openghg_inversions.native_covariance"><code class="xref py py-mod docutils literal notranslate"><span class="pre">openghg_inversions.native_covariance</span></code></a>
 and <a class="reference internal" href="openghg_inversions.source_covariance.html#module-openghg_inversions.source_covariance" title="openghg_inversions.source_covariance"><code class="xref py py-mod docutils literal notranslate"><span class="pre">openghg_inversions.source_covariance</span></code></a>. The interfaces re-exported
 here choose a compatible restriction/prolongation pair and prepare labelled
-product blocks. They are a low-level input to later coherent reduction and do
-not themselves construct the centred reduced likelihood, unresolved
-covariance, or a complete coherent-reduction artifact.</p>
+product blocks. They are low-level inputs to
+<a class="reference internal" href="openghg_inversions.coherent_reduction.html#module-openghg_inversions.coherent_reduction" title="openghg_inversions.coherent_reduction"><code class="xref py py-mod docutils literal notranslate"><span class="pre">openghg_inversions.coherent_reduction</span></code></a> and do not themselves construct
+the centred reduced likelihood or unresolved covariance.</p>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="openghg_inversions.basis.BasisFunctions">
 <span class="sig-prename descclassname"><span class="pre">openghg_inversions.basis.</span></span><span class="sig-name descname"><span class="pre">BasisFunctions</span></span><a class="headerlink" href="#openghg_inversions.basis.BasisFunctions" title="Link to this definition">#</a></dt>

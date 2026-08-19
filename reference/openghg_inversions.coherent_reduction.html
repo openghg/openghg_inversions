@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>openghg_inversions.cli &#8212; openghg_inversions  documentation</title>
+    <title>openghg_inversions.coherent_reduction &#8212; openghg_inversions  documentation</title>
   
   
   
@@ -47,12 +47,12 @@
     <script src="../_static/thebelab-helper.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
-    <script>DOCUMENTATION_OPTIONS.pagename = 'reference/openghg_inversions.cli';</script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'reference/openghg_inversions.coherent_reduction';</script>
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="openghg_inversions.coherent_reduction" href="openghg_inversions.coherent_reduction.html" />
-    <link rel="prev" title="openghg_inversions.borrowed" href="openghg_inversions.borrowed.html" />
+    <link rel="next" title="openghg_inversions.convert" href="openghg_inversions.convert.html" />
+    <link rel="prev" title="openghg_inversions.cli" href="openghg_inversions.cli.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="" />
@@ -395,8 +395,8 @@
 </details></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.array_ops.html">openghg_inversions.array_ops</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.borrowed.html">openghg_inversions.borrowed</a></li>
-<li class="toctree-l2 current active"><a class="current reference internal" href="#">openghg_inversions.cli</a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.coherent_reduction.html">openghg_inversions.coherent_reduction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.cli.html">openghg_inversions.cli</a></li>
+<li class="toctree-l2 current active"><a class="current reference internal" href="#">openghg_inversions.coherent_reduction</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.convert.html">openghg_inversions.convert</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.correlated_state.html">openghg_inversions.correlated_state</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.filters.html">openghg_inversions.filters</a></li>
@@ -457,7 +457,7 @@
     
     <li class="breadcrumb-item"><a href="openghg_inversions.html" class="nav-link">openghg_inversions</a></li>
     
-    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">openghg_inversions.cli</span></li>
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">openghg_inversions.coherent_reduction</span></li>
   </ul>
 </nav>
 </div>
@@ -474,27 +474,111 @@
 <div id="searchbox"></div>
                 <article class="bd-article">
                   
-  <section id="module-openghg_inversions.cli">
-<span id="openghg-inversions-cli"></span><h1>openghg_inversions.cli<a class="headerlink" href="#module-openghg_inversions.cli" title="Link to this heading">#</a></h1>
-<p>Command line interface for OpenGHG inversions.</p>
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.cli.build_parser">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.cli.</span></span><span class="sig-name descname"><span class="pre">build_parser</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/argparse.html#argparse.ArgumentParser" title="(in Python v3.14)"><span class="pre">ArgumentParser</span></a></span></span><a class="headerlink" href="#openghg_inversions.cli.build_parser" title="Link to this definition">#</a></dt>
-<dd><p>Build the OpenGHG inversions CLI argument parser.</p>
+  <section id="module-openghg_inversions.coherent_reduction">
+<span id="openghg-inversions-coherent-reduction"></span><h1>openghg_inversions.coherent_reduction<a class="headerlink" href="#module-openghg_inversions.coherent_reduction" title="Link to this heading">#</a></h1>
+<p>Exact labelled Gaussian reduction from one native model.</p>
+<p>For <code class="docutils literal notranslate"><span class="pre">x</span> <span class="pre">~</span> <span class="pre">N(m,</span> <span class="pre">B)</span></code> and <code class="docutils literal notranslate"><span class="pre">alpha</span> <span class="pre">=</span> <span class="pre">Pi</span> <span class="pre">x</span></code>, the reduced conditional
+observation model is</p>
+<p><code class="docutils literal notranslate"><span class="pre">y</span> <span class="pre">|</span> <span class="pre">alpha</span> <span class="pre">~</span> <span class="pre">N(H</span> <span class="pre">m</span> <span class="pre">+</span> <span class="pre">H_alpha</span> <span class="pre">(alpha</span> <span class="pre">-</span> <span class="pre">Pi</span> <span class="pre">m),</span> <span class="pre">R</span> <span class="pre">+</span> <span class="pre">A)</span></code>,</p>
+<p>where <code class="docutils literal notranslate"><span class="pre">H_alpha</span> <span class="pre">=</span> <span class="pre">H</span> <span class="pre">B</span> <span class="pre">Pi.T</span> <span class="pre">C_alpha^-1</span></code> and
+<code class="docutils literal notranslate"><span class="pre">A</span> <span class="pre">=</span> <span class="pre">H</span> <span class="pre">B</span> <span class="pre">H.T</span> <span class="pre">-</span> <span class="pre">H_alpha</span> <span class="pre">C_alpha</span> <span class="pre">H_alpha.T</span></code>. The public function constructs
+all linked covariance products from the same <code class="docutils literal notranslate"><span class="pre">B/H/Pi</span></code> inputs before applying
+these equations.</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="openghg_inversions.coherent_reduction.CoherentGaussianReduction">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">openghg_inversions.coherent_reduction.</span></span><span class="sig-name descname"><span class="pre">CoherentGaussianReduction</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">retained_mean</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">retained_covariance</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">effective_observation_operator</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">native_observation_mean</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">observation_intercept</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">unresolved_observation_covariance</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">projection_strategy</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.coherent_reduction.CoherentGaussianReduction" title="Link to this definition">#</a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>One exact, labelled native-to-retained Gaussian reduction.</p>
 <dl class="field-list simple">
-<dt class="field-odd">Returns<span class="colon">:</span></dt>
-<dd class="field-odd"><p>Configured argument parser.</p>
+<dt class="field-odd">Variables<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>retained_mean</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>xarray.core.dataarray.DataArray</em></a>) – Dimensionless <code class="docutils literal notranslate"><span class="pre">Pi</span> <span class="pre">m</span></code> on the retained-state axis.</p></li>
+<li><p><strong>retained_covariance</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>xarray.core.dataarray.DataArray</em></a>) – Positive-definite <code class="docutils literal notranslate"><span class="pre">C_alpha</span></code> on distinct
+retained-state row and column axes.</p></li>
+<li><p><strong>effective_observation_operator</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>xarray.core.dataarray.DataArray</em></a>) – <code class="docutils literal notranslate"><span class="pre">H_alpha</span></code> mapping retained-state
+perturbations to observations.</p></li>
+<li><p><strong>native_observation_mean</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>xarray.core.dataarray.DataArray</em></a>) – <code class="docutils literal notranslate"><span class="pre">H</span> <span class="pre">m</span></code> on the observation axis.</p></li>
+<li><p><strong>observation_intercept</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>xarray.core.dataarray.DataArray</em></a>) – Affine intercept <code class="docutils literal notranslate"><span class="pre">H</span> <span class="pre">m</span> <span class="pre">-</span> <span class="pre">H_alpha</span> <span class="pre">Pi</span> <span class="pre">m</span></code>.</p></li>
+<li><p><strong>unresolved_observation_covariance</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>xarray.core.dataarray.DataArray</em></a>) – <code class="docutils literal notranslate"><span class="pre">A</span></code> on distinct observation row
+and column axes. It is a positive-semidefinite covariance up to
+floating-point roundoff.</p></li>
+<li><p><strong>projection_strategy</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Scientific strategy that selected <code class="docutils literal notranslate"><span class="pre">Pi</span></code>.</p></li>
+</ul>
 </dd>
 </dl>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="openghg_inversions.coherent_reduction.CoherentGaussianReduction.effective_observation_operator">
+<span class="sig-name descname"><span class="pre">effective_observation_operator</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span><a class="headerlink" href="#openghg_inversions.coherent_reduction.CoherentGaussianReduction.effective_observation_operator" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="openghg_inversions.coherent_reduction.CoherentGaussianReduction.native_observation_mean">
+<span class="sig-name descname"><span class="pre">native_observation_mean</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span><a class="headerlink" href="#openghg_inversions.coherent_reduction.CoherentGaussianReduction.native_observation_mean" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="openghg_inversions.coherent_reduction.CoherentGaussianReduction.observation_intercept">
+<span class="sig-name descname"><span class="pre">observation_intercept</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span><a class="headerlink" href="#openghg_inversions.coherent_reduction.CoherentGaussianReduction.observation_intercept" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="openghg_inversions.coherent_reduction.CoherentGaussianReduction.projection_strategy">
+<span class="sig-name descname"><span class="pre">projection_strategy</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><a class="headerlink" href="#openghg_inversions.coherent_reduction.CoherentGaussianReduction.projection_strategy" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="openghg_inversions.coherent_reduction.CoherentGaussianReduction.retained_covariance">
+<span class="sig-name descname"><span class="pre">retained_covariance</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span><a class="headerlink" href="#openghg_inversions.coherent_reduction.CoherentGaussianReduction.retained_covariance" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="openghg_inversions.coherent_reduction.CoherentGaussianReduction.retained_mean">
+<span class="sig-name descname"><span class="pre">retained_mean</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span><a class="headerlink" href="#openghg_inversions.coherent_reduction.CoherentGaussianReduction.retained_mean" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="openghg_inversions.coherent_reduction.CoherentGaussianReduction.unresolved_observation_covariance">
+<span class="sig-name descname"><span class="pre">unresolved_observation_covariance</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span><a class="headerlink" href="#openghg_inversions.coherent_reduction.CoherentGaussianReduction.unresolved_observation_covariance" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
 </dd></dl>
 
 <dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.cli.main">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.cli.</span></span><span class="sig-name descname"><span class="pre">main</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">argv</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.14)"><span class="pre">list</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span></span><a class="headerlink" href="#openghg_inversions.cli.main" title="Link to this definition">#</a></dt>
-<dd><p>Run the OpenGHG inversions CLI.</p>
+<dt class="sig sig-object py" id="openghg_inversions.coherent_reduction.reduce_native_gaussian">
+<span class="sig-prename descclassname"><span class="pre">openghg_inversions.coherent_reduction.</span></span><span class="sig-name descname"><span class="pre">reduce_native_gaussian</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">covariance</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.native_covariance.html#openghg_inversions.native_covariance.InvertibleNativeCovarianceAction" title="openghg_inversions.native_covariance.InvertibleNativeCovarianceAction"><span class="pre">InvertibleNativeCovarianceAction</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">basis_prolongation</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">state_dim</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">native_mean</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">native_sensitivity</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">observation_dim</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">observation_batch_size</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">64</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">strategy</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.basis.covariance_products.html#openghg_inversions.basis.covariance_products.RetainedProjectionStrategy" title="openghg_inversions.basis.covariance_products.RetainedProjectionStrategy"><span class="pre">RetainedProjectionStrategy</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#openghg_inversions.coherent_reduction.CoherentGaussianReduction" title="openghg_inversions.coherent_reduction.CoherentGaussianReduction"><span class="pre">CoherentGaussianReduction</span></a></span></span><a class="headerlink" href="#openghg_inversions.coherent_reduction.reduce_native_gaussian" title="Link to this definition">#</a></dt>
+<dd><p>Prepare the exact centred Gaussian model for one <code class="docutils literal notranslate"><span class="pre">B/H/Pi/m</span></code> set.</p>
+<p>This is a named eager numerical boundary. <code class="docutils literal notranslate"><span class="pre">native_mean</span></code>,
+<code class="docutils literal notranslate"><span class="pre">native_sensitivity</span></code>, and <code class="docutils literal notranslate"><span class="pre">basis_prolongation</span></code> may be Dask-backed; their
+payloads are materialized together so a shared graph is executed once.
+Inputs are borrowed and are not mutated.</p>
+<p>The inputs must use the covariance action’s native dimensions and carry
+exactly matching indexed coordinates on shared dimensions. Unit conversion
+belongs to the upstream OpenGHG/pint-xarray preparation boundary: <code class="docutils literal notranslate"><span class="pre">m</span></code> and
+the basis describe dimensionless scaling, while <code class="docutils literal notranslate"><span class="pre">H</span></code> is already expressed
+in the desired observation units.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>argv</strong> – Optional argument vector. Defaults to <code class="docutils literal notranslate"><span class="pre">sys.argv</span></code> when omitted.</p>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>covariance</strong> – Invertible labelled native covariance action <code class="docutils literal notranslate"><span class="pre">B</span></code>.</p></li>
+<li><p><strong>basis_prolongation</strong> – Canonical labelled basis prolongation used by the
+retained projection strategy.</p></li>
+<li><p><strong>state_dim</strong> – Retained-state dimension shared by the prolongation and
+restriction.</p></li>
+<li><p><strong>native_mean</strong> – Dimensionless native scaling mean <code class="docutils literal notranslate"><span class="pre">m</span></code>.</p></li>
+<li><p><strong>native_sensitivity</strong> – Native sensitivity <code class="docutils literal notranslate"><span class="pre">H</span></code> in canonical observation
+units.</p></li>
+<li><p><strong>observation_dim</strong> – Observation dimension in <code class="docutils literal notranslate"><span class="pre">native_sensitivity</span></code>.</p></li>
+<li><p><strong>observation_batch_size</strong> – Covariance right-hand-side batch size.</p></li>
+<li><p><strong>strategy</strong> – Optional authoritative retained restriction strategy.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The retained prior, centred effective forward model, and unresolved
+observation covariance.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If xarray cannot transpose or exactly align the labelled
+    inputs, or if covariance-product construction fails.</p>
 </dd>
 </dl>
 </dd></dl>
@@ -512,20 +596,20 @@
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="openghg_inversions.borrowed.html"
+       href="openghg_inversions.cli.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">openghg_inversions.borrowed</p>
+        <p class="prev-next-title">openghg_inversions.cli</p>
       </div>
     </a>
     <a class="right-next"
-       href="openghg_inversions.coherent_reduction.html"
+       href="openghg_inversions.convert.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">openghg_inversions.coherent_reduction</p>
+        <p class="prev-next-title">openghg_inversions.convert</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -548,15 +632,24 @@
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.cli.build_parser"><code class="docutils literal notranslate"><span class="pre">build_parser()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.cli.main"><code class="docutils literal notranslate"><span class="pre">main()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.coherent_reduction.CoherentGaussianReduction"><code class="docutils literal notranslate"><span class="pre">CoherentGaussianReduction</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.coherent_reduction.CoherentGaussianReduction.effective_observation_operator"><code class="docutils literal notranslate"><span class="pre">CoherentGaussianReduction.effective_observation_operator</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.coherent_reduction.CoherentGaussianReduction.native_observation_mean"><code class="docutils literal notranslate"><span class="pre">CoherentGaussianReduction.native_observation_mean</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.coherent_reduction.CoherentGaussianReduction.observation_intercept"><code class="docutils literal notranslate"><span class="pre">CoherentGaussianReduction.observation_intercept</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.coherent_reduction.CoherentGaussianReduction.projection_strategy"><code class="docutils literal notranslate"><span class="pre">CoherentGaussianReduction.projection_strategy</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.coherent_reduction.CoherentGaussianReduction.retained_covariance"><code class="docutils literal notranslate"><span class="pre">CoherentGaussianReduction.retained_covariance</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.coherent_reduction.CoherentGaussianReduction.retained_mean"><code class="docutils literal notranslate"><span class="pre">CoherentGaussianReduction.retained_mean</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.coherent_reduction.CoherentGaussianReduction.unresolved_observation_covariance"><code class="docutils literal notranslate"><span class="pre">CoherentGaussianReduction.unresolved_observation_covariance</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.coherent_reduction.reduce_native_gaussian"><code class="docutils literal notranslate"><span class="pre">reduce_native_gaussian()</span></code></a></li>
 </ul>
   </nav></div>
 
   <div class="sidebar-secondary-item">
 
   <div class="tocsection sourcelink">
-    <a href="../_sources/reference/openghg_inversions.cli.rst.txt">
+    <a href="../_sources/reference/openghg_inversions.coherent_reduction.rst.txt">
       <i class="fa-solid fa-file-lines"></i> Show Source
     </a>
   </div>
