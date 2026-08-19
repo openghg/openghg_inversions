@@ -181,8 +181,17 @@ def test_action_rejects_numeric_source_label_matching_only_after_string_coercion
     numeric_named_covariance = IndependentSourceCovariance({"1": component})
     rhs = native_sensitivity.isel(native_source=[0]).assign_coords(native_source=[1])
 
-    with pytest.raises(ValueError, match="source labels/order"):
+    with pytest.raises(ValueError, match=r"join='exact'|align|native_source"):
         numeric_named_covariance.apply(rhs)
+
+
+def test_action_requires_an_indexed_source_coordinate() -> None:
+    """Equal-sized positional dimensions cannot stand in for source labels."""
+    covariance, native_sensitivity = _problem()
+    rhs = native_sensitivity.drop_indexes("native_source").drop_vars("native_source")
+
+    with pytest.raises(ValueError, match="indexed source coordinate"):
+        covariance.apply(rhs)
 
 
 @pytest.mark.parametrize("spatial_dim", ["lat", "lon"])

@@ -147,6 +147,14 @@ from a strategy-supplied lift. OPE-17 returns :math:`C_\alpha`,
 :math:`H U_*`, :math:`H B \Pi^\mathsf{T}`, and either dense
 :math:`H B H^\mathsf{T}` or its diagonal.
 
+The retained solve also records a cheap LAPACK reciprocal 1-norm condition
+estimate while its Cholesky factor is already available. A restriction whose
+retained covariance is effectively rank deficient at float64 precision is
+rejected with a basis-design diagnostic. This is not an eigendecomposition of
+the observation-sized covariance, nor a requirement that the unresolved
+aggregation covariance be independently factorable before observation and
+model-error covariance are added.
+
 What OPE-17 does not construct
 ------------------------------
 
@@ -181,7 +189,10 @@ Native and retained scaling perturbations are dimensionless. Accordingly,
 :math:`\Pi`, :math:`U_*`, and :math:`C_\alpha` carry units ``1``;
 :math:`H U_*` and :math:`H B\Pi^\mathsf{T}` inherit the sensitivity units;
 and :math:`H B H^\mathsf{T}` (including its diagonal view) carries their
-square. This low-level result is in-memory only. OPE-40 owns durable identities,
+square as descriptive output metadata. Dimensional compatibility and
+conversion of independently sourced quantities belong to the preparation
+boundary and use OpenGHG's Pint registry; these derived attributes are not a
+substitute for quantification. This low-level result is in-memory only. OPE-40 owns durable identities,
 typed coordinate persistence, schema compatibility, and DataTree/NetCDF I/O.
 
 Memory and execution boundary
@@ -189,11 +200,11 @@ Memory and execution boundary
 
 The structured covariance action stores axis factors rather than dense native
 :math:`B`, but the numerical product kernel is otherwise eager. The upstream
-pipeline must materialize the related sensitivity and canonical basis
-prolongation together before calling it; lazy inputs are rejected rather than
-computed implicitly. A custom restriction may remain sparse or Dask-backed
-until the explicit projection boundary, where it is materialized and densified
-once. The eager restriction is then reused across retained-state
+pipeline may pass a related sensitivity and canonical basis prolongation with
+sparse or Dask-backed payloads; the explicit projection boundary densifies
+them where needed and materializes them together. A custom restriction may
+also remain sparse or Dask-backed until it is selected, when it is materialized
+and densified once. The eager restriction is then reused across retained-state
 right-hand-side blocks, avoiding repeated execution of its lazy graph. For
 native size :math:`N`, retained size
 :math:`d`, and observation count :math:`M`, important dense storage includes

@@ -30,6 +30,11 @@ laziness.
 See `docs/plans/numerical_data_ownership_and_execution_boundaries.md` for the
 full rationale, terminology, and review checklist.
 
+Consolidate validation at the boundary which owns an input, then trust locally
+constructed intermediates. Prefer ordinary xarray transpose/alignment patterns
+and Pint unit conversion to repeated custom runtime assertions; see
+`docs/development/validation_and_xarray.rst`.
+
 ## Testing
 
 Run relevant tests with pytest from the project's `uv`-managed virtual
