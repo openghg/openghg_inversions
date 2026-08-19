@@ -162,6 +162,7 @@ def test_derived_outputs_reject_aggregation_error_until_reconstruction_lands() -
             ),
         ),
         use_bc=False,
+        aggregation_error_mode="diagonal",
     )
     run_spec = RhimeRunSpec(
         start_date="2019-01-01",
