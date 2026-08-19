@@ -11,8 +11,13 @@ write requested products.
 
 from __future__ import annotations
 
-from openghg_inversions.models.rhime import RhimeModelSpec, SectorSpec
-from openghg_inversions.models.rhime_likelihood import (
+# PyTensor precision must be selected before importing likelihoods, recipes, or
+# any other module that imports PyMC.
+from openghg_inversions._pymc_config import configure_pytensor
+
+configure_pytensor()
+
+from openghg_inversions.rhime.likelihood import (
     RhimeLikelihoodBuilder,
     RhimeLikelihoodContext,
     RhimeLikelihoodResult,
@@ -20,6 +25,7 @@ from openghg_inversions.models.rhime_likelihood import (
     build_absolute_sigma_gaussian_likelihood,
     build_gaussian_rhime_likelihood,
     build_rhime_observation_state,
+    get_rhime_likelihood_result,
 )
 from openghg_inversions.observation_error import select_aggregation_error_mode
 
@@ -35,9 +41,8 @@ from .preparation import (
     with_prepared_rhime_sites,
 )
 from .multisector import (
-    build_rhime_multisector_model,
-    build_rhime_multisector_model_from_spec,
     build_multisector_rhime_model,
+    build_multisector_rhime_model_result,
     make_multisector_rhime_result,
     run_rhime_multisector,
 )
@@ -45,13 +50,12 @@ from .outputs import RhimeResult
 from .prepared import run_rhime_from_prepared_inputs
 from .sampling import RhimeSampler, sample_rhime_model
 from .standard import (
-    build_rhime_model,
-    build_rhime_model_from_spec,
     build_standard_rhime_model,
+    build_standard_rhime_model_result,
     make_standard_rhime_result,
     run_rhime,
 )
-from .specs import RhimeOutputSpec, RhimeRunSpec
+from .specs import RhimeModelSpec, RhimeOutputSpec, RhimeRunSpec, SectorSpec
 
 __all__ = [
     "SectorSpec",
@@ -70,17 +74,16 @@ __all__ = [
     "params_from_config",
     "assemble_rhime_inputs",
     "build_multisector_rhime_model",
-    "build_rhime_model",
-    "build_rhime_model_from_spec",
-    "build_rhime_multisector_model",
-    "build_rhime_multisector_model_from_spec",
+    "build_multisector_rhime_model_result",
     "build_rhime_basis",
     "build_rhime_sensitivities",
     "build_standard_rhime_model",
+    "build_standard_rhime_model_result",
     "filter_rhime_observations",
     "build_absolute_sigma_gaussian_likelihood",
     "build_gaussian_rhime_likelihood",
     "build_rhime_observation_state",
+    "get_rhime_likelihood_result",
     "make_multisector_rhime_result",
     "make_standard_rhime_result",
     "materialize_pymc_inputs",

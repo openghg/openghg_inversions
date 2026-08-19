@@ -101,7 +101,7 @@ model_inputs = materialize_pymc_inputs(
     prepared,
     requirements=requirements,
 )
-built = build_standard_rhime_model(
+built = build_standard_rhime_model_result(
     prepared,
     model_inputs,
     run_spec,

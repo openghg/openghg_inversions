@@ -22,11 +22,12 @@ from openghg_inversions.basis.basis_functions import (
 )
 from openghg_inversions.basis.operators import MultiSourceBucketBasisOperator
 from openghg_inversions.inversion_data import RhimePreparedInputs, prepare_rhime_inputs
-from openghg_inversions.models import RhimeModelSpec, SectorSpec
 from openghg_inversions.rhime import (
+    RhimeModelSpec,
     RhimeOutputSpec,
     RhimeRunSpec,
     RhimeSampler,
+    SectorSpec,
     run_rhime_from_prepared_inputs,
 )
 from openghg_inversions.rhime.outputs import RhimeOutputBundle
@@ -564,7 +565,7 @@ def test_real_prepared_inputs_save_load_and_run_without_repreparation(
         return RhimeOutputBundle(outputs={"loaded": True})
 
     monkeypatch.setattr(rhime_standard, "retrieve_or_reload_rhime_data", fail_preparation)
-    monkeypatch.setattr(rhime_standard, "build_rhime_model_from_spec", fake_builder)
+    monkeypatch.setattr(rhime_standard, "_build_standard_rhime_model_from_spec", fake_builder)
     monkeypatch.setattr(RhimeSampler, "sample", fake_sample)
     monkeypatch.setattr(rhime_standard, "make_standard_output_bundle", fake_outputs)
 
@@ -916,7 +917,7 @@ def test_loaded_prepared_inputs_run_through_existing_seam(
         return RhimeOutputBundle(outputs={"loaded": True})
 
     monkeypatch.setattr(rhime_standard, "retrieve_or_reload_rhime_data", fail_preparation)
-    monkeypatch.setattr(rhime_standard, "build_rhime_model_from_spec", fake_builder)
+    monkeypatch.setattr(rhime_standard, "_build_standard_rhime_model_from_spec", fake_builder)
     monkeypatch.setattr(RhimeSampler, "sample", fake_sample)
     monkeypatch.setattr(rhime_standard, "make_standard_output_bundle", fake_outputs)
 
@@ -1023,7 +1024,7 @@ def test_multisource_order_survives_load_run_and_reconstruction(
         )
         return RhimeOutputBundle(outputs={"postprocessed": True})
 
-    monkeypatch.setattr(rhime_multisector, "build_rhime_multisector_model_from_spec", fake_builder)
+    monkeypatch.setattr(rhime_multisector, "_build_multisector_rhime_model_from_spec", fake_builder)
     monkeypatch.setattr(RhimeSampler, "sample", fake_sample)
     monkeypatch.setattr(rhime_multisector, "make_multisector_output_bundle", fake_outputs)
 

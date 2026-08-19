@@ -6,14 +6,14 @@ from typing import Any, cast
 
 import pymc as pm
 
-from openghg_inversions.models.rhime import RhimeModelSpec, get_rhime_likelihood_result
-
 from .builders import (
     RhimeModelBuilder,
     RhimeModelBuilderContext,
     RhimeModelBuildResult,
     validate_model_build_result,
 )
+from .likelihood import get_rhime_likelihood_result
+from .specs import RhimeModelSpec
 
 
 def builtin_model_build_result(

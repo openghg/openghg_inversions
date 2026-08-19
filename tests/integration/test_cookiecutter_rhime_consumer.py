@@ -145,7 +145,7 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
     monkeypatch.setattr(rhime_runner, "assemble_rhime_inputs", assemble)
     monkeypatch.setattr(rhime_runner, "with_prepared_rhime_sites", align)
     monkeypatch.setattr(rhime_runner, "materialize_pymc_inputs", materialize)
-    monkeypatch.setattr(rhime_runner, "build_standard_rhime_model", build)
+    monkeypatch.setattr(rhime_runner, "build_standard_rhime_model_result", build)
     monkeypatch.setattr(rhime_runner, "sample_rhime_model", sample)
     monkeypatch.setattr(rhime_runner, "make_standard_rhime_result", make_result)
 

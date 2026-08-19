@@ -15,7 +15,7 @@ from openghg_inversions.models.components import (
     resolve_model_variable,
 )
 from openghg_inversions.models.coords import CoordRegistry, attach_coord_registry
-from openghg_inversions.models.rhime_likelihood import (
+from openghg_inversions.rhime.likelihood import (
     RhimeLikelihoodContext,
     build_absolute_sigma_gaussian_likelihood,
 )
@@ -349,9 +349,9 @@ def test_absolute_sigma_gaussian_uses_additive_standard_deviation_terms() -> Non
         result = build_absolute_sigma_gaussian_likelihood(
             RhimeLikelihoodContext(
                 data=data,
-                flux_mean=mu,
-                boundary_mean=None,
-                offset=None,
+                mean=mu,
+                pollution_mean=mu,
+                baseline_mean=None,
                 sigma_alignment=_sigma_alignment(data),
                 sigma_prior={"pdf": "uniform", "lower": 0.5, "upper": 0.50000001},
                 power=1.99,

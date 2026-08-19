@@ -8,7 +8,7 @@ from scipy.stats import multivariate_normal
 
 from openghg_inversions.models.coords import CoordRegistry, attach_coord_registry
 from openghg_inversions.models.likelihoods import add_gaussian_observation_likelihood
-from openghg_inversions.models.rhime_likelihood import add_rhime_likelihood_component
+from openghg_inversions.rhime.likelihood import add_rhime_likelihood_component
 from openghg_inversions.observation_error import resolve_aggregation_error
 from openghg_inversions.sigma import SigmaAlignment
 

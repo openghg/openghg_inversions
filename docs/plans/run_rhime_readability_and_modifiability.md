@@ -186,7 +186,7 @@ def run_rhime(
     prepared = assemble_rhime_inputs(filtered, basis, options.model)
 
     model_inputs = materialize_pymc_inputs(prepared)
-    built_model = build_rhime_model(
+    built_model = build_standard_rhime_model(
         model_inputs,
         options.model,
         likelihood_builder=likelihood_builder,

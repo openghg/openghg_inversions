@@ -24,7 +24,7 @@ from openghg_inversions import utils  # noqa: E402
 from openghg_inversions._sampling import _reset_retained_draws  # noqa: E402
 from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename  # noqa: E402
 from openghg_inversions.config.version import code_version  # noqa: E402
-from openghg_inversions.rhime.standard import build_rhime_model  # noqa: E402
+from openghg_inversions.rhime.standard import build_standard_rhime_model  # noqa: E402
 from openghg_inversions.models.components import resolve_model_variable  # noqa: E402
 from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords  # noqa: E402
 from openghg_inversions.models.priors import PriorArgs  # noqa: E402
@@ -149,7 +149,7 @@ def build_inferpymc_model(
         per_site=sigma_per_site,
     )
 
-    return build_rhime_model(
+    return build_standard_rhime_model(
         inv_inputs,
         sigma_alignment=sigma_alignment,
         x_prior=xprior,

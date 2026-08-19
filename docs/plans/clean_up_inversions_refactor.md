@@ -84,22 +84,22 @@ modern responsibilities:
   inputs, build the model, sample, and dispatch outputs.
 - `openghg_inversions.rhime.params`: config/API parameter loading, legacy alias
   handling, scalar coercion, and validation before spec construction.
-- `openghg_inversions.rhime.specs`: run/output specs and output-format
+- `openghg_inversions.rhime.specs`: model/run/output specs and output-format
   validation.
 - `openghg_inversions.rhime.sampling`: executable PyMC sampler settings and
   predictive sampling.
 - `openghg_inversions.rhime.outputs`: construction, saving, and compatibility
   formatting of RHIME output bundles.
-- `openghg_inversions.models.rhime`: RHIME PyMC builders plus the current
-  `RhimeModelSpec` and `SectorSpec`.
+- `openghg_inversions.rhime.standard` and `.multisector`: readable RHIME PyMC
+  recipe builders.
 - `openghg_inversions.inversion_data.preparation`: data gathering/filtering,
   basis construction, and `RhimePreparedInputs`.
 - `openghg_inversions.postprocessing.*`: product-specific output schemas and
   capability checks over modern `InversionOutput`.
 
 Document current workarounds explicitly rather than hiding them. In particular,
-`RhimeModelSpec` and `SectorSpec` currently live under
-`openghg_inversions.models` beside the concrete RHIME builders. That is
+`RhimeModelSpec` and `SectorSpec` live under
+`openghg_inversions.rhime.specs` beside the concrete RHIME recipes. That is
 intentional for the near-term dependency direction,
 `openghg_inversions.rhime -> openghg_inversions.models`, and should remain
 until a `SemanticModel` or equivalent abstract model-spec contract makes
@@ -129,7 +129,7 @@ choosing the legacy route for new work.
 - 2026-05-31: #400 / PR #434 moved RHIME orchestration into
   `openghg_inversions.rhime.runner`, kept the package `__init__` as the public
   re-export surface, kept lightweight model specs with the RHIME builders in
-  `openghg_inversions.models.rhime`, kept `RhimeRunSpec` as run metadata, and
+  the concrete RHIME recipe modules, kept `RhimeRunSpec` as run metadata, and
   carried the executable `RhimeSampler` on runner setup/results.
 - 2026-05-31: #400 / PR #434 moved RHIME setup construction into
   `openghg_inversions.rhime.params` and output adapters into

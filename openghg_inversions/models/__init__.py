@@ -1,11 +1,11 @@
-"""Public model builders, coordinates, priors, and state-activity APIs.
+"""Reusable model components, coordinates, priors, and state APIs.
 
 State activity separates design inspection with ``detect_zero_sensitivity``,
 policy resolution with ``resolve_state_activity``, and graph construction in
 the component helpers.
 
-Importing this package configures PyTensor before re-exporting the supported
-RHIME and reusable component entry points.
+Importing this package configures PyTensor before re-exporting reusable model
+primitives. RHIME-specific recipes and contracts live in ``openghg_inversions.rhime``.
 """
 
 # ruff: noqa: E402
@@ -42,44 +42,14 @@ from openghg_inversions.models.state_activity import (
     detect_zero_sensitivity,
     resolve_state_activity,
 )
-from openghg_inversions.models.rhime import (
-    DEFAULT_BC_PRIOR,
-    DEFAULT_OFFSET_PRIOR,
-    DEFAULT_SIGMA_PRIOR,
-    DEFAULT_X_PRIOR,
-    RhimeModelSpec,
-    SectorSpec,
-    get_rhime_likelihood_result,
-    safe_pymc_name,
-)
-from openghg_inversions.models.rhime_likelihood import (
-    RhimeLikelihoodBuilder,
-    RhimeLikelihoodContext,
-    RhimeLikelihoodResult,
-    RhimeObservationState,
-    add_rhime_likelihood_component,
-    build_absolute_sigma_gaussian_likelihood,
-    build_gaussian_rhime_likelihood,
-    build_rhime_observation_state,
-)
 from openghg_inversions.observation_error import AggregationErrorMode
 
 __all__ = [
     "CoordRegistry",
     "CorrelatedLognormalPrior",
     "CorrelatedStateResult",
-    "DEFAULT_BC_PRIOR",
-    "DEFAULT_OFFSET_PRIOR",
-    "DEFAULT_SIGMA_PRIOR",
-    "DEFAULT_X_PRIOR",
     "AggregationErrorMode",
-    "RhimeLikelihoodBuilder",
-    "RhimeLikelihoodContext",
-    "RhimeLikelihoodResult",
-    "RhimeModelSpec",
-    "RhimeObservationState",
     "ResolvedStateActivity",
-    "SectorSpec",
     "StateActivity",
     "add_coords",
     "attach_coord_registry",
@@ -95,12 +65,6 @@ __all__ = [
     "add_sigma_component",
     "add_offset_component",
     "add_inferpymc_likelihood_component",
-    "add_rhime_likelihood_component",
-    "build_absolute_sigma_gaussian_likelihood",
-    "build_gaussian_rhime_likelihood",
-    "build_rhime_observation_state",
-    "get_rhime_likelihood_result",
-    "safe_pymc_name",
     "active_prior_args",
     "detect_zero_sensitivity",
     "resolve_state_activity",

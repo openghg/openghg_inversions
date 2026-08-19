@@ -227,7 +227,7 @@ def test_custom_basis_runner_replaces_only_basis_stage(
     monkeypatch.setattr(custom_basis_runner, "assemble_rhime_inputs", assemble)
     monkeypatch.setattr(custom_basis_runner, "with_prepared_rhime_sites", align)
     monkeypatch.setattr(custom_basis_runner, "materialize_pymc_inputs", materialize)
-    monkeypatch.setattr(custom_basis_runner, "build_standard_rhime_model", build)
+    monkeypatch.setattr(custom_basis_runner, "build_standard_rhime_model_result", build)
     monkeypatch.setattr(custom_basis_runner, "sample_rhime_model", sample)
     monkeypatch.setattr(custom_basis_runner, "make_standard_rhime_result", make_result)
 

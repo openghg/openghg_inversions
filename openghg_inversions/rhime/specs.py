@@ -1,21 +1,124 @@
-"""RHIME runner specification dataclasses.
-
-This module contains lightweight immutable dataclasses used by the RHIME
-runner. Model-construction specs live with the RHIME model builders; these
-runner specs keep sampling and output implementation details out of the run
-metadata boundary.
-"""
+"""Lightweight immutable specifications for RHIME models and runs."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, cast
 
-from openghg_inversions.models.rhime import RhimeModelSpec
+from openghg_inversions.inversion_inputs import DatetimeLike
+from openghg_inversions.models.priors import PriorArgs
+from openghg_inversions.models.state_activity import StateActivity
+from openghg_inversions.observation_error import AggregationErrorMode
 
 OutputFormat = Literal["none", "inv_out", "basic", "paris", "legacy"]
 OutputFilenameConvention = Literal["rhime", "legacy"]
+
+DEFAULT_X_PRIOR: PriorArgs = {
+    "pdf": "lognormal",
+    "mean": 1.0,
+    "stdev": 1.0,
+    "reparameterise": True,
+}
+DEFAULT_BC_PRIOR: PriorArgs = {
+    "pdf": "truncatednormal",
+    "mu": 1.0,
+    "sigma": 0.05,
+    "lower": 0.0,
+}
+DEFAULT_SIGMA_PRIOR: PriorArgs = {"pdf": "uniform", "lower": 0.1, "upper": 3.0}
+DEFAULT_OFFSET_PRIOR: PriorArgs = {"pdf": "normal", "mu": 0, "sigma": 1}
+
+
+@dataclass(frozen=True)
+class SectorSpec:
+    """Configuration for one separately optimised flux sector.
+
+    Args:
+        name: User-facing sector name.
+        flux_source: OpenGHG flux ``source`` used to retrieve this sector.
+        x_prior: Prior specification for this sector's flux scaling factors.
+        variable_suffix: PyMC-safe suffix used in multi-sector model variable
+            names. Standard single-sector RHIME uses plain ``x``/``mu`` names.
+        state_activity: Optional labelled active/fixed policy for this sector's
+            flux-scaling states. ``None`` still applies the default flux policy,
+            fixing exactly-zero sensitivity columns to one.
+    """
+
+    name: str
+    flux_source: str
+    x_prior: PriorArgs
+    variable_suffix: str
+    state_activity: StateActivity | None = field(default=None, kw_only=True)
+
+
+@dataclass(frozen=True)
+class RhimeModelSpec:
+    """Scientific options used by the concrete RHIME model recipes.
+
+    Args:
+        species: Primary gas or tracer name used for object-store lookup and
+            output naming.
+        domain: Model domain name.
+        sectors: Flux sectors included in the model. Each sector is optimized
+            separately and is normally backed by one OpenGHG flux ``source``.
+        use_bc: Whether boundary-condition scaling is included.
+        sigma_per_site: Whether model-error terms vary by site.
+        sigma_freq: Frequency used to derive observation-aligned sigma periods.
+            ``None`` uses one shared period.
+        sigma_freq_anchor: Optional anchor for fixed-duration sigma periods.
+        add_offset: Whether model-data offsets are included.
+        pollution_events_from_obs: Whether model error scales with observed
+            enhancements instead of modelled enhancements.
+        no_model_error: Whether explicit model-error terms are disabled.
+        aggregation_error_mode: Fixed aggregation-error covariance
+            representation. ``"auto"`` selects from prepared inputs.
+        power: Exponent or prior specification used in likelihood error scaling.
+        bc_prior: Prior specification for boundary-condition scaling factors.
+        sigma_prior: Prior specification for model-error terms.
+        offset_prior: Prior specification for optional offsets.
+        offset_args: Extra keyword arguments forwarded to the offset component.
+        bc_state_activity: Optional active/fixed policy for the boundary-
+            condition scaling vector. ``None`` preserves the ordinary fully
+            sampled BC graph without zero pruning. Supplying a policy opts into
+            active/fixed BC construction.
+        state_activity: Optional labelled active/fixed state policy shared by
+            flux sectors. The default retains exact-zero pruning.
+        sector_state_activities: Optional activity-policy overrides keyed by
+            sector name. A policy stored directly on a ``SectorSpec`` takes
+            precedence over this compatibility mapping.
+
+    Raises:
+        ValueError: If ``aggregation_error_mode`` is unsupported.
+    """
+
+    species: str
+    domain: str
+    sectors: tuple[SectorSpec, ...]
+    use_bc: bool = True
+    sigma_per_site: bool = True
+    sigma_freq: str | None = None
+    sigma_freq_anchor: DatetimeLike | None = None
+    add_offset: bool = False
+    pollution_events_from_obs: bool = False
+    no_model_error: bool = False
+    aggregation_error_mode: AggregationErrorMode = field(default="auto", kw_only=True)
+    power: PriorArgs | float = 1.99
+    bc_prior: PriorArgs | None = None
+    sigma_prior: PriorArgs | None = None
+    offset_prior: PriorArgs | None = None
+    offset_args: dict[str, Any] | None = None
+    bc_state_activity: StateActivity | None = field(default=None, kw_only=True)
+    state_activity: StateActivity | None = field(default=None, kw_only=True)
+    sector_state_activities: dict[str, StateActivity] | None = field(default=None, kw_only=True)
+
+    def __post_init__(self) -> None:
+        """Validate model options resolved before graph construction."""
+        if self.aggregation_error_mode not in ("auto", "none", "dense", "low_rank", "diagonal"):
+            raise ValueError(
+                "`aggregation_error_mode` must be one of 'auto', 'none', 'dense', "
+                f"'low_rank', or 'diagonal'; got {self.aggregation_error_mode!r}."
+            )
 
 
 @dataclass(frozen=True)

@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from openghg_inversions.models import RhimeModelSpec
+from openghg_inversions.rhime.specs import RhimeModelSpec
 from openghg_inversions.observation_error import resolve_aggregation_error
 
 

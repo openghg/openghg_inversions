@@ -192,8 +192,10 @@
 - Moved the concrete standard and multisector RHIME graphs beside their
   procedural recipe runners and removed the semantic flux compiler and
   `builder_strategy` dispatch. Pure source, sector, prior, and state-activity
-  resolution remains shared, while each production graph stays readable in
-  scientific order in its owning recipe module.
+  resolution remains shared inside the RHIME package, while each production
+  graph stays readable in scientific order in its owning recipe module. The
+  recipes now compose pollution, baseline, and offset contributions before the
+  likelihood seam, and expose one clearly named concrete builder per recipe.
 - Added a tox PyTensor compiler preflight that automatically loads
   `gcc/12.3.0-sknc` on Rocky Linux or recognized Blue Pebble hosts when the
   compiler setting is empty, supports configurable module/compiler overrides,

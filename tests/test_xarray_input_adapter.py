@@ -14,11 +14,12 @@ import xarray as xr
 import openghg_inversions.rhime.multisector as rhime_multisector
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.inversion_data import prepare_rhime_inputs_from_xarray
-from openghg_inversions.models.rhime import RhimeModelSpec, SectorSpec
 from openghg_inversions.rhime import (
+    RhimeModelSpec,
     RhimeOutputSpec,
     RhimeRunSpec,
     RhimeSampler,
+    SectorSpec,
     run_rhime_from_prepared_inputs,
 )
 from openghg_inversions.rhime.outputs import RhimeOutputBundle

@@ -1,4 +1,4 @@
-"""Modern RHIME likelihood assembly with fixed aggregation covariance."""
+"""RHIME likelihood builders with fixed aggregation covariance."""
 
 from __future__ import annotations
 
@@ -24,21 +24,43 @@ from openghg_inversions.observation_error import (
 )
 from openghg_inversions.sigma import SigmaAlignment
 
+_LIKELIHOOD_RESULT_ATTR = "_openghg_rhime_likelihood_result"
+
 
 @dataclass(frozen=True)
 class RhimeLikelihoodContext:
     """Complete labelled context supplied to a RHIME likelihood builder.
 
-    A custom builder owns the complete observation component: error-model
+    The concrete recipe owns forward-model composition and supplies the
+    completed modelled concentration. A custom builder owns error-model
     construction and the observed distribution. Use
     :func:`build_rhime_observation_state` to reuse RHIME's current error scale
     while replacing only the distribution.
+
+    Args:
+        data: Canonical inversion inputs containing observations and errors.
+        mean: Completed modelled concentration, including pollution, baseline,
+            and any offset terms.
+        pollution_mean: Modelled pollution contribution used when mismatch
+            error scales from the forward model.
+        baseline_mean: Modelled baseline contribution, including any offset,
+            used to derive pollution events from observations. ``None`` means
+            that the model has no baseline contribution.
+        sigma_alignment: Observation-to-site/period alignment for mismatch
+            parameters.
+        sigma_prior: Prior specification for mismatch parameters.
+        power: Exponent or prior used in mismatch-error scaling.
+        pollution_events_from_obs: Whether mismatch error scales from observed
+            rather than modelled pollution enhancements.
+        no_model_error: Whether inferred mismatch error is disabled.
+        aggregation_error_mode: Prepared aggregation-error representation.
+        output_dim: Observation dimension name.
     """
 
     data: xr.Dataset
-    flux_mean: TensorVariable
-    boundary_mean: TensorVariable | None
-    offset: TensorVariable | None
+    mean: TensorVariable
+    pollution_mean: TensorVariable
+    baseline_mean: TensorVariable | None
     sigma_alignment: SigmaAlignment
     sigma_prior: Mapping[str, Any]
     power: Mapping[str, Any] | float
@@ -112,6 +134,66 @@ class RhimeLikelihoodBuilder(Protocol):
         ...
 
 
+def get_rhime_likelihood_result(model: pm.Model) -> RhimeLikelihoodResult:
+    """Return the explicit likelihood roles attached by a RHIME model builder.
+
+    Args:
+        model: A model built by a concrete RHIME recipe.
+
+    Returns:
+        Likelihood result attached during graph construction.
+
+    Raises:
+        ValueError: If the model was not built by a RHIME recipe and has no
+            attached likelihood result.
+    """
+    try:
+        return cast(RhimeLikelihoodResult, getattr(model, _LIKELIHOOD_RESULT_ATTR))
+    except AttributeError as exc:
+        raise ValueError(
+            "The PyMC model has no RHIME likelihood result. Build it with a public RHIME model "
+            "builder or return explicit roles from a complete `RhimeModelBuilder`."
+        ) from exc
+
+
+def _build_rhime_likelihood(
+    context: RhimeLikelihoodContext,
+    likelihood_builder: RhimeLikelihoodBuilder | None,
+) -> RhimeLikelihoodResult:
+    """Build and validate a likelihood for an already completed model mean.
+
+    Args:
+        context: Labelled likelihood inputs whose ``mean`` was composed by the
+            concrete recipe.
+        likelihood_builder: Optional custom builder. ``None`` selects RHIME's
+            built-in Gaussian likelihood.
+
+    Returns:
+        Validated likelihood result with roles that exist in the active model.
+
+    Raises:
+        TypeError: If a custom builder returns a different result type.
+        ValueError: If a declared variable role is absent from the active model.
+    """
+    result = (
+        build_gaussian_rhime_likelihood(context)
+        if likelihood_builder is None
+        else likelihood_builder(context)
+    )
+    if not isinstance(result, RhimeLikelihoodResult):
+        raise TypeError(
+            "A RHIME likelihood builder must return `RhimeLikelihoodResult`; "
+            f"got {type(result).__name__}."
+        )
+    missing_names = sorted(set(result.variable_roles.values()) - set(pm.modelcontext(None).named_vars))
+    if missing_names:
+        raise ValueError(
+            "RHIME likelihood roles refer to variables absent from the active PyMC model: "
+            f"{missing_names!r}."
+        )
+    return result
+
+
 def build_rhime_observation_state(context: RhimeLikelihoodContext) -> RhimeObservationState:
     """Build RHIME's current mean and error scale without choosing a likelihood."""
     data = context.data
@@ -129,12 +211,12 @@ def build_rhime_observation_state(context: RhimeLikelihoodContext) -> RhimeObser
     sigma = add_sigma_component(context.sigma_alignment, prior_args=dict(context.sigma_prior))
     if context.pollution_events_from_obs:
         pollution_event = (
-            pt.abs(y_data - context.boundary_mean)
-            if context.boundary_mean is not None
+            pt.abs(y_data - context.baseline_mean)
+            if context.baseline_mean is not None
             else pt.abs(y_data) + 1e-6 * pt.mean(y_data)
         )
     else:
-        pollution_event = pt.abs(context.flux_mean)
+        pollution_event = pt.abs(context.pollution_mean)
 
     if context.no_model_error:
         mean_obs = np.nanmean(data["mf"].values)
@@ -153,19 +235,13 @@ def build_rhime_observation_state(context: RhimeLikelihoodContext) -> RhimeObser
         )
         independent_variance = raw_independent_variance + floor_extra
 
-    total_mu = context.flux_mean
-    if context.boundary_mean is not None:
-        total_mu = total_mu + context.boundary_mean
-    if context.offset is not None:
-        total_mu = total_mu + context.offset
-
     total_marginal_variance = independent_variance + pt.as_tensor_variable(
         pm.floatX(aggregation_error.marginal_variance)
     )
     epsilon = pm.Deterministic("epsilon", pt.sqrt(total_marginal_variance), dims=output_dim)
     return RhimeObservationState(
         observed=y_data,
-        mean=total_mu,
+        mean=context.mean,
         independent_variance=independent_variance,
         aggregation_error=aggregation_error,
         error_scale=epsilon,
@@ -236,12 +312,6 @@ def build_absolute_sigma_gaussian_likelihood(
     )
     independent_variance = independent_variance + floor_extra
 
-    mean = context.flux_mean
-    if context.boundary_mean is not None:
-        mean = mean + context.boundary_mean
-    if context.offset is not None:
-        mean = mean + context.offset
-
     epsilon = pm.Deterministic(
         "epsilon",
         pt.sqrt(independent_variance + aggregation_marginal_variance),
@@ -249,7 +319,7 @@ def build_absolute_sigma_gaussian_likelihood(
     )
     likelihood = add_gaussian_observation_likelihood(
         observed=observed,
-        mean=mean,
+        mean=context.mean,
         independent_variance=independent_variance,
         aggregation_error=aggregation_error,
         output_dim=output_dim,
@@ -292,12 +362,16 @@ def add_rhime_likelihood_component(
     the raw observation-error standard deviation, and inferred model variance
     remains an independent diagonal contribution.
     """
+    baseline_mean = mu_bc
+    if offset is not None:
+        baseline_mean = offset if baseline_mean is None else baseline_mean + offset
+    mean = mu if baseline_mean is None else mu + baseline_mean
     result = build_gaussian_rhime_likelihood(
         RhimeLikelihoodContext(
             data=data,
-            flux_mean=mu,
-            boundary_mean=mu_bc,
-            offset=offset,
+            mean=mean,
+            pollution_mean=mu,
+            baseline_mean=baseline_mean,
             sigma_alignment=sigma_alignment,
             sigma_prior=sigprior,
             power=power,

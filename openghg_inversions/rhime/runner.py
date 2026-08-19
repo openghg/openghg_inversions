@@ -5,13 +5,13 @@ Scientific execution now lives in the readable :mod:`.standard` and
 the established ``openghg_inversions.rhime.runner`` imports remain supported.
 """
 
-from openghg_inversions.models import RhimeModelSpec, SectorSpec
 from openghg_inversions.observation_error import select_aggregation_error_mode
 
 from .builders import RhimeModelBuilder, RhimeModelBuilderContext, RhimeModelBuildResult
 from .materialization import materialize_pymc_inputs
 from .multisector import (
     build_multisector_rhime_model,
+    build_multisector_rhime_model_result,
     make_multisector_rhime_result,
     run_rhime_multisector,
 )
@@ -27,8 +27,13 @@ from .preparation import (
 )
 from .prepared import run_rhime_from_prepared_inputs
 from .sampling import RhimeSampler, sample_rhime_model
-from .specs import RhimeOutputSpec, RhimeRunSpec
-from .standard import build_standard_rhime_model, make_standard_rhime_result, run_rhime
+from .specs import RhimeModelSpec, RhimeOutputSpec, RhimeRunSpec, SectorSpec
+from .standard import (
+    build_standard_rhime_model,
+    build_standard_rhime_model_result,
+    make_standard_rhime_result,
+    run_rhime,
+)
 
 __all__ = [
     "SectorSpec",
@@ -42,9 +47,11 @@ __all__ = [
     "RhimeResult",
     "assemble_rhime_inputs",
     "build_multisector_rhime_model",
+    "build_multisector_rhime_model_result",
     "build_rhime_basis",
     "build_rhime_sensitivities",
     "build_standard_rhime_model",
+    "build_standard_rhime_model_result",
     "filter_rhime_observations",
     "make_multisector_rhime_result",
     "make_standard_rhime_result",

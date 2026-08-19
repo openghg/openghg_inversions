@@ -141,7 +141,7 @@ model, output, and sampler specifications:
 
 .. code-block:: python
 
-   from openghg_inversions.models import RhimeModelSpec, SectorSpec
+   from openghg_inversions.rhime import RhimeModelSpec, SectorSpec
    from openghg_inversions.inversion_data import RhimePreparedInputs
    from openghg_inversions.rhime import (
        RhimeOutputSpec,
@@ -394,7 +394,7 @@ prepared object:
 
 .. code-block:: python
 
-   from openghg_inversions.models import RhimeModelSpec, SectorSpec
+   from openghg_inversions.rhime import RhimeModelSpec, SectorSpec
    from openghg_inversions.rhime import (
        RhimeOutputSpec,
        RhimeRunSpec,
@@ -659,7 +659,7 @@ containing the value ``"outer"``:
 .. code-block:: python
 
    from openghg_inversions.models import StateActivity
-   from openghg_inversions.rhime.standard import build_rhime_model
+   from openghg_inversions.rhime.standard import build_standard_rhime_model
    from openghg_inversions.sigma import SigmaAlignment
 
    state_policy = StateActivity(
@@ -669,7 +669,7 @@ containing the value ``"outer"``:
    sigma_alignment = SigmaAlignment.from_frequency(
        inv_inputs["site_indicator"],
    )
-   model = build_rhime_model(
+   model = build_standard_rhime_model(
        inv_inputs,
        sigma_alignment=sigma_alignment,
        x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.5},
@@ -811,14 +811,14 @@ retain their gathered ``(source, region_in_source)`` state coordinate.
        calibrate_basis_prior_stdev,
        project_basis_prior_stdev,
    )
-   from openghg_inversions.rhime.standard import build_rhime_model
+   from openghg_inversions.rhime.standard import build_standard_rhime_model
 
    x_prior_stdev = project_basis_prior_stdev(
        basis_functions,
        area_grid=cell_area,
        grid_cell_prior_stdev=grid_prior_sd,
    )
-   model = build_rhime_model(
+   model = build_standard_rhime_model(
        inv_inputs,
        x_prior={"pdf": "normal", "mu": 1.0, "sigma": x_prior_stdev},
    )

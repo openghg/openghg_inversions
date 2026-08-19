@@ -16,18 +16,23 @@ import xarray as xr
 
 from openghg_inversions._timing import log_timing, timer_seconds, timer_start
 from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs
-from openghg_inversions.models.components import add_state_linear_component
-from openghg_inversions.models.coords import CoordRegistry, attach_coord_registry
-from openghg_inversions.models.rhime import (
-    _LIKELIHOOD_RESULT_ATTR,
-    _add_rhime_observation_components,
-    _prepare_builder_priors,
-    RhimeModelSpec,
+from openghg_inversions.models.components import (
+    add_linear_component,
+    add_offset_component,
+    add_state_linear_component,
 )
-from openghg_inversions.models.rhime_likelihood import RhimeLikelihoodBuilder
+from openghg_inversions.models.coords import CoordRegistry, attach_coord_registry
+from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.models.state_activity import StateActivity
 from openghg_inversions.observation_error import AggregationErrorMode
 from openghg_inversions.sigma import SigmaAlignment
+
+from .likelihood import (
+    _LIKELIHOOD_RESULT_ATTR,
+    _build_rhime_likelihood,
+    RhimeLikelihoodBuilder,
+    RhimeLikelihoodContext,
+)
 
 from ._model_building import (
     builtin_model_build_result,
@@ -53,33 +58,80 @@ from .preparation import (
     with_prepared_rhime_sites,
 )
 from .sampling import RhimeSampler, sample_rhime_model
-from .specs import RhimeRunSpec
+from .specs import (
+    DEFAULT_BC_PRIOR,
+    DEFAULT_OFFSET_PRIOR,
+    DEFAULT_SIGMA_PRIOR,
+    DEFAULT_X_PRIOR,
+    RhimeModelSpec,
+    RhimeRunSpec,
+)
 
 
-def build_rhime_model(
+def _prepare_builder_priors(
+    *,
+    x_prior: PriorArgs | None,
+    bc_prior: PriorArgs | None,
+    sigma_prior: PriorArgs | None,
+    offset_prior: PriorArgs | None,
+) -> tuple[PriorArgs, PriorArgs, PriorArgs, PriorArgs]:
+    """Copy standard-model priors, applying RHIME defaults when omitted."""
+    prepared_x_prior = DEFAULT_X_PRIOR.copy() if x_prior is None else x_prior.copy()
+    prepared_bc_prior = DEFAULT_BC_PRIOR.copy() if bc_prior is None else bc_prior.copy()
+    prepared_sigma_prior = DEFAULT_SIGMA_PRIOR.copy() if sigma_prior is None else sigma_prior.copy()
+    prepared_offset_prior = DEFAULT_OFFSET_PRIOR.copy() if offset_prior is None else offset_prior.copy()
+    return prepared_x_prior, prepared_bc_prior, prepared_sigma_prior, prepared_offset_prior
+
+
+def build_standard_rhime_model(
     inv_inputs: xr.Dataset,
     *,
     sigma_alignment: SigmaAlignment,
-    x_prior: dict | None = None,
-    bc_prior: dict | None = None,
-    sigma_prior: dict | None = None,
-    offset_prior: dict | None = None,
+    x_prior: PriorArgs | None = None,
+    bc_prior: PriorArgs | None = None,
+    sigma_prior: PriorArgs | None = None,
+    offset_prior: PriorArgs | None = None,
     add_offset: bool = False,
     use_bc: bool = True,
     pollution_events_from_obs: bool = False,
     no_model_error: bool = False,
     aggregation_error_mode: AggregationErrorMode = "auto",
     offset_args: dict | None = None,
-    power: dict | float = 1.99,
+    power: PriorArgs | float = 1.99,
     state_activity: StateActivity | None = None,
     bc_state_activity: StateActivity | None = None,
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
 ) -> pm.Model:
     """Build the concrete standard single-sector RHIME model.
 
-    The recipe constructs the flux contribution first, then adds the shared
-    baseline, offset, model-data mismatch, aggregation-error, and likelihood
-    components in scientific order.
+    Args:
+        inv_inputs: Canonical inversion-input dataset.
+        sigma_alignment: Observation alignment for mismatch parameters.
+        x_prior: Prior specification for flux scaling factors.
+        bc_prior: Prior specification for boundary-condition scaling factors.
+        sigma_prior: Prior specification for mismatch-error terms.
+        offset_prior: Prior specification for optional offsets.
+        add_offset: Whether to include an offset term.
+        use_bc: Whether to include boundary-condition terms.
+        pollution_events_from_obs: Whether mismatch scaling uses observed
+            rather than modelled pollution enhancements.
+        no_model_error: Whether to suppress inferred mismatch error.
+        aggregation_error_mode: Aggregation-error representation to use.
+        offset_args: Extra keyword arguments for the offset component.
+        power: Exponent or prior used in mismatch-error scaling.
+        state_activity: Optional active/fixed flux-state policy.
+        bc_state_activity: Optional active/fixed boundary-state policy.
+        likelihood_builder: Optional observation-error and distribution builder.
+            It receives the completed model mean from this recipe.
+
+    Returns:
+        Built PyMC model.
+
+    Raises:
+        KeyError: If required sensitivity inputs are absent.
+        ValueError: If labels, state policies, priors, or likelihood roles are
+            invalid.
+        TypeError: If a custom likelihood returns the wrong result type.
     """
     x_prior, bc_prior, sigma_prior, offset_prior = _prepare_builder_priors(
         x_prior=x_prior,
@@ -100,35 +152,89 @@ def build_rhime_model(
             compute_deterministic=True,
             state_activity=state_activity,
         )
-        likelihood_result = _add_rhime_observation_components(
-            inv_inputs,
-            mu=flux_component.output,
+        pollution_mean = flux_component.output
+
+        boundary_mean = None
+        if use_bc:
+            if "H_bc" not in inv_inputs:
+                raise ValueError("If `use_bc` is True, `inv_inputs` must contain `H_bc`.")
+            if bc_state_activity is None:
+                boundary_component = add_linear_component(
+                    inv_inputs["H_bc"],
+                    data_name="hbc",
+                    prior_args=bc_prior,
+                    var_name="bc",
+                    output_name="mu_bc",
+                    output_dim="nmeasure",
+                    compute_deterministic=True,
+                )
+            else:
+                boundary_component = add_state_linear_component(
+                    inv_inputs["H_bc"],
+                    data_name="hbc",
+                    prior_args=bc_prior,
+                    var_name="bc",
+                    output_name="mu_bc",
+                    output_dim="nmeasure",
+                    compute_deterministic=True,
+                    state_activity=bc_state_activity,
+                )
+            boundary_mean = boundary_component.output
+
+        offset = None
+        if add_offset:
+            offset = add_offset_component(
+                inv_inputs["site_indicator"],
+                prior_args=offset_prior,
+                output_name="offset",
+                output_dim="nmeasure",
+                **(offset_args or {}),
+            )
+
+        baseline_mean = boundary_mean
+        if offset is not None:
+            baseline_mean = offset if baseline_mean is None else baseline_mean + offset
+        modelled_mean = pollution_mean if baseline_mean is None else pollution_mean + baseline_mean
+
+        likelihood_context = RhimeLikelihoodContext(
+            data=inv_inputs,
+            mean=modelled_mean,
+            pollution_mean=pollution_mean,
+            baseline_mean=baseline_mean,
             sigma_alignment=sigma_alignment,
-            bc_prior=bc_prior,
             sigma_prior=sigma_prior,
-            offset_prior=offset_prior,
-            add_offset=add_offset,
-            use_bc=use_bc,
-            bc_state_activity=bc_state_activity,
+            power=power,
             pollution_events_from_obs=pollution_events_from_obs,
             no_model_error=no_model_error,
             aggregation_error_mode=aggregation_error_mode,
-            offset_args=offset_args,
-            power=power,
-            likelihood_builder=likelihood_builder,
+            output_dim="nmeasure",
         )
+        likelihood_result = _build_rhime_likelihood(likelihood_context, likelihood_builder)
         setattr(model, _LIKELIHOOD_RESULT_ATTR, likelihood_result)
 
     return model
 
 
-def build_rhime_model_from_spec(
+def _build_standard_rhime_model_from_spec(
     inv_inputs: xr.Dataset,
     model_spec: RhimeModelSpec,
     *,
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
 ) -> pm.Model:
-    """Build the standard model from a normalized RHIME model specification."""
+    """Build the standard model from a normalized RHIME model specification.
+
+    Args:
+        inv_inputs: Canonical inversion-input dataset.
+        model_spec: Normalized RHIME model specification containing exactly one
+            sector.
+        likelihood_builder: Optional observation-error and distribution builder.
+
+    Returns:
+        Built PyMC model.
+
+    Raises:
+        ValueError: If ``model_spec`` does not contain exactly one sector.
+    """
     if len(model_spec.sectors) != 1:
         raise ValueError("Standard RHIME model specs must include exactly one sector.")
 
@@ -144,7 +250,7 @@ def build_rhime_model_from_spec(
         state_activity = model_spec.sector_state_activities.get(sector.name, state_activity)
     if sector.state_activity is not None:
         state_activity = sector.state_activity
-    return build_rhime_model(
+    return build_standard_rhime_model(
         inv_inputs,
         sigma_alignment=sigma_alignment,
         x_prior=dict(sector.x_prior),
@@ -164,7 +270,7 @@ def build_rhime_model_from_spec(
     )
 
 
-def build_standard_rhime_model(
+def build_standard_rhime_model_result(
     *,
     prepared: RhimePreparedInputs,
     model_inputs: xr.Dataset,
@@ -172,7 +278,24 @@ def build_standard_rhime_model(
     model_builder: RhimeModelBuilder | None = None,
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
 ) -> RhimeModelBuildResult:
-    """Build the concrete single-sector graph and describe its output roles."""
+    """Build the standard graph and describe its output roles.
+
+    Args:
+        prepared: Retained prepared-input artifact used by custom builders.
+        model_inputs: Eager canonical arrays for the built-in PyMC graph.
+        run_spec: Resolved model, sampling, and output specification.
+        model_builder: Optional complete-model builder for advanced prepared-
+            input workflows.
+        likelihood_builder: Optional observation-error and distribution builder
+            used with the built-in graph.
+
+    Returns:
+        Model plus variable roles, supported outputs, and build metadata.
+
+    Raises:
+        ValueError: If both builder extension points are supplied or the built
+            result is inconsistent with the run specification.
+    """
     if model_builder is not None and likelihood_builder is not None:
         raise ValueError("Pass either `model_builder` or `likelihood_builder`, not both.")
     timing_start = timer_start()
@@ -184,7 +307,7 @@ def build_standard_rhime_model(
     if model_builder is not None:
         result = validated_custom_model_build(model_builder, context=builder_context)
     else:
-        model = build_rhime_model_from_spec(
+        model = _build_standard_rhime_model_from_spec(
             model_inputs,
             run_spec.model,
             **({} if likelihood_builder is None else {"likelihood_builder": likelihood_builder}),
@@ -341,7 +464,7 @@ def run_rhime(
         aggregation_error_mode=run_spec.model.aggregation_error_mode,
     )
     build_and_sample_start = timer_start()
-    model_build_result = build_standard_rhime_model(
+    model_build_result = build_standard_rhime_model_result(
         prepared=prepared,
         model_inputs=model_inputs,
         run_spec=run_spec,

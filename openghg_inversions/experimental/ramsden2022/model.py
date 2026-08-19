@@ -43,11 +43,10 @@ import xarray as xr
 
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.inversion_inputs import DatetimeLike
-from openghg_inversions.models._rhime_flux import _select_sector_design
+from openghg_inversions.rhime._flux import _select_sector_design, safe_pymc_name
 from openghg_inversions.models.components import add_linear_component, add_model_data
 from openghg_inversions.models.coords import CoordRegistry, add_coords, attach_coord_registry
 from openghg_inversions.models.priors import parse_prior
-from openghg_inversions.models.rhime import safe_pymc_name
 from openghg_inversions.rhime.sampling import RhimeSampler
 from openghg_inversions.sigma import SigmaAlignment
 

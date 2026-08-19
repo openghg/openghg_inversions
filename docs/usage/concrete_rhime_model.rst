@@ -302,13 +302,13 @@ Callables are never read from configuration or stored on ``RhimeModelSpec`` or
 ``RhimeRunSpec``, so model and run specs remain serializable. There is no
 entry-point or config-file plugin registry.
 
-A likelihood builder owns the complete observation component, including its
-error construction and observed distribution. Its labelled
-``RhimeLikelihoodContext`` contains the prepared observations, flux mean,
-optional boundary and offset means, sigma alignment and prior, the power and
-error policies, aggregation-error mode, and output dimension. This boundary
-avoids a misleading contract in which the runner builds half an error model
-before calling user code.
+A concrete recipe owns the complete forward-model mean: pollution, baseline,
+and optional offset contributions are composed visibly before the likelihood
+seam. A likelihood builder owns error construction and the observed
+distribution. Its labelled ``RhimeLikelihoodContext`` contains the completed
+modelled concentration, separately named pollution and baseline contributions
+needed for mismatch scaling, prepared observations, sigma alignment and prior,
+error policies, aggregation-error mode, and output dimension.
 
 For the absolute-sigma Gaussian above, pass the helper directly to the
 ordinary runner:

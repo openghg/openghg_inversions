@@ -6,7 +6,6 @@ import pandas as pd
 
 from openghg_inversions._timing import timer_seconds, timer_start
 from openghg_inversions.inversion_data import RhimePreparedInputs
-from openghg_inversions.models import RhimeLikelihoodBuilder
 from openghg_inversions.observation_error import (
     resolve_aggregation_error,
     select_aggregation_error_mode,
@@ -14,8 +13,9 @@ from openghg_inversions.observation_error import (
 
 from ._model_building import validate_likelihood_builder
 from .builders import RhimeModelBuilder
+from .likelihood import RhimeLikelihoodBuilder
 from .materialization import materialize_pymc_inputs
-from .multisector import build_multisector_rhime_model, make_multisector_rhime_result
+from .multisector import build_multisector_rhime_model_result, make_multisector_rhime_result
 from .outputs import RhimeResult
 from .preparation import with_prepared_rhime_sites
 from .sampling import RhimeSampler, sample_rhime_model
@@ -25,7 +25,7 @@ from .specs import (
     validate_output_format,
     validate_output_path_settings,
 )
-from .standard import build_standard_rhime_model, make_standard_rhime_result
+from .standard import build_standard_rhime_model_result, make_standard_rhime_result
 
 
 def run_rhime_from_prepared_inputs(
@@ -118,7 +118,7 @@ def run_rhime_from_prepared_inputs(
     build_and_sample_start = timer_start()
 
     if multisector:
-        model_build_result = build_multisector_rhime_model(
+        model_build_result = build_multisector_rhime_model_result(
             prepared=prepared_inputs,
             model_inputs=model_inputs,
             run_spec=run_spec,
@@ -126,7 +126,7 @@ def run_rhime_from_prepared_inputs(
             likelihood_builder=likelihood_builder,
         )
     else:
-        model_build_result = build_standard_rhime_model(
+        model_build_result = build_standard_rhime_model_result(
             prepared=prepared_inputs,
             model_inputs=model_inputs,
             run_spec=run_spec,

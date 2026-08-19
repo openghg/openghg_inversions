@@ -193,7 +193,7 @@ replacing the complete model, or deliberately starting from a different
 preparation graph.
 
 The deliberate change is the likelihood passed to
-``build_standard_rhime_model``: the example selects the same project-owned
+``build_standard_rhime_model_result``: the example selects the same project-owned
 Student-t builder as the preferred form. Acquisition, filtering, basis
 construction, labelled input assembly, conversion of delayed arrays for PyMC,
 sampling, predictive selection, filenames, and output handling remain

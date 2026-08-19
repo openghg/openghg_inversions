@@ -53,7 +53,7 @@ from openghg_inversions.rhime import (
     assemble_rhime_inputs,
     build_rhime_basis,
     build_rhime_sensitivities,
-    build_standard_rhime_model,
+    build_standard_rhime_model_result,
     filter_rhime_observations,
     make_standard_rhime_result,
     materialize_pymc_inputs,
