@@ -457,6 +457,102 @@ def add_correlated_lognormal_state(
     return CorrelatedStateResult(latent=latent, state=state, prior=prior)
 
 
+def add_correlated_lognormal_state_with_activity(
+    activity: ResolvedStateActivity,
+    prior: CorrelatedLognormalPrior,
+    /,
+    *,
+    var_name: str,
+) -> StateVectorResult:
+    """Construct a correlated LogNormal state with exact active/fixed values.
+
+    The arithmetic-moment prior is subset to sampled states before its
+    LogNormal transformation. Inactive states keep their exact fixed values in
+    the full public vector. This is the correlated counterpart of
+    :func:`add_state_vector`.
+
+    Args:
+        activity: Resolved activity in canonical full-state order.
+        prior: Validated labelled arithmetic-moment LogNormal prior for the
+            full state.
+        var_name: Name of the full user-facing state vector.
+
+    Returns:
+        Effective whitened latent, full state vector, and supplied activity.
+    """
+    state_dim = activity.state_dim
+    if prior.state_dim != state_dim:
+        raise ValueError(
+            "Correlated LogNormal prior and state activity must use the same "
+            f"state dimension; found {prior.state_dim!r} and {state_dim!r}."
+        )
+    mean = prior.mean
+    activity_index = activity.zero_sensitivity.coords[state_dim].to_index()
+    if not mean.coords[state_dim].to_index().equals(activity_index):
+        raise ValueError(
+            "Correlated LogNormal prior labels must exactly match state-activity labels in the same order."
+        )
+    covariance = prior.arithmetic_covariance
+
+    # All contract checks above deliberately precede model mutation.
+    add_coords(activity.zero_sensitivity.coords, model_dims=(state_dim,))
+
+    if activity.n_active == activity.n_state:
+        result = add_correlated_lognormal_state(
+            prior,
+            var_name=var_name,
+        )
+        return StateVectorResult(
+            latent=result.latent,
+            state=result.state,
+            activity=activity,
+        )
+
+    add_model_data(
+        activity.active.rename(f"{var_name}_is_active"),
+        f"{var_name}_is_active",
+    )
+    fixed_value = add_model_data(
+        activity.fixed_value.rename(f"{var_name}_fixed_value"),
+        f"{var_name}_fixed_value",
+    )
+    active_indices = activity.active_indices
+    latent: TensorVariable | None = None
+    active_state: TensorVariable | None = None
+    if activity.n_active:
+        active_dim = f"{state_dim}_{var_name}_active"
+        active_index = mean.coords[state_dim].to_index()[active_indices]
+        if isinstance(active_index, pd.MultiIndex):
+            # Full public states own the MultiIndex level coordinates. Tuple
+            # labels keep the internal active dimension independent of them.
+            active_coord = np.empty(activity.n_active, dtype=object)
+            active_coord[:] = active_index.tolist()
+        else:
+            active_coord = active_index.to_numpy()
+        active_mean = xr.DataArray(
+            mean.isel({state_dim: active_indices}).values,
+            dims=(active_dim,),
+            coords={active_dim: active_coord},
+            name=mean.name,
+            attrs=mean.attrs,
+        )
+        active_covariance = covariance.isel(
+            {state_dim: active_indices, prior.covariance_dim: active_indices}
+        ).values
+        result = add_correlated_lognormal_state(
+            CorrelatedLognormalPrior(active_mean, active_covariance),
+            var_name=f"{var_name}_active",
+        )
+        latent = result.latent
+        active_state = result.state
+
+    full_state = fixed_value
+    if active_state is not None:
+        full_state = pt.set_subtensor(full_state[active_indices], active_state)
+    state = pm.Deterministic(var_name, full_state, dims=state_dim)
+    return StateVectorResult(latent=latent, state=state, activity=activity)
+
+
 def add_state_linear_component(
     data: xr.DataArray,
     /,

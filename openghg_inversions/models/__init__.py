@@ -23,6 +23,7 @@ from openghg_inversions.models.components import (
     add_model_data,
     add_offset_component,
     add_correlated_lognormal_state,
+    add_correlated_lognormal_state_with_activity,
     add_sigma_component,
     add_state_linear_component,
 )
@@ -62,6 +63,7 @@ __all__ = [
     "StateLinearComponentResult",
     "add_model_data",
     "add_correlated_lognormal_state",
+    "add_correlated_lognormal_state_with_activity",
     "add_linear_component",
     "add_state_linear_component",
     "add_sigma_component",
