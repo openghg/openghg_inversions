@@ -19,6 +19,7 @@ from openghg_inversions.models import (
     add_state_linear_component,
     attach_coord_registry,
     detect_zero_sensitivity,
+    registered_model,
     resolve_state_activity,
 )
 from openghg_inversions.models.components import add_linear_component, resolve_model_variable
@@ -436,7 +437,7 @@ def test_add_state_vector_registers_full_state_coord_in_a_fresh_model() -> None:
         detect_zero_sensitivity(_sensitivity()),
         StateActivity(prune_zero=False),
     )
-    with pm.Model() as model:
+    with registered_model() as model:
         result = add_state_vector(
             activity,
             prior_args={"pdf": "normal", "mu": 1.0, "sigma": 0.1},

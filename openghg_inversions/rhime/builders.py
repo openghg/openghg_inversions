@@ -16,6 +16,7 @@ import xarray as xr
 from pytensor.tensor.variable import TensorVariable
 
 from openghg_inversions.inversion_data import RhimePreparedInputs
+from openghg_inversions.models.coords import get_coord_registry
 from openghg_inversions.observation_error import AggregationError
 from openghg_inversions.rhime.specs import OutputFormat, RhimeRunSpec
 
@@ -154,6 +155,11 @@ def validate_model_build_result(
         ValueError: If the requested output is unsupported or declared
             variable roles are incomplete or refer to absent variables.
     """
+    if get_coord_registry(result.model) is None:
+        raise ValueError(
+            "A custom RHIME model must carry a `CoordRegistry`; construct it "
+            "with `registered_model()`."
+        )
     output_format = context.run_spec.output.output_format
     if output_format not in result.supported_output_formats:
         raise ValueError(

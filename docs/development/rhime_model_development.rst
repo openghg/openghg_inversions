@@ -23,8 +23,9 @@ The following principles are requirements for production RHIME development:
 * Top-level orchestration is procedural and readable from top to bottom.
 * Model construction appears in mathematical and scientific order.
 * Functions use scientifically meaningful names and explicit inputs.
-* Components remain directly callable; configuration and registries are
-  optional conveniences.
+* Components remain directly callable. Labelled model components require the
+  small ``CoordRegistry`` attached by ``registered_model()``; configuration
+  remains an optional convenience.
 * Small duplication is acceptable when it keeps alternative scientific
   workflows visible.
 * Dataclasses are reserved for concrete scientific concepts or durable
@@ -164,8 +165,11 @@ passed through ``add_model_data`` / ``add_coords`` is checked by the model's
 ``CoordRegistry``, so recipes should not repeat pairwise alignment checks for
 arrays that those components register. Validate scientific invariants at the
 component that owns them, and explicitly validate arrays whose labels are
-discarded before registration, such as both observation axes of a dense
-aggregation-error covariance.
+not shared through one registered dimension name, such as the second
+observation axis of a dense aggregation-error covariance. Construct direct and
+complete custom models with ``registered_model()``; ``add_coords`` rejects a
+model without that registry so the ownership rule is enforced at every
+labelled component boundary.
 
 Prepared-input inventory and ownership
 --------------------------------------

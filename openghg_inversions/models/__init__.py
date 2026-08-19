@@ -31,6 +31,7 @@ from openghg_inversions.models.coords import (
     add_coords,
     attach_coord_registry,
     get_coord_registry,
+    registered_model,
     restore_inferencedata_coords,
 )
 from openghg_inversions.models.priors import parse_prior
@@ -54,6 +55,7 @@ __all__ = [
     "add_coords",
     "attach_coord_registry",
     "get_coord_registry",
+    "registered_model",
     "restore_inferencedata_coords",
     "parse_prior",
     "LinearComponentResult",

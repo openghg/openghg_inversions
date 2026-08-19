@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Collection
+from collections.abc import Collection, Mapping
+import json
+from typing import Any
 
 import pymc as pm
 from pytensor.tensor.variable import TensorVariable
@@ -155,3 +157,38 @@ def validate_likelihood_builder_argument(likelihood_builder: object | None) -> N
         raise TypeError(
             f"`likelihood_builder` must be callable or None; got {type(likelihood_builder).__name__}."
         )
+
+
+def validate_likelihood_kwargs(
+    likelihood_builder: object | None,
+    likelihood_kwargs: object | None,
+) -> dict[str, Any] | None:
+    """Copy and validate options owned by a custom likelihood.
+
+    Args:
+        likelihood_builder: Active custom likelihood callable, if any.
+        likelihood_kwargs: Candidate JSON-compatible option mapping.
+
+    Returns:
+        A detached JSON-compatible mapping, or ``None`` when omitted.
+
+    Raises:
+        TypeError: If the options are not a string-keyed, JSON-compatible
+            mapping.
+        ValueError: If non-empty options are supplied without a custom
+            likelihood builder.
+    """
+    if likelihood_kwargs is None:
+        return None
+    if not isinstance(likelihood_kwargs, Mapping):
+        raise TypeError("`likelihood_kwargs` must be a mapping or None.")
+    if any(not isinstance(key, str) for key in likelihood_kwargs):
+        raise TypeError("`likelihood_kwargs` keys must be strings.")
+    try:
+        encoded = json.dumps(dict(likelihood_kwargs), allow_nan=False)
+        options = json.loads(encoded)
+    except (TypeError, ValueError) as exc:
+        raise TypeError("`likelihood_kwargs` must contain only JSON-compatible values.") from exc
+    if options and likelihood_builder is None:
+        raise ValueError("Non-empty `likelihood_kwargs` require an active `likelihood_builder`.")
+    return options

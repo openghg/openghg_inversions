@@ -10,8 +10,11 @@ from openghg_inversions.models.additive_sigma import (
     add_additive_sigma_gaussian_likelihood,
     build_additive_sigma_error,
 )
-from openghg_inversions.models.coords import CoordRegistry, attach_coord_registry
-from openghg_inversions.models.likelihoods import add_gaussian_observation_likelihood
+from openghg_inversions.models.coords import registered_model
+from openghg_inversions.models.likelihoods import (
+    add_aggregation_error_data,
+    add_gaussian_observation_likelihood,
+)
 from openghg_inversions.models.pollution_event import build_pollution_event_error
 from openghg_inversions.observation_error import resolve_aggregation_error
 from openghg_inversions.rhime.likelihoods import additive_sigma_likelihood_builder
@@ -84,7 +87,12 @@ def _low_rank_data() -> tuple[xr.Dataset, np.ndarray]:
 
 def _fixed_likelihood_model(data: xr.Dataset) -> pm.Model:
     aggregation_error = resolve_aggregation_error(data)
-    with pm.Model(coords={"nmeasure": np.arange(3)}) as model:
+    with registered_model() as model:
+        registered_aggregation_error = add_aggregation_error_data(
+            aggregation_error,
+            data["mf"],
+            output_dim="nmeasure",
+        )
         observed = pm.Data("Y", pm.floatX(data["mf"].values), dims="nmeasure")
         mean = pm.Data("mean", pm.floatX(np.array([0.8, 1.7, 2.9])), dims="nmeasure")
         independent_variance = pm.Data(
@@ -96,7 +104,7 @@ def _fixed_likelihood_model(data: xr.Dataset) -> pm.Model:
             observed=observed,
             mean=mean,
             independent_variance=independent_variance,
-            aggregation_error=aggregation_error,
+            aggregation_error=registered_aggregation_error,
             output_dim="nmeasure",
         )
     return model
@@ -135,6 +143,46 @@ def test_low_rank_likelihood_retains_observed_y_and_predictive_sampling() -> Non
     assert predictive.prior_predictive["y"].shape == (1, 2, 3)
 
 
+@pytest.mark.parametrize(
+    ("mode", "payload_names"),
+    [
+        ("diagonal", {"diagonal_residual_variance"}),
+        ("dense", {"aggregation_error_covariance"}),
+        ("low_rank", {"low_rank_factor", "diagonal_residual_variance"}),
+    ],
+)
+def test_aggregation_error_is_preserved_as_labelled_constant_data(
+    mode: str,
+    payload_names: set[str],
+) -> None:
+    """Every fixed aggregation term used by the graph remains inspectable."""
+    data = _base_data()
+    if mode == "diagonal":
+        data["aggregation_error_sd"] = ("nmeasure", [0.1, 0.2, 0.3])
+    elif mode == "dense":
+        data["aggregation_error_covariance"] = (
+            ("nmeasure", "nmeasure_cov"),
+            np.diag([0.1, 0.2, 0.3]),
+        )
+    else:
+        data, _ = _low_rank_data()
+
+    model = _fixed_likelihood_model(data)
+    with model:
+        predictive = pm.sample_prior_predictive(draws=1, var_names=["y"])
+
+    expected_names = payload_names | {"aggregation_error_marginal_variance"}
+    assert expected_names.issubset(predictive.constant_data.data_vars)
+    assert predictive.constant_data["aggregation_error_marginal_variance"].dims == (
+        "nmeasure",
+    )
+    if mode == "dense":
+        assert predictive.constant_data["aggregation_error_covariance"].dims == (
+            "nmeasure",
+            "nmeasure_cov",
+        )
+
+
 @pytest.mark.parametrize("mode", ["diagonal", "dense", "low_rank"])
 def test_min_error_is_a_floor_on_total_marginal_sd(mode: str) -> None:
     data = _base_data()
@@ -154,8 +202,7 @@ def test_min_error_is_a_floor_on_total_marginal_sd(mode: str) -> None:
     sigma_alignment = SigmaAlignment.from_frequency(
         data["site_indicator"], frequency=None, per_site=False
     )
-    with pm.Model(coords={"nmeasure": np.arange(3)}) as model:
-        attach_coord_registry(model, CoordRegistry())
+    with registered_model(coords={"nmeasure": np.arange(3)}) as model:
         mu = pm.Data("mu_input", np.ones(3), dims="nmeasure")
         _add_pollution_event_likelihood(
             data,
@@ -178,8 +225,7 @@ def test_no_model_error_retains_legacy_sigma_graph_and_observation_error_floor()
     sigma_alignment = SigmaAlignment.from_frequency(
         data["site_indicator"], frequency=None, per_site=False
     )
-    with pm.Model(coords={"nmeasure": np.arange(3)}) as model:
-        attach_coord_registry(model, CoordRegistry())
+    with registered_model(coords={"nmeasure": np.arange(3)}) as model:
         mu = pm.Data("mu_input", np.ones(3), dims="nmeasure")
         _add_pollution_event_likelihood(
             data,
@@ -205,8 +251,7 @@ def test_no_model_error_omits_unused_sigma_by_default() -> None:
     sigma_alignment = SigmaAlignment.from_frequency(
         data["site_indicator"], frequency=None, per_site=False
     )
-    with pm.Model(coords={"nmeasure": np.arange(3)}) as model:
-        attach_coord_registry(model, CoordRegistry())
+    with registered_model(coords={"nmeasure": np.arange(3)}) as model:
         mu = pm.Data("mu_input", np.ones(3), dims="nmeasure")
         _add_pollution_event_likelihood(
             data,
@@ -228,7 +273,7 @@ def test_pollution_event_validation_names_malformed_input_and_owner() -> None:
         data["site_indicator"], frequency=None, per_site=False
     )
 
-    with pm.Model(coords={"nmeasure": np.arange(3)}):
+    with registered_model(coords={"nmeasure": np.arange(3)}):
         pollution_mean = pm.Data("pollution_mean", np.ones(3), dims="nmeasure")
         with pytest.raises(
             ValueError,
@@ -257,7 +302,7 @@ def test_additive_sigma_validation_names_malformed_input_and_owner() -> None:
         data["site_indicator"], frequency=None, per_site=False
     )
 
-    with pm.Model(coords={"nmeasure": np.arange(3)}):
+    with registered_model(coords={"nmeasure": np.arange(3)}):
         with pytest.raises(
             ValueError,
             match="Additive-sigma likelihood input 'minimum_error'.*dims",
@@ -273,28 +318,21 @@ def test_additive_sigma_validation_names_malformed_input_and_owner() -> None:
             )
 
 
-@pytest.mark.parametrize(
-    ("component", "owner"),
-    [
-        ("pollution-event", "Pollution-event likelihood"),
-        ("additive-sigma", "Additive-sigma likelihood"),
-    ],
-)
+@pytest.mark.parametrize("component", ["pollution-event", "additive-sigma"])
 def test_likelihoods_reject_reordered_observation_error_coordinates(
     component: str,
-    owner: str,
 ) -> None:
-    """Named arrays cannot silently fall back to positional observation order."""
+    """The registry rejects a conflicting observation order during registration."""
     data = _base_data()
     reordered_error = data["mf_error"].isel(nmeasure=[2, 1, 0])
     sigma_alignment = SigmaAlignment.from_frequency(
         data["site_indicator"], frequency=None, per_site=False
     )
 
-    with pm.Model(coords={"nmeasure": np.arange(3)}):
+    with registered_model(coords={"nmeasure": np.arange(3)}):
         with pytest.raises(
             ValueError,
-            match=rf"{owner} input 'observation_error'.*coordinate 'nmeasure'",
+            match="Conflicting coord registration for 'nmeasure': values differ",
         ):
             if component == "pollution-event":
                 pollution_mean = pm.Data("pollution_mean", np.ones(3), dims="nmeasure")
@@ -331,8 +369,7 @@ def test_additive_sigma_error_adds_mismatch_variance_and_applies_marginal_floor(
     sigma_alignment = SigmaAlignment.from_frequency(
         data["site_indicator"], frequency=None, per_site=False
     )
-    with pm.Model(coords={"nmeasure": np.arange(3)}) as model:
-        attach_coord_registry(model, CoordRegistry())
+    with registered_model(coords={"nmeasure": np.arange(3)}) as model:
         state = build_additive_sigma_error(
             observations=data["mf"],
             observation_error=data["mf_error"],
@@ -359,8 +396,7 @@ def test_additive_sigma_error_omits_sigma_when_model_error_is_disabled() -> None
     sigma_alignment = SigmaAlignment.from_frequency(
         data["site_indicator"], frequency=None, per_site=False
     )
-    with pm.Model(coords={"nmeasure": np.arange(3)}) as model:
-        attach_coord_registry(model, CoordRegistry())
+    with registered_model(coords={"nmeasure": np.arange(3)}) as model:
         state = build_additive_sigma_error(
             observations=data["mf"],
             observation_error=data["mf_error"],
@@ -383,8 +419,7 @@ def test_additive_sigma_gaussian_likelihood_uses_completed_mean() -> None:
     sigma_alignment = SigmaAlignment.from_frequency(
         data["site_indicator"], frequency=None, per_site=False
     )
-    with pm.Model(coords={"nmeasure": np.arange(3)}) as model:
-        attach_coord_registry(model, CoordRegistry())
+    with registered_model(coords={"nmeasure": np.arange(3)}) as model:
         mean = pm.Data("completed_mean", completed_mean, dims="nmeasure")
         likelihood = add_additive_sigma_gaussian_likelihood(
             observations=data["mf"],
@@ -412,8 +447,7 @@ def test_rhime_additive_sigma_adapter_accepts_pollution_event_inputs() -> None:
     sigma_alignment = SigmaAlignment.from_frequency(
         data["site_indicator"], frequency=None, per_site=False
     )
-    with pm.Model(coords={"nmeasure": np.arange(3)}) as model:
-        attach_coord_registry(model, CoordRegistry())
+    with registered_model(coords={"nmeasure": np.arange(3)}) as model:
         mean = pm.Data("completed_mean", np.ones(3), dims="nmeasure")
         likelihood = additive_sigma_likelihood_builder(
             observations=data["mf"],
@@ -442,8 +476,7 @@ def test_observation_derived_pollution_event_subtracts_complete_baseline() -> No
     sigma_alignment = SigmaAlignment.from_frequency(
         data["site_indicator"], frequency=None, per_site=False
     )
-    with pm.Model(coords={"nmeasure": np.arange(3)}) as model:
-        attach_coord_registry(model, CoordRegistry())
+    with registered_model(coords={"nmeasure": np.arange(3)}) as model:
         pollution_mean = pm.Data("mu_input", np.zeros(3), dims="nmeasure")
         boundary_mean = pm.Data("mu_bc_input", np.full(3, 0.25), dims="nmeasure")
         offset = pm.Data("offset_input", np.full(3, 0.5), dims="nmeasure")

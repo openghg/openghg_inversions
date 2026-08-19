@@ -23,12 +23,15 @@ import xarray as xr
 from pytensor.tensor.variable import TensorVariable
 
 from openghg_inversions.models.components import add_model_data, add_sigma_component
-from openghg_inversions.models.likelihoods import add_gaussian_observation_likelihood
+from openghg_inversions.models.likelihoods import (
+    RegisteredAggregationError,
+    add_aggregation_error_data,
+    add_gaussian_observation_likelihood,
+)
 from openghg_inversions.models.priors import parse_prior
 from openghg_inversions.observation_error import (
     AggregationError,
     validate_aggregation_error_alignment,
-    validate_observation_alignment,
     validate_observation_error_arrays,
 )
 from openghg_inversions.sigma import SigmaAlignment
@@ -40,7 +43,7 @@ class PollutionEventErrorState:
 
     observed: TensorVariable
     independent_variance: TensorVariable
-    aggregation_error: AggregationError
+    aggregation_error: RegisteredAggregationError
     error_scale: TensorVariable
 
 
@@ -111,20 +114,6 @@ def build_pollution_event_error(
                 "Pollution-event likelihood requires `sigma_alignment` when "
                 "model error is enabled or unused sigma is retained."
             )
-        validate_observation_alignment(
-            observations,
-            sigma_alignment.site_index,
-            input_name="sigma_alignment.site_index",
-            owner="Pollution-event likelihood",
-            output_dim=output_dim,
-        )
-        validate_observation_alignment(
-            observations,
-            sigma_alignment.period_index,
-            input_name="sigma_alignment.period_index",
-            owner="Pollution-event likelihood",
-            output_dim=output_dim,
-        )
     validate_aggregation_error_alignment(
         observations,
         aggregation_error,
@@ -134,6 +123,11 @@ def build_pollution_event_error(
     observed = add_model_data(observations.transpose(output_dim), "Y")
     reported_error = add_model_data(observation_error.transpose(output_dim), "error")
     minimum_error_data = add_model_data(minimum_error.transpose(output_dim), "min_error")
+    registered_aggregation_error = add_aggregation_error_data(
+        aggregation_error,
+        observations,
+        output_dim=output_dim,
+    )
     sigma = None
     if needs_sigma:
         assert sigma_alignment is not None
@@ -164,9 +158,7 @@ def build_pollution_event_error(
             pollution_event * sigma,
             exponent,
         )
-        aggregation_marginal_variance = pt.as_tensor_variable(
-            pm.floatX(aggregation_error.marginal_variance)
-        )
+        aggregation_marginal_variance = registered_aggregation_error.marginal_variance
         floor_variance = cast(Any, pt.maximum)(
             minimum_error_data**2
             - raw_independent_variance
@@ -175,8 +167,8 @@ def build_pollution_event_error(
         )
         independent_variance = raw_independent_variance + floor_variance
 
-    total_marginal_variance = independent_variance + pt.as_tensor_variable(
-        pm.floatX(aggregation_error.marginal_variance)
+    total_marginal_variance = (
+        independent_variance + registered_aggregation_error.marginal_variance
     )
     error_scale = pm.Deterministic(
         "epsilon",
@@ -186,7 +178,7 @@ def build_pollution_event_error(
     return PollutionEventErrorState(
         observed=observed,
         independent_variance=independent_variance,
-        aggregation_error=aggregation_error,
+        aggregation_error=registered_aggregation_error,
         error_scale=error_scale,
     )
 

@@ -218,6 +218,21 @@ def get_coord_registry(model: pm.Model) -> CoordRegistry | None:
     return getattr(model, "_openghg_coord_registry", None)
 
 
+def registered_model(*args: Any, **kwargs: Any) -> pm.Model:
+    """Construct a PyMC model with RHIME coordinate tracking attached.
+
+    Args:
+        *args: Positional arguments forwarded to :class:`pymc.Model`.
+        **kwargs: Keyword arguments forwarded to :class:`pymc.Model`.
+
+    Returns:
+        A new PyMC model with an empty :class:`CoordRegistry` attached.
+    """
+    model = pm.Model(*args, **kwargs)
+    attach_coord_registry(model, CoordRegistry())
+    return model
+
+
 def add_coords(
     coords: dict[str, np.ndarray] | xr.Coordinates,
     *,
@@ -237,11 +252,14 @@ def add_coords(
     pymc_coords_list = {name: coord.tolist() for name, coord in pymc_coords.items()}
 
     with pm.modelcontext(None) as model:
-        model.add_coords(pymc_coords_list)
-
         registry = get_coord_registry(model)
-        if registry is not None:
-            registry.add(coords, model_dims=model_dims)
+        if registry is None:
+            raise RuntimeError(
+                "Labelled OpenGHG model components require a `CoordRegistry`; "
+                "construct the model with `registered_model()`."
+            )
+        model.add_coords(pymc_coords_list)
+        registry.add(coords, model_dims=model_dims)
 
 
 def restore_inferencedata_coords(

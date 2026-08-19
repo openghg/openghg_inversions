@@ -202,12 +202,9 @@ helpers:
 
 .. code-block:: python
 
-   import pymc as pm
-
    from openghg_inversions.models import (
-       CoordRegistry,
        add_linear_component,
-       attach_coord_registry,
+       registered_model,
    )
    from openghg_inversions.models.likelihoods import add_gaussian_observation_likelihood
    from openghg_inversions.models.pollution_event import build_pollution_event_error
@@ -234,9 +231,7 @@ helpers:
        per_site=True,
    )
 
-   with pm.Model() as model:
-       attach_coord_registry(model, CoordRegistry())
-
+   with registered_model() as model:
        flux = add_linear_component(
            inv_inputs["H"],
            data_name="hx",
@@ -344,6 +339,10 @@ specific to that likelihood travel separately in ``likelihood_kwargs``.
 The builder adds and returns the canonical observed variable ``y`` and also
 adds the canonical marginal error scale ``epsilon``.
 
+``likelihood_kwargs`` must be a string-keyed, JSON-compatible mapping and is
+valid only when a likelihood builder is active. The runner copies and records
+the mapping with the callable identity in result and saved builder metadata.
+
 The editable example in :doc:`customising_rhime` implements a fixed-error
 Student-t likelihood using only those common inputs. Pass it directly to the
 ordinary runner:
@@ -400,9 +399,8 @@ materialize any lazy arrays they consume:
        run_rhime_from_prepared_inputs,
    )
    from openghg_inversions.models import (
-       CoordRegistry,
        add_coords,
-       attach_coord_registry,
+       registered_model,
    )
 
 
@@ -410,8 +408,7 @@ materialize any lazy arrays they consume:
        context: RhimeModelBuilderContext,
    ) -> RhimeModelBuildResult:
        data = context.prepared_inputs.inv_inputs
-       with pm.Model() as model:
-           attach_coord_registry(model, CoordRegistry())
+       with registered_model() as model:
            add_coords(data.coords, model_dims=("nmeasure",))
            mean = pm.Normal("custom_mean", mu=0.0, sigma=10.0)
            pm.Normal(
@@ -449,8 +446,8 @@ The compatibility rules are explicit:
   manifest; ``concentration`` is required;
 * every declared role name must exist in either the model or prepared inversion
   inputs;
-* builders that use labelled model dimensions should attach ``CoordRegistry``
-  before calling ``add_coords`` or public model components, so
+* builders must construct their graph with ``registered_model()`` before
+  calling ``add_coords`` or public model components, so
   ``RhimeSampler`` can restore MultiIndexes and auxiliary scientific
   coordinates;
 * builder metadata must be JSON serializable, and external packages should

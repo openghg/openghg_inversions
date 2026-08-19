@@ -22,7 +22,7 @@ from openghg_inversions.models.components import (
     add_offset_component,
     add_state_linear_component,
 )
-from openghg_inversions.models.coords import CoordRegistry, attach_coord_registry
+from openghg_inversions.models.coords import registered_model
 from openghg_inversions.models.pollution_event import build_pollution_event_gaussian_likelihood
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.models.state_activity import StateActivity
@@ -38,6 +38,7 @@ from ._model_building import (
     builtin_model_build_result,
     validate_custom_likelihood_result,
     validate_likelihood_builder_argument,
+    validate_likelihood_kwargs,
     validated_custom_model_build,
 )
 from .builders import (
@@ -91,6 +92,7 @@ def standard_model_input_names(
     prepared: RhimePreparedInputs,
     model_spec: RhimeModelSpec,
     *,
+    likelihood_builder: RhimeLikelihoodBuilder | None = None,
     preserve_legacy_likelihood: bool = False,
 ) -> tuple[str, ...]:
     """Declare arrays required by selected standard-model components.
@@ -98,6 +100,8 @@ def standard_model_input_names(
     Args:
         prepared: Backend-neutral prepared inputs.
         model_spec: Resolved standard-model component options.
+        likelihood_builder: Custom likelihood which owns any additional error
+            inputs itself.
         preserve_legacy_likelihood: Whether the historical compatibility graph
             retains its disconnected sigma variable.
 
@@ -122,7 +126,9 @@ def standard_model_input_names(
         *_STANDARD_FLUX_INPUT_NAMES,
         *OBSERVATION_ERROR_INPUT_NAMES,
     ]
-    if not model_spec.no_model_error or preserve_legacy_likelihood:
+    if likelihood_builder is None and (
+        not model_spec.no_model_error or preserve_legacy_likelihood
+    ):
         _require_component_inputs(
             prepared,
             _MODEL_ERROR_ALIGNMENT_INPUT_NAMES,
@@ -226,13 +232,13 @@ def build_standard_rhime_model(
             variables are invalid.
         TypeError: If a custom likelihood returns the wrong result type.
     """
+    likelihood_kwargs = validate_likelihood_kwargs(likelihood_builder, likelihood_kwargs)
     x_prior = dict(DEFAULT_X_PRIOR if x_prior is None else x_prior)
     bc_prior = dict(DEFAULT_BC_PRIOR if bc_prior is None else bc_prior)
     sigma_prior = dict(DEFAULT_SIGMA_PRIOR if sigma_prior is None else sigma_prior)
     offset_prior = dict(DEFAULT_OFFSET_PRIOR if offset_prior is None else offset_prior)
 
-    with pm.Model() as model:
-        attach_coord_registry(model, CoordRegistry())
+    with registered_model() as model:
         flux_component = add_state_linear_component(
             flux_sensitivity,
             data_name="hx",
@@ -320,7 +326,7 @@ def build_standard_rhime_model(
                 pollution_mean=pollution_mean,
                 pollution_event_baseline=pollution_event_baseline,
                 output_dim="nmeasure",
-                **dict(likelihood_kwargs or {}),
+                **(likelihood_kwargs or {}),
             )
             validate_custom_likelihood_result(model, likelihood)
 
@@ -358,6 +364,7 @@ def build_standard_rhime_model_result(
         ValueError: If both builder extension points are supplied or the built
             result is inconsistent with the run specification.
     """
+    likelihood_kwargs = validate_likelihood_kwargs(likelihood_builder, likelihood_kwargs)
     if model_builder is not None and likelihood_builder is not None:
         raise ValueError("Pass either `model_builder` or `likelihood_builder`, not both.")
     timing_start = timer_start()
@@ -381,7 +388,8 @@ def build_standard_rhime_model_result(
                 per_site=model_spec.sigma_per_site,
                 anchor_time=model_spec.sigma_freq_anchor,
             )
-            if not model_spec.no_model_error or preserve_legacy_likelihood
+            if likelihood_builder is None
+            and (not model_spec.no_model_error or preserve_legacy_likelihood)
             else None
         )
         aggregation_error = resolve_aggregation_error(
@@ -439,6 +447,7 @@ def make_standard_rhime_result(
     build_and_sample_seconds: float,
     model_builder: RhimeModelBuilder | None = None,
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
+    likelihood_kwargs: Mapping[str, Any] | None = None,
 ) -> RhimeResult:
     """Construct a standard result and write only its requested products.
 
@@ -451,10 +460,12 @@ def make_standard_rhime_result(
         build_and_sample_seconds: Combined graph-build and sampling duration.
         model_builder: Optional complete-model callable used for provenance.
         likelihood_builder: Optional likelihood callable used for provenance.
+        likelihood_kwargs: Serializable options owned by the likelihood.
 
     Returns:
         Complete standard-run result with requested output products attached.
     """
+    likelihood_kwargs = validate_likelihood_kwargs(likelihood_builder, likelihood_kwargs)
     result = RhimeResult(
         run_spec=run_spec,
         model_spec=run_spec.model,
@@ -476,6 +487,9 @@ def make_standard_rhime_result(
         identity = callable_metadata(likelihood_builder)
         result.output_metadata["likelihood_builder"] = identity
         builder_metadata["likelihood_builder"] = identity
+    if likelihood_kwargs is not None:
+        result.output_metadata["likelihood_kwargs"] = likelihood_kwargs
+        builder_metadata["likelihood_kwargs"] = likelihood_kwargs
 
     timing_start = timer_start()
     output_bundle = make_standard_output_bundle(
@@ -554,6 +568,7 @@ def run_rhime(
         parsed or data is acquired, prepared, or materialized.
     """
     validate_likelihood_builder_argument(likelihood_builder)
+    likelihood_kwargs = validate_likelihood_kwargs(likelihood_builder, likelihood_kwargs)
     params = (
         params_from_config(config_file, extra_kwargs=kwargs, normalise=False)
         if config_file is not None
@@ -593,6 +608,7 @@ def run_rhime(
         variable_names=standard_model_input_names(
             prepared,
             run_spec.model,
+            likelihood_builder=likelihood_builder,
             preserve_legacy_likelihood=preserve_legacy_likelihood,
         ),
     )
@@ -617,4 +633,5 @@ def run_rhime(
         idata=idata,
         build_and_sample_seconds=timer_seconds(build_and_sample_start),
         likelihood_builder=likelihood_builder,
+        likelihood_kwargs=likelihood_kwargs,
     )

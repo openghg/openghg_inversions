@@ -737,12 +737,12 @@ public state ``<name>``.
 .. code-block:: python
 
    import numpy as np
-   import pymc as pm
    import xarray as xr
 
    from openghg_inversions.models import (
        CorrelatedLognormalPrior,
        add_correlated_lognormal_state,
+       registered_model,
    )
 
    mean = xr.DataArray(
@@ -755,7 +755,7 @@ public state ``<name>``.
        np.array([[0.16, 0.03], [0.03, 0.09]]),
    )
 
-   with pm.Model():
+   with registered_model():
        state_result = add_correlated_lognormal_state(prior, var_name="x")
 
 ``C`` must be the dense covariance of an already-reduced sampled state, such as

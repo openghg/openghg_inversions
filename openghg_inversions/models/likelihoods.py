@@ -3,14 +3,83 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import cast
 
 import numpy as np
 import pymc as pm
 import pytensor.tensor as pt
+import xarray as xr
 from pytensor.tensor.variable import TensorVariable
 
-from openghg_inversions.observation_error import AggregationError
+from openghg_inversions.models.components import add_model_data
+from openghg_inversions.observation_error import (
+    AGGREGATION_ERROR_COVARIANCE,
+    DIAGONAL_RESIDUAL_VARIANCE,
+    LOW_RANK_FACTOR,
+    AggregationError,
+)
+
+
+@dataclass(frozen=True)
+class RegisteredAggregationError:
+    """Aggregation-error tensors registered with the active PyMC model."""
+
+    mode: str
+    marginal_variance: TensorVariable
+    covariance: TensorVariable | None = None
+    factor: TensorVariable | None = None
+    diagonal_variance: TensorVariable | None = None
+
+
+def add_aggregation_error_data(
+    aggregation_error: AggregationError,
+    observations: xr.DataArray,
+    *,
+    output_dim: str,
+) -> RegisteredAggregationError:
+    """Register labelled fixed aggregation-error data with the active model.
+
+    Args:
+        aggregation_error: Validated backend-neutral covariance representation.
+        observations: Observation vector supplying labels for the marginal
+            variance.
+        output_dim: Observation dimension.
+
+    Returns:
+        Registered tensors used by the error scale and likelihood graph.
+    """
+    marginal = xr.DataArray(
+        pm.floatX(aggregation_error.marginal_variance),
+        dims=(output_dim,),
+        coords={output_dim: observations.coords[output_dim]},
+        name="aggregation_error_marginal_variance",
+    )
+    covariance = (
+        add_model_data(aggregation_error.covariance, AGGREGATION_ERROR_COVARIANCE)
+        if aggregation_error.covariance is not None
+        else None
+    )
+    factor = (
+        add_model_data(aggregation_error.factor, LOW_RANK_FACTOR)
+        if aggregation_error.factor is not None
+        else None
+    )
+    diagonal_variance = (
+        add_model_data(
+            aggregation_error.diagonal_variance,
+            DIAGONAL_RESIDUAL_VARIANCE,
+        )
+        if aggregation_error.diagonal_variance is not None
+        else None
+    )
+    return RegisteredAggregationError(
+        mode=aggregation_error.mode,
+        marginal_variance=add_model_data(marginal),
+        covariance=covariance,
+        factor=factor,
+        diagonal_variance=diagonal_variance,
+    )
 
 
 def _low_rank_gaussian_logp(
@@ -90,7 +159,7 @@ def add_gaussian_observation_likelihood(
     observed: TensorVariable,
     mean: TensorVariable,
     independent_variance: TensorVariable,
-    aggregation_error: AggregationError,
+    aggregation_error: RegisteredAggregationError,
     output_dim: str,
 ) -> TensorVariable:
     """Add the canonical Gaussian observation variable ``y``.
@@ -111,9 +180,7 @@ def add_gaussian_observation_likelihood(
         variance = independent_variance
         if aggregation_error.mode == "diagonal":
             assert aggregation_error.diagonal_variance is not None
-            variance = variance + pt.as_tensor_variable(
-                pm.floatX(np.asarray(aggregation_error.diagonal_variance.values))
-            )
+            variance = variance + aggregation_error.diagonal_variance
         return cast(
             TensorVariable,
             pm.Normal("y", mu=mean, sigma=pt.sqrt(variance), observed=observed, dims=output_dim),
@@ -121,13 +188,12 @@ def add_gaussian_observation_likelihood(
 
     if aggregation_error.mode == "dense":
         assert aggregation_error.covariance is not None
-        covariance = pt.as_tensor_variable(pm.floatX(np.asarray(aggregation_error.covariance.values)))
         return cast(
             TensorVariable,
             pm.MvNormal(
                 "y",
                 mu=mean,
-                cov=covariance + pt.diag(independent_variance),
+                cov=aggregation_error.covariance + pt.diag(independent_variance),
                 observed=observed,
                 dims=output_dim,
             ),
@@ -135,16 +201,13 @@ def add_gaussian_observation_likelihood(
 
     assert aggregation_error.factor is not None
     assert aggregation_error.diagonal_variance is not None
-    factor = pt.as_tensor_variable(pm.floatX(np.asarray(aggregation_error.factor.values)))
-    diagonal = independent_variance + pt.as_tensor_variable(
-        pm.floatX(np.asarray(aggregation_error.diagonal_variance.values))
-    )
+    diagonal = independent_variance + aggregation_error.diagonal_variance
     return cast(
         TensorVariable,
         pm.CustomDist(
             "y",
             mean,
-            factor,
+            aggregation_error.factor,
             diagonal,
             logp=_low_rank_gaussian_logp,
             random=_low_rank_gaussian_random,

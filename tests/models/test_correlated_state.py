@@ -13,6 +13,7 @@ from openghg_inversions.models import (
     CoordRegistry,
     add_correlated_lognormal_state,
     attach_coord_registry,
+    registered_model,
     restore_inferencedata_coords,
 )
 from openghg_inversions.models.priors import lognormal_mu_sigma
@@ -313,7 +314,7 @@ def test_add_correlated_lognormal_state_builds_whitened_public_graph() -> None:
     """Expose a standard-normal sampler state and positive effective state."""
     prior = _prior()
     registry = CoordRegistry()
-    with pm.Model() as model:
+    with registered_model() as model:
         attach_coord_registry(model, registry)
         result = add_correlated_lognormal_state(prior, var_name="x")
 
@@ -334,7 +335,7 @@ def test_add_correlated_lognormal_state_rejects_float32_cholesky_underflow() -> 
     mean = _gathered_mean().isel(state=[0])
     prior = CorrelatedLognormalPrior(mean, np.array([[1.0e-100]]))
 
-    with pm.Model() as model:
+    with registered_model() as model:
         with pytest.raises(ValueError, match="remain positive in the model float dtype"):
             add_correlated_lognormal_state(prior, var_name="x")
         assert model.named_vars == {}
@@ -353,7 +354,7 @@ def test_add_correlated_lognormal_state_rejects_unrepresentable_float32_mean(
     covariance = np.array([[(0.1 * mean_value) ** 2]])
     prior = CorrelatedLognormalPrior(mean, covariance)
 
-    with pm.Model() as model:
+    with registered_model() as model:
         with pytest.raises(ValueError, match="arithmetic means.*model float dtype"):
             add_correlated_lognormal_state(prior, var_name="x")
 

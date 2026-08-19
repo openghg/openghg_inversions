@@ -13,7 +13,7 @@ from openghg_inversions.observation_error import (
     select_aggregation_error_mode,
 )
 
-from ._model_building import validate_likelihood_builder_argument
+from ._model_building import validate_likelihood_builder_argument, validate_likelihood_kwargs
 from .builders import RhimeLikelihoodBuilder, RhimeModelBuilder
 from .materialization import materialize_pymc_inputs
 from .multisector import build_multisector_rhime_model_result, make_multisector_rhime_result
@@ -69,6 +69,7 @@ def run_rhime_from_prepared_inputs(
         TypeError: If an extension point has an invalid callable contract.
     """
     validate_likelihood_builder_argument(likelihood_builder)
+    likelihood_kwargs = validate_likelihood_kwargs(likelihood_builder, likelihood_kwargs)
     if model_builder is not None and likelihood_builder is not None:
         raise ValueError("Pass either `model_builder` or `likelihood_builder`, not both.")
     prepared_inputs = prepared_inputs.validated()
@@ -132,9 +133,17 @@ def run_rhime_from_prepared_inputs(
         else materialize_pymc_inputs(
             prepared_inputs,
             variable_names=(
-                multisector_model_input_names(prepared_inputs, run_spec.model)
+                multisector_model_input_names(
+                    prepared_inputs,
+                    run_spec.model,
+                    likelihood_builder=likelihood_builder,
+                )
                 if multisector
-                else standard_model_input_names(prepared_inputs, run_spec.model)
+                else standard_model_input_names(
+                    prepared_inputs,
+                    run_spec.model,
+                    likelihood_builder=likelihood_builder,
+                )
             ),
         )
     )
@@ -175,6 +184,7 @@ def run_rhime_from_prepared_inputs(
             build_and_sample_seconds=build_and_sample_seconds,
             model_builder=model_builder,
             likelihood_builder=likelihood_builder,
+            likelihood_kwargs=likelihood_kwargs,
         )
     return make_standard_rhime_result(
         prepared=prepared_inputs,
@@ -185,4 +195,5 @@ def run_rhime_from_prepared_inputs(
         build_and_sample_seconds=build_and_sample_seconds,
         model_builder=model_builder,
         likelihood_builder=likelihood_builder,
+        likelihood_kwargs=likelihood_kwargs,
     )

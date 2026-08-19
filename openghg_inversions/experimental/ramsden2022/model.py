@@ -45,7 +45,7 @@ from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.inversion_inputs import DatetimeLike
 from openghg_inversions.models._flux import _select_sector_design, safe_pymc_name
 from openghg_inversions.models.components import add_linear_component, add_model_data
-from openghg_inversions.models.coords import CoordRegistry, add_coords, attach_coord_registry
+from openghg_inversions.models.coords import add_coords, registered_model
 from openghg_inversions.models.priors import parse_prior
 from openghg_inversions.rhime.sampling import RhimeSampler
 from openghg_inversions.sigma import SigmaAlignment
@@ -763,8 +763,7 @@ def build_ramsden_model(
     primary_dim = f"nmeasure_{primary_suffix}"
     tracer_dim = f"nmeasure_{tracer_suffix}"
 
-    with pm.Model() as model:
-        attach_coord_registry(model, CoordRegistry())
+    with registered_model() as model:
         primary_terms: list[TensorVariable] = []
         tracer_terms: list[TensorVariable] = []
 

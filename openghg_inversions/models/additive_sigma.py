@@ -26,11 +26,14 @@ import xarray as xr
 from pytensor.tensor.variable import TensorVariable
 
 from openghg_inversions.models.components import add_model_data, add_sigma_component
-from openghg_inversions.models.likelihoods import add_gaussian_observation_likelihood
+from openghg_inversions.models.likelihoods import (
+    RegisteredAggregationError,
+    add_aggregation_error_data,
+    add_gaussian_observation_likelihood,
+)
 from openghg_inversions.observation_error import (
     AggregationError,
     validate_aggregation_error_alignment,
-    validate_observation_alignment,
     validate_observation_error_arrays,
 )
 from openghg_inversions.sigma import SigmaAlignment
@@ -42,7 +45,7 @@ class AdditiveSigmaErrorState:
 
     observed: TensorVariable
     independent_variance: TensorVariable
-    aggregation_error: AggregationError
+    aggregation_error: RegisteredAggregationError
     error_scale: TensorVariable
 
 
@@ -99,20 +102,6 @@ def build_additive_sigma_error(
                 "Additive-sigma likelihood requires `sigma_alignment` when "
                 "model error is enabled."
             )
-        validate_observation_alignment(
-            observations,
-            sigma_alignment.site_index,
-            input_name="sigma_alignment.site_index",
-            owner="Additive-sigma likelihood",
-            output_dim=output_dim,
-        )
-        validate_observation_alignment(
-            observations,
-            sigma_alignment.period_index,
-            input_name="sigma_alignment.period_index",
-            owner="Additive-sigma likelihood",
-            output_dim=output_dim,
-        )
     validate_aggregation_error_alignment(
         observations,
         aggregation_error,
@@ -122,6 +111,11 @@ def build_additive_sigma_error(
     observed = add_model_data(observations.transpose(output_dim), "Y")
     reported_error = add_model_data(observation_error.transpose(output_dim), "error")
     minimum_error_data = add_model_data(minimum_error.transpose(output_dim), "min_error")
+    registered_aggregation_error = add_aggregation_error_data(
+        aggregation_error,
+        observations,
+        output_dim=output_dim,
+    )
 
     independent_variance = reported_error**2
     if not no_model_error:
@@ -129,9 +123,7 @@ def build_additive_sigma_error(
         sigma = add_sigma_component(sigma_alignment, prior_args=dict(sigma_prior))
         independent_variance = independent_variance + sigma**2
 
-    aggregation_marginal_variance = pt.as_tensor_variable(
-        pm.floatX(aggregation_error.marginal_variance)
-    )
+    aggregation_marginal_variance = registered_aggregation_error.marginal_variance
     floor_variance = cast(Any, pt.maximum)(
         minimum_error_data**2 - independent_variance - aggregation_marginal_variance,
         0.0,
@@ -145,7 +137,7 @@ def build_additive_sigma_error(
     return AdditiveSigmaErrorState(
         observed=observed,
         independent_variance=independent_variance,
-        aggregation_error=aggregation_error,
+        aggregation_error=registered_aggregation_error,
         error_scale=error_scale,
     )
 

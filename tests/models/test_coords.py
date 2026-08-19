@@ -10,6 +10,7 @@ from openghg_inversions.models.coords import (
     add_coords,
     attach_coord_registry,
     get_coord_registry,
+    registered_model,
     restore_inferencedata_coords,
     sanitize_coords_for_pymc,
 )
@@ -49,20 +50,26 @@ def test_coord_registry_repeated_registration_and_conflict() -> None:
         registry.add({"nx": np.array([0, 2, 3])})
 
 
-def test_add_coords_works_with_and_without_registry() -> None:
-    """Check add_coords works whether or not a coord registry is attached."""
+def test_add_coords_requires_registered_model() -> None:
+    """Coordinate registration is an enforced model invariant."""
     coords = {"nmeasure": xr.DataArray([1, 2], dims=("nmeasure",))}
 
-    with pm.Model() as model:
-        add_coords(coords)
-        assert "nmeasure" in model.coords
-        assert get_coord_registry(model) is None
+    with pm.Model():
+        with pytest.raises(RuntimeError, match="registered_model"):
+            add_coords(coords)
 
-    with pm.Model() as model:
-        registry = CoordRegistry()
-        attach_coord_registry(model, registry)
+    with registered_model() as model:
         add_coords(coords)
+        registry = get_coord_registry(model)
+        assert registry is not None
         assert "nmeasure" in registry.original_coords
+
+
+def test_registered_model_forwards_model_arguments() -> None:
+    """The factory remains a transparent, small PyMC construction helper."""
+    with registered_model(coords={"state": [0, 1]}) as model:
+        assert get_coord_registry(model) is not None
+        assert model.coords["state"] == (0, 1)
 
 
 def test_add_coords_preserves_auxiliary_coords_for_model_dims() -> None:

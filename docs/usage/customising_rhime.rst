@@ -85,6 +85,11 @@ hiding the common scientific arrays in an opaque object::
        likelihood_kwargs={"degrees_of_freedom": 4.0},
    )
 
+These options must be a string-keyed, JSON-compatible mapping. RHIME copies
+the mapping before use and records the copy beside the likelihood identity in
+the result metadata and any saved inversion output. A non-empty mapping is
+rejected when no ``likelihood_builder`` is active.
+
 Editable likelihood
 ~~~~~~~~~~~~~~~~~~~
 
@@ -96,7 +101,8 @@ construction:
    :language: python
    :linenos:
 
-RHIME records the function's module and name in the result and in saved output.
+RHIME records the function's module and name, together with its explicit
+``likelihood_kwargs``, in the result and in saved output.
 It does not copy the Python source code into the output, so a project should
 keep the source and environment used for an inversion. Ordinary likelihood
 builders retain the canonical ``y`` and ``epsilon`` names used by sampling and

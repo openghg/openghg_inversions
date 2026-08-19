@@ -11,6 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal, TypeAlias
 
+from dask import compute as dask_compute
 import numpy as np
 import xarray as xr
 
@@ -68,6 +69,24 @@ def _numeric_finite(
     if not np.isfinite(values).all():
         raise ValueError(f"{owner} {name!r} must contain only finite values.")
     return values
+
+
+def _materialize_together(*arrays: xr.DataArray) -> tuple[xr.DataArray, ...]:
+    """Return shallow labelled copies whose related payloads are eager."""
+    computed = dask_compute(*(array.data for array in arrays))
+    return tuple(
+        array.copy(deep=False, data=values)
+        for array, values in zip(arrays, computed, strict=True)
+    )
+
+
+def _require_eager_payload(array: xr.DataArray, name: str, *, owner: str) -> None:
+    """Reject a lazy public value before validation can compute it repeatedly."""
+    if array.chunks is not None:
+        raise ValueError(
+            f"{owner} input {name!r} must be eager; construct it with "
+            "`resolve_aggregation_error()` before building the likelihood."
+        )
 
 
 def _validate_vector(
@@ -175,13 +194,6 @@ def validate_observation_error_arrays(
             )
         if array.sizes[output_dim] != nmeasure:
             raise ValueError(f"{owner} input {name!r} is not observation-aligned.")
-        validate_observation_alignment(
-            observations,
-            array,
-            input_name=name,
-            owner=owner,
-            output_dim=output_dim,
-        )
         values = _numeric_finite(name, array, owner=f"{owner} input")
         if (values < 0).any():
             raise ValueError(f"{owner} input {name!r} must contain only non-negative values.")
@@ -283,21 +295,6 @@ def validate_aggregation_error_alignment(
             "inconsistent covariance payloads."
         )
 
-    arrays = (
-        (AGGREGATION_ERROR_COVARIANCE, aggregation_error.covariance),
-        (LOW_RANK_FACTOR, aggregation_error.factor),
-        (DIAGONAL_RESIDUAL_VARIANCE, aggregation_error.diagonal_variance),
-    )
-    for name, array in arrays:
-        if array is not None:
-            validate_observation_alignment(
-                observations,
-                array,
-                input_name=name,
-                owner=owner,
-                output_dim=output_dim,
-            )
-
     if aggregation_error.mode == "none":
         expected_marginal = np.zeros(nmeasure)
     elif aggregation_error.mode == "dense":
@@ -312,14 +309,23 @@ def validate_aggregation_error_alignment(
                 f"({output_dim!r}, {covariance_dim!r}) and shape "
                 f"({nmeasure}, {nmeasure})."
             )
-        if covariance_dim in covariance.coords:
-            column_labels = np.asarray(covariance.coords[covariance_dim].values)
-            observation_labels = np.asarray(observations.get_index(output_dim).values)
-            if not np.array_equal(column_labels, observation_labels):
-                raise ValueError(
-                    f"{owner} input {AGGREGATION_ERROR_COVARIANCE!r} has "
-                    f"incompatible observation coordinate {covariance_dim!r}."
-                )
+        if covariance_dim not in covariance.coords:
+            raise ValueError(
+                f"{owner} input {AGGREGATION_ERROR_COVARIANCE!r} must carry "
+                f"the observation coordinate {covariance_dim!r}."
+            )
+        column_labels = np.asarray(covariance.coords[covariance_dim].values)
+        observation_labels = np.asarray(observations.get_index(output_dim).values)
+        if not np.array_equal(column_labels, observation_labels):
+            raise ValueError(
+                f"{owner} input {AGGREGATION_ERROR_COVARIANCE!r} has "
+                f"incompatible observation coordinate {covariance_dim!r}."
+            )
+        _require_eager_payload(
+            covariance,
+            AGGREGATION_ERROR_COVARIANCE,
+            owner=owner,
+        )
         expected_marginal = np.diag(
             _numeric_finite(
                 AGGREGATION_ERROR_COVARIANCE,
@@ -331,25 +337,37 @@ def validate_aggregation_error_alignment(
         factor = aggregation_error.factor
         diagonal_variance = aggregation_error.diagonal_variance
         assert factor is not None and diagonal_variance is not None
+        if (
+            factor.ndim != 2
+            or factor.dims[0] != output_dim
+            or factor.shape[0] != nmeasure
+            or factor.shape[1] < 1
+        ):
+            raise ValueError(
+                f"{owner} input {LOW_RANK_FACTOR!r} must have {nmeasure} observation rows "
+                "and at least one rank column."
+            )
+        if (
+            diagonal_variance.dims != (output_dim,)
+            or diagonal_variance.shape != (nmeasure,)
+        ):
+            raise ValueError(
+                f"{owner} input {DIAGONAL_RESIDUAL_VARIANCE!r} must be a "
+                f"non-negative vector of length {nmeasure}."
+            )
+        _require_eager_payload(factor, LOW_RANK_FACTOR, owner=owner)
+        _require_eager_payload(
+            diagonal_variance,
+            DIAGONAL_RESIDUAL_VARIANCE,
+            owner=owner,
+        )
         factor_values = _numeric_finite(LOW_RANK_FACTOR, factor, owner=f"{owner} input")
         diagonal_values = _numeric_finite(
             DIAGONAL_RESIDUAL_VARIANCE,
             diagonal_variance,
             owner=f"{owner} input",
         )
-        if (
-            factor_values.ndim != 2
-            or factor.dims[0] != output_dim
-            or factor_values.shape[0] != nmeasure
-        ):
-            raise ValueError(
-                f"{owner} input {LOW_RANK_FACTOR!r} must have {nmeasure} observation rows."
-            )
-        if (
-            diagonal_variance.dims != (output_dim,)
-            or diagonal_values.shape != (nmeasure,)
-            or (diagonal_values < 0).any()
-        ):
+        if (diagonal_values < 0).any():
             raise ValueError(
                 f"{owner} input {DIAGONAL_RESIDUAL_VARIANCE!r} must be a "
                 f"non-negative vector of length {nmeasure}."
@@ -358,15 +376,25 @@ def validate_aggregation_error_alignment(
     else:
         diagonal_variance = aggregation_error.diagonal_variance
         assert diagonal_variance is not None
+        if diagonal_variance.dims != (output_dim,) or diagonal_variance.shape != (
+            nmeasure,
+        ):
+            raise ValueError(
+                f"{owner} aggregation-error diagonal variance must be a "
+                f"non-negative vector of length {nmeasure}."
+            )
+        _require_eager_payload(
+            diagonal_variance,
+            DIAGONAL_RESIDUAL_VARIANCE,
+            owner=owner,
+        )
         expected_marginal = _numeric_finite(
             DIAGONAL_RESIDUAL_VARIANCE,
             diagonal_variance,
             owner=f"{owner} input",
         )
         if (
-            diagonal_variance.dims != (output_dim,)
-            or expected_marginal.shape != (nmeasure,)
-            or (expected_marginal < 0).any()
+            expected_marginal.shape != (nmeasure,) or (expected_marginal < 0).any()
         ):
             raise ValueError(
                 f"{owner} aggregation-error diagonal variance must be a "
@@ -503,9 +531,23 @@ def resolve_aggregation_error(
             raise ValueError(
                 f"Diagonal aggregation error requires {AGGREGATION_ERROR_SD!r} in prepared inputs."
             )
-        standard_deviation, values = _validate_vector(
-            data, AGGREGATION_ERROR_SD, output_dim=output_dim
-        )
+        standard_deviation = data[AGGREGATION_ERROR_SD]
+        if standard_deviation.dims != (output_dim,):
+            raise ValueError(
+                f"Aggregation-error input {AGGREGATION_ERROR_SD!r} must have dims "
+                f"({output_dim!r},); got {standard_deviation.dims!r}."
+            )
+        if standard_deviation.sizes[output_dim] != nmeasure:
+            raise ValueError(
+                f"Aggregation-error input {AGGREGATION_ERROR_SD!r} is not observation-aligned."
+            )
+        (standard_deviation,) = _materialize_together(standard_deviation)
+        values = _numeric_finite(AGGREGATION_ERROR_SD, standard_deviation)
+        if (values < 0).any():
+            raise ValueError(
+                f"Aggregation-error input {AGGREGATION_ERROR_SD!r} must contain only "
+                "non-negative values."
+            )
         return AggregationError(
             mode="diagonal",
             marginal_variance=values**2,
@@ -538,6 +580,7 @@ def resolve_aggregation_error(
                 )
         else:
             covariance = covariance.assign_coords({covariance_dim: observation_labels})
+        (covariance,) = _materialize_together(covariance)
         values = _numeric_finite(AGGREGATION_ERROR_COVARIANCE, covariance)
         scale = max(float(np.max(np.abs(values))), 1.0)
         tolerance = 1e-10 * scale
@@ -570,10 +613,25 @@ def resolve_aggregation_error(
         raise ValueError(f"Aggregation-error input {LOW_RANK_FACTOR!r} is not observation-aligned.")
     if factor.shape[1] < 1:
         raise ValueError(f"Aggregation-error input {LOW_RANK_FACTOR!r} must contain at least one rank column.")
+    diagonal = data[DIAGONAL_RESIDUAL_VARIANCE]
+    if diagonal.dims != (output_dim,):
+        raise ValueError(
+            f"Aggregation-error input {DIAGONAL_RESIDUAL_VARIANCE!r} must have dims "
+            f"({output_dim!r},); got {diagonal.dims!r}."
+        )
+    if diagonal.sizes[output_dim] != nmeasure:
+        raise ValueError(
+            f"Aggregation-error input {DIAGONAL_RESIDUAL_VARIANCE!r} is not observation-aligned."
+        )
+
+    factor, diagonal = _materialize_together(factor, diagonal)
     factor_values = _numeric_finite(LOW_RANK_FACTOR, factor)
-    diagonal, diagonal_values = _validate_vector(
-        data, DIAGONAL_RESIDUAL_VARIANCE, output_dim=output_dim
-    )
+    diagonal_values = _numeric_finite(DIAGONAL_RESIDUAL_VARIANCE, diagonal)
+    if (diagonal_values < 0).any():
+        raise ValueError(
+            f"Aggregation-error input {DIAGONAL_RESIDUAL_VARIANCE!r} must contain only "
+            "non-negative values."
+        )
     marginal_variance = np.sum(factor_values**2, axis=1) + diagonal_values
     _validate_marginal_sd(data, marginal_variance, output_dim=output_dim)
     return AggregationError(
