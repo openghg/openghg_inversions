@@ -8,7 +8,7 @@ covariance, or diagnostically as independent standard deviations.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal, TypeAlias
 
 from dask import compute as dask_compute
@@ -42,6 +42,42 @@ class AggregationError:
     covariance: xr.DataArray | None = None
     factor: xr.DataArray | None = None
     diagonal_variance: xr.DataArray | None = None
+    _dense_numerically_validated: bool = field(
+        default=False,
+        init=False,
+        repr=False,
+        compare=False,
+    )
+
+    @classmethod
+    def _from_validated_dense(
+        cls,
+        *,
+        marginal_variance: np.ndarray,
+        covariance: xr.DataArray,
+    ) -> AggregationError:
+        """Construct the internally validated dense representation."""
+        result = cls(
+            mode="dense",
+            marginal_variance=marginal_variance,
+            covariance=covariance,
+        )
+        object.__setattr__(result, "_dense_numerically_validated", True)
+        return result
+
+
+def _validate_dense_covariance_values(
+    values: np.ndarray,
+    *,
+    owner: str,
+) -> None:
+    """Require a materialized dense covariance to be symmetric and PSD."""
+    scale = max(float(np.max(np.abs(values))), 1.0)
+    tolerance = 1e-10 * scale
+    if not np.allclose(values, values.T, rtol=1e-10, atol=tolerance):
+        raise ValueError(f"{owner} must be symmetric.")
+    if float(np.linalg.eigvalsh(values).min()) < -tolerance:
+        raise ValueError(f"{owner} must be positive semidefinite.")
 
 
 def _numeric_finite(
@@ -326,13 +362,17 @@ def validate_aggregation_error_alignment(
             AGGREGATION_ERROR_COVARIANCE,
             owner=owner,
         )
-        expected_marginal = np.diag(
-            _numeric_finite(
-                AGGREGATION_ERROR_COVARIANCE,
-                covariance,
-                owner=f"{owner} input",
-            )
+        covariance_values = _numeric_finite(
+            AGGREGATION_ERROR_COVARIANCE,
+            covariance,
+            owner=f"{owner} input",
         )
+        if not aggregation_error._dense_numerically_validated:
+            _validate_dense_covariance_values(
+                covariance_values,
+                owner=f"{owner} input {AGGREGATION_ERROR_COVARIANCE!r}",
+            )
+        expected_marginal = np.diag(covariance_values)
     elif aggregation_error.mode == "low_rank":
         factor = aggregation_error.factor
         diagonal_variance = aggregation_error.diagonal_variance
@@ -582,18 +622,13 @@ def resolve_aggregation_error(
             covariance = covariance.assign_coords({covariance_dim: observation_labels})
         (covariance,) = _materialize_together(covariance)
         values = _numeric_finite(AGGREGATION_ERROR_COVARIANCE, covariance)
-        scale = max(float(np.max(np.abs(values))), 1.0)
-        tolerance = 1e-10 * scale
-        if not np.allclose(values, values.T, rtol=1e-10, atol=tolerance):
-            raise ValueError(f"Aggregation-error input {AGGREGATION_ERROR_COVARIANCE!r} must be symmetric.")
-        if float(np.linalg.eigvalsh(values).min()) < -tolerance:
-            raise ValueError(
-                f"Aggregation-error input {AGGREGATION_ERROR_COVARIANCE!r} must be positive semidefinite."
-            )
+        _validate_dense_covariance_values(
+            values,
+            owner=f"Aggregation-error input {AGGREGATION_ERROR_COVARIANCE!r}",
+        )
         marginal_variance = np.diag(values).copy()
         _validate_marginal_sd(data, marginal_variance, output_dim=output_dim)
-        return AggregationError(
-            mode="dense",
+        return AggregationError._from_validated_dense(
             marginal_variance=marginal_variance,
             covariance=covariance,
         )

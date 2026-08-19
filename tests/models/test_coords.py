@@ -66,10 +66,31 @@ def test_add_coords_requires_registered_model() -> None:
 
 
 def test_registered_model_forwards_model_arguments() -> None:
-    """The factory remains a transparent, small PyMC construction helper."""
-    with registered_model(coords={"state": [0, 1]}) as model:
-        assert get_coord_registry(model) is not None
+    """Constructor coordinates are sanitized and scientifically registered."""
+    with registered_model(coords={"state": ["west", "east"]}) as model:
+        registry = get_coord_registry(model)
+        assert registry is not None
         assert model.coords["state"] == (0, 1)
+        np.testing.assert_array_equal(registry.original_coords["state"], ["west", "east"])
+
+
+def test_registered_model_keeps_xarray_auxiliary_coordinates_out_of_pymc_dims() -> None:
+    """Constructor xarray coords seed rich registry metadata, not false dims."""
+    index = pd.MultiIndex.from_arrays(
+        [["MHD", "TAC"], pd.to_datetime(["2019-01-01", "2019-01-02"])],
+        names=["site", "time"],
+    )
+    coords = xr.Coordinates.from_pandas_multiindex(index, "nmeasure")
+
+    with registered_model(coords=coords) as model:
+        registry = get_coord_registry(model)
+
+    assert model.coords["nmeasure"] == (0, 1)
+    assert "site" not in model.coords
+    assert "time" not in model.coords
+    assert registry is not None
+    assert registry.original_coords["nmeasure"].equals(index)
+    assert {"site", "time"} <= set(registry.auxiliary_coords)
 
 
 def test_add_coords_preserves_auxiliary_coords_for_model_dims() -> None:

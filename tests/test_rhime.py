@@ -3395,6 +3395,42 @@ def test_public_build_stages_reject_simultaneous_model_and_likelihood_builders(
     assert builder_calls == []
 
 
+def test_installed_additive_sigma_likelihood_runs_from_prepared_inputs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The installed likelihood is a working ordinary prepared-run seam."""
+    _, _, run_spec = _minimal_output_specs(output_format="none")
+    run_spec = replace(run_spec, model=replace(run_spec.model, use_bc=False))
+    prepared = RhimePreparedInputs(
+        inv_inputs=_minimal_output_inv_inputs(),
+        basis_functions=_fake_basis_functions(),
+        site_metadata=_prepared_site_metadata(),
+    )
+    sampled_models: list[pm.Model] = []
+
+    def fake_sample(
+        self: RhimeSampler,
+        model: pm.Model,
+        *,
+        variable_roles: dict[str, str],
+    ) -> az.InferenceData:
+        sampled_models.append(model)
+        assert variable_roles["concentration"] == "y"
+        assert variable_roles["model_error"] == "epsilon"
+        return _minimal_output_idata()
+
+    monkeypatch.setattr(RhimeSampler, "sample", fake_sample)
+    result = run_rhime_from_prepared_inputs(
+        prepared_inputs=prepared,
+        run_spec=run_spec,
+        likelihood_builder=additive_sigma_likelihood_builder,
+    )
+
+    assert len(sampled_models) == 1
+    assert {"sigma", "epsilon", "y"} <= set(sampled_models[0].named_vars)
+    assert result.outputs == {}
+
+
 @pytest.mark.parametrize(
     "build_stage",
     [rhime_standard.build_standard_rhime_model_result, rhime_multisector.build_multisector_rhime_model_result],

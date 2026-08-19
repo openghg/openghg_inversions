@@ -442,10 +442,14 @@ def test_additive_sigma_gaussian_likelihood_uses_completed_mean() -> None:
 
 
 def test_rhime_additive_sigma_adapter_accepts_pollution_event_inputs() -> None:
-    """The RHIME adapter isolates irrelevant pollution-event arguments."""
+    """The RHIME adapter owns sigma alignment and ignores pollution inputs."""
     data = _base_data()
-    sigma_alignment = SigmaAlignment.from_frequency(
-        data["site_indicator"], frequency=None, per_site=False
+    data = data.assign_coords(
+        site=("nmeasure", ["MHD", "MHD", "TAC"]),
+        time=(
+            "nmeasure",
+            np.array(["2019-01-01", "2019-01-02", "2019-01-03"], dtype="datetime64[ns]"),
+        ),
     )
     with registered_model(coords={"nmeasure": np.arange(3)}) as model:
         mean = pm.Data("completed_mean", np.ones(3), dims="nmeasure")
@@ -457,11 +461,9 @@ def test_rhime_additive_sigma_adapter_accepts_pollution_event_inputs() -> None:
             mean=mean,
             pollution_mean=pm.math.constant(np.full(3, 99.0)),
             pollution_event_baseline=pm.math.constant(np.full(3, -99.0)),
-            sigma_alignment=sigma_alignment,
             sigma_prior={"pdf": "uniform", "lower": 0.2, "upper": 0.200001},
-            power=7.0,
-            pollution_events_from_obs=True,
-            no_model_error=False,
+            sigma_freq="1d",
+            sigma_per_site=False,
             output_dim="nmeasure",
         )
 

@@ -112,10 +112,12 @@ The example rejects dense and low-rank aggregation covariance because it uses
 an independent Student-t distribution. Supporting those aggregation-error
 modes would require a multivariate likelihood.
 
-The installed ``rhime.likelihoods.additive_sigma_likelihood_builder`` remains
-available as a reusable component adapter for copied recipes. It also needs
-the recipe's resolved sigma alignment and prior, so it is deliberately not a
-drop-in common-input builder for an ordinary runner.
+The installed ``rhime.likelihoods.additive_sigma_likelihood_builder`` is a
+drop-in ordinary likelihood builder. It derives sigma alignment from the
+labelled observation ``site`` and ``time`` coordinates. Optional
+``sigma_prior``, ``sigma_freq``, ``sigma_per_site``, ``sigma_freq_anchor``, and
+``no_model_error`` settings belong to that component and can be supplied in
+``likelihood_kwargs``.
 
 Optional project CLI
 ~~~~~~~~~~~~~~~~~~~~

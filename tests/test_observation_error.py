@@ -215,6 +215,69 @@ def test_direct_dense_aggregation_error_requires_labelled_second_axis() -> None:
         )
 
 
+@pytest.mark.parametrize(
+    ("covariance", "message"),
+    [
+        (np.array([[1.0, 0.5], [0.25, 1.0]]), "symmetric"),
+        (np.array([[1.0, 2.0], [2.0, 1.0]]), "positive semidefinite"),
+    ],
+)
+def test_direct_dense_aggregation_error_validates_covariance_numerics(
+    covariance: np.ndarray,
+    message: str,
+) -> None:
+    """Direct public values cannot bypass dense covariance invariants."""
+    observations = xr.DataArray(
+        [10.0, 11.0],
+        dims="nmeasure",
+        coords={"nmeasure": ["A", "B"]},
+    )
+    aggregation_error = AggregationError(
+        mode="dense",
+        marginal_variance=np.diag(covariance),
+        covariance=xr.DataArray(
+            covariance,
+            dims=("nmeasure", "nmeasure_cov"),
+            coords={"nmeasure": ["A", "B"], "nmeasure_cov": ["A", "B"]},
+        ),
+    )
+
+    with pytest.raises(ValueError, match=message):
+        validate_aggregation_error_alignment(
+            observations,
+            aggregation_error,
+            owner="Test likelihood",
+        )
+
+
+def test_resolved_dense_aggregation_error_is_not_eigendecomposed_twice(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The producer's full dense validation is trusted at the consumer."""
+    data = xr.Dataset(coords={"nmeasure": ["A", "B"]})
+    data["aggregation_error_covariance"] = (
+        ("nmeasure", "nmeasure_cov"),
+        np.array([[1.0, 0.25], [0.25, 2.0]]),
+    )
+    calls = 0
+    eigvalsh = np.linalg.eigvalsh
+
+    def count_eigvalsh(values: np.ndarray) -> np.ndarray:
+        nonlocal calls
+        calls += 1
+        return eigvalsh(values)
+
+    monkeypatch.setattr(np.linalg, "eigvalsh", count_eigvalsh)
+    aggregation_error = resolve_aggregation_error(data, "dense")
+    validate_aggregation_error_alignment(
+        data["nmeasure"],
+        aggregation_error,
+        owner="Test likelihood",
+    )
+
+    assert calls == 1
+
+
 def test_direct_low_rank_aggregation_error_rejects_lazy_payloads_without_execution() -> None:
     executions = 0
 
