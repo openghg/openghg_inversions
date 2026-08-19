@@ -40,7 +40,10 @@ import xarray as xr
 
 import openghg_inversions.hbmcmc.inversion_pymc as mcmc
 from openghg_inversions.basis.basis_functions import BasisFunctions
-from openghg_inversions.inversion_data import FixedBasisPreparedData, prepare_fixedbasis_inversion_data
+from openghg_inversions.hbmcmc.preparation import (
+    FixedBasisPreparedData,
+    prepare_fixedbasis_inversion_data,
+)
 from openghg_inversions.inversion_data._site_options import (
     expand_site_option,
     is_column_observation,
