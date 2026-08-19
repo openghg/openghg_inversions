@@ -56,7 +56,13 @@ dev = [
 ]
 
 [dependency-groups]
-# UV only dependency groups; just mirror some extras
+# Keep the environment created by a plain ``uv sync`` small enough for Codex
+# worktrees. Broader developer tools remain available explicitly through
+# ``uv_dev`` and the Slurm tox runner.
+local = [
+  "pytest",
+  "ruff==0.16.0",
+]
 uv_dev = [
   "openghg_inversions[jupyter,dev]",
   "tox>=4.24",
@@ -136,7 +142,7 @@ openghg_inversions = [
 ]
 
 [tool.uv]
-default-groups = ["uv_dev"]
+default-groups = ["local"]
 
 [tool.ruff]
 line-length = 110

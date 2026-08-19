@@ -55,11 +55,12 @@ Preview output is built in a temporary directory and removed when the server
 stops. `uv run python scripts/preview_docs.py clean` removes any legacy
 `docs/_build` output.
 
-With the default uv development dependency group, the equivalent command is:
+The default uv group is intentionally limited to pytest and Ruff. To opt into
+the larger development group for documentation work, use:
 
 ```bash
-uv run python scripts/preview_docs.py
-uv run python scripts/preview_docs.py --port 8766 --no-open
+uv run --group uv_dev python scripts/preview_docs.py
+uv run --group uv_dev python scripts/preview_docs.py --port 8766 --no-open
 uv run python scripts/preview_docs.py clean
 ```
 
@@ -126,8 +127,12 @@ pixi install -e dev
 ```bash
 git clone https://github.com/openghg/openghg_inversions.git
 cd openghg_inversions
-uv sync --dev
+uv sync
 ```
+
+This creates the lean local environment used for focused tests and linting.
+Jupyter, tox, Pyright, and Mypy are available only when explicitly requested
+with `uv sync --group uv_dev`.
 
 **With pip:**
 ```bash
@@ -448,8 +453,21 @@ The fast default checks the current OpenGHG release and runs Ruff:
 tox -p --parallel-no-spinner
 ```
 
-This is the required local check before pushing a draft pull request. GitHub
-Actions runs current, previous, and devel OpenGHG test jobs independently.
+This is the required check before pushing a draft pull request. GitHub Actions
+runs current, previous, and devel OpenGHG test jobs independently.
+
+On a Slurm cluster, submit tox from the repository root instead of creating its
+environments on a shared worktree filesystem:
+
+```bash
+sbatch scripts/slurm_tox.sh
+sbatch scripts/slurm_tox.sh -e type
+```
+
+The Slurm runner creates `TOX_WORK_DIR` on node-local storage and removes it on
+exit. It continues to use the shared uv cache for downloaded artifacts; files
+still have to be installed into each isolated tox environment, but those
+node-local copies are temporary.
 
 The tox environments do not require a C++ compiler. PyTensor can use its
 Python implementations when no compiler is configured, so cluster module

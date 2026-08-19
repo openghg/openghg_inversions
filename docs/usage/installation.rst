@@ -50,12 +50,13 @@ Preview output is built in a temporary directory and removed when the server
 stops. ``uv run python scripts/preview_docs.py clean`` removes any legacy
 ``docs/_build`` output.
 
-With the default uv development dependency group, use:
+The default uv group is intentionally limited to pytest and Ruff. To opt into
+the larger development group for documentation work, use:
 
 .. code:: bash
 
-   uv run python scripts/preview_docs.py
-   uv run python scripts/preview_docs.py --port 8766 --no-open
+   uv run --group uv_dev python scripts/preview_docs.py
+   uv run --group uv_dev python scripts/preview_docs.py --port 8766 --no-open
    uv run python scripts/preview_docs.py clean
 
 To run the optional real country-file HDF5 smoke check on a machine that

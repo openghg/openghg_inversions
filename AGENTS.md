@@ -37,13 +37,29 @@ and Pint unit conversion to repeated custom runtime assertions; see
 
 ## Testing
 
-Run relevant tests with pytest from the project's `uv`-managed virtual
-environment:
+Keep the worktree-local `uv` environment lean. A plain `uv sync` installs the
+runtime dependencies plus pytest and Ruff; Jupyter, tox, Pyright, and Mypy are
+intentionally excluded from the default dependency group.
+
+Run relevant tests and lint only the changed Python paths while iterating:
 
 ```bash
 uv run pytest tests/test_array_ops.py
+uv run ruff check path/to/changed_file.py tests/path/to/changed_test.py
+git diff --check
 ```
 
 Use focused test paths while iterating and run the relevant broader pytest
 coverage before handing off a change. We still support Python 3.10, so avoid
 syntax, typing, and dependency features that require newer Python versions.
+
+Do not run tox locally in a Codex-managed worktree. Submit compatibility,
+full-suite, and type-check environments to Slurm with
+`sbatch scripts/slurm_tox.sh`; pass tox arguments after the script name when a
+subset is sufficient (for example, `sbatch scripts/slurm_tox.sh -e type`). The
+runner builds tox environments on node-local storage and removes them when the
+job exits.
+
+Before asking the user to archive a chat, offer to run
+`scripts/clean_local_envs.sh`. Run it only after the user agrees because it
+deletes the current worktree's `.venv` and `.tox` directories.
