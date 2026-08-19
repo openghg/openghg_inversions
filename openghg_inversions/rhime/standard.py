@@ -25,7 +25,13 @@ from openghg_inversions.models.coords import CoordRegistry, attach_coord_registr
 from openghg_inversions.models.pollution_event import build_pollution_event_gaussian_likelihood
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.models.state_activity import StateActivity
-from openghg_inversions.observation_error import AggregationErrorMode
+from openghg_inversions.observation_error import (
+    AggregationError,
+    OBSERVATION_ERROR_INPUT_NAMES,
+    aggregation_error_input_names,
+    resolve_aggregation_error,
+    validate_observation_alignment,
+)
 from openghg_inversions.sigma import SigmaAlignment
 
 from ._model_building import (
@@ -64,10 +70,78 @@ from .specs import (
 )
 
 
-def build_standard_rhime_model(
-    inv_inputs: xr.Dataset,
+_STANDARD_FLUX_INPUT_NAMES = ("H",)
+_MODEL_ERROR_ALIGNMENT_INPUT_NAMES = ("site_indicator",)
+_BASELINE_INPUT_NAMES = ("H_bc",)
+
+
+def _require_component_inputs(
+    prepared: RhimePreparedInputs,
+    names: tuple[str, ...],
     *,
+    owner: str,
+) -> None:
+    """Fail before materialization with the selected component named."""
+    missing = [name for name in names if name not in prepared.inv_inputs]
+    if missing:
+        raise ValueError(f"{owner} requires prepared input(s) {missing!r}.")
+
+
+def standard_model_input_names(prepared: RhimePreparedInputs, model_spec: RhimeModelSpec) -> tuple[str, ...]:
+    """Declare arrays required by the selected standard-model components."""
+    _require_component_inputs(
+        prepared,
+        _STANDARD_FLUX_INPUT_NAMES,
+        owner="Standard flux component",
+    )
+    _require_component_inputs(
+        prepared,
+        OBSERVATION_ERROR_INPUT_NAMES,
+        owner="Observation-error component",
+    )
+    _require_component_inputs(
+        prepared,
+        _MODEL_ERROR_ALIGNMENT_INPUT_NAMES,
+        owner="Model-error alignment component",
+    )
+    names = [
+        *_STANDARD_FLUX_INPUT_NAMES,
+        *OBSERVATION_ERROR_INPUT_NAMES,
+        *_MODEL_ERROR_ALIGNMENT_INPUT_NAMES,
+    ]
+    if model_spec.use_bc:
+        _require_component_inputs(
+            prepared,
+            _BASELINE_INPUT_NAMES,
+            owner="Standard baseline component selected by `use_bc=True`",
+        )
+        names.extend(_BASELINE_INPUT_NAMES)
+    aggregation_names = aggregation_error_input_names(
+        prepared.inv_inputs,
+        model_spec.aggregation_error_mode,
+    )
+    _require_component_inputs(
+        prepared,
+        aggregation_names,
+        owner=(
+            "Aggregation-error component selected by "
+            f"`aggregation_error_mode={model_spec.aggregation_error_mode!r}`"
+        ),
+    )
+    names.extend(aggregation_names)
+    return tuple(names)
+
+
+def build_standard_rhime_model(
+    emissions_sensitivity: xr.DataArray,
+    *,
+    observations: xr.DataArray,
+    observation_error: xr.DataArray,
+    minimum_error: xr.DataArray,
+    aggregation_error: AggregationError,
     sigma_alignment: SigmaAlignment,
+    boundary_sensitivity: xr.DataArray | None = None,
+    site_indicator: xr.DataArray | None = None,
     x_prior: PriorArgs | None = None,
     bc_prior: PriorArgs | None = None,
     sigma_prior: PriorArgs | None = None,
@@ -76,7 +150,6 @@ def build_standard_rhime_model(
     use_bc: bool = True,
     pollution_events_from_obs: bool = False,
     no_model_error: bool = False,
-    aggregation_error_mode: AggregationErrorMode = "none",
     offset_args: dict | None = None,
     power: PriorArgs | float = 1.99,
     state_activity: StateActivity | None = None,
@@ -87,8 +160,14 @@ def build_standard_rhime_model(
     """Build the concrete standard single-sector RHIME model.
 
     Args:
-        inv_inputs: Canonical inversion-input dataset.
+        emissions_sensitivity: Labelled flux sensitivity matrix.
+        observations: Observed mole fractions.
+        observation_error: Reported observation-error standard deviations.
+        minimum_error: Minimum total-error standard deviations.
+        aggregation_error: Validated fixed aggregation-error representation.
         sigma_alignment: Observation alignment for mismatch parameters.
+        boundary_sensitivity: Optional labelled boundary sensitivity matrix.
+        site_indicator: Optional observation-to-site index used by offsets.
         x_prior: Prior specification for flux scaling factors.
         bc_prior: Prior specification for boundary-condition scaling factors.
         sigma_prior: Prior specification for mismatch-error terms.
@@ -98,7 +177,6 @@ def build_standard_rhime_model(
         pollution_events_from_obs: Whether mismatch scaling uses observed
             rather than modelled pollution enhancements.
         no_model_error: Whether to suppress inferred mismatch error.
-        aggregation_error_mode: Aggregation-error representation to use.
         offset_args: Extra keyword arguments for the offset component.
         power: Exponent or prior used in mismatch-error scaling.
         state_activity: Optional active/fixed flux-state policy.
@@ -122,10 +200,31 @@ def build_standard_rhime_model(
     sigma_prior = dict(DEFAULT_SIGMA_PRIOR if sigma_prior is None else sigma_prior)
     offset_prior = dict(DEFAULT_OFFSET_PRIOR if offset_prior is None else offset_prior)
 
+    validate_observation_alignment(
+        observations,
+        emissions_sensitivity,
+        input_name="emissions_sensitivity",
+        owner="Standard flux component",
+    )
+    if use_bc and boundary_sensitivity is not None:
+        validate_observation_alignment(
+            observations,
+            boundary_sensitivity,
+            input_name="boundary_sensitivity",
+            owner="Standard baseline component",
+        )
+    if add_offset and site_indicator is not None:
+        validate_observation_alignment(
+            observations,
+            site_indicator,
+            input_name="site_indicator",
+            owner="Standard offset component",
+        )
+
     with pm.Model() as model:
         attach_coord_registry(model, CoordRegistry())
         flux_component = add_state_linear_component(
-            inv_inputs["H"],
+            emissions_sensitivity,
             data_name="hx",
             prior_args=x_prior,
             var_name="x",
@@ -138,21 +237,23 @@ def build_standard_rhime_model(
 
         boundary_mean = None
         if use_bc:
-            if "H_bc" not in inv_inputs:
-                raise ValueError("If `use_bc` is True, `inv_inputs` must contain `H_bc`.")
+            if boundary_sensitivity is None:
+                raise ValueError(
+                    "Standard baseline component requires `boundary_sensitivity` when `use_bc` is true."
+                )
             if bc_state_activity is None:
-                boundary_component = add_linear_component(
-                    inv_inputs["H_bc"],
+                boundary_mean = add_linear_component(
+                    boundary_sensitivity,
                     data_name="hbc",
                     prior_args=bc_prior,
                     var_name="bc",
                     output_name="mu_bc",
                     output_dim="nmeasure",
                     compute_deterministic=True,
-                )
+                ).output
             else:
-                boundary_component = add_state_linear_component(
-                    inv_inputs["H_bc"],
+                boundary_mean = add_state_linear_component(
+                    boundary_sensitivity,
                     data_name="hbc",
                     prior_args=bc_prior,
                     var_name="bc",
@@ -160,13 +261,16 @@ def build_standard_rhime_model(
                     output_dim="nmeasure",
                     compute_deterministic=True,
                     state_activity=bc_state_activity,
-                )
-            boundary_mean = boundary_component.output
+                ).output
 
         offset = None
         if add_offset:
+            if site_indicator is None:
+                raise ValueError(
+                    "Standard offset component requires `site_indicator` when `add_offset` is true."
+                )
             offset = add_offset_component(
-                inv_inputs["site_indicator"],
+                site_indicator,
                 prior_args=offset_prior,
                 output_name="offset",
                 output_dim="nmeasure",
@@ -181,7 +285,10 @@ def build_standard_rhime_model(
 
         if likelihood_builder is None:
             build_pollution_event_gaussian_likelihood(
-                inv_inputs,
+                observations=observations,
+                observation_error=observation_error,
+                minimum_error=minimum_error,
+                aggregation_error=aggregation_error,
                 mean=modelled_mean,
                 pollution_mean=pollution_mean,
                 pollution_event_baseline=pollution_event_baseline,
@@ -191,12 +298,14 @@ def build_standard_rhime_model(
                 pollution_events_from_obs=pollution_events_from_obs,
                 no_model_error=no_model_error,
                 retain_unused_sigma=preserve_legacy_likelihood,
-                aggregation_error_mode=aggregation_error_mode,
                 output_dim="nmeasure",
             )
         else:
             likelihood = likelihood_builder(
-                inv_inputs,
+                observations=observations,
+                observation_error=observation_error,
+                minimum_error=minimum_error,
+                aggregation_error=aggregation_error,
                 mean=modelled_mean,
                 pollution_mean=pollution_mean,
                 pollution_event_baseline=pollution_event_baseline,
@@ -205,71 +314,11 @@ def build_standard_rhime_model(
                 power=power,
                 pollution_events_from_obs=pollution_events_from_obs,
                 no_model_error=no_model_error,
-                aggregation_error_mode=aggregation_error_mode,
                 output_dim="nmeasure",
             )
             validate_custom_likelihood_result(model, likelihood)
 
     return model
-
-
-def _build_standard_rhime_model_from_spec(
-    inv_inputs: xr.Dataset,
-    model_spec: RhimeModelSpec,
-    *,
-    likelihood_builder: RhimeLikelihoodBuilder | None = None,
-    preserve_legacy_likelihood: bool = False,
-) -> pm.Model:
-    """Build the standard model from a normalized RHIME model specification.
-
-    Args:
-        inv_inputs: Canonical inversion-input dataset.
-        model_spec: Normalized RHIME model specification containing exactly one
-            sector.
-        likelihood_builder: Optional observation-error and distribution builder.
-        preserve_legacy_likelihood: Whether to preserve the historical
-            ``run_hbmcmc`` likelihood graph and pollution-event definition.
-
-    Returns:
-        Built PyMC model.
-
-    Raises:
-        ValueError: If ``model_spec`` does not contain exactly one sector.
-    """
-    if len(model_spec.sectors) != 1:
-        raise ValueError("Standard RHIME model specs must include exactly one sector.")
-
-    sector = model_spec.sectors[0]
-    sigma_alignment = SigmaAlignment.from_frequency(
-        inv_inputs["site_indicator"],
-        frequency=model_spec.sigma_freq,
-        per_site=model_spec.sigma_per_site,
-        anchor_time=model_spec.sigma_freq_anchor,
-    )
-    state_activity = (
-        sector.state_activity
-        if sector.state_activity is not None
-        else model_spec.state_activity
-    )
-    return build_standard_rhime_model(
-        inv_inputs,
-        sigma_alignment=sigma_alignment,
-        x_prior=dict(sector.x_prior),
-        state_activity=state_activity,
-        bc_prior=model_spec.bc_prior,
-        bc_state_activity=model_spec.bc_state_activity,
-        sigma_prior=model_spec.sigma_prior,
-        offset_prior=model_spec.offset_prior,
-        add_offset=model_spec.add_offset,
-        use_bc=model_spec.use_bc,
-        pollution_events_from_obs=model_spec.pollution_events_from_obs,
-        no_model_error=model_spec.no_model_error,
-        aggregation_error_mode=model_spec.aggregation_error_mode,
-        offset_args=model_spec.offset_args,
-        power=model_spec.power,
-        likelihood_builder=likelihood_builder,
-        preserve_legacy_likelihood=preserve_legacy_likelihood,
-    )
 
 
 def build_standard_rhime_model_result(
@@ -304,18 +353,55 @@ def build_standard_rhime_model_result(
     if model_builder is not None and likelihood_builder is not None:
         raise ValueError("Pass either `model_builder` or `likelihood_builder`, not both.")
     timing_start = timer_start()
-    builder_context = RhimeModelBuilderContext(
-        prepared_inputs=prepared,
-        run_spec=run_spec,
-        multisector=False,
-    )
     if model_builder is not None:
+        builder_context = RhimeModelBuilderContext(
+            prepared_inputs=prepared,
+            run_spec=run_spec,
+            multisector=False,
+        )
         result = validated_custom_model_build(model_builder, context=builder_context)
         validate_model_build_result(result, context=builder_context)
     else:
-        model = _build_standard_rhime_model_from_spec(
+        model_spec = run_spec.model
+        if len(model_spec.sectors) != 1:
+            raise ValueError("Standard RHIME model specs must include exactly one sector.")
+        sector = model_spec.sectors[0]
+        sigma_alignment = SigmaAlignment.from_frequency(
+            model_inputs["site_indicator"],
+            frequency=model_spec.sigma_freq,
+            per_site=model_spec.sigma_per_site,
+            anchor_time=model_spec.sigma_freq_anchor,
+        )
+        aggregation_error = resolve_aggregation_error(
             model_inputs,
-            run_spec.model,
+            model_spec.aggregation_error_mode,
+        )
+        state_activity = (
+            sector.state_activity
+            if sector.state_activity is not None
+            else model_spec.state_activity
+        )
+        model = build_standard_rhime_model(
+            model_inputs["H"],
+            observations=model_inputs["mf"],
+            observation_error=model_inputs["mf_error"],
+            minimum_error=model_inputs["min_error"],
+            aggregation_error=aggregation_error,
+            sigma_alignment=sigma_alignment,
+            boundary_sensitivity=model_inputs.get("H_bc"),
+            site_indicator=model_inputs.get("site_indicator"),
+            x_prior=dict(sector.x_prior),
+            state_activity=state_activity,
+            bc_prior=model_spec.bc_prior,
+            bc_state_activity=model_spec.bc_state_activity,
+            sigma_prior=model_spec.sigma_prior,
+            offset_prior=model_spec.offset_prior,
+            add_offset=model_spec.add_offset,
+            use_bc=model_spec.use_bc,
+            pollution_events_from_obs=model_spec.pollution_events_from_obs,
+            no_model_error=model_spec.no_model_error,
+            offset_args=model_spec.offset_args,
+            power=model_spec.power,
             likelihood_builder=likelihood_builder,
             preserve_legacy_likelihood=preserve_legacy_likelihood,
         )
@@ -323,7 +409,7 @@ def build_standard_rhime_model_result(
             model,
             model_spec=run_spec.model,
             multisector=False,
-            input_names=prepared.inv_inputs.data_vars,
+            input_names=tuple(str(name) for name in prepared.inv_inputs.data_vars),
             preserve_legacy_baseline=preserve_legacy_likelihood,
         )
     log_timing("rhime.model_build", timer_seconds(timing_start), multisector=False)
@@ -488,7 +574,7 @@ def run_rhime(
 
     model_inputs = materialize_pymc_inputs(
         prepared,
-        aggregation_error_mode=run_spec.model.aggregation_error_mode,
+        variable_names=standard_model_input_names(prepared, run_spec.model),
     )
     build_and_sample_start = timer_start()
     model_build_result = build_standard_rhime_model_result(

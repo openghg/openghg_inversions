@@ -159,6 +159,79 @@ It is not a caller-authored manifest and must not determine execution order.
 Ordinary runners should not construct or thread a requirements object through
 the pipeline merely to satisfy a framework contract.
 
+Prepared-input inventory and ownership
+--------------------------------------
+
+``RhimePreparedInputs`` is the durable, backend-neutral labelled-data
+boundary. It may retain project-specific arrays that no current PyMC recipe
+uses. Concrete recipes declare only the names they select, materialize those
+arrays together, and pass them to components as honest named arguments.
+
+.. list-table:: Current ``inv_inputs`` inventory
+   :header-rows: 1
+   :widths: 18 20 32 30
+
+   * - Field or value
+     - Kind
+     - Current owner
+     - Model use
+   * - ``H``
+     - Reusable scientific product
+     - Sensitivity preparation or an external prepared-data producer
+     - Selected by the standard or multisector flux component as
+       ``emissions_sensitivity``
+   * - ``H_bc``
+     - Reusable baseline sensitivity
+     - Baseline preparation; its current period expansion remains there
+     - Selected by the baseline component as ``boundary_sensitivity``
+   * - ``mf``, ``mf_error``
+     - Reusable observation data
+     - Observation preparation
+     - Passed as ``observations`` and ``observation_error`` to the likelihood
+   * - ``min_error``
+     - Reusable error-model product
+     - Currently calculated by preparation
+     - Passed as ``minimum_error`` to the likelihood
+   * - ``aggregation_error_covariance``, ``low_rank_factor``,
+       ``diagonal_residual_variance``, ``aggregation_error_sd``
+     - Optional reusable fixed-error products
+     - Prepared data or an external scientific producer
+     - The selected likelihood representation is validated as one
+       ``AggregationError`` value
+   * - ``mf_repeatability``, ``mf_variability``, release coordinates,
+       column-prior factors, and arbitrary labelled extensions
+     - Durable diagnostics or recipe extensions
+     - Their scientific producer
+     - Not materialized unless a concrete recipe explicitly selects them
+   * - ``site_indicator``
+     - Model-only derived wiring
+     - ``RhimePreparedInputs`` derives and validates it from labelled
+       ``(site, time)`` observations
+     - The model-error recipe derives ``SigmaAlignment``; the offset component
+       may also select it
+   * - ``site_names``
+     - Output/compatibility wiring
+     - ``RhimePreparedInputs`` regenerates it from site metadata
+     - Not a PyMC input
+   * - ``SigmaAlignment``
+     - Cohesive model-only value
+     - The standard or multisector recipe derives it from ``site_indicator``,
+       time, and resolved model-error options
+     - Passed explicitly to the likelihood
+   * - Source/sector selection and state grouping
+     - Cohesive model-only mapping
+     - The multisector flux component validates source labels and derives its
+       state names beside the consuming recipe
+     - Never stored in a generic model-input context
+
+The current preparation ownership of ``min_error`` calculation and boundary
+period expansion is explicit rather than accidental; moving either equation
+requires its own scientific parity change. An externally cached sensitivity,
+including a Verification Games ``fp_x_flux`` projection, can be installed as
+labelled ``H`` at this durable handoff. Its Dask graph and provenance remain
+borrowed until a selected flux recipe reaches the named PyMC materialization
+boundary.
+
 State and source selection
 --------------------------
 

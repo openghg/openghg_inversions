@@ -9,16 +9,17 @@ from pytensor.tensor.variable import TensorVariable
 
 from openghg_inversions.models.pollution_event import build_pollution_event_error
 from openghg_inversions.observation_error import (
-    AggregationErrorMode,
-    select_aggregation_error_mode,
+    AggregationError,
 )
 from openghg_inversions.sigma import SigmaAlignment
 
 
 def likelihood_builder(
-    data: xr.Dataset,
-    /,
     *,
+    observations: xr.DataArray,
+    observation_error: xr.DataArray,
+    minimum_error: xr.DataArray,
+    aggregation_error: AggregationError,
     mean: TensorVariable,
     pollution_mean: TensorVariable,
     pollution_event_baseline: TensorVariable | None,
@@ -27,13 +28,15 @@ def likelihood_builder(
     power: Mapping[str, Any] | float,
     pollution_events_from_obs: bool,
     no_model_error: bool,
-    aggregation_error_mode: AggregationErrorMode,
     output_dim: str,
 ) -> TensorVariable:
     """Build an independent Student-t observation likelihood for RHIME.
 
     Args:
-        data: Prepared RHIME observations and reported errors.
+        observations: Observed mole fractions.
+        observation_error: Reported observation-error standard deviations.
+        minimum_error: Minimum total-error standard deviations.
+        aggregation_error: Validated fixed aggregation-error representation.
         mean: Completed forward-model concentration.
         pollution_mean: Modelled pollution contribution used to scale the
             pollution-event error.
@@ -46,7 +49,6 @@ def likelihood_builder(
         pollution_events_from_obs: Whether to derive pollution events from
             observations instead of the modelled pollution contribution.
         no_model_error: Whether to omit pollution-event mismatch error.
-        aggregation_error_mode: Fixed aggregation-error representation.
         output_dim: Observation dimension used by named PyMC variables.
 
     Returns:
@@ -55,15 +57,14 @@ def likelihood_builder(
     Raises:
         ValueError: If aggregation error requires a multivariate likelihood.
     """
-    aggregation_error_mode = select_aggregation_error_mode(
-        data,
-        aggregation_error_mode,
-    )
-    if aggregation_error_mode not in {"none", "diagonal"}:
+    if aggregation_error.mode not in {"none", "diagonal"}:
         raise ValueError("This Student-t model assumes independent observations.")
 
     state = build_pollution_event_error(
-        data,
+        observations=observations,
+        observation_error=observation_error,
+        minimum_error=minimum_error,
+        aggregation_error=aggregation_error,
         pollution_mean=pollution_mean,
         pollution_event_baseline=pollution_event_baseline,
         sigma_alignment=sigma_alignment,
@@ -71,7 +72,6 @@ def likelihood_builder(
         power=power,
         pollution_events_from_obs=pollution_events_from_obs,
         no_model_error=no_model_error,
-        aggregation_error_mode=aggregation_error_mode,
         output_dim=output_dim,
     )
     observed = pm.StudentT(

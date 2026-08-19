@@ -32,6 +32,7 @@ from openghg_inversions.rhime import (
     resolve_rhime_options,
     retrieve_or_reload_rhime_data,
     sample_rhime_model,
+    standard_model_input_names,
     with_prepared_rhime_sites,
 )
 
@@ -85,7 +86,7 @@ def run_custom_rhime(
 
     model_inputs = materialize_pymc_inputs(
         prepared,
-        aggregation_error_mode=run_spec.model.aggregation_error_mode,
+        variable_names=standard_model_input_names(prepared, run_spec.model),
     )
     build_and_sample_start = perf_counter()
     model_build_result = build_standard_rhime_model_result(

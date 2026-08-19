@@ -23,15 +23,10 @@ from openghg_inversions.models import (
 )
 from openghg_inversions.models.components import add_linear_component, resolve_model_variable
 from openghg_inversions.models.components import add_state_vector
-from openghg_inversions.rhime.multisector import (
-    _build_multisector_rhime_model_from_spec as build_rhime_multisector_model_from_spec,
-    build_multisector_rhime_model as build_rhime_multisector_model,
-)
+from openghg_inversions.observation_error import resolve_aggregation_error
+from openghg_inversions.rhime.multisector import build_multisector_rhime_model as _build_multisector_model
 from openghg_inversions.rhime.specs import RhimeModelSpec, SectorSpec
-from openghg_inversions.rhime.standard import (
-    _build_standard_rhime_model_from_spec as build_rhime_model_from_spec,
-    build_standard_rhime_model as build_rhime_model,
-)
+from openghg_inversions.rhime.standard import build_standard_rhime_model as _build_standard_model
 from openghg_inversions.sigma import SigmaAlignment
 
 
@@ -70,6 +65,88 @@ def _model_inputs(h: xr.DataArray) -> xr.Dataset:
 def _sigma_alignment(inputs: xr.Dataset) -> SigmaAlignment:
     """Return prepared sigma alignment for the minimal builder inputs."""
     return SigmaAlignment.from_indices(inputs["site_indicator"], inputs["sigma_freq_index"])
+
+
+def build_rhime_model(inputs: xr.Dataset, **kwargs: Any) -> pm.Model:
+    """Adapt test datasets to the standard builder's named-array contract."""
+    return _build_standard_model(
+        inputs["H"],
+        observations=inputs["mf"],
+        observation_error=inputs["mf_error"],
+        minimum_error=inputs["min_error"],
+        aggregation_error=resolve_aggregation_error(inputs, "none"),
+        boundary_sensitivity=inputs.get("H_bc"),
+        site_indicator=inputs.get("site_indicator"),
+        **kwargs,
+    )
+
+
+def build_rhime_multisector_model(inputs: xr.Dataset, **kwargs: Any) -> pm.Model:
+    """Adapt test datasets to the multisector builder's named-array contract."""
+    return _build_multisector_model(
+        inputs["H"],
+        observations=inputs["mf"],
+        observation_error=inputs["mf_error"],
+        minimum_error=inputs["min_error"],
+        aggregation_error=resolve_aggregation_error(inputs, "none"),
+        boundary_sensitivity=inputs.get("H_bc"),
+        site_indicator=inputs.get("site_indicator"),
+        **kwargs,
+    )
+
+
+def build_rhime_model_from_spec(inputs: xr.Dataset, model_spec: RhimeModelSpec) -> pm.Model:
+    """Resolve a standard test specification into explicit builder inputs."""
+    sector = model_spec.sectors[0]
+    return build_rhime_model(
+        inputs,
+        sigma_alignment=SigmaAlignment.from_frequency(
+            inputs["site_indicator"],
+            frequency=model_spec.sigma_freq,
+            per_site=model_spec.sigma_per_site,
+            anchor_time=model_spec.sigma_freq_anchor,
+        ),
+        x_prior=dict(sector.x_prior),
+        state_activity=sector.state_activity or model_spec.state_activity,
+        bc_prior=model_spec.bc_prior,
+        bc_state_activity=model_spec.bc_state_activity,
+        sigma_prior=model_spec.sigma_prior,
+        offset_prior=model_spec.offset_prior,
+        add_offset=model_spec.add_offset,
+        use_bc=model_spec.use_bc,
+        pollution_events_from_obs=model_spec.pollution_events_from_obs,
+        no_model_error=model_spec.no_model_error,
+        offset_args=model_spec.offset_args,
+        power=model_spec.power,
+    )
+
+
+def build_rhime_multisector_model_from_spec(
+    inputs: xr.Dataset,
+    model_spec: RhimeModelSpec,
+) -> pm.Model:
+    """Resolve a multisector test specification into explicit builder inputs."""
+    return build_rhime_multisector_model(
+        inputs,
+        sigma_alignment=SigmaAlignment.from_frequency(
+            inputs["site_indicator"],
+            frequency=model_spec.sigma_freq,
+            per_site=model_spec.sigma_per_site,
+            anchor_time=model_spec.sigma_freq_anchor,
+        ),
+        sectors=model_spec.sectors,
+        bc_prior=model_spec.bc_prior,
+        bc_state_activity=model_spec.bc_state_activity,
+        sigma_prior=model_spec.sigma_prior,
+        offset_prior=model_spec.offset_prior,
+        add_offset=model_spec.add_offset,
+        use_bc=model_spec.use_bc,
+        pollution_events_from_obs=model_spec.pollution_events_from_obs,
+        no_model_error=model_spec.no_model_error,
+        offset_args=model_spec.offset_args,
+        power=model_spec.power,
+        state_activity=model_spec.state_activity,
+    )
 
 
 def test_detect_zero_sensitivity_validates_and_retains_state_metadata() -> None:

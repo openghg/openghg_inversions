@@ -16,7 +16,7 @@ import xarray as xr
 from pytensor.tensor.variable import TensorVariable
 
 from openghg_inversions.inversion_data import RhimePreparedInputs
-from openghg_inversions.observation_error import AggregationErrorMode
+from openghg_inversions.observation_error import AggregationError
 from openghg_inversions.rhime.specs import OutputFormat, RhimeRunSpec
 from openghg_inversions.sigma import SigmaAlignment
 
@@ -29,9 +29,11 @@ class RhimeLikelihoodBuilder(Protocol):
 
     def __call__(
         self,
-        data: xr.Dataset,
-        /,
         *,
+        observations: xr.DataArray,
+        observation_error: xr.DataArray,
+        minimum_error: xr.DataArray,
+        aggregation_error: AggregationError,
         mean: TensorVariable,
         pollution_mean: TensorVariable,
         pollution_event_baseline: TensorVariable | None,
@@ -40,7 +42,6 @@ class RhimeLikelihoodBuilder(Protocol):
         power: Mapping[str, Any] | float,
         pollution_events_from_obs: bool,
         no_model_error: bool,
-        aggregation_error_mode: AggregationErrorMode,
         output_dim: str,
     ) -> TensorVariable:
         """Add canonical ``y`` and ``epsilon`` variables to the active model."""
@@ -49,7 +50,12 @@ class RhimeLikelihoodBuilder(Protocol):
 
 @dataclass(frozen=True)
 class RhimeModelBuilderContext:
-    """Labelled inputs supplied to a complete model builder.
+    """Advanced compatibility input supplied only to a complete model builder.
+
+    Ordinary in-tree recipes and components use explicit named scientific
+    inputs. This context remains solely for user-owned complete models invoked
+    through ``run_rhime_from_prepared_inputs``; those builders own validation
+    and materialization of any lazy arrays they consume.
 
     Args:
         prepared_inputs: Validated canonical inputs, retained basis functions,
@@ -133,7 +139,7 @@ class RhimeModelBuildResult:
 
 
 class RhimeModelBuilder(Protocol):
-    """Callable contract for a complete user-owned RHIME model factory."""
+    """Advanced callable contract for a complete user-owned model factory."""
 
     def __call__(self, context: RhimeModelBuilderContext, /) -> RhimeModelBuildResult:
         """Build a concrete model from validated prepared inputs and settings."""

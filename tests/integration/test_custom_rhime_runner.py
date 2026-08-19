@@ -153,10 +153,10 @@ def test_custom_runner_uses_supported_stages_for_acquisition_and_reload(
         calls.append("align")
         return aligned_spec
 
-    def materialize(actual: Any, *, aggregation_error_mode: str) -> xr.Dataset:
+    def materialize(actual: Any, *, variable_names: tuple[str, ...]) -> xr.Dataset:
         """Record the explicit eager model-input boundary."""
         assert actual is prepared
-        assert aggregation_error_mode == "low_rank"
+        assert set(variable_names) >= {"H", "mf", "mf_error", "min_error"}
         calls.append("materialize")
         return model_inputs
 
@@ -196,6 +196,11 @@ def test_custom_runner_uses_supported_stages_for_acquisition_and_reload(
     monkeypatch.setattr(custom_runner, "build_rhime_sensitivities", build_sensitivities)
     monkeypatch.setattr(custom_runner, "assemble_rhime_inputs", assemble)
     monkeypatch.setattr(custom_runner, "with_prepared_rhime_sites", align)
+    monkeypatch.setattr(
+        custom_runner,
+        "standard_model_input_names",
+        lambda _actual, _model: ("H", "mf", "mf_error", "min_error"),
+    )
     monkeypatch.setattr(custom_runner, "materialize_pymc_inputs", materialize)
     monkeypatch.setattr(custom_runner, "build_standard_rhime_model_result", build)
     monkeypatch.setattr(custom_runner, "sample_rhime_model", sample)

@@ -20,6 +20,7 @@ AGGREGATION_ERROR_SD = "aggregation_error_sd"
 AGGREGATION_ERROR_COVARIANCE = "aggregation_error_covariance"
 LOW_RANK_FACTOR = "low_rank_factor"
 DIAGONAL_RESIDUAL_VARIANCE = "diagonal_residual_variance"
+OBSERVATION_ERROR_INPUT_NAMES = ("mf", "mf_error", "min_error")
 
 
 @dataclass(frozen=True)
@@ -42,12 +43,18 @@ class AggregationError:
     diagonal_variance: xr.DataArray | None = None
 
 
-def _numeric_finite(name: str, array: xr.DataArray) -> np.ndarray:
+def _numeric_finite(
+    name: str,
+    array: xr.DataArray,
+    *,
+    owner: str = "Aggregation-error input",
+) -> np.ndarray:
     """Return numeric finite array values or raise a labelled error.
 
     Args:
         name: Scientific input name used in diagnostics.
         array: Labelled values to materialize and validate.
+        owner: Component label used in diagnostics.
 
     Returns:
         Materialized NumPy values.
@@ -57,9 +64,9 @@ def _numeric_finite(name: str, array: xr.DataArray) -> np.ndarray:
     """
     values = np.asarray(array.values)
     if not np.issubdtype(values.dtype, np.number):
-        raise ValueError(f"Aggregation-error input {name!r} must be numeric.")
+        raise ValueError(f"{owner} {name!r} must be numeric.")
     if not np.isfinite(values).all():
-        raise ValueError(f"Aggregation-error input {name!r} must contain only finite values.")
+        raise ValueError(f"{owner} {name!r} must contain only finite values.")
     return values
 
 
@@ -129,6 +136,120 @@ def validate_observation_error_inputs(
         _validate_vector(data, name, output_dim=output_dim)
 
 
+def validate_observation_error_arrays(
+    observations: xr.DataArray,
+    observation_error: xr.DataArray,
+    minimum_error: xr.DataArray,
+    *,
+    owner: str,
+    output_dim: str = "nmeasure",
+) -> None:
+    """Validate the named scientific arrays consumed by an error component.
+
+    Args:
+        observations: Observed mole fractions.
+        observation_error: Reported observation-error standard deviations.
+        minimum_error: Minimum total-error standard deviations.
+        owner: Name of the likelihood/error component consuming the arrays.
+        output_dim: Required observation dimension.
+
+    Raises:
+        ValueError: If an input is not an aligned observation vector or an
+            error array is non-numeric, non-finite, or negative.
+    """
+    if observations.dims != (output_dim,):
+        raise ValueError(
+            f"{owner} input 'observations' must have dims "
+            f"({output_dim!r},); got {observations.dims!r}."
+        )
+    _numeric_finite("observations", observations, owner=f"{owner} input")
+    nmeasure = observations.sizes[output_dim]
+    for name, array in (
+        ("observation_error", observation_error),
+        ("minimum_error", minimum_error),
+    ):
+        if array.dims != (output_dim,):
+            raise ValueError(
+                f"{owner} input {name!r} must have dims "
+                f"({output_dim!r},); got {array.dims!r}."
+            )
+        if array.sizes[output_dim] != nmeasure:
+            raise ValueError(f"{owner} input {name!r} is not observation-aligned.")
+        validate_observation_alignment(
+            observations,
+            array,
+            input_name=name,
+            owner=owner,
+            output_dim=output_dim,
+        )
+        values = _numeric_finite(name, array, owner=f"{owner} input")
+        if (values < 0).any():
+            raise ValueError(f"{owner} input {name!r} must contain only non-negative values.")
+
+
+def validate_observation_alignment(
+    observations: xr.DataArray,
+    array: xr.DataArray,
+    *,
+    input_name: str,
+    owner: str,
+    output_dim: str = "nmeasure",
+) -> None:
+    """Require an input to carry the observations' exact labelled ordering.
+
+    Indexed and auxiliary observation coordinates are eager structural data.
+    Comparing them here does not materialize either scientific payload.
+
+    Args:
+        observations: Reference observation vector.
+        array: Scientific input containing the observation dimension.
+        input_name: Input name used in diagnostics.
+        owner: Component name used in diagnostics.
+        output_dim: Shared observation dimension.
+
+    Raises:
+        ValueError: If the input omits the observation dimension or its
+            observation labels differ from ``observations``.
+    """
+    if output_dim not in array.dims:
+        raise ValueError(f"{owner} input {input_name!r} has no {output_dim!r} dimension.")
+    reference_coordinates = {
+        name: coordinate
+        for name, coordinate in observations.coords.items()
+        if coordinate.dims == (output_dim,)
+    }
+    for name, reference in reference_coordinates.items():
+        candidate = array.coords.get(name)
+        if candidate is None or not reference.identical(candidate):
+            raise ValueError(
+                f"{owner} input {input_name!r} has incompatible observation coordinate {name!r}."
+            )
+
+
+def validate_aggregation_error_alignment(
+    observations: xr.DataArray,
+    aggregation_error: AggregationError,
+    *,
+    owner: str,
+    output_dim: str = "nmeasure",
+) -> None:
+    """Validate labelled aggregation-error products against observations."""
+    arrays = (
+        (AGGREGATION_ERROR_COVARIANCE, aggregation_error.covariance),
+        (LOW_RANK_FACTOR, aggregation_error.factor),
+        (DIAGONAL_RESIDUAL_VARIANCE, aggregation_error.diagonal_variance),
+    )
+    for name, array in arrays:
+        if array is not None:
+            validate_observation_alignment(
+                observations,
+                array,
+                input_name=name,
+                owner=owner,
+                output_dim=output_dim,
+            )
+
+
 def select_aggregation_error_mode(
     data: xr.Dataset, requested: AggregationErrorMode
 ) -> Literal["none", "dense", "low_rank", "diagonal"]:
@@ -169,6 +290,27 @@ def select_aggregation_error_mode(
     if AGGREGATION_ERROR_SD in data:
         return "diagonal"
     return "none"
+
+
+def aggregation_error_input_names(
+    data: xr.Dataset,
+    requested: AggregationErrorMode,
+) -> tuple[str, ...]:
+    """Return the labelled arrays required by the selected error component."""
+    selected = select_aggregation_error_mode(data, requested)
+    if selected == "dense":
+        names = [AGGREGATION_ERROR_COVARIANCE]
+        if AGGREGATION_ERROR_SD in data:
+            names.append(AGGREGATION_ERROR_SD)
+        return tuple(names)
+    if selected == "low_rank":
+        names = [LOW_RANK_FACTOR, DIAGONAL_RESIDUAL_VARIANCE]
+        if AGGREGATION_ERROR_SD in data:
+            names.append(AGGREGATION_ERROR_SD)
+        return tuple(names)
+    if selected == "diagonal":
+        return (AGGREGATION_ERROR_SD,)
+    return ()
 
 
 def resolve_aggregation_error(

@@ -11,14 +11,16 @@ from pytensor.tensor.variable import TensorVariable
 from openghg_inversions.models.additive_sigma import (
     add_additive_sigma_gaussian_likelihood,
 )
-from openghg_inversions.observation_error import AggregationErrorMode
+from openghg_inversions.observation_error import AggregationError
 from openghg_inversions.sigma import SigmaAlignment
 
 
 def additive_sigma_likelihood_builder(
-    data: xr.Dataset,
-    /,
     *,
+    observations: xr.DataArray,
+    observation_error: xr.DataArray,
+    minimum_error: xr.DataArray,
+    aggregation_error: AggregationError,
     mean: TensorVariable,
     pollution_mean: TensorVariable,
     pollution_event_baseline: TensorVariable | None,
@@ -27,7 +29,6 @@ def additive_sigma_likelihood_builder(
     power: Mapping[str, Any] | float,
     pollution_events_from_obs: bool,
     no_model_error: bool,
-    aggregation_error_mode: AggregationErrorMode,
     output_dim: str,
 ) -> TensorVariable:
     """Adapt the additive-sigma Gaussian to the RHIME likelihood seam.
@@ -39,7 +40,10 @@ def additive_sigma_likelihood_builder(
     scientifically irrelevant arguments.
 
     Args:
-        data: Prepared observations and reported errors.
+        observations: Observed mole fractions.
+        observation_error: Reported observation-error standard deviations.
+        minimum_error: Minimum total-error standard deviations.
+        aggregation_error: Validated fixed aggregation-error representation.
         mean: Completed forward-model concentration.
         pollution_mean: Modelled pollution contribution, unused by additive
             mismatch variance.
@@ -51,7 +55,6 @@ def additive_sigma_likelihood_builder(
         pollution_events_from_obs: Pollution-event source policy, unused by
             additive mismatch variance.
         no_model_error: Whether to omit inferred mismatch error.
-        aggregation_error_mode: Fixed aggregation-error representation.
         output_dim: Observation dimension used for named PyMC variables.
 
     Returns:
@@ -63,12 +66,14 @@ def additive_sigma_likelihood_builder(
     """
     del pollution_mean, pollution_event_baseline, power, pollution_events_from_obs
     return add_additive_sigma_gaussian_likelihood(
-        data,
+        observations=observations,
+        observation_error=observation_error,
+        minimum_error=minimum_error,
+        aggregation_error=aggregation_error,
         mean=mean,
         sigma_alignment=sigma_alignment,
         sigma_prior=sigma_prior,
         no_model_error=no_model_error,
-        aggregation_error_mode=aggregation_error_mode,
         output_dim=output_dim,
     )
 

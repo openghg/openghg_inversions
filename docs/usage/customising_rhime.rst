@@ -317,9 +317,11 @@ still defer their calculations with Dask. The function derives and normalises
 the two-dimensional weights, loads the country classes, constructs the
 geometry, and creates the region labels. It then combines the labels with the
 current run's flux in a ``BasisFunctions`` object. That object flows unchanged
-through sensitivity construction and labelled assembly. The arrays needed by
-PyMC are converted separately by ``materialize_pymc_inputs`` immediately
-before model construction.
+through sensitivity construction and labelled assembly. The concrete recipe's
+adjacent ``standard_model_input_names`` declaration selects the arrays it
+needs. ``materialize_pymc_inputs`` converts only those arrays, together,
+immediately before model construction; project-owned lazy extensions in
+``RhimePreparedInputs`` remain untouched.
 
 The customisation is concentrated in ``_guarded_basis``. The runner's one
 deliberate substitution is marked by an inline comment where

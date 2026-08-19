@@ -211,6 +211,7 @@ helpers:
    )
    from openghg_inversions.models.likelihoods import add_gaussian_observation_likelihood
    from openghg_inversions.models.pollution_event import build_pollution_event_error
+   from openghg_inversions.observation_error import resolve_aggregation_error
    from openghg_inversions.sigma import SigmaAlignment
 
    x_prior = {
@@ -257,7 +258,10 @@ helpers:
        modelled_mean = pollution_mean + baseline_mean
 
        error_state = build_pollution_event_error(
-           inv_inputs,
+           observations=inv_inputs["mf"],
+           observation_error=inv_inputs["mf_error"],
+           minimum_error=inv_inputs["min_error"],
+           aggregation_error=resolve_aggregation_error(inv_inputs, "none"),
            pollution_mean=pollution_mean,
            pollution_event_baseline=baseline_mean,
            sigma_alignment=sigma_alignment,
@@ -265,7 +269,6 @@ helpers:
            power=1.99,
            pollution_events_from_obs=False,
            no_model_error=False,
-           aggregation_error_mode="none",
            output_dim="nmeasure",
        )
        add_gaussian_observation_likelihood(
@@ -335,8 +338,9 @@ A concrete recipe owns the complete forward-model mean: pollution, baseline,
 and optional offset contributions are composed visibly before the likelihood
 seam. A likelihood builder owns error construction and the observed
 distribution. RHIME passes the completed concentration, pollution contribution,
-pollution-event baseline, prepared observations, sigma alignment and prior, error
-policies, aggregation-error mode, and output dimension as explicit arguments.
+pollution-event baseline, prepared observations and errors, a validated
+``AggregationError``, sigma alignment and prior, error policies, and output
+dimension as explicit arguments.
 The builder adds and returns the canonical observed variable ``y`` and also
 adds the canonical marginal error scale ``epsilon``.
 
@@ -372,10 +376,17 @@ sampling and postprocessing. The runner records the likelihood builder's
 module and qualified name, so direct-Python likelihoods remain identifiable in
 persisted inversion outputs.
 
-A complete model builder instead receives a ``RhimeModelBuilderContext``. It
-contains the validated ``RhimePreparedInputs``, updated ``RhimeRunSpec``, and
-the validated single- versus multi-sector mode. The builder returns a
-``RhimeModelBuildResult``:
+Advanced whole-model compatibility boundary
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A complete model builder is an advanced escape hatch available only through
+``run_rhime_from_prepared_inputs``. It receives a
+``RhimeModelBuilderContext`` containing the validated ``RhimePreparedInputs``,
+updated ``RhimeRunSpec``, and validated single- versus multi-sector mode, and
+returns a ``RhimeModelBuildResult``. Ordinary standard and multisector recipes
+never construct or consume this context. Complete builders also bypass the
+ordinary recipe-owned materialization step, so they must select, validate, and
+materialize any lazy arrays they consume:
 
 .. code-block:: python
 

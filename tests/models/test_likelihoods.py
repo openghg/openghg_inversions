@@ -39,7 +39,10 @@ def _add_pollution_event_likelihood(
         baseline = offset if baseline is None else baseline + offset
     mean = mu if baseline is None else mu + baseline
     state = build_pollution_event_error(
-        data,
+        observations=data["mf"],
+        observation_error=data["mf_error"],
+        minimum_error=data["min_error"],
+        aggregation_error=resolve_aggregation_error(data, aggregation_error_mode),
         pollution_mean=mu,
         pollution_event_baseline=baseline,
         sigma_alignment=sigma_alignment,
@@ -48,7 +51,6 @@ def _add_pollution_event_likelihood(
         pollution_events_from_obs=pollution_events_from_obs,
         no_model_error=no_model_error,
         retain_unused_sigma=retain_unused_sigma,
-        aggregation_error_mode=aggregation_error_mode,
     )
     add_gaussian_observation_likelihood(
         observed=state.observed,
@@ -218,6 +220,109 @@ def test_no_model_error_omits_unused_sigma_by_default() -> None:
     assert "sigma" not in model.named_vars
 
 
+def test_pollution_event_validation_names_malformed_input_and_owner() -> None:
+    """Malformed observation errors fail at their owning likelihood boundary."""
+    data = _base_data()
+    data["mf_error"] = ("nmeasure", [0.2, np.nan, 0.4])
+    sigma_alignment = SigmaAlignment.from_frequency(
+        data["site_indicator"], frequency=None, per_site=False
+    )
+
+    with pm.Model(coords={"nmeasure": np.arange(3)}):
+        pollution_mean = pm.Data("pollution_mean", np.ones(3), dims="nmeasure")
+        with pytest.raises(
+            ValueError,
+            match="Pollution-event likelihood input 'observation_error'.*finite",
+        ):
+            build_pollution_event_error(
+                observations=data["mf"],
+                observation_error=data["mf_error"],
+                minimum_error=data["min_error"],
+                aggregation_error=resolve_aggregation_error(data, "none"),
+                pollution_mean=pollution_mean,
+                pollution_event_baseline=None,
+                sigma_alignment=sigma_alignment,
+                sigma_prior={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
+                power=1.99,
+                pollution_events_from_obs=False,
+                no_model_error=False,
+            )
+
+
+def test_additive_sigma_validation_names_malformed_input_and_owner() -> None:
+    """Malformed minimum error fails before the additive component builds."""
+    data = _base_data()
+    malformed_minimum = data["min_error"].rename(nmeasure="sample")
+    sigma_alignment = SigmaAlignment.from_frequency(
+        data["site_indicator"], frequency=None, per_site=False
+    )
+
+    with pm.Model(coords={"nmeasure": np.arange(3)}):
+        with pytest.raises(
+            ValueError,
+            match="Additive-sigma likelihood input 'minimum_error'.*dims",
+        ):
+            build_additive_sigma_error(
+                observations=data["mf"],
+                observation_error=data["mf_error"],
+                minimum_error=malformed_minimum,
+                aggregation_error=resolve_aggregation_error(data, "none"),
+                sigma_alignment=sigma_alignment,
+                sigma_prior={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
+                no_model_error=False,
+            )
+
+
+@pytest.mark.parametrize(
+    ("component", "owner"),
+    [
+        ("pollution-event", "Pollution-event likelihood"),
+        ("additive-sigma", "Additive-sigma likelihood"),
+    ],
+)
+def test_likelihoods_reject_reordered_observation_error_coordinates(
+    component: str,
+    owner: str,
+) -> None:
+    """Named arrays cannot silently fall back to positional observation order."""
+    data = _base_data()
+    reordered_error = data["mf_error"].isel(nmeasure=[2, 1, 0])
+    sigma_alignment = SigmaAlignment.from_frequency(
+        data["site_indicator"], frequency=None, per_site=False
+    )
+
+    with pm.Model(coords={"nmeasure": np.arange(3)}):
+        with pytest.raises(
+            ValueError,
+            match=rf"{owner} input 'observation_error'.*coordinate 'nmeasure'",
+        ):
+            if component == "pollution-event":
+                pollution_mean = pm.Data("pollution_mean", np.ones(3), dims="nmeasure")
+                build_pollution_event_error(
+                    observations=data["mf"],
+                    observation_error=reordered_error,
+                    minimum_error=data["min_error"],
+                    aggregation_error=resolve_aggregation_error(data, "none"),
+                    pollution_mean=pollution_mean,
+                    pollution_event_baseline=None,
+                    sigma_alignment=sigma_alignment,
+                    sigma_prior={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
+                    power=1.99,
+                    pollution_events_from_obs=False,
+                    no_model_error=False,
+                )
+            else:
+                build_additive_sigma_error(
+                    observations=data["mf"],
+                    observation_error=reordered_error,
+                    minimum_error=data["min_error"],
+                    aggregation_error=resolve_aggregation_error(data, "none"),
+                    sigma_alignment=sigma_alignment,
+                    sigma_prior={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
+                    no_model_error=False,
+                )
+
+
 def test_additive_sigma_error_adds_mismatch_variance_and_applies_marginal_floor() -> None:
     """The reusable additive component follows its variance equation."""
     data = _base_data()
@@ -229,11 +334,13 @@ def test_additive_sigma_error_adds_mismatch_variance_and_applies_marginal_floor(
     with pm.Model(coords={"nmeasure": np.arange(3)}) as model:
         attach_coord_registry(model, CoordRegistry())
         state = build_additive_sigma_error(
-            data,
+            observations=data["mf"],
+            observation_error=data["mf_error"],
+            minimum_error=data["min_error"],
+            aggregation_error=resolve_aggregation_error(data, "diagonal"),
             sigma_alignment=sigma_alignment,
             sigma_prior={"pdf": "uniform", "lower": 0.5, "upper": 0.500001},
             no_model_error=False,
-            aggregation_error_mode="diagonal",
         )
 
     sigma = np.asarray(model.named_vars["sigma"].eval()).item()
@@ -255,11 +362,13 @@ def test_additive_sigma_error_omits_sigma_when_model_error_is_disabled() -> None
     with pm.Model(coords={"nmeasure": np.arange(3)}) as model:
         attach_coord_registry(model, CoordRegistry())
         state = build_additive_sigma_error(
-            data,
+            observations=data["mf"],
+            observation_error=data["mf_error"],
+            minimum_error=data["min_error"],
+            aggregation_error=resolve_aggregation_error(data, "none"),
             sigma_alignment=sigma_alignment,
             sigma_prior={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
             no_model_error=True,
-            aggregation_error_mode="none",
         )
 
     assert "sigma" not in model.named_vars
@@ -278,12 +387,14 @@ def test_additive_sigma_gaussian_likelihood_uses_completed_mean() -> None:
         attach_coord_registry(model, CoordRegistry())
         mean = pm.Data("completed_mean", completed_mean, dims="nmeasure")
         likelihood = add_additive_sigma_gaussian_likelihood(
-            data,
+            observations=data["mf"],
+            observation_error=data["mf_error"],
+            minimum_error=data["min_error"],
+            aggregation_error=resolve_aggregation_error(data, "none"),
             mean=mean,
             sigma_alignment=sigma_alignment,
             sigma_prior={"pdf": "uniform", "lower": 0.2, "upper": 0.200001},
             no_model_error=False,
-            aggregation_error_mode="none",
         )
 
     assert likelihood is model.named_vars["y"]
@@ -305,7 +416,10 @@ def test_rhime_additive_sigma_adapter_accepts_pollution_event_inputs() -> None:
         attach_coord_registry(model, CoordRegistry())
         mean = pm.Data("completed_mean", np.ones(3), dims="nmeasure")
         likelihood = additive_sigma_likelihood_builder(
-            data,
+            observations=data["mf"],
+            observation_error=data["mf_error"],
+            minimum_error=data["min_error"],
+            aggregation_error=resolve_aggregation_error(data, "none"),
             mean=mean,
             pollution_mean=pm.math.constant(np.full(3, 99.0)),
             pollution_event_baseline=pm.math.constant(np.full(3, -99.0)),
@@ -314,7 +428,6 @@ def test_rhime_additive_sigma_adapter_accepts_pollution_event_inputs() -> None:
             power=7.0,
             pollution_events_from_obs=True,
             no_model_error=False,
-            aggregation_error_mode="none",
             output_dim="nmeasure",
         )
 

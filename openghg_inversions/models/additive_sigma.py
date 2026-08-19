@@ -29,9 +29,9 @@ from openghg_inversions.models.components import add_model_data, add_sigma_compo
 from openghg_inversions.models.likelihoods import add_gaussian_observation_likelihood
 from openghg_inversions.observation_error import (
     AggregationError,
-    AggregationErrorMode,
-    resolve_aggregation_error,
-    validate_observation_error_inputs,
+    validate_aggregation_error_alignment,
+    validate_observation_alignment,
+    validate_observation_error_arrays,
 )
 from openghg_inversions.sigma import SigmaAlignment
 
@@ -47,13 +47,14 @@ class AdditiveSigmaErrorState:
 
 
 def build_additive_sigma_error(
-    data: xr.Dataset,
-    /,
     *,
+    observations: xr.DataArray,
+    observation_error: xr.DataArray,
+    minimum_error: xr.DataArray,
+    aggregation_error: AggregationError,
     sigma_alignment: SigmaAlignment,
     sigma_prior: Mapping[str, Any],
     no_model_error: bool,
-    aggregation_error_mode: AggregationErrorMode,
     output_dim: str = "nmeasure",
 ) -> AdditiveSigmaErrorState:
     """Build observation-error terms with an additive mismatch scale.
@@ -65,17 +66,16 @@ def build_additive_sigma_error(
     ``aggregation_error_mode``.
 
     Args:
-        data: Observation dataset containing ``mf``, ``mf_error``, and
-            ``min_error`` along ``output_dim``. It may also contain the fields
-            required by the selected aggregation-error representation.
+        observations: Observed mole fractions.
+        observation_error: Reported observation-error standard deviations.
+        minimum_error: Minimum total-error standard deviations.
+        aggregation_error: Validated fixed aggregation-error representation.
         sigma_alignment: Mapping from observations to the mismatch-scale
             parameters.
         sigma_prior: Prior arguments used to construct ``sigma`` when model
             error is enabled.
         no_model_error: If true, omit ``sigma`` and use only reported and
             selected aggregation errors.
-        aggregation_error_mode: Fixed aggregation covariance representation
-            prepared for the observation distribution.
         output_dim: Observation dimension used for named PyMC variables.
 
     Returns:
@@ -86,17 +86,38 @@ def build_additive_sigma_error(
         ValueError: If the observation or aggregation-error inputs are
             inconsistent with ``output_dim``.
     """
-    validate_observation_error_inputs(data, output_dim=output_dim)
-    aggregation_error = resolve_aggregation_error(
-        data,
-        aggregation_error_mode,
+    validate_observation_error_arrays(
+        observations,
+        observation_error,
+        minimum_error,
+        owner="Additive-sigma likelihood",
         output_dim=output_dim,
     )
-    observed = add_model_data(data["mf"].transpose(output_dim), "Y")
-    observation_error = add_model_data(data["mf_error"].transpose(output_dim), "error")
-    minimum_error = add_model_data(data["min_error"].transpose(output_dim), "min_error")
+    validate_observation_alignment(
+        observations,
+        sigma_alignment.site_index,
+        input_name="sigma_alignment.site_index",
+        owner="Additive-sigma likelihood",
+        output_dim=output_dim,
+    )
+    validate_observation_alignment(
+        observations,
+        sigma_alignment.period_index,
+        input_name="sigma_alignment.period_index",
+        owner="Additive-sigma likelihood",
+        output_dim=output_dim,
+    )
+    validate_aggregation_error_alignment(
+        observations,
+        aggregation_error,
+        owner="Additive-sigma likelihood",
+        output_dim=output_dim,
+    )
+    observed = add_model_data(observations.transpose(output_dim), "Y")
+    reported_error = add_model_data(observation_error.transpose(output_dim), "error")
+    minimum_error_data = add_model_data(minimum_error.transpose(output_dim), "min_error")
 
-    independent_variance = observation_error**2
+    independent_variance = reported_error**2
     if not no_model_error:
         sigma = add_sigma_component(sigma_alignment, prior_args=dict(sigma_prior))
         independent_variance = independent_variance + sigma**2
@@ -105,7 +126,7 @@ def build_additive_sigma_error(
         pm.floatX(aggregation_error.marginal_variance)
     )
     floor_variance = cast(Any, pt.maximum)(
-        minimum_error**2 - independent_variance - aggregation_marginal_variance,
+        minimum_error_data**2 - independent_variance - aggregation_marginal_variance,
         0.0,
     )
     independent_variance = independent_variance + floor_variance
@@ -123,14 +144,15 @@ def build_additive_sigma_error(
 
 
 def add_additive_sigma_gaussian_likelihood(
-    data: xr.Dataset,
-    /,
     *,
+    observations: xr.DataArray,
+    observation_error: xr.DataArray,
+    minimum_error: xr.DataArray,
+    aggregation_error: AggregationError,
     mean: TensorVariable,
     sigma_alignment: SigmaAlignment,
     sigma_prior: Mapping[str, Any],
     no_model_error: bool,
-    aggregation_error_mode: AggregationErrorMode,
     output_dim: str = "nmeasure",
 ) -> TensorVariable:
     """Add a Gaussian likelihood with additive mismatch variance.
@@ -143,9 +165,10 @@ def add_additive_sigma_gaussian_likelihood(
     by the pollution enhancement.
 
     Args:
-        data: Observation dataset containing ``mf``, ``mf_error``, and
-            ``min_error`` along ``output_dim``. It may also contain the fields
-            required by the selected aggregation-error representation.
+        observations: Observed mole fractions.
+        observation_error: Reported observation-error standard deviations.
+        minimum_error: Minimum total-error standard deviations.
+        aggregation_error: Validated fixed aggregation-error representation.
         mean: Completed forward-model concentration aligned with
             ``output_dim``.
         sigma_alignment: Mapping from observations to the mismatch-scale
@@ -154,8 +177,6 @@ def add_additive_sigma_gaussian_likelihood(
             error is enabled.
         no_model_error: If true, omit ``sigma`` and use only reported and
             selected aggregation errors.
-        aggregation_error_mode: Fixed aggregation covariance representation
-            consumed by the Gaussian distribution.
         output_dim: Observation dimension used for named PyMC variables.
 
     Returns:
@@ -167,11 +188,13 @@ def add_additive_sigma_gaussian_likelihood(
             inconsistent with ``output_dim``.
     """
     state = build_additive_sigma_error(
-        data,
+        observations=observations,
+        observation_error=observation_error,
+        minimum_error=minimum_error,
+        aggregation_error=aggregation_error,
         sigma_alignment=sigma_alignment,
         sigma_prior=sigma_prior,
         no_model_error=no_model_error,
-        aggregation_error_mode=aggregation_error_mode,
         output_dim=output_dim,
     )
     return add_gaussian_observation_likelihood(

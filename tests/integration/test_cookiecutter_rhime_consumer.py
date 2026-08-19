@@ -107,9 +107,9 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
         calls.append("align")
         return actual_spec
 
-    def materialize(actual: Any, *, aggregation_error_mode: str) -> Any:
+    def materialize(actual: Any, *, variable_names: tuple[str, ...]) -> Any:
         assert actual is prepared
-        assert aggregation_error_mode == "diagonal"
+        assert set(variable_names) >= {"H", "mf", "mf_error", "min_error"}
         calls.append("materialize")
         return model_inputs
 
@@ -145,6 +145,11 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
     monkeypatch.setattr(rhime_runner, "build_rhime_sensitivities", build_sensitivities)
     monkeypatch.setattr(rhime_runner, "assemble_rhime_inputs", assemble)
     monkeypatch.setattr(rhime_runner, "with_prepared_rhime_sites", align)
+    monkeypatch.setattr(
+        rhime_runner,
+        "standard_model_input_names",
+        lambda _actual, _model: ("H", "mf", "mf_error", "min_error"),
+    )
     monkeypatch.setattr(rhime_runner, "materialize_pymc_inputs", materialize)
     monkeypatch.setattr(rhime_runner, "build_standard_rhime_model_result", build)
     monkeypatch.setattr(rhime_runner, "sample_rhime_model", sample)
