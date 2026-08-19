@@ -60,6 +60,22 @@ subset is sufficient (for example, `sbatch scripts/slurm_tox.sh -e type`). The
 runner builds tox environments on node-local storage and removes them when the
 job exits.
 
+## Release notes
+
+Use Towncrier fragments for user-visible changes. Agents must add a concise
+`newsfragments/<issue>.<type>.md` file rather than editing `CHANGELOG.md`
+directly; use `+` in place of an issue number when there is no tracked issue.
+Choose one of `feature`, `bugfix`, `doc`, `removal`, or `misc` for `<type>`.
+The existing `CHANGELOG.md` remains the published, human-readable changelog
+for users and developers. During release preparation, a maintainer runs
+`towncrier build --version <version> --yes` to prepend the collected notes, commits
+the generated changelog, and then creates the GitHub release. The PyPI release
+workflow verifies that no unassembled fragments remain.
+
+For cluster test runs, prefer a writable node-local PyTensor cache such as
+`base_compiledir=${TMPDIR:-/tmp}/pytensor-${USER}`. Add it as a
+comma-separated `PYTENSOR_FLAGS` entry without discarding existing flags or
+defining `base_compiledir` twice.
 Before asking the user to archive a chat, offer to run
 `scripts/clean_local_envs.sh`. Run it only after the user agrees because it
 deletes the current worktree's `.venv` and `.tox` directories.
