@@ -2,7 +2,7 @@
 
 This project-owned function changes RHIME's observation distribution while
 reusing its current mean and error construction. The additive-sigma variation
-is the installed library component imported under the runner-facing name.
+imports the library's RHIME adapter under the runner-facing name.
 
 ``likelihood_builder`` is the exported runner seam. Importing this module does
 not build a model, retrieve data, sample, or write outputs.
@@ -15,14 +15,12 @@ import pymc as pm
 import xarray as xr
 from pytensor.tensor.variable import TensorVariable
 
-from openghg_inversions.models.additive_sigma import (
-    add_additive_sigma_gaussian_likelihood as additive_sigma_likelihood_builder,
-)
 from openghg_inversions.models.pollution_event import build_pollution_event_error
 from openghg_inversions.observation_error import (
     AggregationErrorMode,
     select_aggregation_error_mode,
 )
+from openghg_inversions.rhime.likelihoods import additive_sigma_likelihood_builder
 from openghg_inversions.sigma import SigmaAlignment
 
 

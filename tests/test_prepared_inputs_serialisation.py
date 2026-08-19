@@ -551,8 +551,16 @@ def test_real_prepared_inputs_save_load_and_run_without_repreparation(
         """Fail if the loaded-input runner attempts data preparation."""
         raise AssertionError("loaded prepared inputs must bypass preparation")
 
-    def fake_builder(inv_inputs: xr.Dataset, spec: RhimeModelSpec) -> pm.Model:
+    def fake_builder(
+        inv_inputs: xr.Dataset,
+        spec: RhimeModelSpec,
+        *,
+        likelihood_builder: object | None,
+        preserve_legacy_likelihood: bool,
+    ) -> pm.Model:
         """Record the loaded builder inputs and build the real canonical graph."""
+        assert likelihood_builder is None
+        assert preserve_legacy_likelihood is False
         observed["builder_inputs"] = inv_inputs
         observed["builder_spec"] = spec
         return original_builder(inv_inputs, spec)
@@ -908,8 +916,16 @@ def test_loaded_prepared_inputs_run_through_existing_seam(
         """Fail if execution attempts to prepare inputs again."""
         raise AssertionError("prepared-input execution must not repeat preparation")
 
-    def fake_builder(inv_inputs: xr.Dataset, spec: RhimeModelSpec) -> pm.Model:
+    def fake_builder(
+        inv_inputs: xr.Dataset,
+        spec: RhimeModelSpec,
+        *,
+        likelihood_builder: object | None,
+        preserve_legacy_likelihood: bool,
+    ) -> pm.Model:
         """Record model-builder inputs and build the real canonical graph."""
+        assert likelihood_builder is None
+        assert preserve_legacy_likelihood is False
         observed["builder_inputs"] = inv_inputs
         observed["builder_spec"] = spec
         return original_builder(inv_inputs, spec)
@@ -1015,8 +1031,14 @@ def test_multisource_order_survives_load_run_and_reconstruction(
     observed: dict[str, object] = {}
     original_builder = rhime_multisector._build_multisector_rhime_model_from_spec
 
-    def fake_builder(inv_inputs: xr.Dataset, spec: RhimeModelSpec) -> pm.Model:
+    def fake_builder(
+        inv_inputs: xr.Dataset,
+        spec: RhimeModelSpec,
+        *,
+        likelihood_builder: object | None,
+    ) -> pm.Model:
         """Record ordered builder inputs and build the real canonical graph."""
+        assert likelihood_builder is None
         observed["source_order"] = tuple(inv_inputs.source.values)
         observed["model_spec"] = spec
         return original_builder(inv_inputs, spec)

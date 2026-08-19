@@ -19,10 +19,6 @@ from openghg_inversions._pymc_config import configure_pytensor
 
 configure_pytensor()
 
-from openghg_inversions.observation_error import select_aggregation_error_mode
-from openghg_inversions.models.additive_sigma import add_additive_sigma_gaussian_likelihood
-from openghg_inversions.models.pollution_event import build_pollution_event_gaussian_likelihood
-
 from .builders import (
     RhimeLikelihoodBuilder,
     RhimeModelBuilder,
@@ -69,12 +65,10 @@ __all__ = [
     "RhimeResult",
     "params_from_config",
     "assemble_rhime_inputs",
-    "add_additive_sigma_gaussian_likelihood",
     "build_multisector_rhime_model",
     "build_multisector_rhime_model_result",
     "build_rhime_basis",
     "build_rhime_sensitivities",
-    "build_pollution_event_gaussian_likelihood",
     "build_standard_rhime_model",
     "build_standard_rhime_model_result",
     "filter_rhime_observations",
@@ -88,6 +82,5 @@ __all__ = [
     "run_rhime_from_prepared_inputs",
     "run_rhime_multisector",
     "sample_rhime_model",
-    "select_aggregation_error_mode",
     "with_prepared_rhime_sites",
 ]

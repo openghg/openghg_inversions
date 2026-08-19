@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 import json
-from typing import Any, Literal, Protocol
+from typing import Any, Protocol
 
 import pymc as pm
 import xarray as xr
@@ -144,29 +144,18 @@ def validate_model_build_result(
     result: RhimeModelBuildResult,
     *,
     context: RhimeModelBuilderContext,
-    builder_kind: Literal["model", "likelihood"] = "model",
 ) -> None:
     """Validate a custom build result before sampling or postprocessing.
 
     Args:
         result: Complete model build result to validate.
         context: Prepared inputs and run settings for the active model build.
-        builder_kind: Customization seam responsible for the result. This is
-            used only to label the unsupported-output diagnostic; it does not
-            change validation.
-
     Raises:
         ValueError: If the requested output is unsupported or declared
             variable roles are incomplete or refer to absent variables.
     """
     output_format = context.run_spec.output.output_format
     if output_format not in result.supported_output_formats:
-        if builder_kind == "likelihood":
-            raise ValueError(
-                "The RHIME graph containing the custom likelihood does not support "
-                f"output_format={output_format!r}. Supported formats: "
-                f"{list(result.supported_output_formats)!r}."
-            )
         raise ValueError(
             f"Custom RHIME model builder does not declare output_format={output_format!r} compatible. "
             f"Declared formats: {list(result.supported_output_formats)!r}. Use output_format='none' or "
@@ -209,10 +198,10 @@ def validate_model_build_result(
             )
         if context.run_spec.model.use_bc:
             required_roles.update(
-                {"baseline", "baseline_scale", "baseline_sensitivity", "boundary"}
+                {"baseline_scale", "baseline_sensitivity", "boundary"}
             )
         if context.run_spec.model.add_offset:
-            required_roles.update({"baseline", "offset"})
+            required_roles.add("offset")
 
     missing_roles = sorted(required_roles - set(result.variable_roles))
     if missing_roles:

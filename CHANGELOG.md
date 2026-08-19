@@ -81,14 +81,14 @@
   a keyword-only `likelihood_builder` callable, so ordinary acquisition-to-output
   runs can replace the observation component without constructing prepared
   inputs or a complete model.
-  Custom builders declare semantic variable roles, supported output formats,
-  and serializable provenance metadata, which are validated before sampling
-  and preserved in inversion outputs. Built-in standard and multisector
-  models use the same result contract, while the sampler resolves
-  posterior predictives by semantic role. Likelihood results now retain
-  serializable metadata and the runner persists custom likelihood-builder
-  identity. An opt-in absolute-sigma Gaussian implements observation variance
-  from measurement, aggregation, and inferred sigma terms with a minimum-error
+  Ordinary likelihood builders receive explicit scientific inputs, add the
+  canonical ``y`` and ``epsilon`` variables, and return ``y``. Complete-model
+  builders instead return a result declaring semantic variable roles,
+  supported output formats, and serializable provenance metadata; built-in
+  standard and multisector graphs use the same complete-model result contract.
+  The runner records custom likelihood-builder identity in inversion outputs.
+  An opt-in additive-sigma Gaussian implements observation variance from
+  measurement, aggregation, and inferred sigma terms with a minimum-error
   floor, and offsets can use one global scalar as an alternative to the
   existing site designs. The tox workflow now runs PyTensor tests without
   requiring or loading a C++ compiler module.

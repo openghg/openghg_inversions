@@ -48,8 +48,8 @@ from .specs import (
 
 from ._model_building import (
     builtin_model_build_result,
-    validate_likelihood_builder,
-    validate_built_rhime_likelihood,
+    validate_custom_likelihood_result,
+    validate_likelihood_builder_argument,
     validated_custom_model_build,
 )
 from .builders import (
@@ -235,7 +235,7 @@ def build_multisector_rhime_model(
     Raises:
         KeyError: If required sensitivity inputs are absent.
         ValueError: If sector labels, sources, suffixes, state policies, or
-            likelihood roles are invalid.
+            canonical likelihood variables are invalid.
         TypeError: If a custom likelihood returns the wrong result type.
     """
     sector_components = _prepare_multisector_flux_components(
@@ -262,12 +262,7 @@ def build_multisector_rhime_model(
             )
             sector_outputs.append(linear_component.output)
 
-        total_mu = pm.Deterministic(
-            "mu",
-            cast(Any, pt.stack(sector_outputs, axis=0)).sum(axis=0),
-            dims="nmeasure",
-        )
-        pollution_mean = total_mu
+        pollution_mean = cast(Any, pt.stack(sector_outputs, axis=0)).sum(axis=0)
 
         boundary_mean = None
         if use_bc:
@@ -308,18 +303,14 @@ def build_multisector_rhime_model(
 
         baseline_mean = boundary_mean
         if offset is not None:
-            baseline_mean = (
-                offset
-                if baseline_mean is None
-                else pm.Deterministic(
-                    "mu_baseline",
-                    baseline_mean + offset,
-                    dims="nmeasure",
-                )
-            )
+            baseline_mean = offset if baseline_mean is None else baseline_mean + offset
         modelled_mean = pollution_mean if baseline_mean is None else pollution_mean + baseline_mean
 
-        likelihood_component = likelihood_builder or build_pollution_event_gaussian_likelihood
+        likelihood_component = (
+            build_pollution_event_gaussian_likelihood
+            if likelihood_builder is None
+            else likelihood_builder
+        )
         likelihood = likelihood_component(
             inv_inputs,
             mean=modelled_mean,
@@ -333,7 +324,8 @@ def build_multisector_rhime_model(
             aggregation_error_mode=aggregation_error_mode,
             output_dim="nmeasure",
         )
-        validate_built_rhime_likelihood(model, likelihood)
+        if likelihood_builder is not None:
+            validate_custom_likelihood_result(model, likelihood)
 
     return model
 
@@ -481,11 +473,12 @@ def build_multisector_rhime_model_result(
     )
     if model_builder is not None:
         result = validated_custom_model_build(model_builder, context=builder_context)
+        validate_model_build_result(result, context=builder_context)
     else:
         model = _build_multisector_rhime_model_from_spec(
             model_inputs,
             run_spec.model,
-            **({} if likelihood_builder is None else {"likelihood_builder": likelihood_builder}),
+            likelihood_builder=likelihood_builder,
         )
         result = builtin_model_build_result(
             model,
@@ -493,11 +486,6 @@ def build_multisector_rhime_model_result(
             multisector=True,
             input_names=prepared.inv_inputs.data_vars,
         )
-    validate_model_build_result(
-        result,
-        context=builder_context,
-        builder_kind="likelihood" if likelihood_builder is not None else "model",
-    )
     log_timing("rhime.model_build", timer_seconds(timing_start), multisector=True)
     return result
 
@@ -615,14 +603,13 @@ def run_rhime_multisector(
             wrong result type.
         ValueError: If required parameters are missing, unsupported parameters
             are supplied, fewer than two flux sources are provided, or
-            likelihood roles, metadata, or requested-output compatibility are
-            invalid.
+            likelihood variables or requested-output compatibility are invalid.
 
     Notes:
         A non-callable likelihood builder is rejected before configuration is
         parsed or data is acquired, prepared, or materialized.
     """
-    validate_likelihood_builder(likelihood_builder)
+    validate_likelihood_builder_argument(likelihood_builder)
     params = (
         params_from_config(config_file, extra_kwargs=kwargs, normalise=False)
         if config_file is not None

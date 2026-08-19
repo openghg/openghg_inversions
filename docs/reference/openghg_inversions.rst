@@ -30,7 +30,9 @@ openghg\_inversions
    openghg_inversions.filters
    openghg_inversions.model_error
    openghg_inversions.native_covariance
+   openghg_inversions.observation_error
    openghg_inversions.rhime
    openghg_inversions.serialization
+   openghg_inversions.sigma
    openghg_inversions.source_covariance
    openghg_inversions.utils

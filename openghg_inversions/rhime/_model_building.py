@@ -15,15 +15,15 @@ from .builders import (
 from .specs import RhimeModelSpec
 
 
-def validate_built_rhime_likelihood(
+def validate_custom_likelihood_result(
     model: pm.Model,
     likelihood: object,
 ) -> TensorVariable:
-    """Validate the canonical result of an ordinary likelihood component.
+    """Validate the result returned by a caller-supplied likelihood.
 
     Args:
-        model: Active model after likelihood construction.
-        likelihood: Value returned by the likelihood callable.
+        model: Active model after custom likelihood construction.
+        likelihood: Value returned by the caller-supplied callable.
 
     Returns:
         Validated observed concentration variable named ``y``.
@@ -103,11 +103,9 @@ def builtin_model_build_result(
         roles["offset"] = "offset"
     if preserve_legacy_baseline and model_spec.use_bc:
         roles["baseline"] = "mu_bc"
-    elif model_spec.use_bc and model_spec.add_offset:
-        roles["baseline"] = "mu_baseline"
-    elif model_spec.use_bc:
+    elif model_spec.use_bc and not model_spec.add_offset:
         roles["baseline"] = "mu_bc"
-    elif model_spec.add_offset:
+    elif model_spec.add_offset and not model_spec.use_bc:
         roles["baseline"] = "offset"
 
     return RhimeModelBuildResult(
@@ -144,8 +142,8 @@ def validated_custom_model_build(
     return result
 
 
-def validate_likelihood_builder(likelihood_builder: object | None) -> None:
-    """Validate an optional ordinary likelihood extension point.
+def validate_likelihood_builder_argument(likelihood_builder: object | None) -> None:
+    """Validate a caller-supplied likelihood argument before preparation.
 
     Args:
         likelihood_builder: Candidate likelihood callable or ``None``.

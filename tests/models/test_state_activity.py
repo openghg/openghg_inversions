@@ -593,7 +593,9 @@ def test_multisector_rhime_can_freeze_a_sector_and_use_array_priors() -> None:
     assert "x_ocean_active" in model.named_vars
     np.testing.assert_allclose(model.named_vars["x_ff"].eval(), np.ones(4))
     assert model.named_vars["x_ocean"].eval().shape == (4,)
-    assert model.named_vars["mu"].eval().shape == (2,)
+    assert model.named_vars["mu_ff"].eval().shape == (2,)
+    assert model.named_vars["mu_ocean"].eval().shape == (2,)
+    assert "mu" not in model.named_vars
 
 
 def test_multisector_rhime_spec_honors_shared_and_per_sector_activity() -> None:

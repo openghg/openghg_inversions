@@ -24,7 +24,9 @@ import openghg_inversions.inversion_data.preparation as prep_module
 import openghg_inversions.models as models
 import openghg_inversions.postprocessing.inversion_output as inversion_output_module
 import openghg_inversions.rhime as rhime_public
+import openghg_inversions.rhime.builders as rhime_builders
 import openghg_inversions.rhime.materialization as rhime_materialization
+import openghg_inversions.rhime._model_building as rhime_model_building
 import openghg_inversions.rhime.outputs as rhime_outputs
 import openghg_inversions.rhime.params as rhime_params
 import openghg_inversions.rhime.preparation as rhime_preparation
@@ -81,9 +83,7 @@ from openghg_inversions.rhime import (
     run_rhime_from_prepared_inputs,
     run_rhime_multisector,
 )
-from examples.rhime_customisation.likelihoods import (
-    additive_sigma_likelihood_builder,
-)
+from openghg_inversions.rhime.likelihoods import additive_sigma_likelihood_builder
 from openghg_inversions.rhime.multisector import (
     _build_multisector_rhime_model_from_spec,
     build_multisector_rhime_model as build_rhime_multisector_model,
@@ -833,6 +833,40 @@ def test_build_rhime_model_accepts_student_t_likelihood_builder(
     assert type(model["y"].owner.op).__name__ == "StudentTRV"
 
 
+def test_multisector_model_uses_falsey_likelihood_builder(
+    multisector_inv_inputs: xr.Dataset,
+    builder_args: dict,
+) -> None:
+    """A callable's truth value does not control likelihood selection."""
+    calls: list[xr.Dataset] = []
+
+    class FalseyLikelihood:
+        """Callable likelihood whose false truth value must be ignored."""
+
+        def __bool__(self) -> bool:
+            """Return false to exercise explicit optional-builder selection."""
+            return False
+
+        def __call__(self, data: xr.Dataset, /, **kwargs: Any) -> Any:
+            """Record invocation and build the canonical likelihood."""
+            calls.append(data)
+            return build_pollution_event_gaussian_likelihood(data, **kwargs)
+
+    model = build_rhime_multisector_model(
+        multisector_inv_inputs,
+        sectors=(
+            _sector("total-ukghg-edgar7", prior=builder_args["x_prior"]),
+            _sector("sector-2", prior=builder_args["x_prior"]),
+        ),
+        likelihood_builder=FalseyLikelihood(),
+        **_multisector_args(builder_args),
+    )
+
+    assert len(calls) == 1
+    assert calls[0] is multisector_inv_inputs
+    assert "y" in model.named_vars
+
+
 @pytest.mark.parametrize("multisector", [False, True])
 def test_recipe_passes_completed_forward_mean_to_custom_likelihood(
     rhime_inv_inputs: xr.Dataset,
@@ -877,6 +911,9 @@ def test_recipe_passes_completed_forward_mean_to_custom_likelihood(
     )
     np.testing.assert_allclose(baseline, boundary + offset, rtol=5e-7, atol=1e-5)
     np.testing.assert_allclose(mean, pollution + baseline, rtol=5e-7, atol=1e-5)
+    assert "mu_baseline" not in model.named_vars
+    if multisector:
+        assert "mu" not in model.named_vars
 
 
 def test_editable_example_builder_adds_canonical_student_t_likelihood(
@@ -966,11 +1003,11 @@ def test_build_rhime_model_accepts_global_scalar_offset(
     )
 
     assert set(model.named_vars) - set(base_model.named_vars) == {
-        "mu_baseline",
         "offset",
         "offset_latent",
         "site_indicator",
     }
+    assert "mu_baseline" not in model.named_vars
     assert "offset_latent" not in model.named_vars_to_dims
     assert model.named_vars_to_dims["offset"] == ("nmeasure",)
     assert model["offset_latent"].ndim == 0
@@ -1007,7 +1044,6 @@ def test_build_rhime_multisector_model_contains_expected_variables(
         "hx_sector_2",
         "hx_total_ukghg_edgar7",
         "min_error",
-        "mu",
         "x_total_ukghg_edgar7",
         "mu_total_ukghg_edgar7",
         "x_sector_2",
@@ -1027,7 +1063,6 @@ def test_build_rhime_multisector_model_contains_expected_variables(
         "hx_sector_2": ("nmeasure", "region"),
         "hx_total_ukghg_edgar7": ("nmeasure", "region"),
         "min_error": ("nmeasure",),
-        "mu": ("nmeasure",),
         "mu_bc": ("nmeasure",),
         "mu_sector_2": ("nmeasure",),
         "mu_total_ukghg_edgar7": ("nmeasure",),
@@ -1358,7 +1393,6 @@ def test_build_rhime_multisector_model_uses_sector_names_for_variables(
         "mu_ff",
         "x_ocean",
         "mu_ocean",
-        "mu",
     }
     expected_model_names = expected_trace_names | {
         "bc",
@@ -1383,7 +1417,6 @@ def test_build_rhime_multisector_model_uses_sector_names_for_variables(
     assert set(prior.data_vars) == expected_trace_names
     assert np.all((prior["x_ff"] >= 1.0) & (prior["x_ff"] <= 2.0))
     assert np.all((prior["x_ocean"] >= 10.0) & (prior["x_ocean"] <= 11.0))
-    np.testing.assert_allclose(prior["mu"], prior["mu_ff"] + prior["mu_ocean"])
 
 
 def test_build_rhime_multisector_model_selects_sources_by_label(
@@ -1512,7 +1545,6 @@ def test_multisector_model_accepts_gathered_ragged_states(
         "x_ocean_active",
         "x_ocean",
         "mu_ocean",
-        "mu",
     ]
     with model:
         prior = pm.sample_prior_predictive(
@@ -1529,10 +1561,6 @@ def test_multisector_model_accepts_gathered_ragged_states(
     assert np.all((dataset["x_ff_active"] >= 10.0) & (dataset["x_ff_active"] <= 11.0))
     np.testing.assert_allclose(dataset["x_ff"].sel(state_ff="south"), 2.0)
     assert dataset.indexes["nmeasure"].equals(inv_inputs.indexes["nmeasure"])
-    xr.testing.assert_allclose(
-        dataset["mu"],
-        dataset["mu_ff"] + dataset["mu_ocean"],
-    )
 
 
 def test_build_rhime_multisector_model_rejects_ungathered_source_state(
@@ -1881,27 +1909,105 @@ def test_multisector_model_preserves_additive_semantics(
     builder_args: dict,
 ) -> None:
     """The concrete multisector graph preserves additive semantics."""
+    captured: dict[str, Any] = {}
+
+    def capture_likelihood(data: xr.Dataset, /, **kwargs: Any) -> Any:
+        """Capture the unnamed pollution sum used by the likelihood."""
+        captured.update(kwargs)
+        return build_pollution_event_gaussian_likelihood(data, **kwargs)
+
     kwargs = {
         "sectors": (
             _sector("FF", source="total-ukghg-edgar7", suffix="ff"),
             _sector("ocean", source="sector-2", suffix="ocean"),
         ),
+        "likelihood_builder": capture_likelihood,
         **_multisector_args(builder_args),
     }
     model = build_rhime_multisector_model(multisector_inv_inputs, **kwargs)
 
-    var_names = ["x_ff", "mu_ff", "x_ocean", "mu_ocean", "mu"]
-    with model:
-        prior = pm.sample_prior_predictive(
-            draws=2,
-            var_names=var_names,
-            random_seed=403,
-        )
-    dataset = cast(Any, prior).prior
-    xr.testing.assert_allclose(
-        dataset["mu"],
-        dataset["mu_ff"] + dataset["mu_ocean"],
+    pollution, ff, ocean = pm.draw(
+        [captured["pollution_mean"], model["mu_ff"], model["mu_ocean"]],
+        draws=2,
+        random_seed=403,
     )
+    np.testing.assert_allclose(pollution, ff + ocean)
+    assert "mu" not in model.named_vars
+
+
+@pytest.mark.parametrize(
+    ("use_bc", "add_offset", "preserve_legacy", "expected_baseline"),
+    [
+        (True, False, False, "mu_bc"),
+        (False, True, False, "offset"),
+        (True, True, False, None),
+        (True, True, True, "mu_bc"),
+        (False, False, False, None),
+    ],
+)
+def test_builtin_baseline_roles_describe_persisted_terms(
+    use_bc: bool,
+    add_offset: bool,
+    preserve_legacy: bool,
+    expected_baseline: str | None,
+) -> None:
+    """Whole-model roles do not invent a persisted complete baseline."""
+    model_spec, _, _ = _minimal_output_specs(output_format="none")
+    model_spec = replace(model_spec, use_bc=use_bc, add_offset=add_offset)
+
+    result = rhime_model_building.builtin_model_build_result(
+        pm.Model(),
+        model_spec=model_spec,
+        multisector=False,
+        input_names=_minimal_output_inv_inputs().data_vars,
+        preserve_legacy_baseline=preserve_legacy,
+    )
+
+    assert result.variable_roles.get("baseline") == expected_baseline
+    assert ("boundary" in result.variable_roles) is use_bc
+    assert ("offset" in result.variable_roles) is add_offset
+
+
+def test_whole_model_validation_accepts_decomposed_baseline_roles() -> None:
+    """Derived outputs need boundary and offset terms, not a persisted sum."""
+    model_spec, _, base_run_spec = _minimal_output_specs(output_format="basic")
+    model_spec = replace(model_spec, use_bc=True, add_offset=True)
+    run_spec = replace(base_run_spec, model=model_spec)
+    prepared = RhimePreparedInputs(
+        inv_inputs=_minimal_output_inv_inputs(),
+        basis_functions=_fake_basis_functions(),
+        site_metadata=_prepared_site_metadata(),
+    )
+    with pm.Model() as model:
+        for name in ("y", "epsilon", "x", "mu", "hx", "bc", "hbc", "mu_bc", "offset"):
+            pm.Data(name, np.zeros(1))
+    result = RhimeModelBuildResult(
+        model=model,
+        variable_roles={
+            "observation": "mf",
+            "observation_error": "mf_error",
+            "observation_repeatability": "mf_repeatability",
+            "observation_variability": "mf_variability",
+            "minimum_error": "min_error",
+            "concentration": "y",
+            "model_error": "epsilon",
+            "flux_scale": "x",
+            "flux_contribution": "mu",
+            "emissions_sensitivity": "hx",
+            "baseline_scale": "bc",
+            "baseline_sensitivity": "hbc",
+            "boundary": "mu_bc",
+            "offset": "offset",
+        },
+        supported_output_formats=("none", "basic"),
+    )
+    context = RhimeModelBuilderContext(
+        prepared_inputs=prepared,
+        run_spec=run_spec,
+        multisector=False,
+    )
+
+    rhime_builders.validate_model_build_result(result, context=context)
 
 
 def test_build_rhime_multisector_model_requires_multiple_sectors(
@@ -2429,6 +2535,18 @@ def test_standard_and_multisector_runners_are_owned_by_readable_recipe_modules()
     assert run_rhime_from_prepared_inputs.__module__ == "openghg_inversions.rhime.prepared"
 
 
+def test_rhime_package_does_not_reexport_cross_owner_components() -> None:
+    """Reusable model and error components remain under their owner modules."""
+    cross_owner_names = {
+        "add_additive_sigma_gaussian_likelihood",
+        "build_pollution_event_gaussian_likelihood",
+        "select_aggregation_error_mode",
+    }
+
+    assert cross_owner_names.isdisjoint(rhime_public.__all__)
+    assert cross_owner_names.isdisjoint(vars(rhime_public))
+
+
 @pytest.mark.parametrize("recipe", [run_rhime, run_rhime_multisector])
 def test_each_rhime_recipe_keeps_the_scientific_process_visible(recipe: Callable[..., Any]) -> None:
     """A recipe reader can see every scientific handoff in execution order."""
@@ -2449,12 +2567,6 @@ def test_each_rhime_recipe_keeps_the_scientific_process_visible(recipe: Callable
     )
     positions = [source.index(stage) for stage in stages]
     assert positions == sorted(positions)
-
-
-def test_rhime_public_package_exports_aggregation_error_mode_selector() -> None:
-    """Likelihood examples can preflight covariance mode through the RHIME API."""
-    assert "select_aggregation_error_mode" in rhime_public.__all__
-    assert callable(rhime_public.select_aggregation_error_mode)
 
 
 def test_external_merged_data_bypasses_acquisition_without_mutation(
@@ -6900,17 +7012,17 @@ def test_basic_output_processes_modern_output(europe_country_file: Path) -> None
     assert "country_posterior_mean" in outputs
 
 
-def test_complete_baseline_role_is_not_combined_with_offset_twice(
+def test_paris_baseline_convention_prefers_boundary_plus_offset(
     europe_country_file: Path,
 ) -> None:
-    """A modern complete baseline already contains its separate offset term."""
+    """A broader complete baseline does not silently redefine the PARIS BC field."""
     base = _modern_postprocessing_inv_out(europe_country_file)
     trace = base.trace.copy()
     for group_name in ("posterior", "prior"):
         group = getattr(trace, group_name)
         boundary = group["mu_bc"]
         group["offset"] = xr.full_like(boundary, 0.2)
-        group["mu_baseline"] = boundary + group["offset"]
+        group["mu_baseline"] = boundary + group["offset"] + 0.7
 
     inv_out = replace(
         base,
@@ -6932,6 +7044,40 @@ def test_complete_baseline_role_is_not_combined_with_offset_twice(
     )
 
     np.testing.assert_allclose(outputs["mu_bc_posterior_mean"], 0.3)
+    np.testing.assert_allclose(outputs["offset_posterior_mean"], 0.2)
+
+
+def test_paris_baseline_convention_reports_offset_only_as_baseline(
+    europe_country_file: Path,
+) -> None:
+    """An offset-only model reports the bias separately and as its full baseline."""
+    base = _modern_postprocessing_inv_out(europe_country_file)
+    groups: dict[str, xr.Dataset] = {}
+    for group_name in base.trace.groups():
+        source_group = getattr(base.trace, group_name)
+        group = source_group.drop_vars("mu_bc", errors="ignore")
+        if group_name in {"posterior", "prior"}:
+            group["offset"] = xr.full_like(source_group["mu_bc"], 0.2)
+        groups[group_name] = group
+    trace = cast(Any, az.InferenceData)(**groups)
+    inv_out = replace(
+        base,
+        trace=trace,
+        model_metadata={
+            **base.model_metadata,
+            "use_bc": False,
+            "add_offset": True,
+            "variable_roles": {"baseline": "offset", "offset": "offset"},
+        },
+    )
+
+    outputs = make_concentration_outputs(
+        inv_out,
+        stats=["mean"],
+        combine_bc_and_offset=True,
+    )
+
+    np.testing.assert_allclose(outputs["mu_bc_posterior_mean"], 0.2)
     np.testing.assert_allclose(outputs["offset_posterior_mean"], 0.2)
 
 

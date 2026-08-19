@@ -9,8 +9,9 @@ component constructs the independent variance
    v = s_y^2 + \sigma^2
 
 and applies ``min_error`` as a floor on the total marginal standard
-deviation.  The component owns error construction only; a model recipe or
-likelihood builder supplies the modelled concentration and distribution.
+deviation. ``build_additive_sigma_error`` exposes the reusable error state;
+``add_additive_sigma_gaussian_likelihood`` combines that state with an
+explicitly supplied modelled concentration.
 """
 
 from __future__ import annotations
@@ -126,12 +127,8 @@ def add_additive_sigma_gaussian_likelihood(
     /,
     *,
     mean: TensorVariable,
-    pollution_mean: TensorVariable,
-    pollution_event_baseline: TensorVariable | None,
     sigma_alignment: SigmaAlignment,
     sigma_prior: Mapping[str, Any],
-    power: Mapping[str, Any] | float,
-    pollution_events_from_obs: bool,
     no_model_error: bool,
     aggregation_error_mode: AggregationErrorMode,
     output_dim: str = "nmeasure",
@@ -151,20 +148,10 @@ def add_additive_sigma_gaussian_likelihood(
             required by the selected aggregation-error representation.
         mean: Completed forward-model concentration aligned with
             ``output_dim``.
-        pollution_mean: Pollution contribution accepted for compatibility
-            with the RHIME likelihood-builder protocol. Additive mismatch
-            variance does not depend on the pollution enhancement.
-        pollution_event_baseline: Baseline supplied by the RHIME recipe for
-            pollution-event scaling. This likelihood does not derive pollution
-            events, so the value is intentionally unused.
         sigma_alignment: Mapping from observations to the mismatch-scale
             parameters.
         sigma_prior: Prior arguments used to construct ``sigma`` when model
             error is enabled.
-        power: Pollution-event exponent accepted for the RHIME
-            likelihood-builder protocol and intentionally unused.
-        pollution_events_from_obs: Pollution-event source policy accepted for
-            the RHIME likelihood-builder protocol and intentionally unused.
         no_model_error: If true, omit ``sigma`` and use only reported and
             selected aggregation errors.
         aggregation_error_mode: Fixed aggregation covariance representation
@@ -179,7 +166,6 @@ def add_additive_sigma_gaussian_likelihood(
         ValueError: If the observation or aggregation-error inputs are
             inconsistent with ``output_dim``.
     """
-    del pollution_mean, pollution_event_baseline, power, pollution_events_from_obs
     state = build_additive_sigma_error(
         data,
         sigma_alignment=sigma_alignment,

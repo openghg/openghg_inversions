@@ -19,7 +19,17 @@ def _low_rank_gaussian_logp(
     factor: TensorVariable,
     diagonal_variance: TensorVariable,
 ) -> TensorVariable:
-    """Normalized Gaussian log-density using the Woodbury identity."""
+    """Evaluate a normalized low-rank-plus-diagonal Gaussian log density.
+
+    Args:
+        value: Observation vector.
+        mean: Modelled mean vector.
+        factor: Low-rank covariance factor with observation rows.
+        diagonal_variance: Positive independent variance for each observation.
+
+    Returns:
+        Scalar Gaussian log density evaluated through the Woodbury identity.
+    """
     inverse_sqrt_diagonal = pt.reciprocal(pt.sqrt(diagonal_variance))
     whitened_residual = (value - mean) * inverse_sqrt_diagonal
     whitened_factor = factor * inverse_sqrt_diagonal[:, None]
@@ -54,7 +64,19 @@ def _low_rank_gaussian_random(
     rng: np.random.Generator | None = None,
     size: int | Sequence[int] | None = None,
 ) -> np.ndarray:
-    """Draw from a low-rank-plus-diagonal Gaussian."""
+    """Draw from a low-rank-plus-diagonal Gaussian.
+
+    Args:
+        mean: Mean vector over observations.
+        factor: Low-rank covariance factor with observation rows.
+        diagonal_variance: Positive independent variance for each observation.
+        rng: Optional NumPy random-number generator.
+        size: Optional leading sample shape.
+
+    Returns:
+        Gaussian draws with the requested sample shape followed by the
+        observation dimension.
+    """
     rng = np.random.default_rng() if rng is None else rng
     sample_shape = () if size is None else (size,) if isinstance(size, int) else tuple(size)
     rank_noise = rng.normal(size=(*sample_shape, factor.shape[1]))
@@ -71,7 +93,20 @@ def add_gaussian_observation_likelihood(
     aggregation_error: AggregationError,
     output_dim: str,
 ) -> TensorVariable:
-    """Add ``y`` with the selected fixed aggregation-error covariance."""
+    """Add the canonical Gaussian observation variable ``y``.
+
+    Args:
+        observed: Observed concentration vector.
+        mean: Completed forward-model concentration.
+        independent_variance: Observation-aligned variance independent of the
+            fixed aggregation error.
+        aggregation_error: Selected diagonal, dense, or low-rank fixed
+            aggregation covariance.
+        output_dim: Named observation dimension for the PyMC variable.
+
+    Returns:
+        Observed PyMC variable named ``y``.
+    """
     if aggregation_error.mode in ("none", "diagonal"):
         variance = independent_variance
         if aggregation_error.mode == "diagonal":

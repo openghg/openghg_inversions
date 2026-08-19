@@ -97,11 +97,12 @@ an independent Student-t distribution. Supporting those aggregation-error
 modes would require a multivariate likelihood.
 
 The same example module also contains
-``additive_sigma_likelihood_builder``. This is an import alias for the
-installed ``models.additive_sigma.add_additive_sigma_gaussian_likelihood``
-component, which adds ``sigma**2`` directly to the reported observation-error
-variance rather than multiplying sigma by a pollution event. Explicitly
-selected aggregation covariance is supported::
+``additive_sigma_likelihood_builder``. This is the small RHIME adapter from
+``rhime.likelihoods``; it delegates to the installed
+``models.additive_sigma.add_additive_sigma_gaussian_likelihood`` component,
+which adds ``sigma**2`` directly to the reported observation-error variance
+rather than multiplying sigma by a pollution event. Explicitly selected
+aggregation covariance is supported::
 
    from my_project.likelihoods import additive_sigma_likelihood_builder
 
@@ -180,13 +181,15 @@ Then the equivalent command is::
    uv run my-inversion inversion.ini \
        --kwargs '{"output_path": "outputs", "output_format": "inv_out"}'
 
-The example and its package-shaped test use only documented names from
-``openghg_inversions.rhime``. The dependency direction is therefore the
-generated project to OpenGHG Inversions; OpenGHG Inversions does not import the
-consumer package. Pin the release or commit used for a scientific run in the
-downstream project's lockfile. An optional RHIME recipe or generated-project
-CI in the generic cookiecutter would be a separate cross-repository change and
-is not required for this workflow.
+The generated runner uses documented names from ``openghg_inversions.rhime``.
+Its likelihood module imports reusable components from their documented owner
+modules: ``models.pollution_event``, ``observation_error``, and ``sigma``.
+The dependency direction is therefore the generated project to OpenGHG
+Inversions; OpenGHG Inversions does not import the consumer package. Pin the
+release or commit used for a scientific run in the downstream project's
+lockfile. An optional RHIME recipe or generated-project CI in the generic
+cookiecutter would be a separate cross-repository change and is not required
+for this workflow.
 
 Copy the complete runner
 ------------------------

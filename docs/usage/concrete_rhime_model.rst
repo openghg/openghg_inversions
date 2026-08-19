@@ -340,9 +340,9 @@ policies, aggregation-error mode, and output dimension as explicit arguments.
 The builder adds and returns the canonical observed variable ``y`` and also
 adds the canonical marginal error scale ``epsilon``.
 
-The editable example in :doc:`customising_rhime` combines the reusable
-additive-sigma error component with a Gaussian likelihood. Pass that adapter
-directly to the ordinary runner:
+The editable example in :doc:`customising_rhime` imports the small RHIME
+adapter for the installed additive-sigma Gaussian likelihood. Pass that
+adapter directly to the ordinary runner:
 
 .. code-block:: python
 

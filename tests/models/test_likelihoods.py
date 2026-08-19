@@ -14,6 +14,7 @@ from openghg_inversions.models.coords import CoordRegistry, attach_coord_registr
 from openghg_inversions.models.likelihoods import add_gaussian_observation_likelihood
 from openghg_inversions.models.pollution_event import build_pollution_event_error
 from openghg_inversions.observation_error import resolve_aggregation_error
+from openghg_inversions.rhime.likelihoods import additive_sigma_likelihood_builder
 from openghg_inversions.sigma import SigmaAlignment
 
 
@@ -279,12 +280,8 @@ def test_additive_sigma_gaussian_likelihood_uses_completed_mean() -> None:
         likelihood = add_additive_sigma_gaussian_likelihood(
             data,
             mean=mean,
-            pollution_mean=mean,
-            pollution_event_baseline=None,
             sigma_alignment=sigma_alignment,
             sigma_prior={"pdf": "uniform", "lower": 0.2, "upper": 0.200001},
-            power=1.99,
-            pollution_events_from_obs=False,
             no_model_error=False,
             aggregation_error_mode="none",
         )
@@ -296,6 +293,33 @@ def test_additive_sigma_gaussian_likelihood_uses_completed_mean() -> None:
         + np.squeeze(np.asarray(model.named_vars["sigma"].eval())) ** 2
     )
     np.testing.assert_allclose(model.named_vars["epsilon"].eval(), expected_scale)
+
+
+def test_rhime_additive_sigma_adapter_accepts_pollution_event_inputs() -> None:
+    """The RHIME adapter isolates irrelevant pollution-event arguments."""
+    data = _base_data()
+    sigma_alignment = SigmaAlignment.from_frequency(
+        data["site_indicator"], frequency=None, per_site=False
+    )
+    with pm.Model(coords={"nmeasure": np.arange(3)}) as model:
+        attach_coord_registry(model, CoordRegistry())
+        mean = pm.Data("completed_mean", np.ones(3), dims="nmeasure")
+        likelihood = additive_sigma_likelihood_builder(
+            data,
+            mean=mean,
+            pollution_mean=pm.math.constant(np.full(3, 99.0)),
+            pollution_event_baseline=pm.math.constant(np.full(3, -99.0)),
+            sigma_alignment=sigma_alignment,
+            sigma_prior={"pdf": "uniform", "lower": 0.2, "upper": 0.200001},
+            power=7.0,
+            pollution_events_from_obs=True,
+            no_model_error=False,
+            aggregation_error_mode="none",
+            output_dim="nmeasure",
+        )
+
+    assert likelihood is model.named_vars["y"]
+    np.testing.assert_allclose(model.named_vars["y"].owner.inputs[-2].eval(), np.ones(3))
 
 
 def test_observation_derived_pollution_event_subtracts_complete_baseline() -> None:

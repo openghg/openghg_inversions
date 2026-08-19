@@ -119,6 +119,7 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
             "model_inputs": model_inputs,
             "run_spec": run_spec,
             "likelihood_builder": likelihoods.likelihood_builder,
+            "preserve_legacy_likelihood": False,
         }
         calls.append("build")
         return build_result

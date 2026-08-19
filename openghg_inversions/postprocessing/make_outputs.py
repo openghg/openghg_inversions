@@ -701,8 +701,9 @@ def make_concentration_outputs(
             function name>__<key>", with a double underscore.
             For instance, stats_args = {"mode_kde__chunk_size": 20} would pass the
             argument chunk_size = 20 to the stat function mode_kde, and no others.
-        combine_bc_and_offset: If True, the offset is added to the baseline (before stats
-            are calculated).
+        combine_bc_and_offset: If true, report the current PARIS baseline
+            convention: boundary plus offset. A declared complete baseline is
+            used only when no separate boundary is available.
 
     Returns:
         xr.Dataset with computed flux stats.
@@ -718,23 +719,18 @@ def make_concentration_outputs(
     boundary_name = inv_out.variable_name(boundary_role)
     offset_name = inv_out.variable_name(offset_role)
 
+    boundary_available = boundary_name in posterior
+    offset_available = offset_name in posterior
     complete_baseline_available = (
-        combine_bc_and_offset
-        and baseline_name in posterior
-        and baseline_name != boundary_name
+        baseline_name in posterior
+        and baseline_name not in {boundary_name, offset_name}
     )
-    if complete_baseline_available:
+    if boundary_available:
+        conc_roles.append(boundary_role)
+    elif complete_baseline_available:
         conc_roles.append(baseline_role)
-        if offset_name in posterior and offset_name != baseline_name:
-            conc_roles.append(offset_role)
-    else:
-        if boundary_name in posterior:
-            conc_roles.append(boundary_role)
-        elif baseline_name in posterior and baseline_name != offset_name:
-            # Older stored results only declared the ``baseline`` role.
-            conc_roles.append(baseline_role)
-        if offset_name in posterior:
-            conc_roles.append(offset_role)
+    if offset_available:
+        conc_roles.append(offset_role)
 
     trace = _rename_trace_roles(
         inv_out.trace_dataset(var_roles=conc_roles),
@@ -747,22 +743,25 @@ def make_concentration_outputs(
         },
     )
 
-    if (
-        combine_bc_and_offset
-        and not complete_baseline_available
-        and offset_role in conc_roles
-        and (baseline_role in conc_roles or boundary_role in conc_roles)
-    ):
-        for dv in trace.data_vars:
-            if str(dv).startswith("mu_bc"):
-                offset_dv = str(dv).replace("mu_bc", "offset")
-                trace[dv] = trace[dv] + trace[offset_dv]
-
-                # update long name, creating if not present
-                trace[dv].attrs["long_name"] = (
-                    trace[dv].attrs.get("long_name", str(dv).split("_")[-1] + "_baseline")
-                    + "_including_offset"
-                )
+    if combine_bc_and_offset and offset_available:
+        if boundary_available:
+            for data_var in list(trace.data_vars):
+                name = str(data_var)
+                if name.startswith("mu_bc"):
+                    offset_data_var = name.replace("mu_bc", "offset", 1)
+                    trace[data_var] = trace[data_var] + trace[offset_data_var]
+                    trace[data_var].attrs["long_name"] = (
+                        f"{name.removeprefix('mu_bc_')}_modelled_baseline_including_offset"
+                    )
+        elif not complete_baseline_available:
+            for data_var in list(trace.data_vars):
+                name = str(data_var)
+                if name.startswith("offset_"):
+                    baseline_data_var = name.replace("offset", "mu_bc", 1)
+                    trace[baseline_data_var] = trace[data_var].copy(deep=False)
+                    trace[baseline_data_var].attrs["long_name"] = (
+                        f"{baseline_data_var.removeprefix('mu_bc_')}_modelled_baseline_including_offset"
+                    )
 
     if stats_args is None:
         stats_args = {}
