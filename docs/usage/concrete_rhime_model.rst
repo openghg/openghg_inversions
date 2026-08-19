@@ -334,10 +334,11 @@ entry-point or config-file plugin registry.
 A concrete recipe owns the complete forward-model mean: pollution, baseline,
 and optional offset contributions are composed visibly before the likelihood
 seam. A likelihood builder owns error construction and the observed
-distribution. Its labelled ``RhimeLikelihoodContext`` contains the completed
-modelled concentration, the pollution contribution and complete baseline used
-for pollution-event scaling, prepared observations, sigma alignment and prior,
-error policies, aggregation-error mode, and output dimension.
+distribution. RHIME passes the completed concentration, pollution contribution,
+pollution-event baseline, prepared observations, sigma alignment and prior, error
+policies, aggregation-error mode, and output dimension as explicit arguments.
+The builder adds and returns the canonical observed variable ``y`` and also
+adds the canonical marginal error scale ``epsilon``.
 
 The editable example in :doc:`customising_rhime` combines the reusable
 additive-sigma error component with a Gaussian likelihood. Pass that adapter
@@ -366,12 +367,8 @@ Keep scientific customization implementations in one tested location. The
 :doc:`customising_rhime` guide contains the editable Student-t example and the
 minimal ordinary-runner call; this concrete-model page does not duplicate it.
 
-``RhimeSampler`` receives the returned role manifest. Posterior-predictive
-settings may use a semantic role such as ``"concentration"``. For backwards
-compatibility, its default ``"y"`` request resolves to the declared
-``concentration`` name when a custom model has no variable named ``y``.
-``RhimeLikelihoodResult.metadata`` must be JSON serializable. The runner saves
-it with the model metadata and automatically records the likelihood builder's
+Ordinary likelihood builders keep the ``y`` and ``epsilon`` names used by
+sampling and postprocessing. The runner records the likelihood builder's
 module and qualified name, so direct-Python likelihoods remain identifiable in
 persisted inversion outputs.
 

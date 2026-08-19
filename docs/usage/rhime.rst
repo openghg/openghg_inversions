@@ -72,8 +72,6 @@ or copy a complete implementation can read
 ``openghg_inversions.rhime.standard`` or
 ``openghg_inversions.rhime.multisector`` directly; each module shows its whole
 scientific process from option resolution through output construction.
-``openghg_inversions.rhime.runner`` remains as an import-compatibility module
-and contains no workflow implementation.
 
 .. code-block:: python
 
@@ -683,17 +681,14 @@ containing the value ``"outer"``:
        state_activity=state_policy,
    )
 
-For multisector builders, use ``state_activity`` as a shared policy or
-``sector_state_activities`` for sector-name overrides;
-``StateActivity(active=False)`` freezes a complete sector. Programmatic
-prepared-input runs may set a shared policy on ``RhimeModelSpec`` and use its
-``sector_state_activities`` mapping for overrides. The canonical per-sector
-policy is ``SectorSpec(state_activity=...)`` and takes precedence over that
-mapping. RHIME config-file syntax and persisted activity-reason tables remain
-follow-up work.
-Each prior dictionary in ``sector_priors`` supports the same scalar,
-full-state array, and labelled ``DataArray`` parameter forms; labelled values
-must match the selected sector's state coordinate exactly.
+The direct multisector builder accepts one ordered sequence of ``SectorSpec``
+objects. Each sector carries its source, backend suffix, prior, and optional
+``state_activity`` override; the builder's ``state_activity`` argument supplies
+the shared policy. ``StateActivity(active=False)`` freezes a complete sector.
+RHIME config-file syntax and persisted activity-reason tables remain follow-up
+work. Each ``SectorSpec.x_prior`` supports the same scalar, full-state array,
+and labelled ``DataArray`` parameter forms; labelled values must match the
+selected sector's state coordinate exactly.
 
 For low-level model construction, first inspect a labelled design with
 ``detect_zero_sensitivity``, then combine the returned mask with a

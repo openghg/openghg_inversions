@@ -570,13 +570,21 @@ def test_multisector_rhime_can_freeze_a_sector_and_use_array_priors() -> None:
     model = build_rhime_multisector_model(
         inputs,
         sigma_alignment=_sigma_alignment(inputs),
-        sectors=["FF", "ocean"],
-        sector_sources={"FF": "ff-source", "ocean": "ocean-source"},
-        sector_priors={
-            "FF": {"pdf": "normal", "mu": 1.0, "sigma": 0.2},
-            "ocean": {"pdf": "normal", "mu": ocean_mu, "sigma": 0.3},
-        },
-        sector_state_activities={"FF": StateActivity(active=False)},
+        sectors=(
+            SectorSpec(
+                name="FF",
+                flux_source="ff-source",
+                x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.2},
+                variable_suffix="ff",
+                state_activity=StateActivity(active=False),
+            ),
+            SectorSpec(
+                name="ocean",
+                flux_source="ocean-source",
+                x_prior={"pdf": "normal", "mu": ocean_mu, "sigma": 0.3},
+                variable_suffix="ocean",
+            ),
+        ),
         use_bc=False,
         no_model_error=True,
     )
@@ -604,6 +612,7 @@ def test_multisector_rhime_spec_honors_shared_and_per_sector_activity() -> None:
                 flux_source="ff-source",
                 x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.2},
                 variable_suffix="ff",
+                state_activity=StateActivity(active=False, fixed_value=2.0),
             ),
             SectorSpec(
                 name="ocean",
@@ -615,7 +624,6 @@ def test_multisector_rhime_spec_honors_shared_and_per_sector_activity() -> None:
         use_bc=False,
         no_model_error=True,
         state_activity=StateActivity(active=False, fixed_value=3.0),
-        sector_state_activities={"FF": StateActivity(active=False, fixed_value=2.0)},
     )
 
     model = build_rhime_multisector_model_from_spec(_model_inputs(multi_h), model_spec)

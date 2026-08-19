@@ -6,7 +6,10 @@ import pytest
 import xarray as xr
 from scipy.stats import multivariate_normal
 
-from openghg_inversions.models.additive_sigma import build_additive_sigma_error
+from openghg_inversions.models.additive_sigma import (
+    add_additive_sigma_gaussian_likelihood,
+    build_additive_sigma_error,
+)
 from openghg_inversions.models.coords import CoordRegistry, attach_coord_registry
 from openghg_inversions.models.likelihoods import add_gaussian_observation_likelihood
 from openghg_inversions.models.pollution_event import build_pollution_event_error
@@ -260,6 +263,39 @@ def test_additive_sigma_error_omits_sigma_when_model_error_is_disabled() -> None
 
     assert "sigma" not in model.named_vars
     np.testing.assert_allclose(state.error_scale.eval(), data["mf_error"].values)
+
+
+def test_additive_sigma_gaussian_likelihood_uses_completed_mean() -> None:
+    """The installed likelihood consumes the complete recipe-owned mean."""
+    data = _base_data()
+    data["mf_error"] = ("nmeasure", np.full(3, 0.5))
+    completed_mean = np.array([0.75, 1.5, 2.75])
+    sigma_alignment = SigmaAlignment.from_frequency(
+        data["site_indicator"], frequency=None, per_site=False
+    )
+    with pm.Model(coords={"nmeasure": np.arange(3)}) as model:
+        attach_coord_registry(model, CoordRegistry())
+        mean = pm.Data("completed_mean", completed_mean, dims="nmeasure")
+        likelihood = add_additive_sigma_gaussian_likelihood(
+            data,
+            mean=mean,
+            pollution_mean=mean,
+            pollution_event_baseline=None,
+            sigma_alignment=sigma_alignment,
+            sigma_prior={"pdf": "uniform", "lower": 0.2, "upper": 0.200001},
+            power=1.99,
+            pollution_events_from_obs=False,
+            no_model_error=False,
+            aggregation_error_mode="none",
+        )
+
+    assert likelihood is model.named_vars["y"]
+    np.testing.assert_allclose(model.named_vars["y"].owner.inputs[-2].eval(), completed_mean)
+    expected_scale = np.sqrt(
+        data["mf_error"].values ** 2
+        + np.squeeze(np.asarray(model.named_vars["sigma"].eval())) ** 2
+    )
+    np.testing.assert_allclose(model.named_vars["epsilon"].eval(), expected_scale)
 
 
 def test_observation_derived_pollution_event_subtracts_complete_baseline() -> None:

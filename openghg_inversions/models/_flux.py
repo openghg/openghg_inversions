@@ -1,54 +1,25 @@
-"""Resolve reusable flux declarations for linear model recipes.
-
-Semantic sector names remain separate from OpenGHG source labels and backend
-variable suffixes. Rectangular shared-basis and gathered source-specific layouts
-use the same entry points. Priors follow per-sector, shared, then default
-precedence; activity follows per-sector override, then shared policy. Scientific
-labels are resolved before backend namespacing and graph mutation.
-"""
+"""Select and namespace source-resolved designs for model recipes."""
 
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, replace
-from typing import Any
 
 import pandas as pd
 import xarray as xr
 
 from openghg_inversions.array_ops import select_gathered_data_array
-from openghg_inversions.models.state_activity import (
-    StateActivity,
-    active_prior_args,
-    detect_zero_sensitivity,
-    resolve_state_activity,
-)
-
-
-@dataclass(frozen=True)
-class _ResolvedSectorBinding:
-    """Bind one semantic sector to prepared source data and backend naming."""
-
-    name: str
-    flux_source: str
-    variable_suffix: str
-
-
-@dataclass(frozen=True)
-class _ResolvedSectorComponent:
-    """Describe one selected sector design and its flux-scaling prior."""
-
-    name: str
-    flux_source: str
-    variable_suffix: str
-    design: xr.DataArray
-    prior_args: Mapping[str, Any]
-    state_activity: StateActivity
 
 
 def safe_pymc_name(value: str) -> str:
-    """Return a stable PyMC-safe suffix for a user-facing sector/source name."""
+    """Return a stable PyMC-safe suffix for a sector or source name.
+
+    Args:
+        value: User-facing scientific label.
+
+    Returns:
+        Lowercase underscore-separated suffix, or ``"sector"`` when the label
+        contains no usable characters.
+    """
     name = re.sub(r"\W+", "_", str(value).strip().lower()).strip("_")
     return name or "sector"
 
@@ -90,97 +61,6 @@ def _prepared_sources(design: xr.DataArray, *, observation_dim: str = "nmeasure"
     return list(dict.fromkeys(source_labels))
 
 
-def _resolve_sector_bindings(
-    inv_inputs: xr.Dataset,
-    sectors: Sequence[str] | None,
-    *,
-    sector_sources: Mapping[str, str] | None,
-    sector_variable_suffixes: Mapping[str, str] | None,
-) -> tuple[_ResolvedSectorBinding, ...]:
-    """Resolve semantic sectors against prepared source provenance."""
-    available = _prepared_sources(inv_inputs["H"])
-    if sectors is None:
-        sectors = list(sector_sources) if sector_sources is not None else available
-    sector_names = [str(sector) for sector in sectors]
-
-    if len(sector_names) < 2:
-        raise ValueError("Multi-sector RHIME requires at least two sectors.")
-    duplicate_sectors = list(
-        dict.fromkeys(sector for sector in sector_names if sector_names.count(sector) > 1)
-    )
-    if duplicate_sectors:
-        raise ValueError(
-            f"Multi-sector RHIME requires unique sector names; duplicate sector {duplicate_sectors[0]!r}."
-        )
-    if any(not sector.strip() for sector in sector_names):
-        raise ValueError("Multi-sector RHIME requires non-empty sector names.")
-
-    source_by_sector = (
-        {str(sector): str(source) for sector, source in sector_sources.items()}
-        if sector_sources is not None
-        else {sector: sector for sector in sector_names}
-    )
-    suffix_by_sector = (
-        {str(sector): str(suffix) for sector, suffix in sector_variable_suffixes.items()}
-        if sector_variable_suffixes is not None
-        else {}
-    )
-
-    unused_mappings = [sector for sector in source_by_sector if sector not in sector_names]
-    if unused_mappings:
-        raise ValueError(f"`sector_sources` contains unused sector key(s): {unused_mappings!r}.")
-    missing_mappings = [sector for sector in sector_names if sector not in source_by_sector]
-    if missing_mappings:
-        raise ValueError(f"Sector(s) {missing_mappings!r} are missing from `sector_sources`.")
-
-    source_sectors: dict[str, list[str]] = {}
-    for sector in sector_names:
-        source_sectors.setdefault(source_by_sector[sector], []).append(sector)
-    duplicate_sources = {
-        source: mapped_sectors for source, mapped_sectors in source_sectors.items() if len(mapped_sectors) > 1
-    }
-    if duplicate_sources:
-        details = ", ".join(
-            f"source {source!r} is mapped by sectors {mapped_sectors!r}"
-            for source, mapped_sectors in duplicate_sources.items()
-        )
-        raise ValueError(
-            "Multi-sector RHIME requires a distinct source for each current sector; " + details + "."
-        )
-
-    missing = [
-        (sector, source_by_sector[sector])
-        for sector in sector_names
-        if source_by_sector[sector] not in available
-    ]
-    if missing:
-        details = ", ".join(f"sector {sector!r} -> source {source!r}" for sector, source in missing)
-        raise ValueError(
-            f"Source data required by {details} is not present in inv_inputs['H'].source; "
-            f"available source(s): {available!r}."
-        )
-
-    unused_suffixes = [sector for sector in suffix_by_sector if sector not in sector_names]
-    if unused_suffixes:
-        raise ValueError(f"`sector_variable_suffixes` contains unused sector key(s): {unused_suffixes!r}.")
-    bindings = tuple(
-        _ResolvedSectorBinding(
-            name=sector,
-            flux_source=source_by_sector[sector],
-            variable_suffix=suffix_by_sector.get(sector, safe_pymc_name(sector)),
-        )
-        for sector in sector_names
-    )
-    suffixes = [binding.variable_suffix for binding in bindings]
-    if len(suffixes) != len(set(suffixes)):
-        duplicate = next(suffix for suffix in suffixes if suffixes.count(suffix) > 1)
-        raise ValueError(
-            "Sector names must be unique after PyMC name sanitisation; "
-            f"duplicate sanitized name {duplicate!r}."
-        )
-    return bindings
-
-
 def _validate_unpadded_sector_design(
     design: xr.DataArray,
     *,
@@ -188,7 +68,17 @@ def _validate_unpadded_sector_design(
     source: str,
     observation_dim: str = "nmeasure",
 ) -> None:
-    """Reject rectangular source layouts containing declared padding."""
+    """Reject rectangular source layouts containing declared padding.
+
+    Args:
+        design: Selected source-resolved sensitivity design.
+        sector: Scientific sector name used in diagnostics.
+        source: OpenGHG source label used in diagnostics.
+        observation_dim: Shared observation dimension name.
+
+    Raises:
+        ValueError: If declared and prepared state sizes differ.
+    """
     state_dims = [str(dim) for dim in design.dims if dim != observation_dim]
     if design.ndim != 2 or observation_dim not in design.dims or len(state_dims) != 1:
         return
@@ -216,7 +106,23 @@ def _select_sector_design(
     observation_dim: str = "nmeasure",
     namespace_state_dim: bool = True,
 ) -> xr.DataArray:
-    """Select one source design from rectangular or gathered sensitivity."""
+    """Select one source design from rectangular or gathered sensitivity.
+
+    Args:
+        design: Source-resolved sensitivity design.
+        sector: Scientific sector name used in diagnostics.
+        source: OpenGHG source label to select.
+        variable_suffix: Backend-safe suffix for gathered state names.
+        observation_dim: Shared observation dimension name.
+        namespace_state_dim: Whether to suffix a gathered state dimension.
+
+    Returns:
+        Two-dimensional sensitivity design for one source.
+
+    Raises:
+        ValueError: If the source, rectangular padding, or gathered layout is
+            invalid.
+    """
     available_sources = _prepared_sources(design, observation_dim=observation_dim)
     if source not in available_sources:
         raise ValueError(
@@ -302,123 +208,3 @@ def _namespace_sector_state_coords(
                 )
             rename[coord_name] = namespaced
     return design.rename(rename)
-
-
-def _resolve_multisector_components(
-    inv_inputs: xr.Dataset,
-    sector_bindings: Sequence[_ResolvedSectorBinding],
-    *,
-    sector_priors: Mapping[str, Mapping[str, Any]] | None,
-    x_prior: Mapping[str, Any] | None,
-    default_x_prior: Mapping[str, Any],
-    state_activity: StateActivity | None = None,
-    sector_state_activities: Mapping[str, StateActivity] | None = None,
-) -> tuple[_ResolvedSectorComponent, ...]:
-    """Resolve multisector designs and priors independently of graph construction.
-
-    Each semantic sector binding selects sensitivity data by its OpenGHG
-    ``source`` label. Rectangular canonical inputs use a ``source`` dimension;
-    selection removes that dimension, leaving the observation and state
-    dimensions. Gathered ragged inputs use one state dimension with a
-    MultiIndex containing ``source`` and one region level; the selected state
-    dimension is renamed with the sector variable suffix so sectors may retain
-    different scientific coordinates.
-
-    Prior precedence is explicit: a supplied ``sector_priors`` mapping wins,
-    otherwise ``x_prior`` is shared by every sector, and ``default_x_prior`` is
-    used only when neither is supplied. When ``sector_priors`` is present it
-    must define exactly the resolved sector set.
-
-    Args:
-        inv_inputs: Canonical inversion inputs containing source-resolved
-            sensitivity in ``H``.
-        sector_bindings: Ordered semantic sector, source, and backend-name
-            bindings already validated against the requested sectors.
-        sector_priors: Optional complete mapping from sector names to
-            flux-scaling prior specifications.
-        x_prior: Optional prior shared by every sector when per-sector priors
-            are absent.
-        default_x_prior: Final shared prior used when neither explicit prior
-            option is supplied.
-        state_activity: Optional activity policy shared by every sector.
-        sector_state_activities: Optional activity-policy overrides keyed by
-            semantic sector name.
-
-    Returns:
-        Ordered resolved components containing each sector identity, selected
-        two-dimensional design, variable suffix, and copied prior metadata.
-
-    Raises:
-        KeyError: If ``inv_inputs`` does not contain ``H``.
-        ValueError: If per-sector prior keys are missing or unused, source
-            selection fails, a rectangular design declares padding, or a
-            gathered design has an invalid source/state layout.
-    """
-    sector_names = [binding.name for binding in sector_bindings]
-    if sector_priors is not None:
-        missing_priors = [sector for sector in sector_names if sector not in sector_priors]
-        unused_priors = [sector for sector in sector_priors if sector not in sector_names]
-        if missing_priors or unused_priors:
-            raise ValueError(
-                "`sector_priors` must define exactly one prior for every sector when supplied; "
-                f"missing sector prior(s): {missing_priors!r}; "
-                f"unused sector prior key(s): {unused_priors!r}."
-            )
-
-    sector_state_activities = dict(sector_state_activities or {})
-    unknown_activity_sectors = sorted(set(sector_state_activities) - set(sector_names))
-    if unknown_activity_sectors:
-        raise ValueError(f"State activity supplied for unknown sector(s) {unknown_activity_sectors!r}.")
-
-    components = []
-    for binding in sector_bindings:
-        if sector_priors is not None:
-            prior = sector_priors[binding.name]
-        elif x_prior is not None:
-            prior = x_prior
-        else:
-            prior = default_x_prior
-        gathered_layout = "source" not in inv_inputs["H"].dims
-        design = _select_sector_design(
-            inv_inputs["H"],
-            sector=binding.name,
-            source=binding.flux_source,
-            variable_suffix=binding.variable_suffix,
-            namespace_state_dim=False,
-        )
-        semantic_policy = sector_state_activities.get(binding.name, state_activity)
-        resolved_activity = resolve_state_activity(
-            detect_zero_sensitivity(design),
-            semantic_policy,
-        )
-        all_active = replace(
-            resolved_activity,
-            active=xr.ones_like(resolved_activity.active, dtype=bool),
-        )
-        normalized_prior = active_prior_args(dict(prior), all_active)
-        backend_design = _namespace_sector_state_coords(
-            design,
-            variable_suffix=binding.variable_suffix,
-            namespace_state_dim=gathered_layout,
-        )
-        backend_state_dim = next(str(dim) for dim in backend_design.dims if dim != "nmeasure")
-        semantic_state_dim = resolved_activity.state_dim
-        rename_state = (
-            {semantic_state_dim: backend_state_dim} if semantic_state_dim != backend_state_dim else {}
-        )
-        resolved_policy = StateActivity(
-            active=resolved_activity.active.rename(rename_state),
-            fixed_value=resolved_activity.fixed_value.rename(rename_state),
-            prune_zero=False,
-        )
-        components.append(
-            _ResolvedSectorComponent(
-                name=binding.name,
-                flux_source=binding.flux_source,
-                variable_suffix=binding.variable_suffix,
-                design=backend_design,
-                prior_args=normalized_prior,
-                state_activity=resolved_policy,
-            )
-        )
-    return tuple(components)

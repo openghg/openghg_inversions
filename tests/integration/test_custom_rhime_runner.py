@@ -172,7 +172,7 @@ def test_custom_runner_uses_supported_stages_for_acquisition_and_reload(
     def sample(*args: Any, **kwargs: Any) -> Any:
         """Record public sampling."""
         assert args == (build_result, sampler)
-        assert kwargs == {"use_variable_roles": True}
+        assert kwargs == {}
         calls.append("sample")
         return idata
 

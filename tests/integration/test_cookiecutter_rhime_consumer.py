@@ -125,7 +125,7 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
 
     def sample(*args: Any, **kwargs: Any) -> Any:
         assert args == (build_result, sampler)
-        assert kwargs == {"use_variable_roles": True}
+        assert kwargs == {}
         calls.append("sample")
         return idata
 
@@ -210,6 +210,7 @@ def test_consumer_imports_only_public_supported_modules(module_path: str | None)
                 "openghg_inversions.models.pollution_event",
                 "openghg_inversions.observation_error",
                 "openghg_inversions.rhime",
+                "openghg_inversions.sigma",
             }
             assert all(not alias.name.startswith("_") for alias in node.names)
         elif isinstance(node, ast.Import):

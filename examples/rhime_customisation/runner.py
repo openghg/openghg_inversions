@@ -95,11 +95,7 @@ def run_custom_rhime(
         # This is the deliberate scientific replacement in the copied runner.
         likelihood_builder=likelihood_builder,
     )
-    idata = sample_rhime_model(
-        model_build_result,
-        setup.sampler,
-        use_variable_roles=True,
-    )
+    idata = sample_rhime_model(model_build_result, setup.sampler)
 
     return make_standard_rhime_result(
         prepared=prepared,

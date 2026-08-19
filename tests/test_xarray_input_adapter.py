@@ -822,12 +822,7 @@ def test_adapter_output_executes_through_prepared_runner_without_openghg(
         output=RhimeOutputSpec(output_format="none", save_inversion_output=False),
     )
 
-    def fail_prepare(**kwargs: object) -> None:
-        """Fail if the prepared-input runner attempts data preparation."""
-        raise AssertionError("The prepared runner must not call OpenGHG preparation.")
-
-    monkeypatch.setattr("openghg_inversions.rhime.runner.retrieve_or_reload_rhime_data", fail_prepare)
-    monkeypatch.setattr(RhimeSampler, "sample", lambda self, model: az.InferenceData())
+    monkeypatch.setattr(RhimeSampler, "sample", lambda self, model, **kwargs: az.InferenceData())
 
     result = run_rhime_from_prepared_inputs(prepared_inputs=prepared, run_spec=run_spec)
 
@@ -919,10 +914,6 @@ def test_unequal_source_regions_round_trip_and_execute(
         split_by_sectors=True,
     )
 
-    def fail_prepare(**kwargs: object) -> None:
-        """Fail if the prepared-input runner attempts data preparation."""
-        raise AssertionError("The prepared runner must not call OpenGHG preparation.")
-
     def skip_diagnostics(**kwargs: object) -> RhimeOutputBundle:
         """Keep this regression focused on the prepared-input execution seam."""
         output_prepared = kwargs["prepared"]
@@ -931,8 +922,7 @@ def test_unequal_source_regions_round_trip_and_execute(
         xr.testing.assert_identical(output_prepared.site_metadata, loaded.site_metadata)
         return RhimeOutputBundle(outputs={"executed": True})
 
-    monkeypatch.setattr("openghg_inversions.rhime.runner.retrieve_or_reload_rhime_data", fail_prepare)
-    monkeypatch.setattr(RhimeSampler, "sample", lambda self, model: az.InferenceData())
+    monkeypatch.setattr(RhimeSampler, "sample", lambda self, model, **kwargs: az.InferenceData())
     monkeypatch.setattr(rhime_multisector, "make_multisector_output_bundle", skip_diagnostics)
 
     result = run_rhime_from_prepared_inputs(prepared_inputs=loaded, run_spec=run_spec)

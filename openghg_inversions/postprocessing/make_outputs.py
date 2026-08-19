@@ -711,24 +711,48 @@ def make_concentration_outputs(
     posterior = cast(Any, inv_out.trace).posterior
     concentration_role = "concentration"
     baseline_role = "baseline"
+    boundary_role = "boundary"
     offset_role = "offset"
     conc_roles = [concentration_role]
     baseline_name = inv_out.variable_name(baseline_role)
+    boundary_name = inv_out.variable_name(boundary_role)
     offset_name = inv_out.variable_name(offset_role)
 
-    if baseline_name in posterior:
+    complete_baseline_available = (
+        combine_bc_and_offset
+        and baseline_name in posterior
+        and baseline_name != boundary_name
+    )
+    if complete_baseline_available:
         conc_roles.append(baseline_role)
-
-    if offset_name in posterior:
-        conc_roles.append(offset_role)
+        if offset_name in posterior and offset_name != baseline_name:
+            conc_roles.append(offset_role)
+    else:
+        if boundary_name in posterior:
+            conc_roles.append(boundary_role)
+        elif baseline_name in posterior and baseline_name != offset_name:
+            # Older stored results only declared the ``baseline`` role.
+            conc_roles.append(baseline_role)
+        if offset_name in posterior:
+            conc_roles.append(offset_role)
 
     trace = _rename_trace_roles(
         inv_out.trace_dataset(var_roles=conc_roles),
         inv_out,
-        {concentration_role: "y", baseline_role: "mu_bc", offset_role: "offset"},
+        {
+            concentration_role: "y",
+            baseline_role: "mu_bc",
+            boundary_role: "mu_bc",
+            offset_role: "offset",
+        },
     )
 
-    if combine_bc_and_offset and offset_role in conc_roles:
+    if (
+        combine_bc_and_offset
+        and not complete_baseline_available
+        and offset_role in conc_roles
+        and (baseline_role in conc_roles or boundary_role in conc_roles)
+    ):
         for dv in trace.data_vars:
             if str(dv).startswith("mu_bc"):
                 offset_dv = str(dv).replace("mu_bc", "offset")

@@ -85,9 +85,6 @@ class RhimeModelSpec:
             active/fixed BC construction.
         state_activity: Optional labelled active/fixed state policy shared by
             flux sectors. The default retains exact-zero pruning.
-        sector_state_activities: Optional activity-policy overrides keyed by
-            sector name. A policy stored directly on a ``SectorSpec`` takes
-            precedence over this compatibility mapping.
 
     Raises:
         ValueError: If ``aggregation_error_mode`` is unsupported.
@@ -111,7 +108,6 @@ class RhimeModelSpec:
     offset_args: dict[str, Any] | None = None
     bc_state_activity: StateActivity | None = field(default=None, kw_only=True)
     state_activity: StateActivity | None = field(default=None, kw_only=True)
-    sector_state_activities: dict[str, StateActivity] | None = field(default=None, kw_only=True)
 
     def __post_init__(self) -> None:
         """Validate model options resolved before graph construction."""
@@ -184,7 +180,14 @@ class RhimeRunSpec:
 
 
 def validate_output_format(output_format: str) -> None:
-    """Raise if a RHIME output format is not supported by the modern runners."""
+    """Validate a RHIME output-format name.
+
+    Args:
+        output_format: Requested output-format name.
+
+    Raises:
+        ValueError: If the format is unsupported.
+    """
     valid_formats = {"none", "inv_out", "basic", "paris", "legacy"}
     if output_format not in valid_formats:
         raise ValueError(
@@ -200,7 +203,19 @@ def validate_output_path_settings(
     save_inversion_output: str | Path | bool,
     multisector: bool,
 ) -> None:
-    """Raise if output settings imply a default save path but none is supplied."""
+    """Validate output paths and single- versus multisector restrictions.
+
+    Args:
+        output_format: Requested output format.
+        output_path: Optional default output directory.
+        save_trace: Trace-save setting or explicit path.
+        save_inversion_output: Inversion-output save setting or explicit path.
+        multisector: Whether the run is multisector.
+
+    Raises:
+        ValueError: If the format is incompatible with the model or a required
+            default output directory is absent.
+    """
     if multisector and output_format == "legacy":
         raise ValueError("RHIME output_format 'legacy' supports only single-sector runs.")
     if output_format == "none":
@@ -214,7 +229,14 @@ def validate_output_path_settings(
 
 
 def validate_output_filename_convention(output_filename_convention: str) -> None:
-    """Raise if an output filename convention is not supported."""
+    """Validate an output filename convention.
+
+    Args:
+        output_filename_convention: Requested filename convention.
+
+    Raises:
+        ValueError: If the convention is unsupported.
+    """
     valid_conventions = {"rhime", "legacy"}
     if output_filename_convention not in valid_conventions:
         raise ValueError(
@@ -235,7 +257,25 @@ def make_output_spec(
     output_filename_convention: str,
     multisector: bool,
 ) -> RhimeOutputSpec:
-    """Create validated output settings from normalized RHIME parameters."""
+    """Create validated output settings from normalized RHIME parameters.
+
+    Args:
+        output_format: Requested product format.
+        output_path: Optional default output directory.
+        output_name: Base name for generated artifacts.
+        save_trace: Trace-save setting or explicit path.
+        save_inversion_output: Inversion-output save setting or explicit path.
+        country_file: Optional country mask for derived products.
+        paris_postprocessing_kwargs: Optional PARIS product settings.
+        output_filename_convention: Naming convention for derived files.
+        multisector: Whether the run is multisector.
+
+    Returns:
+        Validated immutable output specification.
+
+    Raises:
+        ValueError: If formats, paths, or model restrictions are inconsistent.
+    """
     output_format = output_format.lower()
     output_filename_convention = output_filename_convention.lower()
     validate_output_format(output_format)

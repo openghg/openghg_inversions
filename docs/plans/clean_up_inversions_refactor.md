@@ -80,8 +80,10 @@ Before expanding broad user docs, keep a concise maintainer-facing map of the
 modern responsibilities:
 
 - `openghg_inversions.rhime.__init__`: public RHIME re-export surface.
-- `openghg_inversions.rhime.runner`: orchestration; normalize setup, prepare
-  inputs, build the model, sample, and dispatch outputs.
+- `openghg_inversions.rhime.standard` and
+  `openghg_inversions.rhime.multisector`: readable orchestration recipes that
+  normalize setup, prepare inputs, build the model, sample, and dispatch
+  outputs.
 - `openghg_inversions.rhime.params`: config/API parameter loading, legacy alias
   handling, scalar coercion, and validation before spec construction.
 - `openghg_inversions.rhime.specs`: model/run/output specs and output-format

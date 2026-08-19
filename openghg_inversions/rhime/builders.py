@@ -24,77 +24,26 @@ from openghg_inversions.sigma import SigmaAlignment
 _OUTPUT_FORMATS: frozenset[OutputFormat] = frozenset({"none", "inv_out", "basic", "paris", "legacy"})
 
 
-@dataclass(frozen=True)
-class RhimeLikelihoodContext:
-    """Labelled inputs supplied by a concrete RHIME recipe.
-
-    ``mean`` is the complete modelled concentration. ``pollution_mean`` is the
-    modelled pollution contribution. ``pollution_event_baseline`` is the
-    baseline removed only when deriving pollution events from observations.
-    """
-
-    data: xr.Dataset
-    mean: TensorVariable
-    pollution_mean: TensorVariable
-    pollution_event_baseline: TensorVariable | None
-    sigma_alignment: SigmaAlignment
-    sigma_prior: Mapping[str, Any]
-    power: Mapping[str, Any] | float
-    pollution_events_from_obs: bool
-    no_model_error: bool
-    retain_unused_sigma: bool
-    aggregation_error_mode: AggregationErrorMode
-    output_dim: str = "nmeasure"
-
-
-@dataclass(frozen=True)
-class RhimeLikelihoodResult:
-    """Observed variable, semantic roles, and serializable provenance."""
-
-    likelihood: TensorVariable
-    variable_roles: Mapping[str, str]
-    error_scale: TensorVariable | None = None
-    supported_output_formats: tuple[OutputFormat, ...] = ("none",)
-    metadata: Mapping[str, Any] = field(default_factory=dict)
-
-    def __post_init__(self) -> None:
-        """Copy and validate the likelihood result contract."""
-        roles = {str(role): str(name) for role, name in self.variable_roles.items()}
-        if roles.get("concentration") != self.likelihood.name:
-            raise ValueError(
-                "`RhimeLikelihoodResult.variable_roles['concentration']` must equal the returned "
-                f"likelihood name {self.likelihood.name!r}."
-            )
-        if self.error_scale is not None and "model_error" in roles:
-            if roles["model_error"] != self.error_scale.name:
-                raise ValueError(
-                    "`RhimeLikelihoodResult.variable_roles['model_error']` must equal the returned "
-                    f"error-scale name {self.error_scale.name!r}."
-                )
-        output_formats = tuple(dict.fromkeys(self.supported_output_formats))
-        invalid_formats = sorted(set(output_formats) - _OUTPUT_FORMATS)
-        if invalid_formats:
-            raise ValueError(
-                "`RhimeLikelihoodResult.supported_output_formats` contains unsupported values: "
-                f"{invalid_formats!r}."
-            )
-        if "none" not in output_formats:
-            raise ValueError("`RhimeLikelihoodResult.supported_output_formats` must include 'none'.")
-        metadata = dict(self.metadata)
-        try:
-            json.dumps(metadata)
-        except (TypeError, ValueError) as exc:
-            raise ValueError("`RhimeLikelihoodResult.metadata` must be JSON serializable.") from exc
-        object.__setattr__(self, "variable_roles", roles)
-        object.__setattr__(self, "supported_output_formats", output_formats)
-        object.__setattr__(self, "metadata", metadata)
-
-
 class RhimeLikelihoodBuilder(Protocol):
-    """Callable contract for a complete RHIME observation component."""
+    """Explicit callable contract for a complete RHIME likelihood component."""
 
-    def __call__(self, context: RhimeLikelihoodContext, /) -> RhimeLikelihoodResult:
-        """Add error and observed-distribution variables to the active model."""
+    def __call__(
+        self,
+        data: xr.Dataset,
+        /,
+        *,
+        mean: TensorVariable,
+        pollution_mean: TensorVariable,
+        pollution_event_baseline: TensorVariable | None,
+        sigma_alignment: SigmaAlignment,
+        sigma_prior: Mapping[str, Any],
+        power: Mapping[str, Any] | float,
+        pollution_events_from_obs: bool,
+        no_model_error: bool,
+        aggregation_error_mode: AggregationErrorMode,
+        output_dim: str,
+    ) -> TensorVariable:
+        """Add canonical ``y`` and ``epsilon`` variables to the active model."""
         ...
 
 
@@ -214,11 +163,9 @@ def validate_model_build_result(
     if output_format not in result.supported_output_formats:
         if builder_kind == "likelihood":
             raise ValueError(
-                "Custom RHIME likelihood builder does not declare "
-                f"output_format={output_format!r} compatible. Declared formats: "
-                f"{list(result.supported_output_formats)!r}. Use output_format='none' or "
-                "return `RhimeLikelihoodResult` with the requested format in "
-                "`supported_output_formats`."
+                "The RHIME graph containing the custom likelihood does not support "
+                f"output_format={output_format!r}. Supported formats: "
+                f"{list(result.supported_output_formats)!r}."
             )
         raise ValueError(
             f"Custom RHIME model builder does not declare output_format={output_format!r} compatible. "
@@ -235,15 +182,56 @@ def validate_model_build_result(
             f"prepared inversion inputs: {details}."
         )
 
-    if "concentration" not in result.variable_roles:
+    required_roles = {"concentration"}
+    if output_format not in ("none", "inv_out"):
+        required_roles.update(
+            {
+                "observation",
+                "observation_error",
+                "observation_repeatability",
+                "observation_variability",
+                "minimum_error",
+                "model_error",
+            }
+        )
+        if context.multisector:
+            for sector in context.run_spec.model.sectors:
+                required_roles.update(
+                    {
+                        f"flux_scale:{sector.name}",
+                        f"flux_contribution:{sector.name}",
+                        f"emissions_sensitivity:{sector.name}",
+                    }
+                )
+        else:
+            required_roles.update(
+                {"flux_scale", "flux_contribution", "emissions_sensitivity"}
+            )
+        if context.run_spec.model.use_bc:
+            required_roles.update(
+                {"baseline", "baseline_scale", "baseline_sensitivity", "boundary"}
+            )
+        if context.run_spec.model.add_offset:
+            required_roles.update({"baseline", "offset"})
+
+    missing_roles = sorted(required_roles - set(result.variable_roles))
+    if missing_roles:
         raise ValueError(
-            "Custom RHIME model variable roles must declare `concentration` so predictive sampling "
-            "and concentration outputs do not infer the observed-variable name."
+            f"RHIME output_format={output_format!r} requires variable roles absent from the "
+            f"complete model build result: {missing_roles!r}."
         )
 
 
 def callable_metadata(builder: Callable[..., Any]) -> dict[str, str]:
-    """Return stable, serializable direct-Python callable identity metadata."""
+    """Return stable, serializable direct-Python callable identity metadata.
+
+    Args:
+        builder: Callable whose import module and qualified name identify the
+            runtime customization.
+
+    Returns:
+        JSON-serializable module and qualified-name fields.
+    """
     return {
         "module": getattr(builder, "__module__", type(builder).__module__),
         "qualname": getattr(builder, "__qualname__", type(builder).__qualname__),

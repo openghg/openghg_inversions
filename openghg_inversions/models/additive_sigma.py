@@ -25,6 +25,7 @@ import xarray as xr
 from pytensor.tensor.variable import TensorVariable
 
 from openghg_inversions.models.components import add_model_data, add_sigma_component
+from openghg_inversions.models.likelihoods import add_gaussian_observation_likelihood
 from openghg_inversions.observation_error import (
     AggregationError,
     AggregationErrorMode,
@@ -61,6 +62,28 @@ def build_additive_sigma_error(
     variable is constructed. Fixed diagonal, dense, or low-rank aggregation
     error is included only when explicitly selected by
     ``aggregation_error_mode``.
+
+    Args:
+        data: Observation dataset containing ``mf``, ``mf_error``, and
+            ``min_error`` along ``output_dim``. It may also contain the fields
+            required by the selected aggregation-error representation.
+        sigma_alignment: Mapping from observations to the mismatch-scale
+            parameters.
+        sigma_prior: Prior arguments used to construct ``sigma`` when model
+            error is enabled.
+        no_model_error: If true, omit ``sigma`` and use only reported and
+            selected aggregation errors.
+        aggregation_error_mode: Fixed aggregation covariance representation
+            prepared for the observation distribution.
+        output_dim: Observation dimension used for named PyMC variables.
+
+    Returns:
+        Labelled observed data, independent variance, fixed aggregation error,
+        and total marginal error scale.
+
+    Raises:
+        ValueError: If the observation or aggregation-error inputs are
+            inconsistent with ``output_dim``.
     """
     validate_observation_error_inputs(data, output_dim=output_dim)
     aggregation_error = resolve_aggregation_error(
@@ -98,4 +121,84 @@ def build_additive_sigma_error(
     )
 
 
-__all__ = ["AdditiveSigmaErrorState", "build_additive_sigma_error"]
+def add_additive_sigma_gaussian_likelihood(
+    data: xr.Dataset,
+    /,
+    *,
+    mean: TensorVariable,
+    pollution_mean: TensorVariable,
+    pollution_event_baseline: TensorVariable | None,
+    sigma_alignment: SigmaAlignment,
+    sigma_prior: Mapping[str, Any],
+    power: Mapping[str, Any] | float,
+    pollution_events_from_obs: bool,
+    no_model_error: bool,
+    aggregation_error_mode: AggregationErrorMode,
+    output_dim: str = "nmeasure",
+) -> TensorVariable:
+    """Add a Gaussian likelihood with additive mismatch variance.
+
+    This is the complete, opt-in observation model associated with
+    :func:`build_additive_sigma_error`. The supplied ``mean`` is the completed
+    forward-model concentration, including every pollution and baseline term
+    selected by the calling model recipe. Model-data mismatch contributes
+    ``sigma**2`` to the reported observation-error variance; it is not scaled
+    by the pollution enhancement.
+
+    Args:
+        data: Observation dataset containing ``mf``, ``mf_error``, and
+            ``min_error`` along ``output_dim``. It may also contain the fields
+            required by the selected aggregation-error representation.
+        mean: Completed forward-model concentration aligned with
+            ``output_dim``.
+        pollution_mean: Pollution contribution accepted for compatibility
+            with the RHIME likelihood-builder protocol. Additive mismatch
+            variance does not depend on the pollution enhancement.
+        pollution_event_baseline: Baseline supplied by the RHIME recipe for
+            pollution-event scaling. This likelihood does not derive pollution
+            events, so the value is intentionally unused.
+        sigma_alignment: Mapping from observations to the mismatch-scale
+            parameters.
+        sigma_prior: Prior arguments used to construct ``sigma`` when model
+            error is enabled.
+        power: Pollution-event exponent accepted for the RHIME
+            likelihood-builder protocol and intentionally unused.
+        pollution_events_from_obs: Pollution-event source policy accepted for
+            the RHIME likelihood-builder protocol and intentionally unused.
+        no_model_error: If true, omit ``sigma`` and use only reported and
+            selected aggregation errors.
+        aggregation_error_mode: Fixed aggregation covariance representation
+            consumed by the Gaussian distribution.
+        output_dim: Observation dimension used for named PyMC variables.
+
+    Returns:
+        The observed Gaussian variable, named ``y``. The total marginal error
+        scale is also recorded in the active model as ``epsilon``.
+
+    Raises:
+        ValueError: If the observation or aggregation-error inputs are
+            inconsistent with ``output_dim``.
+    """
+    del pollution_mean, pollution_event_baseline, power, pollution_events_from_obs
+    state = build_additive_sigma_error(
+        data,
+        sigma_alignment=sigma_alignment,
+        sigma_prior=sigma_prior,
+        no_model_error=no_model_error,
+        aggregation_error_mode=aggregation_error_mode,
+        output_dim=output_dim,
+    )
+    return add_gaussian_observation_likelihood(
+        observed=state.observed,
+        mean=mean,
+        independent_variance=state.independent_variance,
+        aggregation_error=state.aggregation_error,
+        output_dim=output_dim,
+    )
+
+
+__all__ = [
+    "AdditiveSigmaErrorState",
+    "add_additive_sigma_gaussian_likelihood",
+    "build_additive_sigma_error",
+]

@@ -23,6 +23,7 @@ import xarray as xr
 from pytensor.tensor.variable import TensorVariable
 
 from openghg_inversions.models.components import add_model_data, add_sigma_component
+from openghg_inversions.models.likelihoods import add_gaussian_observation_likelihood
 from openghg_inversions.models.priors import parse_prior
 from openghg_inversions.observation_error import (
     AggregationError,
@@ -67,6 +68,30 @@ def build_pollution_event_error(
 
     ``retain_unused_sigma`` exists only for compatibility with graphs that
     stored ``sigma`` even when ``no_model_error`` made it irrelevant.
+
+    Args:
+        data: Canonical observations and reported error components.
+        pollution_mean: Modelled pollution contribution used when mismatch
+            scaling follows the forward model.
+        pollution_event_baseline: Baseline removed when mismatch scaling uses
+            observed enhancements.
+        sigma_alignment: Observation alignment for mismatch parameters.
+        sigma_prior: Prior specification for mismatch parameters.
+        power: Exponent or prior specification for mismatch scaling.
+        pollution_events_from_obs: Whether observed enhancements control
+            mismatch scaling.
+        no_model_error: Whether to omit inferred mismatch error.
+        retain_unused_sigma: Whether to preserve the historical disconnected
+            ``sigma`` variable when model error is disabled.
+        aggregation_error_mode: Aggregation-error representation to include.
+        output_dim: Observation dimension name.
+
+    Returns:
+        Observed data, independent variance, aggregation error, and canonical
+        total-error scale.
+
+    Raises:
+        ValueError: If observation or aggregation-error inputs are invalid.
     """
     validate_observation_error_inputs(data, output_dim=output_dim)
     aggregation_error = resolve_aggregation_error(
@@ -131,3 +156,72 @@ def build_pollution_event_error(
         aggregation_error=aggregation_error,
         error_scale=error_scale,
     )
+
+
+def build_pollution_event_gaussian_likelihood(
+    data: xr.Dataset,
+    /,
+    *,
+    mean: TensorVariable,
+    pollution_mean: TensorVariable,
+    pollution_event_baseline: TensorVariable | None,
+    sigma_alignment: SigmaAlignment,
+    sigma_prior: Mapping[str, Any],
+    power: Mapping[str, Any] | float,
+    pollution_events_from_obs: bool,
+    no_model_error: bool,
+    retain_unused_sigma: bool = False,
+    aggregation_error_mode: AggregationErrorMode,
+    output_dim: str = "nmeasure",
+) -> TensorVariable:
+    """Build RHIME's pollution-event-scaled Gaussian likelihood.
+
+    Args:
+        data: Canonical inversion inputs containing observations and errors.
+        mean: Completed modelled concentration, including the full baseline.
+        pollution_mean: Modelled pollution contribution used for mismatch
+            scaling when ``pollution_events_from_obs`` is false.
+        pollution_event_baseline: Modelled baseline removed from observations
+            when ``pollution_events_from_obs`` is true.
+        sigma_alignment: Observation alignment for mismatch parameters.
+        sigma_prior: Prior specification for mismatch parameters.
+        power: Exponent or prior specification used in mismatch scaling.
+        pollution_events_from_obs: Whether observed rather than modelled
+            pollution enhancements control mismatch scaling.
+        no_model_error: Whether to omit inferred mismatch error.
+        retain_unused_sigma: Whether to retain the historical disconnected
+            ``sigma`` variable when model error is disabled.
+        aggregation_error_mode: Aggregation-error representation to include.
+        output_dim: Observation dimension name.
+
+    Returns:
+        Observed Gaussian variable named ``y``. The component also creates the
+        canonical total-error variable ``epsilon``.
+    """
+    state = build_pollution_event_error(
+        data,
+        pollution_mean=pollution_mean,
+        pollution_event_baseline=pollution_event_baseline,
+        sigma_alignment=sigma_alignment,
+        sigma_prior=sigma_prior,
+        power=power,
+        pollution_events_from_obs=pollution_events_from_obs,
+        no_model_error=no_model_error,
+        retain_unused_sigma=retain_unused_sigma,
+        aggregation_error_mode=aggregation_error_mode,
+        output_dim=output_dim,
+    )
+    return add_gaussian_observation_likelihood(
+        observed=state.observed,
+        mean=mean,
+        independent_variance=state.independent_variance,
+        aggregation_error=state.aggregation_error,
+        output_dim=output_dim,
+    )
+
+
+__all__ = [
+    "PollutionEventErrorState",
+    "build_pollution_event_error",
+    "build_pollution_event_gaussian_likelihood",
+]

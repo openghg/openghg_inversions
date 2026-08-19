@@ -41,6 +41,23 @@ def run_rhime_from_prepared_inputs(
     construction, sensitivity construction, and labelled-input assembly. It
     validates the retained scientific layout before crossing the PyMC
     materialization boundary.
+
+    Args:
+        prepared_inputs: Validated canonical inversion inputs and retained
+            basis functions.
+        run_spec: Resolved model, output, and run settings.
+        sampler: Optional sampler configuration; defaults to ``RhimeSampler``.
+        model_builder: Optional complete-model callable for advanced graphs.
+        likelihood_builder: Optional ordinary likelihood callable used with
+            the built-in graph.
+
+    Returns:
+        Sampled result with any requested output products attached.
+
+    Raises:
+        ValueError: If layouts, extension points, aggregation error, or output
+            settings are inconsistent.
+        TypeError: If an extension point has an invalid callable contract.
     """
     validate_likelihood_builder(likelihood_builder)
     if model_builder is not None and likelihood_builder is not None:
@@ -135,7 +152,6 @@ def run_rhime_from_prepared_inputs(
     idata = sample_rhime_model(
         model_build_result,
         active_sampler,
-        use_variable_roles=model_builder is not None or likelihood_builder is not None,
     )
     build_and_sample_seconds = timer_seconds(build_and_sample_start)
 
