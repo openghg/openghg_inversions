@@ -323,10 +323,8 @@ def hbmcmc_extract_param(
         if key in expected_param and value is not None:
             expected_param.remove(key)
 
-    mcmc_type_section = "MCMC.TYPE"
-    param = config.extract_params(
-        config_file, expected_param=expected_param, ignore_sections=[mcmc_type_section]
-    )
+    param = config.extract_params(config_file, expected_param=expected_param)
+    param.pop("mcmc_type", None)
 
     # Command line values added to param (or supersede inputs from the config
     # file)

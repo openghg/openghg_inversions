@@ -24,6 +24,7 @@ emissions_name = ["total-ukghg-edgar7"]
 
 [MCMC.TYPE]
 mcmc_type = "fixed_basis"
+nuts_sampler = "numpyro"
 
 [MCMC.PDF]
 xprior = {"pdf": "normal", "mu": 1.0, "sigma": 1.0}
@@ -68,6 +69,7 @@ def test_fixedbasis_params_to_rhime_translates_legacy_names(tmp_path: Path) -> N
     assert translated["chains"] == 3
     assert translated["progressbar"] is True
     assert translated["sample_kwargs"] == {"target_accept": 0.9}
+    assert translated["nuts_sampler"] == "numpyro"
     assert translated["output_format"] == "legacy"
     assert translated["output_filename_convention"] == "legacy"
     assert translated["save_inversion_output"] is False
@@ -210,6 +212,7 @@ def test_run_hbmcmc_main_routes_to_run_rhime(monkeypatch: pytest.MonkeyPatch, tm
     assert seen["run_rhime_kwargs"]["end_date"] == "2020-02-01"
     assert seen["run_rhime_kwargs"]["output_path"] == str(output_path)
     assert seen["run_rhime_kwargs"]["chains"] == 2
+    assert seen["run_rhime_kwargs"]["nuts_sampler"] == "numpyro"
     assert seen["run_rhime_kwargs"]["output_format"] == "legacy"
     assert seen["run_rhime_kwargs"]["output_filename_convention"] == "legacy"
 
@@ -269,6 +272,7 @@ def test_run_hbmcmc_legacy_fixedbasis_preserves_raw_params_and_selects_true_lega
     assert fixedbasis_kwargs["nchain"] == 3
     assert fixedbasis_kwargs["emissions_name"] == ["total-ukghg-edgar7"]
     assert fixedbasis_kwargs["sampler_kwargs"] == {"target_accept": 0.9}
+    assert fixedbasis_kwargs["nuts_sampler"] == "numpyro"
     assert fixedbasis_kwargs["outputpath"] == "out"
     assert fixedbasis_kwargs["outputname"] == "legacy_run"
     assert fixedbasis_kwargs["output_format"] == run_hbmcmc._LEGACY_FIXEDBASIS_OUTPUT_FORMAT
