@@ -192,6 +192,51 @@ The important default model-data and deterministic names are:
      - Observed random variable
      - Normal likelihood
 
+CO2 coherent-reduction model
+----------------------------
+
+The public :func:`openghg_inversions.rhime.build_co2_rhime_model` recipe
+consumes the labelled products of a coherent state reduction. Let
+``H_alpha`` be the retained-state operator, ``m_alpha`` and ``C_alpha`` its
+arithmetic prior mean and covariance, and ``b_fixed`` the fixed affine prior
+contribution. The recipe constructs
+
+.. math::
+
+   x &\sim \operatorname{LogNormalMoments}(m_\alpha, C_\alpha), \\
+   \mu_{pollution} &= H_\alpha x, \\
+   \mu &= b_{fixed} + \mu_{pollution}.
+
+The affine term is part of coherent prior closure; it is not an atmospheric
+boundary condition. An explicit state-activity policy omits inactive elements
+from the sampled correlated vector while restoring their exact fixed values
+in the full public ``x`` vector and in ``mu_pollution``.
+
+The CO2 likelihood uses the explicit :class:`~openghg_inversions.observation_error.AggregationError`
+selected from prepared inputs. With reported observation standard deviation
+``s_y``, optional known mismatch ``s_fixed``, and optional inferred additive
+mismatch ``sigma``, its covariance is
+
+.. math::
+
+   R = C_{agg} + \operatorname{diag}
+       (s_y^2 + s_{fixed}^2 + \sigma^2),
+
+after applying ``min_error`` as a floor on the total marginal standard
+deviation. OpenGHG Inversions does not default ``s_fixed`` to 1 ppm. The
+Verification Games fixed-only policy passes ``fixed_model_mismatch=1.0`` and
+``no_model_error=True`` visibly; ``co2.ini`` records the same policy but is not
+yet parsed by the runner.
+
+The model builder accepts explicit scientific arrays rather than a dataset.
+For durable prepared artifacts, :func:`openghg_inversions.rhime.run_rhime_co2`
+is the public replay seam: it validates and materializes the selected arrays,
+resolves aggregation error, calls the explicit builder, samples, and stores a
+JSON variable-role and model-provenance manifest on the returned
+``InferenceData``. A prepared ``fixed_model_mismatch`` is preserved when the
+runner argument is ``None``; an explicit scalar or labelled vector overrides
+it.
+
 Equivalent construction from public helpers
 -------------------------------------------
 

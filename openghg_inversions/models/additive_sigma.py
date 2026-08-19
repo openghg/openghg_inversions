@@ -1,12 +1,13 @@
 r"""Observation error with an additive model-data-mismatch scale.
 
-For reported observation-error variance :math:`s_y^2`, mismatch scale
-:math:`\sigma`, and fixed aggregation covariance :math:`C_{agg}`, this
+For reported observation-error variance :math:`s_y^2`, optional fixed mismatch
+:math:`s_{fixed}`, inferred mismatch scale :math:`\sigma`, and fixed
+aggregation covariance :math:`C_{agg}`, this
 component constructs the independent variance
 
 .. math::
 
-   v = s_y^2 + \sigma^2
+   v = s_y^2 + s_{fixed}^2 + \sigma^2
 
 and applies ``min_error`` as a floor on the total marginal standard
 deviation. ``build_additive_sigma_error`` exposes the reusable error state;
@@ -20,6 +21,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, cast
 
+import numpy as np
 import pymc as pm
 import pytensor.tensor as pt
 import xarray as xr
@@ -34,9 +36,13 @@ from openghg_inversions.models.likelihoods import (
 from openghg_inversions.observation_error import (
     AggregationError,
     validate_aggregation_error_alignment,
+    validate_observation_alignment,
     validate_observation_error_arrays,
 )
 from openghg_inversions.sigma import SigmaAlignment
+
+
+FIXED_MODEL_MISMATCH = "fixed_model_mismatch"
 
 
 @dataclass(frozen=True)
@@ -55,6 +61,7 @@ def build_additive_sigma_error(
     observation_error: xr.DataArray,
     minimum_error: xr.DataArray,
     aggregation_error: AggregationError,
+    fixed_model_mismatch: xr.DataArray | None = None,
     sigma_alignment: SigmaAlignment | None,
     sigma_prior: Mapping[str, Any],
     no_model_error: bool,
@@ -62,17 +69,20 @@ def build_additive_sigma_error(
 ) -> AdditiveSigmaErrorState:
     """Build observation-error terms with an additive mismatch scale.
 
+    ``fixed_model_mismatch`` is a known observation-aligned standard deviation.
     ``sigma`` is observation-aligned through ``sigma_alignment`` and enters as
-    an independent variance term. When ``no_model_error`` is true, no ``sigma``
-    variable is constructed. Fixed diagonal, dense, or low-rank aggregation
-    error is included only when explicitly selected by
-    ``aggregation_error_mode``.
+    a separate inferred variance term. When ``no_model_error`` is true, no
+    ``sigma`` variable is constructed. Fixed diagonal, dense, or low-rank
+    aggregation error is included only when explicitly selected.
 
     Args:
         observations: Observed mole fractions.
         observation_error: Reported observation-error standard deviations.
         minimum_error: Minimum total-error standard deviations.
         aggregation_error: Validated fixed aggregation-error representation.
+        fixed_model_mismatch: Optional known model-data mismatch standard
+            deviation, in the same units and observation order as
+            ``observations``.
         sigma_alignment: Mapping from observations to mismatch-scale
             parameters when model error is enabled.
         sigma_prior: Prior arguments used to construct ``sigma`` when model
@@ -99,8 +109,7 @@ def build_additive_sigma_error(
     if not no_model_error:
         if sigma_alignment is None:
             raise ValueError(
-                "Additive-sigma likelihood requires `sigma_alignment` when "
-                "model error is enabled."
+                "Additive-sigma likelihood requires `sigma_alignment` when model error is enabled."
             )
     validate_aggregation_error_alignment(
         observations,
@@ -118,6 +127,29 @@ def build_additive_sigma_error(
     )
 
     independent_variance = reported_error**2
+    if fixed_model_mismatch is not None:
+        if fixed_model_mismatch.dims != (output_dim,):
+            raise ValueError(
+                f"Additive-sigma likelihood input {FIXED_MODEL_MISMATCH!r} must "
+                f"have dims ({output_dim!r},); got {fixed_model_mismatch.dims!r}."
+            )
+        validate_observation_alignment(
+            observations,
+            fixed_model_mismatch,
+            input_name=FIXED_MODEL_MISMATCH,
+            owner="Additive-sigma likelihood",
+            output_dim=output_dim,
+        )
+        fixed_values = np.asarray(fixed_model_mismatch.values)
+        if not np.issubdtype(fixed_values.dtype, np.number):
+            raise ValueError(f"{FIXED_MODEL_MISMATCH!r} must be numeric.")
+        if not np.isfinite(fixed_values).all() or (fixed_values < 0).any():
+            raise ValueError(f"{FIXED_MODEL_MISMATCH!r} must contain only finite, non-negative values.")
+        fixed_mismatch_data = add_model_data(
+            fixed_model_mismatch.transpose(output_dim),
+            FIXED_MODEL_MISMATCH,
+        )
+        independent_variance = independent_variance + fixed_mismatch_data**2
     if not no_model_error:
         assert sigma_alignment is not None
         sigma = add_sigma_component(sigma_alignment, prior_args=dict(sigma_prior))
@@ -148,6 +180,7 @@ def add_additive_sigma_gaussian_likelihood(
     observation_error: xr.DataArray,
     minimum_error: xr.DataArray,
     aggregation_error: AggregationError,
+    fixed_model_mismatch: xr.DataArray | None = None,
     mean: TensorVariable,
     sigma_alignment: SigmaAlignment | None,
     sigma_prior: Mapping[str, Any],
@@ -168,6 +201,9 @@ def add_additive_sigma_gaussian_likelihood(
         observation_error: Reported observation-error standard deviations.
         minimum_error: Minimum total-error standard deviations.
         aggregation_error: Validated fixed aggregation-error representation.
+        fixed_model_mismatch: Optional known model-data mismatch standard
+            deviation, in the same units and observation order as
+            ``observations``.
         mean: Completed forward-model concentration aligned with
             ``output_dim``.
         sigma_alignment: Mapping from observations to mismatch-scale
@@ -191,6 +227,7 @@ def add_additive_sigma_gaussian_likelihood(
         observation_error=observation_error,
         minimum_error=minimum_error,
         aggregation_error=aggregation_error,
+        fixed_model_mismatch=fixed_model_mismatch,
         sigma_alignment=sigma_alignment,
         sigma_prior=sigma_prior,
         no_model_error=no_model_error,
@@ -206,6 +243,7 @@ def add_additive_sigma_gaussian_likelihood(
 
 
 __all__ = [
+    "FIXED_MODEL_MISMATCH",
     "AdditiveSigmaErrorState",
     "add_additive_sigma_gaussian_likelihood",
     "build_additive_sigma_error",
