@@ -4,6 +4,13 @@
 
 ## Code changes
 
+- Made PyTensor precision ownership explicit at process startup. Fresh
+  OpenGHG Inversions PyMC processes retain the memory-conscious float32
+  default, while explicit `PYTENSOR_FLAGS` precision and already-initialized
+  PyTensor or PyMC runtimes are left unchanged. Future component-level
+  mixed-precision accumulation work is tracked in
+  [#607](https://github.com/openghg/openghg_inversions/issues/607).
+
 - Moved RHIME retrieval, filtering, basis, sensitivity, labelled assembly, and
   PyMC materialization into a cohesive preparation module while keeping their
   scientific order visible in the runners. `run_rhime` and
