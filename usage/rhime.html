@@ -447,9 +447,7 @@ whole graph or prepared-data cache to use float64.</p>
 or copy a complete implementation can read
 <code class="docutils literal notranslate"><span class="pre">openghg_inversions.rhime.standard</span></code> or
 <code class="docutils literal notranslate"><span class="pre">openghg_inversions.rhime.multisector</span></code> directly; each module shows its whole
-scientific process from option resolution through output construction.
-<code class="docutils literal notranslate"><span class="pre">openghg_inversions.rhime.runner</span></code> remains as an import-compatibility module
-and contains no workflow implementation.</p>
+scientific process from option resolution through output construction.</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="n">run_rhime</span><span class="p">,</span> <span class="n">run_rhime_multisector</span>
 
 <span class="n">result</span> <span class="o">=</span> <span class="n">run_rhime</span><span class="p">(</span>
@@ -510,7 +508,7 @@ metadata.</p>
 acquisition and run them without repeating OpenGHG-backed preparation. Supply
 the retained <code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code> together with the existing public run,
 model, output, and sampler specifications:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">RhimeModelSpec</span><span class="p">,</span> <span class="n">SectorSpec</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="n">RhimeModelSpec</span><span class="p">,</span> <span class="n">SectorSpec</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.inversion_data</span><span class="w"> </span><span class="kn">import</span> <span class="n">RhimePreparedInputs</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
     <span class="n">RhimeOutputSpec</span><span class="p">,</span>
@@ -566,11 +564,11 @@ side effects are still controlled by <code class="docutils literal notranslate">
 </section>
 <section id="aggregation-error-covariance">
 <h2>Aggregation-error covariance<a class="headerlink" href="#aggregation-error-covariance" title="Link to this heading">#</a></h2>
-<p>Modern RHIME can add fixed aggregation error to the observation covariance
-without changing the raw <code class="docutils literal notranslate"><span class="pre">mf_error</span></code> values. Attach these arrays only after
-observation filtering, averaging, global site gathering, and basis projection,
-so both covariance axes match the final <code class="docutils literal notranslate"><span class="pre">nmeasure</span></code> ordering. Prepared inputs
-may contain one of:</p>
+<p>Aggregation error is disabled by default. An advanced run may explicitly add
+fixed aggregation error to the observation covariance without changing the
+raw <code class="docutils literal notranslate"><span class="pre">mf_error</span></code> values. Attach these arrays only after observation filtering,
+averaging, global site gathering, and basis projection, so both covariance
+axes match the final <code class="docutils literal notranslate"><span class="pre">nmeasure</span></code> ordering. Prepared inputs may contain one of:</p>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">aggregation_error_covariance(nmeasure,</span> <span class="pre">nmeasure_cov)</span></code> for the exact dense
 covariance;</p></li>
@@ -583,9 +581,15 @@ approximation or diagnostic.</p></li>
 <p>Dense and low-rank forms are the primary representations. If a matching
 <code class="docutils literal notranslate"><span class="pre">aggregation_error_sd</span></code> diagnostic is present beside either one, RHIME
 validates it against the structured covariance diagonal but does not replace
-the structured likelihood with it. <code class="docutils literal notranslate"><span class="pre">aggregation_error_mode=&quot;auto&quot;</span></code> selects
-the available structured form first; set <code class="docutils literal notranslate"><span class="pre">&quot;dense&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;low_rank&quot;</span></code>,
-<code class="docutils literal notranslate"><span class="pre">&quot;diagonal&quot;</span></code>, or <code class="docutils literal notranslate"><span class="pre">&quot;none&quot;</span></code> for an explicit comparison run.</p>
+the structured likelihood with it. Select <code class="docutils literal notranslate"><span class="pre">aggregation_error_mode=&quot;dense&quot;</span></code>,
+<code class="docutils literal notranslate"><span class="pre">&quot;low_rank&quot;</span></code>, or <code class="docutils literal notranslate"><span class="pre">&quot;diagonal&quot;</span></code> to opt into a representation. <code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code>
+is also an explicit opt-in that selects an available structured form first;
+merely placing an array in prepared inputs does not enable it. The default
+<code class="docutils literal notranslate"><span class="pre">&quot;none&quot;</span></code> ignores prepared aggregation-error arrays.</p>
+<p>This likelihood option does not perform or certify a coherent prior
+transformation. If aggregation covariance represents states removed by a
+native-to-reduced transformation, the caller must also supply the matching
+transformed prior and forward operator as one coherent preparation product.</p>
 <p>The minimum-error setting remains a floor on total marginal standard
 deviation, including aggregation error, while off-diagonal covariance is left
 unchanged. Legacy HBMCMC model and replay paths are not extended. Until the
@@ -598,14 +602,8 @@ derived-error reconstruction follow-up lands, aggregation-error runs support
 <p>The concrete PyMC graph, its variable names, an equivalent construction from
 public model components, and links to tracked extension work are described in
 <a class="reference internal" href="concrete_rhime_model.html"><span class="doc">Concrete RHIME Model</span></a>.</p>
-<p>RHIME uses direct composition of the concrete standard or multisector model by
-default. The private semantic-plan compiler remains available for development
-and parity testing by setting <code class="docutils literal notranslate"><span class="pre">builder_strategy=&quot;compiled&quot;</span></code> on
-<code class="docutils literal notranslate"><span class="pre">RhimeModelSpec</span></code> or in <code class="docutils literal notranslate"><span class="pre">[RHIME.OPTIONS]</span></code>. There is no automatic fallback:
-an error in the selected strategy stops the run. The concrete model is the
-readable reference implementation; the compiled strategy is the opt-in
-extension path and must preserve the externally meaningful graph contract for
-components it does not intentionally change. See
+<p>RHIME directly composes the concrete standard or multisector model in its
+corresponding recipe module. See
 <a class="reference internal" href="concrete_rhime_model.html#rhime-builder-stability"><span class="std std-ref">the concrete model stability contract</span></a> for the
 full contract.</p>
 <p><code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs.save</span></code> accepts NetCDF paths ending in <code class="docutils literal notranslate"><span class="pre">.nc</span></code> and Zarr
@@ -765,7 +763,7 @@ prepared artifact is reopened:</p>
 </div>
 <p>Finally, construct and execute the OpenGHG Inversions run from the canonical
 prepared object:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">RhimeModelSpec</span><span class="p">,</span> <span class="n">SectorSpec</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="n">RhimeModelSpec</span><span class="p">,</span> <span class="n">SectorSpec</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
     <span class="n">RhimeOutputSpec</span><span class="p">,</span>
     <span class="n">RhimeRunSpec</span><span class="p">,</span>
@@ -872,9 +870,6 @@ features do not extend legacy HBMCMC model or output paths.</p>
 <span class="k">[INPUT.PRIORS]</span>
 <span class="na">domain</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"EUROPE"</span>
 <span class="na">flux_sources</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">["total-ukghg-edgar7"]</span>
-
-<span class="k">[RHIME.OPTIONS]</span>
-<span class="na">builder_strategy</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"concrete"</span>
 
 <span class="k">[RHIME.OUTPUT]</span>
 <span class="na">output_path</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"outputs"</span>
@@ -1006,7 +1001,8 @@ removed rather than transferred into aggregation error.</p>
 <p>Given canonical <code class="docutils literal notranslate"><span class="pre">inv_inputs</span></code>, the following example assumes that
 <code class="docutils literal notranslate"><span class="pre">inv_inputs[&quot;H&quot;]</span></code> carries a state-aligned <code class="docutils literal notranslate"><span class="pre">basis_group</span></code> coordinate
 containing the value <code class="docutils literal notranslate"><span class="pre">&quot;outer&quot;</span></code>:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">StateActivity</span><span class="p">,</span> <span class="n">build_rhime_model</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">StateActivity</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.standard</span><span class="w"> </span><span class="kn">import</span> <span class="n">build_standard_rhime_model</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.sigma</span><span class="w"> </span><span class="kn">import</span> <span class="n">SigmaAlignment</span>
 
 <span class="n">state_policy</span> <span class="o">=</span> <span class="n">StateActivity</span><span class="p">(</span>
@@ -1016,7 +1012,7 @@ containing the value <code class="docutils literal notranslate"><span class="pre
 <span class="n">sigma_alignment</span> <span class="o">=</span> <span class="n">SigmaAlignment</span><span class="o">.</span><span class="n">from_frequency</span><span class="p">(</span>
     <span class="n">inv_inputs</span><span class="p">[</span><span class="s2">"site_indicator"</span><span class="p">],</span>
 <span class="p">)</span>
-<span class="n">model</span> <span class="o">=</span> <span class="n">build_rhime_model</span><span class="p">(</span>
+<span class="n">model</span> <span class="o">=</span> <span class="n">build_standard_rhime_model</span><span class="p">(</span>
     <span class="n">inv_inputs</span><span class="p">,</span>
     <span class="n">sigma_alignment</span><span class="o">=</span><span class="n">sigma_alignment</span><span class="p">,</span>
     <span class="n">x_prior</span><span class="o">=</span><span class="p">{</span><span class="s2">"pdf"</span><span class="p">:</span> <span class="s2">"normal"</span><span class="p">,</span> <span class="s2">"mu"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> <span class="s2">"sigma"</span><span class="p">:</span> <span class="mf">0.5</span><span class="p">},</span>
@@ -1024,17 +1020,14 @@ containing the value <code class="docutils literal notranslate"><span class="pre
 <span class="p">)</span>
 </pre></div>
 </div>
-<p>For multisector builders, use <code class="docutils literal notranslate"><span class="pre">state_activity</span></code> as a shared policy or
-<code class="docutils literal notranslate"><span class="pre">sector_state_activities</span></code> for sector-name overrides;
-<code class="docutils literal notranslate"><span class="pre">StateActivity(active=False)</span></code> freezes a complete sector. Programmatic
-prepared-input runs may set a shared policy on <code class="docutils literal notranslate"><span class="pre">RhimeModelSpec</span></code> and use its
-<code class="docutils literal notranslate"><span class="pre">sector_state_activities</span></code> mapping for overrides. The canonical per-sector
-policy is <code class="docutils literal notranslate"><span class="pre">SectorSpec(state_activity=...)</span></code> and takes precedence over that
-mapping. RHIME config-file syntax and persisted activity-reason tables remain
-follow-up work.
-Each prior dictionary in <code class="docutils literal notranslate"><span class="pre">sector_priors</span></code> supports the same scalar,
-full-state array, and labelled <code class="docutils literal notranslate"><span class="pre">DataArray</span></code> parameter forms; labelled values
-must match the selected sector’s state coordinate exactly.</p>
+<p>The direct multisector builder accepts one ordered sequence of <code class="docutils literal notranslate"><span class="pre">SectorSpec</span></code>
+objects. Each sector carries its source, backend suffix, prior, and optional
+<code class="docutils literal notranslate"><span class="pre">state_activity</span></code> override; the builder’s <code class="docutils literal notranslate"><span class="pre">state_activity</span></code> argument supplies
+the shared policy. <code class="docutils literal notranslate"><span class="pre">StateActivity(active=False)</span></code> freezes a complete sector.
+RHIME config-file syntax and persisted activity-reason tables remain follow-up
+work. Each <code class="docutils literal notranslate"><span class="pre">SectorSpec.x_prior</span></code> supports the same scalar, full-state array,
+and labelled <code class="docutils literal notranslate"><span class="pre">DataArray</span></code> parameter forms; labelled values must match the
+selected sector’s state coordinate exactly.</p>
 <p>For low-level model construction, first inspect a labelled design with
 <code class="docutils literal notranslate"><span class="pre">detect_zero_sensitivity</span></code>, then combine the returned mask with a
 <code class="docutils literal notranslate"><span class="pre">StateActivity</span></code> using <code class="docutils literal notranslate"><span class="pre">resolve_state_activity</span></code>. State-vector graph helpers
@@ -1139,13 +1132,14 @@ retain their gathered <code class="docutils literal notranslate"><span class="pr
     <span class="n">calibrate_basis_prior_stdev</span><span class="p">,</span>
     <span class="n">project_basis_prior_stdev</span><span class="p">,</span>
 <span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.standard</span><span class="w"> </span><span class="kn">import</span> <span class="n">build_standard_rhime_model</span>
 
 <span class="n">x_prior_stdev</span> <span class="o">=</span> <span class="n">project_basis_prior_stdev</span><span class="p">(</span>
     <span class="n">basis_functions</span><span class="p">,</span>
     <span class="n">area_grid</span><span class="o">=</span><span class="n">cell_area</span><span class="p">,</span>
     <span class="n">grid_cell_prior_stdev</span><span class="o">=</span><span class="n">grid_prior_sd</span><span class="p">,</span>
 <span class="p">)</span>
-<span class="n">model</span> <span class="o">=</span> <span class="n">build_rhime_model</span><span class="p">(</span>
+<span class="n">model</span> <span class="o">=</span> <span class="n">build_standard_rhime_model</span><span class="p">(</span>
     <span class="n">inv_inputs</span><span class="p">,</span>
     <span class="n">x_prior</span><span class="o">=</span><span class="p">{</span><span class="s2">"pdf"</span><span class="p">:</span> <span class="s2">"normal"</span><span class="p">,</span> <span class="s2">"mu"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> <span class="s2">"sigma"</span><span class="p">:</span> <span class="n">x_prior_stdev</span><span class="p">},</span>
 <span class="p">)</span>

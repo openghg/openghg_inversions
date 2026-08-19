@@ -51,7 +51,7 @@
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="openghg_inversions.rhime.runner" href="openghg_inversions.rhime.runner.html" />
+    <link rel="next" title="openghg_inversions.rhime.sampling" href="openghg_inversions.rhime.sampling.html" />
     <link rel="prev" title="openghg_inversions.rhime.preparation" href="openghg_inversions.rhime.preparation.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
@@ -358,12 +358,12 @@
 </ul>
 </details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.models.html">openghg_inversions.models</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.additive_sigma.html">openghg_inversions.models.additive_sigma</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.components.html">openghg_inversions.models.components</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.coords.html">openghg_inversions.models.coords</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.likelihoods.html">openghg_inversions.models.likelihoods</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.pollution_event.html">openghg_inversions.models.pollution_event</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.priors.html">openghg_inversions.models.priors</a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.rhime.html">openghg_inversions.models.rhime</a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.rhime_likelihood.html">openghg_inversions.models.rhime_likelihood</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.state_activity.html">openghg_inversions.models.state_activity</a></li>
 </ul>
 </details></li>
@@ -381,13 +381,13 @@
 </details></li>
 <li class="toctree-l2 current active has-children"><a class="reference internal" href="openghg_inversions.rhime.html">openghg_inversions.rhime</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.builders.html">openghg_inversions.rhime.builders</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.likelihoods.html">openghg_inversions.rhime.likelihoods</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.materialization.html">openghg_inversions.rhime.materialization</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.multisector.html">openghg_inversions.rhime.multisector</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.outputs.html">openghg_inversions.rhime.outputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.params.html">openghg_inversions.rhime.params</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.preparation.html">openghg_inversions.rhime.preparation</a></li>
 <li class="toctree-l3 current active"><a class="current reference internal" href="#">openghg_inversions.rhime.prepared</a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.runner.html">openghg_inversions.rhime.runner</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.sampling.html">openghg_inversions.rhime.sampling</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.specs.html">openghg_inversions.rhime.specs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.standard.html">openghg_inversions.rhime.standard</a></li>
@@ -482,12 +482,35 @@
 <p>Advanced RHIME entry point for already prepared scientific inputs.</p>
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.prepared.run_rhime_from_prepared_inputs">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.rhime.prepared.</span></span><span class="sig-name descname"><span class="pre">run_rhime_from_prepared_inputs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">prepared_inputs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.inversion_data.preparation.html#openghg_inversions.inversion_data.preparation.RhimePreparedInputs" title="openghg_inversions.inversion_data.preparation.RhimePreparedInputs"><span class="pre">RhimePreparedInputs</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">run_spec</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.rhime.specs.html#openghg_inversions.rhime.specs.RhimeRunSpec" title="openghg_inversions.rhime.specs.RhimeRunSpec"><span class="pre">RhimeRunSpec</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">sampler</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.rhime.sampling.html#openghg_inversions.rhime.sampling.RhimeSampler" title="openghg_inversions.rhime.sampling.RhimeSampler"><span class="pre">RhimeSampler</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model_builder</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.rhime.builders.html#openghg_inversions.rhime.builders.RhimeModelBuilder" title="openghg_inversions.rhime.builders.RhimeModelBuilder"><span class="pre">RhimeModelBuilder</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">likelihood_builder</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.models.rhime_likelihood.html#openghg_inversions.models.rhime_likelihood.RhimeLikelihoodBuilder" title="openghg_inversions.models.rhime_likelihood.RhimeLikelihoodBuilder"><span class="pre">RhimeLikelihoodBuilder</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="openghg_inversions.rhime.outputs.html#openghg_inversions.rhime.outputs.RhimeResult" title="openghg_inversions.rhime.outputs.RhimeResult"><span class="pre">RhimeResult</span></a></span></span><a class="headerlink" href="#openghg_inversions.rhime.prepared.run_rhime_from_prepared_inputs" title="Link to this definition">#</a></dt>
+<span class="sig-prename descclassname"><span class="pre">openghg_inversions.rhime.prepared.</span></span><span class="sig-name descname"><span class="pre">run_rhime_from_prepared_inputs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">prepared_inputs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.inversion_data.preparation.html#openghg_inversions.inversion_data.preparation.RhimePreparedInputs" title="openghg_inversions.inversion_data.preparation.RhimePreparedInputs"><span class="pre">RhimePreparedInputs</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">run_spec</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.rhime.specs.html#openghg_inversions.rhime.specs.RhimeRunSpec" title="openghg_inversions.rhime.specs.RhimeRunSpec"><span class="pre">RhimeRunSpec</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">sampler</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.rhime.sampling.html#openghg_inversions.rhime.sampling.RhimeSampler" title="openghg_inversions.rhime.sampling.RhimeSampler"><span class="pre">RhimeSampler</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model_builder</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.rhime.builders.html#openghg_inversions.rhime.builders.RhimeModelBuilder" title="openghg_inversions.rhime.builders.RhimeModelBuilder"><span class="pre">RhimeModelBuilder</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">likelihood_builder</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.rhime.builders.html#openghg_inversions.rhime.builders.RhimeLikelihoodBuilder" title="openghg_inversions.rhime.builders.RhimeLikelihoodBuilder"><span class="pre">RhimeLikelihoodBuilder</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="openghg_inversions.rhime.outputs.html#openghg_inversions.rhime.outputs.RhimeResult" title="openghg_inversions.rhime.outputs.RhimeResult"><span class="pre">RhimeResult</span></a></span></span><a class="headerlink" href="#openghg_inversions.rhime.prepared.run_rhime_from_prepared_inputs" title="Link to this definition">#</a></dt>
 <dd><p>Build, sample, and output RHIME from a canonical prepared handoff.</p>
 <p>This advanced route intentionally starts after retrieval, filtering, basis
 construction, sensitivity construction, and labelled-input assembly. It
 validates the retained scientific layout before crossing the PyMC
 materialization boundary.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>prepared_inputs</strong> – Validated canonical inversion inputs and retained
+basis functions.</p></li>
+<li><p><strong>run_spec</strong> – Resolved model, output, and run settings.</p></li>
+<li><p><strong>sampler</strong> – Optional sampler configuration; defaults to <code class="docutils literal notranslate"><span class="pre">RhimeSampler</span></code>.</p></li>
+<li><p><strong>model_builder</strong> – Optional complete-model callable for advanced graphs.</p></li>
+<li><p><strong>likelihood_builder</strong> – Optional ordinary likelihood callable used with
+the built-in graph.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Sampled result with any requested output products attached.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If layouts, extension points, aggregation error, or output
+    settings are inconsistent.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#TypeError" title="(in Python v3.14)"><strong>TypeError</strong></a> – If an extension point has an invalid callable contract.</p></li>
+</ul>
+</dd>
+</dl>
 </dd></dl>
 
 </section>
@@ -512,11 +535,11 @@ materialization boundary.</p>
       </div>
     </a>
     <a class="right-next"
-       href="openghg_inversions.rhime.runner.html"
+       href="openghg_inversions.rhime.sampling.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">openghg_inversions.rhime.runner</p>
+        <p class="prev-next-title">openghg_inversions.rhime.sampling</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>

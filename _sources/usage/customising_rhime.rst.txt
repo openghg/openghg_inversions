@@ -68,12 +68,12 @@ The complete integration is one named argument:
        likelihood_builder=likelihood_builder,
    )
 
-RHIME calls the function as ``likelihood_builder(context)`` while constructing
-the PyMC model. It returns a
-:class:`~openghg_inversions.models.RhimeLikelihoodResult`, which contains the
-new observed variable and the small amount of information RHIME needs for
-sampling and output. An ordinary caller does not construct the context or
-these supporting records.
+RHIME calls the function with explicit keyword arguments while constructing
+the PyMC model: the prepared observations, completed forward-model mean,
+pollution contribution, pollution-event baseline, sigma alignment and prior, and
+the selected error policies. The function adds ``epsilon`` and the canonical
+observed variable ``y`` to the active model and returns ``y``. There is no
+framework context or likelihood-result record to construct.
 
 Editable likelihood
 ~~~~~~~~~~~~~~~~~~~
@@ -86,23 +86,30 @@ construction:
    :language: python
    :linenos:
 
-RHIME records the function's module and name, together with its likelihood
-metadata, in the result and in saved output. It does not copy the Python source
-code into the output, so a project should keep the source and environment used
-for an inversion.
-
-The returned ``RhimeLikelihoodResult`` maps standard meanings to the PyMC
-variable names used by this model. For example, it tells RHIME that
-``student_y`` is the modelled concentration and ``epsilon`` is the model-error
-scale. Sampling and output code can then find these quantities even though the
-custom model uses different names. It also lists the output formats that have
-been checked with this likelihood; this example supports no file output
-(``none``) and the ``inv_out`` format. The Student-t family and degrees of
-freedom are stored as simple metadata.
+RHIME records the function's module and name in the result and in saved output.
+It does not copy the Python source code into the output, so a project should
+keep the source and environment used for an inversion. Ordinary likelihood
+builders retain the canonical ``y`` and ``epsilon`` names used by sampling and
+output code.
 
 The example rejects dense and low-rank aggregation covariance because it uses
 an independent Student-t distribution. Supporting those aggregation-error
 modes would require a multivariate likelihood.
+
+The same example module also contains
+``additive_sigma_likelihood_builder``. This is the small RHIME adapter from
+``rhime.likelihoods``; it delegates to the installed
+``models.additive_sigma.add_additive_sigma_gaussian_likelihood`` component,
+which adds ``sigma**2`` directly to the reported observation-error variance
+rather than multiplying sigma by a pollution event. Explicitly selected
+aggregation covariance is supported::
+
+   from my_project.likelihoods import additive_sigma_likelihood_builder
+
+   result = run_rhime(
+       config_file="config.ini",
+       likelihood_builder=additive_sigma_likelihood_builder,
+   )
 
 Optional project CLI
 ~~~~~~~~~~~~~~~~~~~~
@@ -174,13 +181,15 @@ Then the equivalent command is::
    uv run my-inversion inversion.ini \
        --kwargs '{"output_path": "outputs", "output_format": "inv_out"}'
 
-The example and its package-shaped test use only documented names from
-``openghg_inversions.rhime``. The dependency direction is therefore the
-generated project to OpenGHG Inversions; OpenGHG Inversions does not import the
-consumer package. Pin the release or commit used for a scientific run in the
-downstream project's lockfile. An optional RHIME recipe or generated-project
-CI in the generic cookiecutter would be a separate cross-repository change and
-is not required for this workflow.
+The generated runner uses documented names from ``openghg_inversions.rhime``.
+Its likelihood module imports reusable components from their documented owner
+modules: ``models.pollution_event``, ``observation_error``, and ``sigma``.
+The dependency direction is therefore the generated project to OpenGHG
+Inversions; OpenGHG Inversions does not import the consumer package. Pin the
+release or commit used for a scientific run in the downstream project's
+lockfile. An optional RHIME recipe or generated-project CI in the generic
+cookiecutter would be a separate cross-repository change and is not required
+for this workflow.
 
 Copy the complete runner
 ------------------------
@@ -193,7 +202,7 @@ replacing the complete model, or deliberately starting from a different
 preparation graph.
 
 The deliberate change is the likelihood passed to
-``build_standard_rhime_model``: the example selects the same project-owned
+``build_standard_rhime_model_result``: the example selects the same project-owned
 Student-t builder as the preferred form. Acquisition, filtering, basis
 construction, labelled input assembly, conversion of delayed arrays for PyMC,
 sampling, predictive selection, filenames, and output handling remain

@@ -358,12 +358,12 @@
 </ul>
 </details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.models.html">openghg_inversions.models</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.additive_sigma.html">openghg_inversions.models.additive_sigma</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.components.html">openghg_inversions.models.components</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.coords.html">openghg_inversions.models.coords</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.likelihoods.html">openghg_inversions.models.likelihoods</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.pollution_event.html">openghg_inversions.models.pollution_event</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.priors.html">openghg_inversions.models.priors</a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.rhime.html">openghg_inversions.models.rhime</a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.rhime_likelihood.html">openghg_inversions.models.rhime_likelihood</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.state_activity.html">openghg_inversions.models.state_activity</a></li>
 </ul>
 </details></li>
@@ -381,13 +381,13 @@
 </details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.rhime.html">openghg_inversions.rhime</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.builders.html">openghg_inversions.rhime.builders</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.likelihoods.html">openghg_inversions.rhime.likelihoods</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.materialization.html">openghg_inversions.rhime.materialization</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.multisector.html">openghg_inversions.rhime.multisector</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.outputs.html">openghg_inversions.rhime.outputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.params.html">openghg_inversions.rhime.params</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.preparation.html">openghg_inversions.rhime.preparation</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.prepared.html">openghg_inversions.rhime.prepared</a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.runner.html">openghg_inversions.rhime.runner</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.sampling.html">openghg_inversions.rhime.sampling</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.specs.html">openghg_inversions.rhime.specs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.standard.html">openghg_inversions.rhime.standard</a></li>
@@ -566,8 +566,9 @@ option to a specific stats function, write the key in the form “&lt;stat
 function name&gt;__&lt;key&gt;”, with a double underscore.
 For instance, stats_args = {“mode_kde__chunk_size”: 20} would pass the
 argument chunk_size = 20 to the stat function mode_kde, and no others.</p></li>
-<li><p><strong>combine_bc_and_offset</strong> – If True, the offset is added to the baseline (before stats
-are calculated).</p></li>
+<li><p><strong>combine_bc_and_offset</strong> – If true, report the current PARIS baseline
+convention: boundary plus offset. A declared complete baseline is
+used only when no separate boundary is available.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>

@@ -358,12 +358,12 @@
 </ul>
 </details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.models.html">openghg_inversions.models</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.additive_sigma.html">openghg_inversions.models.additive_sigma</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.components.html">openghg_inversions.models.components</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.coords.html">openghg_inversions.models.coords</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.likelihoods.html">openghg_inversions.models.likelihoods</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.pollution_event.html">openghg_inversions.models.pollution_event</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.priors.html">openghg_inversions.models.priors</a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.rhime.html">openghg_inversions.models.rhime</a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.rhime_likelihood.html">openghg_inversions.models.rhime_likelihood</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.state_activity.html">openghg_inversions.models.state_activity</a></li>
 </ul>
 </details></li>
@@ -381,13 +381,13 @@
 </details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.rhime.html">openghg_inversions.rhime</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.builders.html">openghg_inversions.rhime.builders</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.likelihoods.html">openghg_inversions.rhime.likelihoods</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.materialization.html">openghg_inversions.rhime.materialization</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.multisector.html">openghg_inversions.rhime.multisector</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.outputs.html">openghg_inversions.rhime.outputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.params.html">openghg_inversions.rhime.params</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.preparation.html">openghg_inversions.rhime.preparation</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.prepared.html">openghg_inversions.rhime.prepared</a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.runner.html">openghg_inversions.rhime.runner</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.sampling.html">openghg_inversions.rhime.sampling</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.specs.html">openghg_inversions.rhime.specs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.standard.html">openghg_inversions.rhime.standard</a></li>
@@ -486,6 +486,18 @@ covariance, or diagnostically as independent standard deviations.</p>
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">openghg_inversions.observation_error.</span></span><span class="sig-name descname"><span class="pre">AggregationError</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mode</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><span class="pre">Literal</span></a><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'none'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'dense'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'low_rank'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'diagonal'</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">marginal_variance</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><span class="pre">ndarray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">covariance</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">factor</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">diagonal_variance</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.observation_error.AggregationError" title="Link to this definition">#</a></dt>
 <dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
 <p>Validated aggregation-error representation selected for a likelihood.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>mode</strong> – Concrete covariance representation.</p></li>
+<li><p><strong>marginal_variance</strong> – Observation-aligned covariance diagonal.</p></li>
+<li><p><strong>covariance</strong> – Optional dense covariance matrix.</p></li>
+<li><p><strong>factor</strong> – Optional low-rank covariance factor.</p></li>
+<li><p><strong>diagonal_variance</strong> – Optional independent residual variance for a
+low-rank representation.</p></li>
+</ul>
+</dd>
+</dl>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="openghg_inversions.observation_error.AggregationError.covariance">
 <span class="sig-name descname"><span class="pre">covariance</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#openghg_inversions.observation_error.AggregationError.covariance" title="Link to this definition">#</a></dt>
@@ -521,6 +533,26 @@ covariance, or diagnostically as independent standard deviations.</p>
 <code class="docutils literal notranslate"><span class="pre">aggregation_error_sd</span></code> because that vector is commonly retained as a
 marginal diagnostic beside the exact covariance.  Supplying both dense and
 low-rank forms is ambiguous and therefore requires an explicit selection.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>data</strong> – Prepared inversion inputs containing the requested aggregation-
+error representation.</p></li>
+<li><p><strong>mode</strong> – Representation to use, or <code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code> to select from available
+inputs.</p></li>
+<li><p><strong>output_dim</strong> – Observation dimension used by error vectors and the first
+covariance dimension.</p></li>
+<li><p><strong>covariance_dim</strong> – Second dimension required for a dense covariance.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Validated aggregation-error arrays and their marginal variance.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If the selected inputs are absent, malformed, inconsistent,
+    non-finite, or not a valid covariance representation.</p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py function">
@@ -550,6 +582,20 @@ the available inputs.</p></li>
 <dt class="sig sig-object py" id="openghg_inversions.observation_error.validate_observation_error_inputs">
 <span class="sig-prename descclassname"><span class="pre">openghg_inversions.observation_error.</span></span><span class="sig-name descname"><span class="pre">validate_observation_error_inputs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_dim</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'nmeasure'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span></span><a class="headerlink" href="#openghg_inversions.observation_error.validate_observation_error_inputs" title="Link to this definition">#</a></dt>
 <dd><p>Validate observations and independent diagonal error inputs.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>data</strong> – Prepared inversion inputs containing <code class="docutils literal notranslate"><span class="pre">mf</span></code>, <code class="docutils literal notranslate"><span class="pre">mf_error</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">min_error</span></code>.</p></li>
+<li><p><strong>output_dim</strong> – Observation dimension required on each validated input.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If a required input is absent, not an observation-aligned
+    vector, non-numeric, non-finite, or negative where an error must
+    be non-negative.</p>
+</dd>
+</dl>
 </dd></dl>
 
 </section>
