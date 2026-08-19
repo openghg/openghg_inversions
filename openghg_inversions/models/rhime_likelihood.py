@@ -208,21 +208,20 @@ def build_rhime_observation_state(context: RhimeLikelihoodContext) -> RhimeObser
     error_data = add_model_data(data["mf_error"].transpose(output_dim), "error")
     min_error_data = add_model_data(data["min_error"].transpose(output_dim), "min_error")
 
-    sigma = add_sigma_component(context.sigma_alignment, prior_args=dict(context.sigma_prior))
-    if context.pollution_events_from_obs:
-        pollution_event = (
-            pt.abs(y_data - context.baseline_mean)
-            if context.baseline_mean is not None
-            else pt.abs(y_data) + 1e-6 * pt.mean(y_data)
-        )
-    else:
-        pollution_event = pt.abs(context.pollution_mean)
-
     if context.no_model_error:
         mean_obs = np.nanmean(data["mf"].values)
         small_amount = pm.floatX(1e-12 * mean_obs)
         independent_variance = cast(Any, pt.maximum)(error_data**2, small_amount**2)
     else:
+        sigma = add_sigma_component(context.sigma_alignment, prior_args=dict(context.sigma_prior))
+        if context.pollution_events_from_obs:
+            pollution_event = (
+                pt.abs(y_data - context.baseline_mean)
+                if context.baseline_mean is not None
+                else pt.abs(y_data) + 1e-6 * pt.mean(y_data)
+            )
+        else:
+            pollution_event = pt.abs(context.pollution_mean)
         power0 = parse_prior("power", dict(context.power)) if isinstance(context.power, Mapping) else context.power
         model_error_variance = pt.pow(pollution_event * sigma, power0)
         raw_independent_variance = error_data**2 + model_error_variance
@@ -353,7 +352,7 @@ def add_rhime_likelihood_component(
     power: dict | float = 1.99,
     pollution_events_from_obs: bool = False,
     no_model_error: bool = False,
-    aggregation_error_mode: AggregationErrorMode = "auto",
+    aggregation_error_mode: AggregationErrorMode = "none",
     output_dim: str = "nmeasure",
 ) -> TensorVariable:
     """Add the modern RHIME observation model.

@@ -11,12 +11,12 @@ not build a model, retrieve data, sample, or write outputs.
 
 import pymc as pm
 
-from openghg_inversions.rhime import (
+from openghg_inversions.models.rhime_likelihood import (
     RhimeLikelihoodContext,
     RhimeLikelihoodResult,
     build_rhime_observation_state,
-    select_aggregation_error_mode,
 )
+from openghg_inversions.observation_error import select_aggregation_error_mode
 
 
 def likelihood_builder(context: RhimeLikelihoodContext) -> RhimeLikelihoodResult:

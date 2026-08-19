@@ -73,41 +73,43 @@ mean of the observed distribution is therefore
 
 where omitted components are left out of the sum.
 
-The default RHIME error model uses observation error, a minimum error, and an
-observation-aligned model-error scale ``sigma``. Unless
-``pollution_events_from_obs`` is selected,
+The default RHIME error model uses observation error, a minimum error, fixed
+aggregation-error covariance :math:`C_{agg}`, and an observation-aligned
+model-error scale ``sigma``. Let :math:`v_{agg}` be the diagonal of
+:math:`C_{agg}`. Unless ``pollution_events_from_obs`` is selected, its
+independent variance and reported marginal error scale are
 
 .. math::
 
-   \epsilon =
-   \max\left(
-     \sqrt{
-       \mathrm{error}^2 +
-       \left(\left|\mu\right|\sigma\right)^{\mathrm{power}}
-     },
-     \mathrm{min\_error}
+   v_{raw} &= \mathrm{error}^2 +
+     \left(\left|\mu\right|\sigma\right)^{\mathrm{power}}, \\
+   v_{ind} &= v_{raw} +
+     \max\left(\mathrm{min\_error}^2 - v_{raw} - v_{agg}, 0\right), \\
+   \epsilon &= \sqrt{v_{ind} + v_{agg}}.
+
+The current observed distribution retains the complete aggregation covariance,
+not only its marginal variance:
+
+.. math::
+
+   y \sim \mathcal{N}\left(
+     \mu_{\mathrm{obs}},
+     \operatorname{diag}(v_{ind}) + C_{agg}
    \right).
-
-The current observed distribution is
-
-.. math::
-
-   y \sim \mathcal{N}(\mu_{\mathrm{obs}}, \epsilon).
 
 The opt-in ``build_absolute_sigma_gaussian_likelihood`` instead treats sigma
 as an absolute observation-scale standard deviation:
 
 .. math::
 
-   \epsilon_{\mathrm{absolute}} =
-   \max\left(
-     \sqrt{
-       \mathrm{error}^2 +
-       \mathrm{aggregation\_error}^2 +
-       \sigma^2
-     },
-     \mathrm{min\_error}
-   \right).
+   v_{raw,\mathrm{absolute}} &= \mathrm{error}^2 + \sigma^2, \\
+   v_{ind,\mathrm{absolute}} &= v_{raw,\mathrm{absolute}} +
+     \max\left(
+       \mathrm{min\_error}^2 - v_{raw,\mathrm{absolute}} - v_{agg},
+       0
+     \right), \\
+   \epsilon_{\mathrm{absolute}} &=
+     \sqrt{v_{ind,\mathrm{absolute}} + v_{agg}}.
 
 Diagonal aggregation error uses ``aggregation_error_sd`` directly. Dense and
 low-rank representations retain their full covariance while applying the same
@@ -193,9 +195,12 @@ helpers:
 
    from openghg_inversions.models import (
        CoordRegistry,
-       add_inferpymc_likelihood_component,
        add_linear_component,
        attach_coord_registry,
+   )
+   from openghg_inversions.models.rhime_likelihood import (
+       RhimeLikelihoodContext,
+       build_gaussian_rhime_likelihood,
    )
    from openghg_inversions.sigma import SigmaAlignment
 
@@ -238,13 +243,24 @@ helpers:
            output_name="mu_bc",
            output_dim="nmeasure",
        )
-       add_inferpymc_likelihood_component(
-           inv_inputs,
-           mu=flux.output,
-           mu_bc=boundary.output,
-           sigprior=sigma_prior,
-           sigma_alignment=sigma_alignment,
-           output_dim="nmeasure",
+       pollution_mean = flux.output
+       baseline_mean = boundary.output
+       modelled_mean = pollution_mean + baseline_mean
+
+       build_gaussian_rhime_likelihood(
+           RhimeLikelihoodContext(
+               data=inv_inputs,
+               mean=modelled_mean,
+               pollution_mean=pollution_mean,
+               baseline_mean=baseline_mean,
+               sigma_alignment=sigma_alignment,
+               sigma_prior=sigma_prior,
+               power=1.99,
+               pollution_events_from_obs=False,
+               no_model_error=False,
+               aggregation_error_mode="auto",
+               output_dim="nmeasure",
+           )
        )
 
 This example is deliberately concrete and editable. It is suitable when a
@@ -315,10 +331,10 @@ ordinary runner:
 
 .. code-block:: python
 
-   from openghg_inversions.rhime import (
+   from openghg_inversions.models.rhime_likelihood import (
        build_absolute_sigma_gaussian_likelihood,
-       run_rhime,
    )
+   from openghg_inversions.rhime import run_rhime
 
    result = run_rhime(
        config_file="config.ini",
@@ -426,8 +442,9 @@ The compatibility rules are explicit:
 The built-in standard and multisector builders produce the same
 ``RhimeModelBuildResult`` contract on ``RhimeResult.model_build_result``. Their
 sector roles use keys such as ``flux_scale:FF`` and
-``flux_contribution:FF``. Existing builder functions continue returning a
-plain ``pm.Model`` for source compatibility.
+``flux_contribution:FF``. The low-level recipe builders return a plain
+``pm.Model``; the corresponding ``*_model_result`` wrappers add the runner and
+output metadata contract.
 
 The more general semantic model and observation-channel representation remains
 tracked in `issue #528 <https://github.com/openghg/openghg_inversions/issues/528>`_.

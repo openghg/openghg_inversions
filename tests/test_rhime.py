@@ -50,8 +50,8 @@ from openghg_inversions.flux_sanitization import (
 from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs, prepare_rhime_inputs
 from openghg_inversions.inversion_inputs import make_inv_inputs
 from openghg_inversions.models import StateActivity
-from openghg_inversions.rhime._flux import safe_pymc_name
-from openghg_inversions.rhime.likelihood import (
+from openghg_inversions.models._flux import safe_pymc_name
+from openghg_inversions.models.rhime_likelihood import (
     RhimeLikelihoodContext,
     RhimeLikelihoodResult,
     build_absolute_sigma_gaussian_likelihood,

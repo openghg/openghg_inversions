@@ -15,7 +15,7 @@ from openghg_inversions.models.components import (
     resolve_model_variable,
 )
 from openghg_inversions.models.coords import CoordRegistry, attach_coord_registry
-from openghg_inversions.rhime.likelihood import (
+from openghg_inversions.models.rhime_likelihood import (
     RhimeLikelihoodContext,
     build_absolute_sigma_gaussian_likelihood,
 )

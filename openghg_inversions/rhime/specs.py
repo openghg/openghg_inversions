@@ -72,7 +72,8 @@ class RhimeModelSpec:
             enhancements instead of modelled enhancements.
         no_model_error: Whether explicit model-error terms are disabled.
         aggregation_error_mode: Fixed aggregation-error covariance
-            representation. ``"auto"`` selects from prepared inputs.
+            representation. The default ``"none"`` preserves the ordinary
+            model; other modes are an explicit opt-in.
         power: Exponent or prior specification used in likelihood error scaling.
         bc_prior: Prior specification for boundary-condition scaling factors.
         sigma_prior: Prior specification for model-error terms.
@@ -102,7 +103,7 @@ class RhimeModelSpec:
     add_offset: bool = False
     pollution_events_from_obs: bool = False
     no_model_error: bool = False
-    aggregation_error_mode: AggregationErrorMode = field(default="auto", kw_only=True)
+    aggregation_error_mode: AggregationErrorMode = field(default="none", kw_only=True)
     power: PriorArgs | float = 1.99
     bc_prior: PriorArgs | None = None
     sigma_prior: PriorArgs | None = None

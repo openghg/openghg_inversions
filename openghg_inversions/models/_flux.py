@@ -1,4 +1,4 @@
-"""Resolve RHIME flux declarations for concrete model recipes.
+"""Resolve reusable flux declarations for linear model recipes.
 
 Semantic sector names remain separate from OpenGHG source labels and backend
 variable suffixes. Rectangular shared-basis and gathered source-specific layouts

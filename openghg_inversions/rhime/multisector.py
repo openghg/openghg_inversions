@@ -21,21 +21,21 @@ from openghg_inversions.models.components import (
 )
 from openghg_inversions.models.coords import CoordRegistry, attach_coord_registry
 from openghg_inversions.models.priors import PriorArgs
-from openghg_inversions.models.state_activity import StateActivity
-from openghg_inversions.observation_error import AggregationErrorMode
-from openghg_inversions.sigma import SigmaAlignment
-
-from ._flux import (
+from openghg_inversions.models._flux import (
     _resolve_multisector_components,
     _resolve_sector_bindings,
     _select_sector_design,
 )
-from .likelihood import (
+from openghg_inversions.models.rhime_likelihood import (
     _LIKELIHOOD_RESULT_ATTR,
     _build_rhime_likelihood,
     RhimeLikelihoodBuilder,
     RhimeLikelihoodContext,
 )
+from openghg_inversions.models.state_activity import StateActivity
+from openghg_inversions.observation_error import AggregationErrorMode
+from openghg_inversions.sigma import SigmaAlignment
+
 from .specs import (
     DEFAULT_BC_PRIOR,
     DEFAULT_OFFSET_PRIOR,
@@ -87,7 +87,7 @@ def build_multisector_rhime_model(
     use_bc: bool = True,
     pollution_events_from_obs: bool = False,
     no_model_error: bool = False,
-    aggregation_error_mode: AggregationErrorMode = "auto",
+    aggregation_error_mode: AggregationErrorMode = "none",
     offset_args: dict | None = None,
     power: PriorArgs | float = 1.99,
     state_activity: StateActivity | None = None,

@@ -8,7 +8,7 @@ from scipy.stats import multivariate_normal
 
 from openghg_inversions.models.coords import CoordRegistry, attach_coord_registry
 from openghg_inversions.models.likelihoods import add_gaussian_observation_likelihood
-from openghg_inversions.rhime.likelihood import add_rhime_likelihood_component
+from openghg_inversions.models.rhime_likelihood import add_rhime_likelihood_component
 from openghg_inversions.observation_error import resolve_aggregation_error
 from openghg_inversions.sigma import SigmaAlignment
 
@@ -143,3 +143,32 @@ def test_no_model_error_ignores_floor_but_includes_structured_marginal() -> None
     expected = np.sqrt(data["mf_error"].values**2 + np.diag(covariance))
     np.testing.assert_allclose(model.named_vars["epsilon"].eval(), expected)
     assert "model_error" not in model.named_vars
+    assert "sigma" not in model.named_vars
+
+
+def test_observation_derived_pollution_event_subtracts_complete_baseline() -> None:
+    """Boundary and offset terms are both excluded from the pollution event."""
+    data = _base_data()
+    data["mf_error"] = ("nmeasure", np.zeros(3))
+    sigma_alignment = SigmaAlignment.from_frequency(
+        data["site_indicator"], frequency=None, per_site=False
+    )
+    with pm.Model(coords={"nmeasure": np.arange(3)}) as model:
+        attach_coord_registry(model, CoordRegistry())
+        pollution_mean = pm.Data("mu_input", np.zeros(3), dims="nmeasure")
+        boundary_mean = pm.Data("mu_bc_input", np.full(3, 0.25), dims="nmeasure")
+        offset = pm.Data("offset_input", np.full(3, 0.5), dims="nmeasure")
+        add_rhime_likelihood_component(
+            data,
+            mu=pollution_mean,
+            mu_bc=boundary_mean,
+            offset=offset,
+            sigprior={"pdf": "uniform", "lower": 0.5, "upper": 0.500001},
+            sigma_alignment=sigma_alignment,
+            pollution_events_from_obs=True,
+            power=2.0,
+        )
+
+    sigma = np.asarray(model.named_vars["sigma"].eval()).item()
+    expected = np.abs(data["mf"].values - 0.25 - 0.5) * sigma
+    np.testing.assert_allclose(model.named_vars["epsilon"].eval(), expected)

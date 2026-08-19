@@ -21,8 +21,8 @@ from typing import Any, cast
 from openghg_inversions._timing import log_timing, timer_seconds, timer_start
 from openghg_inversions.config import config
 from openghg_inversions.model_error import normalise_min_error_options
+from openghg_inversions.models._flux import safe_pymc_name
 from openghg_inversions.observation_error import AggregationErrorMode
-from openghg_inversions.rhime._flux import safe_pymc_name
 from openghg_inversions.rhime.sampling import RhimeSampler
 from openghg_inversions.rhime.specs import (
     DEFAULT_X_PRIOR,
@@ -711,7 +711,7 @@ def make_rhime_runner_setup(
     power = remaining.pop("power", 1.99)
     aggregation_error_mode = cast(
         AggregationErrorMode,
-        remaining.pop("aggregation_error_mode", "auto"),
+        remaining.pop("aggregation_error_mode", "none"),
     )
 
     sampler = RhimeSampler(

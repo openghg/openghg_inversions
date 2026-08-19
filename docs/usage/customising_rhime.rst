@@ -70,7 +70,7 @@ The complete integration is one named argument:
 
 RHIME calls the function as ``likelihood_builder(context)`` while constructing
 the PyMC model. It returns a
-:class:`~openghg_inversions.models.RhimeLikelihoodResult`, which contains the
+:class:`~openghg_inversions.models.rhime_likelihood.RhimeLikelihoodResult`, which contains the
 new observed variable and the small amount of information RHIME needs for
 sampling and output. An ordinary caller does not construct the context or
 these supporting records.
