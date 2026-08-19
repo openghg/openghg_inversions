@@ -24,7 +24,7 @@ def additive_sigma_likelihood_builder(
     mean: TensorVariable,
     pollution_mean: TensorVariable,
     pollution_event_baseline: TensorVariable | None,
-    sigma_alignment: SigmaAlignment,
+    sigma_alignment: SigmaAlignment | None,
     sigma_prior: Mapping[str, Any],
     power: Mapping[str, Any] | float,
     pollution_events_from_obs: bool,
@@ -49,7 +49,8 @@ def additive_sigma_likelihood_builder(
             mismatch variance.
         pollution_event_baseline: Baseline used by pollution-event-scaled
             likelihoods, unused by additive mismatch variance.
-        sigma_alignment: Mapping from observations to mismatch parameters.
+        sigma_alignment: Mapping from observations to mismatch parameters when
+            model error is enabled.
         sigma_prior: Prior arguments used to construct ``sigma``.
         power: Pollution-event exponent, unused by additive mismatch variance.
         pollution_events_from_obs: Pollution-event source policy, unused by

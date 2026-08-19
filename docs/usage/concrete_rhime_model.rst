@@ -339,28 +339,28 @@ and optional offset contributions are composed visibly before the likelihood
 seam. A likelihood builder owns error construction and the observed
 distribution. RHIME passes the completed concentration, pollution contribution,
 pollution-event baseline, prepared observations and errors, a validated
-``AggregationError``, sigma alignment and prior, error policies, and output
-dimension as explicit arguments.
+``AggregationError``, and output dimension as explicit arguments. Options
+specific to that likelihood travel separately in ``likelihood_kwargs``.
 The builder adds and returns the canonical observed variable ``y`` and also
 adds the canonical marginal error scale ``epsilon``.
 
-The editable example in :doc:`customising_rhime` imports the small RHIME
-adapter for the installed additive-sigma Gaussian likelihood. Pass that
-adapter directly to the ordinary runner:
+The editable example in :doc:`customising_rhime` implements a fixed-error
+Student-t likelihood using only those common inputs. Pass it directly to the
+ordinary runner:
 
 .. code-block:: python
 
-   from my_project.likelihoods import additive_sigma_likelihood_builder
+   from my_project.likelihoods import likelihood_builder
    from openghg_inversions.rhime import run_rhime
 
    result = run_rhime(
        config_file="config.ini",
-       likelihood_builder=additive_sigma_likelihood_builder,
+       likelihood_builder=likelihood_builder,
    )
 
-This model adds ``sigma**2`` to observation-error variance and supports the
-same explicitly selected fixed aggregation covariance representations. It is
-not part of the ordinary pollution-event-scaled model.
+This example supports independent fixed aggregation-error representations. A
+custom likelihood with additional options declares them in its own signature,
+and the runner supplies only those values through ``likelihood_kwargs``.
 
 Pass ``add_offset=True`` and ``offset_args={"per_site": False}`` as Python or
 configuration options to combine it with one global scalar offset. The

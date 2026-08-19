@@ -119,6 +119,7 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
             "model_inputs": model_inputs,
             "run_spec": run_spec,
             "likelihood_builder": likelihoods.likelihood_builder,
+            "likelihood_kwargs": None,
             "preserve_legacy_likelihood": False,
         }
         calls.append("build")
@@ -148,7 +149,7 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
     monkeypatch.setattr(
         rhime_runner,
         "standard_model_input_names",
-        lambda _actual, _model: ("H", "mf", "mf_error", "min_error"),
+        lambda _actual, _model, **_kwargs: ("H", "mf", "mf_error", "min_error"),
     )
     monkeypatch.setattr(rhime_runner, "materialize_pymc_inputs", materialize)
     monkeypatch.setattr(rhime_runner, "build_standard_rhime_model_result", build)
@@ -213,6 +214,7 @@ def test_consumer_imports_only_public_supported_modules(module_path: str | None)
     for node in imports:
         if isinstance(node, ast.ImportFrom) and (node.module or "").startswith("openghg_inversions"):
             assert node.module in {
+                "openghg_inversions.models.additive_sigma",
                 "openghg_inversions.models.pollution_event",
                 "openghg_inversions.observation_error",
                 "openghg_inversions.rhime",

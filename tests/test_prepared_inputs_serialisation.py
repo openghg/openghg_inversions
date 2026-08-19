@@ -552,15 +552,15 @@ def test_real_prepared_inputs_save_load_and_run_without_repreparation(
         raise AssertionError("loaded prepared inputs must bypass preparation")
 
     def fake_builder(
-        emissions_sensitivity: xr.DataArray,
+        flux_sensitivity: xr.DataArray,
         **kwargs: Any,
     ) -> pm.Model:
         """Record the loaded builder inputs and build the real canonical graph."""
         assert kwargs["likelihood_builder"] is None
         assert kwargs["preserve_legacy_likelihood"] is False
-        observed["builder_inputs"] = emissions_sensitivity
+        observed["builder_inputs"] = flux_sensitivity
         observed["observations"] = kwargs["observations"]
-        return original_builder(emissions_sensitivity, **kwargs)
+        return original_builder(flux_sensitivity, **kwargs)
 
     def fake_sample(
         self: RhimeSampler,
@@ -914,15 +914,15 @@ def test_loaded_prepared_inputs_run_through_existing_seam(
         raise AssertionError("prepared-input execution must not repeat preparation")
 
     def fake_builder(
-        emissions_sensitivity: xr.DataArray,
+        flux_sensitivity: xr.DataArray,
         **kwargs: Any,
     ) -> pm.Model:
         """Record model-builder inputs and build the real canonical graph."""
         assert kwargs["likelihood_builder"] is None
         assert kwargs["preserve_legacy_likelihood"] is False
-        observed["builder_inputs"] = emissions_sensitivity
+        observed["builder_inputs"] = flux_sensitivity
         observed["observations"] = kwargs["observations"]
-        return original_builder(emissions_sensitivity, **kwargs)
+        return original_builder(flux_sensitivity, **kwargs)
 
     def fake_sample(
         self: RhimeSampler,
@@ -1026,14 +1026,14 @@ def test_multisource_order_survives_load_run_and_reconstruction(
     original_builder = rhime_multisector.build_multisector_rhime_model
 
     def fake_builder(
-        emissions_sensitivity: xr.DataArray,
+        flux_sensitivity: xr.DataArray,
         **kwargs: Any,
     ) -> pm.Model:
         """Record ordered builder inputs and build the real canonical graph."""
         assert kwargs["likelihood_builder"] is None
-        observed["source_order"] = tuple(emissions_sensitivity.source.values)
+        observed["source_order"] = tuple(flux_sensitivity.source.values)
         observed["sectors"] = kwargs["sectors"]
-        return original_builder(emissions_sensitivity, **kwargs)
+        return original_builder(flux_sensitivity, **kwargs)
 
     def fake_sample(
         self: RhimeSampler,

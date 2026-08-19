@@ -159,6 +159,14 @@ It is not a caller-authored manifest and must not determine execution order.
 Ordinary runners should not construct or thread a requirements object through
 the pipeline merely to satisfy a framework contract.
 
+Component registration owns cross-component coordinate consistency. Data
+passed through ``add_model_data`` / ``add_coords`` is checked by the model's
+``CoordRegistry``, so recipes should not repeat pairwise alignment checks for
+arrays that those components register. Validate scientific invariants at the
+component that owns them, and explicitly validate arrays whose labels are
+discarded before registration, such as both observation axes of a dense
+aggregation-error covariance.
+
 Prepared-input inventory and ownership
 --------------------------------------
 
@@ -179,7 +187,7 @@ arrays together, and pass them to components as honest named arguments.
      - Reusable scientific product
      - Sensitivity preparation or an external prepared-data producer
      - Selected by the standard or multisector flux component as
-       ``emissions_sensitivity``
+       ``flux_sensitivity``
    * - ``H_bc``
      - Reusable baseline sensitivity
      - Baseline preparation; its current period expansion remains there

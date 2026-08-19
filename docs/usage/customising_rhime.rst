@@ -70,10 +70,20 @@ The complete integration is one named argument:
 
 RHIME calls the function with explicit keyword arguments while constructing
 the PyMC model: the prepared observations, completed forward-model mean,
-pollution contribution, pollution-event baseline, sigma alignment and prior, and
-the selected error policies. The function adds ``epsilon`` and the canonical
-observed variable ``y`` to the active model and returns ``y``. There is no
-framework context or likelihood-result record to construct.
+pollution contribution, pollution-event baseline, selected aggregation error,
+and output dimension. The function adds ``epsilon`` and the canonical observed
+variable ``y`` to the active model and returns ``y``. There is no framework
+context or likelihood-result record to construct.
+
+Options owned only by a custom likelihood can be supplied separately with
+``likelihood_kwargs``. RHIME expands that mapping into the callable without
+hiding the common scientific arrays in an opaque object::
+
+   result = run_rhime(
+       config_file="config.ini",
+       likelihood_builder=likelihood_builder,
+       likelihood_kwargs={"degrees_of_freedom": 4.0},
+   )
 
 Editable likelihood
 ~~~~~~~~~~~~~~~~~~~
@@ -96,20 +106,10 @@ The example rejects dense and low-rank aggregation covariance because it uses
 an independent Student-t distribution. Supporting those aggregation-error
 modes would require a multivariate likelihood.
 
-The same example module also contains
-``additive_sigma_likelihood_builder``. This is the small RHIME adapter from
-``rhime.likelihoods``; it delegates to the installed
-``models.additive_sigma.add_additive_sigma_gaussian_likelihood`` component,
-which adds ``sigma**2`` directly to the reported observation-error variance
-rather than multiplying sigma by a pollution event. Explicitly selected
-aggregation covariance is supported::
-
-   from my_project.likelihoods import additive_sigma_likelihood_builder
-
-   result = run_rhime(
-       config_file="config.ini",
-       likelihood_builder=additive_sigma_likelihood_builder,
-   )
+The installed ``rhime.likelihoods.additive_sigma_likelihood_builder`` remains
+available as a reusable component adapter for copied recipes. It also needs
+the recipe's resolved sigma alignment and prior, so it is deliberately not a
+drop-in common-input builder for an ordinary runner.
 
 Optional project CLI
 ~~~~~~~~~~~~~~~~~~~~

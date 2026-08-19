@@ -7,6 +7,7 @@ scientist can read or copy this module without reconstructing a pipeline.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -30,7 +31,6 @@ from openghg_inversions.observation_error import (
     OBSERVATION_ERROR_INPUT_NAMES,
     aggregation_error_input_names,
     resolve_aggregation_error,
-    validate_observation_alignment,
 )
 from openghg_inversions.sigma import SigmaAlignment
 
@@ -87,8 +87,27 @@ def _require_component_inputs(
         raise ValueError(f"{owner} requires prepared input(s) {missing!r}.")
 
 
-def standard_model_input_names(prepared: RhimePreparedInputs, model_spec: RhimeModelSpec) -> tuple[str, ...]:
-    """Declare arrays required by the selected standard-model components."""
+def standard_model_input_names(
+    prepared: RhimePreparedInputs,
+    model_spec: RhimeModelSpec,
+    *,
+    preserve_legacy_likelihood: bool = False,
+) -> tuple[str, ...]:
+    """Declare arrays required by selected standard-model components.
+
+    Args:
+        prepared: Backend-neutral prepared inputs.
+        model_spec: Resolved standard-model component options.
+        preserve_legacy_likelihood: Whether the historical compatibility graph
+            retains its disconnected sigma variable.
+
+    Returns:
+        Prepared variable names selected for coordinated materialization.
+
+    Raises:
+        ValueError: If a selected component's required input is absent or its
+            aggregation-error representation is ambiguous.
+    """
     _require_component_inputs(
         prepared,
         _STANDARD_FLUX_INPUT_NAMES,
@@ -99,16 +118,24 @@ def standard_model_input_names(prepared: RhimePreparedInputs, model_spec: RhimeM
         OBSERVATION_ERROR_INPUT_NAMES,
         owner="Observation-error component",
     )
-    _require_component_inputs(
-        prepared,
-        _MODEL_ERROR_ALIGNMENT_INPUT_NAMES,
-        owner="Model-error alignment component",
-    )
     names = [
         *_STANDARD_FLUX_INPUT_NAMES,
         *OBSERVATION_ERROR_INPUT_NAMES,
-        *_MODEL_ERROR_ALIGNMENT_INPUT_NAMES,
     ]
+    if not model_spec.no_model_error or preserve_legacy_likelihood:
+        _require_component_inputs(
+            prepared,
+            _MODEL_ERROR_ALIGNMENT_INPUT_NAMES,
+            owner="Model-error alignment component",
+        )
+        names.extend(_MODEL_ERROR_ALIGNMENT_INPUT_NAMES)
+    elif model_spec.add_offset:
+        _require_component_inputs(
+            prepared,
+            _MODEL_ERROR_ALIGNMENT_INPUT_NAMES,
+            owner="Standard offset component selected by `add_offset=True`",
+        )
+        names.extend(_MODEL_ERROR_ALIGNMENT_INPUT_NAMES)
     if model_spec.use_bc:
         _require_component_inputs(
             prepared,
@@ -133,13 +160,13 @@ def standard_model_input_names(prepared: RhimePreparedInputs, model_spec: RhimeM
 
 
 def build_standard_rhime_model(
-    emissions_sensitivity: xr.DataArray,
+    flux_sensitivity: xr.DataArray,
     *,
     observations: xr.DataArray,
     observation_error: xr.DataArray,
     minimum_error: xr.DataArray,
     aggregation_error: AggregationError,
-    sigma_alignment: SigmaAlignment,
+    sigma_alignment: SigmaAlignment | None = None,
     boundary_sensitivity: xr.DataArray | None = None,
     site_indicator: xr.DataArray | None = None,
     x_prior: PriorArgs | None = None,
@@ -155,17 +182,19 @@ def build_standard_rhime_model(
     state_activity: StateActivity | None = None,
     bc_state_activity: StateActivity | None = None,
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
+    likelihood_kwargs: Mapping[str, Any] | None = None,
     preserve_legacy_likelihood: bool = False,
 ) -> pm.Model:
     """Build the concrete standard single-sector RHIME model.
 
     Args:
-        emissions_sensitivity: Labelled flux sensitivity matrix.
+        flux_sensitivity: Labelled flux sensitivity matrix.
         observations: Observed mole fractions.
         observation_error: Reported observation-error standard deviations.
         minimum_error: Minimum total-error standard deviations.
         aggregation_error: Validated fixed aggregation-error representation.
-        sigma_alignment: Observation alignment for mismatch parameters.
+        sigma_alignment: Observation alignment for mismatch parameters when
+            model error is enabled or the legacy graph retains sigma.
         boundary_sensitivity: Optional labelled boundary sensitivity matrix.
         site_indicator: Optional observation-to-site index used by offsets.
         x_prior: Prior specification for flux scaling factors.
@@ -183,6 +212,8 @@ def build_standard_rhime_model(
         bc_state_activity: Optional active/fixed boundary-state policy.
         likelihood_builder: Optional observation-error and distribution builder.
             It receives the completed model mean from this recipe.
+        likelihood_kwargs: Options specific to a custom likelihood. Common
+            scientific arrays remain explicit and are not included here.
         preserve_legacy_likelihood: Whether to preserve ``run_hbmcmc``'s
             boundary-only pollution event and unused ``sigma`` variable.
 
@@ -200,31 +231,10 @@ def build_standard_rhime_model(
     sigma_prior = dict(DEFAULT_SIGMA_PRIOR if sigma_prior is None else sigma_prior)
     offset_prior = dict(DEFAULT_OFFSET_PRIOR if offset_prior is None else offset_prior)
 
-    validate_observation_alignment(
-        observations,
-        emissions_sensitivity,
-        input_name="emissions_sensitivity",
-        owner="Standard flux component",
-    )
-    if use_bc and boundary_sensitivity is not None:
-        validate_observation_alignment(
-            observations,
-            boundary_sensitivity,
-            input_name="boundary_sensitivity",
-            owner="Standard baseline component",
-        )
-    if add_offset and site_indicator is not None:
-        validate_observation_alignment(
-            observations,
-            site_indicator,
-            input_name="site_indicator",
-            owner="Standard offset component",
-        )
-
     with pm.Model() as model:
         attach_coord_registry(model, CoordRegistry())
         flux_component = add_state_linear_component(
-            emissions_sensitivity,
+            flux_sensitivity,
             data_name="hx",
             prior_args=x_prior,
             var_name="x",
@@ -309,12 +319,8 @@ def build_standard_rhime_model(
                 mean=modelled_mean,
                 pollution_mean=pollution_mean,
                 pollution_event_baseline=pollution_event_baseline,
-                sigma_alignment=sigma_alignment,
-                sigma_prior=sigma_prior,
-                power=power,
-                pollution_events_from_obs=pollution_events_from_obs,
-                no_model_error=no_model_error,
                 output_dim="nmeasure",
+                **dict(likelihood_kwargs or {}),
             )
             validate_custom_likelihood_result(model, likelihood)
 
@@ -328,6 +334,7 @@ def build_standard_rhime_model_result(
     run_spec: RhimeRunSpec,
     model_builder: RhimeModelBuilder | None = None,
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
+    likelihood_kwargs: Mapping[str, Any] | None = None,
     preserve_legacy_likelihood: bool = False,
 ) -> RhimeModelBuildResult:
     """Build the standard graph and describe its output roles.
@@ -340,6 +347,7 @@ def build_standard_rhime_model_result(
             input workflows.
         likelihood_builder: Optional observation-error and distribution builder
             used with the built-in graph.
+        likelihood_kwargs: Options expanded only into the custom likelihood.
         preserve_legacy_likelihood: Whether to preserve the historical
             ``run_hbmcmc`` likelihood graph and pollution-event definition.
 
@@ -366,11 +374,15 @@ def build_standard_rhime_model_result(
         if len(model_spec.sectors) != 1:
             raise ValueError("Standard RHIME model specs must include exactly one sector.")
         sector = model_spec.sectors[0]
-        sigma_alignment = SigmaAlignment.from_frequency(
-            model_inputs["site_indicator"],
-            frequency=model_spec.sigma_freq,
-            per_site=model_spec.sigma_per_site,
-            anchor_time=model_spec.sigma_freq_anchor,
+        sigma_alignment = (
+            SigmaAlignment.from_frequency(
+                model_inputs["site_indicator"],
+                frequency=model_spec.sigma_freq,
+                per_site=model_spec.sigma_per_site,
+                anchor_time=model_spec.sigma_freq_anchor,
+            )
+            if not model_spec.no_model_error or preserve_legacy_likelihood
+            else None
         )
         aggregation_error = resolve_aggregation_error(
             model_inputs,
@@ -403,6 +415,7 @@ def build_standard_rhime_model_result(
             offset_args=model_spec.offset_args,
             power=model_spec.power,
             likelihood_builder=likelihood_builder,
+            likelihood_kwargs=likelihood_kwargs,
             preserve_legacy_likelihood=preserve_legacy_likelihood,
         )
         result = builtin_model_build_result(
@@ -491,6 +504,7 @@ def run_rhime(
     config_file: str | Path | None = None,
     merged_data: RhimeMergedData | None = None,
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
+    likelihood_kwargs: Mapping[str, Any] | None = None,
     preserve_legacy_likelihood: bool = False,
     **kwargs: Any,
 ) -> RhimeResult:
@@ -512,6 +526,8 @@ def run_rhime(
             variable ``y`` and create the canonical error scale ``epsilon``.
             The callable is never read from configuration or stored in
             run/model specifications.
+        likelihood_kwargs: Options specific to the custom likelihood. Common
+            scientific arrays are passed explicitly by the recipe.
         preserve_legacy_likelihood: Private ``run_hbmcmc`` compatibility
             switch. Ordinary RHIME callers should leave it false.
         **kwargs: RHIME run parameters using snake-case names, such as
@@ -574,7 +590,11 @@ def run_rhime(
 
     model_inputs = materialize_pymc_inputs(
         prepared,
-        variable_names=standard_model_input_names(prepared, run_spec.model),
+        variable_names=standard_model_input_names(
+            prepared,
+            run_spec.model,
+            preserve_legacy_likelihood=preserve_legacy_likelihood,
+        ),
     )
     build_and_sample_start = timer_start()
     model_build_result = build_standard_rhime_model_result(
@@ -582,6 +602,7 @@ def run_rhime(
         model_inputs=model_inputs,
         run_spec=run_spec,
         likelihood_builder=likelihood_builder,
+        likelihood_kwargs=likelihood_kwargs,
         preserve_legacy_likelihood=preserve_legacy_likelihood,
     )
     idata = sample_rhime_model(

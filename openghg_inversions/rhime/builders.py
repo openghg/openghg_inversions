@@ -18,7 +18,6 @@ from pytensor.tensor.variable import TensorVariable
 from openghg_inversions.inversion_data import RhimePreparedInputs
 from openghg_inversions.observation_error import AggregationError
 from openghg_inversions.rhime.specs import OutputFormat, RhimeRunSpec
-from openghg_inversions.sigma import SigmaAlignment
 
 
 _OUTPUT_FORMATS: frozenset[OutputFormat] = frozenset({"none", "inv_out", "basic", "paris", "legacy"})
@@ -37,11 +36,6 @@ class RhimeLikelihoodBuilder(Protocol):
         mean: TensorVariable,
         pollution_mean: TensorVariable,
         pollution_event_baseline: TensorVariable | None,
-        sigma_alignment: SigmaAlignment,
-        sigma_prior: Mapping[str, Any],
-        power: Mapping[str, Any] | float,
-        pollution_events_from_obs: bool,
-        no_model_error: bool,
         output_dim: str,
     ) -> TensorVariable:
         """Add canonical ``y`` and ``epsilon`` variables to the active model."""

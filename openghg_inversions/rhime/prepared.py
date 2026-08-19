@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from typing import Any
+
 import pandas as pd
 
 from openghg_inversions._timing import timer_seconds, timer_start
@@ -38,6 +41,7 @@ def run_rhime_from_prepared_inputs(
     sampler: RhimeSampler | None = None,
     model_builder: RhimeModelBuilder | None = None,
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
+    likelihood_kwargs: Mapping[str, Any] | None = None,
 ) -> RhimeResult:
     """Build, sample, and output RHIME from a canonical prepared handoff.
 
@@ -54,6 +58,7 @@ def run_rhime_from_prepared_inputs(
         model_builder: Optional complete-model callable for advanced graphs.
         likelihood_builder: Optional ordinary likelihood callable used with
             the built-in graph.
+        likelihood_kwargs: Options specific to the custom likelihood.
 
     Returns:
         Sampled result with any requested output products attached.
@@ -143,6 +148,7 @@ def run_rhime_from_prepared_inputs(
             run_spec=run_spec,
             model_builder=model_builder,
             likelihood_builder=likelihood_builder,
+            likelihood_kwargs=likelihood_kwargs,
         )
     else:
         model_build_result = build_standard_rhime_model_result(
@@ -151,6 +157,7 @@ def run_rhime_from_prepared_inputs(
             run_spec=run_spec,
             model_builder=model_builder,
             likelihood_builder=likelihood_builder,
+            likelihood_kwargs=likelihood_kwargs,
         )
     idata = sample_rhime_model(
         model_build_result,

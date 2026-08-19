@@ -14,6 +14,7 @@ from openghg_inversions.inversion_data import RhimePreparedInputs
 
 __all__ = ["materialize_pymc_inputs"]
 
+
 def materialize_pymc_inputs(
     prepared: RhimePreparedInputs,
     *,
@@ -26,6 +27,18 @@ def materialize_pymc_inputs(
     those arrays and their lazy auxiliary coordinates are computed in one
     shared Dask operation and installed in a shallow dataset copy. Unselected
     prepared products and the canonical prepared artifact remain unchanged.
+
+    Args:
+        prepared: Borrowed backend-neutral prepared inputs.
+        variable_names: Names selected by the concrete recipe and its active
+            components.
+
+    Returns:
+        A shallow dataset copy in which selected arrays and their lazy
+        coordinates have been materialized together.
+
+    Raises:
+        ValueError: If a selected variable is absent from the prepared data.
     """
     timing_start = timer_start()
     inv_inputs = prepared.inv_inputs

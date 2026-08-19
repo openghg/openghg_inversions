@@ -52,7 +52,7 @@ def build_pollution_event_error(
     aggregation_error: AggregationError,
     pollution_mean: TensorVariable,
     pollution_event_baseline: TensorVariable | None,
-    sigma_alignment: SigmaAlignment,
+    sigma_alignment: SigmaAlignment | None,
     sigma_prior: Mapping[str, Any],
     power: Mapping[str, Any] | float,
     pollution_events_from_obs: bool,
@@ -79,7 +79,8 @@ def build_pollution_event_error(
             scaling follows the forward model.
         pollution_event_baseline: Baseline removed when mismatch scaling uses
             observed enhancements.
-        sigma_alignment: Observation alignment for mismatch parameters.
+        sigma_alignment: Observation alignment for mismatch parameters when
+            model error is enabled or unused sigma is retained.
         sigma_prior: Prior specification for mismatch parameters.
         power: Exponent or prior specification for mismatch scaling.
         pollution_events_from_obs: Whether observed enhancements control
@@ -103,20 +104,27 @@ def build_pollution_event_error(
         owner="Pollution-event likelihood",
         output_dim=output_dim,
     )
-    validate_observation_alignment(
-        observations,
-        sigma_alignment.site_index,
-        input_name="sigma_alignment.site_index",
-        owner="Pollution-event likelihood",
-        output_dim=output_dim,
-    )
-    validate_observation_alignment(
-        observations,
-        sigma_alignment.period_index,
-        input_name="sigma_alignment.period_index",
-        owner="Pollution-event likelihood",
-        output_dim=output_dim,
-    )
+    needs_sigma = not no_model_error or retain_unused_sigma
+    if needs_sigma:
+        if sigma_alignment is None:
+            raise ValueError(
+                "Pollution-event likelihood requires `sigma_alignment` when "
+                "model error is enabled or unused sigma is retained."
+            )
+        validate_observation_alignment(
+            observations,
+            sigma_alignment.site_index,
+            input_name="sigma_alignment.site_index",
+            owner="Pollution-event likelihood",
+            output_dim=output_dim,
+        )
+        validate_observation_alignment(
+            observations,
+            sigma_alignment.period_index,
+            input_name="sigma_alignment.period_index",
+            owner="Pollution-event likelihood",
+            output_dim=output_dim,
+        )
     validate_aggregation_error_alignment(
         observations,
         aggregation_error,
@@ -127,7 +135,8 @@ def build_pollution_event_error(
     reported_error = add_model_data(observation_error.transpose(output_dim), "error")
     minimum_error_data = add_model_data(minimum_error.transpose(output_dim), "min_error")
     sigma = None
-    if not no_model_error or retain_unused_sigma:
+    if needs_sigma:
+        assert sigma_alignment is not None
         sigma = add_sigma_component(sigma_alignment, prior_args=dict(sigma_prior))
 
     if no_model_error:
@@ -191,7 +200,7 @@ def build_pollution_event_gaussian_likelihood(
     mean: TensorVariable,
     pollution_mean: TensorVariable,
     pollution_event_baseline: TensorVariable | None,
-    sigma_alignment: SigmaAlignment,
+    sigma_alignment: SigmaAlignment | None,
     sigma_prior: Mapping[str, Any],
     power: Mapping[str, Any] | float,
     pollution_events_from_obs: bool,
@@ -211,7 +220,8 @@ def build_pollution_event_gaussian_likelihood(
             scaling when ``pollution_events_from_obs`` is false.
         pollution_event_baseline: Modelled baseline removed from observations
             when ``pollution_events_from_obs`` is true.
-        sigma_alignment: Observation alignment for mismatch parameters.
+        sigma_alignment: Observation alignment for mismatch parameters when
+            model error is enabled or unused sigma is retained.
         sigma_prior: Prior specification for mismatch parameters.
         power: Exponent or prior specification used in mismatch scaling.
         pollution_events_from_obs: Whether observed rather than modelled

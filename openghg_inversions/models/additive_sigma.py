@@ -52,7 +52,7 @@ def build_additive_sigma_error(
     observation_error: xr.DataArray,
     minimum_error: xr.DataArray,
     aggregation_error: AggregationError,
-    sigma_alignment: SigmaAlignment,
+    sigma_alignment: SigmaAlignment | None,
     sigma_prior: Mapping[str, Any],
     no_model_error: bool,
     output_dim: str = "nmeasure",
@@ -70,8 +70,8 @@ def build_additive_sigma_error(
         observation_error: Reported observation-error standard deviations.
         minimum_error: Minimum total-error standard deviations.
         aggregation_error: Validated fixed aggregation-error representation.
-        sigma_alignment: Mapping from observations to the mismatch-scale
-            parameters.
+        sigma_alignment: Mapping from observations to mismatch-scale
+            parameters when model error is enabled.
         sigma_prior: Prior arguments used to construct ``sigma`` when model
             error is enabled.
         no_model_error: If true, omit ``sigma`` and use only reported and
@@ -93,20 +93,26 @@ def build_additive_sigma_error(
         owner="Additive-sigma likelihood",
         output_dim=output_dim,
     )
-    validate_observation_alignment(
-        observations,
-        sigma_alignment.site_index,
-        input_name="sigma_alignment.site_index",
-        owner="Additive-sigma likelihood",
-        output_dim=output_dim,
-    )
-    validate_observation_alignment(
-        observations,
-        sigma_alignment.period_index,
-        input_name="sigma_alignment.period_index",
-        owner="Additive-sigma likelihood",
-        output_dim=output_dim,
-    )
+    if not no_model_error:
+        if sigma_alignment is None:
+            raise ValueError(
+                "Additive-sigma likelihood requires `sigma_alignment` when "
+                "model error is enabled."
+            )
+        validate_observation_alignment(
+            observations,
+            sigma_alignment.site_index,
+            input_name="sigma_alignment.site_index",
+            owner="Additive-sigma likelihood",
+            output_dim=output_dim,
+        )
+        validate_observation_alignment(
+            observations,
+            sigma_alignment.period_index,
+            input_name="sigma_alignment.period_index",
+            owner="Additive-sigma likelihood",
+            output_dim=output_dim,
+        )
     validate_aggregation_error_alignment(
         observations,
         aggregation_error,
@@ -119,6 +125,7 @@ def build_additive_sigma_error(
 
     independent_variance = reported_error**2
     if not no_model_error:
+        assert sigma_alignment is not None
         sigma = add_sigma_component(sigma_alignment, prior_args=dict(sigma_prior))
         independent_variance = independent_variance + sigma**2
 
@@ -150,7 +157,7 @@ def add_additive_sigma_gaussian_likelihood(
     minimum_error: xr.DataArray,
     aggregation_error: AggregationError,
     mean: TensorVariable,
-    sigma_alignment: SigmaAlignment,
+    sigma_alignment: SigmaAlignment | None,
     sigma_prior: Mapping[str, Any],
     no_model_error: bool,
     output_dim: str = "nmeasure",
@@ -171,8 +178,8 @@ def add_additive_sigma_gaussian_likelihood(
         aggregation_error: Validated fixed aggregation-error representation.
         mean: Completed forward-model concentration aligned with
             ``output_dim``.
-        sigma_alignment: Mapping from observations to the mismatch-scale
-            parameters.
+        sigma_alignment: Mapping from observations to mismatch-scale
+            parameters when model error is enabled.
         sigma_prior: Prior arguments used to construct ``sigma`` when model
             error is enabled.
         no_model_error: If true, omit ``sigma`` and use only reported and
