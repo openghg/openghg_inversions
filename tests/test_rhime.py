@@ -51,12 +51,9 @@ from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInpu
 from openghg_inversions.inversion_inputs import make_inv_inputs
 from openghg_inversions.models import StateActivity
 from openghg_inversions.models._flux import safe_pymc_name
-from openghg_inversions.models.rhime_likelihood import (
-    RhimeLikelihoodContext,
-    RhimeLikelihoodResult,
-    build_absolute_sigma_gaussian_likelihood,
-    build_gaussian_rhime_likelihood,
-    build_rhime_observation_state,
+from openghg_inversions.models.pollution_event import build_pollution_event_error
+from openghg_inversions.rhime._model_building import (
+    _build_builtin_likelihood as build_gaussian_rhime_likelihood,
     get_rhime_likelihood_result,
 )
 from openghg_inversions.postprocessing._basis_products import (
@@ -70,6 +67,8 @@ from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.postprocessing.make_outputs import observation_inputs_for_outputs
 from openghg_inversions.postprocessing.make_paris_outputs import PARIS_LATEST_COUNTRIES
 from openghg_inversions.rhime import (
+    RhimeLikelihoodContext,
+    RhimeLikelihoodResult,
     RhimeModelBuilderContext,
     RhimeModelBuildResult,
     RhimeModelSpec,
@@ -83,6 +82,9 @@ from openghg_inversions.rhime import (
     run_rhime,
     run_rhime_from_prepared_inputs,
     run_rhime_multisector,
+)
+from examples.rhime_customisation.likelihoods import (
+    absolute_sigma_likelihood_builder as build_absolute_sigma_gaussian_likelihood,
 )
 from openghg_inversions.rhime.multisector import (
     _build_multisector_rhime_model_from_spec,
@@ -145,6 +147,22 @@ def builder_args(rhime_inv_inputs: xr.Dataset) -> dict:
         "no_model_error": False,
         "power": 1.99,
     }
+
+
+def build_rhime_observation_state(context: RhimeLikelihoodContext) -> Any:
+    """Build the built-in error state from a public likelihood context."""
+    return build_pollution_event_error(
+        context.data,
+        pollution_mean=context.pollution_mean,
+        pollution_event_baseline=context.pollution_event_baseline,
+        sigma_alignment=context.sigma_alignment,
+        sigma_prior=context.sigma_prior,
+        power=context.power,
+        pollution_events_from_obs=context.pollution_events_from_obs,
+        no_model_error=context.no_model_error,
+        aggregation_error_mode=context.aggregation_error_mode,
+        output_dim=context.output_dim,
+    )
 
 
 def _assert_model_dot_matches_numpy(
@@ -697,6 +715,57 @@ def test_build_rhime_model_contains_expected_variables(
     }
 
 
+def test_preserved_legacy_likelihood_excludes_offset_from_error_scale(
+    rhime_inv_inputs: xr.Dataset,
+    builder_args: dict,
+) -> None:
+    """The run_hbmcmc compatibility equation keeps offset out of PEFO only."""
+    model = build_rhime_model(
+        rhime_inv_inputs,
+        **{
+            **builder_args,
+            "add_offset": True,
+            "power": 2.0,
+            "preserve_legacy_likelihood": True,
+        },
+    )
+    likelihood_mean = model["y"].owner.inputs[-2]
+    (
+        observed,
+        observation_error,
+        pollution_mean,
+        boundary_mean,
+        offset,
+        sigma,
+        site_index,
+        period_index,
+        epsilon,
+        total_mean,
+    ) = pm.draw(
+        [
+            model["Y"],
+            model["error"],
+            model["mu"],
+            model["mu_bc"],
+            model["offset"],
+            model["sigma"],
+            model["sigma_site_index"],
+            model["sigma_period_index"],
+            model["epsilon"],
+            likelihood_mean,
+        ],
+        draws=1,
+        random_seed=219,
+    )
+
+    observation_sigma = sigma[site_index, period_index]
+    expected_epsilon = np.sqrt(
+        observation_error**2 + (np.abs(observed - boundary_mean) * observation_sigma) ** 2
+    )
+    np.testing.assert_allclose(epsilon, expected_epsilon)
+    np.testing.assert_allclose(total_mean, pollution_mean + boundary_mean + offset)
+
+
 def test_build_rhime_model_accepts_student_t_likelihood_builder(
     rhime_inv_inputs: xr.Dataset,
     builder_args: dict,
@@ -708,7 +777,7 @@ def test_build_rhime_model_accepts_student_t_likelihood_builder(
         likelihood = pm.StudentT(
             "student_y",
             nu=4.0,
-            mu=state.mean,
+            mu=context.mean,
             sigma=state.error_scale,
             observed=state.observed,
             dims=context.output_dim,
@@ -760,9 +829,15 @@ def test_recipe_passes_completed_forward_mean_to_custom_likelihood(
 
     assert len(contexts) == 1
     context = contexts[0]
-    assert context.baseline_mean is not None
+    assert context.pollution_event_baseline is not None
     mean, pollution, baseline, boundary, offset = pm.draw(
-        [context.mean, context.pollution_mean, context.baseline_mean, model["mu_bc"], model["offset"]],
+        [
+            context.mean,
+            context.pollution_mean,
+            context.pollution_event_baseline,
+            model["mu_bc"],
+            model["offset"],
+        ],
         draws=1,
         random_seed=123,
     )
@@ -835,12 +910,13 @@ def test_editable_example_builder_rejects_correlated_aggregation_error(
             data=data,
             mean=pm.math.constant(np.zeros(data.sizes["nmeasure"])),
             pollution_mean=pm.math.constant(np.zeros(data.sizes["nmeasure"])),
-            baseline_mean=None,
+            pollution_event_baseline=None,
             sigma_alignment=sigma_alignment,
             sigma_prior={"pdf": "uniform", "lower": 0.1, "upper": 10.0},
             power=1.99,
             pollution_events_from_obs=False,
             no_model_error=False,
+            retain_unused_sigma=False,
             aggregation_error_mode=cast(Any, aggregation_error_mode),
         )
         with pytest.raises(ValueError, match="assumes independent observations"):
@@ -2732,7 +2808,7 @@ def test_run_rhime_rejects_unsupported_custom_likelihood_output_before_sampling(
         state = build_rhime_observation_state(context)
         likelihood = pm.Normal(
             "sampling_only_y",
-            mu=state.mean,
+            mu=context.mean,
             sigma=state.error_scale,
             observed=state.observed,
             dims=context.output_dim,

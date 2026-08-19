@@ -70,10 +70,11 @@ The complete integration is one named argument:
 
 RHIME calls the function as ``likelihood_builder(context)`` while constructing
 the PyMC model. It returns a
-:class:`~openghg_inversions.models.rhime_likelihood.RhimeLikelihoodResult`, which contains the
+:class:`~openghg_inversions.rhime.RhimeLikelihoodResult`, which contains the
 new observed variable and the small amount of information RHIME needs for
-sampling and output. An ordinary caller does not construct the context or
-these supporting records.
+sampling and output. The callback context and result are public runner
+contracts; the statistical implementation remains ordinary project-owned
+Python. An ordinary caller does not construct these supporting records.
 
 Editable likelihood
 ~~~~~~~~~~~~~~~~~~~
@@ -103,6 +104,21 @@ freedom are stored as simple metadata.
 The example rejects dense and low-rank aggregation covariance because it uses
 an independent Student-t distribution. Supporting those aggregation-error
 modes would require a multivariate likelihood.
+
+The same example module also contains
+``absolute_sigma_likelihood_builder``. It treats ``sigma`` as an absolute
+observation-scale standard deviation rather than multiplying it by a
+pollution event. This alternative is kept in editable project code because it
+is a different scientific model, not another name for the standard RHIME
+likelihood. It explicitly rejects aggregation covariance and can be selected
+in the same way::
+
+   from my_project.likelihoods import absolute_sigma_likelihood_builder
+
+   result = run_rhime(
+       config_file="config.ini",
+       likelihood_builder=absolute_sigma_likelihood_builder,
+   )
 
 Optional project CLI
 ~~~~~~~~~~~~~~~~~~~~

@@ -23,22 +23,19 @@ from openghg_inversions.models.components import (
 )
 from openghg_inversions.models.coords import CoordRegistry, attach_coord_registry
 from openghg_inversions.models.priors import PriorArgs
-from openghg_inversions.models.rhime_likelihood import (
-    _LIKELIHOOD_RESULT_ATTR,
-    _build_rhime_likelihood,
-    RhimeLikelihoodBuilder,
-    RhimeLikelihoodContext,
-)
 from openghg_inversions.models.state_activity import StateActivity
 from openghg_inversions.observation_error import AggregationErrorMode
 from openghg_inversions.sigma import SigmaAlignment
 
 from ._model_building import (
+    build_and_attach_rhime_likelihood,
     builtin_model_build_result,
     validate_likelihood_builder,
     validated_custom_model_build,
 )
 from .builders import (
+    RhimeLikelihoodBuilder,
+    RhimeLikelihoodContext,
     RhimeModelBuilder,
     RhimeModelBuilderContext,
     RhimeModelBuildResult,
@@ -100,6 +97,7 @@ def build_standard_rhime_model(
     state_activity: StateActivity | None = None,
     bc_state_activity: StateActivity | None = None,
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
+    preserve_legacy_likelihood: bool = False,
 ) -> pm.Model:
     """Build the concrete standard single-sector RHIME model.
 
@@ -122,6 +120,8 @@ def build_standard_rhime_model(
         bc_state_activity: Optional active/fixed boundary-state policy.
         likelihood_builder: Optional observation-error and distribution builder.
             It receives the completed model mean from this recipe.
+        preserve_legacy_likelihood: Whether to preserve ``run_hbmcmc``'s
+            boundary-only pollution event and unused ``sigma`` variable.
 
     Returns:
         Built PyMC model.
@@ -194,22 +194,23 @@ def build_standard_rhime_model(
         if offset is not None:
             baseline_mean = offset if baseline_mean is None else baseline_mean + offset
         modelled_mean = pollution_mean if baseline_mean is None else pollution_mean + baseline_mean
+        pollution_event_baseline = boundary_mean if preserve_legacy_likelihood else baseline_mean
 
         likelihood_context = RhimeLikelihoodContext(
             data=inv_inputs,
             mean=modelled_mean,
             pollution_mean=pollution_mean,
-            baseline_mean=baseline_mean,
+            pollution_event_baseline=pollution_event_baseline,
             sigma_alignment=sigma_alignment,
             sigma_prior=sigma_prior,
             power=power,
             pollution_events_from_obs=pollution_events_from_obs,
             no_model_error=no_model_error,
+            retain_unused_sigma=preserve_legacy_likelihood,
             aggregation_error_mode=aggregation_error_mode,
             output_dim="nmeasure",
         )
-        likelihood_result = _build_rhime_likelihood(likelihood_context, likelihood_builder)
-        setattr(model, _LIKELIHOOD_RESULT_ATTR, likelihood_result)
+        build_and_attach_rhime_likelihood(model, likelihood_context, likelihood_builder)
 
     return model
 
@@ -219,6 +220,7 @@ def _build_standard_rhime_model_from_spec(
     model_spec: RhimeModelSpec,
     *,
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
+    preserve_legacy_likelihood: bool = False,
 ) -> pm.Model:
     """Build the standard model from a normalized RHIME model specification.
 
@@ -227,6 +229,8 @@ def _build_standard_rhime_model_from_spec(
         model_spec: Normalized RHIME model specification containing exactly one
             sector.
         likelihood_builder: Optional observation-error and distribution builder.
+        preserve_legacy_likelihood: Whether to preserve the historical
+            ``run_hbmcmc`` likelihood graph and pollution-event definition.
 
     Returns:
         Built PyMC model.
@@ -249,6 +253,9 @@ def _build_standard_rhime_model_from_spec(
         state_activity = model_spec.sector_state_activities.get(sector.name, state_activity)
     if sector.state_activity is not None:
         state_activity = sector.state_activity
+    compatibility_options = (
+        {"preserve_legacy_likelihood": True} if preserve_legacy_likelihood else {}
+    )
     return build_standard_rhime_model(
         inv_inputs,
         sigma_alignment=sigma_alignment,
@@ -266,6 +273,7 @@ def _build_standard_rhime_model_from_spec(
         offset_args=model_spec.offset_args,
         power=model_spec.power,
         likelihood_builder=likelihood_builder,
+        **compatibility_options,
     )
 
 
@@ -276,6 +284,7 @@ def build_standard_rhime_model_result(
     run_spec: RhimeRunSpec,
     model_builder: RhimeModelBuilder | None = None,
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
+    preserve_legacy_likelihood: bool = False,
 ) -> RhimeModelBuildResult:
     """Build the standard graph and describe its output roles.
 
@@ -287,6 +296,8 @@ def build_standard_rhime_model_result(
             input workflows.
         likelihood_builder: Optional observation-error and distribution builder
             used with the built-in graph.
+        preserve_legacy_likelihood: Whether to preserve the historical
+            ``run_hbmcmc`` likelihood graph and pollution-event definition.
 
     Returns:
         Model plus variable roles, supported outputs, and build metadata.
@@ -306,9 +317,13 @@ def build_standard_rhime_model_result(
     if model_builder is not None:
         result = validated_custom_model_build(model_builder, context=builder_context)
     else:
+        compatibility_options = (
+            {"preserve_legacy_likelihood": True} if preserve_legacy_likelihood else {}
+        )
         model = _build_standard_rhime_model_from_spec(
             model_inputs,
             run_spec.model,
+            **compatibility_options,
             **({} if likelihood_builder is None else {"likelihood_builder": likelihood_builder}),
         )
         result = builtin_model_build_result(model, model_spec=run_spec.model, multisector=False)
@@ -379,6 +394,7 @@ def run_rhime(
     config_file: str | Path | None = None,
     merged_data: RhimeMergedData | None = None,
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
+    preserve_legacy_likelihood: bool = False,
     **kwargs: Any,
 ) -> RhimeResult:
     """Run a standard single-sector RHIME inversion.
@@ -400,6 +416,8 @@ def run_rhime(
             roles drive predictive selection and output compatibility is
             validated before sampling. The callable is never read from
             configuration or stored in run/model specifications.
+        preserve_legacy_likelihood: Private ``run_hbmcmc`` compatibility
+            switch. Ordinary RHIME callers should leave it false.
         **kwargs: RHIME run parameters using snake-case names, such as
             ``output_path``, ``output_name``, ``flux_sources``, and
             ``x_prior``. ``species`` names the primary gas or tracer used for
@@ -463,11 +481,15 @@ def run_rhime(
         aggregation_error_mode=run_spec.model.aggregation_error_mode,
     )
     build_and_sample_start = timer_start()
+    compatibility_options = (
+        {"preserve_legacy_likelihood": True} if preserve_legacy_likelihood else {}
+    )
     model_build_result = build_standard_rhime_model_result(
         prepared=prepared,
         model_inputs=model_inputs,
         run_spec=run_spec,
         likelihood_builder=likelihood_builder,
+        **compatibility_options,
     )
     idata = sample_rhime_model(
         model_build_result,

@@ -21,7 +21,14 @@ configure_pytensor()
 
 from openghg_inversions.observation_error import select_aggregation_error_mode
 
-from .builders import RhimeModelBuilder, RhimeModelBuilderContext, RhimeModelBuildResult
+from .builders import (
+    RhimeLikelihoodBuilder,
+    RhimeLikelihoodContext,
+    RhimeLikelihoodResult,
+    RhimeModelBuilder,
+    RhimeModelBuilderContext,
+    RhimeModelBuildResult,
+)
 from .materialization import materialize_pymc_inputs
 from .params import params_from_config, resolve_flux_sources, resolve_rhime_options
 from .preparation import (
@@ -52,6 +59,9 @@ from .specs import RhimeModelSpec, RhimeOutputSpec, RhimeRunSpec, SectorSpec
 __all__ = [
     "SectorSpec",
     "RhimeModelSpec",
+    "RhimeLikelihoodBuilder",
+    "RhimeLikelihoodContext",
+    "RhimeLikelihoodResult",
     "RhimeModelBuilder",
     "RhimeModelBuilderContext",
     "RhimeModelBuildResult",

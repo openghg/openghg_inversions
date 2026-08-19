@@ -12,12 +12,90 @@ import json
 from typing import Any, Literal, Protocol
 
 import pymc as pm
+import xarray as xr
+from pytensor.tensor.variable import TensorVariable
 
 from openghg_inversions.inversion_data import RhimePreparedInputs
+from openghg_inversions.observation_error import AggregationErrorMode
 from openghg_inversions.rhime.specs import OutputFormat, RhimeRunSpec
+from openghg_inversions.sigma import SigmaAlignment
 
 
 _OUTPUT_FORMATS: frozenset[OutputFormat] = frozenset({"none", "inv_out", "basic", "paris", "legacy"})
+
+
+@dataclass(frozen=True)
+class RhimeLikelihoodContext:
+    """Labelled inputs supplied by a concrete RHIME recipe.
+
+    ``mean`` is the complete modelled concentration. ``pollution_mean`` is the
+    modelled pollution contribution. ``pollution_event_baseline`` is the
+    baseline removed only when deriving pollution events from observations.
+    """
+
+    data: xr.Dataset
+    mean: TensorVariable
+    pollution_mean: TensorVariable
+    pollution_event_baseline: TensorVariable | None
+    sigma_alignment: SigmaAlignment
+    sigma_prior: Mapping[str, Any]
+    power: Mapping[str, Any] | float
+    pollution_events_from_obs: bool
+    no_model_error: bool
+    retain_unused_sigma: bool
+    aggregation_error_mode: AggregationErrorMode
+    output_dim: str = "nmeasure"
+
+
+@dataclass(frozen=True)
+class RhimeLikelihoodResult:
+    """Observed variable, semantic roles, and serializable provenance."""
+
+    likelihood: TensorVariable
+    variable_roles: Mapping[str, str]
+    error_scale: TensorVariable | None = None
+    supported_output_formats: tuple[OutputFormat, ...] = ("none",)
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        """Copy and validate the likelihood result contract."""
+        roles = {str(role): str(name) for role, name in self.variable_roles.items()}
+        if roles.get("concentration") != self.likelihood.name:
+            raise ValueError(
+                "`RhimeLikelihoodResult.variable_roles['concentration']` must equal the returned "
+                f"likelihood name {self.likelihood.name!r}."
+            )
+        if self.error_scale is not None and "model_error" in roles:
+            if roles["model_error"] != self.error_scale.name:
+                raise ValueError(
+                    "`RhimeLikelihoodResult.variable_roles['model_error']` must equal the returned "
+                    f"error-scale name {self.error_scale.name!r}."
+                )
+        output_formats = tuple(dict.fromkeys(self.supported_output_formats))
+        invalid_formats = sorted(set(output_formats) - _OUTPUT_FORMATS)
+        if invalid_formats:
+            raise ValueError(
+                "`RhimeLikelihoodResult.supported_output_formats` contains unsupported values: "
+                f"{invalid_formats!r}."
+            )
+        if "none" not in output_formats:
+            raise ValueError("`RhimeLikelihoodResult.supported_output_formats` must include 'none'.")
+        metadata = dict(self.metadata)
+        try:
+            json.dumps(metadata)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("`RhimeLikelihoodResult.metadata` must be JSON serializable.") from exc
+        object.__setattr__(self, "variable_roles", roles)
+        object.__setattr__(self, "supported_output_formats", output_formats)
+        object.__setattr__(self, "metadata", metadata)
+
+
+class RhimeLikelihoodBuilder(Protocol):
+    """Callable contract for a complete RHIME observation component."""
+
+    def __call__(self, context: RhimeLikelihoodContext, /) -> RhimeLikelihoodResult:
+        """Add error and observed-distribution variables to the active model."""
+        ...
 
 
 @dataclass(frozen=True)

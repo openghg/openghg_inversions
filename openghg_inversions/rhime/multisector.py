@@ -26,12 +26,6 @@ from openghg_inversions.models._flux import (
     _resolve_sector_bindings,
     _select_sector_design,
 )
-from openghg_inversions.models.rhime_likelihood import (
-    _LIKELIHOOD_RESULT_ATTR,
-    _build_rhime_likelihood,
-    RhimeLikelihoodBuilder,
-    RhimeLikelihoodContext,
-)
 from openghg_inversions.models.state_activity import StateActivity
 from openghg_inversions.observation_error import AggregationErrorMode
 from openghg_inversions.sigma import SigmaAlignment
@@ -46,11 +40,14 @@ from .specs import (
 )
 
 from ._model_building import (
+    build_and_attach_rhime_likelihood,
     builtin_model_build_result,
     validate_likelihood_builder,
     validated_custom_model_build,
 )
 from .builders import (
+    RhimeLikelihoodBuilder,
+    RhimeLikelihoodContext,
     RhimeModelBuilder,
     RhimeModelBuilderContext,
     RhimeModelBuildResult,
@@ -224,17 +221,17 @@ def build_multisector_rhime_model(
             data=inv_inputs,
             mean=modelled_mean,
             pollution_mean=pollution_mean,
-            baseline_mean=baseline_mean,
+            pollution_event_baseline=baseline_mean,
             sigma_alignment=sigma_alignment,
             sigma_prior=sigma_prior,
             power=power,
             pollution_events_from_obs=pollution_events_from_obs,
             no_model_error=no_model_error,
+            retain_unused_sigma=False,
             aggregation_error_mode=aggregation_error_mode,
             output_dim="nmeasure",
         )
-        likelihood_result = _build_rhime_likelihood(likelihood_context, likelihood_builder)
-        setattr(model, _LIKELIHOOD_RESULT_ATTR, likelihood_result)
+        build_and_attach_rhime_likelihood(model, likelihood_context, likelihood_builder)
 
     return model
 

@@ -8,9 +8,50 @@ from scipy.stats import multivariate_normal
 
 from openghg_inversions.models.coords import CoordRegistry, attach_coord_registry
 from openghg_inversions.models.likelihoods import add_gaussian_observation_likelihood
-from openghg_inversions.models.rhime_likelihood import add_rhime_likelihood_component
+from openghg_inversions.models.pollution_event import build_pollution_event_error
 from openghg_inversions.observation_error import resolve_aggregation_error
 from openghg_inversions.sigma import SigmaAlignment
+
+
+def _add_pollution_event_likelihood(
+    data: xr.Dataset,
+    /,
+    *,
+    mu: Any,
+    mu_bc: Any | None,
+    sigprior: dict[str, Any],
+    sigma_alignment: SigmaAlignment,
+    offset: Any | None = None,
+    power: dict[str, Any] | float = 1.99,
+    pollution_events_from_obs: bool = False,
+    no_model_error: bool = False,
+    retain_unused_sigma: bool = False,
+    aggregation_error_mode: Any = "none",
+) -> None:
+    """Compose the ordinary mean and add the built-in error and distribution."""
+    baseline = mu_bc
+    if offset is not None:
+        baseline = offset if baseline is None else baseline + offset
+    mean = mu if baseline is None else mu + baseline
+    state = build_pollution_event_error(
+        data,
+        pollution_mean=mu,
+        pollution_event_baseline=baseline,
+        sigma_alignment=sigma_alignment,
+        sigma_prior=sigprior,
+        power=power,
+        pollution_events_from_obs=pollution_events_from_obs,
+        no_model_error=no_model_error,
+        retain_unused_sigma=retain_unused_sigma,
+        aggregation_error_mode=aggregation_error_mode,
+    )
+    add_gaussian_observation_likelihood(
+        observed=state.observed,
+        mean=mean,
+        independent_variance=state.independent_variance,
+        aggregation_error=state.aggregation_error,
+        output_dim="nmeasure",
+    )
 
 
 def _base_data() -> xr.Dataset:
@@ -109,7 +150,7 @@ def test_min_error_is_a_floor_on_total_marginal_sd(mode: str) -> None:
     with pm.Model(coords={"nmeasure": np.arange(3)}) as model:
         attach_coord_registry(model, CoordRegistry())
         mu = pm.Data("mu_input", np.ones(3), dims="nmeasure")
-        add_rhime_likelihood_component(
+        _add_pollution_event_likelihood(
             data,
             mu=mu,
             mu_bc=None,
@@ -122,8 +163,10 @@ def test_min_error_is_a_floor_on_total_marginal_sd(mode: str) -> None:
     assert "model_error" not in model.named_vars
 
 
-def test_no_model_error_ignores_floor_but_includes_structured_marginal() -> None:
-    data, covariance = _low_rank_data()
+def test_no_model_error_retains_legacy_sigma_graph_and_observation_error_floor() -> None:
+    """Disabling model error preserves the legacy graph but epsilon uses only data error."""
+    data = _base_data()
+    data["mf_error"] = ("nmeasure", np.array([0.0, 0.3, 0.4]))
     data["min_error"] = ("nmeasure", np.full(3, 20.0))
     sigma_alignment = SigmaAlignment.from_frequency(
         data["site_indicator"], frequency=None, per_site=False
@@ -131,7 +174,34 @@ def test_no_model_error_ignores_floor_but_includes_structured_marginal() -> None
     with pm.Model(coords={"nmeasure": np.arange(3)}) as model:
         attach_coord_registry(model, CoordRegistry())
         mu = pm.Data("mu_input", np.ones(3), dims="nmeasure")
-        add_rhime_likelihood_component(
+        _add_pollution_event_likelihood(
+            data,
+            mu=mu,
+            mu_bc=None,
+            sigprior={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
+            sigma_alignment=sigma_alignment,
+            no_model_error=True,
+            retain_unused_sigma=True,
+        )
+
+    small_amount = 1e-12 * np.nanmean(data["mf"].values)
+    expected = np.maximum(np.abs(data["mf_error"].values), small_amount)
+    np.testing.assert_allclose(model.named_vars["epsilon"].eval(), expected)
+    assert "model_error" not in model.named_vars
+    assert model["sigma"] in model.free_RVs
+    assert {"sigma", "sigma_site_index", "sigma_period_index"}.issubset(model.named_vars)
+
+
+def test_no_model_error_omits_unused_sigma_by_default() -> None:
+    """The ordinary component keeps compatibility-only variables out of the graph."""
+    data = _base_data()
+    sigma_alignment = SigmaAlignment.from_frequency(
+        data["site_indicator"], frequency=None, per_site=False
+    )
+    with pm.Model(coords={"nmeasure": np.arange(3)}) as model:
+        attach_coord_registry(model, CoordRegistry())
+        mu = pm.Data("mu_input", np.ones(3), dims="nmeasure")
+        _add_pollution_event_likelihood(
             data,
             mu=mu,
             mu_bc=None,
@@ -140,9 +210,6 @@ def test_no_model_error_ignores_floor_but_includes_structured_marginal() -> None
             no_model_error=True,
         )
 
-    expected = np.sqrt(data["mf_error"].values**2 + np.diag(covariance))
-    np.testing.assert_allclose(model.named_vars["epsilon"].eval(), expected)
-    assert "model_error" not in model.named_vars
     assert "sigma" not in model.named_vars
 
 
@@ -158,7 +225,7 @@ def test_observation_derived_pollution_event_subtracts_complete_baseline() -> No
         pollution_mean = pm.Data("mu_input", np.zeros(3), dims="nmeasure")
         boundary_mean = pm.Data("mu_bc_input", np.full(3, 0.25), dims="nmeasure")
         offset = pm.Data("offset_input", np.full(3, 0.5), dims="nmeasure")
-        add_rhime_likelihood_component(
+        _add_pollution_event_likelihood(
             data,
             mu=pollution_mean,
             mu_bc=boundary_mean,

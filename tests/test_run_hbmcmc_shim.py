@@ -78,6 +78,19 @@ def test_fixedbasis_params_to_rhime_translates_legacy_names(tmp_path: Path) -> N
     assert "nchain" not in translated
 
 
+def test_fixedbasis_default_does_not_opt_into_aggregation_error(tmp_path: Path) -> None:
+    """An old config preserves its likelihood unless aggregation error is explicit."""
+    config_file = tmp_path / "hbmcmc.ini"
+    _fixedbasis_config(config_file)
+    params = run_hbmcmc.hbmcmc_extract_param(str(config_file), print_param=False)
+
+    translated = run_hbmcmc.fixedbasis_params_to_rhime(params)
+    setup = run_hbmcmc.resolve_rhime_options(params=translated, multisector=False)
+
+    assert "aggregation_error_mode" not in translated
+    assert setup.run_spec.model.aggregation_error_mode == "none"
+
+
 def test_fixedbasis_params_to_rhime_translates_reparameterise_log_normal(tmp_path: Path) -> None:
     """Legacy lognormal translation warns visibly and updates both priors."""
     config_file = tmp_path / "hbmcmc.ini"
@@ -215,6 +228,7 @@ def test_run_hbmcmc_main_routes_to_run_rhime(monkeypatch: pytest.MonkeyPatch, tm
     assert seen["run_rhime_kwargs"]["nuts_sampler"] == "numpyro"
     assert seen["run_rhime_kwargs"]["output_format"] == "legacy"
     assert seen["run_rhime_kwargs"]["output_filename_convention"] == "legacy"
+    assert seen["run_rhime_kwargs"]["preserve_legacy_likelihood"] is True
 
 
 def test_run_hbmcmc_legacy_fixedbasis_parser_is_explicit(tmp_path: Path) -> None:

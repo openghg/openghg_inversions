@@ -6,15 +6,93 @@ from typing import Any, cast
 
 import pymc as pm
 
-from openghg_inversions.models.rhime_likelihood import get_rhime_likelihood_result
+from openghg_inversions.models.likelihoods import add_gaussian_observation_likelihood
+from openghg_inversions.models.pollution_event import build_pollution_event_error
 
 from .builders import (
+    RhimeLikelihoodBuilder,
+    RhimeLikelihoodContext,
+    RhimeLikelihoodResult,
     RhimeModelBuilder,
     RhimeModelBuilderContext,
     RhimeModelBuildResult,
     validate_model_build_result,
 )
 from .specs import RhimeModelSpec
+
+
+_LIKELIHOOD_RESULT_ATTR = "_openghg_rhime_likelihood_result"
+
+
+def _build_builtin_likelihood(context: RhimeLikelihoodContext) -> RhimeLikelihoodResult:
+    """Add the historical Gaussian observation model for a RHIME recipe."""
+    state = build_pollution_event_error(
+        context.data,
+        pollution_mean=context.pollution_mean,
+        pollution_event_baseline=context.pollution_event_baseline,
+        sigma_alignment=context.sigma_alignment,
+        sigma_prior=context.sigma_prior,
+        power=context.power,
+        pollution_events_from_obs=context.pollution_events_from_obs,
+        no_model_error=context.no_model_error,
+        retain_unused_sigma=context.retain_unused_sigma,
+        aggregation_error_mode=context.aggregation_error_mode,
+        output_dim=context.output_dim,
+    )
+    likelihood = add_gaussian_observation_likelihood(
+        observed=state.observed,
+        mean=context.mean,
+        independent_variance=state.independent_variance,
+        aggregation_error=state.aggregation_error,
+        output_dim=context.output_dim,
+    )
+    return RhimeLikelihoodResult(
+        likelihood=likelihood,
+        error_scale=state.error_scale,
+        variable_roles={"concentration": "y", "model_error": "epsilon"},
+        supported_output_formats=("none", "inv_out", "basic", "paris", "legacy"),
+        metadata={
+            "family": "pollution_event_gaussian",
+            "sigma_interpretation": "pollution_event_scaled",
+        },
+    )
+
+
+def build_and_attach_rhime_likelihood(
+    model: pm.Model,
+    context: RhimeLikelihoodContext,
+    likelihood_builder: RhimeLikelihoodBuilder | None,
+) -> RhimeLikelihoodResult:
+    """Build, validate, and attach a recipe's observation component."""
+    result = (
+        _build_builtin_likelihood(context)
+        if likelihood_builder is None
+        else likelihood_builder(context)
+    )
+    if not isinstance(result, RhimeLikelihoodResult):
+        raise TypeError(
+            "A RHIME likelihood builder must return `RhimeLikelihoodResult`; "
+            f"got {type(result).__name__}."
+        )
+    missing_names = sorted(set(result.variable_roles.values()) - set(model.named_vars))
+    if missing_names:
+        raise ValueError(
+            "RHIME likelihood roles refer to variables absent from the active PyMC model: "
+            f"{missing_names!r}."
+        )
+    setattr(model, _LIKELIHOOD_RESULT_ATTR, result)
+    return result
+
+
+def get_rhime_likelihood_result(model: pm.Model) -> RhimeLikelihoodResult:
+    """Return the explicit likelihood roles attached by a RHIME recipe."""
+    try:
+        return cast(RhimeLikelihoodResult, getattr(model, _LIKELIHOOD_RESULT_ATTR))
+    except AttributeError as exc:
+        raise ValueError(
+            "The PyMC model has no RHIME likelihood result. Build it with a public RHIME model "
+            "builder or return explicit roles from a complete `RhimeModelBuilder`."
+        ) from exc
 
 
 def builtin_model_build_result(

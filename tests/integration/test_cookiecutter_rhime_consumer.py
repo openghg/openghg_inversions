@@ -194,8 +194,8 @@ def test_consumer_cli_routes_to_the_same_project_runner(
 
 
 @pytest.mark.parametrize("module_path", [likelihoods.__file__, consumer_runner.__file__])
-def test_consumer_imports_only_the_public_rhime_package(module_path: str | None) -> None:
-    """Consumer modules do not reach into private or non-RHIME library paths."""
+def test_consumer_imports_only_public_supported_modules(module_path: str | None) -> None:
+    """Consumer modules use public recipe or model-component modules."""
     assert module_path is not None
     source = Path(module_path).read_text(encoding="utf-8")
     imports = [
@@ -206,7 +206,11 @@ def test_consumer_imports_only_the_public_rhime_package(module_path: str | None)
 
     for node in imports:
         if isinstance(node, ast.ImportFrom) and (node.module or "").startswith("openghg_inversions"):
-            assert node.module == "openghg_inversions.rhime"
+            assert node.module in {
+                "openghg_inversions.models.pollution_event",
+                "openghg_inversions.observation_error",
+                "openghg_inversions.rhime",
+            }
             assert all(not alias.name.startswith("_") for alias in node.names)
         elif isinstance(node, ast.Import):
             assert all(not alias.name.startswith("openghg_inversions") for alias in node.names)

@@ -6,14 +6,13 @@ import pandas as pd
 
 from openghg_inversions._timing import timer_seconds, timer_start
 from openghg_inversions.inversion_data import RhimePreparedInputs
-from openghg_inversions.models.rhime_likelihood import RhimeLikelihoodBuilder
 from openghg_inversions.observation_error import (
     resolve_aggregation_error,
     select_aggregation_error_mode,
 )
 
 from ._model_building import validate_likelihood_builder
-from .builders import RhimeModelBuilder
+from .builders import RhimeLikelihoodBuilder, RhimeModelBuilder
 from .materialization import materialize_pymc_inputs
 from .multisector import build_multisector_rhime_model_result, make_multisector_rhime_result
 from .outputs import RhimeResult

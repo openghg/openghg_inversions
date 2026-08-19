@@ -162,6 +162,7 @@ def build_inferpymc_model(
         no_model_error=no_model_error,
         offset_args=offset_args,
         power=power,
+        preserve_legacy_likelihood=True,
         # Keep fixedbasisMCMC/inferpymc's legacy single-sector state graph.
         # Modern RHIME model specs opt into exact-zero pruning separately.
         state_activity=StateActivity(prune_zero=False),

@@ -195,13 +195,13 @@ output settings are validated before model construction or sampling. Output
 side effects are still controlled by ``RhimeOutputSpec``.
 
 Aggregation-error covariance
------------------------------
+----------------------------
 
-Modern RHIME can add fixed aggregation error to the observation covariance
-without changing the raw ``mf_error`` values. Attach these arrays only after
-observation filtering, averaging, global site gathering, and basis projection,
-so both covariance axes match the final ``nmeasure`` ordering. Prepared inputs
-may contain one of:
+Aggregation error is disabled by default. An advanced run may explicitly add
+fixed aggregation error to the observation covariance without changing the
+raw ``mf_error`` values. Attach these arrays only after observation filtering,
+averaging, global site gathering, and basis projection, so both covariance
+axes match the final ``nmeasure`` ordering. Prepared inputs may contain one of:
 
 * ``aggregation_error_covariance(nmeasure, nmeasure_cov)`` for the exact dense
   covariance;
@@ -214,9 +214,16 @@ may contain one of:
 Dense and low-rank forms are the primary representations. If a matching
 ``aggregation_error_sd`` diagnostic is present beside either one, RHIME
 validates it against the structured covariance diagonal but does not replace
-the structured likelihood with it. ``aggregation_error_mode="auto"`` selects
-the available structured form first; set ``"dense"``, ``"low_rank"``,
-``"diagonal"``, or ``"none"`` for an explicit comparison run.
+the structured likelihood with it. Select ``aggregation_error_mode="dense"``,
+``"low_rank"``, or ``"diagonal"`` to opt into a representation. ``"auto"``
+is also an explicit opt-in that selects an available structured form first;
+merely placing an array in prepared inputs does not enable it. The default
+``"none"`` ignores prepared aggregation-error arrays.
+
+This likelihood option does not perform or certify a coherent prior
+transformation. If aggregation covariance represents states removed by a
+native-to-reduced transformation, the caller must also supply the matching
+transformed prior and forward operator as one coherent preparation product.
 
 The minimum-error setting remains a floor on total marginal standard
 deviation, including aggregation error, while off-diagonal covariance is left
