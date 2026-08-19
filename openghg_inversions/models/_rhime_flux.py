@@ -1,4 +1,4 @@
-"""Normalize RHIME flux declarations for concrete builders and compiler plans.
+"""Resolve RHIME flux declarations for concrete model recipes.
 
 Semantic sector names remain separate from OpenGHG source labels and backend
 variable suffixes. Rectangular shared-basis and gathered source-specific layouts
@@ -18,11 +18,6 @@ import pandas as pd
 import xarray as xr
 
 from openghg_inversions.array_ops import select_gathered_data_array
-from openghg_inversions.models._rhime_compiler import (
-    _FluxPlan,
-    _ForwardTermPlan,
-    _StatePlan,
-)
 from openghg_inversions.models.state_activity import (
     StateActivity,
     active_prior_args,
@@ -309,48 +304,6 @@ def _namespace_sector_state_coords(
     return design.rename(rename)
 
 
-def _normalize_standard_flux_plan(
-    inv_inputs: xr.Dataset,
-    x_prior: Mapping[str, Any],
-    *,
-    state_activity: StateActivity | None = None,
-) -> _FluxPlan:
-    """Normalize the standard flux component into a one-state linear plan.
-
-    Args:
-        inv_inputs: Canonical inputs containing the required ``H`` design.
-        x_prior: Flux-scaling prior specification.
-        state_activity: Optional activity policy, resolved during compilation.
-
-    Returns:
-        A single-state, single-forward-term compiler plan.
-
-    Raises:
-        KeyError: If ``inv_inputs`` does not contain ``H``.
-    """
-    state_id = "flux"
-    return _FluxPlan(
-        states=(
-            _StatePlan(
-                state_id=state_id,
-                variable_name="x",
-                prior_args=x_prior,
-                state_activity=state_activity,
-            ),
-        ),
-        terms=(
-            _ForwardTermPlan(
-                term_id=state_id,
-                state_id=state_id,
-                design=inv_inputs["H"],
-                data_name="hx",
-                deterministic_name="mu",
-                coefficient=1.0,
-            ),
-        ),
-    )
-
-
 def _resolve_multisector_components(
     inv_inputs: xr.Dataset,
     sector_bindings: Sequence[_ResolvedSectorBinding],
@@ -469,67 +422,3 @@ def _resolve_multisector_components(
             )
         )
     return tuple(components)
-
-
-def _normalize_multisector_flux_plan(
-    inv_inputs: xr.Dataset,
-    sector_bindings: Sequence[_ResolvedSectorBinding],
-    *,
-    sector_priors: Mapping[str, Mapping[str, Any]] | None,
-    x_prior: Mapping[str, Any] | None,
-    default_x_prior: Mapping[str, Any],
-    state_activity: StateActivity | None = None,
-    sector_state_activities: Mapping[str, StateActivity] | None = None,
-) -> _FluxPlan:
-    """Normalize selected sector designs into separate state and term plans.
-
-    Per-sector priors and activity policies override shared equivalents;
-    gathered scientific labels are resolved before backend namespacing.
-
-    Args:
-        inv_inputs: Canonical source-resolved inversion inputs.
-        sector_bindings: Ordered validated sector/source/backend bindings.
-        sector_priors: Optional complete per-sector prior mapping.
-        x_prior: Optional prior shared by all sectors.
-        default_x_prior: Fallback prior when explicit priors are absent.
-        state_activity: Optional policy shared by all sectors.
-        sector_state_activities: Optional per-sector policy overrides.
-
-    Returns:
-        One compiler state and forward term per sector.
-
-    Raises:
-        KeyError: If required sensitivity input ``H`` is absent.
-        ValueError: If layouts or sector/prior/activity mappings are invalid.
-    """
-    states: list[_StatePlan] = []
-    terms: list[_ForwardTermPlan] = []
-    components = _resolve_multisector_components(
-        inv_inputs,
-        sector_bindings,
-        sector_priors=sector_priors,
-        x_prior=x_prior,
-        default_x_prior=default_x_prior,
-        state_activity=state_activity,
-        sector_state_activities=sector_state_activities,
-    )
-    for component in components:
-        states.append(
-            _StatePlan(
-                state_id=component.name,
-                variable_name=f"x_{component.variable_suffix}",
-                prior_args=component.prior_args,
-                state_activity=component.state_activity,
-            )
-        )
-        terms.append(
-            _ForwardTermPlan(
-                term_id=component.name,
-                state_id=component.name,
-                design=component.design,
-                data_name=f"hx_{component.variable_suffix}",
-                deterministic_name=f"mu_{component.variable_suffix}",
-                coefficient=1.0,
-            )
-        )
-    return _FluxPlan(states=tuple(states), terms=tuple(terms))

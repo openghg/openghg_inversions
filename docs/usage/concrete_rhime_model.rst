@@ -1,12 +1,6 @@
 Concrete RHIME Model
 ====================
 
-.. note::
-
-   This is a draft description of the current RHIME PyMC model and its
-   customization boundary. Code under ``openghg_inversions.models._rhime_compiler``
-   is private implementation machinery, not a public model-definition API.
-
 This page makes the model graph behind :func:`run_rhime` and
 :func:`run_rhime_multisector` explicit. It has two purposes:
 
@@ -17,9 +11,10 @@ This page makes the model graph behind :func:`run_rhime` and
 The current builders
 --------------------
 
-:data:`~openghg_inversions.models.rhime.RhimeBuilderStrategy` defines the two
-public strategy values used by ``RhimeModelSpec``. Direct composition is the
-default:
+Each recipe directly composes one readable concrete graph. The standard graph
+lives beside :func:`run_rhime` in ``openghg_inversions.rhime.standard``; the
+multisector graph lives beside :func:`run_rhime_multisector` in
+``openghg_inversions.rhime.multisector``:
 
 .. code-block:: text
 
@@ -30,50 +25,16 @@ default:
    -> boundary, offset, error, and likelihood components
    -> PyMC model
 
-Set ``builder_strategy="compiled"`` on the spec to opt into the alternative
-path:
-
-.. code-block:: text
-
-   RhimeModelSpec + canonical inversion inputs
-   -> private flux compilation plan
-   -> flux states and forward terms
-   -> total flux contribution, mu
-   -> the same boundary, offset, error, and likelihood components
-   -> PyMC model
-
-The compiler is retained as experimental machinery for developing a more
-general semantic representation. It currently covers only the linear flux part
-of one observation channel. Both paths use the same source/sector resolution,
-gathered ragged-state handling, and prior selection before constructing the
-PyMC graph. They preserve the same public variable names and dimensions.
-
 .. _rhime-builder-stability:
 
 Stability contract
 ------------------
 
-The concrete builders are the readable reference implementations. Their
+The concrete builders are the production reference implementations. Their
 explicit PyMC code is the primary model definition for scientific review,
-auditing, and user confidence. ``builder_strategy="concrete"`` therefore
-remains the default.
-
-The compiled strategy is a public opt-in extension and regression-checking
-path. Its plan and compiler objects remain private and may evolve, but
-``builder_strategy="compiled"`` and the externally meaningful graph contract
-for unchanged components are stable. That contract includes named variables,
-dimensions and scientific coordinates, registered model data, deterministic
-contributions, and seeded prior-predictive behaviour.
-
-There is no automatic fallback between strategies. A failure in the selected
-strategy stops model construction. If a future compiler feature intentionally
-changes part of the graph, that divergence should be explicit, narrowly scoped,
-and covered by a focused test; components outside that feature should continue
-to match the concrete reference implementation.
-
-Source/design resolution and the boundary, offset, error, and likelihood
-components remain shared. This keeps parity meaningful and avoids independent
-copies silently drifting while compiler extensions are developed.
+auditing, and user confidence. Shared source selection and ordinary scientific
+components remain separate helpers, while model-specific composition stays in
+the recipe that runs it.
 
 Standard single-flux model
 --------------------------
@@ -310,8 +271,7 @@ are not required to be the same strings.
 
 Every sector state and every reparameterization-generated latent must have a
 unique backend name. Concrete composition relies on PyMC to reject duplicate
-generated names. The opt-in compiler performs whole-plan name and observation
-layout checks before mutating the active model.
+generated names.
 
 Names and generated names
 -------------------------
@@ -323,14 +283,13 @@ reparameterized lognormal requested as ``x_ff`` creates both ``x_ff`` and
 
 Both names should be treated as reserved for that prior. No data variable,
 other state, forward-term deterministic, or total should use either name. PyMC
-enforces this during concrete composition; the opt-in compiler detects it
-during flux-plan preflight. The shared observation-component helper still
-relies on conventional names for boundary, offset, error, and likelihood
-components; there is not yet one allocator for the complete model namespace.
+enforces this during concrete composition. The shared observation-component
+helper still relies on conventional names for boundary, offset, error, and
+likelihood components; there is not yet one allocator for the complete model
+namespace.
 
-Knowledge of the ``_latent`` suffix is also duplicated between the compiler
-and ``parse_prior``. Generated-name reporting, whole-model allocation, and
-component namespaces are not implemented. They are tracked in
+Generated-name reporting, whole-model allocation, and component namespaces are
+not implemented. They are tracked in
 `issue #532 <https://github.com/openghg/openghg_inversions/issues/532>`_.
 
 Alternative models and likelihoods
@@ -486,8 +445,8 @@ Supported low-level components
    Public functions in ``openghg_inversions.models`` can be composed inside a
    user-owned ``pm.Model`` as shown above.
 
-Private implementation
-   ``_FluxPlan``, ``_StatePlan``, ``_ForwardTermPlan``, and
-   ``_compile_loop_sum`` may change while the semantic model representation is
-   developed. Set ``RhimeModelSpec(builder_strategy="compiled")`` to exercise
-   that path without importing private compiler objects.
+Recipe-local model composition
+   Copy or modify the readable concrete builder in
+   ``openghg_inversions.rhime.standard`` or
+   ``openghg_inversions.rhime.multisector`` when an existing option or shared
+   component is insufficient.

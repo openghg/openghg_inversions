@@ -232,14 +232,8 @@ The concrete PyMC graph, its variable names, an equivalent construction from
 public model components, and links to tracked extension work are described in
 :doc:`concrete_rhime_model`.
 
-RHIME uses direct composition of the concrete standard or multisector model by
-default. The private semantic-plan compiler remains available for development
-and parity testing by setting ``builder_strategy="compiled"`` on
-``RhimeModelSpec`` or in ``[RHIME.OPTIONS]``. There is no automatic fallback:
-an error in the selected strategy stops the run. The concrete model is the
-readable reference implementation; the compiled strategy is the opt-in
-extension path and must preserve the externally meaningful graph contract for
-components it does not intentionally change. See
+RHIME directly composes the concrete standard or multisector model in its
+corresponding recipe module. See
 :ref:`the concrete model stability contract <rhime-builder-stability>` for the
 full contract.
 
@@ -519,9 +513,6 @@ New RHIME config files should use ``flux_sources``:
    domain = "EUROPE"
    flux_sources = ["total-ukghg-edgar7"]
 
-   [RHIME.OPTIONS]
-   builder_strategy = "concrete"
-
    [RHIME.OUTPUT]
    output_path = "outputs"
    output_name = "example"
@@ -667,7 +658,8 @@ containing the value ``"outer"``:
 
 .. code-block:: python
 
-   from openghg_inversions.models import StateActivity, build_rhime_model
+   from openghg_inversions.models import StateActivity
+   from openghg_inversions.rhime.standard import build_rhime_model
    from openghg_inversions.sigma import SigmaAlignment
 
    state_policy = StateActivity(
@@ -819,6 +811,7 @@ retain their gathered ``(source, region_in_source)`` state coordinate.
        calibrate_basis_prior_stdev,
        project_basis_prior_stdev,
    )
+   from openghg_inversions.rhime.standard import build_rhime_model
 
    x_prior_stdev = project_basis_prior_stdev(
        basis_functions,

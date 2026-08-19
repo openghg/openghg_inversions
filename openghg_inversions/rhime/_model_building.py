@@ -6,7 +6,7 @@ from typing import Any, cast
 
 import pymc as pm
 
-from openghg_inversions.models import RhimeModelSpec, get_rhime_likelihood_result
+from openghg_inversions.models.rhime import RhimeModelSpec, get_rhime_likelihood_result
 
 from .builders import (
     RhimeModelBuilder,
@@ -53,7 +53,7 @@ def builtin_model_build_result(
     if model_spec.add_offset:
         roles["offset"] = "offset"
 
-    metadata: dict[str, Any] = {"kind": "builtin", "strategy": model_spec.builder_strategy}
+    metadata: dict[str, Any] = {"kind": "builtin"}
     if likelihood_metadata:
         metadata["likelihood"] = likelihood_metadata
     return RhimeModelBuildResult(

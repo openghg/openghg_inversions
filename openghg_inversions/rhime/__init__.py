@@ -35,6 +35,8 @@ from .preparation import (
     with_prepared_rhime_sites,
 )
 from .multisector import (
+    build_rhime_multisector_model,
+    build_rhime_multisector_model_from_spec,
     build_multisector_rhime_model,
     make_multisector_rhime_result,
     run_rhime_multisector,
@@ -43,6 +45,8 @@ from .outputs import RhimeResult
 from .prepared import run_rhime_from_prepared_inputs
 from .sampling import RhimeSampler, sample_rhime_model
 from .standard import (
+    build_rhime_model,
+    build_rhime_model_from_spec,
     build_standard_rhime_model,
     make_standard_rhime_result,
     run_rhime,
@@ -66,6 +70,10 @@ __all__ = [
     "params_from_config",
     "assemble_rhime_inputs",
     "build_multisector_rhime_model",
+    "build_rhime_model",
+    "build_rhime_model_from_spec",
+    "build_rhime_multisector_model",
+    "build_rhime_multisector_model_from_spec",
     "build_rhime_basis",
     "build_rhime_sensitivities",
     "build_standard_rhime_model",

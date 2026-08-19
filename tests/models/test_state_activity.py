@@ -20,15 +20,16 @@ from openghg_inversions.models import (
     active_prior_args,
     add_state_linear_component,
     attach_coord_registry,
-    build_rhime_model,
-    build_rhime_model_from_spec,
-    build_rhime_multisector_model,
     detect_zero_sensitivity,
-    build_rhime_multisector_model_from_spec,
     resolve_state_activity,
 )
 from openghg_inversions.models.components import add_linear_component, resolve_model_variable
 from openghg_inversions.models.components import add_state_vector
+from openghg_inversions.rhime.multisector import (
+    build_rhime_multisector_model,
+    build_rhime_multisector_model_from_spec,
+)
+from openghg_inversions.rhime.standard import build_rhime_model, build_rhime_model_from_spec
 from openghg_inversions.sigma import SigmaAlignment
 
 
