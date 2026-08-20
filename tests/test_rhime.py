@@ -2248,20 +2248,22 @@ def test_standard_model_supports_all_fixed_flux_and_bc(
     _assert_model_dot_matches_numpy(model, output_name="mu_bc", design_name="hbc", state_name="bc")
 
 
-def test_bc_activity_is_opt_in_and_restores_exact_zero_columns(
+def test_bc_zero_columns_are_structurally_removed_by_default(
     rhime_inv_inputs: xr.Dataset,
     builder_args: dict,
 ) -> None:
-    """Explicit BC activity prunes zero columns while omission keeps the old graph."""
+    """BC preparation always removes zero columns and reconstructs the full state."""
     inv_inputs = rhime_inv_inputs.copy(deep=True)
     first_region = inv_inputs["H_bc"].coords["bc_region"][0]
     inv_inputs["H_bc"].loc[{"bc_region": first_region}] = 0.0
     kwargs = {**builder_args, "no_model_error": True}
 
     default_model = build_rhime_model(inv_inputs, **kwargs)
-    assert default_model["bc"] in default_model.free_RVs
-    assert "bc_active" not in default_model.named_vars
-    assert "bc_is_active" not in default_model.named_vars
+    assert default_model["bc_active"] in default_model.free_RVs
+    assert default_model["bc"] not in default_model.free_RVs
+    assert not bool(default_model["bc_is_active"].eval()[0])
+    assert default_model["bc"].eval()[0] == 1.0
+    assert default_model["hbc"].eval().shape[1] == inv_inputs.sizes["bc_region"] - 1
 
     model = build_rhime_model(inv_inputs, bc_state_activity=StateActivity(), **kwargs)
     assert model["bc_active"] in model.free_RVs
@@ -2273,7 +2275,10 @@ def test_bc_activity_is_opt_in_and_restores_exact_zero_columns(
     assert list(registry.original_coords["bc_region_bc_active"]) == list(
         inv_inputs["H_bc"].indexes["bc_region"][1:]
     )
-    _assert_model_dot_matches_numpy(model, output_name="mu_bc", design_name="hbc", state_name="bc")
+    np.testing.assert_allclose(
+        model["mu_bc"].eval(),
+        model["hbc"].eval() @ model["bc"].eval()[1:],
+    )
 
 
 

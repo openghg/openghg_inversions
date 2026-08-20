@@ -11,9 +11,10 @@ Inactive states remain part of the public state vector and use labelled or
 scalar fixed values. The default fixed value is one, which preserves the prior
 forward-model contribution of a multiplicative flux-scaling state.
 
-``detect_zero_sensitivity`` validates a linear design and reduces it to a
-labelled state mask. ``resolve_state_activity`` combines that mask with a
-policy to produce the canonical ``ResolvedStateActivity``;
+``prepare_linear_design`` validates a linear design, removes exact-zero
+columns, and retains the full-state mapping. ``resolve_state_activity``
+combines that mapping with a policy to produce the canonical
+``ResolvedStateActivity``;
 ``active_prior_args`` then aligns and subsets state-valued prior parameters.
 Finite checks, exact-zero reductions, and state-vector alignment are explicit
 eager-compute boundaries for lazy or Dask-backed inputs during model building.
@@ -51,20 +52,68 @@ class StateActivity:
         fixed_groups: ``basis_group`` labels to freeze. Group selection is by
             coordinate value, never by state-number ranges.
         group_coord: Name of the state coordinate containing group labels.
-        prune_zero: Whether states marked exactly zero by prior design
-            inspection are made inactive. No tolerance is applied; every
-            nonzero finite column remains active by default.
-
-    Explicit ``active`` masks, fixed groups, and exact-zero pruning are
-    combined with logical AND. This permits one policy to represent zero-H
-    pruning, frozen states, frozen groups, or an entirely frozen sector.
+    Explicit ``active`` masks and fixed groups are combined with structural
+    zero-column removal using logical AND. Structural removal is owned by
+    linear-design preparation and cannot be disabled as an activity policy.
     """
 
     active: ActivityValue = True
     fixed_value: FixedValue = 1.0
     fixed_groups: tuple[str, ...] = ()
     group_coord: str = "basis_group"
-    prune_zero: bool = True
+
+
+@dataclass(frozen=True)
+class PreparedLinearDesign:
+    """A retained linear design and its lossless full-state mapping."""
+
+    design: xr.DataArray
+    removed: xr.DataArray
+    output_dim: str
+
+    @property
+    def state_dim(self) -> str:
+        """Return the sole state dimension."""
+        return str(self.removed.dims[0])
+
+    @property
+    def retained_indices(self) -> np.ndarray:
+        """Return full-state positions retained by :attr:`design`."""
+        return np.flatnonzero(~_materialize_1d(self.removed, name="removed", dtype=bool))
+
+
+def prepare_linear_design(
+    sensitivity: xr.DataArray,
+    *,
+    output_dim: str = "nmeasure",
+) -> PreparedLinearDesign:
+    """Remove exact-zero columns once and retain their full-state mapping.
+
+    This is the eager inspection boundary for a labelled linear design. The
+    returned design keeps borrowed array data and contains only nonzero
+    columns; ``removed`` retains the complete scientific state coordinate and
+    auxiliary state metadata for reconstruction and provenance.
+    """
+    output_dim = str(output_dim)
+    matrix = sensitivity.transpose(output_dim, ...)
+    removed = detect_zero_sensitivity(matrix, output_dim=output_dim)
+    state_dim = str(removed.dims[0])
+    retained_indices = np.flatnonzero(~removed.to_numpy())
+    design = matrix.isel({state_dim: retained_indices})
+    if retained_indices.size != matrix.sizes[state_dim]:
+        design = design.rename({state_dim: f"{state_dim}_retained"})
+        retained_dim = f"{state_dim}_retained"
+        retained_auxiliary = {
+            str(name): f"{name}_retained"
+            for name, coord in design.coords.items()
+            if name not in design.dims and retained_dim in coord.dims
+        }
+        design = design.rename(retained_auxiliary)
+    return PreparedLinearDesign(
+        design=design,
+        removed=removed.rename("structurally_removed"),
+        output_dim=output_dim,
+    )
 
 
 @dataclass(frozen=True)
@@ -363,8 +412,8 @@ def resolve_state_activity(
             exactly-zero design columns. It must have a unique labelled state
             coordinate and may carry auxiliary state coordinates used by the
             policy.
-        policy: Optional activity policy. When omitted, exact-zero columns are
-            pruned and all other states are active with inactive value one.
+        policy: Optional activity policy. When omitted, every retained column
+            is active and structurally removed states use inactive value one.
 
     Returns:
         A policy aligned to the mask's canonical state coordinate.
@@ -406,9 +455,7 @@ def resolve_state_activity(
     )
     _require_finite(_materialize_1d(fixed_value, name="fixed_value"), name="fixed_value")
 
-    active = explicit_active
-    if policy.prune_zero:
-        active = active & ~zero_sensitivity
+    active = explicit_active & ~zero_sensitivity
 
     if policy.fixed_groups:
         if policy.group_coord not in zero_sensitivity.coords:

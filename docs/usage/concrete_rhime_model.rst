@@ -204,6 +204,7 @@ helpers:
 
    from openghg_inversions.models import (
        add_linear_component,
+       prepare_linear_design,
        registered_model,
    )
    from openghg_inversions.models.likelihoods import add_gaussian_observation_likelihood
@@ -230,10 +231,12 @@ helpers:
        frequency=None,
        per_site=True,
    )
+   flux_design = prepare_linear_design(inv_inputs["H"])
+   boundary_design = prepare_linear_design(inv_inputs["H_bc"])
 
    with registered_model() as model:
        flux = add_linear_component(
-           inv_inputs["H"],
+           flux_design,
            data_name="hx",
            prior_args=x_prior,
            var_name="x",
@@ -241,7 +244,7 @@ helpers:
            output_dim="nmeasure",
        )
        boundary = add_linear_component(
-           inv_inputs["H_bc"],
+           boundary_design,
            data_name="hbc",
            prior_args=bc_prior,
            var_name="bc",
@@ -278,6 +281,14 @@ This example is deliberately concrete and editable. It is suitable when a
 model developer needs to change graph construction directly. It does not
 automatically participate in the complete ``run_rhime`` output pipeline; that
 pipeline still selects one of the built-in model builders.
+
+``prepare_linear_design`` is the single owning boundary for exact-zero column
+inspection. It removes those columns from the backend design while retaining
+their full labelled-state mapping; ``state_activity=None`` therefore samples
+every retained state. An explicit ``StateActivity`` fixes or groups scientific
+states but cannot restore a structurally absent column. For shared or
+correlated states, use ``apply_linear_design`` to apply another prepared
+forward operator without constructing a second prior.
 
 Multisector model
 -----------------

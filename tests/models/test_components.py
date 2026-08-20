@@ -15,6 +15,7 @@ from openghg_inversions.models.components import (
     resolve_model_variable,
 )
 from openghg_inversions.models.coords import CoordRegistry, attach_coord_registry
+from openghg_inversions.models.state_activity import prepare_linear_design
 from openghg_inversions.sigma import SigmaAlignment
 
 
@@ -95,17 +96,18 @@ def test_add_linear_component_creates_expected_named_vars() -> None:
     with pm.Model() as model:
         attach_coord_registry(model, CoordRegistry())
         result = add_linear_component(
-            data,
+            prepare_linear_design(data),
             data_name="hx",
             prior_args={"pdf": "normal", "mu": 1.0, "sigma": 1.0},
             var_name="x",
             output_name="mu",
         )
 
-    assert isinstance(result, LinearComponentResult)
     assert {"hx", "x", "mu"}.issubset(model.named_vars)
+    assert isinstance(result, LinearComponentResult)
     assert result.data is model.named_vars["hx"]
     assert result.latent is model.named_vars["x"]
+    assert result.state is model.named_vars["x"]
     assert result.output is model.named_vars["mu"]
 
 
@@ -121,7 +123,7 @@ def test_add_linear_component_returns_effective_reparameterised_latent() -> None
     with pm.Model() as model:
         attach_coord_registry(model, CoordRegistry())
         result = add_linear_component(
-            data,
+            prepare_linear_design(data),
             data_name="hx",
             prior_args={"pdf": "lognormal", "mean": 1.5, "stdev": 0.2, "reparameterise": True},
             var_name="x",
@@ -145,7 +147,7 @@ def test_resolve_model_variable_prefers_latent() -> None:
     with pm.Model() as model:
         attach_coord_registry(model, CoordRegistry())
         add_linear_component(
-            data,
+            prepare_linear_design(data),
             data_name="hx",
             prior_args={"pdf": "lognormal", "mean": 1.5, "stdev": 0.2, "reparameterise": True},
             var_name="x",
