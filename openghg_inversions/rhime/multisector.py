@@ -64,9 +64,10 @@ from .builders import (
     RhimeModelBuildResult,
     callable_metadata,
     validate_model_build_result,
+    validate_requested_output,
 )
 from .materialization import materialize_pymc_inputs
-from .outputs import RhimeResult, apply_output_bundle, make_multisector_output_bundle
+from .outputs import RhimeResult, make_multisector_rhime_outputs
 from .params import params_from_config, resolve_rhime_options
 from .preparation import (
     assemble_rhime_inputs,
@@ -539,6 +540,10 @@ def build_multisector_rhime_model_result(
         ValueError: If the basis layout is incompatible, both extension points
             are supplied, or the result conflicts with the run specification.
     """
+    if run_spec.output.output_format in ("basic", "legacy"):
+        raise ValueError(
+            f"RHIME output_format {run_spec.output.output_format!r} supports only single-sector runs."
+        )
     likelihood_kwargs = validate_likelihood_kwargs(likelihood_builder, likelihood_kwargs)
     if model_builder is not None and likelihood_builder is not None:
         raise ValueError("Pass either `model_builder` or `likelihood_builder`, not both.")
@@ -598,6 +603,7 @@ def build_multisector_rhime_model_result(
             multisector=True,
             input_names=tuple(str(name) for name in prepared.inv_inputs.data_vars),
         )
+        validate_requested_output(result, run_spec.output.output_format)
     log_timing("rhime.model_build", timer_seconds(timing_start), multisector=True)
     return result
 
@@ -614,7 +620,7 @@ def make_multisector_rhime_result(
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
     likelihood_kwargs: Mapping[str, Any] | None = None,
 ) -> RhimeResult:
-    """Construct a multisector result with its sector-aware output products.
+    """Construct a sampled multisector result before output side effects.
 
     Args:
         prepared: Retained source-resolved inputs and basis functions.
@@ -628,9 +634,8 @@ def make_multisector_rhime_result(
         likelihood_kwargs: Serializable options owned by the likelihood.
 
     Returns:
-        Complete multisector result with requested output products attached.
+        Multisector result ready for requested output construction.
     """
-    likelihood_kwargs = validate_likelihood_kwargs(likelihood_builder, likelihood_kwargs)
     result = RhimeResult(
         run_spec=run_spec,
         model_spec=run_spec.model,
@@ -643,37 +648,14 @@ def make_multisector_rhime_result(
         model_build_result=model_build_result,
         output_metadata={"build_and_sample_seconds": build_and_sample_seconds},
     )
-    builder_metadata = dict(model_build_result.metadata)
     if model_builder is not None:
         identity = callable_metadata(model_builder)
         result.output_metadata["model_builder"] = identity
-        builder_metadata["model_builder"] = identity
     if likelihood_builder is not None:
         identity = callable_metadata(likelihood_builder)
         result.output_metadata["likelihood_builder"] = identity
-        builder_metadata["likelihood_builder"] = identity
     if likelihood_kwargs is not None:
         result.output_metadata["likelihood_kwargs"] = likelihood_kwargs
-        builder_metadata["likelihood_kwargs"] = likelihood_kwargs
-
-    timing_start = timer_start()
-    output_bundle = make_multisector_output_bundle(
-        output_spec=run_spec.output,
-        run_spec=run_spec,
-        model_spec=run_spec.model,
-        idata=idata,
-        prepared=prepared,
-        country_file=run_spec.output.country_file,
-        variable_roles=model_build_result.variable_roles,
-        builder_metadata=builder_metadata,
-    )
-    log_timing(
-        "rhime.output_bundle_total",
-        timer_seconds(timing_start),
-        multisector=True,
-        output_format=run_spec.output.output_format,
-    )
-    apply_output_bundle(result, output_bundle)
     return result
 
 
@@ -688,7 +670,8 @@ def run_rhime_multisector(
     """Run a shared-basis multi-sector RHIME inversion.
 
     The visible process is resolve → retrieve/reload → filter → basis →
-    sensitivities → assemble → materialize → build → sample → result/output.
+    sensitivities → assemble → materialize → build → sample → result →
+    requested outputs.
     This module keeps source layout validation and sector-aware outputs beside
     that process instead of hiding them behind standard/multisector branching.
 
@@ -785,7 +768,7 @@ def run_rhime_multisector(
         model_build_result,
         setup.sampler,
     )
-    return make_multisector_rhime_result(
+    result = make_multisector_rhime_result(
         prepared=prepared,
         run_spec=run_spec,
         sampler=setup.sampler,
@@ -795,3 +778,12 @@ def run_rhime_multisector(
         likelihood_builder=likelihood_builder,
         likelihood_kwargs=likelihood_kwargs,
     )
+    output_start = timer_start()
+    make_multisector_rhime_outputs(result=result, prepared=prepared)
+    log_timing(
+        "rhime.output_total",
+        timer_seconds(output_start),
+        multisector=True,
+        output_format=run_spec.output.output_format,
+    )
+    return result

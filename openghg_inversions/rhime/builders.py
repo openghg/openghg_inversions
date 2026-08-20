@@ -141,6 +141,27 @@ class RhimeModelBuilder(Protocol):
         ...
 
 
+def validate_requested_output(
+    result: RhimeModelBuildResult,
+    output_format: str,
+) -> None:
+    """Reject an output the selected model contract does not support.
+
+    Args:
+        result: Selected model and its declared output capabilities.
+        output_format: Requested RHIME product format.
+
+    Raises:
+        ValueError: If the model does not declare the requested format safe.
+    """
+    if output_format not in result.supported_output_formats:
+        raise ValueError(
+            f"RHIME model does not declare output_format={output_format!r} compatible. "
+            f"Declared formats: {list(result.supported_output_formats)!r}. Use output_format='none' or "
+            "select a model that explicitly supports the requested RHIME output contract."
+        )
+
+
 def validate_model_build_result(
     result: RhimeModelBuildResult,
     *,
@@ -155,18 +176,26 @@ def validate_model_build_result(
         ValueError: If the requested output is unsupported or declared
             variable roles are incomplete or refer to absent variables.
     """
-    if get_coord_registry(result.model) is None:
+    registry = get_coord_registry(result.model)
+    if registry is None:
         raise ValueError(
             "A custom RHIME model must carry a `CoordRegistry`; construct it "
             "with `registered_model()`."
         )
-    output_format = context.run_spec.output.output_format
-    if output_format not in result.supported_output_formats:
+    role_dims = {
+        dim
+        for variable_name in result.variable_roles.values()
+        for dim in result.model.named_vars_to_dims.get(variable_name, ())
+    }
+    unregistered_dims = sorted(role_dims - set(registry.original_coords))
+    if unregistered_dims:
         raise ValueError(
-            f"Custom RHIME model builder does not declare output_format={output_format!r} compatible. "
-            f"Declared formats: {list(result.supported_output_formats)!r}. Use output_format='none' or "
-            "return a build result that explicitly supports the requested RHIME output contract."
+            "A custom RHIME model has output-role dimensions absent from its `CoordRegistry`: "
+            f"{unregistered_dims!r}. Register their scientific coordinates with "
+            "`registered_model(coords=...)` or `add_coords()`."
         )
+    output_format = context.run_spec.output.output_format
+    validate_requested_output(result, output_format)
 
     available_names = set(result.model.named_vars) | set(context.prepared_inputs.inv_inputs.variables)
     missing = {role: name for role, name in result.variable_roles.items() if name not in available_names}

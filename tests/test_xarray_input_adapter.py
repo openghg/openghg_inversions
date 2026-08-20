@@ -11,7 +11,7 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-import openghg_inversions.rhime.multisector as rhime_multisector
+import openghg_inversions.rhime.prepared as rhime_prepared
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.inversion_data import prepare_rhime_inputs_from_xarray
 from openghg_inversions.rhime import (
@@ -22,7 +22,6 @@ from openghg_inversions.rhime import (
     SectorSpec,
     run_rhime_from_prepared_inputs,
 )
-from openghg_inversions.rhime.outputs import RhimeOutputBundle
 
 
 def _basis_functions(source_order: list[str] | None = None) -> BasisFunctions:
@@ -914,16 +913,16 @@ def test_unequal_source_regions_round_trip_and_execute(
         split_by_sectors=True,
     )
 
-    def skip_diagnostics(**kwargs: object) -> RhimeOutputBundle:
+    def skip_diagnostics(**kwargs: object) -> None:
         """Keep this regression focused on the prepared-input execution seam."""
         output_prepared = kwargs["prepared"]
         assert isinstance(output_prepared, type(loaded))
         xr.testing.assert_identical(output_prepared.inv_inputs, loaded.inv_inputs)
         xr.testing.assert_identical(output_prepared.site_metadata, loaded.site_metadata)
-        return RhimeOutputBundle(outputs={"executed": True})
+        kwargs["result"].outputs["executed"] = True  # type: ignore[attr-defined,index]
 
     monkeypatch.setattr(RhimeSampler, "sample", lambda self, model, **kwargs: az.InferenceData())
-    monkeypatch.setattr(rhime_multisector, "make_multisector_output_bundle", skip_diagnostics)
+    monkeypatch.setattr(rhime_prepared, "make_multisector_rhime_outputs", skip_diagnostics)
 
     result = run_rhime_from_prepared_inputs(prepared_inputs=loaded, run_spec=run_spec)
 

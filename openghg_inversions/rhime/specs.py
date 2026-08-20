@@ -216,8 +216,10 @@ def validate_output_path_settings(
         ValueError: If the format is incompatible with the model or a required
             default output directory is absent.
     """
-    if multisector and output_format == "legacy":
-        raise ValueError("RHIME output_format 'legacy' supports only single-sector runs.")
+    if multisector and output_format in ("basic", "legacy"):
+        raise ValueError(
+            f"RHIME output_format {output_format!r} supports only single-sector runs."
+        )
     if output_format == "none":
         return
     if output_path is not None:
