@@ -56,7 +56,10 @@ def test_prepare_boundary_sensitivity_preserves_lazy_data_and_borrowed_input() -
     xr.testing.assert_identical(source, original)
 
 
-def test_prepare_boundary_sensitivity_computes_lazy_time_once() -> None:
+@pytest.mark.parametrize(("frequency", "expected_executions"), [("12h", 1), (None, 0)])
+def test_prepare_boundary_sensitivity_computes_lazy_time_only_when_needed(
+    frequency: str | None, expected_executions: int
+) -> None:
     executions: list[None] = []
 
     @delayed
@@ -74,9 +77,9 @@ def test_prepare_boundary_sensitivity_computes_lazy_time_once() -> None:
         },
     )
 
-    result = BoundaryAlignment.prepare(source, frequency="12h").data
+    result = BoundaryAlignment.prepare(source, frequency=frequency).data
 
-    assert executions == [None]
+    assert len(executions) == expected_executions
     assert hasattr(result.data, "__dask_graph__")
 
 

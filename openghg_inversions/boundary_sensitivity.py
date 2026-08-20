@@ -73,16 +73,16 @@ class BoundaryAlignment:
             sensitivity = sensitivity.sel({observation_dim: labels})
 
         time = sensitivity["time"].transpose(observation_dim)
-        # Dummy construction below is eager, so materialize a lazy auxiliary
-        # time coordinate once rather than executing its graph for each lookup.
-        if hasattr(time.data, "__dask_graph__"):
-            time = time.compute()
-            sensitivity = sensitivity.assign_coords(time=(observation_dim, time.data))
-        period = (
-            make_freq_indicator(time, frequency, anchor_time=anchor_time)
-            if frequency is not None
-            else xr.zeros_like(time, dtype=int)
-        ).rename("bc_period")
+        if frequency is not None:
+            # Dummy construction below is eager, so materialize a lazy auxiliary
+            # time coordinate once rather than executing its graph for each lookup.
+            if hasattr(time.data, "__dask_graph__"):
+                time = time.compute()
+                sensitivity = sensitivity.assign_coords(time=(observation_dim, time.data))
+            period = make_freq_indicator(time, frequency, anchor_time=anchor_time)
+        else:
+            period = xr.zeros_like(time, dtype=int)
+        period = period.rename("bc_period")
         mask = get_xr_dummies(period, return_sparse=False, cat_dim="bc_period")
         expanded = (sensitivity.rename(bc_region="bc_curtain") * mask).stack(
             bc_region=("bc_curtain", "bc_period")
