@@ -30,8 +30,12 @@ OBSERVATION_ERROR_INPUT_NAMES = ("mf", "mf_error", "min_error")
 class AggregationError:
     """Validated aggregation-error representation selected for a likelihood.
 
-    Model builders trust this value as already validated. Construct it through
-    :func:`resolve_aggregation_error` rather than instantiating it directly.
+    Model builders trust this value as already validated. Scientific runners
+    should construct it through :func:`resolve_aggregation_error`, which
+    selects and validates a coherent-reduction representation. Direct
+    construction is an expert seam, primarily useful when testing model
+    components, and the caller then owns the coherence of the mode, payload,
+    marginal variance, coordinates, and numerical covariance properties.
 
     Args:
         mode: Concrete covariance representation.
