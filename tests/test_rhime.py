@@ -1823,6 +1823,42 @@ def test_build_rhime_multisector_model_selects_sources_by_label(
     np.testing.assert_allclose(model["hx_ocean"].get_value(), expected_ocean.values)
 
 
+def test_multisector_model_namespaces_differently_retained_source_states(
+    multisector_inv_inputs: xr.Dataset,
+    builder_args: dict,
+) -> None:
+    """Source-specific zero columns get distinct retained backend dimensions."""
+    inputs = multisector_inv_inputs.copy(deep=True)
+    inputs["H"].loc[{"source": "total-ukghg-edgar7", "region": inputs.region[0]}] = 0.0
+    inputs["H"].loc[{"source": "sector-2", "region": inputs.region[1]}] = 0.0
+
+    model = build_rhime_multisector_model(
+        inputs,
+        sectors=(
+            _sector("FF", source="total-ukghg-edgar7", suffix="ff"),
+            _sector("ocean", source="sector-2", suffix="ocean"),
+        ),
+        **_multisector_args(builder_args),
+    )
+
+    assert model.named_vars_to_dims["hx_ff"] == ("nmeasure", "region_retained_ff")
+    assert model.named_vars_to_dims["hx_ocean"] == ("nmeasure", "region_retained_ocean")
+    np.testing.assert_allclose(
+        model["hx_ff"].get_value(),
+        inputs["H"]
+        .sel(source="total-ukghg-edgar7")
+        .isel(region=slice(1, None))
+        .transpose("nmeasure", "region"),
+    )
+    np.testing.assert_allclose(
+        model["hx_ocean"].get_value(),
+        inputs["H"]
+        .sel(source="sector-2")
+        .isel(region=[0, *range(2, inputs.sizes["region"])])
+        .transpose("nmeasure", "region"),
+    )
+
+
 def test_multisector_model_accepts_gathered_ragged_states(
     multisector_inv_inputs: xr.Dataset,
     builder_args: dict,
@@ -2248,20 +2284,22 @@ def test_standard_model_supports_all_fixed_flux_and_bc(
     _assert_model_dot_matches_numpy(model, output_name="mu_bc", design_name="hbc", state_name="bc")
 
 
-def test_bc_activity_is_opt_in_and_restores_exact_zero_columns(
+def test_bc_zero_columns_are_structurally_removed_by_default(
     rhime_inv_inputs: xr.Dataset,
     builder_args: dict,
 ) -> None:
-    """Explicit BC activity prunes zero columns while omission keeps the old graph."""
+    """BC preparation always removes zero columns and reconstructs the full state."""
     inv_inputs = rhime_inv_inputs.copy(deep=True)
     first_region = inv_inputs["H_bc"].coords["bc_region"][0]
     inv_inputs["H_bc"].loc[{"bc_region": first_region}] = 0.0
     kwargs = {**builder_args, "no_model_error": True}
 
     default_model = build_rhime_model(inv_inputs, **kwargs)
-    assert default_model["bc"] in default_model.free_RVs
-    assert "bc_active" not in default_model.named_vars
-    assert "bc_is_active" not in default_model.named_vars
+    assert default_model["bc_active"] in default_model.free_RVs
+    assert default_model["bc"] not in default_model.free_RVs
+    assert not bool(default_model["bc_is_active"].eval()[0])
+    assert default_model["bc"].eval()[0] == 1.0
+    assert default_model["hbc"].eval().shape[1] == inv_inputs.sizes["bc_region"] - 1
 
     model = build_rhime_model(inv_inputs, bc_state_activity=StateActivity(), **kwargs)
     assert model["bc_active"] in model.free_RVs
@@ -2273,7 +2311,10 @@ def test_bc_activity_is_opt_in_and_restores_exact_zero_columns(
     assert list(registry.original_coords["bc_region_bc_active"]) == list(
         inv_inputs["H_bc"].indexes["bc_region"][1:]
     )
-    _assert_model_dot_matches_numpy(model, output_name="mu_bc", design_name="hbc", state_name="bc")
+    actual, state = pm.draw([model["mu_bc"], model["bc"]], random_seed=417)
+    expected = model["hbc"].get_value() @ state[1:]
+    tolerance = 100 * max(np.finfo(actual.dtype).eps, np.finfo(expected.dtype).eps)
+    np.testing.assert_allclose(actual, expected, rtol=tolerance, atol=tolerance)
 
 
 
@@ -5044,7 +5085,7 @@ def test_prepared_multisector_runner_accepts_gathered_source_specific_basis_layo
 
 
 def test_multisector_runner_rejects_shared_basis_h_layout_mismatch() -> None:
-    """Retained shared-basis coordinates must match the prepared design state."""
+    """Retained shared-basis coordinates must match the prepared sensitivity state."""
     model_spec = RhimeModelSpec(
         species="ch4",
         domain="EUROPE",

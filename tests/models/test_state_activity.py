@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any, cast
 
 import dask.array as da
+from dask.callbacks import Callback
 import numpy as np
 import pymc as pm
 import pytest
@@ -16,9 +17,9 @@ from openghg_inversions.models import (
     CoordRegistry,
     StateActivity,
     active_prior_args,
-    add_state_linear_component,
     attach_coord_registry,
     detect_zero_sensitivity,
+    prepare_linear_sensitivity,
     registered_model,
     resolve_state_activity,
 )
@@ -124,6 +125,62 @@ def test_detect_zero_sensitivity_accepts_a_named_output_dimension() -> None:
 
     np.testing.assert_array_equal(zero_sensitivity, [False, True, False, False])
     assert zero_sensitivity.dims == ("region",)
+
+
+def test_prepare_linear_sensitivity_removes_columns_and_retains_full_mapping() -> None:
+    """Structural removal keeps a lossless labelled full-to-retained mapping."""
+    prepared = prepare_linear_sensitivity(_sensitivity())
+
+    assert prepared.sensitivity.dims == ("nmeasure", "region_retained")
+    np.testing.assert_array_equal(
+        prepared.sensitivity["region_retained"], ["inner-a", "outer-a", "inner-b"]
+    )
+    np.testing.assert_array_equal(prepared.removed, [False, True, False, False])
+    np.testing.assert_array_equal(prepared.removed["basis_group"], ["inner", "inner", "outer", "inner"])
+    np.testing.assert_array_equal(prepared.retained_indices, [0, 2, 3])
+
+
+def test_prepare_linear_sensitivity_keeps_retained_dask_payload_lazy() -> None:
+    """Inspect once, then keep retained data lazy until PyMC registration."""
+    executions: list[object] = []
+    callback = Callback(start=lambda graph: executions.append(graph))
+    with callback:
+        prepared = prepare_linear_sensitivity(_sensitivity().chunk({"nmeasure": 1, "region": 2}))
+
+        assert len(executions) == 1
+        assert isinstance(prepared.sensitivity.data, da.Array)
+        assert not isinstance(prepared.removed.data, da.Array)
+
+        with registered_model():
+            add_linear_component(
+                prepared,
+                data_name="hx",
+                prior_args={"pdf": "normal", "mu": 1.0, "sigma": 0.2},
+                var_name="x",
+                output_name="mu",
+            )
+
+        assert len(executions) == 2
+
+
+def test_all_zero_linear_sensitivity_builds_zero_forward_and_full_fixed_state() -> None:
+    """An all-zero sensitivity has no latent variables and reconstructs the full state."""
+    h = xr.zeros_like(_sensitivity())
+    prepared = prepare_linear_sensitivity(h)
+
+    with registered_model() as model:
+        result = add_linear_component(
+            prepared,
+            data_name="hx",
+            prior_args={"pdf": "normal", "mu": 1.0, "sigma": 0.2},
+            var_name="x",
+            output_name="mu",
+        )
+
+    assert prepared.sensitivity.sizes["region_retained"] == 0
+    assert model.free_RVs == []
+    np.testing.assert_allclose(model.named_vars["x"].eval(), np.ones(4))
+    np.testing.assert_allclose(result.output.eval(), np.zeros(2), atol=1e-12)
 
 
 def test_resolve_state_activity_combines_labels_groups_and_exact_zero() -> None:
@@ -350,8 +407,8 @@ def test_state_linear_component_preserves_full_forward_identity() -> None:
     registry = CoordRegistry()
     with pm.Model() as model:
         attach_coord_registry(model, registry)
-        result = add_state_linear_component(
-            h,
+        result = add_linear_component(
+            prepare_linear_sensitivity(h),
             data_name="hx",
             prior_args={"pdf": "normal", "mu": 2.0, "sigma": 0.1},
             var_name="x",
@@ -362,12 +419,16 @@ def test_state_linear_component_preserves_full_forward_identity() -> None:
             ),
         )
 
+    activity = resolve_state_activity(detect_zero_sensitivity(h), StateActivity(
+        fixed_value=fixed_value,
+        fixed_groups=("outer",),
+    ))
     x_full, mu, x_active = pm.draw(
         [result.state, result.output, model.named_vars["x_active"]],
         random_seed=42,
     )
-    active = result.activity.active_indices
-    fixed = result.activity.fixed_indices
+    active = activity.active_indices
+    fixed = activity.fixed_indices
     expected_split = (
         h.values[:, active] @ x_active + h.values[:, fixed] @ fixed_value.sel(region=h.region).values[fixed]
     )
@@ -383,8 +444,7 @@ def test_state_linear_component_preserves_full_forward_identity() -> None:
 def test_add_state_vector_registers_full_state_coord_in_a_fresh_model() -> None:
     """Construct a state graph from a resolved contract and register its coordinate."""
     activity = resolve_state_activity(
-        detect_zero_sensitivity(_sensitivity()),
-        StateActivity(prune_zero=False),
+        xr.zeros_like(detect_zero_sensitivity(_sensitivity()), dtype=bool),
     )
     with registered_model() as model:
         result = add_state_vector(
@@ -397,35 +457,24 @@ def test_add_state_vector_registers_full_state_coord_in_a_fresh_model() -> None:
     assert model.coords["region"] == (0, 1, 2, 3)
 
 
-def test_state_linear_component_preserves_legacy_graph_when_all_states_are_active() -> None:
-    """Use the ordinary base prior graph when state pruning changes nothing."""
+def test_linear_component_preserves_plain_graph_when_all_states_are_retained() -> None:
+    """Use the ordinary base prior graph when preparation removes nothing."""
     h = _sensitivity().drop_sel(region="zero")
     prior = {"pdf": "normal", "mu": 1.0, "sigma": 0.2}
 
     with pm.Model() as linear_model:
         attach_coord_registry(linear_model, CoordRegistry())
-        linear_result = add_linear_component(
-            h,
+        result = add_linear_component(
+            prepare_linear_sensitivity(h),
             data_name="hx",
             prior_args=prior,
             var_name="x",
             output_name="mu",
         )
-    with pm.Model() as state_model:
-        attach_coord_registry(state_model, CoordRegistry())
-        state_result = add_state_linear_component(
-            h,
-            data_name="hx",
-            prior_args=prior,
-            var_name="x",
-            output_name="mu",
-        )
-
-    assert set(state_model.named_vars) == set(linear_model.named_vars) == {"hx", "x", "mu"}
-    assert [rv.name for rv in state_model.free_RVs] == [rv.name for rv in linear_model.free_RVs] == ["x"]
-    assert state_result.state is state_model.named_vars["x"]
-    assert state_result.latent is state_model.named_vars["x"]
-    assert linear_result.latent is linear_model.named_vars["x"]
+    assert set(linear_model.named_vars) == {"hx", "x", "mu"}
+    assert [rv.name for rv in linear_model.free_RVs] == ["x"]
+    assert result.state is linear_model.named_vars["x"]
+    assert result.output is linear_model.named_vars["mu"]
 
 
 def test_state_linear_component_full_activity_preserves_reparameterised_names() -> None:
@@ -433,8 +482,8 @@ def test_state_linear_component_full_activity_preserves_reparameterised_names() 
     h = _sensitivity().drop_sel(region="zero")
     with pm.Model() as model:
         attach_coord_registry(model, CoordRegistry())
-        result = add_state_linear_component(
-            h,
+        result = add_linear_component(
+            prepare_linear_sensitivity(h),
             data_name="hx",
             prior_args={
                 "pdf": "lognormal",
@@ -448,7 +497,7 @@ def test_state_linear_component_full_activity_preserves_reparameterised_names() 
 
     assert set(model.named_vars) == {"hx", "x_latent", "x", "mu"}
     assert [rv.name for rv in model.free_RVs] == ["x_latent"]
-    assert result.state is model.named_vars["x"]
+    assert result.output is model.named_vars["mu"]
     assert result.latent is model.named_vars["x_latent"]
 
 
@@ -462,8 +511,8 @@ def test_state_linear_component_restores_removed_states_in_canonical_order() -> 
     )
     with pm.Model() as model:
         attach_coord_registry(model, CoordRegistry())
-        result = add_state_linear_component(
-            h,
+        result = add_linear_component(
+            prepare_linear_sensitivity(h),
             data_name="hx",
             prior_args={"pdf": "normal", "mu": 2.0, "sigma": 0.1},
             var_name="x",
@@ -479,7 +528,11 @@ def test_state_linear_component_restores_removed_states_in_canonical_order() -> 
         random_seed=42,
     )
     restored = fixed.to_numpy().copy()
-    restored[result.activity.active_indices] = active_state
+    activity = resolve_state_activity(detect_zero_sensitivity(h), StateActivity(
+        active=np.array([True, False, True, False]),
+        fixed_value=fixed,
+    ))
+    restored[activity.active_indices] = active_state
 
     np.testing.assert_allclose(full_state, restored)
     np.testing.assert_allclose(output, h.to_numpy() @ restored)
@@ -492,8 +545,8 @@ def test_state_linear_component_supports_zero_active_states() -> None:
 
     with pm.Model() as model:
         attach_coord_registry(model, CoordRegistry())
-        result = add_state_linear_component(
-            h,
+        result = add_linear_component(
+            prepare_linear_sensitivity(h),
             data_name="hx",
             prior_args={"pdf": "normal", "mu": 1.0, "sigma": 1.0},
             var_name="x",
@@ -504,7 +557,6 @@ def test_state_linear_component_supports_zero_active_states() -> None:
     x_full, mu = pm.draw([result.state, result.output], random_seed=42)
     np.testing.assert_allclose(x_full, np.full(h.sizes["region"], 2.5))
     np.testing.assert_allclose(mu, h.values @ x_full)
-    assert result.latent is None
     assert "x_active" not in model.named_vars
     assert not any(rv.name and rv.name.startswith("x") for rv in model.free_RVs)
     assert resolve_model_variable(model, "x") is model.named_vars["x"]

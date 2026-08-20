@@ -18,7 +18,6 @@ from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInpu
 from openghg_inversions.models.components import (
     add_linear_component,
     add_offset_component,
-    add_state_linear_component,
 )
 from openghg_inversions.models.coords import registered_model
 from openghg_inversions.models.pollution_event import build_pollution_event_gaussian_likelihood
@@ -29,9 +28,10 @@ from openghg_inversions.models._flux import (
     _select_sector_design,
 )
 from openghg_inversions.models.state_activity import (
+    PreparedLinearSensitivity,
     StateActivity,
     active_prior_args,
-    detect_zero_sensitivity,
+    prepare_linear_sensitivity,
     resolve_state_activity,
 )
 from openghg_inversions.observation_error import (
@@ -79,7 +79,7 @@ from .preparation import (
 from .sampling import RhimeSampler, sample_rhime_model
 
 
-_SectorComponent = tuple[SectorSpec, xr.DataArray, PriorArgs, StateActivity]
+_SectorComponent = tuple[SectorSpec, PreparedLinearSensitivity, PriorArgs, StateActivity]
 _MULTISECTOR_FLUX_INPUT_NAMES = ("H",)
 _MODEL_ERROR_ALIGNMENT_INPUT_NAMES = ("site_indicator",)
 _BASELINE_INPUT_NAMES = ("H_bc",)
@@ -248,28 +248,47 @@ def _prepare_multisector_flux_components(
             namespace_state_dim=False,
         )
         sector_policy = sector.state_activity if sector.state_activity is not None else state_activity
-        resolved_activity = resolve_state_activity(detect_zero_sensitivity(design), sector_policy)
+        prepared_sensitivity = prepare_linear_sensitivity(design)
+        resolved_activity = resolve_state_activity(prepared_sensitivity.removed, sector_policy)
         all_active = replace(
             resolved_activity,
             active=xr.ones_like(resolved_activity.active, dtype=bool),
         )
         prior = active_prior_args(dict(sector.x_prior), all_active)
+        design_state_dim = next(
+            str(dim)
+            for dim in prepared_sensitivity.sensitivity.dims
+            if dim != prepared_sensitivity.output_dim
+        )
         backend_design = _namespace_sector_state_coords(
-            design,
+            prepared_sensitivity.sensitivity,
+            variable_suffix=sector.variable_suffix,
+            namespace_state_dim=gathered_layout or design_state_dim != resolved_activity.state_dim,
+        )
+        semantic_state_dim = resolved_activity.state_dim
+        backend_state_dim = (
+            f"{semantic_state_dim}_{sector.variable_suffix}"
+            if gathered_layout
+            else semantic_state_dim
+        )
+        rename_state = (
+            {semantic_state_dim: backend_state_dim} if semantic_state_dim != backend_state_dim else {}
+        )
+        backend_removed = _namespace_sector_state_coords(
+            prepared_sensitivity.removed,
             variable_suffix=sector.variable_suffix,
             namespace_state_dim=gathered_layout,
         )
-        backend_state_dim = next(str(dim) for dim in backend_design.dims if dim != "nmeasure")
-        semantic_state_dim = resolved_activity.state_dim
-        rename_state = (
-            {semantic_state_dim: backend_state_dim} if semantic_state_dim != backend_state_dim else {}
+        backend_prepared = PreparedLinearSensitivity(
+            sensitivity=backend_design,
+            removed=backend_removed,
+            output_dim=prepared_sensitivity.output_dim,
         )
         backend_activity = StateActivity(
             active=resolved_activity.active.rename(rename_state),
             fixed_value=resolved_activity.fixed_value.rename(rename_state),
-            prune_zero=False,
         )
-        components.append((sector, backend_design, prior, backend_activity))
+        components.append((sector, backend_prepared, prior, backend_activity))
     return tuple(components)
 
 
@@ -353,20 +372,26 @@ def build_multisector_rhime_model(
     bc_prior = dict(DEFAULT_BC_PRIOR if bc_prior is None else bc_prior)
     sigma_prior = dict(DEFAULT_SIGMA_PRIOR if sigma_prior is None else sigma_prior)
     offset_prior = dict(DEFAULT_OFFSET_PRIOR if offset_prior is None else offset_prior)
+    prepared_boundary = (
+        prepare_linear_sensitivity(boundary_sensitivity)
+        if use_bc and boundary_sensitivity is not None
+        else None
+    )
     with registered_model() as model:
         sector_outputs = []
         for sector, design, prior, sector_policy in sector_components:
-            linear_component = add_state_linear_component(
-                design,
-                data_name=f"hx_{sector.variable_suffix}",
-                prior_args=prior,
-                var_name=f"x_{sector.variable_suffix}",
-                output_name=f"mu_{sector.variable_suffix}",
-                output_dim="nmeasure",
-                compute_deterministic=True,
-                state_activity=sector_policy,
+            sector_outputs.append(
+                add_linear_component(
+                    design,
+                    data_name=f"hx_{sector.variable_suffix}",
+                    prior_args=prior,
+                    var_name=f"x_{sector.variable_suffix}",
+                    output_name=f"mu_{sector.variable_suffix}",
+                    output_dim="nmeasure",
+                    compute_deterministic=True,
+                    state_activity=sector_policy,
+                ).output
             )
-            sector_outputs.append(linear_component.output)
 
         pollution_mean = cast(Any, pt.stack(sector_outputs, axis=0)).sum(axis=0)
 
@@ -376,27 +401,17 @@ def build_multisector_rhime_model(
                 raise ValueError(
                     "Multisector baseline component requires `boundary_sensitivity` when `use_bc` is true."
                 )
-            if bc_state_activity is None:
-                boundary_mean = add_linear_component(
-                    boundary_sensitivity,
-                    data_name="hbc",
-                    prior_args=bc_prior,
-                    var_name="bc",
-                    output_name="mu_bc",
-                    output_dim="nmeasure",
-                    compute_deterministic=True,
-                ).output
-            else:
-                boundary_mean = add_state_linear_component(
-                    boundary_sensitivity,
-                    data_name="hbc",
-                    prior_args=bc_prior,
-                    var_name="bc",
-                    output_name="mu_bc",
-                    output_dim="nmeasure",
-                    compute_deterministic=True,
-                    state_activity=bc_state_activity,
-                ).output
+            assert prepared_boundary is not None
+            boundary_mean = add_linear_component(
+                prepared_boundary,
+                data_name="hbc",
+                prior_args=bc_prior,
+                var_name="bc",
+                output_name="mu_bc",
+                output_dim="nmeasure",
+                compute_deterministic=True,
+                state_activity=bc_state_activity,
+            ).output
 
         offset = None
         if add_offset:
