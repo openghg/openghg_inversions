@@ -26,6 +26,7 @@ openghg\_inversions
 
    openghg_inversions.array_ops
    openghg_inversions.borrowed
+   openghg_inversions.boundary_sensitivity
    openghg_inversions.cli
    openghg_inversions.coherent_reduction
    openghg_inversions.convert

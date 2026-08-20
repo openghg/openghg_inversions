@@ -7,6 +7,12 @@ openghg\_inversions.rhime
    :undoc-members:
 
 
+.. toctree::
+   :maxdepth: 4
+
+   openghg_inversions.rhime.co2
+
+
 
 .. toctree::
    :maxdepth: 4

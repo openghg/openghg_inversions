@@ -576,6 +576,44 @@ config prior to request the API-default parameterization shown here.</p>
 </table>
 </div>
 </section>
+<section id="co2-coherent-reduction-model">
+<h2>CO2 coherent-reduction model<a class="headerlink" href="#co2-coherent-reduction-model" title="Link to this heading">#</a></h2>
+<p>The public <a class="reference internal" href="../reference/openghg_inversions.rhime.html#openghg_inversions.rhime.build_co2_rhime_model" title="openghg_inversions.rhime.build_co2_rhime_model"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.build_co2_rhime_model()</span></code></a> recipe
+consumes the labelled products of a coherent state reduction. Let
+<code class="docutils literal notranslate"><span class="pre">H_alpha</span></code> be the retained-state operator, <code class="docutils literal notranslate"><span class="pre">m_alpha</span></code> and <code class="docutils literal notranslate"><span class="pre">C_alpha</span></code> its
+arithmetic prior mean and covariance, and <code class="docutils literal notranslate"><span class="pre">b_fixed</span></code> the fixed affine prior
+contribution. The recipe constructs</p>
+<div class="math notranslate nohighlight">
+\[\begin{split}x &amp;\sim \operatorname{LogNormalMoments}(m_\alpha, C_\alpha), \\
+\mu_{pollution} &amp;= H_\alpha x, \\
+\mu &amp;= b_{fixed} + \mu_{pollution}.\end{split}\]</div>
+<p>The affine term is part of coherent prior closure; it is not an atmospheric
+boundary condition. An explicit state-activity policy omits inactive elements
+from the sampled correlated vector while restoring their exact fixed values
+in the full public <code class="docutils literal notranslate"><span class="pre">x</span></code> vector and in <code class="docutils literal notranslate"><span class="pre">mu_pollution</span></code>.</p>
+<p>The CO2 likelihood uses the explicit <a class="reference internal" href="../reference/openghg_inversions.observation_error.html#openghg_inversions.observation_error.AggregationError" title="openghg_inversions.observation_error.AggregationError"><code class="xref py py-class docutils literal notranslate"><span class="pre">AggregationError</span></code></a>
+selected from prepared inputs. With reported observation standard deviation
+<code class="docutils literal notranslate"><span class="pre">s_y</span></code>, optional known mismatch <code class="docutils literal notranslate"><span class="pre">s_fixed</span></code>, and optional inferred additive
+mismatch <code class="docutils literal notranslate"><span class="pre">sigma</span></code>, its covariance is</p>
+<div class="math notranslate nohighlight">
+\[R = C_{agg} + \operatorname{diag}
+    (s_y^2 + s_{fixed}^2 + \sigma^2),\]</div>
+<p>after applying <code class="docutils literal notranslate"><span class="pre">min_error</span></code> as a floor on the total marginal standard
+deviation. OpenGHG Inversions does not default <code class="docutils literal notranslate"><span class="pre">s_fixed</span></code> to 1 ppm. The
+Verification Games fixed-only policy passes <code class="docutils literal notranslate"><span class="pre">fixed_model_mismatch=1.0</span></code> and
+<code class="docutils literal notranslate"><span class="pre">no_model_error=True</span></code> visibly. A runnable CO2 configuration and resolver are
+tracked in <a class="reference external" href="https://linear.app/openghg-inversions/issue/OPE-79">OPE-79</a>.</p>
+<p>The model builder accepts explicit scientific arrays rather than a dataset.
+For durable prepared artifacts, <a class="reference internal" href="../reference/openghg_inversions.rhime.html#openghg_inversions.rhime.run_rhime_co2" title="openghg_inversions.rhime.run_rhime_co2"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.run_rhime_co2()</span></code></a>
+is the public replay seam: it validates and materializes the selected arrays,
+resolves aggregation error, calls the explicit builder, samples, and stores a
+JSON variable-role and model-provenance manifest on the returned
+<code class="docutils literal notranslate"><span class="pre">InferenceData</span></code>. A prepared <code class="docutils literal notranslate"><span class="pre">fixed_model_mismatch</span></code> is preserved when the
+runner argument is <code class="docutils literal notranslate"><span class="pre">None</span></code>; an explicit scalar or labelled vector overrides
+it. Persist gathered-state traces with
+<a class="reference internal" href="../reference/openghg_inversions.serialization.html#openghg_inversions.serialization.save_inferencedata" title="openghg_inversions.serialization.save_inferencedata"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.serialization.save_inferencedata()</span></code></a>, which uses the
+same MultiIndex-safe boundary as standard and multisector RHIME outputs.</p>
+</section>
 <section id="equivalent-construction-from-public-helpers">
 <h2>Equivalent construction from public helpers<a class="headerlink" href="#equivalent-construction-from-public-helpers" title="Link to this heading">#</a></h2>
 <p>The default production builder constructs the graph in the same direct style
@@ -909,6 +947,7 @@ component is insufficient.</p>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#the-current-builders">The current builders</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#stability-contract">Stability contract</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#standard-single-flux-model">Standard single-flux model</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#co2-coherent-reduction-model">CO2 coherent-reduction model</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#equivalent-construction-from-public-helpers">Equivalent construction from public helpers</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#multisector-model">Multisector model</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#names-and-generated-names">Names and generated names</a></li>

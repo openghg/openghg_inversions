@@ -381,6 +381,11 @@
 </ul>
 </details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.rhime.html">openghg_inversions.rhime</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="openghg_inversions.rhime.co2.html">openghg_inversions.rhime.co2</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.model.html">openghg_inversions.rhime.co2.model</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.runner.html">openghg_inversions.rhime.co2.runner</a></li>
+</ul>
+</details></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.builders.html">openghg_inversions.rhime.builders</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.likelihoods.html">openghg_inversions.rhime.likelihoods</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.materialization.html">openghg_inversions.rhime.materialization</a></li>
@@ -396,6 +401,7 @@
 </details></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.array_ops.html">openghg_inversions.array_ops</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.borrowed.html">openghg_inversions.borrowed</a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.boundary_sensitivity.html">openghg_inversions.boundary_sensitivity</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.cli.html">openghg_inversions.cli</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.coherent_reduction.html">openghg_inversions.coherent_reduction</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.convert.html">openghg_inversions.convert</a></li>
@@ -1138,6 +1144,7 @@
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.html#openghg_inversions.models.active_prior_args"><code class="docutils literal notranslate"><span class="pre">active_prior_args()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.html#openghg_inversions.models.add_coords"><code class="docutils literal notranslate"><span class="pre">add_coords()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.html#openghg_inversions.models.add_correlated_lognormal_state"><code class="docutils literal notranslate"><span class="pre">add_correlated_lognormal_state()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.html#openghg_inversions.models.add_correlated_lognormal_state_with_activity"><code class="docutils literal notranslate"><span class="pre">add_correlated_lognormal_state_with_activity()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.html#openghg_inversions.models.add_inferpymc_likelihood_component"><code class="docutils literal notranslate"><span class="pre">add_inferpymc_likelihood_component()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.html#openghg_inversions.models.add_linear_component"><code class="docutils literal notranslate"><span class="pre">add_linear_component()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.html#openghg_inversions.models.add_model_data"><code class="docutils literal notranslate"><span class="pre">add_model_data()</span></code></a></li>
@@ -1186,6 +1193,7 @@
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.components.html#openghg_inversions.models.components.add_correlated_lognormal_state"><code class="docutils literal notranslate"><span class="pre">add_correlated_lognormal_state()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.components.html#openghg_inversions.models.components.add_correlated_lognormal_state_with_activity"><code class="docutils literal notranslate"><span class="pre">add_correlated_lognormal_state_with_activity()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.components.html#openghg_inversions.models.components.add_inferpymc_likelihood_component"><code class="docutils literal notranslate"><span class="pre">add_inferpymc_likelihood_component()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.components.html#openghg_inversions.models.components.add_linear_component"><code class="docutils literal notranslate"><span class="pre">add_linear_component()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.components.html#openghg_inversions.models.components.add_model_data"><code class="docutils literal notranslate"><span class="pre">add_model_data()</span></code></a></li>
@@ -1526,12 +1534,15 @@
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.assemble_rhime_inputs"><code class="docutils literal notranslate"><span class="pre">assemble_rhime_inputs()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.build_co2_rhime_model"><code class="docutils literal notranslate"><span class="pre">build_co2_rhime_model()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.build_multisector_rhime_model"><code class="docutils literal notranslate"><span class="pre">build_multisector_rhime_model()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.build_multisector_rhime_model_result"><code class="docutils literal notranslate"><span class="pre">build_multisector_rhime_model_result()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.build_rhime_basis"><code class="docutils literal notranslate"><span class="pre">build_rhime_basis()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.build_rhime_sensitivities"><code class="docutils literal notranslate"><span class="pre">build_rhime_sensitivities()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.build_standard_rhime_model"><code class="docutils literal notranslate"><span class="pre">build_standard_rhime_model()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.build_standard_rhime_model_result"><code class="docutils literal notranslate"><span class="pre">build_standard_rhime_model_result()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.co2_model_input_names"><code class="docutils literal notranslate"><span class="pre">co2_model_input_names()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.co2_prior_forward_mean"><code class="docutils literal notranslate"><span class="pre">co2_prior_forward_mean()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.filter_rhime_observations"><code class="docutils literal notranslate"><span class="pre">filter_rhime_observations()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.make_multisector_rhime_result"><code class="docutils literal notranslate"><span class="pre">make_multisector_rhime_result()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.make_standard_rhime_result"><code class="docutils literal notranslate"><span class="pre">make_standard_rhime_result()</span></code></a></li>
@@ -1542,11 +1553,29 @@
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.resolve_rhime_options"><code class="docutils literal notranslate"><span class="pre">resolve_rhime_options()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.retrieve_or_reload_rhime_data"><code class="docutils literal notranslate"><span class="pre">retrieve_or_reload_rhime_data()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.run_rhime"><code class="docutils literal notranslate"><span class="pre">run_rhime()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.run_rhime_co2"><code class="docutils literal notranslate"><span class="pre">run_rhime_co2()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.run_rhime_from_prepared_inputs"><code class="docutils literal notranslate"><span class="pre">run_rhime_from_prepared_inputs()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.run_rhime_multisector"><code class="docutils literal notranslate"><span class="pre">run_rhime_multisector()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.sample_rhime_model"><code class="docutils literal notranslate"><span class="pre">sample_rhime_model()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.standard_model_input_names"><code class="docutils literal notranslate"><span class="pre">standard_model_input_names()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.with_prepared_rhime_sites"><code class="docutils literal notranslate"><span class="pre">with_prepared_rhime_sites()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.html">openghg_inversions.rhime.co2</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.build_co2_rhime_model"><code class="docutils literal notranslate"><span class="pre">build_co2_rhime_model()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.co2_model_input_names"><code class="docutils literal notranslate"><span class="pre">co2_model_input_names()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.co2_prior_forward_mean"><code class="docutils literal notranslate"><span class="pre">co2_prior_forward_mean()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.run_rhime_co2"><code class="docutils literal notranslate"><span class="pre">run_rhime_co2()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.model.html">openghg_inversions.rhime.co2.model</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.model.html#openghg_inversions.rhime.co2.model.build_co2_rhime_model"><code class="docutils literal notranslate"><span class="pre">build_co2_rhime_model()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.model.html#openghg_inversions.rhime.co2.model.co2_prior_forward_mean"><code class="docutils literal notranslate"><span class="pre">co2_prior_forward_mean()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.runner.html">openghg_inversions.rhime.co2.runner</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.runner.html#openghg_inversions.rhime.co2.runner.co2_model_input_names"><code class="docutils literal notranslate"><span class="pre">co2_model_input_names()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.runner.html#openghg_inversions.rhime.co2.runner.run_rhime_co2"><code class="docutils literal notranslate"><span class="pre">run_rhime_co2()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.builders.html">openghg_inversions.rhime.builders</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.builders.html#openghg_inversions.rhime.builders.RhimeLikelihoodBuilder"><code class="docutils literal notranslate"><span class="pre">RhimeLikelihoodBuilder</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.builders.html#openghg_inversions.rhime.builders.RhimeModelBuildResult"><code class="docutils literal notranslate"><span class="pre">RhimeModelBuildResult</span></code></a><ul>
@@ -1780,6 +1809,15 @@
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.borrowed.html#openghg_inversions.borrowed.borrow"><code class="docutils literal notranslate"><span class="pre">borrow()</span></code></a></li>
 </ul>
 </li>
+<li class="toctree-l1"><a class="reference internal" href="openghg_inversions.boundary_sensitivity.html">openghg_inversions.boundary_sensitivity</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.boundary_sensitivity.html#openghg_inversions.boundary_sensitivity.BoundaryAlignment"><code class="docutils literal notranslate"><span class="pre">BoundaryAlignment</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.boundary_sensitivity.html#openghg_inversions.boundary_sensitivity.BoundaryAlignment.data"><code class="docutils literal notranslate"><span class="pre">BoundaryAlignment.data</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.boundary_sensitivity.html#openghg_inversions.boundary_sensitivity.BoundaryAlignment.prepare"><code class="docutils literal notranslate"><span class="pre">BoundaryAlignment.prepare()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.boundary_sensitivity.html#openghg_inversions.boundary_sensitivity.scale_satellite_boundary_sensitivity_to_column_signal"><code class="docutils literal notranslate"><span class="pre">scale_satellite_boundary_sensitivity_to_column_signal()</span></code></a></li>
+</ul>
+</li>
 <li class="toctree-l1"><a class="reference internal" href="openghg_inversions.cli.html">openghg_inversions.cli</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.cli.html#openghg_inversions.cli.build_parser"><code class="docutils literal notranslate"><span class="pre">build_parser()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.cli.html#openghg_inversions.cli.main"><code class="docutils literal notranslate"><span class="pre">main()</span></code></a></li>
@@ -1867,7 +1905,6 @@
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.inversion_inputs.html#openghg_inversions.inversion_inputs.make_sigma_freq"><code class="docutils literal notranslate"><span class="pre">make_sigma_freq()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.inversion_inputs.html#openghg_inversions.inversion_inputs.make_site_indicator"><code class="docutils literal notranslate"><span class="pre">make_site_indicator()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.inversion_inputs.html#openghg_inversions.inversion_inputs.make_site_names"><code class="docutils literal notranslate"><span class="pre">make_site_names()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.inversion_inputs.html#openghg_inversions.inversion_inputs.transform_bc"><code class="docutils literal notranslate"><span class="pre">transform_bc()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.inversion_inputs.html#openghg_inversions.inversion_inputs.xr_factorize"><code class="docutils literal notranslate"><span class="pre">xr_factorize()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.inversion_inputs.html#openghg_inversions.inversion_inputs.xr_unique_inv"><code class="docutils literal notranslate"><span class="pre">xr_unique_inv()</span></code></a></li>
 </ul>
