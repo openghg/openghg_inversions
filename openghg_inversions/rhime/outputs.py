@@ -520,7 +520,8 @@ def make_multisector_rhime_outputs(
         with timed("rhime.output.inversion_output_save", path=inv_out_path):
             inv_out_for_outputs.save(inv_out_path)
         output_metadata["inversion_output_path"] = str(inv_out_path)
-    _save_requested_trace(result)
+    if output_spec.output_format != "none":
+        _save_requested_trace(result)
 
     result.inv_out = inv_out
     result.outputs.update(outputs)

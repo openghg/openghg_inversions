@@ -7271,6 +7271,26 @@ def test_multisector_paris_options_are_checked_before_output_writes(
     assert not any(tmp_path.iterdir())
 
 
+def test_multisector_none_does_not_save_trace(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A no-output multisector stage ignores trace persistence settings."""
+    model_spec, _, run_spec = _minimal_output_specs(output_format="none")
+    run_spec = replace(
+        run_spec,
+        output=replace(run_spec.output, save_trace=True),
+        split_by_sectors=True,
+    )
+    result = _result_for_outputs(run_spec, _minimal_output_idata(), model_spec=model_spec)
+    prepared = RhimePreparedInputs(
+        inv_inputs=_minimal_output_inv_inputs(),
+        basis_functions=_fake_basis_functions(),
+        site_metadata=_prepared_site_metadata(),
+    )
+    monkeypatch.setattr(rhime_outputs, "_make_multisector_flux_diagnostics", lambda inv_out: xr.Dataset())
+
+    rhime_outputs.make_multisector_rhime_outputs(result=result, prepared=prepared)
+    assert "trace_path" not in result.output_metadata
+
+
 @pytest.mark.rhime_contract
 def test_make_multisector_outputs_build_latest_paris_flux(
     europe_country_file: Path,
