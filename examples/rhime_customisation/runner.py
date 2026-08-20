@@ -27,6 +27,7 @@ from openghg_inversions.rhime import (
     build_standard_rhime_model_result,
     filter_rhime_observations,
     make_standard_rhime_result,
+    make_standard_rhime_outputs,
     materialize_pymc_inputs,
     params_from_config,
     resolve_rhime_options,
@@ -98,7 +99,7 @@ def run_custom_rhime(
     )
     idata = sample_rhime_model(model_build_result, setup.sampler)
 
-    return make_standard_rhime_result(
+    result = make_standard_rhime_result(
         prepared=prepared,
         run_spec=run_spec,
         sampler=setup.sampler,
@@ -107,6 +108,8 @@ def run_custom_rhime(
         build_and_sample_seconds=perf_counter() - build_and_sample_start,
         likelihood_builder=likelihood_builder,
     )
+    make_standard_rhime_outputs(result=result, prepared=prepared)
+    return result
 
 
 def _json_object(value: str) -> dict[str, Any]:

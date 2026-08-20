@@ -14,6 +14,7 @@ import pytest
 import xarray as xr
 
 import openghg_inversions.rhime.multisector as rhime_multisector
+import openghg_inversions.rhime.prepared as rhime_prepared
 import openghg_inversions.rhime.standard as rhime_standard
 from openghg_inversions.basis.basis_functions import (
     BASIS_ARTIFACT_PATH_ATTR,
@@ -31,7 +32,6 @@ from openghg_inversions.rhime import (
     SectorSpec,
     run_rhime_from_prepared_inputs,
 )
-from openghg_inversions.rhime.outputs import RhimeOutputBundle
 from openghg_inversions.serialization import (
     MULTIINDEX_DIMS_ATTR,
     encode_multiindexes_for_storage,
@@ -614,15 +614,15 @@ def test_real_prepared_inputs_save_load_and_run_without_repreparation(
         assert variable_roles["concentration"] == "y"
         return sampled
 
-    def fake_outputs(**kwargs: Any) -> RhimeOutputBundle:
+    def fake_outputs(**kwargs: Any) -> None:
         """Record the loaded object used for output construction."""
         observed["output_prepared"] = kwargs["prepared"]
-        return RhimeOutputBundle(outputs={"loaded": True})
+        kwargs["result"].outputs["loaded"] = True
 
     monkeypatch.setattr(rhime_standard, "retrieve_or_reload_rhime_data", fail_preparation)
     monkeypatch.setattr(rhime_standard, "build_standard_rhime_model", fake_builder)
     monkeypatch.setattr(RhimeSampler, "sample", fake_sample)
-    monkeypatch.setattr(rhime_standard, "make_standard_output_bundle", fake_outputs)
+    monkeypatch.setattr(rhime_prepared, "make_standard_rhime_outputs", fake_outputs)
 
     result = run_rhime_from_prepared_inputs(
         prepared_inputs=loaded,
@@ -976,16 +976,16 @@ def test_loaded_prepared_inputs_run_through_existing_seam(
         assert variable_roles["concentration"] == "y"
         return sampled
 
-    def fake_outputs(**kwargs: Any) -> RhimeOutputBundle:
-        """Record output inputs and return a sentinel output bundle."""
+    def fake_outputs(**kwargs: Any) -> None:
+        """Record output inputs and attach a sentinel product."""
         observed["output_prepared"] = kwargs["prepared"]
-        observed["output_idata"] = kwargs["idata"]
-        return RhimeOutputBundle(outputs={"loaded": True})
+        observed["output_idata"] = kwargs["result"].idata
+        kwargs["result"].outputs["loaded"] = True
 
     monkeypatch.setattr(rhime_standard, "retrieve_or_reload_rhime_data", fail_preparation)
     monkeypatch.setattr(rhime_standard, "build_standard_rhime_model", fake_builder)
     monkeypatch.setattr(RhimeSampler, "sample", fake_sample)
-    monkeypatch.setattr(rhime_standard, "make_standard_output_bundle", fake_outputs)
+    monkeypatch.setattr(rhime_prepared, "make_standard_rhime_outputs", fake_outputs)
 
     result = run_rhime_from_prepared_inputs(
         prepared_inputs=loaded,
@@ -1087,7 +1087,7 @@ def test_multisource_order_survives_load_run_and_reconstruction(
         assert variable_roles["concentration"] == "y"
         return sampled
 
-    def fake_outputs(**kwargs: Any) -> RhimeOutputBundle:
+    def fake_outputs(**kwargs: Any) -> None:
         """Exercise postprocessing reconstruction on the loaded retained basis."""
         output_prepared = kwargs["prepared"]
         assert isinstance(output_prepared, RhimePreparedInputs)
@@ -1098,11 +1098,11 @@ def test_multisource_order_survives_load_run_and_reconstruction(
             output_prepared.basis_functions.interpolate(state, flux=True),
             expected_reconstruction,
         )
-        return RhimeOutputBundle(outputs={"postprocessed": True})
+        kwargs["result"].outputs["postprocessed"] = True
 
     monkeypatch.setattr(rhime_multisector, "build_multisector_rhime_model", fake_builder)
     monkeypatch.setattr(RhimeSampler, "sample", fake_sample)
-    monkeypatch.setattr(rhime_multisector, "make_multisector_output_bundle", fake_outputs)
+    monkeypatch.setattr(rhime_prepared, "make_multisector_rhime_outputs", fake_outputs)
 
     result = run_rhime_from_prepared_inputs(
         prepared_inputs=loaded,

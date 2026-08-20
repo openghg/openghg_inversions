@@ -110,10 +110,15 @@ def builtin_model_build_result(
     elif model_spec.add_offset and not model_spec.use_bc:
         roles["baseline"] = "offset"
 
+    supported_output_formats = (
+        ("none", "inv_out", "paris")
+        if multisector
+        else ("none", "inv_out", "basic", "paris", "legacy")
+    )
     return RhimeModelBuildResult(
         model=model,
         variable_roles=roles,
-        supported_output_formats=("none", "inv_out", "basic", "paris", "legacy"),
+        supported_output_formats=supported_output_formats,
         metadata={"kind": "builtin"},
     )
 

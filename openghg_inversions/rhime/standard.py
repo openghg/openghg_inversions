@@ -48,7 +48,7 @@ from .builders import (
     validate_model_build_result,
 )
 from .materialization import materialize_pymc_inputs
-from .outputs import RhimeResult, apply_output_bundle, make_standard_output_bundle
+from .outputs import RhimeResult, make_standard_rhime_outputs
 from .params import params_from_config, resolve_rhime_options
 from .preparation import (
     assemble_rhime_inputs,
@@ -444,7 +444,7 @@ def make_standard_rhime_result(
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
     likelihood_kwargs: Mapping[str, Any] | None = None,
 ) -> RhimeResult:
-    """Construct a standard result and write only its requested products.
+    """Construct a sampled standard result before output side effects.
 
     Args:
         prepared: Retained canonical inputs and basis functions.
@@ -458,9 +458,8 @@ def make_standard_rhime_result(
         likelihood_kwargs: Serializable options owned by the likelihood.
 
     Returns:
-        Complete standard-run result with requested output products attached.
+        Standard-run result ready for requested output construction.
     """
-    likelihood_kwargs = validate_likelihood_kwargs(likelihood_builder, likelihood_kwargs)
     result = RhimeResult(
         run_spec=run_spec,
         model_spec=run_spec.model,
@@ -473,38 +472,14 @@ def make_standard_rhime_result(
         model_build_result=model_build_result,
         output_metadata={"build_and_sample_seconds": build_and_sample_seconds},
     )
-    builder_metadata = dict(model_build_result.metadata)
     if model_builder is not None:
         identity = callable_metadata(model_builder)
         result.output_metadata["model_builder"] = identity
-        builder_metadata["model_builder"] = identity
     if likelihood_builder is not None:
         identity = callable_metadata(likelihood_builder)
         result.output_metadata["likelihood_builder"] = identity
-        builder_metadata["likelihood_builder"] = identity
     if likelihood_kwargs is not None:
         result.output_metadata["likelihood_kwargs"] = likelihood_kwargs
-        builder_metadata["likelihood_kwargs"] = likelihood_kwargs
-
-    timing_start = timer_start()
-    output_bundle = make_standard_output_bundle(
-        output_spec=run_spec.output,
-        run_spec=run_spec,
-        model_spec=run_spec.model,
-        idata=idata,
-        prepared=prepared,
-        country_file=run_spec.output.country_file,
-        sampler=sampler,
-        variable_roles=model_build_result.variable_roles,
-        builder_metadata=builder_metadata,
-    )
-    log_timing(
-        "rhime.output_bundle_total",
-        timer_seconds(timing_start),
-        multisector=False,
-        output_format=run_spec.output.output_format,
-    )
-    apply_output_bundle(result, output_bundle)
     return result
 
 
@@ -520,7 +495,8 @@ def run_rhime(
     """Run a standard single-sector RHIME inversion.
 
     The visible process is resolve → retrieve/reload → filter → basis →
-    sensitivities → assemble → materialize → build → sample → result/output.
+    sensitivities → assemble → materialize → build → sample → result →
+    requested outputs.
 
     Args:
         config_file: Optional INI configuration file. Values in ``kwargs``
@@ -619,7 +595,7 @@ def run_rhime(
         model_build_result,
         setup.sampler,
     )
-    return make_standard_rhime_result(
+    result = make_standard_rhime_result(
         prepared=prepared,
         run_spec=run_spec,
         sampler=setup.sampler,
@@ -629,3 +605,12 @@ def run_rhime(
         likelihood_builder=likelihood_builder,
         likelihood_kwargs=likelihood_kwargs,
     )
+    output_start = timer_start()
+    make_standard_rhime_outputs(result=result, prepared=prepared)
+    log_timing(
+        "rhime.output_total",
+        timer_seconds(output_start),
+        multisector=False,
+        output_format=run_spec.output.output_format,
+    )
+    return result

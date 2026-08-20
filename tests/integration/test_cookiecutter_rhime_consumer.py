@@ -136,8 +136,12 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
         assert kwargs["likelihood_builder"] is likelihoods.likelihood_builder
         assert kwargs["model_build_result"] is build_result
         assert kwargs["idata"] is idata
-        calls.append("output")
+        calls.append("result")
         return expected
+
+    def make_outputs(**kwargs: Any) -> None:
+        assert kwargs == {"result": expected, "prepared": prepared}
+        calls.append("output")
 
     monkeypatch.setattr(rhime_runner, "resolve_rhime_options", resolve)
     monkeypatch.setattr(rhime_runner, "retrieve_or_reload_rhime_data", retrieve)
@@ -155,6 +159,7 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
     monkeypatch.setattr(rhime_runner, "build_standard_rhime_model_result", build)
     monkeypatch.setattr(rhime_runner, "sample_rhime_model", sample)
     monkeypatch.setattr(rhime_runner, "make_standard_rhime_result", make_result)
+    monkeypatch.setattr(rhime_runner, "make_standard_rhime_outputs", make_outputs)
 
     result = consumer_runner.run(species="ch4", output_format="inv_out")
 
@@ -170,6 +175,7 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
         "materialize",
         "build",
         "sample",
+        "result",
         "output",
     ]
 

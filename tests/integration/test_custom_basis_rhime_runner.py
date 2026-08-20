@@ -218,6 +218,10 @@ def test_custom_basis_runner_replaces_only_basis_stage(
         calls.append("result")
         return expected_result
 
+    def make_outputs(**kwargs: Any) -> None:
+        assert kwargs == {"result": expected_result, "prepared": prepared}
+        calls.append("outputs")
+
     monkeypatch.setattr(custom_basis_runner, "params_from_config", parse_config)
     monkeypatch.setattr(custom_basis_runner, "resolve_rhime_options", resolve)
     monkeypatch.setattr(custom_basis_runner, "retrieve_or_reload_rhime_data", retrieve)
@@ -235,6 +239,7 @@ def test_custom_basis_runner_replaces_only_basis_stage(
     monkeypatch.setattr(custom_basis_runner, "build_standard_rhime_model_result", build)
     monkeypatch.setattr(custom_basis_runner, "sample_rhime_model", sample)
     monkeypatch.setattr(custom_basis_runner, "make_standard_rhime_result", make_result)
+    monkeypatch.setattr(custom_basis_runner, "make_standard_rhime_outputs", make_outputs)
 
     result = custom_basis_runner.run_custom_rhime(
         config_file=config_file,
@@ -255,6 +260,7 @@ def test_custom_basis_runner_replaces_only_basis_stage(
         "build",
         "sample",
         "result",
+        "outputs",
     ]
 
 

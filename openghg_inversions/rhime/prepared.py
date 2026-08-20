@@ -18,7 +18,7 @@ from .builders import RhimeLikelihoodBuilder, RhimeModelBuilder
 from .materialization import materialize_pymc_inputs
 from .multisector import build_multisector_rhime_model_result, make_multisector_rhime_result
 from .multisector import multisector_model_input_names
-from .outputs import RhimeResult
+from .outputs import RhimeResult, make_multisector_rhime_outputs, make_standard_rhime_outputs
 from .preparation import with_prepared_rhime_sites
 from .sampling import RhimeSampler, sample_rhime_model
 from .specs import (
@@ -43,7 +43,7 @@ def run_rhime_from_prepared_inputs(
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
     likelihood_kwargs: Mapping[str, Any] | None = None,
 ) -> RhimeResult:
-    """Build, sample, and output RHIME from a canonical prepared handoff.
+    """Build, sample, construct a result, and output a prepared RHIME run.
 
     This advanced route intentionally starts after retrieval, filtering, basis
     construction, sensitivity construction, and labelled-input assembly. It
@@ -174,7 +174,7 @@ def run_rhime_from_prepared_inputs(
     build_and_sample_seconds = timer_seconds(build_and_sample_start)
 
     if multisector:
-        return make_multisector_rhime_result(
+        result = make_multisector_rhime_result(
             prepared=prepared_inputs,
             run_spec=run_spec,
             sampler=active_sampler,
@@ -185,14 +185,18 @@ def run_rhime_from_prepared_inputs(
             likelihood_builder=likelihood_builder,
             likelihood_kwargs=likelihood_kwargs,
         )
-    return make_standard_rhime_result(
-        prepared=prepared_inputs,
-        run_spec=run_spec,
-        sampler=active_sampler,
-        model_build_result=model_build_result,
-        idata=idata,
-        build_and_sample_seconds=build_and_sample_seconds,
-        model_builder=model_builder,
-        likelihood_builder=likelihood_builder,
-        likelihood_kwargs=likelihood_kwargs,
-    )
+        make_multisector_rhime_outputs(result=result, prepared=prepared_inputs)
+    else:
+        result = make_standard_rhime_result(
+            prepared=prepared_inputs,
+            run_spec=run_spec,
+            sampler=active_sampler,
+            model_build_result=model_build_result,
+            idata=idata,
+            build_and_sample_seconds=build_and_sample_seconds,
+            model_builder=model_builder,
+            likelihood_builder=likelihood_builder,
+            likelihood_kwargs=likelihood_kwargs,
+        )
+        make_standard_rhime_outputs(result=result, prepared=prepared_inputs)
+    return result

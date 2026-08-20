@@ -132,6 +132,15 @@ class RhimeModelBuildResult:
         object.__setattr__(self, "supported_output_formats", output_formats)
         object.__setattr__(self, "metadata", metadata)
 
+    def validate_requested_output(self, output_format: str) -> None:
+        """Reject an output this model contract does not support."""
+        if output_format not in self.supported_output_formats:
+            raise ValueError(
+                f"RHIME model does not declare output_format={output_format!r} compatible. "
+                f"Declared formats: {list(self.supported_output_formats)!r}. Use output_format='none' or "
+                "select a model that explicitly supports the requested RHIME output contract."
+            )
+
 
 class RhimeModelBuilder(Protocol):
     """Advanced callable contract for a complete user-owned model factory."""
@@ -152,20 +161,19 @@ def validate_model_build_result(
         result: Complete model build result to validate.
         context: Prepared inputs and run settings for the active model build.
     Raises:
-        ValueError: If the requested output is unsupported or declared
-            variable roles are incomplete or refer to absent variables.
+        ValueError: If the requested output is unsupported or a declared
+            variable role refers to an absent variable.
     """
+    output_format = context.run_spec.output.output_format
+    if output_format == "none":
+        return
+
+    result.validate_requested_output(output_format)
+
     if get_coord_registry(result.model) is None:
         raise ValueError(
             "A custom RHIME model must carry a `CoordRegistry`; construct it "
             "with `registered_model()`."
-        )
-    output_format = context.run_spec.output.output_format
-    if output_format not in result.supported_output_formats:
-        raise ValueError(
-            f"Custom RHIME model builder does not declare output_format={output_format!r} compatible. "
-            f"Declared formats: {list(result.supported_output_formats)!r}. Use output_format='none' or "
-            "return a build result that explicitly supports the requested RHIME output contract."
         )
 
     available_names = set(result.model.named_vars) | set(context.prepared_inputs.inv_inputs.variables)
@@ -175,45 +183,6 @@ def validate_model_build_result(
         raise ValueError(
             "Custom RHIME model variable roles refer to names absent from both the PyMC model and "
             f"prepared inversion inputs: {details}."
-        )
-
-    required_roles = {"concentration"}
-    if output_format not in ("none", "inv_out"):
-        required_roles.update(
-            {
-                "observation",
-                "observation_error",
-                "observation_repeatability",
-                "observation_variability",
-                "minimum_error",
-                "model_error",
-            }
-        )
-        if context.multisector:
-            for sector in context.run_spec.model.sectors:
-                required_roles.update(
-                    {
-                        f"flux_scale:{sector.name}",
-                        f"flux_contribution:{sector.name}",
-                        f"emissions_sensitivity:{sector.name}",
-                    }
-                )
-        else:
-            required_roles.update(
-                {"flux_scale", "flux_contribution", "emissions_sensitivity"}
-            )
-        if context.run_spec.model.use_bc:
-            required_roles.update(
-                {"baseline_scale", "baseline_sensitivity", "boundary"}
-            )
-        if context.run_spec.model.add_offset:
-            required_roles.add("offset")
-
-    missing_roles = sorted(required_roles - set(result.variable_roles))
-    if missing_roles:
-        raise ValueError(
-            f"RHIME output_format={output_format!r} requires variable roles absent from the "
-            f"complete model build result: {missing_roles!r}."
         )
 
 
