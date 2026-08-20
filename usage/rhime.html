@@ -1035,7 +1035,7 @@ RHIME config-file syntax and persisted activity-reason tables remain follow-up
 work. Each <code class="docutils literal notranslate"><span class="pre">SectorSpec.x_prior</span></code> supports the same scalar, full-state array,
 and labelled <code class="docutils literal notranslate"><span class="pre">DataArray</span></code> parameter forms; labelled values must match the
 selected sector’s state coordinate exactly.</p>
-<p>For low-level model construction, first inspect a labelled design with
+<p>For low-level model construction, first inspect a labelled sensitivity matrix with
 <code class="docutils literal notranslate"><span class="pre">detect_zero_sensitivity</span></code>, then combine the returned mask with a
 <code class="docutils literal notranslate"><span class="pre">StateActivity</span></code> using <code class="docutils literal notranslate"><span class="pre">resolve_state_activity</span></code>. State-vector graph helpers
 consume the resulting <code class="docutils literal notranslate"><span class="pre">ResolvedStateActivity</span></code>; they do not inspect <code class="docutils literal notranslate"><span class="pre">H</span></code> or
@@ -1047,7 +1047,11 @@ fixed <code class="docutils literal notranslate"><span class="pre">bc</span></co
 from supplying a standalone baseline time series, which belongs to a separate
 baseline component.</p>
 <p>The legacy single-sector <code class="docutils literal notranslate"><span class="pre">inferpymc</span></code> / <code class="docutils literal notranslate"><span class="pre">fixedbasisMCMC</span></code> compatibility path
-continues to sample its full flux state and does not gain multisector behavior.</p>
+does not gain multisector behavior. It now removes exact-zero <code class="docutils literal notranslate"><span class="pre">H</span></code> columns in
+the same way as the standard model: observation-space predictions are unchanged,
+but formerly unidentified entries in the full posterior <code class="docutils literal notranslate"><span class="pre">x</span></code> are reconstructed
+at their fixed values instead of being prior draws. Derived flux products that
+use those entries may therefore differ from earlier releases.</p>
 </section>
 <section id="correlated-positive-reduced-states">
 <h2>Correlated Positive Reduced States<a class="headerlink" href="#correlated-positive-reduced-states" title="Link to this heading">#</a></h2>

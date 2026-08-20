@@ -537,7 +537,7 @@ config prior to request the API-default parameterization shown here.</p>
 </thead>
 <tbody>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">hx</span></code></p></td>
-<td><p>Flux design data</p></td>
+<td><p>Flux sensitivity data</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">H</span></code></p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">mu</span></code></p></td>
@@ -545,7 +545,7 @@ config prior to request the API-default parameterization shown here.</p>
 <td><p><code class="docutils literal notranslate"><span class="pre">hx</span> <span class="pre">&#64;</span> <span class="pre">x</span></code></p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">hbc</span></code></p></td>
-<td><p>Boundary design data</p></td>
+<td><p>Boundary sensitivity data</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">H_bc</span></code></p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">mu_bc</span></code></p></td>
@@ -584,6 +584,7 @@ equivalent concrete single-flux model. The following uses public component
 helpers:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.models</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
     <span class="n">add_linear_component</span><span class="p">,</span>
+    <span class="n">prepare_linear_sensitivity</span><span class="p">,</span>
     <span class="n">registered_model</span><span class="p">,</span>
 <span class="p">)</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.models.likelihoods</span><span class="w"> </span><span class="kn">import</span> <span class="n">add_gaussian_observation_likelihood</span>
@@ -610,10 +611,12 @@ helpers:</p>
     <span class="n">frequency</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
     <span class="n">per_site</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
 <span class="p">)</span>
+<span class="n">flux_sensitivity</span> <span class="o">=</span> <span class="n">prepare_linear_sensitivity</span><span class="p">(</span><span class="n">inv_inputs</span><span class="p">[</span><span class="s2">"H"</span><span class="p">])</span>
+<span class="n">boundary_sensitivity</span> <span class="o">=</span> <span class="n">prepare_linear_sensitivity</span><span class="p">(</span><span class="n">inv_inputs</span><span class="p">[</span><span class="s2">"H_bc"</span><span class="p">])</span>
 
 <span class="k">with</span> <span class="n">registered_model</span><span class="p">()</span> <span class="k">as</span> <span class="n">model</span><span class="p">:</span>
     <span class="n">flux</span> <span class="o">=</span> <span class="n">add_linear_component</span><span class="p">(</span>
-        <span class="n">inv_inputs</span><span class="p">[</span><span class="s2">"H"</span><span class="p">],</span>
+        <span class="n">flux_sensitivity</span><span class="p">,</span>
         <span class="n">data_name</span><span class="o">=</span><span class="s2">"hx"</span><span class="p">,</span>
         <span class="n">prior_args</span><span class="o">=</span><span class="n">x_prior</span><span class="p">,</span>
         <span class="n">var_name</span><span class="o">=</span><span class="s2">"x"</span><span class="p">,</span>
@@ -621,7 +624,7 @@ helpers:</p>
         <span class="n">output_dim</span><span class="o">=</span><span class="s2">"nmeasure"</span><span class="p">,</span>
     <span class="p">)</span>
     <span class="n">boundary</span> <span class="o">=</span> <span class="n">add_linear_component</span><span class="p">(</span>
-        <span class="n">inv_inputs</span><span class="p">[</span><span class="s2">"H_bc"</span><span class="p">],</span>
+        <span class="n">boundary_sensitivity</span><span class="p">,</span>
         <span class="n">data_name</span><span class="o">=</span><span class="s2">"hbc"</span><span class="p">,</span>
         <span class="n">prior_args</span><span class="o">=</span><span class="n">bc_prior</span><span class="p">,</span>
         <span class="n">var_name</span><span class="o">=</span><span class="s2">"bc"</span><span class="p">,</span>
@@ -659,6 +662,13 @@ helpers:</p>
 model developer needs to change graph construction directly. It does not
 automatically participate in the complete <code class="docutils literal notranslate"><span class="pre">run_rhime</span></code> output pipeline; that
 pipeline still selects one of the built-in model builders.</p>
+<p><code class="docutils literal notranslate"><span class="pre">prepare_linear_sensitivity</span></code> is the single owning boundary for exact-zero column
+inspection. It removes those columns from the backend sensitivity while retaining
+their full labelled-state mapping; <code class="docutils literal notranslate"><span class="pre">state_activity=None</span></code> therefore samples
+every retained state. An explicit <code class="docutils literal notranslate"><span class="pre">StateActivity</span></code> fixes or groups scientific
+states but cannot restore a structurally absent column. For shared or
+correlated states, use <code class="docutils literal notranslate"><span class="pre">apply_linear_sensitivity</span></code> to apply another prepared
+forward operator without constructing a second prior.</p>
 </section>
 <section id="multisector-model">
 <h2>Multisector model<a class="headerlink" href="#multisector-model" title="Link to this heading">#</a></h2>
@@ -669,7 +679,7 @@ state and forward contribution:</p>
 \mu_s &amp;= H_s x_s, \\
 \mu &amp;= \sum_s \mu_s.\end{split}\]</div>
 <p>If the normalized PyMC suffix for sector <code class="docutils literal notranslate"><span class="pre">s</span></code> is <code class="docutils literal notranslate"><span class="pre">ff</span></code>, its variables are
-<code class="docutils literal notranslate"><span class="pre">x_ff</span></code> and <code class="docutils literal notranslate"><span class="pre">mu_ff</span></code> and its design data is <code class="docutils literal notranslate"><span class="pre">hx_ff</span></code>. Source values select
+<code class="docutils literal notranslate"><span class="pre">x_ff</span></code> and <code class="docutils literal notranslate"><span class="pre">mu_ff</span></code> and its sensitivity data is <code class="docutils literal notranslate"><span class="pre">hx_ff</span></code>. Source values select
 the corresponding <code class="docutils literal notranslate"><span class="pre">H</span></code> slices; sector names provide model identities. They
 are not required to be the same strings.</p>
 <p>Every sector state and every reparameterization-generated latent must have a

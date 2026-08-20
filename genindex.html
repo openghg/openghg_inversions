@@ -390,12 +390,12 @@
         <li><a href="reference/openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.active_prior_args">(in module openghg_inversions.models.state_activity)</a>
 </li>
       </ul></li>
-      <li><a href="reference/openghg_inversions.models.components.html#openghg_inversions.models.components.StateLinearComponentResult.activity">activity (openghg_inversions.models.components.StateLinearComponentResult attribute)</a>
+      <li><a href="reference/openghg_inversions.models.components.html#openghg_inversions.models.components.LinearComponentResult.activity">activity (openghg_inversions.models.components.LinearComponentResult attribute)</a>
 
       <ul>
         <li><a href="reference/openghg_inversions.models.components.html#openghg_inversions.models.components.StateVectorResult.activity">(openghg_inversions.models.components.StateVectorResult attribute)</a>
 </li>
-        <li><a href="reference/openghg_inversions.models.html#openghg_inversions.models.StateLinearComponentResult.activity">(openghg_inversions.models.StateLinearComponentResult attribute)</a>
+        <li><a href="reference/openghg_inversions.models.html#openghg_inversions.models.LinearComponentResult.activity">(openghg_inversions.models.LinearComponentResult attribute)</a>
 </li>
       </ul></li>
       <li><a href="reference/openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.ActivityValue">ActivityValue (in module openghg_inversions.models.state_activity)</a>
@@ -466,20 +466,14 @@
       </ul></li>
       <li><a href="reference/openghg_inversions.inversion_inputs.html#openghg_inversions.inversion_inputs.add_site_indicator">add_site_indicator() (in module openghg_inversions.inversion_inputs)</a>
 </li>
-      <li><a href="reference/openghg_inversions.models.html#openghg_inversions.models.add_state_linear_component">add_state_linear_component() (in module openghg_inversions.models)</a>
-
-      <ul>
-        <li><a href="reference/openghg_inversions.models.components.html#openghg_inversions.models.components.add_state_linear_component">(in module openghg_inversions.models.components)</a>
-</li>
-      </ul></li>
       <li><a href="reference/openghg_inversions.models.components.html#openghg_inversions.models.components.add_state_vector">add_state_vector() (in module openghg_inversions.models.components)</a>
 </li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="reference/openghg_inversions.postprocessing.utils.html#openghg_inversions.postprocessing.utils.add_suffix">add_suffix() (in module openghg_inversions.postprocessing.utils)</a>
 </li>
       <li><a href="reference/openghg_inversions.postprocessing.make_paris_outputs.html#openghg_inversions.postprocessing.make_paris_outputs.add_variable_attrs">add_variable_attrs() (in module openghg_inversions.postprocessing.make_paris_outputs)</a>
 </li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="reference/openghg_inversions.rhime.likelihoods.html#openghg_inversions.rhime.likelihoods.additive_sigma_likelihood_builder">additive_sigma_likelihood_builder() (in module openghg_inversions.rhime.likelihoods)</a>
 </li>
       <li><a href="reference/openghg_inversions.models.additive_sigma.html#openghg_inversions.models.additive_sigma.AdditiveSigmaErrorState">AdditiveSigmaErrorState (class in openghg_inversions.models.additive_sigma)</a>
@@ -528,6 +522,12 @@
         <li><a href="reference/openghg_inversions.native_covariance.html#openghg_inversions.native_covariance.SeparableExponentialCovariance.apply">(openghg_inversions.native_covariance.SeparableExponentialCovariance method)</a>
 </li>
         <li><a href="reference/openghg_inversions.source_covariance.html#openghg_inversions.source_covariance.IndependentSourceCovariance.apply">(openghg_inversions.source_covariance.IndependentSourceCovariance method)</a>
+</li>
+      </ul></li>
+      <li><a href="reference/openghg_inversions.models.html#openghg_inversions.models.apply_linear_sensitivity">apply_linear_sensitivity() (in module openghg_inversions.models)</a>
+
+      <ul>
+        <li><a href="reference/openghg_inversions.models.components.html#openghg_inversions.models.components.apply_linear_sensitivity">(in module openghg_inversions.models.components)</a>
 </li>
       </ul></li>
       <li><a href="reference/openghg_inversions.rhime.outputs.html#openghg_inversions.rhime.outputs.apply_output_bundle">apply_output_bundle() (in module openghg_inversions.rhime.outputs)</a>
@@ -768,6 +768,8 @@
         <li><a href="reference/openghg_inversions.rhime.sampling.html#openghg_inversions.rhime.sampling.RhimeSampler.burn">(openghg_inversions.rhime.sampling.RhimeSampler attribute)</a>
 </li>
       </ul></li>
+      <li><a href="reference/openghg_inversions.model_error.html#openghg_inversions.model_error.MinimumError.by_site">by_site (openghg_inversions.model_error.MinimumError attribute)</a>
+</li>
   </ul></td>
 </tr></table>
 
@@ -983,11 +985,7 @@
       <ul>
         <li><a href="reference/openghg_inversions.models.components.html#openghg_inversions.models.components.LinearComponentResult.data">(openghg_inversions.models.components.LinearComponentResult attribute)</a>
 </li>
-        <li><a href="reference/openghg_inversions.models.components.html#openghg_inversions.models.components.StateLinearComponentResult.data">(openghg_inversions.models.components.StateLinearComponentResult attribute)</a>
-</li>
         <li><a href="reference/openghg_inversions.models.html#openghg_inversions.models.LinearComponentResult.data">(openghg_inversions.models.LinearComponentResult attribute)</a>
-</li>
-        <li><a href="reference/openghg_inversions.models.html#openghg_inversions.models.StateLinearComponentResult.data">(openghg_inversions.models.StateLinearComponentResult attribute)</a>
 </li>
       </ul></li>
       <li><a href="reference/openghg_inversions.rhime.params.html#openghg_inversions.rhime.params.RhimeRunnerSetup.data_args">data_args (openghg_inversions.rhime.params.RhimeRunnerSetup attribute)</a>
@@ -1018,10 +1016,10 @@
 </li>
       <li><a href="reference/openghg_inversions.flux_sanitization.html#openghg_inversions.flux_sanitization.FluxNonFiniteMetadata.declares_zero_fill">declares_zero_fill() (openghg_inversions.flux_sanitization.FluxNonFiniteMetadata method)</a>
 </li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="reference/openghg_inversions.serialization.html#openghg_inversions.serialization.decode_cf_multiindexes">decode_cf_multiindexes() (in module openghg_inversions.serialization)</a>
 </li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="reference/openghg_inversions.basis.operators.html#openghg_inversions.basis.operators.BasisOperator.decode_datatree">decode_datatree() (openghg_inversions.basis.operators.BasisOperator class method)</a>
 </li>
       <li><a href="reference/openghg_inversions.hbmcmc.hbmcmc_output.html#openghg_inversions.hbmcmc.hbmcmc_output.define_output_filename">define_output_filename() (in module openghg_inversions.hbmcmc.hbmcmc_output)</a>
@@ -1505,15 +1503,11 @@
       <ul>
         <li><a href="reference/openghg_inversions.models.components.html#openghg_inversions.models.components.LinearComponentResult.latent">(openghg_inversions.models.components.LinearComponentResult attribute)</a>
 </li>
-        <li><a href="reference/openghg_inversions.models.components.html#openghg_inversions.models.components.StateLinearComponentResult.latent">(openghg_inversions.models.components.StateLinearComponentResult attribute)</a>
-</li>
         <li><a href="reference/openghg_inversions.models.components.html#openghg_inversions.models.components.StateVectorResult.latent">(openghg_inversions.models.components.StateVectorResult attribute)</a>
 </li>
         <li><a href="reference/openghg_inversions.models.html#openghg_inversions.models.CorrelatedStateResult.latent">(openghg_inversions.models.CorrelatedStateResult attribute)</a>
 </li>
         <li><a href="reference/openghg_inversions.models.html#openghg_inversions.models.LinearComponentResult.latent">(openghg_inversions.models.LinearComponentResult attribute)</a>
-</li>
-        <li><a href="reference/openghg_inversions.models.html#openghg_inversions.models.StateLinearComponentResult.latent">(openghg_inversions.models.StateLinearComponentResult attribute)</a>
 </li>
       </ul></li>
       <li><a href="reference/openghg_inversions.correlated_state.html#openghg_inversions.correlated_state.CorrelatedLognormalPrior.latent_cholesky">latent_cholesky (openghg_inversions.correlated_state.CorrelatedLognormalPrior property)</a>
@@ -1544,14 +1538,14 @@
 </li>
       <li><a href="reference/openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.LatLonGridGeometry">LatLonGridGeometry (class in openghg_inversions.basis.algorithms)</a>
 </li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="reference/openghg_inversions.models.html#openghg_inversions.models.LinearComponentResult">LinearComponentResult (class in openghg_inversions.models)</a>
 
       <ul>
         <li><a href="reference/openghg_inversions.models.components.html#openghg_inversions.models.components.LinearComponentResult">(class in openghg_inversions.models.components)</a>
 </li>
       </ul></li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="reference/openghg_inversions.config.config.html#openghg_inversions.config.config.list_check">list_check() (in module openghg_inversions.config.config)</a>
 </li>
       <li><a href="reference/openghg_inversions.filters.html#openghg_inversions.filters.list_filters">list_filters() (in module openghg_inversions.filters)</a>
@@ -1714,6 +1708,8 @@
         <li><a href="reference/openghg_inversions.rhime.html#openghg_inversions.rhime.RhimeModelBuildResult.metadata">(openghg_inversions.rhime.RhimeModelBuildResult attribute)</a>
 </li>
       </ul></li>
+      <li><a href="reference/openghg_inversions.model_error.html#openghg_inversions.model_error.MinimumError.method">method (openghg_inversions.model_error.MinimumError attribute)</a>
+</li>
       <li><a href="reference/openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.MaxChildPCAEccentricity.min_child_target_weight_share">min_child_target_weight_share (openghg_inversions.basis.algorithms.MaxChildPCAEccentricity attribute)</a>
 
       <ul>
@@ -1731,6 +1727,8 @@
       <li><a href="reference/openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.MinChildTargetWeightShare">MinChildTargetWeightShare (class in openghg_inversions.basis.algorithms)</a>
 </li>
       <li><a href="reference/openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.MinChildWeightShare">MinChildWeightShare (class in openghg_inversions.basis.algorithms)</a>
+</li>
+      <li><a href="reference/openghg_inversions.model_error.html#openghg_inversions.model_error.MinimumError">MinimumError (class in openghg_inversions.model_error)</a>
 </li>
       <li><a href="reference/openghg_inversions.models.likelihoods.html#openghg_inversions.models.likelihoods.RegisteredAggregationError.mode">mode (openghg_inversions.models.likelihoods.RegisteredAggregationError attribute)</a>
 
@@ -2704,15 +2702,17 @@
       <li><a href="reference/openghg_inversions.models.components.html#openghg_inversions.models.components.LinearComponentResult.output">output (openghg_inversions.models.components.LinearComponentResult attribute)</a>
 
       <ul>
-        <li><a href="reference/openghg_inversions.models.components.html#openghg_inversions.models.components.StateLinearComponentResult.output">(openghg_inversions.models.components.StateLinearComponentResult attribute)</a>
-</li>
         <li><a href="reference/openghg_inversions.models.html#openghg_inversions.models.LinearComponentResult.output">(openghg_inversions.models.LinearComponentResult attribute)</a>
-</li>
-        <li><a href="reference/openghg_inversions.models.html#openghg_inversions.models.StateLinearComponentResult.output">(openghg_inversions.models.StateLinearComponentResult attribute)</a>
 </li>
         <li><a href="reference/openghg_inversions.rhime.html#openghg_inversions.rhime.RhimeRunSpec.output">(openghg_inversions.rhime.RhimeRunSpec attribute)</a>
 </li>
         <li><a href="reference/openghg_inversions.rhime.specs.html#openghg_inversions.rhime.specs.RhimeRunSpec.output">(openghg_inversions.rhime.specs.RhimeRunSpec attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="reference/openghg_inversions.models.html#openghg_inversions.models.PreparedLinearSensitivity.output_dim">output_dim (openghg_inversions.models.PreparedLinearSensitivity attribute)</a>
+
+      <ul>
+        <li><a href="reference/openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.PreparedLinearSensitivity.output_dim">(openghg_inversions.models.state_activity.PreparedLinearSensitivity attribute)</a>
 </li>
       </ul></li>
       <li><a href="reference/openghg_inversions.rhime.html#openghg_inversions.rhime.RhimeOutputSpec.output_filename_convention">output_filename_convention (openghg_inversions.rhime.RhimeOutputSpec attribute)</a>
@@ -2871,18 +2871,26 @@
         <li><a href="reference/openghg_inversions.rhime.sampling.html#openghg_inversions.rhime.sampling.RhimeSampler.posterior_predictive_kwargs">(openghg_inversions.rhime.sampling.RhimeSampler attribute)</a>
 </li>
       </ul></li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="reference/openghg_inversions.rhime.html#openghg_inversions.rhime.RhimeModelSpec.power">power (openghg_inversions.rhime.RhimeModelSpec attribute)</a>
 
       <ul>
         <li><a href="reference/openghg_inversions.rhime.specs.html#openghg_inversions.rhime.specs.RhimeModelSpec.power">(openghg_inversions.rhime.specs.RhimeModelSpec attribute)</a>
 </li>
       </ul></li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="reference/openghg_inversions.convert.html#openghg_inversions.convert.prefix">prefix() (in module openghg_inversions.convert)</a>
+</li>
+      <li><a href="reference/openghg_inversions.model_error.html#openghg_inversions.model_error.MinimumError.prepare">prepare() (openghg_inversions.model_error.MinimumError class method)</a>
 </li>
       <li><a href="reference/openghg_inversions.hbmcmc.preparation.html#openghg_inversions.hbmcmc.preparation.prepare_fixedbasis_inversion_data">prepare_fixedbasis_inversion_data() (in module openghg_inversions.hbmcmc.preparation)</a>
 </li>
+      <li><a href="reference/openghg_inversions.models.html#openghg_inversions.models.prepare_linear_sensitivity">prepare_linear_sensitivity() (in module openghg_inversions.models)</a>
+
+      <ul>
+        <li><a href="reference/openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.prepare_linear_sensitivity">(in module openghg_inversions.models.state_activity)</a>
+</li>
+      </ul></li>
       <li><a href="reference/openghg_inversions.inversion_data.html#openghg_inversions.inversion_data.prepare_rhime_inputs">prepare_rhime_inputs() (in module openghg_inversions.inversion_data)</a>
 
       <ul>
@@ -2903,6 +2911,12 @@
         <li><a href="reference/openghg_inversions.rhime.builders.html#openghg_inversions.rhime.builders.RhimeModelBuilderContext.prepared_inputs">(openghg_inversions.rhime.builders.RhimeModelBuilderContext attribute)</a>
 </li>
         <li><a href="reference/openghg_inversions.rhime.html#openghg_inversions.rhime.RhimeModelBuilderContext.prepared_inputs">(openghg_inversions.rhime.RhimeModelBuilderContext attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="reference/openghg_inversions.models.html#openghg_inversions.models.PreparedLinearSensitivity">PreparedLinearSensitivity (class in openghg_inversions.models)</a>
+
+      <ul>
+        <li><a href="reference/openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.PreparedLinearSensitivity">(class in openghg_inversions.models.state_activity)</a>
 </li>
       </ul></li>
       <li><a href="reference/openghg_inversions.basis.html#openghg_inversions.basis.PreserveBucketProlongation">PreserveBucketProlongation (class in openghg_inversions.basis)</a>
@@ -2977,12 +2991,6 @@
       </ul></li>
       <li><a href="reference/openghg_inversions.postprocessing.inversion_output.html#openghg_inversions.postprocessing.inversion_output.InversionOutput.provenance">provenance (openghg_inversions.postprocessing.inversion_output.InversionOutput attribute)</a>
 </li>
-      <li><a href="reference/openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.StateActivity.prune_zero">prune_zero (openghg_inversions.models.state_activity.StateActivity attribute)</a>
-
-      <ul>
-        <li><a href="reference/openghg_inversions.models.html#openghg_inversions.models.StateActivity.prune_zero">(openghg_inversions.models.StateActivity attribute)</a>
-</li>
-      </ul></li>
       <li><a href="reference/openghg_inversions.borrowed.html#openghg_inversions.borrowed.BorrowedNDArray.put">put() (openghg_inversions.borrowed.BorrowedNDArray method)</a>
 </li>
       <li><a href="reference/openghg_inversions.models.html#openghg_inversions.models.CoordRegistry.pymc_coords">pymc_coords (openghg_inversions.models.CoordRegistry attribute)</a>
@@ -3099,6 +3107,12 @@
       </ul></li>
       <li><a href="reference/openghg_inversions.models.likelihoods.html#openghg_inversions.models.likelihoods.RegisteredAggregationError">RegisteredAggregationError (class in openghg_inversions.models.likelihoods)</a>
 </li>
+      <li><a href="reference/openghg_inversions.models.html#openghg_inversions.models.PreparedLinearSensitivity.removed">removed (openghg_inversions.models.PreparedLinearSensitivity attribute)</a>
+
+      <ul>
+        <li><a href="reference/openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.PreparedLinearSensitivity.removed">(openghg_inversions.models.state_activity.PreparedLinearSensitivity attribute)</a>
+</li>
+      </ul></li>
       <li><a href="reference/openghg_inversions.postprocessing.utils.html#openghg_inversions.postprocessing.utils.rename_by_replacement">rename_by_replacement() (in module openghg_inversions.postprocessing.utils)</a>
 </li>
       <li><a href="reference/openghg_inversions.rhime.params.html#openghg_inversions.rhime.params.required_run_params">required_run_params() (in module openghg_inversions.rhime.params)</a>
@@ -3163,6 +3177,12 @@
       </ul></li>
       <li><a href="reference/openghg_inversions.coherent_reduction.html#openghg_inversions.coherent_reduction.CoherentGaussianReduction.retained_covariance">retained_covariance (openghg_inversions.coherent_reduction.CoherentGaussianReduction attribute)</a>
 </li>
+      <li><a href="reference/openghg_inversions.models.html#openghg_inversions.models.PreparedLinearSensitivity.retained_indices">retained_indices (openghg_inversions.models.PreparedLinearSensitivity property)</a>
+
+      <ul>
+        <li><a href="reference/openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.PreparedLinearSensitivity.retained_indices">(openghg_inversions.models.state_activity.PreparedLinearSensitivity property)</a>
+</li>
+      </ul></li>
       <li><a href="reference/openghg_inversions.coherent_reduction.html#openghg_inversions.coherent_reduction.CoherentGaussianReduction.retained_mean">retained_mean (openghg_inversions.coherent_reduction.CoherentGaussianReduction attribute)</a>
 </li>
       <li><a href="reference/openghg_inversions.basis.html#openghg_inversions.basis.RetainedProjection">RetainedProjection (class in openghg_inversions.basis)</a>
@@ -3415,6 +3435,12 @@
 </li>
       <li><a href="reference/openghg_inversions.basis.basis_functions.html#openghg_inversions.basis.basis_functions.FluxWeightedBasis.select_sources">select_sources() (openghg_inversions.basis.basis_functions.FluxWeightedBasis method)</a>
 </li>
+      <li><a href="reference/openghg_inversions.models.html#openghg_inversions.models.PreparedLinearSensitivity.sensitivity">sensitivity (openghg_inversions.models.PreparedLinearSensitivity attribute)</a>
+
+      <ul>
+        <li><a href="reference/openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.PreparedLinearSensitivity.sensitivity">(openghg_inversions.models.state_activity.PreparedLinearSensitivity attribute)</a>
+</li>
+      </ul></li>
       <li><a href="reference/openghg_inversions.basis.basis_functions.html#openghg_inversions.basis.basis_functions.FluxWeightedBasis.sensitivity">sensitivity() (openghg_inversions.basis.basis_functions.FluxWeightedBasis method)</a>
 
       <ul>
@@ -3430,8 +3456,6 @@
       <li><a href="reference/openghg_inversions.borrowed.html#openghg_inversions.borrowed.BorrowedNDArray.setfield">setfield() (openghg_inversions.borrowed.BorrowedNDArray method)</a>
 </li>
       <li><a href="reference/openghg_inversions.borrowed.html#openghg_inversions.borrowed.BorrowedNDArray.setflags">setflags() (openghg_inversions.borrowed.BorrowedNDArray method)</a>
-</li>
-      <li><a href="reference/openghg_inversions.model_error.html#openghg_inversions.model_error.setup_min_error">setup_min_error() (in module openghg_inversions.model_error)</a>
 </li>
       <li><a href="reference/openghg_inversions.postprocessing.make_paris_outputs.html#openghg_inversions.postprocessing.make_paris_outputs.shift_measurement_time_to_midpoint">shift_measurement_time_to_midpoint() (in module openghg_inversions.postprocessing.make_paris_outputs)</a>
 </li>
@@ -3513,6 +3537,8 @@
         <li><a href="reference/openghg_inversions.inversion_data.html#openghg_inversions.inversion_data.RhimeMergedData.sites">(openghg_inversions.inversion_data.RhimeMergedData property)</a>
 </li>
         <li><a href="reference/openghg_inversions.inversion_data.html#openghg_inversions.inversion_data.RhimePreparedInputs.sites">(openghg_inversions.inversion_data.RhimePreparedInputs property)</a>
+</li>
+        <li><a href="reference/openghg_inversions.model_error.html#openghg_inversions.model_error.MinimumError.sites">(openghg_inversions.model_error.MinimumError attribute)</a>
 </li>
         <li><a href="reference/openghg_inversions.rhime.html#openghg_inversions.rhime.RhimeRunSpec.sites">(openghg_inversions.rhime.RhimeRunSpec attribute)</a>
 </li>
@@ -3616,13 +3642,13 @@
       <li><a href="reference/openghg_inversions.models.components.html#openghg_inversions.models.components.CorrelatedStateResult.state">state (openghg_inversions.models.components.CorrelatedStateResult attribute)</a>
 
       <ul>
-        <li><a href="reference/openghg_inversions.models.components.html#openghg_inversions.models.components.StateLinearComponentResult.state">(openghg_inversions.models.components.StateLinearComponentResult attribute)</a>
+        <li><a href="reference/openghg_inversions.models.components.html#openghg_inversions.models.components.LinearComponentResult.state">(openghg_inversions.models.components.LinearComponentResult attribute)</a>
 </li>
         <li><a href="reference/openghg_inversions.models.components.html#openghg_inversions.models.components.StateVectorResult.state">(openghg_inversions.models.components.StateVectorResult attribute)</a>
 </li>
         <li><a href="reference/openghg_inversions.models.html#openghg_inversions.models.CorrelatedStateResult.state">(openghg_inversions.models.CorrelatedStateResult attribute)</a>
 </li>
-        <li><a href="reference/openghg_inversions.models.html#openghg_inversions.models.StateLinearComponentResult.state">(openghg_inversions.models.StateLinearComponentResult attribute)</a>
+        <li><a href="reference/openghg_inversions.models.html#openghg_inversions.models.LinearComponentResult.state">(openghg_inversions.models.LinearComponentResult attribute)</a>
 </li>
       </ul></li>
       <li><a href="reference/openghg_inversions.rhime.html#openghg_inversions.rhime.RhimeModelSpec.state_activity">state_activity (openghg_inversions.rhime.RhimeModelSpec attribute)</a>
@@ -3650,7 +3676,11 @@
 </li>
         <li><a href="reference/openghg_inversions.models.html#openghg_inversions.models.CorrelatedLognormalPrior.state_dim">(openghg_inversions.models.CorrelatedLognormalPrior attribute)</a>
 </li>
+        <li><a href="reference/openghg_inversions.models.html#openghg_inversions.models.PreparedLinearSensitivity.state_dim">(openghg_inversions.models.PreparedLinearSensitivity property)</a>
+</li>
         <li><a href="reference/openghg_inversions.models.html#openghg_inversions.models.ResolvedStateActivity.state_dim">(openghg_inversions.models.ResolvedStateActivity attribute)</a>
+</li>
+        <li><a href="reference/openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.PreparedLinearSensitivity.state_dim">(openghg_inversions.models.state_activity.PreparedLinearSensitivity property)</a>
 </li>
         <li><a href="reference/openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.ResolvedStateActivity.state_dim">(openghg_inversions.models.state_activity.ResolvedStateActivity attribute)</a>
 </li>
@@ -3665,12 +3695,6 @@
 
       <ul>
         <li><a href="reference/openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.StateActivity">(class in openghg_inversions.models.state_activity)</a>
-</li>
-      </ul></li>
-      <li><a href="reference/openghg_inversions.models.html#openghg_inversions.models.StateLinearComponentResult">StateLinearComponentResult (class in openghg_inversions.models)</a>
-
-      <ul>
-        <li><a href="reference/openghg_inversions.models.components.html#openghg_inversions.models.components.StateLinearComponentResult">(class in openghg_inversions.models.components)</a>
 </li>
       </ul></li>
       <li><a href="reference/openghg_inversions.models.components.html#openghg_inversions.models.components.StateVectorResult">StateVectorResult (class in openghg_inversions.models.components)</a>
@@ -3866,7 +3890,11 @@
 </li>
       </ul></li>
       <li><a href="reference/openghg_inversions.borrowed.html#openghg_inversions.borrowed.BorrowedDataArray.values">values (openghg_inversions.borrowed.BorrowedDataArray property)</a>
+
+      <ul>
+        <li><a href="reference/openghg_inversions.model_error.html#openghg_inversions.model_error.MinimumError.values">(openghg_inversions.model_error.MinimumError attribute)</a>
 </li>
+      </ul></li>
       <li><a href="reference/openghg_inversions.postprocessing.inversion_output.html#openghg_inversions.postprocessing.inversion_output.InversionOutput.variable_name">variable_name() (openghg_inversions.postprocessing.inversion_output.InversionOutput method)</a>
 </li>
       <li><a href="reference/openghg_inversions.postprocessing.inversion_output.html#openghg_inversions.postprocessing.inversion_output.InversionOutput.variable_roles">variable_roles (openghg_inversions.postprocessing.inversion_output.InversionOutput property)</a>
@@ -3926,8 +3954,6 @@
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="reference/openghg_inversions.inversion_inputs.html#openghg_inversions.inversion_inputs.xr_factorize">xr_factorize() (in module openghg_inversions.inversion_inputs)</a>
-</li>
-      <li><a href="reference/openghg_inversions.model_error.html#openghg_inversions.model_error.xr_setup_min_error">xr_setup_min_error() (in module openghg_inversions.model_error)</a>
 </li>
       <li><a href="reference/openghg_inversions.inversion_inputs.html#openghg_inversions.inversion_inputs.xr_unique_inv">xr_unique_inv() (in module openghg_inversions.inversion_inputs)</a>
 </li>

@@ -497,9 +497,9 @@ Their conditional likelihoods are independent and use the paper’s absolute
 model-error definition, <code class="docutils literal notranslate"><span class="pre">sqrt(measurement_error**2</span> <span class="pre">+</span> <span class="pre">sigma**2)</span></code>.</p>
 <p>Use <a class="reference internal" href="#openghg_inversions.experimental.ramsden2022.model.build_ramsden_model" title="openghg_inversions.experimental.ramsden2022.model.build_ramsden_model"><code class="xref py py-func docutils literal notranslate"><span class="pre">build_ramsden_model()</span></code></a> to construct the graph without sampling and
 <a class="reference internal" href="#openghg_inversions.experimental.ramsden2022.model.run_ramsden_from_prepared_inputs" title="openghg_inversions.experimental.ramsden2022.model.run_ramsden_from_prepared_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">run_ramsden_from_prepared_inputs()</span></code></a> to sample it. Coupled primary/tracer
-designs must have exactly matching labelled state coordinates. A ratio may be
-applied directly to a ratio-free tracer design, or interpreted as a multiplier
-when the design already includes an explicit reference ratio. Boundary states
+sensitivities must have exactly matching labelled state coordinates. A ratio may
+be applied directly to a ratio-free tracer sensitivity, or interpreted as a
+multiplier when the sensitivity already includes an explicit reference ratio. Boundary states
 are optional and independent by gas. The caller is responsible for consistent
 units; this module performs no retrieval, conversion, or postprocessing.</p>
 <dl class="py class">
@@ -795,8 +795,8 @@ molar ratios (moles tracer per mole primary).</p></li>
 Observation coordinates may differ, but coupled sector state
 coordinates must match exactly.</p></li>
 <li><p><strong>model_spec</strong> – Shared-state, ratio, likelihood, unit, and boundary
-metadata. Direct ratios require ratio-free tracer designs;
-reference-ratio mode requires tracer designs that already include
+metadata. Direct ratios require ratio-free tracer sensitivities;
+reference-ratio mode requires tracer sensitivities that already include
 the declared reference ratio.</p></li>
 </ul>
 </dd>

@@ -441,7 +441,7 @@ state coordinates.</p>
 <tbody>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">H</span></code></p></td>
 <td><p>observation, state, source</p></td>
-<td><p>Labelled design matrix mapping scaling states into observation space.</p></td>
+<td><p>Labelled sensitivity matrix mapping scaling states into observation space.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">mf</span></code></p></td>
 <td><p>observation</p></td>
@@ -462,7 +462,7 @@ uncertainty.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">H_bc</span></code></p></td>
 <td><p>observation, boundary state</p></td>
-<td><p>Boundary design; required when the channel enables boundary scaling.</p></td>
+<td><p>Boundary sensitivity; required when the channel enables boundary scaling.</p></td>
 </tr>
 </tbody>
 </table>
@@ -476,11 +476,11 @@ The builder then verifies the spatial maps instead of assuming that two
 <h2>Ratio contracts<a class="headerlink" href="#ratio-contracts" title="Link to this heading">#</a></h2>
 <p>The model supports two explicit ratio conventions:</p>
 <dl>
-<dt>Direct physical ratio</dt><dd><p><code class="docutils literal notranslate"><span class="pre">reference_ratio=None</span></code> means the tracer design is ratio-free. The
+<dt>Direct physical ratio</dt><dd><p><code class="docutils literal notranslate"><span class="pre">reference_ratio=None</span></code> means the tracer sensitivity is ratio-free. The
 sampled or fixed value is the dimensionless molar emission ratio, moles of
 tracer divided by moles of primary gas.</p>
 </dd>
-<dt>Historical multiplier</dt><dd><p>A positive <code class="docutils literal notranslate"><span class="pre">reference_ratio</span></code> means the tracer design already contains
+<dt>Historical multiplier</dt><dd><p>A positive <code class="docutils literal notranslate"><span class="pre">reference_ratio</span></code> means the tracer sensitivity already contains
 that ratio. The sampled or fixed value is a multiplier, and the model
 exposes</p>
 <div class="math notranslate nohighlight">
@@ -489,15 +489,15 @@ exposes</p>
 </dd>
 </dl>
 <p>The independent <code class="docutils literal notranslate"><span class="pre">tracer_design_reference_ratios</span></code> mapping records what is
-already present in every tracer design. The builder rejects inconsistent
+already present in every tracer sensitivity. The builder rejects inconsistent
 declarations to prevent applying a ratio twice or omitting it.</p>
 </section>
 <section id="units">
 <h2>Units<a class="headerlink" href="#units" title="Link to this heading">#</a></h2>
 <p>The builder validates supported unit declarations by mole-fraction scale but
 does not convert numeric values. Observations, measurement errors, minimum
-errors, forward designs, and model-error prior values must already share each
-channel’s declared scale.</p>
+errors, forward sensitivities, and model-error prior values must already share
+each channel’s declared scale.</p>
 <p>For the retained Ramsden case, methane values are numeric <code class="docutils literal notranslate"><span class="pre">ppb</span></code> and ethane
 values numeric <code class="docutils literal notranslate"><span class="pre">ppt</span></code>. The paper prints the ethane model-error bounds as ppb,
 but its figures, retained data, and historical configuration support ppt.</p>
@@ -647,8 +647,8 @@ and the two namespaced likelihood and predictive variables.</p></li>
 Observation coordinates may differ, but coupled sector state
 coordinates must match exactly.</p></li>
 <li><p><strong>model_spec</strong> – Shared-state, ratio, likelihood, unit, and boundary
-metadata. Direct ratios require ratio-free tracer designs;
-reference-ratio mode requires tracer designs that already include
+metadata. Direct ratios require ratio-free tracer sensitivities;
+reference-ratio mode requires tracer sensitivities that already include
 the declared reference ratio.</p></li>
 </ul>
 </dd>

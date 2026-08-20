@@ -697,7 +697,7 @@ work. Each ``SectorSpec.x_prior`` supports the same scalar, full-state array,
 and labelled ``DataArray`` parameter forms; labelled values must match the
 selected sector's state coordinate exactly.
 
-For low-level model construction, first inspect a labelled design with
+For low-level model construction, first inspect a labelled sensitivity matrix with
 ``detect_zero_sensitivity``, then combine the returned mask with a
 ``StateActivity`` using ``resolve_state_activity``. State-vector graph helpers
 consume the resulting ``ResolvedStateActivity``; they do not inspect ``H`` or
@@ -711,7 +711,11 @@ from supplying a standalone baseline time series, which belongs to a separate
 baseline component.
 
 The legacy single-sector ``inferpymc`` / ``fixedbasisMCMC`` compatibility path
-continues to sample its full flux state and does not gain multisector behavior.
+does not gain multisector behavior. It now removes exact-zero ``H`` columns in
+the same way as the standard model: observation-space predictions are unchanged,
+but formerly unidentified entries in the full posterior ``x`` are reconstructed
+at their fixed values instead of being prior draws. Derived flux products that
+use those entries may therefore differ from earlier releases.
 
 Correlated Positive Reduced States
 ----------------------------------
