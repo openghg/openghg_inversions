@@ -1,10 +1,124 @@
 """Normalize, calculate, and align minimum model-error values."""
 
+import numbers
 from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
 import xarray as xr
+
+
+@dataclass(frozen=True)
+class MinimumError:
+    """Validated, observation-aligned minimum model error.
+
+    Attributes:
+        values: Minimum error labelled by observation.
+        method: Source form used to obtain the values.
+        by_site: Whether the source values varied by site.
+        sites: Site order used for per-site alignment.
+    """
+
+    values: xr.DataArray
+    method: str
+    by_site: bool
+    sites: tuple[str, ...]
+
+    @classmethod
+    def prepare(
+        cls,
+        observations: xr.Dataset,
+        fp_data: Mapping[str, xr.Dataset],
+        value: str | Mapping[str, float] | int | float = 0.0,
+        *,
+        by_site: bool = True,
+    ) -> "MinimumError":
+        """Prepare minimum error from a scalar, site mapping, or named method.
+
+        Args:
+            observations: Gathered observations containing ``mf`` and a labelled
+                ``site`` coordinate for per-site values.
+            fp_data: Per-site scientific datasets used by calculated methods.
+            value: Scalar, per-site mapping, ``"residual"``, or ``"percentile"``.
+            by_site: Whether residual values are calculated separately by site.
+
+        Returns:
+            A validated, observation-aligned minimum error value.
+
+        Raises:
+            ValueError: If the configuration, site labels, or resulting values
+                are invalid.
+        """
+        if "mf" not in observations:
+            raise ValueError("Minimum-error preparation requires an 'mf' observation array.")
+        if not isinstance(by_site, bool):
+            raise ValueError(f"Minimum-error 'by_site' must be a boolean, got {type(by_site).__name__}.")
+
+        site_coord = observations.coords.get("site")
+        sites = (
+            tuple(dict.fromkeys(str(value) for value in site_coord.values))
+            if site_coord is not None
+            else ()
+        )
+        selected = {site: fp_data[site] for site in sites if site in fp_data}
+        missing_data = [site for site in sites if site not in selected]
+        method: str
+        varies_by_site = False
+
+        if isinstance(value, numbers.Real) and not isinstance(value, bool):
+            source = np.asarray(float(value))
+            method = "scalar"
+        elif isinstance(value, np.ndarray) and value.ndim == 0:
+            source = value
+            method = "scalar"
+        elif isinstance(value, Mapping):
+            missing = [site for site in sites if site not in value]
+            if missing:
+                raise ValueError(f"min_error mapping is missing values for site(s): {missing}")
+            source = np.asarray([value[site] for site in sites], dtype=float)
+            method = "per_site"
+            varies_by_site = True
+        elif value in ("residual", "percentile"):
+            if missing_data:
+                raise ValueError(f"Minimum-error calculation is missing fp_data for site(s): {missing_data}")
+            method = value
+            varies_by_site = value == "percentile" or by_site
+            source = (
+                residual_error_method(selected, by_site=by_site)
+                if value == "residual"
+                else percentile_error_method(selected)
+            )
+        else:
+            raise ValueError(f"Option '{value}' is not valid.")
+
+        source = np.asarray(source, dtype=float)
+        if not np.isfinite(source).all() or (source < 0).any():
+            raise ValueError("Minimum-error values must be finite and non-negative.")
+
+        if varies_by_site:
+            if site_coord is None:
+                raise ValueError("Per-site min_error values require a labelled site coordinate.")
+            if source.ndim > 1 or source.size != len(sites):
+                raise ValueError(f"Minimum error has {source.size} site values; expected {len(sites)}.")
+            per_site = xr.DataArray(
+                source.reshape(-1),
+                coords={"site": np.asarray(sites)},
+                dims="site",
+            )
+            data = per_site.sel(site=site_coord)
+        else:
+            if source.size != 1:
+                raise ValueError("A non-site minimum error must contain exactly one value.")
+            data = xr.full_like(observations.mf, float(source.reshape(-1)[0]))
+
+        data = data.rename("min_error").assign_attrs(
+            units=observations.mf.attrs.get("units", ""),
+            minimum_error_method=method,
+            minimum_error_by_site=varies_by_site,
+            minimum_error_sites=",".join(sites),
+        )
+        return cls(values=data, method=method, by_site=varies_by_site, sites=sites)
 
 
 def normalise_min_error_options(options: Mapping[str, Any] | None) -> dict[str, bool]:
@@ -153,24 +267,3 @@ def percentile_error_method(ds_dict: dict[str, xr.Dataset]) -> np.ndarray:
     res_err = (monthly_50pc - monthly_5pc).groupby("site").mean(dim="time")
 
     return res_err.values
-
-
-def setup_min_error(min_error: np.ndarray, siteindicator: np.ndarray) -> np.ndarray:
-    """Align min error vector with obs vector.
-
-    Given min_error vector with same length as number of sites, create a vector
-    aligned with obs stacked by site.
-    """
-    # catch zero dimensional case (e.g. one site)
-    if min_error.ndim == 0:
-        return min_error * np.ones_like(siteindicator, dtype=float)
-
-    # need the same number of min_error values as distinct values in siteindicator
-    assert np.max(siteindicator) == len(min_error) - 1
-
-    return min_error[siteindicator.astype(int)]
-
-
-def xr_setup_min_error(min_error: np.ndarray, siteindicator: xr.DataArray) -> xr.DataArray:
-    """Align min error vector with obs vector."""
-    return xr.apply_ufunc(lambda x: setup_min_error(min_error, x), siteindicator)
