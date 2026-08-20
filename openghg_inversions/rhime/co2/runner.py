@@ -112,11 +112,14 @@ def co2_model_input_names(
     *,
     aggregation_error_mode: AggregationErrorMode,
     preserve_prepared_fixed_mismatch: bool,
+    derive_sigma_alignment: bool = False,
 ) -> tuple[str, ...]:
     """Declare prepared arrays consumed by the selected CO2 components."""
     inputs = prepared_inputs.inv_inputs
     names = list(_CO2_SCIENTIFIC_INPUT_NAMES)
     names.extend(aggregation_error_input_names(inputs, aggregation_error_mode))
+    if derive_sigma_alignment:
+        names.append("site_indicator")
     if "state_is_active" in inputs:
         names.append("state_is_active")
         if "state_fixed_value" in inputs:
@@ -147,16 +150,22 @@ def run_rhime_co2(
 
     ``fixed_model_mismatch=None`` preserves a prepared fixed-mismatch field if
     present, otherwise omits the term. An explicit scalar or labelled vector
-    overrides prepared data. OGI does not choose the application policy; the
-    Verification Games harness passes 1 ppm and ``no_model_error=True``.
+    overrides prepared data. By default, inferred model error varies by site
+    over one shared time period. An explicit ``sigma_alignment`` overrides
+    that alignment; ``no_model_error=True`` disables inferred model error.
+    The Verification Games fixed-likelihood harness passes 1 ppm and disables
+    inferred model error.
     """
     prepared = prepared_inputs.validated()
     names = co2_model_input_names(
         prepared,
         aggregation_error_mode=aggregation_error_mode,
         preserve_prepared_fixed_mismatch=fixed_model_mismatch is None,
+        derive_sigma_alignment=not no_model_error and sigma_alignment is None,
     )
     model_inputs = materialize_pymc_inputs(prepared, variable_names=names)
+    if not no_model_error and sigma_alignment is None:
+        sigma_alignment = SigmaAlignment.from_frequency(model_inputs["site_indicator"])
     aggregation_error = resolve_aggregation_error(
         model_inputs,
         aggregation_error_mode,

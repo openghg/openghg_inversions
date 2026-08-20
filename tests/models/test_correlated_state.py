@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 import warnings
 
 import numpy as np
@@ -25,7 +26,9 @@ from openghg_inversions.models import (
 from openghg_inversions.models.priors import lognormal_mu_sigma
 from openghg_inversions.serialization import (
     encode_multiindexes_for_storage,
+    load_inferencedata,
     restore_serialisation_multiindexes,
+    save_inferencedata,
 )
 
 
@@ -336,7 +339,9 @@ def test_add_correlated_lognormal_state_builds_whitened_public_graph() -> None:
     assert (draw > 0).all()
 
 
-def test_correlated_lognormal_activity_restores_fixed_gathered_state_and_covariance() -> None:
+def test_correlated_lognormal_activity_restores_fixed_gathered_state_and_covariance(
+    tmp_path: Path,
+) -> None:
     """Active draws retain their selected arithmetic covariance and full labels."""
     mean = _gathered_mean()
     prior = CorrelatedLognormalPrior(mean, _arithmetic_covariance())
@@ -380,6 +385,14 @@ def test_correlated_lognormal_activity_restores_fixed_gathered_state_and_covaria
     )
     assert restored.prior.indexes["state"].equals(mean.indexes["state"])
     assert restored.prior["source"].values.tolist() == ["ocean", "ff", "ff"]
+    active_index = restored.prior.indexes["state_x_active"]
+    assert isinstance(active_index, pd.MultiIndex)
+    assert active_index.names == ["source_x_active", "region_in_source_x_active"]
+    path = tmp_path / "correlated-gathered-trace.nc"
+    save_inferencedata(restored.isel(draw=slice(2)), path)
+    reloaded = load_inferencedata(path)
+    assert reloaded.prior.indexes["state"].equals(restored.prior.indexes["state"])
+    assert reloaded.prior.indexes["state_x_active"].equals(active_index)
     assert result.state is model["x"]
 
 

@@ -225,8 +225,8 @@ mismatch ``sigma``, its covariance is
 after applying ``min_error`` as a floor on the total marginal standard
 deviation. OpenGHG Inversions does not default ``s_fixed`` to 1 ppm. The
 Verification Games fixed-only policy passes ``fixed_model_mismatch=1.0`` and
-``no_model_error=True`` visibly; ``co2.ini`` records the same policy but is not
-yet parsed by the runner.
+``no_model_error=True`` visibly. A runnable CO2 configuration and resolver are
+tracked in `OPE-79 <https://linear.app/openghg-inversions/issue/OPE-79>`_.
 
 The model builder accepts explicit scientific arrays rather than a dataset.
 For durable prepared artifacts, :func:`openghg_inversions.rhime.run_rhime_co2`
@@ -235,7 +235,9 @@ resolves aggregation error, calls the explicit builder, samples, and stores a
 JSON variable-role and model-provenance manifest on the returned
 ``InferenceData``. A prepared ``fixed_model_mismatch`` is preserved when the
 runner argument is ``None``; an explicit scalar or labelled vector overrides
-it.
+it. Persist gathered-state traces with
+:func:`openghg_inversions.serialization.save_inferencedata`, which uses the
+same MultiIndex-safe boundary as standard and multisector RHIME outputs.
 
 Equivalent construction from public helpers
 -------------------------------------------

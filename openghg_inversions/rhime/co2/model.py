@@ -29,6 +29,7 @@ from openghg_inversions.models.state_activity import (
     resolve_state_activity,
 )
 from openghg_inversions.observation_error import AggregationError
+from openghg_inversions.rhime.specs import DEFAULT_SIGMA_PRIOR
 from openghg_inversions.sigma import SigmaAlignment
 
 
@@ -56,12 +57,20 @@ def co2_prior_forward_mean(
     Active states use ``prior_mean`` and inactive states use their exact fixed
     values.
     """
-    design = flux_sensitivity.transpose("nmeasure", ...)
-    state_dim = next(str(dim) for dim in design.dims if dim != "nmeasure")
-    activity = _resolve_co2_state_activity(design, state_activity)
+    sensitivity = flux_sensitivity.transpose("nmeasure", ...)
+    state_dim = next(str(dim) for dim in sensitivity.dims if dim != "nmeasure")
+    activity = _resolve_co2_state_activity(sensitivity, state_activity)
     mean = prior_mean.transpose(state_dim)
+    sensitivity, mean = xr.align(sensitivity, mean, join="exact", copy=False)
     mean = xr.where(activity.active, mean, activity.fixed_value)
-    return (fixed_prior_contribution + xr.dot(design, mean, dim=state_dim)).rename("prior_forward_mean")
+    pollution_mean = xr.dot(sensitivity, mean, dim=state_dim)
+    fixed_prior, pollution_mean = xr.align(
+        fixed_prior_contribution.transpose("nmeasure"),
+        pollution_mean,
+        join="exact",
+        copy=False,
+    )
+    return (fixed_prior + pollution_mean).rename("prior_forward_mean")
 
 
 def _add_co2_retained_state(
@@ -145,7 +154,7 @@ def build_co2_rhime_model(
     unset by default; the Verification Games fixed likelihood passes 1 ppm
     explicitly.
     """
-    sigma_prior = {} if sigma_prior is None else dict(sigma_prior)
+    sigma_prior = dict(DEFAULT_SIGMA_PRIOR if sigma_prior is None else sigma_prior)
     fixed_mismatch = _fixed_mismatch_array(observations, fixed_model_mismatch)
 
     with registered_model() as model:

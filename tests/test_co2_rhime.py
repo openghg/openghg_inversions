@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import configparser
 import json
 from pathlib import Path
 from typing import Any, cast
@@ -11,6 +10,7 @@ import numpy as np
 import pandas as pd
 import pymc as pm
 import arviz as az
+import pytest
 import xarray as xr
 
 from openghg_inversions.models.coords import get_coord_registry
@@ -22,6 +22,7 @@ from openghg_inversions.rhime.co2 import (
     run_rhime_co2,
 )
 from openghg_inversions.rhime.co2 import runner as co2_runner
+from openghg_inversions.serialization import load_inferencedata, save_inferencedata
 
 
 FIXTURE = Path(__file__).parent / "data" / "co2_only_golden.json"
@@ -146,6 +147,25 @@ def test_co2_prior_forward_mean_uses_fixed_values_for_inactive_states() -> None:
     )
 
     np.testing.assert_allclose(actual, expected)
+
+
+def test_co2_prior_forward_mean_rejects_mismatched_labels() -> None:
+    inputs = _golden_inputs()
+    reordered_state = inputs["alpha_prior_mean"].isel(region=[1, 0, 2, 3])
+    reordered_observations = inputs["fixed_prior_contribution"].isel(nmeasure=slice(None, None, -1))
+
+    with pytest.raises(ValueError, match="cannot align.*region"):
+        co2_prior_forward_mean(
+            inputs["H"],
+            prior_mean=reordered_state,
+            fixed_prior_contribution=inputs["fixed_prior_contribution"],
+        )
+    with pytest.raises(ValueError, match="cannot align.*nmeasure"):
+        co2_prior_forward_mean(
+            inputs["H"],
+            prior_mean=inputs["alpha_prior_mean"],
+            fixed_prior_contribution=reordered_observations,
+        )
 
 
 def test_co2_model_exposes_affine_correlated_dense_covariance_graph() -> None:
@@ -288,11 +308,54 @@ def test_public_co2_runner_persists_fixed_mismatch_manifest(
     ]
 
     path = tmp_path / "co2-trace.nc"
-    result.to_netcdf(path, engine="netcdf4")
-    restored = az.from_netcdf(path, engine="netcdf4")
+    save_inferencedata(result, path)
+    restored = load_inferencedata(path)
     assert json.loads(restored.attrs["rhime_model_metadata"])["recipe"] == "co2"
     assert restored.posterior["x"].attrs["units"] == "1"
     assert restored.constant_data["fixed_prior_contribution"].attrs["units"] == "ppm"
+
+
+def test_public_co2_runner_derives_default_model_error_alignment(monkeypatch: Any) -> None:
+    inputs = _golden_inputs()
+    inputs["site_indicator"] = xr.DataArray(
+        np.arange(inputs.sizes["nmeasure"]),
+        dims="nmeasure",
+        coords={"nmeasure": inputs["nmeasure"]},
+    )
+
+    class PreparedInputsStub:
+        inv_inputs = inputs
+
+        def validated(self) -> "PreparedInputsStub":
+            return self
+
+    materialized_names: list[tuple[str, ...]] = []
+
+    def materialize(_prepared: Any, *, variable_names: tuple[str, ...]) -> xr.Dataset:
+        materialized_names.append(variable_names)
+        return inputs
+
+    sampled_models: list[pm.Model] = []
+
+    def sample_model(built: Any, _sampler: Any) -> az.InferenceData:
+        sampled_models.append(built.model)
+        return _empty_sampled_trace(inputs)
+
+    monkeypatch.setattr(co2_runner, "materialize_pymc_inputs", materialize)
+    monkeypatch.setattr(co2_runner, "sample_rhime_model", sample_model)
+
+    run_rhime_co2(prepared_inputs=cast(Any, PreparedInputsStub()))
+
+    assert "site_indicator" in materialized_names[0]
+    np.testing.assert_array_equal(
+        sampled_models[0]["sigma_site_index"].eval(),
+        np.arange(inputs.sizes["nmeasure"]),
+    )
+    np.testing.assert_array_equal(
+        sampled_models[0]["sigma_period_index"].eval(),
+        np.zeros(inputs.sizes["nmeasure"]),
+    )
+    assert "sigma" in sampled_models[0].named_vars
 
 
 def test_public_co2_runner_preserves_materialized_fixed_mismatch(monkeypatch: Any) -> None:
@@ -320,14 +383,3 @@ def test_public_co2_runner_preserves_materialized_fixed_mismatch(monkeypatch: An
     )
 
     np.testing.assert_allclose(sampled_models[0]["fixed_model_mismatch"].eval(), 0.75)
-
-
-def test_co2_config_keeps_fixed_only_policy_visible() -> None:
-    config = configparser.ConfigParser()
-    config.read(Path(__file__).parents[1] / "openghg_inversions" / "rhime" / "config" / "co2.ini")
-    assert config.sections() == ["co2", "co2.model_data_mismatch", "sampling"]
-    assert config["co2"]["aggregation_error_mode"] == "dense"
-    assert config.getboolean("co2.model_data_mismatch", "infer") is False
-    assert config.getfloat("co2.model_data_mismatch", "fixed_standard_deviation") == 1.0
-    assert config["sampling"]["nuts_sampler"] == "numpyro"
-    assert config.getfloat("sampling", "target_accept") == 0.95

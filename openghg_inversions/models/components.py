@@ -510,16 +510,16 @@ def add_correlated_lognormal_state_with_activity(
         active_dim = f"{state_dim}_{var_name}_active"
         active_index = mean.coords[state_dim].to_index()[active_indices]
         if isinstance(active_index, pd.MultiIndex):
-            # Full public states own the MultiIndex level coordinates. Tuple
-            # labels keep the internal active dimension independent of them.
-            active_coord = np.empty(activity.n_active, dtype=object)
-            active_coord[:] = active_index.tolist()
+            active_index = active_index.set_names(
+                [f"{name}_{var_name}_active" for name in active_index.names]
+            )
+            active_coords = xr.Coordinates.from_pandas_multiindex(active_index, active_dim)
         else:
-            active_coord = active_index.to_numpy()
+            active_coords = {active_dim: active_index.to_numpy()}
         active_mean = xr.DataArray(
             mean.isel({state_dim: active_indices}).values,
             dims=(active_dim,),
-            coords={active_dim: active_coord},
+            coords=active_coords,
             name=mean.name,
             attrs=mean.attrs,
         )
