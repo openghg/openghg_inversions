@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from pathlib import Path
 import warnings
 
 import numpy as np
 import pandas as pd
 import pymc as pm
+import pytensor
 import pytest
 import xarray as xr
 
@@ -12,14 +14,21 @@ from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.models import (
     CoordRegistry,
     add_correlated_lognormal_state,
+    add_correlated_lognormal_state_with_activity,
     attach_coord_registry,
+    detect_zero_sensitivity,
+    get_coord_registry,
     registered_model,
+    resolve_state_activity,
     restore_inferencedata_coords,
+    StateActivity,
 )
 from openghg_inversions.models.priors import lognormal_mu_sigma
 from openghg_inversions.serialization import (
     encode_multiindexes_for_storage,
+    load_inferencedata,
     restore_serialisation_multiindexes,
+    save_inferencedata,
 )
 
 
@@ -330,17 +339,96 @@ def test_add_correlated_lognormal_state_builds_whitened_public_graph() -> None:
     assert (draw > 0).all()
 
 
+def test_correlated_lognormal_activity_restores_fixed_gathered_state_and_covariance(
+    tmp_path: Path,
+) -> None:
+    """Active draws retain their selected arithmetic covariance and full labels."""
+    mean = _gathered_mean()
+    prior = CorrelatedLognormalPrior(mean, _arithmetic_covariance())
+    sensitivity = xr.DataArray(
+        np.ones((2, 3)),
+        dims=("nmeasure", "state"),
+        coords={"nmeasure": [0, 1], **mean.coords},
+    )
+    activity = resolve_state_activity(
+        detect_zero_sensitivity(sensitivity),
+        StateActivity(
+            active=xr.DataArray(
+                [True, False, True],
+                dims="state",
+                coords={"state": mean.coords["state"]},
+            ),
+            fixed_value=xr.DataArray(
+                [10.0, 7.5, 12.0],
+                dims="state",
+                coords={"state": mean.coords["state"]},
+            ),
+        ),
+    )
+
+    with registered_model() as model:
+        result = add_correlated_lognormal_state_with_activity(activity, prior, var_name="x")
+        idata = pm.sample_prior_predictive(draws=8000, random_seed=42)
+    registry = get_coord_registry(model)
+    assert registry is not None
+    restored = restore_inferencedata_coords(idata, registry)
+    draws = restored.prior["x"].stack(sample=("chain", "draw")).transpose("sample", "state")
+
+    np.testing.assert_array_equal(draws.isel(state=1), 7.5)
+    active_draws = draws.isel(state=[0, 2]).values
+    expected_covariance = prior.arithmetic_covariance.values[np.ix_([0, 2], [0, 2])]
+    np.testing.assert_allclose(
+        np.cov(active_draws, rowvar=False),
+        expected_covariance,
+        rtol=0.15,
+        atol=0.005,
+    )
+    assert restored.prior.indexes["state"].equals(mean.indexes["state"])
+    assert restored.prior["source"].values.tolist() == ["ocean", "ff", "ff"]
+    active_index = restored.prior.indexes["state_x_active"]
+    assert isinstance(active_index, pd.MultiIndex)
+    assert active_index.names == ["source_x_active", "region_in_source_x_active"]
+    path = tmp_path / "correlated-gathered-trace.nc"
+    save_inferencedata(restored.isel(draw=slice(2)), path)
+    reloaded = load_inferencedata(path)
+    assert reloaded.prior.indexes["state"].equals(restored.prior.indexes["state"])
+    assert reloaded.prior.indexes["state_x_active"].equals(active_index)
+    assert result.state is model["x"]
+
+
+def test_correlated_lognormal_activity_rejects_reordered_prior_before_model_mutation() -> None:
+    """The validated prior and activity must describe one identical state order."""
+    mean = _gathered_mean()
+    prior = CorrelatedLognormalPrior(
+        mean.isel(state=[1, 0, 2]),
+        _arithmetic_covariance()[np.ix_([1, 0, 2], [1, 0, 2])],
+    )
+    sensitivity = xr.DataArray(
+        np.ones((2, 3)),
+        dims=("nmeasure", "state"),
+        coords={"nmeasure": [0, 1], **mean.coords},
+    )
+    activity = resolve_state_activity(detect_zero_sensitivity(sensitivity), None)
+
+    with registered_model() as model:
+        with pytest.raises(ValueError, match="labels must exactly match"):
+            add_correlated_lognormal_state_with_activity(activity, prior, var_name="x")
+
+    assert model.named_vars == {}
+
+
 def test_add_correlated_lognormal_state_rejects_float32_cholesky_underflow() -> None:
     """Fail atomically rather than leaving a deterministic or partial state."""
     mean = _gathered_mean().isel(state=[0])
     prior = CorrelatedLognormalPrior(mean, np.array([[1.0e-100]]))
 
-    with registered_model() as model:
-        with pytest.raises(ValueError, match="remain positive in the model float dtype"):
-            add_correlated_lognormal_state(prior, var_name="x")
-        assert model.named_vars == {}
-        valid_prior = CorrelatedLognormalPrior(mean, np.array([[0.1]]))
-        add_correlated_lognormal_state(valid_prior, var_name="x")
+    with pytensor.config.change_flags(floatX="float32"):
+        with registered_model() as model:
+            with pytest.raises(ValueError, match="remain positive in the model float dtype"):
+                add_correlated_lognormal_state(prior, var_name="x")
+            assert model.named_vars == {}
+            valid_prior = CorrelatedLognormalPrior(mean, np.array([[0.1]]))
+            add_correlated_lognormal_state(valid_prior, var_name="x")
 
     assert set(model.named_vars) == {"x_latent", "x"}
 
@@ -354,9 +442,10 @@ def test_add_correlated_lognormal_state_rejects_unrepresentable_float32_mean(
     covariance = np.array([[(0.1 * mean_value) ** 2]])
     prior = CorrelatedLognormalPrior(mean, covariance)
 
-    with registered_model() as model:
-        with pytest.raises(ValueError, match="arithmetic means.*model float dtype"):
-            add_correlated_lognormal_state(prior, var_name="x")
+    with pytensor.config.change_flags(floatX="float32"):
+        with registered_model() as model:
+            with pytest.raises(ValueError, match="arithmetic means.*model float dtype"):
+                add_correlated_lognormal_state(prior, var_name="x")
 
     assert model.named_vars == {}
 

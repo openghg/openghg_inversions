@@ -21,6 +21,7 @@ from openghg_inversions.basis.basis_functions import (
     BasisFunctions,
 )
 from openghg_inversions.basis.operators import MultiSourceBucketBasisOperator
+from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.inversion_data import RhimePreparedInputs, prepare_rhime_inputs
 from openghg_inversions.rhime import (
     RhimeModelSpec,
@@ -230,8 +231,8 @@ def test_prepared_inputs_normalizes_h_to_basis_source_order() -> None:
     assert prepared.inv_inputs.source.values.tolist() == ["B", "A"]
 
 
-def test_prepared_inputs_normalizes_gathered_h_to_basis_source_order() -> None:
-    """Gathered H state blocks follow basis order without losing state coordinates."""
+def test_prepared_inputs_normalizes_gathered_state_covariance_to_basis_source_order() -> None:
+    """Gathered H and both prior-covariance axes follow the basis source order."""
     original = _multisource_prepared_inputs()
     state_index = pd.MultiIndex.from_tuples(
         [("A", 0), ("B", 0), ("A", 1), ("B", 1)],
@@ -247,6 +248,29 @@ def test_prepared_inputs_normalizes_gathered_h_to_basis_source_order() -> None:
             "state_note": ("region", ["a0", "b0", "a1", "b1"]),
         },
     )
+    inv_inputs["alpha_prior_mean"] = ("region", [1.0, 2.0, 3.0, 4.0])
+    covariance = np.array(
+        [
+            [0.40, 0.01, 0.02, 0.03],
+            [0.01, 0.50, 0.04, 0.05],
+            [0.02, 0.04, 0.60, 0.06],
+            [0.03, 0.05, 0.06, 0.70],
+        ]
+    )
+    column_labels = [
+        json.dumps(label, ensure_ascii=False, separators=(",", ":"))
+        for label in state_index.tolist()
+    ]
+    inv_inputs["alpha_prior_covariance"] = (
+        ("region", "region_cov"),
+        covariance,
+    )
+    cross_covariance = np.arange(8, dtype=float).reshape(2, 4)
+    inv_inputs["native_retained_cross_covariance"] = (
+        ("native_state", "region_cov"),
+        cross_covariance,
+    )
+    inv_inputs = inv_inputs.assign_coords(region_cov_label=("region_cov", column_labels))
 
     prepared = RhimePreparedInputs(
         inv_inputs=inv_inputs,
@@ -261,6 +285,23 @@ def test_prepared_inputs_normalizes_gathered_h_to_basis_source_order() -> None:
     assert prepared.inv_inputs.indexes["region"].equals(expected_index)
     assert prepared.inv_inputs["H"].values[:, 0].tolist() == [20.0, 40.0, 10.0, 30.0]
     assert prepared.inv_inputs["state_note"].values.tolist() == ["b0", "b1", "a0", "a1"]
+    state_order = [1, 3, 0, 2]
+    np.testing.assert_array_equal(
+        prepared.inv_inputs["alpha_prior_covariance"],
+        covariance[np.ix_(state_order, state_order)],
+    )
+    assert prepared.inv_inputs["region_cov_label"].values.tolist() == [
+        column_labels[index] for index in state_order
+    ]
+    np.testing.assert_array_equal(
+        prepared.inv_inputs["native_retained_cross_covariance"],
+        cross_covariance[:, state_order],
+    )
+    CorrelatedLognormalPrior(
+        prepared.inv_inputs["alpha_prior_mean"],
+        prepared.inv_inputs["alpha_prior_covariance"],
+        covariance_dim="region_cov",
+    )
 
 
 def test_prepared_inputs_rejects_h_source_mismatch() -> None:

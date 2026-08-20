@@ -597,7 +597,15 @@ def _canonicalize_rhime_inv_inputs(
             for index, actual_source in enumerate(source_labels)
             if actual_source == source
         ]
-        return result.isel({state_dim: state_order}), site_metadata
+        state_indexers = {state_dim: state_order}
+        covariance_dim = f"{state_dim}_cov"
+        if covariance_dim in result.dims:
+            if result.sizes[covariance_dim] != len(state_order):
+                raise ValueError(
+                    f"RhimePreparedInputs {covariance_dim} must match the gathered state length."
+                )
+            state_indexers[covariance_dim] = state_order
+        return result.isel(state_indexers), site_metadata
     result = result.assign_coords(source=("source", list(actual_sources)))
     return result.sel(source=list(expected_sources)), site_metadata
 

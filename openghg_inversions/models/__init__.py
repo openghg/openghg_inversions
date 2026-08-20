@@ -23,6 +23,7 @@ from openghg_inversions.models.components import (
     add_model_data,
     add_offset_component,
     add_correlated_lognormal_state,
+    add_correlated_lognormal_state_with_activity,
     add_sigma_component,
 )
 from openghg_inversions.models.coords import (
@@ -63,6 +64,7 @@ __all__ = [
     "parse_prior",
     "add_model_data",
     "add_correlated_lognormal_state",
+    "add_correlated_lognormal_state_with_activity",
     "add_linear_component",
     "apply_linear_sensitivity",
     "add_sigma_component",
