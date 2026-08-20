@@ -10,7 +10,42 @@ from openghg_inversions.array_ops import (
     concat_gather_datatree,
     concat_gather_datasets,
     select_gathered_data_array,
+    validate_covariance_coordinates,
 )
+
+
+def test_validate_covariance_coordinates_uses_default_covariance_dimension() -> None:
+    """The conventional ``<dim>_cov`` axis must repeat row labels exactly."""
+    covariance = xr.DataArray(
+        np.eye(2),
+        dims=("state", "state_cov"),
+        coords={"state": ["north", "south"], "state_cov": ["north", "south"]},
+    )
+
+    validate_covariance_coordinates(covariance, dim="state")
+
+
+@pytest.mark.parametrize(
+    "covariance",
+    [
+        xr.DataArray(
+            np.eye(2),
+            dims=("state", "state_cov"),
+            coords={"state": ["north", "south"], "state_cov": ["south", "north"]},
+        ),
+        xr.DataArray(
+            np.ones((2, 3)),
+            dims=("state", "state_cov"),
+            coords={"state": ["north", "south"], "state_cov": ["north", "south", "east"]},
+        ),
+    ],
+)
+def test_validate_covariance_coordinates_rejects_incompatible_axes(
+    covariance: xr.DataArray,
+) -> None:
+    """Different order or length cannot silently reach a matrix backend."""
+    with pytest.raises(ValueError, match="same values|square"):
+        validate_covariance_coordinates(covariance, dim="state")
 
 
 def _make_site_dataset(site: str, *, include_inlet_height: bool) -> xr.Dataset:

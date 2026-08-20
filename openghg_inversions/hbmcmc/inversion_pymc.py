@@ -30,6 +30,7 @@ from openghg_inversions.models.coords import get_coord_registry, restore_inferen
 from openghg_inversions.models.priors import PriorArgs  # noqa: E402
 from openghg_inversions.models.state_activity import StateActivity  # noqa: E402
 from openghg_inversions.inversion_inputs import _compact_integer_index  # noqa: E402
+from openghg_inversions.observation_error import resolve_aggregation_error  # noqa: E402
 from openghg_inversions.sigma import SigmaAlignment  # noqa: E402
 
 # ----------------------------------------
@@ -150,8 +151,14 @@ def build_inferpymc_model(
     )
 
     return build_standard_rhime_model(
-        inv_inputs,
+        inv_inputs["H"],
+        observations=inv_inputs["mf"],
+        observation_error=inv_inputs["mf_error"],
+        minimum_error=inv_inputs["min_error"],
+        aggregation_error=resolve_aggregation_error(inv_inputs, "none"),
         sigma_alignment=sigma_alignment,
+        boundary_sensitivity=inv_inputs.get("H_bc"),
+        site_indicator=inv_inputs.get("site_indicator"),
         x_prior=xprior,
         bc_prior=bcprior,
         sigma_prior=sigprior,

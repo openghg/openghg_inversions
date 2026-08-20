@@ -26,7 +26,6 @@ import openghg_inversions.models as models
 import openghg_inversions.postprocessing.inversion_output as inversion_output_module
 import openghg_inversions.rhime as rhime_public
 import openghg_inversions.rhime.builders as rhime_builders
-import openghg_inversions.rhime.materialization as rhime_materialization
 import openghg_inversions.rhime._model_building as rhime_model_building
 import openghg_inversions.rhime.outputs as rhime_outputs
 import openghg_inversions.rhime.params as rhime_params
@@ -52,10 +51,8 @@ from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInpu
 from openghg_inversions.inversion_inputs import make_inv_inputs
 from openghg_inversions.models import StateActivity
 from openghg_inversions.models._flux import safe_pymc_name
-from openghg_inversions.models.pollution_event import (
-    build_pollution_event_error,
-    build_pollution_event_gaussian_likelihood,
-)
+from openghg_inversions.models.additive_sigma import build_additive_sigma_error
+from openghg_inversions.observation_error import AggregationError, resolve_aggregation_error
 from openghg_inversions.postprocessing._basis_products import (
     BASIS_ARTIFACT_PATH_OUTPUT_ATTR,
     BASIS_ARTIFACT_SOURCE_LOADED_DATATREE,
@@ -86,12 +83,10 @@ from openghg_inversions.rhime import (
 )
 from openghg_inversions.rhime.likelihoods import additive_sigma_likelihood_builder
 from openghg_inversions.rhime.multisector import (
-    _build_multisector_rhime_model_from_spec,
-    build_multisector_rhime_model as build_rhime_multisector_model,
+    build_multisector_rhime_model as _build_rhime_multisector_model,
 )
 from openghg_inversions.rhime.standard import (
-    _build_standard_rhime_model_from_spec,
-    build_standard_rhime_model as build_rhime_model,
+    build_standard_rhime_model as _build_rhime_model,
 )
 from openghg_inversions.sigma import SigmaAlignment
 
@@ -173,34 +168,33 @@ def _multisector_args(builder_args: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
-def build_rhime_observation_state(
-    data: xr.Dataset,
-    /,
-    *,
-    mean: Any,
-    pollution_mean: Any,
-    pollution_event_baseline: Any,
-    sigma_alignment: SigmaAlignment,
-    sigma_prior: dict[str, Any],
-    power: dict[str, Any] | float,
-    pollution_events_from_obs: bool,
-    no_model_error: bool,
-    aggregation_error_mode: Any,
-    output_dim: str,
-) -> Any:
-    """Build the built-in error state from explicit likelihood inputs."""
-    del mean
-    return build_pollution_event_error(
-        data,
-        pollution_mean=pollution_mean,
-        pollution_event_baseline=pollution_event_baseline,
-        sigma_alignment=sigma_alignment,
-        sigma_prior=sigma_prior,
-        power=power,
-        pollution_events_from_obs=pollution_events_from_obs,
-        no_model_error=no_model_error,
-        aggregation_error_mode=aggregation_error_mode,
-        output_dim=output_dim,
+def build_rhime_model(inv_inputs: xr.Dataset, **kwargs: Any) -> pm.Model:
+    """Adapt concise dataset fixtures to the explicit production builder."""
+    aggregation_mode = kwargs.pop("aggregation_error_mode", "none")
+    return _build_rhime_model(
+        inv_inputs["H"],
+        observations=inv_inputs["mf"],
+        observation_error=inv_inputs["mf_error"],
+        minimum_error=inv_inputs["min_error"],
+        aggregation_error=resolve_aggregation_error(inv_inputs, aggregation_mode),
+        boundary_sensitivity=inv_inputs.get("H_bc"),
+        site_indicator=inv_inputs.get("site_indicator"),
+        **kwargs,
+    )
+
+
+def build_rhime_multisector_model(inv_inputs: xr.Dataset, **kwargs: Any) -> pm.Model:
+    """Adapt concise source-resolved fixtures to the explicit production builder."""
+    aggregation_mode = kwargs.pop("aggregation_error_mode", "none")
+    return _build_rhime_multisector_model(
+        inv_inputs["H"],
+        observations=inv_inputs["mf"],
+        observation_error=inv_inputs["mf_error"],
+        minimum_error=inv_inputs["min_error"],
+        aggregation_error=resolve_aggregation_error(inv_inputs, aggregation_mode),
+        boundary_sensitivity=inv_inputs.get("H_bc"),
+        site_indicator=inv_inputs.get("site_indicator"),
+        **kwargs,
     )
 
 
@@ -723,6 +717,7 @@ def test_build_rhime_model_contains_expected_variables(
     assert isinstance(model, pm.Model)
     assert set(model.named_vars) == {
         "Y",
+        "aggregation_error_marginal_variance",
         "bc",
         "epsilon",
         "error",
@@ -739,6 +734,7 @@ def test_build_rhime_model_contains_expected_variables(
     }
     assert model.named_vars_to_dims == {
         "Y": ("nmeasure",),
+        "aggregation_error_marginal_variance": ("nmeasure",),
         "bc": ("bc_region",),
         "epsilon": ("nmeasure",),
         "error": ("nmeasure",),
@@ -812,22 +808,15 @@ def test_build_rhime_model_accepts_student_t_likelihood_builder(
 ) -> None:
     """A user-owned likelihood can reuse RHIME's error scale with canonical names."""
 
-    def student_t_builder(data: xr.Dataset, /, **kwargs: Any) -> Any:
+    def student_t_builder(**kwargs: Any) -> Any:
         """Build a Student-t observation distribution from explicit inputs."""
-        state = build_rhime_observation_state(data, **kwargs)
-        return pm.StudentT(
-            "y",
-            nu=4.0,
-            mu=kwargs["mean"],
-            sigma=state.error_scale,
-            observed=state.observed,
-            dims=kwargs["output_dim"],
-        )
+        return example_likelihoods.likelihood_builder(**kwargs)
 
     model = build_rhime_model(
         rhime_inv_inputs,
         **builder_args,
         likelihood_builder=student_t_builder,
+        likelihood_kwargs={"degrees_of_freedom": 5.0},
     )
 
     assert "y" in model.named_vars
@@ -839,7 +828,7 @@ def test_multisector_model_uses_falsey_likelihood_builder(
     builder_args: dict,
 ) -> None:
     """A callable's truth value does not control likelihood selection."""
-    calls: list[xr.Dataset] = []
+    calls: list[xr.DataArray] = []
 
     class FalseyLikelihood:
         """Callable likelihood whose false truth value must be ignored."""
@@ -848,10 +837,10 @@ def test_multisector_model_uses_falsey_likelihood_builder(
             """Return false to exercise explicit optional-builder selection."""
             return False
 
-        def __call__(self, data: xr.Dataset, /, **kwargs: Any) -> Any:
+        def __call__(self, **kwargs: Any) -> Any:
             """Record invocation and build the canonical likelihood."""
-            calls.append(data)
-            return build_pollution_event_gaussian_likelihood(data, **kwargs)
+            calls.append(kwargs["observations"])
+            return example_likelihoods.likelihood_builder(**kwargs)
 
     model = build_rhime_multisector_model(
         multisector_inv_inputs,
@@ -864,7 +853,7 @@ def test_multisector_model_uses_falsey_likelihood_builder(
     )
 
     assert len(calls) == 1
-    assert calls[0] is multisector_inv_inputs
+    xr.testing.assert_identical(calls[0], multisector_inv_inputs["mf"])
     assert "y" in model.named_vars
 
 
@@ -878,10 +867,10 @@ def test_recipe_passes_completed_forward_mean_to_custom_likelihood(
     """Custom likelihoods receive pollution plus the complete baseline mean."""
     calls: list[dict[str, Any]] = []
 
-    def capture_inputs(data: xr.Dataset, /, **kwargs: Any) -> Any:
-        """Capture explicit scientific inputs and build the default likelihood."""
+    def capture_inputs(**kwargs: Any) -> Any:
+        """Capture only common inputs and build the example likelihood."""
         calls.append(kwargs)
-        return build_pollution_event_gaussian_likelihood(data, **kwargs)
+        return example_likelihoods.likelihood_builder(**kwargs)
 
     kwargs = {**builder_args, "add_offset": True, "likelihood_builder": capture_inputs}
     if multisector:
@@ -898,6 +887,16 @@ def test_recipe_passes_completed_forward_mean_to_custom_likelihood(
 
     assert len(calls) == 1
     call = calls[0]
+    assert set(call) == {
+        "observations",
+        "observation_error",
+        "minimum_error",
+        "aggregation_error",
+        "mean",
+        "pollution_mean",
+        "pollution_event_baseline",
+        "output_dim",
+    }
     assert call["pollution_event_baseline"] is not None
     mean, pollution, baseline, boundary, offset = pm.draw(
         [
@@ -931,10 +930,34 @@ def test_editable_example_builder_adds_canonical_student_t_likelihood(
     assert type(example_model["y"].owner.op).__name__ == "StudentTRV"
 
 
+def test_recipe_expands_only_explicit_custom_likelihood_options(
+    rhime_inv_inputs: xr.Dataset,
+    builder_args: dict[str, Any],
+) -> None:
+    """Likelihood-specific options remain separate from common scientific inputs."""
+    received: list[float] = []
+
+    def configured_likelihood(*, degrees_of_freedom: float, **common: Any) -> Any:
+        received.append(degrees_of_freedom)
+        return example_likelihoods.likelihood_builder(
+            degrees_of_freedom=degrees_of_freedom,
+            **common,
+        )
+
+    model = build_rhime_model(
+        rhime_inv_inputs,
+        **builder_args,
+        likelihood_builder=configured_likelihood,
+        likelihood_kwargs={"degrees_of_freedom": 7.0},
+    )
+
+    assert received == [7.0]
+    assert type(model["y"].owner.op).__name__ == "StudentTRV"
+
+
 @pytest.mark.parametrize("aggregation_error_mode", ["dense", "low_rank"])
 def test_editable_example_builder_rejects_correlated_aggregation_error(
     aggregation_error_mode: str,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The independent Student-t example rejects correlated error representations."""
     data = _minimal_output_inv_inputs()
@@ -953,37 +976,18 @@ def test_editable_example_builder_rejects_correlated_aggregation_error(
             "nmeasure",
             np.zeros(data.sizes["nmeasure"]),
         )
-    sigma_alignment = SigmaAlignment.from_frequency(
-        data["site_indicator"],
-        frequency="3h",
-        anchor_time="2019-01-01",
-    )
-    selected_modes: list[str] = []
-    original_select = example_likelihoods.select_aggregation_error_mode
-
-    def select_mode(data: xr.Dataset, requested: Any) -> Any:
-        """Record the cheap public preflight used by the example."""
-        selected_modes.append(requested)
-        return original_select(data, requested)
-
-    monkeypatch.setattr(example_likelihoods, "select_aggregation_error_mode", select_mode)
-
     with pm.Model(coords={"nmeasure": np.arange(data.sizes["nmeasure"])}) as model:
         with pytest.raises(ValueError, match="assumes independent observations"):
             example_likelihoods.likelihood_builder(
-                data,
+                observations=data["mf"],
+                observation_error=data["mf_error"],
+                minimum_error=data["min_error"],
+                aggregation_error=resolve_aggregation_error(data, cast(Any, aggregation_error_mode)),
                 mean=pm.math.constant(np.zeros(data.sizes["nmeasure"])),
                 pollution_mean=pm.math.constant(np.zeros(data.sizes["nmeasure"])),
                 pollution_event_baseline=None,
-                sigma_alignment=sigma_alignment,
-                sigma_prior={"pdf": "uniform", "lower": 0.1, "upper": 10.0},
-                power=1.99,
-                pollution_events_from_obs=False,
-                no_model_error=False,
-                aggregation_error_mode=cast(Any, aggregation_error_mode),
                 output_dim="nmeasure",
             )
-    assert selected_modes == [aggregation_error_mode]
     assert model.named_vars == {}
 
 
@@ -1038,6 +1042,7 @@ def test_build_rhime_multisector_model_contains_expected_variables(
 
     assert set(model.named_vars) == {
         "Y",
+        "aggregation_error_marginal_variance",
         "bc",
         "epsilon",
         "error",
@@ -1057,6 +1062,7 @@ def test_build_rhime_multisector_model_contains_expected_variables(
     }
     assert model.named_vars_to_dims == {
         "Y": ("nmeasure",),
+        "aggregation_error_marginal_variance": ("nmeasure",),
         "bc": ("bc_region",),
         "epsilon": ("nmeasure",),
         "error": ("nmeasure",),
@@ -1172,7 +1178,7 @@ def test_materialize_pymc_inputs_computes_copy_and_preserves_borrowed_dask() -> 
     with Callback(start=lambda dsk: compute_graphs.append(dsk)):
         materialized = rhime_public.materialize_pymc_inputs(
             prepared,
-            aggregation_error_mode="none",
+            variable_names=model_names,
         )
 
     assert materialized is not prepared.inv_inputs
@@ -1224,7 +1230,16 @@ def test_materialize_pymc_inputs_computes_selected_error_form_and_retains_coordi
     assert computed == []
     materialized = rhime_public.materialize_pymc_inputs(
         prepared,
-        aggregation_error_mode="low_rank",
+        variable_names=(
+            "H",
+            "mf",
+            "mf_error",
+            "min_error",
+            "site_indicator",
+            "low_rank_factor",
+            "diagonal_residual_variance",
+            "aggregation_error_sd",
+        ),
     )
 
     assert set(computed) == {
@@ -1239,6 +1254,365 @@ def test_materialize_pymc_inputs_computes_selected_error_form_and_retains_coordi
     assert not isinstance(materialized["low_rank_factor"].data, da.Array)
     assert not isinstance(materialized["diagonal_residual_variance"].data, da.Array)
     assert not isinstance(materialized["aggregation_error_sd"].data, da.Array)
+
+
+@pytest.mark.parametrize(
+    ("model_update", "message"),
+    [
+        ({"use_bc": True}, "Standard baseline component.*H_bc"),
+        (
+            {"use_bc": False, "aggregation_error_mode": "dense"},
+            "Aggregation-error component.*aggregation_error_mode='dense'.*aggregation_error_covariance",
+        ),
+    ],
+)
+def test_standard_input_declaration_names_missing_component_owner(
+    model_update: dict[str, Any],
+    message: str,
+) -> None:
+    """Selected recipe inputs fail with their scientific component named."""
+    prepared = RhimePreparedInputs(
+        inv_inputs=_minimal_output_inv_inputs(),
+        basis_functions=_fake_basis_functions(),
+        site_metadata=_prepared_site_metadata(),
+    )
+    model_spec, _, _ = _minimal_output_specs(output_format="none")
+    model_spec = replace(model_spec, **model_update)
+
+    with pytest.raises(ValueError, match=message):
+        rhime_standard.standard_model_input_names(prepared, model_spec)
+
+
+@pytest.mark.parametrize(
+    ("multisector", "add_offset", "preserve_legacy", "expects_site_indicator"),
+    [
+        (False, False, False, False),
+        (False, True, False, True),
+        (False, False, True, True),
+        (True, False, False, False),
+        (True, True, False, True),
+    ],
+)
+def test_fixed_error_input_declarations_select_site_indicator_only_for_owners(
+    multisector: bool,
+    add_offset: bool,
+    preserve_legacy: bool,
+    expects_site_indicator: bool,
+) -> None:
+    """Disabled sigma wiring does not select site indices unless another owner needs them."""
+    inv_inputs = _minimal_output_inv_inputs()
+    model_spec, _, _ = _minimal_output_specs(output_format="none")
+    sectors = model_spec.sectors
+    if multisector:
+        sectors += (_sector("ocean", source="ocean-inventory", suffix="ocean"),)
+    model_spec = replace(
+        model_spec,
+        sectors=sectors,
+        use_bc=False,
+        no_model_error=True,
+        add_offset=add_offset,
+    )
+    prepared = RhimePreparedInputs(
+        inv_inputs=inv_inputs,
+        basis_functions=_fake_basis_functions(),
+        site_metadata=_prepared_site_metadata(),
+    )
+
+    if multisector:
+        names = rhime_multisector.multisector_model_input_names(prepared, model_spec)
+    else:
+        names = rhime_standard.standard_model_input_names(
+            prepared,
+            model_spec,
+            preserve_legacy_likelihood=preserve_legacy,
+        )
+
+    assert ("site_indicator" in names) is expects_site_indicator
+
+
+@pytest.mark.parametrize("multisector", [False, True])
+@pytest.mark.parametrize("custom_likelihood", [False, True])
+def test_non_default_sigma_owner_does_not_construct_sigma_alignment(
+    monkeypatch: pytest.MonkeyPatch,
+    multisector: bool,
+    custom_likelihood: bool,
+) -> None:
+    """Fixed-error specs and custom likelihoods do not inherit built-in sigma wiring."""
+    inv_inputs = _minimal_output_inv_inputs().drop_vars("site_indicator")
+    model_spec, _, run_spec = _minimal_output_specs(output_format="none")
+    sectors = model_spec.sectors
+    if multisector:
+        sectors += (_sector("ocean", source="ocean-inventory", suffix="ocean"),)
+        inv_inputs["H"] = xr.concat(
+            [inv_inputs["H"], 2.0 * inv_inputs["H"]],
+            dim=xr.IndexVariable("source", ["ff-inventory", "ocean-inventory"]),
+        )
+    model_spec = replace(
+        model_spec,
+        sectors=sectors,
+        use_bc=False,
+        no_model_error=not custom_likelihood,
+    )
+    run_spec = replace(run_spec, model=model_spec)
+    prepared = RhimePreparedInputs(
+        inv_inputs=inv_inputs,
+        basis_functions=_fake_basis_functions(),
+        site_metadata=_prepared_site_metadata(),
+    )
+
+    def fail_sigma_alignment(*args: Any, **kwargs: Any) -> None:
+        raise AssertionError("a graph without the built-in sigma owner must not construct sigma alignment")
+
+    monkeypatch.setattr(SigmaAlignment, "from_frequency", fail_sigma_alignment)
+    likelihood_builder = example_likelihoods.likelihood_builder if custom_likelihood else None
+    if multisector:
+        names = rhime_multisector.multisector_model_input_names(
+            prepared,
+            model_spec,
+            likelihood_builder=likelihood_builder,
+        )
+        materialized = rhime_public.materialize_pymc_inputs(prepared, variable_names=names)
+        result = rhime_multisector.build_multisector_rhime_model_result(
+            prepared=prepared,
+            model_inputs=materialized,
+            run_spec=run_spec,
+            likelihood_builder=likelihood_builder,
+        )
+    else:
+        names = rhime_standard.standard_model_input_names(
+            prepared,
+            model_spec,
+            likelihood_builder=likelihood_builder,
+        )
+        materialized = rhime_public.materialize_pymc_inputs(prepared, variable_names=names)
+        result = rhime_standard.build_standard_rhime_model_result(
+            prepared=prepared,
+            model_inputs=materialized,
+            run_spec=run_spec,
+            likelihood_builder=likelihood_builder,
+        )
+
+    assert "sigma" not in result.model.named_vars
+
+
+def test_custom_likelihood_does_not_inherit_legacy_sigma_retention(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The legacy sigma exception belongs only to the built-in likelihood."""
+    inv_inputs = _minimal_output_inv_inputs().drop_vars("site_indicator")
+    model_spec, _, run_spec = _minimal_output_specs(output_format="none")
+    model_spec = replace(model_spec, use_bc=False)
+    run_spec = replace(run_spec, model=model_spec)
+    prepared = RhimePreparedInputs(
+        inv_inputs=inv_inputs,
+        basis_functions=_fake_basis_functions(),
+        site_metadata=_prepared_site_metadata(),
+    )
+
+    monkeypatch.setattr(
+        SigmaAlignment,
+        "from_frequency",
+        lambda *args, **kwargs: pytest.fail("custom likelihood must not construct sigma alignment"),
+    )
+    names = rhime_standard.standard_model_input_names(
+        prepared,
+        model_spec,
+        likelihood_builder=example_likelihoods.likelihood_builder,
+        preserve_legacy_likelihood=True,
+    )
+    model_inputs = rhime_public.materialize_pymc_inputs(prepared, variable_names=names)
+    result = rhime_standard.build_standard_rhime_model_result(
+        prepared=prepared,
+        model_inputs=model_inputs,
+        run_spec=run_spec,
+        likelihood_builder=example_likelihoods.likelihood_builder,
+        preserve_legacy_likelihood=True,
+    )
+
+    assert "site_indicator" not in names
+    assert "sigma" not in result.model.named_vars
+
+
+@pytest.mark.parametrize("multisector", [False, True])
+def test_flux_component_rejects_reordered_observation_coordinates(multisector: bool) -> None:
+    """The explicit flux input cannot silently use positional observation order."""
+    observations = xr.DataArray(
+        [10.0, 11.0],
+        dims=("nmeasure",),
+        coords={"nmeasure": [0, 1]},
+    )
+    flux_sensitivity = xr.DataArray(
+        [[4.0, 2.5]],
+        dims=("region", "nmeasure"),
+        coords={"region": [0], "nmeasure": [1, 0]},
+    )
+    if multisector:
+        flux_sensitivity = xr.concat(
+            [flux_sensitivity, 2.0 * flux_sensitivity],
+            dim=xr.IndexVariable("source", ["ff", "ocean"]),
+        )
+    site_indicator = xr.DataArray(
+        [0, 0],
+        dims=("nmeasure",),
+        coords={"nmeasure": [0, 1]},
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="Conflicting coord registration for 'nmeasure': values differ",
+    ):
+        common = {
+            "observations": observations,
+            "observation_error": xr.ones_like(observations),
+            "minimum_error": xr.zeros_like(observations),
+            "aggregation_error": AggregationError(
+                mode="none",
+                marginal_variance=np.zeros(2),
+            ),
+            "sigma_alignment": SigmaAlignment.from_frequency(site_indicator),
+            "use_bc": False,
+        }
+        if multisector:
+            _build_rhime_multisector_model(
+                flux_sensitivity,
+                sectors=(
+                    _sector("FF", source="ff", suffix="ff"),
+                    _sector("ocean", source="ocean", suffix="ocean"),
+                ),
+                **common,
+            )
+        else:
+            _build_rhime_model(flux_sensitivity, **common)
+
+
+def test_external_cached_sensitivity_stays_lazy_until_standard_flux_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A VG-shaped cached sensitivity bypasses acquisition and is computed once."""
+    expected = np.array([[2.5, 4.0]])
+    executions: list[str] = []
+
+    def tracked(name: str, values: np.ndarray) -> da.Array:
+        """Return an externally supplied delayed scientific product."""
+
+        @delayed
+        def load_cached_product() -> np.ndarray:
+            executions.append(name)
+            return values
+
+        return da.from_delayed(load_cached_product(), shape=values.shape, dtype=values.dtype)
+
+    def vg_inputs(sensitivity: np.ndarray | da.Array) -> xr.Dataset:
+        """Build two labelled observations sharing one retained basis state."""
+        inputs = xr.Dataset(
+            {
+                "H": (("region", "nmeasure"), sensitivity),
+                "mf": ("nmeasure", [10.0, 11.0]),
+                "mf_error": ("nmeasure", [1.0, 1.5]),
+                "min_error": ("nmeasure", [0.0, 0.0]),
+                "mf_repeatability": ("nmeasure", [0.5, 0.5]),
+                "mf_variability": ("nmeasure", [0.25, 0.3]),
+                "site_indicator": ("nmeasure", [0, 0]),
+            },
+            coords={
+                "region": [0],
+                "nmeasure": [0, 1],
+                "site": ("nmeasure", ["TAC", "TAC"]),
+                "time": (
+                    "nmeasure",
+                    np.array(
+                        ["2019-01-01T00:00:00", "2019-01-01T01:00:00"],
+                        dtype="datetime64[ns]",
+                    ),
+                ),
+            },
+        )
+        inputs["mf"].attrs["units"] = "ppm"
+        return inputs.set_index(nmeasure=["site", "time"])
+
+    cached_sensitivity = tracked("cached-fp-x-flux", expected)
+    unused_extension = tracked("unused-project-extension", np.array([7.0, 8.0]))
+    inv_inputs = vg_inputs(cached_sensitivity)
+    inv_inputs["H"].attrs.update(
+        {
+            "provenance": "verification-games externally cached fp_x_flux projection",
+            "source": "vg-co2-cache",
+        }
+    )
+    inv_inputs["project_diagnostic"] = xr.DataArray(
+        unused_extension,
+        dims=("nmeasure",),
+        attrs={"provenance": "project-owned and not selected by this recipe"},
+    )
+    prepared = RhimePreparedInputs(
+        inv_inputs=inv_inputs,
+        basis_functions=_fake_basis_functions(),
+        site_metadata=_prepared_site_metadata(),
+    )
+    original_cache = prepared.inv_inputs["H"].data
+    original_extension = prepared.inv_inputs["project_diagnostic"].data
+    model_spec, _, base_run_spec = _minimal_output_specs(output_format="none")
+    model_spec = replace(model_spec, use_bc=False)
+    run_spec = replace(base_run_spec, model=model_spec)
+
+    assert executions == []
+    assert original_cache is cached_sensitivity
+    assert original_extension is unused_extension
+
+    selected_names = rhime_standard.standard_model_input_names(prepared, model_spec)
+    materialized = rhime_public.materialize_pymc_inputs(
+        prepared,
+        variable_names=selected_names,
+    )
+
+    assert executions == ["cached-fp-x-flux"]
+    assert prepared.inv_inputs["H"].data is original_cache
+    assert prepared.inv_inputs["project_diagnostic"].data is original_extension
+    assert materialized["project_diagnostic"].data is original_extension
+    assert materialized["H"].attrs["provenance"].startswith("verification-games")
+
+    real_builder = rhime_standard.build_standard_rhime_model
+    received: list[xr.DataArray] = []
+
+    def recording_builder(
+        flux_sensitivity: xr.DataArray,
+        **kwargs: Any,
+    ) -> pm.Model:
+        received.append(flux_sensitivity)
+        return real_builder(flux_sensitivity, **kwargs)
+
+    monkeypatch.setattr(rhime_standard, "build_standard_rhime_model", recording_builder)
+    cached_result = rhime_standard.build_standard_rhime_model_result(
+        prepared=prepared,
+        model_inputs=materialized,
+        run_spec=run_spec,
+    )
+
+    fresh_inputs = vg_inputs(expected)
+    fresh_prepared = RhimePreparedInputs(
+        inv_inputs=fresh_inputs,
+        basis_functions=_fake_basis_functions(),
+        site_metadata=_prepared_site_metadata(),
+    )
+    fresh_model_inputs = rhime_public.materialize_pymc_inputs(
+        fresh_prepared,
+        variable_names=rhime_standard.standard_model_input_names(fresh_prepared, model_spec),
+    )
+    fresh_result = rhime_standard.build_standard_rhime_model_result(
+        prepared=fresh_prepared,
+        model_inputs=fresh_model_inputs,
+        run_spec=run_spec,
+    )
+
+    assert received[0].variable is materialized["H"].variable
+    assert received[0].attrs["provenance"].startswith("verification-games")
+    assert received[1].variable is fresh_model_inputs["H"].variable
+    np.testing.assert_array_equal(cached_result.model["hx"].get_value(), expected.T)
+    np.testing.assert_array_equal(
+        cached_result.model["hx"].get_value(),
+        fresh_result.model["hx"].get_value(),
+    )
+    assert executions == ["cached-fp-x-flux"]
 
 
 def test_assemble_rhime_inputs_preserves_borrowed_site_datasets(
@@ -1328,7 +1702,7 @@ def test_prepared_replay_computes_selected_error_only_at_pymc_boundary(
     selection_snapshots: list[tuple[str, ...]] = []
 
     def select_without_computing(data: xr.Dataset, mode: str) -> str:
-        """Record that both mode-selection calls remain before execution."""
+        """Record that output preflight selection remains before execution."""
         selection_snapshots.append(tuple(executions))
         return original_select(data, mode)
 
@@ -1342,7 +1716,6 @@ def test_prepared_replay_computes_selected_error_only_at_pymc_boundary(
         return build_result
 
     monkeypatch.setattr(rhime_prepared, "select_aggregation_error_mode", select_without_computing)
-    monkeypatch.setattr(rhime_materialization, "select_aggregation_error_mode", select_without_computing)
     monkeypatch.setattr(rhime_prepared, "build_standard_rhime_model_result", build)
     monkeypatch.setattr(rhime_prepared, "sample_rhime_model", lambda *args, **kwargs: _minimal_output_idata())
     monkeypatch.setattr(rhime_prepared, "make_standard_rhime_result", lambda **kwargs: expected)
@@ -1350,7 +1723,7 @@ def test_prepared_replay_computes_selected_error_only_at_pymc_boundary(
     result = run_rhime_from_prepared_inputs(prepared_inputs=prepared, run_spec=run_spec)
 
     assert result is expected
-    assert selection_snapshots == [(), ()]
+    assert selection_snapshots == [()]
     assert executions == ["covariance"]
     assert prepared.inv_inputs["aggregation_error_covariance"].data is covariance_array
 
@@ -1734,7 +2107,7 @@ def test_build_rhime_multisector_model_names_sector_and_missing_source(
 
 def test_direct_multisector_builder_has_one_sector_argument() -> None:
     """Sector specifications replace parallel source, suffix, prior, and policy maps."""
-    parameters = inspect.signature(build_rhime_multisector_model).parameters
+    parameters = inspect.signature(_build_rhime_multisector_model).parameters
     assert "sectors" in parameters
     assert {
         "sector_sources",
@@ -1912,10 +2285,10 @@ def test_multisector_model_preserves_additive_semantics(
     """The concrete multisector graph preserves additive semantics."""
     captured: dict[str, Any] = {}
 
-    def capture_likelihood(data: xr.Dataset, /, **kwargs: Any) -> Any:
+    def capture_likelihood(**kwargs: Any) -> Any:
         """Capture the unnamed pollution sum used by the likelihood."""
         captured.update(kwargs)
-        return build_pollution_event_gaussian_likelihood(data, **kwargs)
+        return example_likelihoods.likelihood_builder(**kwargs)
 
     kwargs = {
         "sectors": (
@@ -1979,7 +2352,7 @@ def test_whole_model_validation_accepts_decomposed_baseline_roles() -> None:
         basis_functions=_fake_basis_functions(),
         site_metadata=_prepared_site_metadata(),
     )
-    with pm.Model() as model:
+    with models.registered_model() as model:
         for name in ("y", "epsilon", "x", "mu", "hx", "bc", "hbc", "mu_bc", "offset"):
             pm.Data(name, np.zeros(1))
     result = RhimeModelBuildResult(
@@ -2023,12 +2396,16 @@ def test_build_rhime_multisector_model_requires_multiple_sectors(
 
 
 def test_concrete_rhime_builders_are_owned_by_recipe_modules() -> None:
-    assert build_rhime_model.__module__ == "openghg_inversions.rhime.standard"
-    assert _build_standard_rhime_model_from_spec.__module__ == "openghg_inversions.rhime.standard"
-    assert build_rhime_multisector_model.__module__ == "openghg_inversions.rhime.multisector"
-    assert _build_multisector_rhime_model_from_spec.__module__ == "openghg_inversions.rhime.multisector"
-    assert rhime_public.build_standard_rhime_model is build_rhime_model
-    assert rhime_public.build_multisector_rhime_model is build_rhime_multisector_model
+    assert _build_rhime_model.__module__ == "openghg_inversions.rhime.standard"
+    assert _build_rhime_multisector_model.__module__ == "openghg_inversions.rhime.multisector"
+    assert rhime_public.build_standard_rhime_model is _build_rhime_model
+    assert rhime_public.build_multisector_rhime_model is _build_rhime_multisector_model
+
+    for builder in (_build_rhime_model, _build_rhime_multisector_model):
+        parameters = inspect.signature(builder).parameters
+        assert next(iter(parameters)) == "flux_sensitivity"
+        assert "inv_inputs" not in parameters
+        assert all(parameter.kind is not inspect.Parameter.VAR_KEYWORD for parameter in parameters.values())
 
     rhime_specific_names = {
         "RhimeModelSpec",
@@ -2039,6 +2416,8 @@ def test_concrete_rhime_builders_are_owned_by_recipe_modules() -> None:
     assert rhime_specific_names.isdisjoint(vars(models))
     assert "_build_standard_rhime_model_from_spec" not in rhime_public.__all__
     assert "_build_multisector_rhime_model_from_spec" not in rhime_public.__all__
+    assert not hasattr(rhime_standard, "_build_standard_rhime_model_from_spec")
+    assert not hasattr(rhime_multisector, "_build_multisector_rhime_model_from_spec")
     assert "build_rhime_model" not in rhime_public.__all__
     assert "build_rhime_multisector_model" not in rhime_public.__all__
 
@@ -2161,6 +2540,7 @@ def test_run_rhime_from_prepared_inputs_routes_without_preparation(
         species=model_spec.species,
         domain=model_spec.domain,
         sectors=sectors,
+        use_bc=False,
     )
     run_spec = RhimeRunSpec(
         run_spec.start_date,
@@ -2199,10 +2579,13 @@ def test_run_rhime_from_prepared_inputs_routes_without_preparation(
     def materialize(
         actual_prepared: RhimePreparedInputs,
         *,
-        aggregation_error_mode: str,
+        variable_names: tuple[str, ...],
     ) -> xr.Dataset:
         """Record replay's public materialization stage."""
-        assert aggregation_error_mode == run_spec.model.aggregation_error_mode
+        expected_names = {"H", "mf", "mf_error", "min_error", "site_indicator"}
+        if run_spec.model.use_bc:
+            expected_names.add("H_bc")
+        assert set(variable_names) == expected_names
         replay_context["prepared"] = actual_prepared
         stage_calls.append("materialize")
         return model_inputs
@@ -2294,6 +2677,7 @@ def test_public_rhime_runners_follow_named_stage_order(
 ) -> None:
     """Ordinary recipes preserve stage handoffs with default or custom likelihoods."""
     _, _, run_spec = _minimal_output_specs(output_format="none")
+    run_spec = replace(run_spec, model=replace(run_spec.model, use_bc=False))
     prepared = RhimePreparedInputs(
         inv_inputs=_minimal_output_inv_inputs(),
         basis_functions=_fake_basis_functions(),
@@ -2371,9 +2755,10 @@ def test_public_rhime_runners_follow_named_stage_order(
     def materialize(
         actual: RhimePreparedInputs,
         *,
-        aggregation_error_mode: str,
+        variable_names: tuple[str, ...],
     ) -> xr.Dataset:
         """Record public model-input materialization."""
+        assert set(variable_names) >= {"H", "mf", "mf_error", "min_error"}
         calls.append("materialize")
         return model_inputs
 
@@ -2381,6 +2766,8 @@ def test_public_rhime_runners_follow_named_stage_order(
         """Record the recipe-specific public model build."""
         expected_builder = additive_sigma_likelihood_builder if custom_likelihood else None
         assert kwargs["likelihood_builder"] is expected_builder
+        expected_options = {"project_option": 42} if custom_likelihood else None
+        assert kwargs["likelihood_kwargs"] == expected_options
         calls.append("build")
         return build_result
 
@@ -2395,6 +2782,8 @@ def test_public_rhime_runners_follow_named_stage_order(
         """Record the recipe-specific public result stage."""
         expected_builder = additive_sigma_likelihood_builder if custom_likelihood else None
         assert kwargs["likelihood_builder"] is expected_builder
+        expected_options = {"project_option": 42} if custom_likelihood else None
+        assert kwargs["likelihood_kwargs"] == expected_options
         calls.append("result")
         return expected
 
@@ -2415,6 +2804,7 @@ def test_public_rhime_runners_follow_named_stage_order(
         runner_kwargs["merged_data"] = external_merged
     if custom_likelihood:
         runner_kwargs["likelihood_builder"] = additive_sigma_likelihood_builder
+        runner_kwargs["likelihood_kwargs"] = {"project_option": 42}
     actual = getattr(recipe_module, runner_name)(**runner_kwargs)
 
     assert actual is expected
@@ -2439,6 +2829,7 @@ def test_ordinary_runners_expose_keyword_only_likelihood_builder(runner: Callabl
     parameters = inspect.signature(runner).parameters
 
     assert parameters["likelihood_builder"].kind is inspect.Parameter.KEYWORD_ONLY
+    assert parameters["likelihood_kwargs"].kind is inspect.Parameter.KEYWORD_ONLY
     assert parameters["merged_data"].kind is inspect.Parameter.KEYWORD_ONLY
     assert "model_builder" not in parameters
 
@@ -2448,7 +2839,13 @@ def test_ordinary_runner_docstrings_explain_public_handoffs(runner: Callable[...
     """Public help retains details hidden behind the keyword option surface."""
     docstring = inspect.getdoc(runner)
     assert docstring is not None
-    for documented_input in ("config_file", "merged_data", "likelihood_builder", "**kwargs"):
+    for documented_input in (
+        "config_file",
+        "merged_data",
+        "likelihood_builder",
+        "likelihood_kwargs",
+        "**kwargs",
+    ):
         assert documented_input in docstring
     assert "Returns:" in docstring
     assert "Raises:" in docstring
@@ -2503,6 +2900,66 @@ def test_prepared_runner_rejects_noncallable_likelihood_before_validation(
             prepared_inputs=prepared,
             run_spec=run_spec,
             likelihood_builder=cast(Any, 42),
+        )
+
+
+def test_likelihood_options_are_detached_and_json_compatible() -> None:
+    """Likelihood provenance uses an immutable-by-convention JSON copy."""
+    supplied = {"degrees_of_freedom": 7.0, "labels": ["background"]}
+
+    copied = rhime_model_building.validate_likelihood_kwargs(lambda **kwargs: kwargs, supplied)
+
+    assert copied == supplied
+    assert copied is not supplied
+    assert copied is not None
+    assert copied["labels"] is not supplied["labels"]
+    with pytest.raises(TypeError, match="JSON-compatible"):
+        rhime_model_building.validate_likelihood_kwargs(
+            lambda **kwargs: kwargs,
+            {"opaque": object()},
+        )
+
+
+@pytest.mark.parametrize("runner", [run_rhime, run_rhime_multisector])
+def test_ordinary_runners_reject_orphaned_likelihood_options_before_config(
+    monkeypatch: pytest.MonkeyPatch,
+    runner: Callable[..., RhimeResult],
+) -> None:
+    """Options without a callable owner fail before the ordinary workflow starts."""
+    recipe_module = rhime_multisector if runner is run_rhime_multisector else rhime_standard
+    monkeypatch.setattr(
+        recipe_module,
+        "params_from_config",
+        lambda *args, **kwargs: pytest.fail("orphaned options must fail before configuration"),
+    )
+
+    with pytest.raises(ValueError, match="likelihood_kwargs.*likelihood_builder"):
+        runner(config_file=Path("unused.ini"), likelihood_kwargs={"degrees_of_freedom": 7.0})
+
+
+def test_prepared_complete_model_rejects_orphaned_likelihood_options_before_validation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A complete-model builder cannot silently consume likelihood-only options."""
+    _, _, run_spec = _minimal_output_specs(output_format="none")
+    prepared = RhimePreparedInputs(
+        inv_inputs=_minimal_output_inv_inputs(),
+        basis_functions=_fake_basis_functions(),
+        site_metadata=_prepared_site_metadata(),
+    )
+
+    monkeypatch.setattr(
+        RhimePreparedInputs,
+        "validated",
+        lambda self: pytest.fail("orphaned options must fail before prepared validation"),
+    )
+
+    with pytest.raises(ValueError, match="likelihood_kwargs.*likelihood_builder"):
+        run_rhime_from_prepared_inputs(
+            prepared_inputs=prepared,
+            run_spec=run_spec,
+            model_builder=lambda context: pytest.fail("complete builder must not run"),
+            likelihood_kwargs={"degrees_of_freedom": 7.0},
         )
 
 
@@ -2701,7 +3158,7 @@ def test_public_stages_compose_as_complete_external_runner(monkeypatch: pytest.M
     run_spec = rhime_public.with_prepared_rhime_sites(setup.run_spec, prepared)
     model_inputs = rhime_public.materialize_pymc_inputs(
         prepared,
-        aggregation_error_mode=run_spec.model.aggregation_error_mode,
+        variable_names=rhime_public.standard_model_input_names(prepared, run_spec.model),
     )
     build_result = rhime_public.build_standard_rhime_model_result(
         prepared=prepared,
@@ -2740,7 +3197,9 @@ def test_run_rhime_from_prepared_inputs_accepts_complete_model_builder(
 
     def custom_model_builder(context: RhimeModelBuilderContext) -> RhimeModelBuildResult:
         built_contexts.append(context)
-        with pm.Model(coords={"nmeasure": context.prepared_inputs.inv_inputs.nmeasure.values}) as model:
+        with models.registered_model(
+            coords={"nmeasure": context.prepared_inputs.inv_inputs.nmeasure.values}
+        ) as model:
             pm.Normal(
                 "custom_y",
                 mu=0.0,
@@ -2768,7 +3227,7 @@ def test_run_rhime_from_prepared_inputs_accepts_complete_model_builder(
     def fail_materialization(
         actual: RhimePreparedInputs,
         *,
-        aggregation_error_mode: str,
+        variable_names: tuple[str, ...],
     ) -> xr.Dataset:
         """Complete-model builders retain canonical inputs without eager materialization."""
         raise AssertionError("complete model builders must not materialize prepared inputs")
@@ -2797,13 +3256,28 @@ def test_run_rhime_from_prepared_inputs_accepts_complete_model_builder(
     }
 
 
-def test_complete_model_builder_validates_aggregation_error_before_execution() -> None:
-    """Missing requested aggregation-error inputs fail before a custom builder runs."""
+def test_complete_model_builder_owns_lazy_aggregation_error_inputs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Advanced builders may ignore lazy aggregation products without executing them."""
     model_spec, _, run_spec = _minimal_output_specs(output_format="none")
     model_spec = replace(model_spec, aggregation_error_mode="dense")
     run_spec = replace(run_spec, model=model_spec)
+    executions: list[str] = []
+
+    @delayed
+    def cached_covariance() -> np.ndarray:
+        executions.append("aggregation-covariance")
+        return np.ones((1, 1))
+
+    inv_inputs = _minimal_output_inv_inputs().assign(
+        aggregation_error_covariance=(
+            ("nmeasure", "nmeasure_cov"),
+            da.from_delayed(cached_covariance(), shape=(1, 1), dtype=float),
+        )
+    )
     prepared = RhimePreparedInputs(
-        inv_inputs=_minimal_output_inv_inputs(),
+        inv_inputs=inv_inputs,
         basis_functions=_fake_basis_functions(),
         site_metadata=_prepared_site_metadata(),
     )
@@ -2811,19 +3285,32 @@ def test_complete_model_builder_validates_aggregation_error_before_execution() -
 
     def custom_model_builder(context: RhimeModelBuilderContext) -> RhimeModelBuildResult:
         built_contexts.append(context)
-        return RhimeModelBuildResult(model=pm.Model(), variable_roles={"concentration": "y"})
-
-    with pytest.raises(
-        ValueError,
-        match="Dense aggregation error requires 'aggregation_error_covariance' in prepared inputs",
-    ):
-        run_rhime_from_prepared_inputs(
-            prepared_inputs=prepared,
-            run_spec=run_spec,
-            model_builder=custom_model_builder,
+        assert isinstance(
+            context.prepared_inputs.inv_inputs["aggregation_error_covariance"].data,
+            da.Array,
+        )
+        with models.registered_model() as model:
+            pm.Normal("custom_y")
+        return RhimeModelBuildResult(
+            model=model,
+            variable_roles={"concentration": "custom_y"},
         )
 
-    assert built_contexts == []
+    monkeypatch.setattr(
+        rhime_prepared,
+        "sample_rhime_model",
+        lambda model_build_result, sampler: _minimal_output_idata(),
+    )
+    result = run_rhime_from_prepared_inputs(
+        prepared_inputs=prepared,
+        run_spec=run_spec,
+        model_builder=custom_model_builder,
+    )
+
+    assert len(built_contexts) == 1
+    assert result.model is not None
+    assert "custom_y" in result.model.named_vars
+    assert executions == []
 
 
 @pytest.mark.parametrize(
@@ -2859,8 +3346,69 @@ def test_public_build_stages_reject_simultaneous_model_and_likelihood_builders(
     assert builder_calls == []
 
 
+def test_installed_additive_sigma_likelihood_runs_from_prepared_inputs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The installed likelihood is a working ordinary prepared-run seam."""
+    _, _, run_spec = _minimal_output_specs(output_format="none")
+    run_spec = replace(run_spec, model=replace(run_spec.model, use_bc=False))
+    prepared = RhimePreparedInputs(
+        inv_inputs=_minimal_output_inv_inputs(),
+        basis_functions=_fake_basis_functions(),
+        site_metadata=_prepared_site_metadata(),
+    )
+    sampled_models: list[pm.Model] = []
+
+    def fake_sample(
+        self: RhimeSampler,
+        model: pm.Model,
+        *,
+        variable_roles: dict[str, str],
+    ) -> az.InferenceData:
+        sampled_models.append(model)
+        assert variable_roles["concentration"] == "y"
+        assert variable_roles["model_error"] == "epsilon"
+        return _minimal_output_idata()
+
+    monkeypatch.setattr(RhimeSampler, "sample", fake_sample)
+    result = run_rhime_from_prepared_inputs(
+        prepared_inputs=prepared,
+        run_spec=run_spec,
+        likelihood_builder=additive_sigma_likelihood_builder,
+    )
+
+    assert len(sampled_models) == 1
+    assert {"sigma", "epsilon", "y"} <= set(sampled_models[0].named_vars)
+    assert result.outputs == {}
+
+
+@pytest.mark.parametrize(
+    "build_stage",
+    [rhime_standard.build_standard_rhime_model_result, rhime_multisector.build_multisector_rhime_model_result],
+)
+def test_public_build_stages_reject_orphaned_likelihood_options(
+    build_stage: Callable[..., RhimeModelBuildResult],
+) -> None:
+    """Direct build-stage callers cannot pass options without their owner."""
+    _, _, run_spec = _minimal_output_specs(output_format="none")
+    prepared = RhimePreparedInputs(
+        inv_inputs=_minimal_output_inv_inputs(),
+        basis_functions=_fake_basis_functions(),
+        site_metadata=_prepared_site_metadata(),
+    )
+
+    with pytest.raises(ValueError, match="likelihood_kwargs.*likelihood_builder"):
+        build_stage(
+            prepared=prepared,
+            model_inputs=prepared.inv_inputs,
+            run_spec=run_spec,
+            likelihood_kwargs={"degrees_of_freedom": 7.0},
+        )
+
+
 def test_likelihood_builder_provenance_is_saved_with_result_metadata(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     """Saved output identifies the ordinary custom likelihood callable."""
     model_spec, _, run_spec = _minimal_output_specs(output_format="inv_out")
@@ -2880,9 +3428,9 @@ def test_likelihood_builder_provenance_is_saved_with_result_metadata(
         site_metadata=_prepared_site_metadata(),
     )
 
-    def verification_gaussian(data: xr.Dataset, /, **kwargs: Any) -> Any:
-        """Delegate to the installed additive-sigma likelihood."""
-        return additive_sigma_likelihood_builder(data, **kwargs)
+    def verification_gaussian(**kwargs: Any) -> Any:
+        """Delegate to the project-owned common-input likelihood."""
+        return example_likelihoods.likelihood_builder(**kwargs)
 
     def fake_sample(
         self: RhimeSampler,
@@ -2900,6 +3448,7 @@ def test_likelihood_builder_provenance_is_saved_with_result_metadata(
         run_spec=run_spec,
         sampler=RhimeSampler(sample_prior_predictive=False),
         likelihood_builder=verification_gaussian,
+        likelihood_kwargs={"degrees_of_freedom": 7.0},
     )
 
     assert result.output_metadata["likelihood_builder"]["qualname"].endswith("verification_gaussian")
@@ -2907,6 +3456,14 @@ def test_likelihood_builder_provenance_is_saved_with_result_metadata(
     assert result.inv_out is not None
     saved_builder = result.inv_out.model_metadata["builder"]
     assert saved_builder["likelihood_builder"] == result.output_metadata["likelihood_builder"]
+    assert result.output_metadata["likelihood_kwargs"] == {"degrees_of_freedom": 7.0}
+    assert saved_builder["likelihood_kwargs"] == result.output_metadata["likelihood_kwargs"]
+    output_path = tmp_path / "custom-likelihood.nc"
+    result.inv_out.save(output_path)
+    reloaded = InversionOutput.load(output_path)
+    assert reloaded.model_metadata["builder"]["likelihood_kwargs"] == {
+        "degrees_of_freedom": 7.0
+    }
 
 
 def test_custom_model_builder_rejects_undeclared_output_before_sampling(
@@ -2923,7 +3480,7 @@ def test_custom_model_builder_rejects_undeclared_output_before_sampling(
     )
 
     def sampling_only_builder(context: RhimeModelBuilderContext) -> RhimeModelBuildResult:
-        with pm.Model() as model:
+        with models.registered_model() as model:
             pm.Normal("custom_y", observed=context.prepared_inputs.inv_inputs["mf"].values)
         return RhimeModelBuildResult(model=model, variable_roles={"concentration": "custom_y"})
 
@@ -2958,7 +3515,7 @@ def test_custom_model_builder_rejects_incomplete_derived_output_roles(
 
     def incomplete_builder(context: RhimeModelBuilderContext) -> RhimeModelBuildResult:
         """Declare derived-output support without its required error roles."""
-        with pm.Model() as model:
+        with models.registered_model() as model:
             pm.Normal(
                 "custom_y",
                 observed=context.prepared_inputs.inv_inputs["mf"].values,
@@ -3005,9 +3562,18 @@ def test_run_rhime_rejects_noncanonical_custom_likelihood_before_sampling(
         sampler=RhimeSampler(),
     )
 
-    def noncanonical_likelihood(data: xr.Dataset, /, **kwargs: Any) -> Any:
+    def noncanonical_likelihood(**kwargs: Any) -> Any:
         """Build an intentionally noncanonical likelihood variable."""
-        state = build_rhime_observation_state(data, **kwargs)
+        state = build_additive_sigma_error(
+            observations=kwargs["observations"],
+            observation_error=kwargs["observation_error"],
+            minimum_error=kwargs["minimum_error"],
+            aggregation_error=kwargs["aggregation_error"],
+            sigma_alignment=None,
+            sigma_prior={},
+            no_model_error=True,
+            output_dim=kwargs["output_dim"],
+        )
         return pm.Normal(
             "sampling_only_y",
             mu=kwargs["mean"],
@@ -3074,8 +3640,8 @@ def test_run_rhime_from_prepared_inputs_rejects_layout_mode_mismatch_before_exec
     def fail_execution(*args: Any, **kwargs: Any) -> None:
         raise AssertionError("layout validation must precede model building and sampling")
 
-    monkeypatch.setattr(rhime_standard, "_build_standard_rhime_model_from_spec", fail_execution)
-    monkeypatch.setattr(rhime_multisector, "_build_multisector_rhime_model_from_spec", fail_execution)
+    monkeypatch.setattr(rhime_standard, "build_standard_rhime_model", fail_execution)
+    monkeypatch.setattr(rhime_multisector, "build_multisector_rhime_model", fail_execution)
     monkeypatch.setattr(RhimeSampler, "sample", fail_execution)
 
     with pytest.raises(ValueError, match="split_by_sectors.*must agree"):
@@ -3126,8 +3692,8 @@ def test_run_rhime_from_prepared_inputs_rejects_flag_h_layout_mismatch_before_ex
     def fail_execution(*args: Any, **kwargs: Any) -> None:
         raise AssertionError("H layout validation must precede model building and sampling")
 
-    monkeypatch.setattr(rhime_standard, "_build_standard_rhime_model_from_spec", fail_execution)
-    monkeypatch.setattr(rhime_multisector, "_build_multisector_rhime_model_from_spec", fail_execution)
+    monkeypatch.setattr(rhime_standard, "build_standard_rhime_model", fail_execution)
+    monkeypatch.setattr(rhime_multisector, "build_multisector_rhime_model", fail_execution)
     monkeypatch.setattr(RhimeSampler, "sample", fail_execution)
 
     with pytest.raises(ValueError, match="split_by_sectors.*prepared `H` layout"):
@@ -3239,8 +3805,8 @@ def test_run_rhime_from_prepared_inputs_validates_output_before_execution(
     def fail_execution(*args: Any, **kwargs: Any) -> None:
         raise AssertionError("output validation must precede model building and sampling")
 
-    monkeypatch.setattr(rhime_standard, "_build_standard_rhime_model_from_spec", fail_execution)
-    monkeypatch.setattr(rhime_multisector, "_build_multisector_rhime_model_from_spec", fail_execution)
+    monkeypatch.setattr(rhime_standard, "build_standard_rhime_model", fail_execution)
+    monkeypatch.setattr(rhime_multisector, "build_multisector_rhime_model", fail_execution)
     monkeypatch.setattr(RhimeSampler, "sample", fail_execution)
 
     with pytest.raises(ValueError, match=expected_error):
@@ -3444,22 +4010,34 @@ def test_rhime_normalises_legacy_output_format_aliases(
     assert params["output_format"] == expected_output_format
 
 
-def test__build_standard_rhime_model_from_spec_forwards_single_sector_prior(
+def test_standard_model_result_resolves_explicit_inputs_from_spec(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Forward sector activity and priors and construct sigma alignment."""
-    sentinel = cast(pm.Model, object())
+    """Spec resolution calls the one concrete builder with named scientific inputs."""
+    sentinel = pm.Model()
     seen: dict[str, Any] = {}
     flux_activity = StateActivity(fixed_groups=("outer",))
     bc_activity = StateActivity(active=False)
 
-    def fake_build_rhime_model(inv_inputs: xr.Dataset, **kwargs: Any) -> pm.Model:
-        seen["inv_inputs"] = inv_inputs
+    def fake_build_rhime_model(
+        flux_sensitivity: xr.DataArray,
+        **kwargs: Any,
+    ) -> pm.Model:
+        seen["flux_sensitivity"] = flux_sensitivity
         seen["kwargs"] = kwargs
         return sentinel
 
+    def fail_context(**kwargs: Any) -> None:
+        raise AssertionError("ordinary standard builds must not construct the advanced context")
+
     monkeypatch.setattr(rhime_standard, "build_standard_rhime_model", fake_build_rhime_model)
+    monkeypatch.setattr(rhime_standard, "RhimeModelBuilderContext", fail_context)
     inv_inputs = _minimal_output_inv_inputs()
+    prepared = RhimePreparedInputs(
+        inv_inputs=inv_inputs,
+        basis_functions=_fake_basis_functions(),
+        site_metadata=_prepared_site_metadata(),
+    )
     model_spec = RhimeModelSpec(
         species="ch4",
         domain="EUROPE",
@@ -3472,31 +4050,42 @@ def test__build_standard_rhime_model_from_spec_forwards_single_sector_prior(
                 state_activity=flux_activity,
             ),
         ),
+        use_bc=False,
         bc_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.1},
         bc_state_activity=bc_activity,
         sigma_per_site=False,
         sigma_freq="8D",
         sigma_freq_anchor="2019-01-01",
     )
+    _, _, base_run_spec = _minimal_output_specs(output_format="none")
+    run_spec = replace(base_run_spec, model=model_spec)
 
-    model = _build_standard_rhime_model_from_spec(inv_inputs, model_spec)
+    result = rhime_standard.build_standard_rhime_model_result(
+        prepared=prepared,
+        model_inputs=inv_inputs,
+        run_spec=run_spec,
+    )
 
-    assert model is sentinel
-    assert seen["inv_inputs"] is inv_inputs
+    assert result.model is sentinel
+    assert seen["flux_sensitivity"].variable is inv_inputs["H"].variable
+    assert seen["kwargs"]["observations"].variable is inv_inputs["mf"].variable
+    assert seen["kwargs"]["observation_error"].variable is inv_inputs["mf_error"].variable
+    assert seen["kwargs"]["minimum_error"].variable is inv_inputs["min_error"].variable
+    assert seen["kwargs"]["aggregation_error"].mode == "none"
     assert seen["kwargs"]["x_prior"] == {"pdf": "normal", "mu": 1.0, "sigma": 0.2}
-    assert seen["kwargs"]["bc_prior"] == {"pdf": "normal", "mu": 1.0, "sigma": 0.1}
     assert seen["kwargs"]["state_activity"] is flux_activity
     assert seen["kwargs"]["bc_state_activity"] is bc_activity
-    alignment = seen["kwargs"]["sigma_alignment"]
-    assert isinstance(alignment, SigmaAlignment)
-    assert alignment.nsite == 1
-    assert alignment.nperiod == 1
-    np.testing.assert_array_equal(alignment.site_index, np.array([0]))
-    np.testing.assert_array_equal(alignment.period_index, np.array([0]))
+    assert isinstance(seen["kwargs"]["sigma_alignment"], SigmaAlignment)
 
 
-def test__build_standard_rhime_model_from_spec_requires_one_sector() -> None:
-    """The standard spec wrapper rejects multi-sector specs."""
+def test_standard_model_result_requires_one_sector() -> None:
+    """The standard recipe rejects a multisector specification."""
+    inv_inputs = _minimal_output_inv_inputs()
+    prepared = RhimePreparedInputs(
+        inv_inputs=inv_inputs,
+        basis_functions=_fake_basis_functions(),
+        site_metadata=_prepared_site_metadata(),
+    )
     model_spec = RhimeModelSpec(
         species="ch4",
         domain="EUROPE",
@@ -3505,29 +4094,50 @@ def test__build_standard_rhime_model_from_spec_requires_one_sector() -> None:
             SectorSpec("ocean", "ocean-inventory", {"pdf": "normal", "mu": 1.0, "sigma": 0.3}, "ocean"),
         ),
     )
+    _, _, base_run_spec = _minimal_output_specs(output_format="none")
 
     with pytest.raises(ValueError, match="exactly one sector"):
-        _build_standard_rhime_model_from_spec(_minimal_inv_inputs(), model_spec)
+        rhime_standard.build_standard_rhime_model_result(
+            prepared=prepared,
+            model_inputs=inv_inputs,
+            run_spec=replace(base_run_spec, model=model_spec),
+        )
 
 
-
-def test__build_multisector_rhime_model_from_spec_forwards_sector_specs(
+def test_multisector_model_result_resolves_explicit_inputs_from_spec(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Spec wrapper forwards the complete sector declarations unchanged."""
-    sentinel = cast(pm.Model, object())
+    """Multisector spec resolution forwards named arrays and sector declarations."""
+    sentinel = pm.Model()
     seen: dict[str, Any] = {}
     shared_activity = StateActivity(fixed_value=3.0)
     ff_activity = StateActivity(fixed_groups=("outer",))
     bc_activity = StateActivity(active=False)
 
-    def fake_build_rhime_multisector_model(inv_inputs: xr.Dataset, **kwargs: Any) -> pm.Model:
-        seen["inv_inputs"] = inv_inputs
+    def fake_build_rhime_multisector_model(
+        flux_sensitivity: xr.DataArray,
+        **kwargs: Any,
+    ) -> pm.Model:
+        seen["flux_sensitivity"] = flux_sensitivity
         seen["kwargs"] = kwargs
         return sentinel
 
-    monkeypatch.setattr(rhime_multisector, "build_multisector_rhime_model", fake_build_rhime_multisector_model)
+    def fail_context(**kwargs: Any) -> None:
+        raise AssertionError("ordinary multisector builds must not construct the advanced context")
+
+    monkeypatch.setattr(
+        rhime_multisector,
+        "build_multisector_rhime_model",
+        fake_build_rhime_multisector_model,
+    )
+    monkeypatch.setattr(rhime_multisector, "RhimeModelBuilderContext", fail_context)
+    monkeypatch.setattr(rhime_multisector, "_validate_multisector_basis_layout", lambda *args: None)
     inv_inputs = _minimal_output_inv_inputs()
+    prepared = RhimePreparedInputs(
+        inv_inputs=inv_inputs,
+        basis_functions=_fake_basis_functions(),
+        site_metadata=_prepared_site_metadata(),
+    )
     model_spec = RhimeModelSpec(
         species="ch4",
         domain="EUROPE",
@@ -3546,27 +4156,26 @@ def test__build_multisector_rhime_model_from_spec_forwards_sector_specs(
                 variable_suffix="ocean",
             ),
         ),
+        use_bc=False,
         bc_state_activity=bc_activity,
         state_activity=shared_activity,
     )
+    _, _, base_run_spec = _minimal_output_specs(output_format="none")
+    run_spec = replace(base_run_spec, model=model_spec, split_by_sectors=True)
 
-    model = _build_multisector_rhime_model_from_spec(inv_inputs, model_spec)
+    result = rhime_multisector.build_multisector_rhime_model_result(
+        prepared=prepared,
+        model_inputs=inv_inputs,
+        run_spec=run_spec,
+    )
 
-    assert model is sentinel
-    assert seen["inv_inputs"] is inv_inputs
+    assert result.model is sentinel
+    assert seen["flux_sensitivity"].variable is inv_inputs["H"].variable
+    assert seen["kwargs"]["observations"].variable is inv_inputs["mf"].variable
     assert seen["kwargs"]["sectors"] is model_spec.sectors
-    assert {
-        "sector_sources",
-        "sector_variable_suffixes",
-        "sector_priors",
-        "sector_state_activities",
-    }.isdisjoint(seen["kwargs"])
     assert seen["kwargs"]["state_activity"] is shared_activity
     assert seen["kwargs"]["bc_state_activity"] is bc_activity
     assert isinstance(seen["kwargs"]["sigma_alignment"], SigmaAlignment)
-
-
-
 
 
 
@@ -7666,9 +8275,9 @@ def test_run_rhime_api_smoke(
         }
     )
 
-    def ordinary_additive_sigma(data: xr.Dataset, /, **kwargs: Any) -> Any:
+    def ordinary_fixed_error(**kwargs: Any) -> Any:
         """Vary only the ordinary runner's observation likelihood."""
-        return additive_sigma_likelihood_builder(data, **kwargs)
+        return example_likelihoods.likelihood_builder(**kwargs)
 
     def fake_sample(
         self: RhimeSampler,
@@ -7686,7 +8295,7 @@ def test_run_rhime_api_smoke(
 
     runner_kwargs: dict[str, Any] = {}
     if custom_likelihood:
-        runner_kwargs["likelihood_builder"] = ordinary_additive_sigma
+        runner_kwargs["likelihood_builder"] = ordinary_fixed_error
     result = run_rhime(**args, **runner_kwargs)
 
     assert isinstance(result, RhimeResult)
@@ -7729,7 +8338,7 @@ def test_run_rhime_api_smoke(
     assert result.output_metadata["inversion_output_contract"] == "modern"
     assert result.model_build_result is not None
     if custom_likelihood:
-        assert result.output_metadata["likelihood_builder"]["qualname"].endswith("ordinary_additive_sigma")
+        assert result.output_metadata["likelihood_builder"]["qualname"].endswith("ordinary_fixed_error")
     else:
         assert "likelihood_builder" not in result.output_metadata
     output_file = tmp_path / "rhime_test2019-01-01_inversion_output.nc"
@@ -7811,9 +8420,9 @@ def test_run_rhime_multisector_api_smoke(
     )
     args.pop("emissions_name")
 
-    def multisector_additive_sigma(data: xr.Dataset, /, **kwargs: Any) -> Any:
+    def multisector_fixed_error(**kwargs: Any) -> Any:
         """Vary only the multi-sector observation likelihood."""
-        return additive_sigma_likelihood_builder(data, **kwargs)
+        return example_likelihoods.likelihood_builder(**kwargs)
 
     def fake_sample(
         self: RhimeSampler,
@@ -7833,7 +8442,7 @@ def test_run_rhime_multisector_api_smoke(
 
     runner_kwargs: dict[str, Any] = {}
     if custom_likelihood:
-        runner_kwargs["likelihood_builder"] = multisector_additive_sigma
+        runner_kwargs["likelihood_builder"] = multisector_fixed_error
     result = run_rhime_multisector(**args, **runner_kwargs)
 
     assert isinstance(result, RhimeResult)
@@ -7841,7 +8450,7 @@ def test_run_rhime_multisector_api_smoke(
     assert not hasattr(result, "basis_objects")
     assert result.run_spec.split_by_sectors is True
     if custom_likelihood:
-        assert result.output_metadata["likelihood_builder"]["qualname"].endswith("multisector_additive_sigma")
+        assert result.output_metadata["likelihood_builder"]["qualname"].endswith("multisector_fixed_error")
     else:
         assert "likelihood_builder" not in result.output_metadata
     assert [sector.name for sector in result.model_spec.sectors] == ["FF", "ocean"]
@@ -7903,8 +8512,10 @@ output_format = "inv_out"
 """,
         encoding="utf-8",
     )
+    cli_inv_inputs = _minimal_output_inv_inputs()
+    cli_inv_inputs["H_bc"] = (("bc_region", "nmeasure"), [[0.5]])
     prepared = RhimePreparedInputs(
-        inv_inputs=_minimal_output_inv_inputs(),
+        inv_inputs=cli_inv_inputs,
         basis_functions=_fake_basis_functions(),
         site_metadata=_prepared_site_metadata(),
     )
@@ -7965,7 +8576,7 @@ output_format = "inv_out"
     monkeypatch.setattr(
         rhime_standard,
         "materialize_pymc_inputs",
-        lambda value, *, aggregation_error_mode: value.inv_inputs,
+        lambda value, *, variable_names: value.inv_inputs,
     )
     monkeypatch.setattr(rhime_standard, "build_standard_rhime_model_result", fake_build)
     monkeypatch.setattr(rhime_standard, "sample_rhime_model", lambda *args, **kwargs: idata)

@@ -2,19 +2,22 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from typing import Any
+
 import pandas as pd
 
 from openghg_inversions._timing import timer_seconds, timer_start
 from openghg_inversions.inversion_data import RhimePreparedInputs
 from openghg_inversions.observation_error import (
-    resolve_aggregation_error,
     select_aggregation_error_mode,
 )
 
-from ._model_building import validate_likelihood_builder_argument
+from ._model_building import validate_likelihood_kwargs
 from .builders import RhimeLikelihoodBuilder, RhimeModelBuilder
 from .materialization import materialize_pymc_inputs
 from .multisector import build_multisector_rhime_model_result, make_multisector_rhime_result
+from .multisector import multisector_model_input_names
 from .outputs import RhimeResult
 from .preparation import with_prepared_rhime_sites
 from .sampling import RhimeSampler, sample_rhime_model
@@ -24,7 +27,11 @@ from .specs import (
     validate_output_format,
     validate_output_path_settings,
 )
-from .standard import build_standard_rhime_model_result, make_standard_rhime_result
+from .standard import (
+    build_standard_rhime_model_result,
+    make_standard_rhime_result,
+    standard_model_input_names,
+)
 
 
 def run_rhime_from_prepared_inputs(
@@ -34,6 +41,7 @@ def run_rhime_from_prepared_inputs(
     sampler: RhimeSampler | None = None,
     model_builder: RhimeModelBuilder | None = None,
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
+    likelihood_kwargs: Mapping[str, Any] | None = None,
 ) -> RhimeResult:
     """Build, sample, and output RHIME from a canonical prepared handoff.
 
@@ -50,6 +58,7 @@ def run_rhime_from_prepared_inputs(
         model_builder: Optional complete-model callable for advanced graphs.
         likelihood_builder: Optional ordinary likelihood callable used with
             the built-in graph.
+        likelihood_kwargs: Options specific to the custom likelihood.
 
     Returns:
         Sampled result with any requested output products attached.
@@ -59,7 +68,7 @@ def run_rhime_from_prepared_inputs(
             settings are inconsistent.
         TypeError: If an extension point has an invalid callable contract.
     """
-    validate_likelihood_builder_argument(likelihood_builder)
+    likelihood_kwargs = validate_likelihood_kwargs(likelihood_builder, likelihood_kwargs)
     if model_builder is not None and likelihood_builder is not None:
         raise ValueError("Pass either `model_builder` or `likelihood_builder`, not both.")
     prepared_inputs = prepared_inputs.validated()
@@ -90,26 +99,21 @@ def run_rhime_from_prepared_inputs(
 
     output_spec = run_spec.output
     validate_output_format(output_spec.output_format)
-    if model_builder is not None:
-        aggregation_error_mode = resolve_aggregation_error(
-            prepared_inputs.inv_inputs,
-            run_spec.model.aggregation_error_mode,
-        ).mode
-    else:
+    if model_builder is None:
         aggregation_error_mode = select_aggregation_error_mode(
             prepared_inputs.inv_inputs,
             run_spec.model.aggregation_error_mode,
         )
-    if aggregation_error_mode != "none" and output_spec.output_format in {
-        "basic",
-        "paris",
-        "legacy",
-    }:
-        raise ValueError(
-            "RHIME aggregation-error covariance is not yet supported by derived "
-            f"output_format={output_spec.output_format!r}; use 'inv_out' or 'none' until "
-            "the postprocessing reconstruction follow-up lands."
-        )
+        if aggregation_error_mode != "none" and output_spec.output_format in {
+            "basic",
+            "paris",
+            "legacy",
+        }:
+            raise ValueError(
+                "RHIME aggregation-error covariance is not yet supported by derived "
+                f"output_format={output_spec.output_format!r}; use 'inv_out' or 'none' until "
+                "the postprocessing reconstruction follow-up lands."
+            )
     validate_output_filename_convention(output_spec.output_filename_convention)
     validate_output_path_settings(
         output_format=output_spec.output_format,
@@ -127,7 +131,19 @@ def run_rhime_from_prepared_inputs(
         if model_builder is not None
         else materialize_pymc_inputs(
             prepared_inputs,
-            aggregation_error_mode=run_spec.model.aggregation_error_mode,
+            variable_names=(
+                multisector_model_input_names(
+                    prepared_inputs,
+                    run_spec.model,
+                    likelihood_builder=likelihood_builder,
+                )
+                if multisector
+                else standard_model_input_names(
+                    prepared_inputs,
+                    run_spec.model,
+                    likelihood_builder=likelihood_builder,
+                )
+            ),
         )
     )
     active_sampler = RhimeSampler() if sampler is None else sampler
@@ -140,6 +156,7 @@ def run_rhime_from_prepared_inputs(
             run_spec=run_spec,
             model_builder=model_builder,
             likelihood_builder=likelihood_builder,
+            likelihood_kwargs=likelihood_kwargs,
         )
     else:
         model_build_result = build_standard_rhime_model_result(
@@ -148,6 +165,7 @@ def run_rhime_from_prepared_inputs(
             run_spec=run_spec,
             model_builder=model_builder,
             likelihood_builder=likelihood_builder,
+            likelihood_kwargs=likelihood_kwargs,
         )
     idata = sample_rhime_model(
         model_build_result,
@@ -165,6 +183,7 @@ def run_rhime_from_prepared_inputs(
             build_and_sample_seconds=build_and_sample_seconds,
             model_builder=model_builder,
             likelihood_builder=likelihood_builder,
+            likelihood_kwargs=likelihood_kwargs,
         )
     return make_standard_rhime_result(
         prepared=prepared_inputs,
@@ -175,4 +194,5 @@ def run_rhime_from_prepared_inputs(
         build_and_sample_seconds=build_and_sample_seconds,
         model_builder=model_builder,
         likelihood_builder=likelihood_builder,
+        likelihood_kwargs=likelihood_kwargs,
     )

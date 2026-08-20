@@ -39,6 +39,7 @@ from .multisector import (
     build_multisector_rhime_model,
     build_multisector_rhime_model_result,
     make_multisector_rhime_result,
+    multisector_model_input_names,
     run_rhime_multisector,
 )
 from .outputs import RhimeResult
@@ -49,6 +50,7 @@ from .standard import (
     build_standard_rhime_model_result,
     make_standard_rhime_result,
     run_rhime,
+    standard_model_input_names,
 )
 from .specs import RhimeModelSpec, RhimeOutputSpec, RhimeRunSpec, SectorSpec
 
@@ -75,6 +77,7 @@ __all__ = [
     "make_multisector_rhime_result",
     "make_standard_rhime_result",
     "materialize_pymc_inputs",
+    "multisector_model_input_names",
     "retrieve_or_reload_rhime_data",
     "resolve_flux_sources",
     "resolve_rhime_options",
@@ -82,5 +85,6 @@ __all__ = [
     "run_rhime_from_prepared_inputs",
     "run_rhime_multisector",
     "sample_rhime_model",
+    "standard_model_input_names",
     "with_prepared_rhime_sites",
 ]
