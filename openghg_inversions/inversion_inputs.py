@@ -16,7 +16,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from openghg_inversions.array_ops import concat_gather_datasets, get_xr_dummies
+from openghg_inversions.array_ops import concat_gather_datasets
 from openghg_inversions.model_error import (
     normalise_min_error_options as normalise_min_error_options,  # noqa: PLC0414
 )
@@ -225,45 +225,6 @@ def add_site_indicator(ds: xr.Dataset, sort: bool = False) -> xr.Dataset:
     return xr.merge([ds, to_add])
 
 
-# TRANSFORM FUNCTIONS
-def _transform_bc_freq(
-    H_bc: xr.DataArray, freq: Literal["monthly"] | str | None = None, anchor_time: DatetimeLike | None = None
-) -> xr.DataArray:
-    freq_arr = (
-        make_freq_indicator(H_bc.time, freq, anchor_time=anchor_time)
-        if freq is not None
-        else xr.zeros_like(H_bc.time)
-    )
-    dums = get_xr_dummies(freq_arr, return_sparse=False, cat_dim="bc_period")
-    return (H_bc.rename(bc_region="bc_curtain") * dums).stack(bc_region=("bc_curtain", "bc_period"))
-
-
-def transform_bc(
-    ds: xr.Dataset, freq: Literal["monthly"] | str | None = None, anchor_time: DatetimeLike | None = None
-) -> xr.Dataset:
-    """Convert ds so that ds.H_bc is converted to (curtain, period) coordinates."""
-    if "H_bc" not in ds:
-        raise ValueError("Cannot setup boundary conditions sensitivity; H_bc not in dataset.")
-
-    # save temp version so we can drop "bc_region"; we need to reset this coordinate because
-    # it has been modified.
-    temp = _transform_bc_freq(ds.H_bc, freq=freq, anchor_time=anchor_time).transpose("bc_region", ...)
-    ds = ds.drop_dims("bc_region")
-
-    # IMPORTANT: strip the RHS of the nmeasure MultiIndex bundle to avoid merge logic
-    # This is a hack to avoid a deprecation warning due to how xarray uses pandas' multi-index.
-    # Just assigning ds["H_bc"] = temp is fine, but emits a warning.
-    temp_values_only = xr.DataArray(
-        temp.data,
-        dims=("bc_region", "nmeasure"),
-        coords={"bc_region": temp["bc_region"]},  # keep only the new dim coord(s)
-        name="H_bc",
-    )
-
-    ds["H_bc"] = temp_values_only
-    return ds
-
-
 # INVERSION INPUTS PIPELINE
 def _drop_nan_and_compute(
     ds: xr.Dataset, drop_nan_from: Iterable[str] = ("H", "H_bc", "mf", "mf_error")
@@ -461,7 +422,13 @@ def make_inv_inputs(
     )
 
     if "H_bc" in ds:
-        ds = transform_bc(ds, freq=bc_freq, anchor_time=start_date)
+        from openghg_inversions.boundary_sensitivity import BoundarySensitivity
+
+        ds = BoundarySensitivity.prepare(
+            ds["H_bc"],
+            frequency=bc_freq,
+            anchor_time=start_date,
+        ).install(ds)
 
     ds = add_site_indicator(ds)
     ds = add_min_error(ds, fp_data=fp_data, min_error=min_error, min_error_per_site=min_error_per_site)
