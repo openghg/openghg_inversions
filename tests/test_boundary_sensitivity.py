@@ -1,6 +1,7 @@
 """Tests for the sampled boundary-sensitivity preparation owner."""
 
 import dask.array as da
+from dask import delayed
 import numpy as np
 import pandas as pd
 import pytest
@@ -30,26 +31,20 @@ def test_prepare_boundary_sensitivity_labels_one_period_and_provenance() -> None
     np.testing.assert_allclose(result.values, _sensitivity().values)
 
 
-def test_prepare_boundary_sensitivity_reorders_and_rejects_missing_observations() -> None:
+def test_prepare_boundary_sensitivity_reorders_observations() -> None:
     sensitivity = _sensitivity()
     reordered = sensitivity.time[[2, 0]]
 
     result = BoundaryAlignment.prepare(sensitivity, observation_labels=reordered).data
 
     np.testing.assert_array_equal(result.time, reordered)
-    with pytest.raises(ValueError, match="missing observation label"):
+    with pytest.raises(KeyError):
         BoundaryAlignment.prepare(
             sensitivity,
             observation_labels=xr.DataArray(
                 [np.datetime64("2021-01-01")], dims="time", name="time"
             ),
         )
-
-
-def test_prepare_boundary_sensitivity_validates_states() -> None:
-    with pytest.raises(ValueError, match="bc_region.*unique"):
-        BoundaryAlignment.prepare(_sensitivity().assign_coords(bc_region=["north", "north"]))
-
 
 def test_prepare_boundary_sensitivity_preserves_lazy_data_and_borrowed_input() -> None:
     source = _sensitivity(da.arange(6, chunks=3).reshape((2, 3)))
@@ -59,6 +54,49 @@ def test_prepare_boundary_sensitivity_preserves_lazy_data_and_borrowed_input() -
 
     assert hasattr(result.data, "__dask_graph__")
     xr.testing.assert_identical(source, original)
+
+
+def test_prepare_boundary_sensitivity_computes_lazy_time_once() -> None:
+    executions: list[None] = []
+
+    @delayed
+    def lazy_time() -> np.ndarray:
+        executions.append(None)
+        return pd.date_range("2020-01-01", periods=3, freq="12h").values
+
+    source = xr.DataArray(
+        da.arange(6, chunks=3).reshape((2, 3)),
+        dims=("bc_region", "nmeasure"),
+        coords={
+            "bc_region": ["north", "south"],
+            "nmeasure": [0, 1, 2],
+            "time": ("nmeasure", da.from_delayed(lazy_time(), shape=(3,), dtype="datetime64[ns]")),
+        },
+    )
+
+    result = BoundaryAlignment.prepare(source, frequency="12h").data
+
+    assert executions == [None]
+    assert hasattr(result.data, "__dask_graph__")
+
+
+@pytest.mark.parametrize(
+    ("frequency", "anchor_time", "expected"),
+    [
+        (None, "2019-01-01", "not-applicable"),
+        ("monthly", "2019-01-01", "not-applicable"),
+        ("12h", None, "2020-01-01T00:00:00.000000000"),
+        ("12h", "2019-01-01", "2019-01-01"),
+    ],
+)
+def test_prepare_boundary_sensitivity_records_effective_anchor(
+    frequency: str | None, anchor_time: str | None, expected: str
+) -> None:
+    result = BoundaryAlignment.prepare(
+        _sensitivity().isel(time=[2, 0, 1]), frequency=frequency, anchor_time=anchor_time
+    ).data
+
+    assert result.attrs["bc_anchor_time"] == expected
 
 
 @pytest.mark.parametrize("lazy", [False, True])

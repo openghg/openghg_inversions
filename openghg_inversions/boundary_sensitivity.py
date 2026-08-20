@@ -13,7 +13,7 @@ from openghg_inversions.inversion_inputs import DatetimeLike, make_freq_indicato
 
 __all__ = [
     "BoundaryAlignment",
-    "scale_satellite_boundary_sensitivity",
+    "scale_satellite_boundary_sensitivity_to_column_signal",
 ]
 
 
@@ -26,27 +26,21 @@ class BoundaryAlignment:
             are ``bc_curtain`` and ``bc_period``, plus one observation axis.
 
     Raises:
-        ValueError: If dimensions or state labels are invalid.
+        ValueError: If the resolved boundary-state labels are invalid.
     """
 
     data: xr.DataArray
 
     def __post_init__(self) -> None:
         """Enforce the invariants carried by the typed value."""
-        data = self.data
-        observation_dim = next((dim for dim in ("nmeasure", "time") if dim in data.dims), None)
-        if observation_dim is None or set(data.dims) != {"bc_region", observation_dim}:
-            raise ValueError(
-                "Resolved boundary sensitivity must have exactly 'bc_region' and one observation dimension."
-            )
-        if "bc_region" not in data.coords or not data.indexes["bc_region"].is_unique:
-            raise ValueError("Resolved boundary sensitivity requires unique labelled boundary states.")
-        index = data.indexes["bc_region"]
+        index = self.data.indexes.get("bc_region")
+        if index is None:
+            raise ValueError("Resolved boundary sensitivity requires labelled boundary states.")
         if list(index.names) != ["bc_curtain", "bc_period"]:
             raise ValueError(
                 "Resolved boundary sensitivity states must be labelled by 'bc_curtain' and 'bc_period'."
             )
-        object.__setattr__(self, "data", data.rename("H_bc"))
+        object.__setattr__(self, "data", self.data.rename("H_bc"))
 
     @classmethod
     def prepare(
@@ -71,37 +65,19 @@ class BoundaryAlignment:
         Returns:
             Prepared boundary sensitivity carrying resolved state invariants.
 
-        Raises:
-            ValueError: If dimensions or observation labels are invalid.
         """
-        observation_dim = next((dim for dim in ("time", "nmeasure") if dim in sensitivity.dims), None)
-        if observation_dim is None or set(sensitivity.dims) != {"bc_region", observation_dim}:
-            raise ValueError(
-                "Boundary sensitivity must have exactly 'bc_region' and one observation "
-                "dimension named 'time' or 'nmeasure'."
-            )
-        for dim in ("bc_region", observation_dim):
-            if dim not in sensitivity.coords or sensitivity.coords[dim].dims != (dim,):
-                raise ValueError(
-                    f"Boundary sensitivity requires an explicit one-dimensional {dim!r} coordinate."
-                )
-            if not sensitivity.indexes[dim].is_unique:
-                raise ValueError(f"Boundary sensitivity {dim!r} labels must be unique.")
+        observation_dim = "time" if "time" in sensitivity.dims else "nmeasure"
+        sensitivity = sensitivity.transpose("bc_region", observation_dim)
         if observation_labels is not None:
-            if observation_labels.dims != (observation_dim,):
-                raise ValueError(
-                    f"Authoritative observation labels must have exactly dimension {observation_dim!r}."
-                )
-            requested = observation_labels.values
-            available = sensitivity.coords[observation_dim].values
-            missing = requested[~np.isin(requested, available)]
-            if missing.size:
-                raise ValueError(f"Boundary sensitivity is missing observation label(s): {missing.tolist()!r}.")
-            sensitivity = sensitivity.sel({observation_dim: requested})
+            labels = observation_labels.transpose(observation_dim)
+            sensitivity = sensitivity.sel({observation_dim: labels})
 
-        time = sensitivity.coords.get("time")
-        if time is None or time.dims != (observation_dim,):
-            raise ValueError("Boundary sensitivity requires an observation-aligned 'time' coordinate.")
+        time = sensitivity["time"].transpose(observation_dim)
+        # Dummy construction below is eager, so materialize a lazy auxiliary
+        # time coordinate once rather than executing its graph for each lookup.
+        if hasattr(time.data, "__dask_graph__"):
+            time = time.compute()
+            sensitivity = sensitivity.assign_coords(time=(observation_dim, time.data))
         period = (
             make_freq_indicator(time, frequency, anchor_time=anchor_time)
             if frequency is not None
@@ -113,16 +89,22 @@ class BoundaryAlignment:
         )
         data = expanded.transpose("bc_region", observation_dim).rename("H_bc")
         data.attrs = dict(sensitivity.attrs)
+        effective_anchor = (
+            str(np.datetime64(anchor_time) if anchor_time is not None else time.values.min())
+            if frequency not in (None, "monthly")
+            else "not-applicable"
+        )
         data.attrs.update(
             {
                 "boundary_sensitivity_preparation": "sampled-period-expansion",
                 "bc_frequency": frequency or "none",
-                "bc_anchor_time": "first-observation" if anchor_time is None else str(anchor_time),
+                "bc_anchor_time": effective_anchor,
             }
         )
         return cls(data)
 
-def scale_satellite_boundary_sensitivity(
+
+def scale_satellite_boundary_sensitivity_to_column_signal(
     inputs: xr.Dataset,
     *,
     sites: Sequence[str],

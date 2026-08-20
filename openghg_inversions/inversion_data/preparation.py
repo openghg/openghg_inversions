@@ -40,7 +40,9 @@ from openghg_inversions.basis.basis_functions import (
     BASIS_ARTIFACT_SOURCE_ATTR,
     BasisFunctions,
 )
-from openghg_inversions.boundary_sensitivity import scale_satellite_boundary_sensitivity
+from openghg_inversions.boundary_sensitivity import (
+    scale_satellite_boundary_sensitivity_to_column_signal as _scale_satellite_bc_sensitivity_to_column_signal,
+)
 from openghg_inversions.filters import filtering
 from openghg_inversions.flux_sanitization import FluxNonFiniteCheck, sanitize_flux_nonfinite
 from openghg_inversions.inversion_data._site_options import (
@@ -924,21 +926,6 @@ def _warn_for_nan_inputs(inv_inputs: xr.Dataset, *, use_bc: bool) -> None:
         warnings.warn(f"H matrix contains {np.isnan(inv_inputs.H.values).flatten().sum()} NaN values")
     if use_bc and "H_bc" in inv_inputs and np.isnan(inv_inputs.H_bc.values).any():
         warnings.warn(f"H_bc matrix contains {np.isnan(inv_inputs.H_bc.values).flatten().sum()} NaN values")
-
-
-def _scale_satellite_bc_sensitivity_to_column_signal(
-    inv_inputs: xr.Dataset,
-    *,
-    sites: Sequence[str],
-    platform: Sequence[str | None],
-) -> xr.Dataset:
-    """Scale satellite BC sensitivity into the same corrected column space as ``mf``.
-
-    OpenGHG column retrieval subtracts OCO prior-factor terms from XCO2 before
-    inversion. Boundary-condition sensitivities arrive as a full-column baseline
-    contribution, so satellite rows must be reduced before the model sees them.
-    """
-    return scale_satellite_boundary_sensitivity(inv_inputs, sites=sites, platform=platform)
 
 
 def _prepare_merged_data(
