@@ -424,104 +424,120 @@ def make_multisector_rhime_outputs(
         prepared: Retained source-resolved inputs and basis functions.
     """
     output_spec = result.output_spec
+    if output_spec.output_format == "none":
+        return
+
     run_spec = result.run_spec
     model_spec = result.model_spec
     with timed("rhime.output.inversion_output_create", output_format=output_spec.output_format):
-        inv_out_for_outputs = _make_inversion_output(
+        inv_out = _make_inversion_output(
             result=result,
             prepared=prepared,
         )
-    inv_out = None
-    with timed("rhime.output.multisector_diagnostics"):
-        diagnostics = _make_multisector_flux_diagnostics(inv_out_for_outputs)
-    outputs: dict[str, Any] = {"sector_flux_diagnostics": diagnostics}
-    output_metadata: dict[str, Any] = {}
-    if output_spec.output_format != "none":
-        inv_out = inv_out_for_outputs
-        outputs["inversion_output"] = inv_out
-        output_metadata["inversion_output_contract"] = "modern"
-        inv_out_path = _resolve_output_path(
-            output_spec.save_inversion_output,
-            output_spec.output_path,
-            f"{output_spec.output_name}{run_spec.start_date}_inversion_output.nc",
-        )
-    else:
-        inv_out_path = None
+    outputs: dict[str, Any] = {"inversion_output": inv_out}
+    output_metadata: dict[str, Any] = {"inversion_output_contract": "modern"}
+    inv_out_path = _resolve_output_path(
+        output_spec.save_inversion_output,
+        output_spec.output_path,
+        f"{output_spec.output_name}{run_spec.start_date}_inversion_output.nc",
+    )
 
     if output_spec.output_format == "paris":
         paris_kwargs = dict(output_spec.paris_postprocessing_kwargs or {})
-        template_version = paris_kwargs.pop("template_version", None)
-        if template_version == "latest":
-            from openghg_inversions.postprocessing.make_paris_outputs import (
-                infer_flux_frequency,
-                paris_flux_output,
+        template_version = paris_kwargs.pop("template_version", "latest")
+        if template_version != "latest":
+            raise ValueError(
+                "Multi-sector PARIS output supports only template_version='latest'."
             )
-
-            flux_frequency = paris_kwargs.pop("flux_frequency", None)
-            if flux_frequency is None:
-                flux_frequency = infer_flux_frequency(inv_out_for_outputs.flux)
-            time_point = paris_kwargs.pop("time_point", "midpoint")
-            report_mode = paris_kwargs.pop("report_mode", False)
-            inversion_grid = paris_kwargs.pop("inversion_grid", True)
-            country_selection_kwargs = {}
-            if "country_selections" in paris_kwargs:
-                country_selection_kwargs["country_selections"] = paris_kwargs.pop("country_selections")
-            if paris_kwargs:
-                unexpected = ", ".join(sorted(paris_kwargs))
-                raise ValueError(
-                    f"Unsupported multi-sector latest PARIS postprocessing kwargs: {unexpected}."
-                )
-
-            output_metadata["paris_note"] = (
-                "Multi-sector PARIS latest flux total output was generated; "
-                "multi-sector PARIS concentration output is not implemented yet."
-            )
-            flux_outs = paris_flux_output(
-                inv_out_for_outputs,
-                country_file=output_spec.country_file,
-                time_point=time_point,
-                report_mode=report_mode,
-                inversion_grid=inversion_grid,
-                flux_frequency=flux_frequency,
-                template_version="latest",
-                **country_selection_kwargs,
-            )
-            outputs["paris_flux"] = flux_outs
-
-            if output_spec.output_path is not None:
-                Path(output_spec.output_path).mkdir(parents=True, exist_ok=True)
-                flux_file = _define_output_filename(
-                    output_spec.output_path,
-                    model_spec.species,
-                    model_spec.domain,
-                    output_spec.output_name + "_flux",
-                    run_spec.start_date,
-                    ext=".nc",
-                )
-                write_netcdf_preserving_bounds_attrs(flux_outs, flux_file, unlimited_dims=["time"])
-                output_metadata["paris_flux_path"] = str(flux_file)
-        else:
-            output_metadata["paris_note"] = (
-                "Multi-sector PARIS output requires paris_postprocessing_kwargs "
-                "with template_version='latest'; sector-aware diagnostics were generated instead."
-            )
-    if output_spec.output_path is not None and output_spec.output_format != "none":
-        Path(output_spec.output_path).mkdir(parents=True, exist_ok=True)
-        diagnostics_path = (
-            Path(output_spec.output_path)
-            / f"{output_spec.output_name}{run_spec.start_date}_sector_flux_diagnostics.nc"
+        from openghg_inversions.postprocessing.make_paris_outputs import (
+            infer_flux_frequency,
+            paris_concentration_outputs,
+            paris_flux_output,
         )
-        with timed("rhime.output.multisector_diagnostics_netcdf_write", path=diagnostics_path):
-            diagnostics.to_netcdf(diagnostics_path, mode="w", encoding=ncdf_encoding(diagnostics))
-        output_metadata["sector_flux_diagnostics_path"] = str(diagnostics_path)
+
+        flux_frequency = paris_kwargs.pop("flux_frequency", None)
+        if flux_frequency is None:
+            flux_frequency = infer_flux_frequency(inv_out.flux)
+        time_point = paris_kwargs.pop("time_point", "midpoint")
+        report_mode = paris_kwargs.pop("report_mode", False)
+        inversion_grid = paris_kwargs.pop("inversion_grid", True)
+        country_selection_kwargs = {}
+        if "country_selections" in paris_kwargs:
+            country_selection_kwargs["country_selections"] = paris_kwargs.pop("country_selections")
+        if paris_kwargs:
+            unexpected = ", ".join(sorted(paris_kwargs))
+            raise ValueError(
+                f"Unsupported multi-sector latest PARIS postprocessing kwargs: {unexpected}."
+            )
+
+        with timed("rhime.output.multisector_diagnostics"):
+            diagnostics = _make_multisector_flux_diagnostics(inv_out)
+        obs_avg_period = prepared.averaging_period[0] or "0h"
+        conc_outs = paris_concentration_outputs(
+            inv_out,
+            report_mode=report_mode,
+            obs_avg_period=obs_avg_period,
+            template_version="latest",
+        )
+        flux_outs = paris_flux_output(
+            inv_out,
+            country_file=output_spec.country_file,
+            time_point=time_point,
+            report_mode=report_mode,
+            inversion_grid=inversion_grid,
+            flux_frequency=flux_frequency,
+            template_version="latest",
+            **country_selection_kwargs,
+        )
+        outputs.update(
+            {
+                "paris_flux": flux_outs,
+                "paris_concentration": conc_outs,
+                "sector_flux_diagnostics": diagnostics,
+            }
+        )
+        output_metadata["paris_note"] = (
+            "Multi-sector latest PARIS sector-aware flux and total concentration outputs were generated."
+        )
+
+        if output_spec.output_path is not None:
+            Path(output_spec.output_path).mkdir(parents=True, exist_ok=True)
+            conc_file = _define_derived_output_filename(
+                output_spec,
+                species=model_spec.species,
+                domain=model_spec.domain,
+                output_name=output_spec.output_name + "_conc",
+                start_date=run_spec.start_date,
+            )
+            flux_file = _define_derived_output_filename(
+                output_spec,
+                species=model_spec.species,
+                domain=model_spec.domain,
+                output_name=output_spec.output_name + "_flux",
+                start_date=run_spec.start_date,
+            )
+            diagnostics_path = (
+                Path(output_spec.output_path)
+                / f"{output_spec.output_name}{run_spec.start_date}_sector_flux_diagnostics.nc"
+            )
+            write_netcdf_preserving_bounds_attrs(conc_outs, conc_file, unlimited_dims=["index"])
+            write_netcdf_preserving_bounds_attrs(flux_outs, flux_file, unlimited_dims=["time"])
+            with timed("rhime.output.multisector_diagnostics_netcdf_write", path=diagnostics_path):
+                diagnostics.to_netcdf(diagnostics_path, mode="w", encoding=ncdf_encoding(diagnostics))
+            output_metadata.update(
+                {
+                    "paris_concentration_path": str(conc_file),
+                    "paris_flux_path": str(flux_file),
+                    "sector_flux_diagnostics_path": str(diagnostics_path),
+                }
+            )
 
     if inv_out_path is not None:
         inv_out_path.parent.mkdir(parents=True, exist_ok=True)
         with timed("rhime.output.inversion_output_save", path=inv_out_path):
-            inv_out_for_outputs.save(inv_out_path)
+            inv_out.save(inv_out_path)
         output_metadata["inversion_output_path"] = str(inv_out_path)
-    if output_spec.output_format != "none":
-        _save_requested_trace(result)
+    _save_requested_trace(result)
 
     result.inv_out = inv_out
     result.outputs.update(outputs)

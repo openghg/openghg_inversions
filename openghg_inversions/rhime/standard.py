@@ -47,7 +47,6 @@ from .builders import (
     RhimeModelBuildResult,
     callable_metadata,
     validate_model_build_result,
-    validate_requested_output,
 )
 from .materialization import materialize_pymc_inputs
 from .outputs import RhimeResult, make_standard_rhime_outputs
@@ -433,7 +432,6 @@ def build_standard_rhime_model_result(
             input_names=tuple(str(name) for name in prepared.inv_inputs.data_vars),
             preserve_legacy_baseline=preserve_legacy_likelihood,
         )
-        validate_requested_output(result, run_spec.output.output_format)
     log_timing("rhime.model_build", timer_seconds(timing_start), multisector=False)
     return result
 

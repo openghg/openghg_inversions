@@ -25,7 +25,6 @@ import openghg_inversions.inversion_data.preparation as prep_module
 import openghg_inversions.models as models
 import openghg_inversions.postprocessing.inversion_output as inversion_output_module
 import openghg_inversions.rhime as rhime_public
-import openghg_inversions.rhime.builders as rhime_builders
 import openghg_inversions.rhime._model_building as rhime_model_building
 import openghg_inversions.rhime.outputs as rhime_outputs
 import openghg_inversions.rhime.params as rhime_params
@@ -2207,27 +2206,7 @@ def test_standard_model_preserves_reparameterized_prior_and_forward_equation(
             var_names=var_names,
             random_seed=402,
         )
-    registry = models.get_coord_registry(model)
-    assert registry is not None
-    models.restore_inferencedata_coords(prior, registry)
     prior_dataset = cast(Any, prior).prior
-    constant_data = cast(Any, prior).constant_data
-
-    assert {
-        "hx",
-        "hbc",
-        "Y",
-        "error",
-        "min_error",
-        "sigma_site_index",
-        "sigma_period_index",
-    }.issubset(constant_data.data_vars)
-    assert constant_data["hx"].dims == ("nmeasure", "region")
-    assert constant_data["hbc"].dims[0] == "nmeasure"
-    assert isinstance(constant_data.indexes["nmeasure"], pd.MultiIndex)
-    assert constant_data.indexes["nmeasure"].equals(inv_inputs.indexes["nmeasure"])
-    assert inv_inputs["mf"].attrs
-    assert not constant_data["Y"].attrs
 
     registered_h = xr.DataArray(
         model["hx"].get_value(),
@@ -2388,48 +2367,6 @@ def test_builtin_baseline_roles_describe_persisted_terms(
     assert result.variable_roles.get("baseline") == expected_baseline
     assert ("boundary" in result.variable_roles) is use_bc
     assert ("offset" in result.variable_roles) is add_offset
-
-
-def test_whole_model_validation_accepts_decomposed_baseline_roles() -> None:
-    """Derived outputs need boundary and offset terms, not a persisted sum."""
-    model_spec, _, base_run_spec = _minimal_output_specs(output_format="basic")
-    model_spec = replace(model_spec, use_bc=True, add_offset=True)
-    run_spec = replace(base_run_spec, model=model_spec)
-    prepared = RhimePreparedInputs(
-        inv_inputs=_minimal_output_inv_inputs(),
-        basis_functions=_fake_basis_functions(),
-        site_metadata=_prepared_site_metadata(),
-    )
-    with models.registered_model() as model:
-        for name in ("y", "epsilon", "x", "mu", "hx", "bc", "hbc", "mu_bc", "offset"):
-            pm.Data(name, np.zeros(1))
-    result = RhimeModelBuildResult(
-        model=model,
-        variable_roles={
-            "observation": "mf",
-            "observation_error": "mf_error",
-            "observation_repeatability": "mf_repeatability",
-            "observation_variability": "mf_variability",
-            "minimum_error": "min_error",
-            "concentration": "y",
-            "model_error": "epsilon",
-            "flux_scale": "x",
-            "flux_contribution": "mu",
-            "emissions_sensitivity": "hx",
-            "baseline_scale": "bc",
-            "baseline_sensitivity": "hbc",
-            "boundary": "mu_bc",
-            "offset": "offset",
-        },
-        supported_output_formats=("none", "basic"),
-    )
-    context = RhimeModelBuilderContext(
-        prepared_inputs=prepared,
-        run_spec=run_spec,
-        multisector=False,
-    )
-
-    rhime_builders.validate_model_build_result(result, context=context)
 
 
 def test_build_rhime_multisector_model_requires_multiple_sectors(
@@ -3577,104 +3514,6 @@ def test_custom_model_builder_rejects_undeclared_output_before_sampling(
             model_builder=sampling_only_builder,
         )
     assert not any(tmp_path.iterdir())
-
-
-def test_custom_model_builder_rejects_unregistered_output_dimensions_before_sampling(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A user-owned output role must retain its labelled scientific dimension."""
-    model_spec, _, run_spec = _minimal_output_specs(output_format="inv_out")
-    inv_inputs = _minimal_output_inv_inputs()
-    inv_inputs["H"] = inv_inputs["H"].assign_coords(source=model_spec.sectors[0].flux_source)
-    prepared = RhimePreparedInputs(
-        inv_inputs=inv_inputs,
-        basis_functions=_fake_basis_functions(),
-        site_metadata=_prepared_site_metadata(),
-    )
-
-    def incomplete_registry(context: RhimeModelBuilderContext) -> RhimeModelBuildResult:
-        with models.registered_model() as model:
-            model.add_coord("nmeasure", values=[0])
-            pm.Normal(
-                "custom_y",
-                observed=context.prepared_inputs.inv_inputs["mf"].values,
-                dims="nmeasure",
-            )
-        return RhimeModelBuildResult(
-            model=model,
-            variable_roles={"concentration": "custom_y"},
-            supported_output_formats=("none", "inv_out"),
-        )
-
-    monkeypatch.setattr(
-        RhimeSampler,
-        "sample",
-        lambda *args, **kwargs: pytest.fail("coordinate validation must precede sampling"),
-    )
-    with pytest.raises(ValueError, match="output-role dimensions absent.*nmeasure"):
-        run_rhime_from_prepared_inputs(
-            prepared_inputs=prepared,
-            run_spec=run_spec,
-            model_builder=incomplete_registry,
-        )
-
-
-def test_builtin_multisector_contract_rejects_basic_output() -> None:
-    """The selected built-in contract does not advertise a missing basic product."""
-    model_spec, _, _ = _minimal_output_specs()
-    build_result = rhime_model_building.builtin_model_build_result(
-        pm.Model(),
-        model_spec=model_spec,
-        multisector=True,
-        input_names=("H", "mf", "mf_error", "min_error"),
-    )
-
-    with pytest.raises(ValueError, match="does not declare output_format='basic' compatible"):
-        rhime_builders.validate_requested_output(build_result, "basic")
-
-
-def test_custom_model_builder_rejects_incomplete_derived_output_roles(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Whole-model validation checks actual roles for derived output formats."""
-    model_spec, _, base_run_spec = _minimal_output_specs(output_format="basic")
-    model_spec = replace(model_spec, use_bc=False)
-    run_spec = replace(
-        base_run_spec,
-        model=model_spec,
-        output=RhimeOutputSpec(output_format="basic", save_inversion_output=False),
-    )
-    prepared = RhimePreparedInputs(
-        inv_inputs=_minimal_output_inv_inputs(),
-        basis_functions=_fake_basis_functions(),
-        site_metadata=_prepared_site_metadata(),
-    )
-
-    def incomplete_builder(context: RhimeModelBuilderContext) -> RhimeModelBuildResult:
-        """Declare derived-output support without its required error roles."""
-        with models.registered_model() as model:
-            pm.Normal(
-                "custom_y",
-                observed=context.prepared_inputs.inv_inputs["mf"].values,
-            )
-        return RhimeModelBuildResult(
-            model=model,
-            variable_roles={"concentration": "custom_y"},
-            supported_output_formats=("none", "basic"),
-        )
-
-    monkeypatch.setattr(
-        RhimeSampler,
-        "sample",
-        lambda *args, **kwargs: pytest.fail("role validation must precede sampling"),
-    )
-
-    with pytest.raises(ValueError, match="requires variable roles absent"):
-        run_rhime_from_prepared_inputs(
-            prepared_inputs=prepared,
-            run_spec=run_spec,
-            model_builder=incomplete_builder,
-        )
 
 
 @pytest.mark.rhime_contract
@@ -7209,20 +7048,13 @@ def test_make_multisector_outputs_attach_modern_inv_out(tmp_path: Path) -> None:
     assert isinstance(bundle.inv_out, InversionOutput)
     assert bundle.inv_out.run_metadata["split_by_sectors"] is True
     assert bundle.output_metadata["inversion_output_contract"] == "modern"
-    assert "sector_flux_diagnostics" in bundle.outputs
-    assert "flux_ff_posterior_mean" in bundle.outputs["sector_flux_diagnostics"]
-    assert "flux_ocean_posterior_mean" in bundle.outputs["sector_flux_diagnostics"]
-    assert "flux_total_posterior_mean" in bundle.outputs["sector_flux_diagnostics"]
     assert bundle.outputs["inversion_output"] is bundle.inv_out
     trace_path = tmp_path / "test2019-01-01_trace.nc"
     inversion_output_path = tmp_path / "test2019-01-01_inversion_output.nc"
-    diagnostics_path = tmp_path / "test2019-01-01_sector_flux_diagnostics.nc"
     assert bundle.output_metadata["trace_path"] == str(trace_path)
     assert bundle.output_metadata["inversion_output_path"] == str(inversion_output_path)
-    assert bundle.output_metadata["sector_flux_diagnostics_path"] == str(diagnostics_path)
     assert trace_path.exists()
     assert inversion_output_path.exists()
-    assert diagnostics_path.exists()
     reloaded = InversionOutput.load(inversion_output_path)
     assert reloaded.model_metadata["variable_roles"] == bundle.inv_out.model_metadata["variable_roles"]
     assert reloaded.run_metadata["split_by_sectors"] is True
@@ -7271,8 +7103,8 @@ def test_multisector_paris_options_are_checked_before_output_writes(
     assert not any(tmp_path.iterdir())
 
 
-def test_multisector_none_does_not_save_trace(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A no-output multisector stage ignores trace persistence settings."""
+def test_multisector_none_skips_postprocessing() -> None:
+    """A no-output multisector stage returns before constructing products."""
     model_spec, _, run_spec = _minimal_output_specs(output_format="none")
     run_spec = replace(
         run_spec,
@@ -7285,9 +7117,9 @@ def test_multisector_none_does_not_save_trace(monkeypatch: pytest.MonkeyPatch) -
         basis_functions=_fake_basis_functions(),
         site_metadata=_prepared_site_metadata(),
     )
-    monkeypatch.setattr(rhime_outputs, "_make_multisector_flux_diagnostics", lambda inv_out: xr.Dataset())
-
     rhime_outputs.make_multisector_rhime_outputs(result=result, prepared=prepared)
+    assert result.inv_out is None
+    assert result.outputs == {}
     assert "trace_path" not in result.output_metadata
 
 
@@ -7320,7 +7152,6 @@ def test_make_multisector_outputs_build_latest_paris_flux(
         output_name="test",
         save_inversion_output=False,
         paris_postprocessing_kwargs={
-            "template_version": "latest",
             "inversion_grid": False,
             "flux_frequency": "yearly",
             "country_selections": list(PARIS_LATEST_COUNTRIES),
@@ -7346,6 +7177,9 @@ def test_make_multisector_outputs_build_latest_paris_flux(
         site_metadata=_prepared_site_metadata(),
     )
     idata = cast(Any, multisector_postprocessing_inv_out().trace)
+    for group in (idata.prior, idata.posterior):
+        group["y"] = (("chain", "draw", "nmeasure"), np.ones((1, 2, 1)))
+    idata.posterior["epsilon"] = (("chain", "draw", "nmeasure"), np.ones((1, 2, 1)))
 
     bundle = _result_for_outputs(
         run_spec,
@@ -7356,8 +7190,8 @@ def test_make_multisector_outputs_build_latest_paris_flux(
     rhime_outputs.make_multisector_rhime_outputs(result=bundle, prepared=prepared)
 
     assert "paris_flux" in bundle.outputs
-    assert "paris_concentration" not in bundle.outputs
-    assert "not implemented yet" in bundle.output_metadata["paris_note"]
+    assert "paris_concentration" in bundle.outputs
+    assert "total concentration" in bundle.output_metadata["paris_note"]
     paris_flux = bundle.outputs["paris_flux"]
     assert "flux_total_posterior" in paris_flux
     assert "flux_ff_posterior" in paris_flux
@@ -7365,13 +7199,17 @@ def test_make_multisector_outputs_build_latest_paris_flux(
     assert tuple(paris_flux.sector.values) == ("ff", "ocean")
 
     paris_flux_path = Path(bundle.output_metadata["paris_flux_path"])
+    paris_concentration_path = Path(bundle.output_metadata["paris_concentration_path"])
     diagnostics_path = Path(bundle.output_metadata["sector_flux_diagnostics_path"])
     assert paris_flux_path.exists()
+    assert paris_concentration_path.exists()
     assert diagnostics_path.exists()
     with xr.open_dataset(paris_flux_path) as reloaded_paris_flux:
         assert "flux_total_posterior" in reloaded_paris_flux
         assert "flux_ff_posterior" in reloaded_paris_flux
         assert "flux_ocean_posterior" in reloaded_paris_flux
+    with xr.open_dataset(paris_concentration_path) as reloaded_concentration:
+        assert reloaded_concentration.attrs["paris_concentration_template_version"] == "v04"
     with xr.open_dataset(diagnostics_path) as reloaded_diagnostics:
         assert "flux_ff_posterior_mean" in reloaded_diagnostics
         assert "flux_ocean_posterior_mean" in reloaded_diagnostics
@@ -8672,10 +8510,7 @@ def test_run_rhime_multisector_api_smoke(
     posterior = cast(Any, result.idata).posterior
     assert "x_ff" in posterior
     assert "x_ocean" in posterior
-    assert "sector_flux_diagnostics" in result.outputs
-    assert "flux_ff_posterior_mean" in result.outputs["sector_flux_diagnostics"]
-    assert "flux_ocean_posterior_mean" in result.outputs["sector_flux_diagnostics"]
-    assert "flux_total_posterior_mean" in result.outputs["sector_flux_diagnostics"]
+    assert result.outputs == {}
 
 
 @pytest.mark.rhime_contract

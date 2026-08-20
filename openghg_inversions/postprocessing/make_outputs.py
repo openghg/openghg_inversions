@@ -167,7 +167,6 @@ def _rename_trace_roles(
 
 def observation_inputs_for_outputs(inv_out: InversionOutput) -> xr.Dataset:
     """Return observation inputs named for current basic/PARIS product helpers."""
-    _require_single_sector_output(inv_out, "Observation output formatting")
     obs_inputs = inv_out.input_dataset(
         REQUIRED_OBSERVATION_ROLES,
         optional_roles=OPTIONAL_OBSERVATION_ROLES,
