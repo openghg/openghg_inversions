@@ -9,7 +9,7 @@ import numpy as np
 import xarray as xr
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, init=False)
 class MinimumError:
     """Validated, observation-aligned minimum model error.
 
@@ -24,6 +24,26 @@ class MinimumError:
     method: str
     by_site: bool
     sites: tuple[str, ...]
+
+    def __init__(self) -> None:
+        """Reject construction outside :meth:`prepare`."""
+        raise TypeError("Use MinimumError.prepare() to construct a validated value.")
+
+    @classmethod
+    def _from_validated(
+        cls,
+        values: xr.DataArray,
+        method: str,
+        by_site: bool,
+        sites: tuple[str, ...],
+    ) -> "MinimumError":
+        """Construct an instance after :meth:`prepare` validates its fields."""
+        result = object.__new__(cls)
+        object.__setattr__(result, "values", values)
+        object.__setattr__(result, "method", method)
+        object.__setattr__(result, "by_site", by_site)
+        object.__setattr__(result, "sites", sites)
+        return result
 
     @classmethod
     def prepare(
@@ -110,7 +130,7 @@ class MinimumError:
         else:
             if source.size != 1:
                 raise ValueError("A non-site minimum error must contain exactly one value.")
-            data = xr.full_like(observations.mf, float(source.reshape(-1)[0]))
+            data = xr.full_like(observations.mf, float(source.reshape(-1)[0]), dtype=float)
 
         data = data.rename("min_error").assign_attrs(
             units=observations.mf.attrs.get("units", ""),
@@ -118,7 +138,7 @@ class MinimumError:
             minimum_error_by_site=int(varies_by_site),
             minimum_error_sites=",".join(sites),
         )
-        return cls(values=data, method=method, by_site=varies_by_site, sites=sites)
+        return cls._from_validated(data, method, varies_by_site, sites)
 
 
 def normalise_min_error_options(options: Mapping[str, Any] | None) -> dict[str, bool]:

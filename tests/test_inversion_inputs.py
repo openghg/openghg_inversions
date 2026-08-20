@@ -595,11 +595,17 @@ def test_minimum_error_rejects_invalid_values(value: float):
 
 
 def test_scalar_minimum_error_preserves_lazy_borrowed_observations():
-    mf = xr.DataArray(da.from_array(np.ones(3), chunks=2), dims="nmeasure")
+    mf = xr.DataArray(da.from_array(np.ones(3, dtype=int), chunks=2), dims="nmeasure")
     observations = xr.Dataset({"mf": mf})
 
     result = MinimumError.prepare(observations, {}, 0.5)
 
     assert result.values.variable._data is not observations.mf.variable._data
     assert hasattr(result.values.data, "chunks")
+    assert np.issubdtype(result.values.dtype, np.floating)
     np.testing.assert_allclose(result.values.compute(), 0.5)
+
+
+def test_minimum_error_requires_preparation():
+    with pytest.raises(TypeError, match=r"MinimumError\.prepare"):
+        MinimumError()
