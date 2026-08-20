@@ -265,6 +265,11 @@ def test_prepared_inputs_normalizes_gathered_state_covariance_to_basis_source_or
         ("region", "region_cov"),
         covariance,
     )
+    cross_covariance = np.arange(8, dtype=float).reshape(2, 4)
+    inv_inputs["native_retained_cross_covariance"] = (
+        ("native_state", "region_cov"),
+        cross_covariance,
+    )
     inv_inputs = inv_inputs.assign_coords(region_cov_label=("region_cov", column_labels))
 
     prepared = RhimePreparedInputs(
@@ -288,6 +293,10 @@ def test_prepared_inputs_normalizes_gathered_state_covariance_to_basis_source_or
     assert prepared.inv_inputs["region_cov_label"].values.tolist() == [
         column_labels[index] for index in state_order
     ]
+    np.testing.assert_array_equal(
+        prepared.inv_inputs["native_retained_cross_covariance"],
+        cross_covariance[:, state_order],
+    )
     CorrelatedLognormalPrior(
         prepared.inv_inputs["alpha_prior_mean"],
         prepared.inv_inputs["alpha_prior_covariance"],

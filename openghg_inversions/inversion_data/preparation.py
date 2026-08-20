@@ -598,15 +598,13 @@ def _canonicalize_rhime_inv_inputs(
             if actual_source == source
         ]
         state_indexers = {state_dim: state_order}
-        for name, variable in result.data_vars.items():
-            if not name.endswith("_covariance") or state_dim not in variable.dims:
-                continue
-            other_dims = [str(dim) for dim in variable.dims if dim != state_dim]
-            if len(other_dims) != 1 or variable.sizes[other_dims[0]] != len(state_order):
+        covariance_dim = f"{state_dim}_cov"
+        if covariance_dim in result.dims:
+            if result.sizes[covariance_dim] != len(state_order):
                 raise ValueError(
-                    f"RhimePreparedInputs {name} must be square on the gathered state axes."
+                    f"RhimePreparedInputs {covariance_dim} must match the gathered state length."
                 )
-            state_indexers[other_dims[0]] = state_order
+            state_indexers[covariance_dim] = state_order
         return result.isel(state_indexers), site_metadata
     result = result.assign_coords(source=("source", list(actual_sources)))
     return result.sel(source=list(expected_sources)), site_metadata
