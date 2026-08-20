@@ -43,7 +43,11 @@ import xarray as xr
 
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.inversion_inputs import DatetimeLike
-from openghg_inversions.models._flux import _select_sector_design, safe_pymc_name
+from openghg_inversions.models._flux import (
+    _namespace_sector_state_coords,
+    _select_sector_design,
+    safe_pymc_name,
+)
 from openghg_inversions.models.components import (
     add_linear_component,
     add_model_data,
@@ -696,7 +700,12 @@ def _namespace_retained_sensitivity(
     if retained_dim == prepared.state_dim:
         return prepared
     return PreparedLinearSensitivity(
-        sensitivity=prepared.sensitivity.rename({retained_dim: f"{retained_dim}_{suffix}"}),
+        sensitivity=_namespace_sector_state_coords(
+            prepared.sensitivity,
+            variable_suffix=suffix,
+            observation_dim=prepared.output_dim,
+            namespace_state_dim=True,
+        ),
         removed=prepared.removed,
         output_dim=prepared.output_dim,
     )

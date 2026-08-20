@@ -17,6 +17,7 @@ from openghg_inversions.experimental.ramsden2022 import (
     build_ramsden_model,
     run_ramsden_from_prepared_inputs,
 )
+from openghg_inversions.models import get_coord_registry
 from openghg_inversions.rhime import RhimeSampler
 
 
@@ -159,8 +160,12 @@ def test_two_sector_equations_share_x_and_only_fossil_emits_tracer() -> None:
 def test_differently_retained_channel_sensitivities_use_distinct_backend_axes() -> None:
     """Shared states allow channel-specific exact-zero sensitivity columns."""
     prepared = _prepared_inputs()
-    primary = prepared.primary.copy(deep=True)
-    tracer = prepared.tracer.copy(deep=True)
+    primary = prepared.primary.copy(deep=True).assign_coords(
+        basis_group=("region", ["outer", "inner"])
+    )
+    tracer = prepared.tracer.copy(deep=True).assign_coords(
+        basis_group=("region", ["outer", "inner"])
+    )
     primary["H"].loc[{"source": "ff_ch4", "region": "west"}] = 0.0
     tracer["H"].loc[{"source": "ff_c2h6", "region": "east"}] = 0.0
     prepared = RamsdenPreparedInputs(
@@ -178,6 +183,14 @@ def test_differently_retained_channel_sensitivities_use_distinct_backend_axes() 
     assert model.named_vars_to_dims["hx_c2h6_fossil"] == (
         "nmeasure_c2h6",
         "region_retained_fossil_c2h6",
+    )
+    registry = get_coord_registry(model)
+    assert registry is not None
+    np.testing.assert_array_equal(
+        registry.auxiliary_coords["basis_group_retained_fossil_ch4"], ["inner"]
+    )
+    np.testing.assert_array_equal(
+        registry.auxiliary_coords["basis_group_retained_fossil_c2h6"], ["outer"]
     )
     np.testing.assert_allclose(_initial_value(model, "mu_ch4_fossil"), [0.0, 6.0, 3.0])
     np.testing.assert_allclose(_initial_value(model, "mu_c2h6_fossil"), [2.0, 0.0])

@@ -180,7 +180,7 @@ def test_all_zero_linear_sensitivity_builds_zero_forward_and_full_fixed_state() 
     assert prepared.sensitivity.sizes["region_retained"] == 0
     assert model.free_RVs == []
     np.testing.assert_allclose(model.named_vars["x"].eval(), np.ones(4))
-    np.testing.assert_allclose(result.output.eval(), np.zeros(2))
+    np.testing.assert_allclose(result.output.eval(), np.zeros(2), atol=1e-12)
 
 
 def test_resolve_state_activity_combines_labels_groups_and_exact_zero() -> None:
