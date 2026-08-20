@@ -139,6 +139,7 @@ openghg_inversions = [
     "postprocessing/*.cdl",
     "postprocessing/*.json",
     "config/templates/*.ini",
+    "rhime/config/*.ini",
     "hbmcmc/config/*.ini"
 ]
 
