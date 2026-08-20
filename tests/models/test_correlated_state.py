@@ -358,7 +358,6 @@ def test_correlated_lognormal_activity_restores_fixed_gathered_state_and_covaria
                 dims="state",
                 coords={"state": mean.coords["state"]},
             ),
-            prune_zero=False,
         ),
     )
 

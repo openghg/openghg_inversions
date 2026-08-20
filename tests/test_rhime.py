@@ -51,7 +51,6 @@ from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInpu
 from openghg_inversions.inversion_inputs import make_inv_inputs
 from openghg_inversions.models import StateActivity
 from openghg_inversions.models._flux import safe_pymc_name
-from openghg_inversions.models.pollution_event import build_pollution_event_error
 from openghg_inversions.models.additive_sigma import build_additive_sigma_error
 from openghg_inversions.observation_error import AggregationError, resolve_aggregation_error
 from openghg_inversions.postprocessing._basis_products import (
@@ -169,20 +168,6 @@ def _multisector_args(builder_args: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
-def _pollution_event_likelihood_kwargs(builder_args: dict[str, Any]) -> dict[str, Any]:
-    """Select options owned by the built-in pollution-event likelihood."""
-    return {
-        name: builder_args[name]
-        for name in (
-            "sigma_alignment",
-            "sigma_prior",
-            "power",
-            "pollution_events_from_obs",
-            "no_model_error",
-        )
-    }
-
-
 def build_rhime_model(inv_inputs: xr.Dataset, **kwargs: Any) -> pm.Model:
     """Adapt concise dataset fixtures to the explicit production builder."""
     aggregation_mode = kwargs.pop("aggregation_error_mode", "none")
@@ -210,40 +195,6 @@ def build_rhime_multisector_model(inv_inputs: xr.Dataset, **kwargs: Any) -> pm.M
         boundary_sensitivity=inv_inputs.get("H_bc"),
         site_indicator=inv_inputs.get("site_indicator"),
         **kwargs,
-    )
-
-
-def build_rhime_observation_state(
-    *,
-    observations: xr.DataArray,
-    observation_error: xr.DataArray,
-    minimum_error: xr.DataArray,
-    aggregation_error: AggregationError,
-    mean: Any,
-    pollution_mean: Any,
-    pollution_event_baseline: Any,
-    sigma_alignment: SigmaAlignment,
-    sigma_prior: dict[str, Any],
-    power: dict[str, Any] | float,
-    pollution_events_from_obs: bool,
-    no_model_error: bool,
-    output_dim: str,
-) -> Any:
-    """Build the built-in error state from explicit likelihood inputs."""
-    del mean
-    return build_pollution_event_error(
-        observations=observations,
-        observation_error=observation_error,
-        minimum_error=minimum_error,
-        aggregation_error=aggregation_error,
-        pollution_mean=pollution_mean,
-        pollution_event_baseline=pollution_event_baseline,
-        sigma_alignment=sigma_alignment,
-        sigma_prior=sigma_prior,
-        power=power,
-        pollution_events_from_obs=pollution_events_from_obs,
-        no_model_error=no_model_error,
-        output_dim=output_dim,
     )
 
 
@@ -1872,6 +1823,42 @@ def test_build_rhime_multisector_model_selects_sources_by_label(
     np.testing.assert_allclose(model["hx_ocean"].get_value(), expected_ocean.values)
 
 
+def test_multisector_model_namespaces_differently_retained_source_states(
+    multisector_inv_inputs: xr.Dataset,
+    builder_args: dict,
+) -> None:
+    """Source-specific zero columns get distinct retained backend dimensions."""
+    inputs = multisector_inv_inputs.copy(deep=True)
+    inputs["H"].loc[{"source": "total-ukghg-edgar7", "region": inputs.region[0]}] = 0.0
+    inputs["H"].loc[{"source": "sector-2", "region": inputs.region[1]}] = 0.0
+
+    model = build_rhime_multisector_model(
+        inputs,
+        sectors=(
+            _sector("FF", source="total-ukghg-edgar7", suffix="ff"),
+            _sector("ocean", source="sector-2", suffix="ocean"),
+        ),
+        **_multisector_args(builder_args),
+    )
+
+    assert model.named_vars_to_dims["hx_ff"] == ("nmeasure", "region_retained_ff")
+    assert model.named_vars_to_dims["hx_ocean"] == ("nmeasure", "region_retained_ocean")
+    np.testing.assert_allclose(
+        model["hx_ff"].get_value(),
+        inputs["H"]
+        .sel(source="total-ukghg-edgar7")
+        .isel(region=slice(1, None))
+        .transpose("nmeasure", "region"),
+    )
+    np.testing.assert_allclose(
+        model["hx_ocean"].get_value(),
+        inputs["H"]
+        .sel(source="sector-2")
+        .isel(region=[0, *range(2, inputs.sizes["region"])])
+        .transpose("nmeasure", "region"),
+    )
+
+
 def test_multisector_model_accepts_gathered_ragged_states(
     multisector_inv_inputs: xr.Dataset,
     builder_args: dict,
@@ -2297,20 +2284,22 @@ def test_standard_model_supports_all_fixed_flux_and_bc(
     _assert_model_dot_matches_numpy(model, output_name="mu_bc", design_name="hbc", state_name="bc")
 
 
-def test_bc_activity_is_opt_in_and_restores_exact_zero_columns(
+def test_bc_zero_columns_are_structurally_removed_by_default(
     rhime_inv_inputs: xr.Dataset,
     builder_args: dict,
 ) -> None:
-    """Explicit BC activity prunes zero columns while omission keeps the old graph."""
+    """BC preparation always removes zero columns and reconstructs the full state."""
     inv_inputs = rhime_inv_inputs.copy(deep=True)
     first_region = inv_inputs["H_bc"].coords["bc_region"][0]
     inv_inputs["H_bc"].loc[{"bc_region": first_region}] = 0.0
     kwargs = {**builder_args, "no_model_error": True}
 
     default_model = build_rhime_model(inv_inputs, **kwargs)
-    assert default_model["bc"] in default_model.free_RVs
-    assert "bc_active" not in default_model.named_vars
-    assert "bc_is_active" not in default_model.named_vars
+    assert default_model["bc_active"] in default_model.free_RVs
+    assert default_model["bc"] not in default_model.free_RVs
+    assert not bool(default_model["bc_is_active"].eval()[0])
+    assert default_model["bc"].eval()[0] == 1.0
+    assert default_model["hbc"].eval().shape[1] == inv_inputs.sizes["bc_region"] - 1
 
     model = build_rhime_model(inv_inputs, bc_state_activity=StateActivity(), **kwargs)
     assert model["bc_active"] in model.free_RVs
@@ -2322,7 +2311,10 @@ def test_bc_activity_is_opt_in_and_restores_exact_zero_columns(
     assert list(registry.original_coords["bc_region_bc_active"]) == list(
         inv_inputs["H_bc"].indexes["bc_region"][1:]
     )
-    _assert_model_dot_matches_numpy(model, output_name="mu_bc", design_name="hbc", state_name="bc")
+    actual, state = pm.draw([model["mu_bc"], model["bc"]], random_seed=417)
+    expected = model["hbc"].get_value() @ state[1:]
+    tolerance = 100 * max(np.finfo(actual.dtype).eps, np.finfo(expected.dtype).eps)
+    np.testing.assert_allclose(actual, expected, rtol=tolerance, atol=tolerance)
 
 
 
@@ -5093,7 +5085,7 @@ def test_prepared_multisector_runner_accepts_gathered_source_specific_basis_layo
 
 
 def test_multisector_runner_rejects_shared_basis_h_layout_mismatch() -> None:
-    """Retained shared-basis coordinates must match the prepared design state."""
+    """Retained shared-basis coordinates must match the prepared sensitivity state."""
     model_spec = RhimeModelSpec(
         species="ch4",
         domain="EUROPE",

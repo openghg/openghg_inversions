@@ -35,8 +35,6 @@ from openghg_inversions.models.likelihoods import (
 )
 from openghg_inversions.observation_error import (
     AggregationError,
-    validate_aggregation_error_alignment,
-    validate_observation_alignment,
     validate_observation_error_arrays,
 )
 from openghg_inversions.sigma import SigmaAlignment
@@ -111,12 +109,6 @@ def build_additive_sigma_error(
             raise ValueError(
                 "Additive-sigma likelihood requires `sigma_alignment` when model error is enabled."
             )
-    validate_aggregation_error_alignment(
-        observations,
-        aggregation_error,
-        owner="Additive-sigma likelihood",
-        output_dim=output_dim,
-    )
     observed = add_model_data(observations.transpose(output_dim), "Y")
     reported_error = add_model_data(observation_error.transpose(output_dim), "error")
     minimum_error_data = add_model_data(minimum_error.transpose(output_dim), "min_error")
@@ -133,13 +125,6 @@ def build_additive_sigma_error(
                 f"Additive-sigma likelihood input {FIXED_MODEL_MISMATCH!r} must "
                 f"have dims ({output_dim!r},); got {fixed_model_mismatch.dims!r}."
             )
-        validate_observation_alignment(
-            observations,
-            fixed_model_mismatch,
-            input_name=FIXED_MODEL_MISMATCH,
-            owner="Additive-sigma likelihood",
-            output_dim=output_dim,
-        )
         fixed_values = np.asarray(fixed_model_mismatch.values)
         if not np.issubdtype(fixed_values.dtype, np.number):
             raise ValueError(f"{FIXED_MODEL_MISMATCH!r} must be numeric.")

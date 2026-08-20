@@ -110,7 +110,7 @@ strict original-versus-modern comparison.
 
 The available current OpenGHG object store did not contain usable footprint
 and observation products for rebuilding this historical case. The validation
-therefore converted the retained designs into canonical prepared datasets
+therefore converted the retained sensitivities into canonical prepared datasets
 rather than rerunning modern retrieval and preparation.
 
 Sampling diagnostics

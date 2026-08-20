@@ -165,13 +165,13 @@ The important default model-data and deterministic names are:
      - Role
      - Canonical input
    * - ``hx``
-     - Flux design data
+     - Flux sensitivity data
      - ``H``
    * - ``mu``
      - Flux contribution
      - ``hx @ x``
    * - ``hbc``
-     - Boundary design data
+     - Boundary sensitivity data
      - ``H_bc``
    * - ``mu_bc``
      - Boundary contribution
@@ -249,6 +249,7 @@ helpers:
 
    from openghg_inversions.models import (
        add_linear_component,
+       prepare_linear_sensitivity,
        registered_model,
    )
    from openghg_inversions.models.likelihoods import add_gaussian_observation_likelihood
@@ -275,10 +276,12 @@ helpers:
        frequency=None,
        per_site=True,
    )
+   flux_sensitivity = prepare_linear_sensitivity(inv_inputs["H"])
+   boundary_sensitivity = prepare_linear_sensitivity(inv_inputs["H_bc"])
 
    with registered_model() as model:
        flux = add_linear_component(
-           inv_inputs["H"],
+           flux_sensitivity,
            data_name="hx",
            prior_args=x_prior,
            var_name="x",
@@ -286,7 +289,7 @@ helpers:
            output_dim="nmeasure",
        )
        boundary = add_linear_component(
-           inv_inputs["H_bc"],
+           boundary_sensitivity,
            data_name="hbc",
            prior_args=bc_prior,
            var_name="bc",
@@ -324,6 +327,14 @@ model developer needs to change graph construction directly. It does not
 automatically participate in the complete ``run_rhime`` output pipeline; that
 pipeline still selects one of the built-in model builders.
 
+``prepare_linear_sensitivity`` is the single owning boundary for exact-zero column
+inspection. It removes those columns from the backend sensitivity while retaining
+their full labelled-state mapping; ``state_activity=None`` therefore samples
+every retained state. An explicit ``StateActivity`` fixes or groups scientific
+states but cannot restore a structurally absent column. For shared or
+correlated states, use ``apply_linear_sensitivity`` to apply another prepared
+forward operator without constructing a second prior.
+
 Multisector model
 -----------------
 
@@ -337,7 +348,7 @@ state and forward contribution:
    \mu &= \sum_s \mu_s.
 
 If the normalized PyMC suffix for sector ``s`` is ``ff``, its variables are
-``x_ff`` and ``mu_ff`` and its design data is ``hx_ff``. Source values select
+``x_ff`` and ``mu_ff`` and its sensitivity data is ``hx_ff``. Source values select
 the corresponding ``H`` slices; sector names provide model identities. They
 are not required to be the same strings.
 

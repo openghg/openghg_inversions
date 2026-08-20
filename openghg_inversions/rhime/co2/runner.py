@@ -104,7 +104,6 @@ def _state_activity_from_inputs(model_inputs: xr.Dataset) -> StateActivity | Non
     return StateActivity(
         active=model_inputs["state_is_active"],
         fixed_value=fixed_value,
-        prune_zero=False,
     )
 
 

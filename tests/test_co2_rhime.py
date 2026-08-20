@@ -134,7 +134,7 @@ def test_co2_prior_forward_mean_uses_fixed_values_for_inactive_states() -> None:
         dims="region",
         coords={"region": inputs["region"]},
     )
-    activity = StateActivity(active=is_active, fixed_value=fixed_value, prune_zero=False)
+    activity = StateActivity(active=is_active, fixed_value=fixed_value)
 
     expected_state = np.where(is_active, prior_mean, fixed_value)
     expected = inputs["fixed_prior_contribution"].values + inputs["H"].values @ expected_state
@@ -223,7 +223,6 @@ def test_co2_partial_activity_preserves_full_gathered_multiindex_state() -> None
         state_activity=StateActivity(
             active=is_active,
             fixed_value=fixed_value,
-            prune_zero=False,
         ),
     )
     full_state, active_state, forward = pm.draw(

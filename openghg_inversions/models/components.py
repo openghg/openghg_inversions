@@ -1,14 +1,14 @@
 """Reusable PyMC model graph helpers.
 
 These helpers operate on the active PyMC model context and are designed to be
-xarray-first. They return PyTensor/PyMC tensors and should not implement their
-own coordinate sanitization policy; coordinate handling lives in
-``openghg_inversions.models.coords``.
+xarray-first. They return explicit component results or PyTensor/PyMC tensors
+and should not implement their own coordinate sanitization policy; coordinate
+handling lives in ``openghg_inversions.models.coords``.
 
 All component helpers operate inside an active PyMC model context.
 ``add_state_vector`` consumes an already resolved activity contract;
-``add_state_linear_component`` performs design inspection and policy resolution
-before constructing that graph.
+``add_linear_component`` consumes a sensitivity matrix inspected by
+``prepare_linear_sensitivity`` before constructing that graph.
 
 Naming conventions:
 
@@ -40,10 +40,10 @@ from openghg_inversions.inversion_inputs import make_freq_indicator
 from openghg_inversions.models.coords import add_coords
 from openghg_inversions.models.priors import parse_prior
 from openghg_inversions.models.state_activity import (
+    PreparedLinearSensitivity,
     ResolvedStateActivity,
     StateActivity,
     active_prior_args,
-    detect_zero_sensitivity,
     resolve_state_activity,
 )
 from openghg_inversions.sigma import SigmaAlignment
@@ -51,11 +51,13 @@ from openghg_inversions.sigma import SigmaAlignment
 
 @dataclass
 class LinearComponentResult:
-    """Objects created by ``add_linear_component``."""
+    """Objects created by :func:`add_linear_component`."""
 
     data: TensorVariable
-    latent: TensorVariable
+    latent: TensorVariable | None
+    state: TensorVariable
     output: TensorVariable
+    activity: ResolvedStateActivity
 
 
 @dataclass
@@ -89,27 +91,6 @@ class CorrelatedStateResult:
     latent: TensorVariable
     state: TensorVariable
     prior: CorrelatedLognormalPrior
-
-
-@dataclass
-class StateLinearComponentResult:
-    """Objects created by ``add_state_linear_component``.
-
-    Attributes:
-        data: Full sensitivity matrix registered with PyMC.
-        latent: Effective active-state latent variable, or ``None`` when no
-            states are active.
-        state: Full ordered state vector. This is the ordinary user-facing
-            prior when all states are active and a deterministic otherwise.
-        output: Forward-model contribution from active and fixed states.
-        activity: Resolved state-activity contract in canonical state order.
-    """
-
-    data: TensorVariable
-    latent: TensorVariable | None
-    state: TensorVariable
-    output: TensorVariable
-    activity: ResolvedStateActivity
 
 
 def get_model_latent(variable: TensorVariable, base_name: str) -> TensorVariable:
@@ -223,25 +204,28 @@ def add_model_data(data: xr.DataArray, name: str | None = None) -> TensorVariabl
     if name in model:
         return model[name]
 
-    dims = tuple(str(dim) for dim in data.dims)
-    add_coords(data.coords, model_dims=dims)
-    return cast(TensorVariable, pm.Data(name, data.values, dims=dims))
+    materialized = data.compute()
+    dims = tuple(str(dim) for dim in materialized.dims)
+    add_coords(materialized.coords, model_dims=dims)
+    return cast(TensorVariable, pm.Data(name, materialized.values, dims=dims))
 
 
 def add_linear_component(
-    data: xr.DataArray,
+    prepared: PreparedLinearSensitivity,
     /,
     data_name: str,
     prior_args: dict,
     var_name: str,
     output_name: str,
+    state_activity: StateActivity | None = None,
     output_dim: str = "nmeasure",
     compute_deterministic: bool = True,
 ) -> LinearComponentResult:
-    """Add a linear latent component and its aligned forward-model contribution.
+    """Add one independent labelled linear component.
 
     Args:
-        data: Sensitivity matrix or other linear data term.
+        prepared: Retained sensitivity and full-state mapping produced by
+            :func:`prepare_linear_sensitivity`.
         data_name: Name used when registering the data as ``pm.Data``.
         prior_args: Prior specification for the latent random variable.
         var_name: Name for the latent random variable.
@@ -250,50 +234,53 @@ def add_linear_component(
         compute_deterministic: Whether to wrap the aligned output in
             ``pm.Deterministic``.
 
+        state_activity: Optional active/fixed policy over the full scientific
+            state. ``None`` samples every retained column.
+
     Returns:
-        A ``LinearComponentResult`` containing the registered data tensor, the
-        effective latent variable, and the aligned output tensor.
+        The registered sensitivity, effective latent, full state, aligned forward
+        contribution, and resolved activity.
     """
     output_dim = str(output_dim)
-    data = data.transpose(output_dim, ...)
-    h = add_model_data(data, data_name)
-    input_dims = tuple(str(dim) for dim in data.dims if dim != output_dim)
-    user_facing = parse_prior(var_name, prior_args, dims=input_dims)
-    latent = get_model_latent(user_facing, var_name)
-    output = pt.dot(h, user_facing)
-    if compute_deterministic:
-        output = pm.Deterministic(output_name, output, dims=output_dim)
-    return LinearComponentResult(data=h, latent=latent, output=output)
-
-
-def _with_legacy_all_active_coord(
-    data: xr.DataArray,
-    state_activity: StateActivity | None,
-    *,
-    output_dim: str,
-) -> xr.DataArray:
-    """Supply a positional state coordinate for the legacy all-active policy.
-
-    Args:
-        data: Candidate sensitivity matrix.
-        state_activity: Optional activity policy.
-        output_dim: Observation/output dimension name.
-
-    Returns:
-        ``data`` unchanged, or with positional labels for its sole state axis.
-    """
-    state_dims = [str(dim) for dim in data.dims if dim != output_dim]
-    legacy_all_active = (
-        state_activity is not None
-        and not state_activity.prune_zero
-        and not state_activity.fixed_groups
-        and isinstance(state_activity.active, (bool, np.bool_))
-        and bool(state_activity.active)
+    if output_dim != prepared.output_dim:
+        raise ValueError(
+            f"Prepared linear sensitivity owns output dimension {prepared.output_dim!r}, "
+            f"not {output_dim!r}."
+        )
+    activity = resolve_state_activity(prepared.removed, state_activity)
+    vector = add_state_vector(activity, prior_args=prior_args, var_name=var_name)
+    output = apply_linear_sensitivity(
+        prepared,
+        vector.state,
+        data_name=data_name,
+        output_name=output_name,
+        compute_deterministic=compute_deterministic,
     )
-    if legacy_all_active and len(state_dims) == 1 and state_dims[0] not in data.coords:
-        state_dim = state_dims[0]
-        return data.assign_coords({state_dim: np.arange(data.sizes[state_dim])})
-    return data
+    data = cast(TensorVariable, pm.modelcontext(None)[data_name])
+    return LinearComponentResult(
+        data=data,
+        latent=vector.latent,
+        state=vector.state,
+        output=output,
+        activity=vector.activity,
+    )
+
+
+def apply_linear_sensitivity(
+    prepared: PreparedLinearSensitivity,
+    state: TensorVariable,
+    /,
+    *,
+    data_name: str,
+    output_name: str,
+    compute_deterministic: bool = True,
+) -> TensorVariable:
+    """Apply a prepared sensitivity to an already-built full state vector."""
+    h = add_model_data(prepared.sensitivity, data_name)
+    output = pt.dot(h, state[prepared.retained_indices])
+    if compute_deterministic:
+        output = pm.Deterministic(output_name, output, dims=prepared.output_dim)
+    return cast(TensorVariable, output)
 
 
 def add_state_vector(
@@ -327,7 +314,7 @@ def add_state_vector(
 
     Notes:
         This helper registers state variables and state coordinates, but it
-        does not inspect or register a linear design and does not construct a
+        does not inspect or register a sensitivity matrix and does not construct a
         forward-model output. The registered activity mask is immutable
         build-time metadata in semantic terms; changing it with ``pm.set_data``
         would not rebuild the latent state layout. Call this helper inside an
@@ -551,82 +538,6 @@ def add_correlated_lognormal_state_with_activity(
         full_state = pt.set_subtensor(full_state[active_indices], active_state)
     state = pm.Deterministic(var_name, full_state, dims=state_dim)
     return StateVectorResult(latent=latent, state=state, activity=activity)
-
-
-def add_state_linear_component(
-    data: xr.DataArray,
-    /,
-    data_name: str,
-    prior_args: dict,
-    var_name: str,
-    output_name: str,
-    state_activity: StateActivity | None = None,
-    output_dim: str = "nmeasure",
-    compute_deterministic: bool = True,
-) -> StateLinearComponentResult:
-    """Add a linear component that samples only active labelled states.
-
-    The public ``var_name`` is always a full ordered vector. When every state
-    is active, it retains the ordinary prior graph produced by
-    ``add_linear_component``. Otherwise, active states are sampled in
-    ``{var_name}_active`` and restored with inactive fixed values into a full
-    deterministic state. The forward contribution is always ``H @ state``.
-
-    Args:
-        data: Finite sensitivity matrix containing ``output_dim`` and exactly
-            one other dimension with a unique labelled state coordinate. The
-            explicit legacy all-active policy may synthesize positional labels.
-        data_name: Name used when registering the full matrix as ``pm.Data``.
-        prior_args: Prior specification. Distribution parameters may be scalar,
-            full-state arrays, or labelled state ``DataArray`` objects.
-        var_name: Name of the full deterministic state vector.
-        output_name: Name for the aligned forward-model contribution.
-        state_activity: Optional active/fixed policy. The default prunes only
-            exactly-zero sensitivity columns and fixes them to one.
-        output_dim: Observation/output dimension name.
-        compute_deterministic: Whether to wrap the output in a named
-            ``pm.Deterministic``.
-
-    Returns:
-        Registered data, optional active latent, full state, output, and the
-        resolved activity contract.
-
-    Raises:
-        ValueError: If the sensitivity layout, state policy, labels, fixed
-            values, or state-valued prior parameters are invalid.
-
-    Notes:
-        This helper mutates the active ``pm.Model`` by registering coordinates,
-        the full design, state variables, and optionally the named output.
-    """
-    output_dim = str(output_dim)
-    data = _with_legacy_all_active_coord(
-        data.transpose(output_dim, ...),
-        state_activity,
-        output_dim=output_dim,
-    )
-    activity = resolve_state_activity(
-        detect_zero_sensitivity(data, output_dim=output_dim),
-        state_activity,
-    )
-    h_full = add_model_data(data, data_name)
-    vector = add_state_vector(
-        activity,
-        prior_args=prior_args,
-        var_name=var_name,
-    )
-
-    output = pt.dot(h_full, vector.state)
-    if compute_deterministic:
-        output = pm.Deterministic(output_name, output, dims=output_dim)
-
-    return StateLinearComponentResult(
-        data=h_full,
-        latent=vector.latent,
-        state=vector.state,
-        output=cast(TensorVariable, output),
-        activity=vector.activity,
-    )
 
 
 def add_sigma_component(

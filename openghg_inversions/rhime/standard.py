@@ -20,12 +20,11 @@ from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInpu
 from openghg_inversions.models.components import (
     add_linear_component,
     add_offset_component,
-    add_state_linear_component,
 )
 from openghg_inversions.models.coords import registered_model
 from openghg_inversions.models.pollution_event import build_pollution_event_gaussian_likelihood
 from openghg_inversions.models.priors import PriorArgs
-from openghg_inversions.models.state_activity import StateActivity
+from openghg_inversions.models.state_activity import StateActivity, prepare_linear_sensitivity
 from openghg_inversions.observation_error import (
     AggregationError,
     OBSERVATION_ERROR_INPUT_NAMES,
@@ -37,7 +36,6 @@ from openghg_inversions.sigma import SigmaAlignment
 from ._model_building import (
     builtin_model_build_result,
     validate_custom_likelihood_result,
-    validate_likelihood_builder_argument,
     validate_likelihood_kwargs,
     validated_custom_model_build,
 )
@@ -238,9 +236,16 @@ def build_standard_rhime_model(
     sigma_prior = dict(DEFAULT_SIGMA_PRIOR if sigma_prior is None else sigma_prior)
     offset_prior = dict(DEFAULT_OFFSET_PRIOR if offset_prior is None else offset_prior)
 
+    prepared_flux = prepare_linear_sensitivity(flux_sensitivity)
+    prepared_boundary = (
+        prepare_linear_sensitivity(boundary_sensitivity)
+        if use_bc and boundary_sensitivity is not None
+        else None
+    )
+
     with registered_model() as model:
-        flux_component = add_state_linear_component(
-            flux_sensitivity,
+        flux_component = add_linear_component(
+            prepared_flux,
             data_name="hx",
             prior_args=x_prior,
             var_name="x",
@@ -257,27 +262,17 @@ def build_standard_rhime_model(
                 raise ValueError(
                     "Standard baseline component requires `boundary_sensitivity` when `use_bc` is true."
                 )
-            if bc_state_activity is None:
-                boundary_mean = add_linear_component(
-                    boundary_sensitivity,
-                    data_name="hbc",
-                    prior_args=bc_prior,
-                    var_name="bc",
-                    output_name="mu_bc",
-                    output_dim="nmeasure",
-                    compute_deterministic=True,
-                ).output
-            else:
-                boundary_mean = add_state_linear_component(
-                    boundary_sensitivity,
-                    data_name="hbc",
-                    prior_args=bc_prior,
-                    var_name="bc",
-                    output_name="mu_bc",
-                    output_dim="nmeasure",
-                    compute_deterministic=True,
-                    state_activity=bc_state_activity,
-                ).output
+            assert prepared_boundary is not None
+            boundary_mean = add_linear_component(
+                prepared_boundary,
+                data_name="hbc",
+                prior_args=bc_prior,
+                var_name="bc",
+                output_name="mu_bc",
+                output_dim="nmeasure",
+                compute_deterministic=True,
+                state_activity=bc_state_activity,
+            ).output
 
         offset = None
         if add_offset:
@@ -567,7 +562,6 @@ def run_rhime(
         A non-callable likelihood builder is rejected before configuration is
         parsed or data is acquired, prepared, or materialized.
     """
-    validate_likelihood_builder_argument(likelihood_builder)
     likelihood_kwargs = validate_likelihood_kwargs(likelihood_builder, likelihood_kwargs)
     params = (
         params_from_config(config_file, extra_kwargs=kwargs, normalise=False)

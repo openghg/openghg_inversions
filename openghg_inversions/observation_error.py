@@ -8,12 +8,14 @@ covariance, or diagnostically as independent standard deviations.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Literal, TypeAlias
 
 from dask import compute as dask_compute
 import numpy as np
 import xarray as xr
+
+from openghg_inversions.array_ops import validate_covariance_coordinates
 
 AggregationErrorMode: TypeAlias = Literal["auto", "none", "dense", "low_rank", "diagonal"]
 
@@ -27,6 +29,13 @@ OBSERVATION_ERROR_INPUT_NAMES = ("mf", "mf_error", "min_error")
 @dataclass(frozen=True)
 class AggregationError:
     """Validated aggregation-error representation selected for a likelihood.
+
+    Model builders trust this value as already validated. Scientific runners
+    should construct it through :func:`resolve_aggregation_error`, which
+    selects and validates a coherent-reduction representation. Direct
+    construction is an expert seam, primarily useful when testing model
+    components, and the caller then owns the coherence of the mode, payload,
+    marginal variance, coordinates, and numerical covariance properties.
 
     Args:
         mode: Concrete covariance representation.
@@ -42,28 +51,6 @@ class AggregationError:
     covariance: xr.DataArray | None = None
     factor: xr.DataArray | None = None
     diagonal_variance: xr.DataArray | None = None
-    _dense_numerically_validated: bool = field(
-        default=False,
-        init=False,
-        repr=False,
-        compare=False,
-    )
-
-    @classmethod
-    def _from_validated_dense(
-        cls,
-        *,
-        marginal_variance: np.ndarray,
-        covariance: xr.DataArray,
-    ) -> AggregationError:
-        """Construct the internally validated dense representation."""
-        result = cls(
-            mode="dense",
-            marginal_variance=marginal_variance,
-            covariance=covariance,
-        )
-        object.__setattr__(result, "_dense_numerically_validated", True)
-        return result
 
 
 def _validate_dense_covariance_values(
@@ -116,15 +103,6 @@ def _materialize_together(*arrays: xr.DataArray) -> tuple[xr.DataArray, ...]:
     )
 
 
-def _require_eager_payload(array: xr.DataArray, name: str, *, owner: str) -> None:
-    """Reject a lazy public value before validation can compute it repeatedly."""
-    if array.chunks is not None:
-        raise ValueError(
-            f"{owner} input {name!r} must be eager; construct it with "
-            "`resolve_aggregation_error()` before building the likelihood."
-        )
-
-
 def _validate_vector(
     data: xr.Dataset,
     name: str,
@@ -159,36 +137,6 @@ def _validate_vector(
     if nonnegative and (values < 0).any():
         raise ValueError(f"Aggregation-error input {name!r} must contain only non-negative values.")
     return array, values
-
-
-def validate_observation_error_inputs(
-    data: xr.Dataset,
-    *,
-    output_dim: str = "nmeasure",
-) -> None:
-    """Validate observations and independent diagonal error inputs.
-
-    Args:
-        data: Prepared inversion inputs containing ``mf``, ``mf_error``, and
-            ``min_error``.
-        output_dim: Observation dimension required on each validated input.
-
-    Raises:
-        ValueError: If a required input is absent, not an observation-aligned
-            vector, non-numeric, non-finite, or negative where an error must
-            be non-negative.
-    """
-    if "mf" not in data:
-        raise ValueError("Canonical inversion inputs must contain 'mf'.")
-    if data["mf"].dims != (output_dim,):
-        raise ValueError(
-            f"Canonical inversion input 'mf' must have dims ({output_dim!r},); got {data['mf'].dims!r}."
-        )
-    missing = [name for name in ("mf_error", "min_error") if name not in data]
-    if missing:
-        raise ValueError(f"Canonical inversion inputs are missing error component(s): {missing!r}.")
-    for name in ("mf_error", "min_error"):
-        _validate_vector(data, name, output_dim=output_dim)
 
 
 def validate_observation_error_arrays(
@@ -233,224 +181,6 @@ def validate_observation_error_arrays(
         values = _numeric_finite(name, array, owner=f"{owner} input")
         if (values < 0).any():
             raise ValueError(f"{owner} input {name!r} must contain only non-negative values.")
-
-
-def validate_observation_alignment(
-    observations: xr.DataArray,
-    array: xr.DataArray,
-    *,
-    input_name: str,
-    owner: str,
-    output_dim: str = "nmeasure",
-) -> None:
-    """Require an input to carry the observations' exact indexed ordering.
-
-    The indexed dimension coordinate is eager structural data. Comparing its
-    values does not materialize either scientific payload, and deliberately
-    ignores coordinate attributes and unrelated auxiliary coordinates.
-
-    Args:
-        observations: Reference observation vector.
-        array: Scientific input containing the observation dimension.
-        input_name: Input name used in diagnostics.
-        owner: Component name used in diagnostics.
-        output_dim: Shared observation dimension.
-
-    Raises:
-        ValueError: If the input omits the observation dimension or its
-            observation labels differ from ``observations``.
-    """
-    if output_dim not in array.dims:
-        raise ValueError(f"{owner} input {input_name!r} has no {output_dim!r} dimension.")
-    reference_index = observations.get_index(output_dim)
-    candidate_index = array.get_index(output_dim)
-    if not reference_index.equals(candidate_index):
-        raise ValueError(
-            f"{owner} input {input_name!r} has incompatible observation coordinate {output_dim!r}."
-        )
-
-
-def validate_aggregation_error_alignment(
-    observations: xr.DataArray,
-    aggregation_error: AggregationError,
-    *,
-    owner: str,
-    output_dim: str = "nmeasure",
-    covariance_dim: str = "nmeasure_cov",
-) -> None:
-    """Validate one coherent aggregation-error value against observations.
-
-    This is the cheap consumer-boundary check for the public
-    :class:`AggregationError` value. Full numerical covariance validation is
-    owned by :func:`resolve_aggregation_error` for general prepared inputs.
-
-    Args:
-        observations: Reference observation vector.
-        aggregation_error: Selected aggregation-error representation.
-        owner: Likelihood or component name used in diagnostics.
-        output_dim: Observation dimension.
-        covariance_dim: Dense covariance's second observation dimension.
-
-    Raises:
-        ValueError: If mode and payload disagree, the marginal variance is
-            invalid or inconsistent with the payload, or labelled observation
-            axes do not match the observations.
-    """
-    marginal_variance = np.asarray(aggregation_error.marginal_variance)
-    nmeasure = observations.sizes[output_dim]
-    if (
-        marginal_variance.shape != (nmeasure,)
-        or not np.issubdtype(marginal_variance.dtype, np.number)
-        or not np.isfinite(marginal_variance).all()
-        or (marginal_variance < 0).any()
-    ):
-        raise ValueError(
-            f"{owner} aggregation-error marginal variance must be a finite, "
-            f"non-negative vector of length {nmeasure}."
-        )
-
-    payloads = (
-        aggregation_error.covariance is not None,
-        aggregation_error.factor is not None,
-        aggregation_error.diagonal_variance is not None,
-    )
-    expected_payloads = {
-        "none": (False, False, False),
-        "dense": (True, False, False),
-        "low_rank": (False, True, True),
-        "diagonal": (False, False, True),
-    }
-    expected_payload = expected_payloads.get(aggregation_error.mode)
-    if expected_payload is None:
-        raise ValueError(
-            f"{owner} aggregation-error mode {aggregation_error.mode!r} is unsupported."
-        )
-    if payloads != expected_payload:
-        raise ValueError(
-            f"{owner} aggregation-error mode {aggregation_error.mode!r} has "
-            "inconsistent covariance payloads."
-        )
-
-    if aggregation_error.mode == "none":
-        expected_marginal = np.zeros(nmeasure)
-    elif aggregation_error.mode == "dense":
-        covariance = aggregation_error.covariance
-        assert covariance is not None
-        if covariance.dims != (output_dim, covariance_dim) or covariance.shape != (
-            nmeasure,
-            nmeasure,
-        ):
-            raise ValueError(
-                f"{owner} aggregation-error dense covariance must have dims "
-                f"({output_dim!r}, {covariance_dim!r}) and shape "
-                f"({nmeasure}, {nmeasure})."
-            )
-        if covariance_dim not in covariance.coords:
-            raise ValueError(
-                f"{owner} input {AGGREGATION_ERROR_COVARIANCE!r} must carry "
-                f"the observation coordinate {covariance_dim!r}."
-            )
-        column_labels = np.asarray(covariance.coords[covariance_dim].values)
-        observation_labels = np.asarray(observations.get_index(output_dim).values)
-        if not np.array_equal(column_labels, observation_labels):
-            raise ValueError(
-                f"{owner} input {AGGREGATION_ERROR_COVARIANCE!r} has "
-                f"incompatible observation coordinate {covariance_dim!r}."
-            )
-        _require_eager_payload(
-            covariance,
-            AGGREGATION_ERROR_COVARIANCE,
-            owner=owner,
-        )
-        covariance_values = _numeric_finite(
-            AGGREGATION_ERROR_COVARIANCE,
-            covariance,
-            owner=f"{owner} input",
-        )
-        if not aggregation_error._dense_numerically_validated:
-            _validate_dense_covariance_values(
-                covariance_values,
-                owner=f"{owner} input {AGGREGATION_ERROR_COVARIANCE!r}",
-            )
-        expected_marginal = np.diag(covariance_values)
-    elif aggregation_error.mode == "low_rank":
-        factor = aggregation_error.factor
-        diagonal_variance = aggregation_error.diagonal_variance
-        assert factor is not None and diagonal_variance is not None
-        if (
-            factor.ndim != 2
-            or factor.dims[0] != output_dim
-            or factor.shape[0] != nmeasure
-            or factor.shape[1] < 1
-        ):
-            raise ValueError(
-                f"{owner} input {LOW_RANK_FACTOR!r} must have {nmeasure} observation rows "
-                "and at least one rank column."
-            )
-        if (
-            diagonal_variance.dims != (output_dim,)
-            or diagonal_variance.shape != (nmeasure,)
-        ):
-            raise ValueError(
-                f"{owner} input {DIAGONAL_RESIDUAL_VARIANCE!r} must be a "
-                f"non-negative vector of length {nmeasure}."
-            )
-        _require_eager_payload(factor, LOW_RANK_FACTOR, owner=owner)
-        _require_eager_payload(
-            diagonal_variance,
-            DIAGONAL_RESIDUAL_VARIANCE,
-            owner=owner,
-        )
-        factor_values = _numeric_finite(LOW_RANK_FACTOR, factor, owner=f"{owner} input")
-        diagonal_values = _numeric_finite(
-            DIAGONAL_RESIDUAL_VARIANCE,
-            diagonal_variance,
-            owner=f"{owner} input",
-        )
-        if (diagonal_values < 0).any():
-            raise ValueError(
-                f"{owner} input {DIAGONAL_RESIDUAL_VARIANCE!r} must be a "
-                f"non-negative vector of length {nmeasure}."
-            )
-        expected_marginal = np.sum(factor_values**2, axis=1) + diagonal_values
-    else:
-        diagonal_variance = aggregation_error.diagonal_variance
-        assert diagonal_variance is not None
-        if diagonal_variance.dims != (output_dim,) or diagonal_variance.shape != (
-            nmeasure,
-        ):
-            raise ValueError(
-                f"{owner} aggregation-error diagonal variance must be a "
-                f"non-negative vector of length {nmeasure}."
-            )
-        _require_eager_payload(
-            diagonal_variance,
-            DIAGONAL_RESIDUAL_VARIANCE,
-            owner=owner,
-        )
-        expected_marginal = _numeric_finite(
-            DIAGONAL_RESIDUAL_VARIANCE,
-            diagonal_variance,
-            owner=f"{owner} input",
-        )
-        if (
-            expected_marginal.shape != (nmeasure,) or (expected_marginal < 0).any()
-        ):
-            raise ValueError(
-                f"{owner} aggregation-error diagonal variance must be a "
-                f"non-negative vector of length {nmeasure}."
-            )
-
-    if not np.allclose(
-        marginal_variance,
-        expected_marginal,
-        rtol=1e-6,
-        atol=1e-12,
-    ):
-        raise ValueError(
-            f"{owner} aggregation-error marginal variance is inconsistent with "
-            f"its {aggregation_error.mode!r} covariance payload."
-        )
 
 
 def select_aggregation_error_mode(
@@ -611,15 +341,18 @@ def resolve_aggregation_error(
                 f"match {output_dim!r}; got shape {covariance.shape!r}."
             )
         observation_labels = np.asarray(data.get_index(output_dim).values)
-        if covariance_dim in covariance.coords:
-            column_labels = np.asarray(covariance.coords[covariance_dim].values)
-            if not np.array_equal(column_labels, observation_labels):
-                raise ValueError(
-                    f"Aggregation-error input {AGGREGATION_ERROR_COVARIANCE!r} "
-                    f"has incompatible observation coordinate {covariance_dim!r}."
-                )
-        else:
-            covariance = covariance.assign_coords({covariance_dim: observation_labels})
+        missing_coords = {
+            name: observation_labels
+            for name in (output_dim, covariance_dim)
+            if name not in covariance.coords
+        }
+        if missing_coords:
+            covariance = covariance.assign_coords(missing_coords)
+        validate_covariance_coordinates(
+            covariance,
+            dim=output_dim,
+            covariance_dim=covariance_dim,
+        )
         (covariance,) = _materialize_together(covariance)
         values = _numeric_finite(AGGREGATION_ERROR_COVARIANCE, covariance)
         _validate_dense_covariance_values(
@@ -628,7 +361,8 @@ def resolve_aggregation_error(
         )
         marginal_variance = np.diag(values).copy()
         _validate_marginal_sd(data, marginal_variance, output_dim=output_dim)
-        return AggregationError._from_validated_dense(
+        return AggregationError(
+            mode="dense",
             marginal_variance=marginal_variance,
             covariance=covariance,
         )
