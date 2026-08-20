@@ -1002,6 +1002,7 @@ removed rather than transferred into aggregation error.</p>
 <code class="docutils literal notranslate"><span class="pre">inv_inputs[&quot;H&quot;]</span></code> carries a state-aligned <code class="docutils literal notranslate"><span class="pre">basis_group</span></code> coordinate
 containing the value <code class="docutils literal notranslate"><span class="pre">&quot;outer&quot;</span></code>:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">StateActivity</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.observation_error</span><span class="w"> </span><span class="kn">import</span> <span class="n">resolve_aggregation_error</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.standard</span><span class="w"> </span><span class="kn">import</span> <span class="n">build_standard_rhime_model</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.sigma</span><span class="w"> </span><span class="kn">import</span> <span class="n">SigmaAlignment</span>
 
@@ -1013,7 +1014,13 @@ containing the value <code class="docutils literal notranslate"><span class="pre
     <span class="n">inv_inputs</span><span class="p">[</span><span class="s2">"site_indicator"</span><span class="p">],</span>
 <span class="p">)</span>
 <span class="n">model</span> <span class="o">=</span> <span class="n">build_standard_rhime_model</span><span class="p">(</span>
-    <span class="n">inv_inputs</span><span class="p">,</span>
+    <span class="n">inv_inputs</span><span class="p">[</span><span class="s2">"H"</span><span class="p">],</span>
+    <span class="n">observations</span><span class="o">=</span><span class="n">inv_inputs</span><span class="p">[</span><span class="s2">"mf"</span><span class="p">],</span>
+    <span class="n">observation_error</span><span class="o">=</span><span class="n">inv_inputs</span><span class="p">[</span><span class="s2">"mf_error"</span><span class="p">],</span>
+    <span class="n">minimum_error</span><span class="o">=</span><span class="n">inv_inputs</span><span class="p">[</span><span class="s2">"min_error"</span><span class="p">],</span>
+    <span class="n">aggregation_error</span><span class="o">=</span><span class="n">resolve_aggregation_error</span><span class="p">(</span><span class="n">inv_inputs</span><span class="p">,</span> <span class="s2">"none"</span><span class="p">),</span>
+    <span class="n">boundary_sensitivity</span><span class="o">=</span><span class="n">inv_inputs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"H_bc"</span><span class="p">),</span>
+    <span class="n">site_indicator</span><span class="o">=</span><span class="n">inv_inputs</span><span class="p">[</span><span class="s2">"site_indicator"</span><span class="p">],</span>
     <span class="n">sigma_alignment</span><span class="o">=</span><span class="n">sigma_alignment</span><span class="p">,</span>
     <span class="n">x_prior</span><span class="o">=</span><span class="p">{</span><span class="s2">"pdf"</span><span class="p">:</span> <span class="s2">"normal"</span><span class="p">,</span> <span class="s2">"mu"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> <span class="s2">"sigma"</span><span class="p">:</span> <span class="mf">0.5</span><span class="p">},</span>
     <span class="n">state_activity</span><span class="o">=</span><span class="n">state_policy</span><span class="p">,</span>
@@ -1059,12 +1066,12 @@ definiteness of the derived latent covariance. <code class="docutils literal not
 then creates a whitened standard-normal <code class="docutils literal notranslate"><span class="pre">&lt;name&gt;_latent</span></code> and the positive
 public state <code class="docutils literal notranslate"><span class="pre">&lt;name&gt;</span></code>.</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
-<span class="kn">import</span><span class="w"> </span><span class="nn">pymc</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pm</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">xarray</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">xr</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.models</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
     <span class="n">CorrelatedLognormalPrior</span><span class="p">,</span>
     <span class="n">add_correlated_lognormal_state</span><span class="p">,</span>
+    <span class="n">registered_model</span><span class="p">,</span>
 <span class="p">)</span>
 
 <span class="n">mean</span> <span class="o">=</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">(</span>
@@ -1077,7 +1084,7 @@ public state <code class="docutils literal notranslate"><span class="pre">&lt;na
     <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="mf">0.16</span><span class="p">,</span> <span class="mf">0.03</span><span class="p">],</span> <span class="p">[</span><span class="mf">0.03</span><span class="p">,</span> <span class="mf">0.09</span><span class="p">]]),</span>
 <span class="p">)</span>
 
-<span class="k">with</span> <span class="n">pm</span><span class="o">.</span><span class="n">Model</span><span class="p">():</span>
+<span class="k">with</span> <span class="n">registered_model</span><span class="p">():</span>
     <span class="n">state_result</span> <span class="o">=</span> <span class="n">add_correlated_lognormal_state</span><span class="p">(</span><span class="n">prior</span><span class="p">,</span> <span class="n">var_name</span><span class="o">=</span><span class="s2">"x"</span><span class="p">)</span>
 </pre></div>
 </div>
@@ -1133,6 +1140,8 @@ retain their gathered <code class="docutils literal notranslate"><span class="pr
     <span class="n">project_basis_prior_stdev</span><span class="p">,</span>
 <span class="p">)</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.standard</span><span class="w"> </span><span class="kn">import</span> <span class="n">build_standard_rhime_model</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.observation_error</span><span class="w"> </span><span class="kn">import</span> <span class="n">resolve_aggregation_error</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.sigma</span><span class="w"> </span><span class="kn">import</span> <span class="n">SigmaAlignment</span>
 
 <span class="n">x_prior_stdev</span> <span class="o">=</span> <span class="n">project_basis_prior_stdev</span><span class="p">(</span>
     <span class="n">basis_functions</span><span class="p">,</span>
@@ -1140,7 +1149,14 @@ retain their gathered <code class="docutils literal notranslate"><span class="pr
     <span class="n">grid_cell_prior_stdev</span><span class="o">=</span><span class="n">grid_prior_sd</span><span class="p">,</span>
 <span class="p">)</span>
 <span class="n">model</span> <span class="o">=</span> <span class="n">build_standard_rhime_model</span><span class="p">(</span>
-    <span class="n">inv_inputs</span><span class="p">,</span>
+    <span class="n">inv_inputs</span><span class="p">[</span><span class="s2">"H"</span><span class="p">],</span>
+    <span class="n">observations</span><span class="o">=</span><span class="n">inv_inputs</span><span class="p">[</span><span class="s2">"mf"</span><span class="p">],</span>
+    <span class="n">observation_error</span><span class="o">=</span><span class="n">inv_inputs</span><span class="p">[</span><span class="s2">"mf_error"</span><span class="p">],</span>
+    <span class="n">minimum_error</span><span class="o">=</span><span class="n">inv_inputs</span><span class="p">[</span><span class="s2">"min_error"</span><span class="p">],</span>
+    <span class="n">aggregation_error</span><span class="o">=</span><span class="n">resolve_aggregation_error</span><span class="p">(</span><span class="n">inv_inputs</span><span class="p">,</span> <span class="s2">"none"</span><span class="p">),</span>
+    <span class="n">boundary_sensitivity</span><span class="o">=</span><span class="n">inv_inputs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"H_bc"</span><span class="p">),</span>
+    <span class="n">site_indicator</span><span class="o">=</span><span class="n">inv_inputs</span><span class="p">[</span><span class="s2">"site_indicator"</span><span class="p">],</span>
+    <span class="n">sigma_alignment</span><span class="o">=</span><span class="n">SigmaAlignment</span><span class="o">.</span><span class="n">from_frequency</span><span class="p">(</span><span class="n">inv_inputs</span><span class="p">[</span><span class="s2">"site_indicator"</span><span class="p">]),</span>
     <span class="n">x_prior</span><span class="o">=</span><span class="p">{</span><span class="s2">"pdf"</span><span class="p">:</span> <span class="s2">"normal"</span><span class="p">,</span> <span class="s2">"mu"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> <span class="s2">"sigma"</span><span class="p">:</span> <span class="n">x_prior_stdev</span><span class="p">},</span>
 <span class="p">)</span>
 </pre></div>

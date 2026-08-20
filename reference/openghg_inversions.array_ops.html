@@ -797,6 +797,29 @@ executed. An array whose Dask chunks are already dense is returned unchanged.</p
 </dl>
 </dd></dl>
 
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.array_ops.validate_covariance_coordinates">
+<span class="sig-prename descclassname"><span class="pre">openghg_inversions.array_ops.</span></span><span class="sig-name descname"><span class="pre">validate_covariance_coordinates</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">covariance</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">dim</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">covariance_dim</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span></span><a class="headerlink" href="#openghg_inversions.array_ops.validate_covariance_coordinates" title="Link to this definition">#</a></dt>
+<dd><p>Require a square covariance matrix to repeat one coordinate exactly.</p>
+<p>The conventional column dimension is <code class="docutils literal notranslate"><span class="pre">f&quot;{dim}_cov&quot;</span></code>. PyMC treats the
+row and column dimensions as distinct and does not verify that their labels
+denote the same ordered values, so that scientific invariant is checked
+before labels reach the model backend.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>covariance</strong> – Labelled covariance matrix to validate.</p></li>
+<li><p><strong>dim</strong> – Row dimension and canonical coordinate name.</p></li>
+<li><p><strong>covariance_dim</strong> – Column dimension. Defaults to <code class="docutils literal notranslate"><span class="pre">f&quot;{dim}_cov&quot;</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If dimensions, shape, coordinates, or coordinate ordering
+    do not follow the covariance convention.</p>
+</dd>
+</dl>
+</dd></dl>
+
 </section>
 
 
@@ -859,6 +882,7 @@ executed. An array whose Dask chunks are already dense is returned unchanged.</p
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.array_ops.select_gathered_data_array"><code class="docutils literal notranslate"><span class="pre">select_gathered_data_array()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.array_ops.sparse_xr_dot"><code class="docutils literal notranslate"><span class="pre">sparse_xr_dot()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.array_ops.to_dense"><code class="docutils literal notranslate"><span class="pre">to_dense()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.array_ops.validate_covariance_coordinates"><code class="docutils literal notranslate"><span class="pre">validate_covariance_coordinates()</span></code></a></li>
 </ul>
   </nav></div>
 

@@ -664,6 +664,7 @@ containing the value ``"outer"``:
 .. code-block:: python
 
    from openghg_inversions.models import StateActivity
+   from openghg_inversions.observation_error import resolve_aggregation_error
    from openghg_inversions.rhime.standard import build_standard_rhime_model
    from openghg_inversions.sigma import SigmaAlignment
 
@@ -675,7 +676,13 @@ containing the value ``"outer"``:
        inv_inputs["site_indicator"],
    )
    model = build_standard_rhime_model(
-       inv_inputs,
+       inv_inputs["H"],
+       observations=inv_inputs["mf"],
+       observation_error=inv_inputs["mf_error"],
+       minimum_error=inv_inputs["min_error"],
+       aggregation_error=resolve_aggregation_error(inv_inputs, "none"),
+       boundary_sensitivity=inv_inputs.get("H_bc"),
+       site_indicator=inv_inputs["site_indicator"],
        sigma_alignment=sigma_alignment,
        x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.5},
        state_activity=state_policy,
@@ -730,12 +737,12 @@ public state ``<name>``.
 .. code-block:: python
 
    import numpy as np
-   import pymc as pm
    import xarray as xr
 
    from openghg_inversions.models import (
        CorrelatedLognormalPrior,
        add_correlated_lognormal_state,
+       registered_model,
    )
 
    mean = xr.DataArray(
@@ -748,7 +755,7 @@ public state ``<name>``.
        np.array([[0.16, 0.03], [0.03, 0.09]]),
    )
 
-   with pm.Model():
+   with registered_model():
        state_result = add_correlated_lognormal_state(prior, var_name="x")
 
 ``C`` must be the dense covariance of an already-reduced sampled state, such as
@@ -814,6 +821,8 @@ retain their gathered ``(source, region_in_source)`` state coordinate.
        project_basis_prior_stdev,
    )
    from openghg_inversions.rhime.standard import build_standard_rhime_model
+   from openghg_inversions.observation_error import resolve_aggregation_error
+   from openghg_inversions.sigma import SigmaAlignment
 
    x_prior_stdev = project_basis_prior_stdev(
        basis_functions,
@@ -821,7 +830,14 @@ retain their gathered ``(source, region_in_source)`` state coordinate.
        grid_cell_prior_stdev=grid_prior_sd,
    )
    model = build_standard_rhime_model(
-       inv_inputs,
+       inv_inputs["H"],
+       observations=inv_inputs["mf"],
+       observation_error=inv_inputs["mf_error"],
+       minimum_error=inv_inputs["min_error"],
+       aggregation_error=resolve_aggregation_error(inv_inputs, "none"),
+       boundary_sensitivity=inv_inputs.get("H_bc"),
+       site_indicator=inv_inputs["site_indicator"],
+       sigma_alignment=SigmaAlignment.from_frequency(inv_inputs["site_indicator"]),
        x_prior={"pdf": "normal", "mu": 1.0, "sigma": x_prior_stdev},
    )
 

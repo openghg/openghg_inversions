@@ -540,14 +540,18 @@ model, should be omitted.</p></li>
 <dt class="sig sig-object py" id="openghg_inversions.rhime.builders.RhimeModelBuilder">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">openghg_inversions.rhime.builders.</span></span><span class="sig-name descname"><span class="pre">RhimeModelBuilder</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.builders.RhimeModelBuilder" title="Link to this definition">#</a></dt>
 <dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Protocol" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Protocol</span></code></a></p>
-<p>Callable contract for a complete user-owned RHIME model factory.</p>
+<p>Advanced callable contract for a complete user-owned model factory.</p>
 </dd></dl>
 
 <dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.builders.RhimeModelBuilderContext">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">openghg_inversions.rhime.builders.</span></span><span class="sig-name descname"><span class="pre">RhimeModelBuilderContext</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">prepared_inputs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.inversion_data.preparation.html#openghg_inversions.inversion_data.preparation.RhimePreparedInputs" title="openghg_inversions.inversion_data.preparation.RhimePreparedInputs"><span class="pre">RhimePreparedInputs</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">run_spec</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.rhime.specs.html#openghg_inversions.rhime.specs.RhimeRunSpec" title="openghg_inversions.rhime.specs.RhimeRunSpec"><span class="pre">RhimeRunSpec</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">multisector</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.builders.RhimeModelBuilderContext" title="Link to this definition">#</a></dt>
 <dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
-<p>Labelled inputs supplied to a complete model builder.</p>
+<p>Advanced compatibility input supplied only to a complete model builder.</p>
+<p>Ordinary in-tree recipes and components use explicit named scientific
+inputs. This context remains solely for user-owned complete models invoked
+through <code class="docutils literal notranslate"><span class="pre">run_rhime_from_prepared_inputs</span></code>; those builders own validation
+and materialization of any lazy arrays they consume.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">

@@ -70,10 +70,25 @@ The complete integration is one named argument:
 
 RHIME calls the function with explicit keyword arguments while constructing
 the PyMC model: the prepared observations, completed forward-model mean,
-pollution contribution, pollution-event baseline, sigma alignment and prior, and
-the selected error policies. The function adds ``epsilon`` and the canonical
-observed variable ``y`` to the active model and returns ``y``. There is no
-framework context or likelihood-result record to construct.
+pollution contribution, pollution-event baseline, selected aggregation error,
+and output dimension. The function adds ``epsilon`` and the canonical observed
+variable ``y`` to the active model and returns ``y``. There is no framework
+context or likelihood-result record to construct.
+
+Options owned only by a custom likelihood can be supplied separately with
+``likelihood_kwargs``. RHIME expands that mapping into the callable without
+hiding the common scientific arrays in an opaque object::
+
+   result = run_rhime(
+       config_file="config.ini",
+       likelihood_builder=likelihood_builder,
+       likelihood_kwargs={"degrees_of_freedom": 4.0},
+   )
+
+These options must be a string-keyed, JSON-compatible mapping. RHIME copies
+the mapping before use and records the copy beside the likelihood identity in
+the result metadata and any saved inversion output. A non-empty mapping is
+rejected when no ``likelihood_builder`` is active.
 
 Editable likelihood
 ~~~~~~~~~~~~~~~~~~~
@@ -86,7 +101,8 @@ construction:
    :language: python
    :linenos:
 
-RHIME records the function's module and name in the result and in saved output.
+RHIME records the function's module and name, together with its explicit
+``likelihood_kwargs``, in the result and in saved output.
 It does not copy the Python source code into the output, so a project should
 keep the source and environment used for an inversion. Ordinary likelihood
 builders retain the canonical ``y`` and ``epsilon`` names used by sampling and
@@ -96,20 +112,12 @@ The example rejects dense and low-rank aggregation covariance because it uses
 an independent Student-t distribution. Supporting those aggregation-error
 modes would require a multivariate likelihood.
 
-The same example module also contains
-``additive_sigma_likelihood_builder``. This is the small RHIME adapter from
-``rhime.likelihoods``; it delegates to the installed
-``models.additive_sigma.add_additive_sigma_gaussian_likelihood`` component,
-which adds ``sigma**2`` directly to the reported observation-error variance
-rather than multiplying sigma by a pollution event. Explicitly selected
-aggregation covariance is supported::
-
-   from my_project.likelihoods import additive_sigma_likelihood_builder
-
-   result = run_rhime(
-       config_file="config.ini",
-       likelihood_builder=additive_sigma_likelihood_builder,
-   )
+The installed ``rhime.likelihoods.additive_sigma_likelihood_builder`` is a
+drop-in ordinary likelihood builder. It derives sigma alignment from the
+labelled observation ``site`` and ``time`` coordinates. Optional
+``sigma_prior``, ``sigma_freq``, ``sigma_per_site``, ``sigma_freq_anchor``, and
+``no_model_error`` settings belong to that component and can be supplied in
+``likelihood_kwargs``.
 
 Optional project CLI
 ~~~~~~~~~~~~~~~~~~~~
@@ -317,9 +325,11 @@ still defer their calculations with Dask. The function derives and normalises
 the two-dimensional weights, loads the country classes, constructs the
 geometry, and creates the region labels. It then combines the labels with the
 current run's flux in a ``BasisFunctions`` object. That object flows unchanged
-through sensitivity construction and labelled assembly. The arrays needed by
-PyMC are converted separately by ``materialize_pymc_inputs`` immediately
-before model construction.
+through sensitivity construction and labelled assembly. The concrete recipe's
+adjacent ``standard_model_input_names`` declaration selects the arrays it
+needs. ``materialize_pymc_inputs`` converts only those arrays, together,
+immediately before model construction; project-owned lazy extensions in
+``RhimePreparedInputs`` remain untouched.
 
 The customisation is concentrated in ``_guarded_basis``. The runner's one
 deliberate substitution is marked by an inline comment where

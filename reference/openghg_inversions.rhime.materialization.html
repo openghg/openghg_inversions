@@ -483,12 +483,29 @@
 <p>Explicit eager boundaries between labelled RHIME inputs and model backends.</p>
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.materialization.materialize_pymc_inputs">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.rhime.materialization.</span></span><span class="sig-name descname"><span class="pre">materialize_pymc_inputs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">prepared</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.inversion_data.preparation.html#openghg_inversions.inversion_data.preparation.RhimePreparedInputs" title="openghg_inversions.inversion_data.preparation.RhimePreparedInputs"><span class="pre">RhimePreparedInputs</span></a></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">aggregation_error_mode</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><span class="pre">Literal</span></a><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'auto'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'none'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'dense'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'low_rank'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'diagonal'</span></span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></span><a class="headerlink" href="#openghg_inversions.rhime.materialization.materialize_pymc_inputs" title="Link to this definition">#</a></dt>
+<span class="sig-prename descclassname"><span class="pre">openghg_inversions.rhime.materialization.</span></span><span class="sig-name descname"><span class="pre">materialize_pymc_inputs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">prepared</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.inversion_data.preparation.html#openghg_inversions.inversion_data.preparation.RhimePreparedInputs" title="openghg_inversions.inversion_data.preparation.RhimePreparedInputs"><span class="pre">RhimePreparedInputs</span></a></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">variable_names</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Collection" title="(in Python v3.14)"><span class="pre">Collection</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></span><a class="headerlink" href="#openghg_inversions.rhime.materialization.materialize_pymc_inputs" title="Link to this definition">#</a></dt>
 <dd><p>Materialize related PyMC arrays together without mutating preparation.</p>
-<p>Sparse chunk payloads are converted with <code class="xref py py-func docutils literal notranslate"><span class="pre">to_dense()</span></code>; model-owned
-arrays and their lazy auxiliary coordinates are computed in one shared
-Dask operation and installed in a shallow dataset copy. Dormant error
-representations and the canonical prepared artifact remain unchanged.</p>
+<p><code class="docutils literal notranslate"><span class="pre">variable_names</span></code> comes from the concrete recipe and its selected
+components. Sparse chunk payloads are converted with <code class="xref py py-func docutils literal notranslate"><span class="pre">to_dense()</span></code>;
+those arrays and their lazy auxiliary coordinates are computed in one
+shared Dask operation and installed in a shallow dataset copy. Unselected
+prepared products and the canonical prepared artifact remain unchanged.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>prepared</strong> – Borrowed backend-neutral prepared inputs.</p></li>
+<li><p><strong>variable_names</strong> – Names selected by the concrete recipe and its active
+components.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A shallow dataset copy in which selected arrays and their lazy
+coordinates have been materialized together.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If a selected variable is absent from the prepared data.</p>
+</dd>
+</dl>
 </dd></dl>
 
 </section>

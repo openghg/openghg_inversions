@@ -1203,6 +1203,25 @@ registers the created variable with the current model.</p>
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.models.registered_model">
+<span class="sig-prename descclassname"><span class="pre">openghg_inversions.models.</span></span><span class="sig-name descname"><span class="pre">registered_model</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><span class="pre">Any</span></a></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><span class="pre">Any</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://www.pymc.io/projects/docs/en/stable/api/model/generated/pymc.model.core.Model.html#pymc.model.core.Model" title="(in PyMC v6.3.1)"><span class="pre">Model</span></a></span></span><a class="headerlink" href="#openghg_inversions.models.registered_model" title="Link to this definition">#</a></dt>
+<dd><p>Construct a PyMC model with RHIME coordinate tracking attached.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>*args</strong> – Positional arguments forwarded to <code class="xref py py-class docutils literal notranslate"><span class="pre">pymc.Model</span></code>.</p></li>
+<li><p><strong>**kwargs</strong> – Keyword arguments forwarded to <code class="xref py py-class docutils literal notranslate"><span class="pre">pymc.Model</span></code>. A
+scientific <code class="docutils literal notranslate"><span class="pre">coords</span></code> mapping is sanitized for PyMC and retained in
+the attached registry.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A new PyMC model with a seeded <a class="reference internal" href="#openghg_inversions.models.CoordRegistry" title="openghg_inversions.models.CoordRegistry"><code class="xref py py-class docutils literal notranslate"><span class="pre">CoordRegistry</span></code></a> attached.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.models.resolve_state_activity">
 <span class="sig-prename descclassname"><span class="pre">openghg_inversions.models.</span></span><span class="sig-name descname"><span class="pre">resolve_state_activity</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">zero_sensitivity</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">policy</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.StateActivity" title="openghg_inversions.models.state_activity.StateActivity"><span class="pre">StateActivity</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.ResolvedStateActivity" title="openghg_inversions.models.state_activity.ResolvedStateActivity"><span class="pre">ResolvedStateActivity</span></a></span></span><a class="headerlink" href="#openghg_inversions.models.resolve_state_activity" title="Link to this definition">#</a></dt>
 <dd><p>Resolve an active/fixed policy against a labelled zero-state mask.</p>
@@ -1315,11 +1334,21 @@ and auxiliary coordinates restored onto its xarray groups.</p>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.coords.html#openghg_inversions.models.coords.add_coords"><code class="docutils literal notranslate"><span class="pre">add_coords()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.coords.html#openghg_inversions.models.coords.attach_coord_registry"><code class="docutils literal notranslate"><span class="pre">attach_coord_registry()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.coords.html#openghg_inversions.models.coords.get_coord_registry"><code class="docutils literal notranslate"><span class="pre">get_coord_registry()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.coords.html#openghg_inversions.models.coords.registered_model"><code class="docutils literal notranslate"><span class="pre">registered_model()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.coords.html#openghg_inversions.models.coords.restore_inferencedata_coords"><code class="docutils literal notranslate"><span class="pre">restore_inferencedata_coords()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.coords.html#openghg_inversions.models.coords.sanitize_coords_for_pymc"><code class="docutils literal notranslate"><span class="pre">sanitize_coords_for_pymc()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="openghg_inversions.models.likelihoods.html">openghg_inversions.models.likelihoods</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.likelihoods.html#openghg_inversions.models.likelihoods.RegisteredAggregationError"><code class="docutils literal notranslate"><span class="pre">RegisteredAggregationError</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.likelihoods.html#openghg_inversions.models.likelihoods.RegisteredAggregationError.covariance"><code class="docutils literal notranslate"><span class="pre">RegisteredAggregationError.covariance</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.likelihoods.html#openghg_inversions.models.likelihoods.RegisteredAggregationError.diagonal_variance"><code class="docutils literal notranslate"><span class="pre">RegisteredAggregationError.diagonal_variance</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.likelihoods.html#openghg_inversions.models.likelihoods.RegisteredAggregationError.factor"><code class="docutils literal notranslate"><span class="pre">RegisteredAggregationError.factor</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.likelihoods.html#openghg_inversions.models.likelihoods.RegisteredAggregationError.marginal_variance"><code class="docutils literal notranslate"><span class="pre">RegisteredAggregationError.marginal_variance</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.likelihoods.html#openghg_inversions.models.likelihoods.RegisteredAggregationError.mode"><code class="docutils literal notranslate"><span class="pre">RegisteredAggregationError.mode</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.likelihoods.html#openghg_inversions.models.likelihoods.add_aggregation_error_data"><code class="docutils literal notranslate"><span class="pre">add_aggregation_error_data()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.likelihoods.html#openghg_inversions.models.likelihoods.add_gaussian_observation_likelihood"><code class="docutils literal notranslate"><span class="pre">add_gaussian_observation_likelihood()</span></code></a></li>
 </ul>
 </li>
@@ -1489,6 +1518,7 @@ and auxiliary coordinates restored onto its xarray groups.</p>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.detect_zero_sensitivity"><code class="docutils literal notranslate"><span class="pre">detect_zero_sensitivity()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.get_coord_registry"><code class="docutils literal notranslate"><span class="pre">get_coord_registry()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.parse_prior"><code class="docutils literal notranslate"><span class="pre">parse_prior()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.registered_model"><code class="docutils literal notranslate"><span class="pre">registered_model()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.resolve_state_activity"><code class="docutils literal notranslate"><span class="pre">resolve_state_activity()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.restore_inferencedata_coords"><code class="docutils literal notranslate"><span class="pre">restore_inferencedata_coords()</span></code></a></li>
 </ul>

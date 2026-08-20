@@ -397,8 +397,9 @@ parallel-list state, or implicit <code class="docutils literal notranslate"><spa
 <li><p>Top-level orchestration is procedural and readable from top to bottom.</p></li>
 <li><p>Model construction appears in mathematical and scientific order.</p></li>
 <li><p>Functions use scientifically meaningful names and explicit inputs.</p></li>
-<li><p>Components remain directly callable; configuration and registries are
-optional conveniences.</p></li>
+<li><p>Components remain directly callable. Labelled model components require the
+small <code class="docutils literal notranslate"><span class="pre">CoordRegistry</span></code> attached by <code class="docutils literal notranslate"><span class="pre">registered_model()</span></code>; configuration
+remains an optional convenience.</p></li>
 <li><p>Small duplication is acceptable when it keeps alternative scientific
 workflows visible.</p></li>
 <li><p>Dataclasses are reserved for concrete scientific concepts or durable
@@ -521,6 +522,107 @@ information may drive early validation and coordinated materialization.</p>
 <p>It is not a caller-authored manifest and must not determine execution order.
 Ordinary runners should not construct or thread a requirements object through
 the pipeline merely to satisfy a framework contract.</p>
+<p>Component registration owns cross-component coordinate consistency. Data
+passed through <code class="docutils literal notranslate"><span class="pre">add_model_data</span></code> / <code class="docutils literal notranslate"><span class="pre">add_coords</span></code> is checked by the model’s
+<code class="docutils literal notranslate"><span class="pre">CoordRegistry</span></code>, so recipes should not repeat pairwise alignment checks for
+arrays that those components register. Validate scientific invariants at the
+component that owns them, and explicitly validate arrays whose labels are
+not shared through one registered dimension name, such as the second
+observation axis of a dense aggregation-error covariance. Construct direct and
+complete custom models with <code class="docutils literal notranslate"><span class="pre">registered_model()</span></code>; <code class="docutils literal notranslate"><span class="pre">add_coords</span></code> rejects a
+model without that registry so the ownership rule is enforced at every
+labelled component boundary.</p>
+</section>
+<section id="prepared-input-inventory-and-ownership">
+<h2>Prepared-input inventory and ownership<a class="headerlink" href="#prepared-input-inventory-and-ownership" title="Link to this heading">#</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code> is the durable, backend-neutral labelled-data
+boundary. It may retain project-specific arrays that no current PyMC recipe
+uses. Concrete recipes declare only the names they select, materialize those
+arrays together, and pass them to components as honest named arguments.</p>
+<div class="pst-scrollable-table-container"><table class="table" id="id1">
+<caption><span class="caption-text">Current <code class="docutils literal notranslate"><span class="pre">inv_inputs</span></code> inventory</span><a class="headerlink" href="#id1" title="Link to this table">#</a></caption>
+<colgroup>
+<col style="width: 18.0%" />
+<col style="width: 20.0%" />
+<col style="width: 32.0%" />
+<col style="width: 30.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Field or value</p></th>
+<th class="head"><p>Kind</p></th>
+<th class="head"><p>Current owner</p></th>
+<th class="head"><p>Model use</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">H</span></code></p></td>
+<td><p>Reusable scientific product</p></td>
+<td><p>Sensitivity preparation or an external prepared-data producer</p></td>
+<td><p>Selected by the standard or multisector flux component as
+<code class="docutils literal notranslate"><span class="pre">flux_sensitivity</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">H_bc</span></code></p></td>
+<td><p>Reusable baseline sensitivity</p></td>
+<td><p>Baseline preparation; its current period expansion remains there</p></td>
+<td><p>Selected by the baseline component as <code class="docutils literal notranslate"><span class="pre">boundary_sensitivity</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">mf</span></code>, <code class="docutils literal notranslate"><span class="pre">mf_error</span></code></p></td>
+<td><p>Reusable observation data</p></td>
+<td><p>Observation preparation</p></td>
+<td><p>Passed as <code class="docutils literal notranslate"><span class="pre">observations</span></code> and <code class="docutils literal notranslate"><span class="pre">observation_error</span></code> to the likelihood</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">min_error</span></code></p></td>
+<td><p>Reusable error-model product</p></td>
+<td><p>Currently calculated by preparation</p></td>
+<td><p>Passed as <code class="docutils literal notranslate"><span class="pre">minimum_error</span></code> to the likelihood</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">aggregation_error_covariance</span></code>, <code class="docutils literal notranslate"><span class="pre">low_rank_factor</span></code>,
+<code class="docutils literal notranslate"><span class="pre">diagonal_residual_variance</span></code>, <code class="docutils literal notranslate"><span class="pre">aggregation_error_sd</span></code></p></td>
+<td><p>Optional reusable fixed-error products</p></td>
+<td><p>Prepared data or an external scientific producer</p></td>
+<td><p>The selected likelihood representation is validated as one
+<code class="docutils literal notranslate"><span class="pre">AggregationError</span></code> value</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">mf_repeatability</span></code>, <code class="docutils literal notranslate"><span class="pre">mf_variability</span></code>, release coordinates,
+column-prior factors, and arbitrary labelled extensions</p></td>
+<td><p>Durable diagnostics or recipe extensions</p></td>
+<td><p>Their scientific producer</p></td>
+<td><p>Not materialized unless a concrete recipe explicitly selects them</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">site_indicator</span></code></p></td>
+<td><p>Model-only derived wiring</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code> derives and validates it from labelled
+<code class="docutils literal notranslate"><span class="pre">(site,</span> <span class="pre">time)</span></code> observations</p></td>
+<td><p>The model-error recipe derives <code class="docutils literal notranslate"><span class="pre">SigmaAlignment</span></code>; the offset component
+may also select it</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">site_names</span></code></p></td>
+<td><p>Output/compatibility wiring</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code> regenerates it from site metadata</p></td>
+<td><p>Not a PyMC input</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">SigmaAlignment</span></code></p></td>
+<td><p>Cohesive model-only value</p></td>
+<td><p>The standard or multisector recipe derives it from <code class="docutils literal notranslate"><span class="pre">site_indicator</span></code>,
+time, and resolved model-error options</p></td>
+<td><p>Passed explicitly to the likelihood</p></td>
+</tr>
+<tr class="row-odd"><td><p>Source/sector selection and state grouping</p></td>
+<td><p>Cohesive model-only mapping</p></td>
+<td><p>The multisector flux component validates source labels and derives its
+state names beside the consuming recipe</p></td>
+<td><p>Never stored in a generic model-input context</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>The current preparation ownership of <code class="docutils literal notranslate"><span class="pre">min_error</span></code> calculation and boundary
+period expansion is explicit rather than accidental; moving either equation
+requires its own scientific parity change. An externally cached sensitivity,
+including a Verification Games <code class="docutils literal notranslate"><span class="pre">fp_x_flux</span></code> projection, can be installed as
+labelled <code class="docutils literal notranslate"><span class="pre">H</span></code> at this durable handoff. Its Dask graph and provenance remain
+borrowed until a selected flux recipe reaches the named PyMC materialization
+boundary.</p>
 </section>
 <section id="state-and-source-selection">
 <h2>State and source selection<a class="headerlink" href="#state-and-source-selection" title="Link to this heading">#</a></h2>
@@ -622,6 +724,7 @@ active <code class="docutils literal notranslate"><span class="pre">run_rhime</s
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#components-and-composite-components">Components and composite components</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#configuration-ownership">Configuration ownership</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#model-input-requirements">Model input requirements</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#prepared-input-inventory-and-ownership">Prepared-input inventory and ownership</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#state-and-source-selection">State and source selection</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#scientific-variable-roles">Scientific variable roles</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#numerical-boundaries">Numerical boundaries</a></li>
