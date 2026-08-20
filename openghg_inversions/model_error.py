@@ -9,9 +9,9 @@ import numpy as np
 import xarray as xr
 
 
-@dataclass(frozen=True, init=False)
+@dataclass(frozen=True, eq=False, slots=True)
 class MinimumError:
-    """Validated, observation-aligned minimum model error.
+    """Observation-aligned minimum model error.
 
     Attributes:
         values: Minimum error labelled by observation.
@@ -24,26 +24,6 @@ class MinimumError:
     method: str
     by_site: bool
     sites: tuple[str, ...]
-
-    def __init__(self) -> None:
-        """Reject construction outside :meth:`prepare`."""
-        raise TypeError("Use MinimumError.prepare() to construct a validated value.")
-
-    @classmethod
-    def _from_validated(
-        cls,
-        values: xr.DataArray,
-        method: str,
-        by_site: bool,
-        sites: tuple[str, ...],
-    ) -> "MinimumError":
-        """Construct an instance after :meth:`prepare` validates its fields."""
-        result = object.__new__(cls)
-        object.__setattr__(result, "values", values)
-        object.__setattr__(result, "method", method)
-        object.__setattr__(result, "by_site", by_site)
-        object.__setattr__(result, "sites", sites)
-        return result
 
     @classmethod
     def prepare(
@@ -75,14 +55,8 @@ class MinimumError:
         if not isinstance(by_site, bool):
             raise ValueError(f"Minimum-error 'by_site' must be a boolean, got {type(by_site).__name__}.")
 
-        site_coord = observations.coords.get("site")
-        sites = (
-            tuple(dict.fromkeys(str(value) for value in site_coord.values))
-            if site_coord is not None
-            else ()
-        )
-        selected = {site: fp_data[site] for site in sites if site in fp_data}
-        missing_data = [site for site in sites if site not in selected]
+        site_coord: xr.DataArray | None = None
+        sites: tuple[str, ...] = ()
         method: str
         varies_by_site = False
 
@@ -93,6 +67,10 @@ class MinimumError:
             source = value
             method = "scalar"
         elif isinstance(value, Mapping):
+            site_coord = observations.coords.get("site")
+            if site_coord is None:
+                raise ValueError("Per-site min_error values require a labelled site coordinate.")
+            sites = tuple(dict.fromkeys(str(site) for site in site_coord.values))
             missing = [site for site in sites if site not in value]
             if missing:
                 raise ValueError(f"min_error mapping is missing values for site(s): {missing}")
@@ -100,6 +78,12 @@ class MinimumError:
             method = "per_site"
             varies_by_site = True
         elif value in ("residual", "percentile"):
+            site_coord = observations.coords.get("site")
+            if site_coord is None:
+                raise ValueError("Calculated min_error values require a labelled site coordinate.")
+            sites = tuple(dict.fromkeys(str(site) for site in site_coord.values))
+            selected = {site: fp_data[site] for site in sites if site in fp_data}
+            missing_data = [site for site in sites if site not in selected]
             if missing_data:
                 raise ValueError(f"Minimum-error calculation is missing fp_data for site(s): {missing_data}")
             method = value
@@ -132,13 +116,14 @@ class MinimumError:
                 raise ValueError("A non-site minimum error must contain exactly one value.")
             data = xr.full_like(observations.mf, float(source.reshape(-1)[0]), dtype=float)
 
-        data = data.rename("min_error").assign_attrs(
-            units=observations.mf.attrs.get("units", ""),
-            minimum_error_method=method,
-            minimum_error_by_site=int(varies_by_site),
-            minimum_error_sites=",".join(sites),
-        )
-        return cls._from_validated(data, method, varies_by_site, sites)
+        data = data.rename("min_error")
+        data.attrs = {
+            "units": observations.mf.attrs.get("units", ""),
+            "minimum_error_method": method,
+            "minimum_error_by_site": int(varies_by_site),
+            "minimum_error_sites": ",".join(sites),
+        }
+        return cls(data, method, varies_by_site, sites)
 
 
 def normalise_min_error_options(options: Mapping[str, Any] | None) -> dict[str, bool]:

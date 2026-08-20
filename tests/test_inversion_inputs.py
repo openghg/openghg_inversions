@@ -19,6 +19,7 @@ import pandas as pd
 import pytest
 import xarray as xr
 from dask import array as da
+from dask.callbacks import Callback
 
 from openghg_inversions.inversion_inputs import (
     add_min_error,
@@ -596,16 +597,25 @@ def test_minimum_error_rejects_invalid_values(value: float):
 
 def test_scalar_minimum_error_preserves_lazy_borrowed_observations():
     mf = xr.DataArray(da.from_array(np.ones(3, dtype=int), chunks=2), dims="nmeasure")
-    observations = xr.Dataset({"mf": mf})
+    site = xr.DataArray(
+        da.from_array(np.array(["AAA", "AAA", "BBB"]), chunks=2),
+        dims="nmeasure",
+    )
+    observations = xr.Dataset({"mf": mf}, coords={"site": site})
+    observations.mf.attrs = {"units": "ppb", "standard_name": "mole_fraction", "calibration": "X"}
+    executed_tasks = []
 
-    result = MinimumError.prepare(observations, {}, 0.5)
+    with Callback(pretask=lambda *args: executed_tasks.append(args[0])):
+        result = MinimumError.prepare(observations, {}, 0.5)
 
+    assert executed_tasks == []
     assert result.values.variable._data is not observations.mf.variable._data
     assert hasattr(result.values.data, "chunks")
     assert np.issubdtype(result.values.dtype, np.floating)
+    assert result.values.attrs == {
+        "units": "ppb",
+        "minimum_error_method": "scalar",
+        "minimum_error_by_site": 0,
+        "minimum_error_sites": "",
+    }
     np.testing.assert_allclose(result.values.compute(), 0.5)
-
-
-def test_minimum_error_requires_preparation():
-    with pytest.raises(TypeError, match=r"MinimumError\.prepare"):
-        MinimumError()
