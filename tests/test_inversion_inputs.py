@@ -565,7 +565,7 @@ def test_make_inv_inputs_residual_min_error_can_be_site_specific():
     np.testing.assert_allclose(result.min_error.values, expected)
 
 
-def test_minimum_error_uses_declared_site_order_and_records_provenance():
+def test_minimum_error_uses_declared_site_order_and_records_provenance(tmp_path: Path):
     """Per-site values follow labels rather than mapping or alphabetical order."""
     observations = xr.Dataset(
         {"mf": ("nmeasure", [1.0, 2.0, 3.0])},
@@ -580,9 +580,10 @@ def test_minimum_error_uses_declared_site_order_and_records_provenance():
     assert result.values.attrs == {
         "units": "ppb",
         "minimum_error_method": "per_site",
-        "minimum_error_by_site": True,
+        "minimum_error_by_site": 1,
         "minimum_error_sites": "BBB,AAA",
     }
+    result.values.to_netcdf(tmp_path / "minimum_error.nc")
 
 
 @pytest.mark.parametrize("value", [-1.0, np.inf, np.nan])

@@ -115,7 +115,7 @@ class MinimumError:
         data = data.rename("min_error").assign_attrs(
             units=observations.mf.attrs.get("units", ""),
             minimum_error_method=method,
-            minimum_error_by_site=varies_by_site,
+            minimum_error_by_site=int(varies_by_site),
             minimum_error_sites=",".join(sites),
         )
         return cls(values=data, method=method, by_site=varies_by_site, sites=sites)
