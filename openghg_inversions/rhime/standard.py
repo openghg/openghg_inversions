@@ -37,7 +37,6 @@ from openghg_inversions.sigma import SigmaAlignment
 from ._model_building import (
     builtin_model_build_result,
     validate_custom_likelihood_result,
-    validate_likelihood_builder_argument,
     validate_likelihood_kwargs,
     validated_custom_model_build,
 )
@@ -567,7 +566,6 @@ def run_rhime(
         A non-callable likelihood builder is rejected before configuration is
         parsed or data is acquired, prepared, or materialized.
     """
-    validate_likelihood_builder_argument(likelihood_builder)
     likelihood_kwargs = validate_likelihood_kwargs(likelihood_builder, likelihood_kwargs)
     params = (
         params_from_config(config_file, extra_kwargs=kwargs, normalise=False)

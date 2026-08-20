@@ -25,8 +25,11 @@ from openghg_inversions.models import (
 from openghg_inversions.models.components import add_linear_component, resolve_model_variable
 from openghg_inversions.models.components import add_state_vector
 from openghg_inversions.observation_error import resolve_aggregation_error
-from openghg_inversions.rhime.multisector import build_multisector_rhime_model as _build_multisector_model
-from openghg_inversions.rhime.specs import RhimeModelSpec, SectorSpec
+from openghg_inversions.rhime.multisector import (
+    _prepare_multisector_flux_components,
+    build_multisector_rhime_model as _build_multisector_model,
+)
+from openghg_inversions.rhime.specs import SectorSpec
 from openghg_inversions.rhime.standard import build_standard_rhime_model as _build_standard_model
 from openghg_inversions.sigma import SigmaAlignment
 
@@ -93,60 +96,6 @@ def build_rhime_multisector_model(inputs: xr.Dataset, **kwargs: Any) -> pm.Model
         boundary_sensitivity=inputs.get("H_bc"),
         site_indicator=inputs.get("site_indicator"),
         **kwargs,
-    )
-
-
-def build_rhime_model_from_spec(inputs: xr.Dataset, model_spec: RhimeModelSpec) -> pm.Model:
-    """Resolve a standard test specification into explicit builder inputs."""
-    sector = model_spec.sectors[0]
-    return build_rhime_model(
-        inputs,
-        sigma_alignment=SigmaAlignment.from_frequency(
-            inputs["site_indicator"],
-            frequency=model_spec.sigma_freq,
-            per_site=model_spec.sigma_per_site,
-            anchor_time=model_spec.sigma_freq_anchor,
-        ),
-        x_prior=dict(sector.x_prior),
-        state_activity=sector.state_activity or model_spec.state_activity,
-        bc_prior=model_spec.bc_prior,
-        bc_state_activity=model_spec.bc_state_activity,
-        sigma_prior=model_spec.sigma_prior,
-        offset_prior=model_spec.offset_prior,
-        add_offset=model_spec.add_offset,
-        use_bc=model_spec.use_bc,
-        pollution_events_from_obs=model_spec.pollution_events_from_obs,
-        no_model_error=model_spec.no_model_error,
-        offset_args=model_spec.offset_args,
-        power=model_spec.power,
-    )
-
-
-def build_rhime_multisector_model_from_spec(
-    inputs: xr.Dataset,
-    model_spec: RhimeModelSpec,
-) -> pm.Model:
-    """Resolve a multisector test specification into explicit builder inputs."""
-    return build_rhime_multisector_model(
-        inputs,
-        sigma_alignment=SigmaAlignment.from_frequency(
-            inputs["site_indicator"],
-            frequency=model_spec.sigma_freq,
-            per_site=model_spec.sigma_per_site,
-            anchor_time=model_spec.sigma_freq_anchor,
-        ),
-        sectors=model_spec.sectors,
-        bc_prior=model_spec.bc_prior,
-        bc_state_activity=model_spec.bc_state_activity,
-        sigma_prior=model_spec.sigma_prior,
-        offset_prior=model_spec.offset_prior,
-        add_offset=model_spec.add_offset,
-        use_bc=model_spec.use_bc,
-        pollution_events_from_obs=model_spec.pollution_events_from_obs,
-        no_model_error=model_spec.no_model_error,
-        offset_args=model_spec.offset_args,
-        power=model_spec.power,
-        state_activity=model_spec.state_activity,
     )
 
 
@@ -560,77 +509,6 @@ def test_state_linear_component_supports_zero_active_states() -> None:
     assert not any(rv.name and rv.name.startswith("x") for rv in model.free_RVs)
     assert resolve_model_variable(model, "x") is model.named_vars["x"]
 
-
-def test_standard_rhime_spec_keeps_default_exact_zero_activity() -> None:
-    """The spec builder keeps exact-zero pruning and the full ordered state."""
-    h = _sensitivity()
-    model_spec = RhimeModelSpec(
-        species="ch4",
-        domain="EUROPE",
-        sectors=(
-            SectorSpec(
-                name="total",
-                flux_source="total",
-                x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.2},
-                variable_suffix="total",
-            ),
-        ),
-        use_bc=False,
-        no_model_error=True,
-    )
-
-    model = build_rhime_model_from_spec(
-        _model_inputs(h),
-        model_spec,
-    )
-
-    assert {"x", "x_active", "x_is_active", "x_fixed_value", "mu"}.issubset(model.named_vars)
-    assert model.named_vars["x_active"].eval().shape == (3,)
-    np.testing.assert_array_equal(model.named_vars["x_is_active"].eval(), [True, False, True, True])
-    assert model.named_vars["x"] not in model.free_RVs
-
-
-def test_standard_rhime_spec_honors_explicit_fixed_states_and_groups() -> None:
-    """A spec policy combines labelled state and group freezes."""
-    h = _sensitivity()
-    explicit = xr.DataArray(
-        [False, True, True, True],
-        dims="region",
-        coords={"region": ["inner-b", "outer-a", "zero", "inner-a"]},
-    )
-    fixed_value = xr.DataArray(
-        [4.0, 3.0, 2.0, 1.0],
-        dims="region",
-        coords={"region": ["inner-b", "outer-a", "zero", "inner-a"]},
-    )
-    model_spec = RhimeModelSpec(
-        species="ch4",
-        domain="EUROPE",
-        sectors=(
-            SectorSpec(
-                name="total",
-                flux_source="total",
-                x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.2},
-                variable_suffix="total",
-            ),
-        ),
-        use_bc=False,
-        no_model_error=True,
-        state_activity=StateActivity(
-            active=explicit,
-            fixed_value=fixed_value,
-            fixed_groups=("outer",),
-        ),
-    )
-
-    model = build_rhime_model_from_spec(_model_inputs(h), model_spec)
-
-    np.testing.assert_array_equal(model.named_vars["x_is_active"].eval(), [True, False, False, False])
-    assert model.named_vars["x_active"].eval().shape == (1,)
-    x_full = model.named_vars["x"].eval()
-    np.testing.assert_allclose(x_full[[1, 2, 3]], [2.0, 3.0, 4.0])
-
-
 def test_multisector_rhime_can_freeze_a_sector_and_use_array_priors() -> None:
     """Per-sector policies can freeze all states while other sectors sample arrays."""
     h = _sensitivity()
@@ -676,39 +554,40 @@ def test_multisector_rhime_can_freeze_a_sector_and_use_array_priors() -> None:
     assert "mu" not in model.named_vars
 
 
-def test_multisector_rhime_spec_honors_shared_and_per_sector_activity() -> None:
-    """A per-sector policy overrides the shared multisector policy."""
+def test_multisector_flux_preparation_applies_sector_override_and_shared_activity() -> None:
+    """Flux preparation applies an override and the shared fallback directly."""
     h = _sensitivity()
     multi_h = xr.concat(
         [h.expand_dims(source=["ff-source"]), (2.0 * h).expand_dims(source=["ocean-source"])],
         dim="source",
     )
-    model_spec = RhimeModelSpec(
-        species="ch4",
-        domain="EUROPE",
-        sectors=(
-            SectorSpec(
-                name="FF",
-                flux_source="ff-source",
-                x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.2},
-                variable_suffix="ff",
-                state_activity=StateActivity(active=False, fixed_value=2.0),
-            ),
-            SectorSpec(
-                name="ocean",
-                flux_source="ocean-source",
-                x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.3},
-                variable_suffix="ocean",
-            ),
+    sectors = (
+        SectorSpec(
+            name="FF",
+            flux_source="ff-source",
+            x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.2},
+            variable_suffix="ff",
+            state_activity=StateActivity(active=False, fixed_value=2.0),
         ),
-        use_bc=False,
-        no_model_error=True,
+        SectorSpec(
+            name="ocean",
+            flux_source="ocean-source",
+            x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.3},
+            variable_suffix="ocean",
+        ),
+    )
+
+    components = _prepare_multisector_flux_components(
+        multi_h,
+        sectors,
         state_activity=StateActivity(active=False, fixed_value=3.0),
     )
 
-    model = build_rhime_multisector_model_from_spec(_model_inputs(multi_h), model_spec)
-
-    assert "x_ff_active" not in model.named_vars
-    np.testing.assert_allclose(model.named_vars["x_ff"].eval(), np.full(4, 2.0))
-    assert "x_ocean_active" not in model.named_vars
-    np.testing.assert_allclose(model.named_vars["x_ocean"].eval(), np.full(4, 3.0))
+    ff_sector, _, _, ff_activity = components[0]
+    ocean_sector, _, _, ocean_activity = components[1]
+    assert ff_sector is sectors[0]
+    assert ocean_sector is sectors[1]
+    assert not ff_activity.active.any()
+    assert not ocean_activity.active.any()
+    np.testing.assert_allclose(ff_activity.fixed_value, 2.0)
+    np.testing.assert_allclose(ocean_activity.fixed_value, 3.0)

@@ -144,21 +144,6 @@ def validated_custom_model_build(
     return result
 
 
-def validate_likelihood_builder_argument(likelihood_builder: object | None) -> None:
-    """Validate a caller-supplied likelihood argument before preparation.
-
-    Args:
-        likelihood_builder: Candidate likelihood callable or ``None``.
-
-    Raises:
-        TypeError: If a non-callable value is supplied.
-    """
-    if likelihood_builder is not None and not callable(likelihood_builder):
-        raise TypeError(
-            f"`likelihood_builder` must be callable or None; got {type(likelihood_builder).__name__}."
-        )
-
-
 def validate_likelihood_kwargs(
     likelihood_builder: object | None,
     likelihood_kwargs: object | None,
@@ -173,11 +158,15 @@ def validate_likelihood_kwargs(
         A detached JSON-compatible mapping, or ``None`` when omitted.
 
     Raises:
-        TypeError: If the options are not a string-keyed, JSON-compatible
-            mapping.
+        TypeError: If the builder is not callable or the options are not a
+            string-keyed, JSON-compatible mapping.
         ValueError: If non-empty options are supplied without a custom
             likelihood builder.
     """
+    if likelihood_builder is not None and not callable(likelihood_builder):
+        raise TypeError(
+            f"`likelihood_builder` must be callable or None; got {type(likelihood_builder).__name__}."
+        )
     if likelihood_kwargs is None:
         return None
     if not isinstance(likelihood_kwargs, Mapping):

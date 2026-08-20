@@ -56,6 +56,49 @@ from xarray.core.common import DataWithCoords, is_chunked_array  # type: ignore
 DataSetOrArray = TypeVar("DataSetOrArray", bound=DataWithCoords)
 
 
+def validate_covariance_coordinates(
+    covariance: xr.DataArray,
+    *,
+    dim: str,
+    covariance_dim: str | None = None,
+) -> None:
+    """Require a square covariance matrix to repeat one coordinate exactly.
+
+    The conventional column dimension is ``f"{dim}_cov"``. PyMC treats the
+    row and column dimensions as distinct and does not verify that their labels
+    denote the same ordered values, so that scientific invariant is checked
+    before labels reach the model backend.
+
+    Args:
+        covariance: Labelled covariance matrix to validate.
+        dim: Row dimension and canonical coordinate name.
+        covariance_dim: Column dimension. Defaults to ``f"{dim}_cov"``.
+
+    Raises:
+        ValueError: If dimensions, shape, coordinates, or coordinate ordering
+            do not follow the covariance convention.
+    """
+    covariance_dim = f"{dim}_cov" if covariance_dim is None else covariance_dim
+    if covariance.dims != (dim, covariance_dim):
+        raise ValueError(
+            "Covariance matrix must have dims "
+            f"({dim!r}, {covariance_dim!r}); got {covariance.dims!r}."
+        )
+    if covariance.shape[0] != covariance.shape[1]:
+        raise ValueError(f"Covariance matrix must be square; got shape {covariance.shape!r}.")
+    missing = [name for name in (dim, covariance_dim) if name not in covariance.coords]
+    if missing:
+        raise ValueError(f"Covariance matrix must carry coordinate(s) {missing!r}.")
+    if not np.array_equal(
+        np.asarray(covariance.coords[dim].values),
+        np.asarray(covariance.coords[covariance_dim].values),
+    ):
+        raise ValueError(
+            f"Covariance coordinates {dim!r} and {covariance_dim!r} must contain "
+            "the same values in the same order."
+        )
+
+
 def get_xr_dummies(
     da: xr.DataArray,
     categories: Sequence[Any] | pd.Index | xr.DataArray | np.ndarray | None = None,

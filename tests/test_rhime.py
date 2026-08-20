@@ -51,7 +51,6 @@ from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInpu
 from openghg_inversions.inversion_inputs import make_inv_inputs
 from openghg_inversions.models import StateActivity
 from openghg_inversions.models._flux import safe_pymc_name
-from openghg_inversions.models.pollution_event import build_pollution_event_error
 from openghg_inversions.models.additive_sigma import build_additive_sigma_error
 from openghg_inversions.observation_error import AggregationError, resolve_aggregation_error
 from openghg_inversions.postprocessing._basis_products import (
@@ -169,20 +168,6 @@ def _multisector_args(builder_args: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
-def _pollution_event_likelihood_kwargs(builder_args: dict[str, Any]) -> dict[str, Any]:
-    """Select options owned by the built-in pollution-event likelihood."""
-    return {
-        name: builder_args[name]
-        for name in (
-            "sigma_alignment",
-            "sigma_prior",
-            "power",
-            "pollution_events_from_obs",
-            "no_model_error",
-        )
-    }
-
-
 def build_rhime_model(inv_inputs: xr.Dataset, **kwargs: Any) -> pm.Model:
     """Adapt concise dataset fixtures to the explicit production builder."""
     aggregation_mode = kwargs.pop("aggregation_error_mode", "none")
@@ -210,40 +195,6 @@ def build_rhime_multisector_model(inv_inputs: xr.Dataset, **kwargs: Any) -> pm.M
         boundary_sensitivity=inv_inputs.get("H_bc"),
         site_indicator=inv_inputs.get("site_indicator"),
         **kwargs,
-    )
-
-
-def build_rhime_observation_state(
-    *,
-    observations: xr.DataArray,
-    observation_error: xr.DataArray,
-    minimum_error: xr.DataArray,
-    aggregation_error: AggregationError,
-    mean: Any,
-    pollution_mean: Any,
-    pollution_event_baseline: Any,
-    sigma_alignment: SigmaAlignment,
-    sigma_prior: dict[str, Any],
-    power: dict[str, Any] | float,
-    pollution_events_from_obs: bool,
-    no_model_error: bool,
-    output_dim: str,
-) -> Any:
-    """Build the built-in error state from explicit likelihood inputs."""
-    del mean
-    return build_pollution_event_error(
-        observations=observations,
-        observation_error=observation_error,
-        minimum_error=minimum_error,
-        aggregation_error=aggregation_error,
-        pollution_mean=pollution_mean,
-        pollution_event_baseline=pollution_event_baseline,
-        sigma_alignment=sigma_alignment,
-        sigma_prior=sigma_prior,
-        power=power,
-        pollution_events_from_obs=pollution_events_from_obs,
-        no_model_error=no_model_error,
-        output_dim=output_dim,
     )
 
 

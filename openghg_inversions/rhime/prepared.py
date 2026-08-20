@@ -13,7 +13,7 @@ from openghg_inversions.observation_error import (
     select_aggregation_error_mode,
 )
 
-from ._model_building import validate_likelihood_builder_argument, validate_likelihood_kwargs
+from ._model_building import validate_likelihood_kwargs
 from .builders import RhimeLikelihoodBuilder, RhimeModelBuilder
 from .materialization import materialize_pymc_inputs
 from .multisector import build_multisector_rhime_model_result, make_multisector_rhime_result
@@ -68,7 +68,6 @@ def run_rhime_from_prepared_inputs(
             settings are inconsistent.
         TypeError: If an extension point has an invalid callable contract.
     """
-    validate_likelihood_builder_argument(likelihood_builder)
     likelihood_kwargs = validate_likelihood_kwargs(likelihood_builder, likelihood_kwargs)
     if model_builder is not None and likelihood_builder is not None:
         raise ValueError("Pass either `model_builder` or `likelihood_builder`, not both.")
