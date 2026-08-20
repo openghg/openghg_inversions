@@ -255,10 +255,13 @@ def _prepare_multisector_flux_components(
             active=xr.ones_like(resolved_activity.active, dtype=bool),
         )
         prior = active_prior_args(dict(sector.x_prior), all_active)
+        design_state_dim = next(
+            str(dim) for dim in prepared_design.design.dims if dim != prepared_design.output_dim
+        )
         backend_design = _namespace_sector_state_coords(
             prepared_design.design,
             variable_suffix=sector.variable_suffix,
-            namespace_state_dim=gathered_layout,
+            namespace_state_dim=gathered_layout or design_state_dim != resolved_activity.state_dim,
         )
         semantic_state_dim = resolved_activity.state_dim
         backend_state_dim = (

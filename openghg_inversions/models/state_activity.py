@@ -216,10 +216,16 @@ def detect_zero_sensitivity(
         finite_mask = cast(xr.DataArray, np.isfinite(matrix))
     except TypeError as exc:
         raise ValueError("Sensitivity must contain numeric values.") from exc
-    if not bool(finite_mask.all().compute().item()):
+    inspection = xr.Dataset(
+        {
+            "all_finite": finite_mask.all(),
+            "zero_sensitivity": (matrix == 0).all(dim=output_dim),
+        }
+    ).compute()
+    if not bool(inspection["all_finite"].item()):
         raise ValueError("Sensitivity must contain only finite values.")
 
-    return (matrix == 0).all(dim=output_dim).compute().rename("zero_sensitivity")
+    return inspection["zero_sensitivity"]
 
 
 def _materialize_1d(

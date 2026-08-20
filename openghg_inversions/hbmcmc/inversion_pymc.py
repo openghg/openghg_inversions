@@ -148,9 +148,16 @@ def build_inferpymc_model(
         inv_inputs["sigma_freq_index"],
         per_site=sigma_per_site,
     )
+    flux_sensitivity = inv_inputs["H"]
+    state_dims = [dim for dim in flux_sensitivity.dims if dim != "nmeasure"]
+    if len(state_dims) == 1 and state_dims[0] not in flux_sensitivity.coords:
+        state_dim = state_dims[0]
+        flux_sensitivity = flux_sensitivity.assign_coords(
+            {state_dim: np.arange(flux_sensitivity.sizes[state_dim])}
+        )
 
     return build_standard_rhime_model(
-        inv_inputs["H"],
+        flux_sensitivity,
         observations=inv_inputs["mf"],
         observation_error=inv_inputs["mf_error"],
         minimum_error=inv_inputs["min_error"],

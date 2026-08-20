@@ -1823,6 +1823,42 @@ def test_build_rhime_multisector_model_selects_sources_by_label(
     np.testing.assert_allclose(model["hx_ocean"].get_value(), expected_ocean.values)
 
 
+def test_multisector_model_namespaces_differently_retained_source_states(
+    multisector_inv_inputs: xr.Dataset,
+    builder_args: dict,
+) -> None:
+    """Source-specific zero columns get distinct retained backend dimensions."""
+    inputs = multisector_inv_inputs.copy(deep=True)
+    inputs["H"].loc[{"source": "total-ukghg-edgar7", "region": inputs.region[0]}] = 0.0
+    inputs["H"].loc[{"source": "sector-2", "region": inputs.region[1]}] = 0.0
+
+    model = build_rhime_multisector_model(
+        inputs,
+        sectors=(
+            _sector("FF", source="total-ukghg-edgar7", suffix="ff"),
+            _sector("ocean", source="sector-2", suffix="ocean"),
+        ),
+        **_multisector_args(builder_args),
+    )
+
+    assert model.named_vars_to_dims["hx_ff"] == ("nmeasure", "region_retained_ff")
+    assert model.named_vars_to_dims["hx_ocean"] == ("nmeasure", "region_retained_ocean")
+    np.testing.assert_allclose(
+        model["hx_ff"].get_value(),
+        inputs["H"]
+        .sel(source="total-ukghg-edgar7")
+        .isel(region=slice(1, None))
+        .transpose("nmeasure", "region"),
+    )
+    np.testing.assert_allclose(
+        model["hx_ocean"].get_value(),
+        inputs["H"]
+        .sel(source="sector-2")
+        .isel(region=[0, *range(2, inputs.sizes["region"])])
+        .transpose("nmeasure", "region"),
+    )
+
+
 def test_multisector_model_accepts_gathered_ragged_states(
     multisector_inv_inputs: xr.Dataset,
     builder_args: dict,
@@ -2275,10 +2311,10 @@ def test_bc_zero_columns_are_structurally_removed_by_default(
     assert list(registry.original_coords["bc_region_bc_active"]) == list(
         inv_inputs["H_bc"].indexes["bc_region"][1:]
     )
-    np.testing.assert_allclose(
-        model["mu_bc"].eval(),
-        model["hbc"].eval() @ model["bc"].eval()[1:],
-    )
+    actual, state = pm.draw([model["mu_bc"], model["bc"]], random_seed=417)
+    expected = model["hbc"].get_value() @ state[1:]
+    tolerance = 100 * max(np.finfo(actual.dtype).eps, np.finfo(expected.dtype).eps)
+    np.testing.assert_allclose(actual, expected, rtol=tolerance, atol=tolerance)
 
 
 

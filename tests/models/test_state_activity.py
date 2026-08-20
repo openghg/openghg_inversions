@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any, cast
 
 import dask.array as da
+from dask.callbacks import Callback
 import numpy as np
 import pymc as pm
 import pytest
@@ -138,11 +139,26 @@ def test_prepare_linear_design_removes_columns_and_retains_full_mapping() -> Non
 
 
 def test_prepare_linear_design_keeps_retained_dask_payload_lazy() -> None:
-    """Preparation computes the structural mask without densifying retained data."""
-    prepared = prepare_linear_design(_sensitivity().chunk({"nmeasure": 1, "region": 2}))
+    """Inspect once, then keep retained data lazy until PyMC registration."""
+    executions: list[object] = []
+    callback = Callback(start=lambda graph: executions.append(graph))
+    with callback:
+        prepared = prepare_linear_design(_sensitivity().chunk({"nmeasure": 1, "region": 2}))
 
-    assert isinstance(prepared.design.data, da.Array)
-    assert not isinstance(prepared.removed.data, da.Array)
+        assert len(executions) == 1
+        assert isinstance(prepared.design.data, da.Array)
+        assert not isinstance(prepared.removed.data, da.Array)
+
+        with registered_model():
+            add_linear_component(
+                prepared,
+                data_name="hx",
+                prior_args={"pdf": "normal", "mu": 1.0, "sigma": 0.2},
+                var_name="x",
+                output_name="mu",
+            )
+
+        assert len(executions) > 1
 
 
 def test_all_zero_linear_design_builds_zero_forward_and_full_fixed_state() -> None:
