@@ -165,6 +165,9 @@ def validate_model_build_result(
             variable role refers to an absent variable.
     """
     output_format = context.run_spec.output.output_format
+    if output_format == "none":
+        return
+
     result.validate_requested_output(output_format)
 
     if get_coord_registry(result.model) is None:

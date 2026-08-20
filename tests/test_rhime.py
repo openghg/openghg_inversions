@@ -3299,7 +3299,7 @@ def test_complete_model_builder_owns_lazy_aggregation_error_inputs(
             context.prepared_inputs.inv_inputs["aggregation_error_covariance"].data,
             da.Array,
         )
-        with models.registered_model() as model:
+        with pm.Model() as model:
             pm.Normal("custom_y")
         return RhimeModelBuildResult(
             model=model,
@@ -7061,7 +7061,6 @@ def test_make_multisector_outputs_attach_modern_inv_out(tmp_path: Path) -> None:
 
 
 def test_multisector_paris_options_are_checked_before_output_writes(
-    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     """Reject unsupported product options before trace or product persistence."""
@@ -7092,11 +7091,6 @@ def test_multisector_paris_options_are_checked_before_output_writes(
         site_metadata=_prepared_site_metadata(),
     )
     result = _result_for_outputs(run_spec, _minimal_output_idata(), model_spec=model_spec)
-    monkeypatch.setattr(
-        rhime_outputs,
-        "_make_multisector_flux_diagnostics",
-        lambda inv_out: xr.Dataset(),
-    )
 
     with pytest.raises(ValueError, match="Unsupported multi-sector.*unexpected"):
         rhime_outputs.make_multisector_rhime_outputs(result=result, prepared=prepared)

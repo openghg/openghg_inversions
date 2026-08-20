@@ -210,7 +210,15 @@ def test_multisector_rhime_pipeline_writes_latest_paris_flux_schema(
     assert expected_concentration_path.is_file()
     assert expected_diagnostics_path.is_file()
     assert "inversion_output_path" not in result.output_metadata
-    assert result.outputs["paris_concentration"].attrs["paris_concentration_template_version"] == "v04"
+
+    with xr.open_dataset(expected_concentration_path) as concentration:
+        assert concentration.attrs["paris_concentration_template_version"] == "v04"
+        assert concentration.sizes["index"] == 24
+        assert concentration.sizes["platform"] == 1
+        assert concentration["platform"].dims == ("platform",)
+        for name in ("mf_observed", "mf_prior", "mf_posterior"):
+            assert concentration[name].dims == ("index",)
+            assert np.isfinite(concentration[name]).all()
 
     expected_schema = _expanded_numeric_flux_schema(
         paris_template_files("latest").flux,
