@@ -422,13 +422,21 @@ def make_inv_inputs(
     )
 
     if "H_bc" in ds:
-        from openghg_inversions.boundary_sensitivity import BoundarySensitivity
+        from openghg_inversions.boundary_sensitivity import BoundaryAlignment
 
-        ds = BoundarySensitivity.prepare(
+        boundary_sensitivity = BoundaryAlignment.prepare(
             ds["H_bc"],
             frequency=bc_freq,
             anchor_time=start_date,
-        ).install(ds)
+        ).data.transpose("bc_region", "nmeasure")
+        ds = ds.drop_dims("bc_region")
+        ds["H_bc"] = xr.DataArray(
+            boundary_sensitivity.data,
+            dims=("bc_region", "nmeasure"),
+            coords={"bc_region": boundary_sensitivity["bc_region"]},
+            name="H_bc",
+            attrs=boundary_sensitivity.attrs,
+        )
 
     ds = add_site_indicator(ds)
     ds = add_min_error(ds, fp_data=fp_data, min_error=min_error, min_error_per_site=min_error_per_site)

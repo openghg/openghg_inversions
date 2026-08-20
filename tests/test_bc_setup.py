@@ -4,7 +4,7 @@ import pytest
 import xarray as xr
 
 from openghg_inversions.hbmcmc.inversionsetup import monthly_bcs, create_bc_sensitivity
-from openghg_inversions.boundary_sensitivity import BoundarySensitivity
+from openghg_inversions.boundary_sensitivity import BoundaryAlignment
 
 # -------------------------
 # Shared fixtures/helpers
@@ -254,7 +254,7 @@ def test_prepare_boundary_sensitivity_monthly_matches_reference_and_no_dead(bc_r
     times = _make_time_index(start_date, end_date, freq="12h", start_offset_hours=case["start_offset_hours"])
     H_bc = _make_H_bc(bc_regions=bc_regions, times=times)
 
-    out = BoundarySensitivity.prepare(H_bc, frequency="monthly").data
+    out = BoundaryAlignment.prepare(H_bc, frequency="monthly").data
     out_np = out.transpose("bc_region", "time").values
 
     # Monthly boundary periods are based on time.min(),
@@ -290,7 +290,7 @@ def test_prepare_boundary_sensitivity_freq_matches_reference_and_no_dead(bc_regi
     times = _make_time_index(start_date, end_date, freq=time_freq, start_offset_hours=start_offset_hours)
     H_bc = _make_H_bc(bc_regions=bc_regions, times=times)
 
-    out = BoundarySensitivity.prepare(H_bc, frequency=freq, anchor_time=start_date).data
+    out = BoundaryAlignment.prepare(H_bc, frequency=freq, anchor_time=start_date).data
     out_np = out.transpose("bc_region", "time").values
 
     edges = _freq_edges_old_create_bc(start_date, end_date, freq=freq)

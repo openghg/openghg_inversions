@@ -12,21 +12,21 @@ from openghg_inversions.array_ops import get_xr_dummies
 from openghg_inversions.inversion_inputs import DatetimeLike, make_freq_indicator
 
 __all__ = [
-    "BoundarySensitivity",
+    "BoundaryAlignment",
     "scale_satellite_boundary_sensitivity",
 ]
 
 
 @dataclass(frozen=True, eq=False, slots=True)
-class BoundarySensitivity:
-    """Resolved sampled boundary sensitivity with labelled state invariants.
+class BoundaryAlignment:
+    """Resolved alignment of sampled boundary states to fitted periods.
 
     Args:
         data: Prepared ``H_bc`` with a ``bc_region`` MultiIndex whose levels
             are ``bc_curtain`` and ``bc_period``, plus one observation axis.
 
     Raises:
-        ValueError: If dimensions, state labels, or eager values are invalid.
+        ValueError: If dimensions or state labels are invalid.
     """
 
     data: xr.DataArray
@@ -46,8 +46,6 @@ class BoundarySensitivity:
             raise ValueError(
                 "Resolved boundary sensitivity states must be labelled by 'bc_curtain' and 'bc_period'."
             )
-        if not hasattr(data.data, "__dask_graph__") and not np.isfinite(data.values).all():
-            raise ValueError("Resolved boundary sensitivity must contain only finite values.")
         object.__setattr__(self, "data", data.rename("H_bc"))
 
     @classmethod
@@ -58,7 +56,7 @@ class BoundarySensitivity:
         frequency: str | None = None,
         anchor_time: DatetimeLike | None = None,
         observation_labels: xr.DataArray | None = None,
-    ) -> BoundarySensitivity:
+    ) -> BoundaryAlignment:
         """Align and expand raw boundary sensitivity over fitted periods.
 
         Args:
@@ -123,34 +121,6 @@ class BoundarySensitivity:
             }
         )
         return cls(data)
-
-    def install(self, inputs: xr.Dataset) -> xr.Dataset:
-        """Return gathered inputs containing this boundary sensitivity.
-
-        Args:
-            inputs: Gathered inversion inputs whose observation axis is
-                ``nmeasure``. The dataset is borrowed and is not mutated.
-
-        Returns:
-            A shallow dataset handoff containing ``H_bc`` with its labelled
-            boundary-state coordinate and provenance.
-
-        Raises:
-            ValueError: If this value is not aligned along ``nmeasure``.
-        """
-        if "nmeasure" not in self.data.dims:
-            raise ValueError("Gathered boundary sensitivity must be aligned along 'nmeasure'.")
-        data = self.data.transpose("bc_region", "nmeasure")
-        result = inputs.drop_dims("bc_region") if "bc_region" in inputs.dims else inputs.copy(deep=False)
-        result["H_bc"] = xr.DataArray(
-            data.data,
-            dims=("bc_region", "nmeasure"),
-            coords={"bc_region": data["bc_region"]},
-            name="H_bc",
-            attrs=data.attrs,
-        )
-        return result
-
 
 def scale_satellite_boundary_sensitivity(
     inputs: xr.Dataset,

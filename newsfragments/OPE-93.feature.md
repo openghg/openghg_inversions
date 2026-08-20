@@ -1,1 +1,1 @@
-Consolidate labelled boundary-sensitivity period expansion, validation, units, and transform provenance behind one backend-neutral preparation API.
+Consolidate labelled boundary-period alignment and transform provenance behind one backend-neutral preparation API.
