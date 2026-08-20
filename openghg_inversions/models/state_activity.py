@@ -11,7 +11,7 @@ Inactive states remain part of the public state vector and use labelled or
 scalar fixed values. The default fixed value is one, which preserves the prior
 forward-model contribution of a multiplicative flux-scaling state.
 
-``prepare_linear_design`` validates a linear design, removes exact-zero
+``prepare_linear_sensitivity`` validates a sensitivity matrix, removes exact-zero
 columns, and retains the full-state mapping. ``resolve_state_activity``
 combines that mapping with a policy to produce the canonical
 ``ResolvedStateActivity``;
@@ -54,7 +54,7 @@ class StateActivity:
         group_coord: Name of the state coordinate containing group labels.
     Explicit ``active`` masks and fixed groups are combined with structural
     zero-column removal using logical AND. Structural removal is owned by
-    linear-design preparation and cannot be disabled as an activity policy.
+    sensitivity preparation and cannot be disabled as an activity policy.
     """
 
     active: ActivityValue = True
@@ -64,10 +64,10 @@ class StateActivity:
 
 
 @dataclass(frozen=True)
-class PreparedLinearDesign:
-    """A retained linear design and its lossless full-state mapping."""
+class PreparedLinearSensitivity:
+    """A retained sensitivity matrix and its lossless full-state mapping."""
 
-    design: xr.DataArray
+    sensitivity: xr.DataArray
     removed: xr.DataArray
     output_dim: str
 
@@ -78,19 +78,19 @@ class PreparedLinearDesign:
 
     @property
     def retained_indices(self) -> np.ndarray:
-        """Return full-state positions retained by :attr:`design`."""
+        """Return full-state positions retained by :attr:`sensitivity`."""
         return np.flatnonzero(~_materialize_1d(self.removed, name="removed", dtype=bool))
 
 
-def prepare_linear_design(
+def prepare_linear_sensitivity(
     sensitivity: xr.DataArray,
     *,
     output_dim: str = "nmeasure",
-) -> PreparedLinearDesign:
+) -> PreparedLinearSensitivity:
     """Remove exact-zero columns once and retain their full-state mapping.
 
-    This is the eager inspection boundary for a labelled linear design. The
-    returned design keeps borrowed array data and contains only nonzero
+    This is the eager inspection boundary for a labelled sensitivity matrix. The
+    returned sensitivity keeps borrowed array data and contains only nonzero
     columns; ``removed`` retains the complete scientific state coordinate and
     auxiliary state metadata for reconstruction and provenance.
     """
@@ -99,18 +99,18 @@ def prepare_linear_design(
     removed = detect_zero_sensitivity(matrix, output_dim=output_dim)
     state_dim = str(removed.dims[0])
     retained_indices = np.flatnonzero(~removed.to_numpy())
-    design = matrix.isel({state_dim: retained_indices})
+    retained = matrix.isel({state_dim: retained_indices})
     if retained_indices.size != matrix.sizes[state_dim]:
-        design = design.rename({state_dim: f"{state_dim}_retained"})
+        retained = retained.rename({state_dim: f"{state_dim}_retained"})
         retained_dim = f"{state_dim}_retained"
         retained_auxiliary = {
             str(name): f"{name}_retained"
-            for name, coord in design.coords.items()
-            if name not in design.dims and retained_dim in coord.dims
+            for name, coord in retained.coords.items()
+            if name not in retained.dims and retained_dim in coord.dims
         }
-        design = design.rename(retained_auxiliary)
-    return PreparedLinearDesign(
-        design=design,
+        retained = retained.rename(retained_auxiliary)
+    return PreparedLinearSensitivity(
+        sensitivity=retained,
         removed=removed.rename("structurally_removed"),
         output_dim=output_dim,
     )
@@ -118,7 +118,7 @@ def prepare_linear_design(
 
 @dataclass(frozen=True)
 class ResolvedStateActivity:
-    """A state-activity policy aligned to one detected linear design.
+    """A state-activity policy aligned to one detected sensitivity matrix.
 
     Attributes:
         state_dim: Canonical state dimension name from the detection mask.
@@ -185,7 +185,7 @@ def detect_zero_sensitivity(
     """Return the labelled mask of exactly-zero sensitivity columns.
 
     Args:
-        sensitivity: Finite two-dimensional linear design containing
+        sensitivity: Finite two-dimensional sensitivity matrix containing
             ``output_dim`` and one uniquely labelled state dimension.
         output_dim: Name of the observation/output dimension.
 
@@ -431,7 +431,7 @@ def resolve_state_activity(
 
     Notes:
         Policy vectors are materialized during model construction. Use
-        ``detect_zero_sensitivity`` to validate and reduce a linear design
+        ``detect_zero_sensitivity`` to validate and reduce a sensitivity matrix
         before calling this function.
     """
     policy = policy or StateActivity()

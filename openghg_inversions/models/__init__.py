@@ -1,6 +1,6 @@
 """Reusable model components, coordinates, priors, and state APIs.
 
-Linear design preparation removes structural zero columns once before graph
+Linear sensitivity preparation removes structural zero columns once before graph
 construction; state activity then controls scientific fixing among the full
 labelled state.
 
@@ -17,7 +17,7 @@ configure_pytensor()
 from openghg_inversions.models.components import (
     CorrelatedStateResult,
     LinearComponentResult,
-    apply_linear_design,
+    apply_linear_sensitivity,
     add_inferpymc_likelihood_component,
     add_linear_component,
     add_model_data,
@@ -36,12 +36,12 @@ from openghg_inversions.models.coords import (
 from openghg_inversions.models.priors import parse_prior
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.models.state_activity import (
-    PreparedLinearDesign,
+    PreparedLinearSensitivity,
     ResolvedStateActivity,
     StateActivity,
     active_prior_args,
     detect_zero_sensitivity,
-    prepare_linear_design,
+    prepare_linear_sensitivity,
     resolve_state_activity,
 )
 from openghg_inversions.observation_error import AggregationErrorMode
@@ -53,7 +53,7 @@ __all__ = [
     "LinearComponentResult",
     "AggregationErrorMode",
     "ResolvedStateActivity",
-    "PreparedLinearDesign",
+    "PreparedLinearSensitivity",
     "StateActivity",
     "add_coords",
     "attach_coord_registry",
@@ -64,12 +64,12 @@ __all__ = [
     "add_model_data",
     "add_correlated_lognormal_state",
     "add_linear_component",
-    "apply_linear_design",
+    "apply_linear_sensitivity",
     "add_sigma_component",
     "add_offset_component",
     "add_inferpymc_likelihood_component",
     "active_prior_args",
     "detect_zero_sensitivity",
-    "prepare_linear_design",
+    "prepare_linear_sensitivity",
     "resolve_state_activity",
 ]

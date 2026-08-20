@@ -28,10 +28,10 @@ from openghg_inversions.models._flux import (
     _select_sector_design,
 )
 from openghg_inversions.models.state_activity import (
-    PreparedLinearDesign,
+    PreparedLinearSensitivity,
     StateActivity,
     active_prior_args,
-    prepare_linear_design,
+    prepare_linear_sensitivity,
     resolve_state_activity,
 )
 from openghg_inversions.observation_error import (
@@ -79,7 +79,7 @@ from .preparation import (
 from .sampling import RhimeSampler, sample_rhime_model
 
 
-_SectorComponent = tuple[SectorSpec, PreparedLinearDesign, PriorArgs, StateActivity]
+_SectorComponent = tuple[SectorSpec, PreparedLinearSensitivity, PriorArgs, StateActivity]
 _MULTISECTOR_FLUX_INPUT_NAMES = ("H",)
 _MODEL_ERROR_ALIGNMENT_INPUT_NAMES = ("site_indicator",)
 _BASELINE_INPUT_NAMES = ("H_bc",)
@@ -248,18 +248,20 @@ def _prepare_multisector_flux_components(
             namespace_state_dim=False,
         )
         sector_policy = sector.state_activity if sector.state_activity is not None else state_activity
-        prepared_design = prepare_linear_design(design)
-        resolved_activity = resolve_state_activity(prepared_design.removed, sector_policy)
+        prepared_sensitivity = prepare_linear_sensitivity(design)
+        resolved_activity = resolve_state_activity(prepared_sensitivity.removed, sector_policy)
         all_active = replace(
             resolved_activity,
             active=xr.ones_like(resolved_activity.active, dtype=bool),
         )
         prior = active_prior_args(dict(sector.x_prior), all_active)
         design_state_dim = next(
-            str(dim) for dim in prepared_design.design.dims if dim != prepared_design.output_dim
+            str(dim)
+            for dim in prepared_sensitivity.sensitivity.dims
+            if dim != prepared_sensitivity.output_dim
         )
         backend_design = _namespace_sector_state_coords(
-            prepared_design.design,
+            prepared_sensitivity.sensitivity,
             variable_suffix=sector.variable_suffix,
             namespace_state_dim=gathered_layout or design_state_dim != resolved_activity.state_dim,
         )
@@ -273,14 +275,14 @@ def _prepare_multisector_flux_components(
             {semantic_state_dim: backend_state_dim} if semantic_state_dim != backend_state_dim else {}
         )
         backend_removed = _namespace_sector_state_coords(
-            prepared_design.removed,
+            prepared_sensitivity.removed,
             variable_suffix=sector.variable_suffix,
             namespace_state_dim=gathered_layout,
         )
-        backend_prepared = PreparedLinearDesign(
-            design=backend_design,
+        backend_prepared = PreparedLinearSensitivity(
+            sensitivity=backend_design,
             removed=backend_removed,
-            output_dim=prepared_design.output_dim,
+            output_dim=prepared_sensitivity.output_dim,
         )
         backend_activity = StateActivity(
             active=resolved_activity.active.rename(rename_state),
@@ -371,7 +373,7 @@ def build_multisector_rhime_model(
     sigma_prior = dict(DEFAULT_SIGMA_PRIOR if sigma_prior is None else sigma_prior)
     offset_prior = dict(DEFAULT_OFFSET_PRIOR if offset_prior is None else offset_prior)
     prepared_boundary = (
-        prepare_linear_design(boundary_sensitivity)
+        prepare_linear_sensitivity(boundary_sensitivity)
         if use_bc and boundary_sensitivity is not None
         else None
     )

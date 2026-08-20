@@ -19,7 +19,7 @@ from openghg_inversions.models import (
     active_prior_args,
     attach_coord_registry,
     detect_zero_sensitivity,
-    prepare_linear_design,
+    prepare_linear_sensitivity,
     registered_model,
     resolve_state_activity,
 )
@@ -127,26 +127,28 @@ def test_detect_zero_sensitivity_accepts_a_named_output_dimension() -> None:
     assert zero_sensitivity.dims == ("region",)
 
 
-def test_prepare_linear_design_removes_columns_and_retains_full_mapping() -> None:
+def test_prepare_linear_sensitivity_removes_columns_and_retains_full_mapping() -> None:
     """Structural removal keeps a lossless labelled full-to-retained mapping."""
-    prepared = prepare_linear_design(_sensitivity())
+    prepared = prepare_linear_sensitivity(_sensitivity())
 
-    assert prepared.design.dims == ("nmeasure", "region_retained")
-    np.testing.assert_array_equal(prepared.design["region_retained"], ["inner-a", "outer-a", "inner-b"])
+    assert prepared.sensitivity.dims == ("nmeasure", "region_retained")
+    np.testing.assert_array_equal(
+        prepared.sensitivity["region_retained"], ["inner-a", "outer-a", "inner-b"]
+    )
     np.testing.assert_array_equal(prepared.removed, [False, True, False, False])
     np.testing.assert_array_equal(prepared.removed["basis_group"], ["inner", "inner", "outer", "inner"])
     np.testing.assert_array_equal(prepared.retained_indices, [0, 2, 3])
 
 
-def test_prepare_linear_design_keeps_retained_dask_payload_lazy() -> None:
+def test_prepare_linear_sensitivity_keeps_retained_dask_payload_lazy() -> None:
     """Inspect once, then keep retained data lazy until PyMC registration."""
     executions: list[object] = []
     callback = Callback(start=lambda graph: executions.append(graph))
     with callback:
-        prepared = prepare_linear_design(_sensitivity().chunk({"nmeasure": 1, "region": 2}))
+        prepared = prepare_linear_sensitivity(_sensitivity().chunk({"nmeasure": 1, "region": 2}))
 
         assert len(executions) == 1
-        assert isinstance(prepared.design.data, da.Array)
+        assert isinstance(prepared.sensitivity.data, da.Array)
         assert not isinstance(prepared.removed.data, da.Array)
 
         with registered_model():
@@ -158,13 +160,13 @@ def test_prepare_linear_design_keeps_retained_dask_payload_lazy() -> None:
                 output_name="mu",
             )
 
-        assert len(executions) > 1
+        assert len(executions) == 2
 
 
-def test_all_zero_linear_design_builds_zero_forward_and_full_fixed_state() -> None:
-    """An all-zero design has no latent variables and reconstructs the full state."""
+def test_all_zero_linear_sensitivity_builds_zero_forward_and_full_fixed_state() -> None:
+    """An all-zero sensitivity has no latent variables and reconstructs the full state."""
     h = xr.zeros_like(_sensitivity())
-    prepared = prepare_linear_design(h)
+    prepared = prepare_linear_sensitivity(h)
 
     with registered_model() as model:
         result = add_linear_component(
@@ -175,7 +177,7 @@ def test_all_zero_linear_design_builds_zero_forward_and_full_fixed_state() -> No
             output_name="mu",
         )
 
-    assert prepared.design.sizes["region_retained"] == 0
+    assert prepared.sensitivity.sizes["region_retained"] == 0
     assert model.free_RVs == []
     np.testing.assert_allclose(model.named_vars["x"].eval(), np.ones(4))
     np.testing.assert_allclose(result.output.eval(), np.zeros(2))
@@ -406,7 +408,7 @@ def test_state_linear_component_preserves_full_forward_identity() -> None:
     with pm.Model() as model:
         attach_coord_registry(model, registry)
         result = add_linear_component(
-            prepare_linear_design(h),
+            prepare_linear_sensitivity(h),
             data_name="hx",
             prior_args={"pdf": "normal", "mu": 2.0, "sigma": 0.1},
             var_name="x",
@@ -463,7 +465,7 @@ def test_linear_component_preserves_plain_graph_when_all_states_are_retained() -
     with pm.Model() as linear_model:
         attach_coord_registry(linear_model, CoordRegistry())
         result = add_linear_component(
-            prepare_linear_design(h),
+            prepare_linear_sensitivity(h),
             data_name="hx",
             prior_args=prior,
             var_name="x",
@@ -481,7 +483,7 @@ def test_state_linear_component_full_activity_preserves_reparameterised_names() 
     with pm.Model() as model:
         attach_coord_registry(model, CoordRegistry())
         result = add_linear_component(
-            prepare_linear_design(h),
+            prepare_linear_sensitivity(h),
             data_name="hx",
             prior_args={
                 "pdf": "lognormal",
@@ -510,7 +512,7 @@ def test_state_linear_component_restores_removed_states_in_canonical_order() -> 
     with pm.Model() as model:
         attach_coord_registry(model, CoordRegistry())
         result = add_linear_component(
-            prepare_linear_design(h),
+            prepare_linear_sensitivity(h),
             data_name="hx",
             prior_args={"pdf": "normal", "mu": 2.0, "sigma": 0.1},
             var_name="x",
@@ -544,7 +546,7 @@ def test_state_linear_component_supports_zero_active_states() -> None:
     with pm.Model() as model:
         attach_coord_registry(model, CoordRegistry())
         result = add_linear_component(
-            prepare_linear_design(h),
+            prepare_linear_sensitivity(h),
             data_name="hx",
             prior_args={"pdf": "normal", "mu": 1.0, "sigma": 1.0},
             var_name="x",

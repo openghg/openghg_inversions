@@ -5085,7 +5085,7 @@ def test_prepared_multisector_runner_accepts_gathered_source_specific_basis_layo
 
 
 def test_multisector_runner_rejects_shared_basis_h_layout_mismatch() -> None:
-    """Retained shared-basis coordinates must match the prepared design state."""
+    """Retained shared-basis coordinates must match the prepared sensitivity state."""
     model_spec = RhimeModelSpec(
         species="ch4",
         domain="EUROPE",

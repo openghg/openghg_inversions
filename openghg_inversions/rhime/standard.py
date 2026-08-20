@@ -24,7 +24,7 @@ from openghg_inversions.models.components import (
 from openghg_inversions.models.coords import registered_model
 from openghg_inversions.models.pollution_event import build_pollution_event_gaussian_likelihood
 from openghg_inversions.models.priors import PriorArgs
-from openghg_inversions.models.state_activity import StateActivity, prepare_linear_design
+from openghg_inversions.models.state_activity import StateActivity, prepare_linear_sensitivity
 from openghg_inversions.observation_error import (
     AggregationError,
     OBSERVATION_ERROR_INPUT_NAMES,
@@ -236,9 +236,9 @@ def build_standard_rhime_model(
     sigma_prior = dict(DEFAULT_SIGMA_PRIOR if sigma_prior is None else sigma_prior)
     offset_prior = dict(DEFAULT_OFFSET_PRIOR if offset_prior is None else offset_prior)
 
-    prepared_flux = prepare_linear_design(flux_sensitivity)
+    prepared_flux = prepare_linear_sensitivity(flux_sensitivity)
     prepared_boundary = (
-        prepare_linear_design(boundary_sensitivity)
+        prepare_linear_sensitivity(boundary_sensitivity)
         if use_bc and boundary_sensitivity is not None
         else None
     )

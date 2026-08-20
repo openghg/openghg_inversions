@@ -7,8 +7,8 @@ handling lives in ``openghg_inversions.models.coords``.
 
 All component helpers operate inside an active PyMC model context.
 ``add_state_vector`` consumes an already resolved activity contract;
-``add_linear_component`` consumes a design inspected by
-``prepare_linear_design`` before constructing that graph.
+``add_linear_component`` consumes a sensitivity matrix inspected by
+``prepare_linear_sensitivity`` before constructing that graph.
 
 Naming conventions:
 
@@ -40,7 +40,7 @@ from openghg_inversions.inversion_inputs import make_freq_indicator
 from openghg_inversions.models.coords import add_coords
 from openghg_inversions.models.priors import parse_prior
 from openghg_inversions.models.state_activity import (
-    PreparedLinearDesign,
+    PreparedLinearSensitivity,
     ResolvedStateActivity,
     StateActivity,
     active_prior_args,
@@ -204,13 +204,14 @@ def add_model_data(data: xr.DataArray, name: str | None = None) -> TensorVariabl
     if name in model:
         return model[name]
 
-    dims = tuple(str(dim) for dim in data.dims)
-    add_coords(data.coords, model_dims=dims)
-    return cast(TensorVariable, pm.Data(name, data.values, dims=dims))
+    materialized = data.compute()
+    dims = tuple(str(dim) for dim in materialized.dims)
+    add_coords(materialized.coords, model_dims=dims)
+    return cast(TensorVariable, pm.Data(name, materialized.values, dims=dims))
 
 
 def add_linear_component(
-    prepared: PreparedLinearDesign,
+    prepared: PreparedLinearSensitivity,
     /,
     data_name: str,
     prior_args: dict,
@@ -223,8 +224,8 @@ def add_linear_component(
     """Add one independent labelled linear component.
 
     Args:
-        prepared: Retained design and full-state mapping produced by
-            :func:`prepare_linear_design`.
+        prepared: Retained sensitivity and full-state mapping produced by
+            :func:`prepare_linear_sensitivity`.
         data_name: Name used when registering the data as ``pm.Data``.
         prior_args: Prior specification for the latent random variable.
         var_name: Name for the latent random variable.
@@ -237,18 +238,18 @@ def add_linear_component(
             state. ``None`` samples every retained column.
 
     Returns:
-        The registered design, effective latent, full state, aligned forward
+        The registered sensitivity, effective latent, full state, aligned forward
         contribution, and resolved activity.
     """
     output_dim = str(output_dim)
     if output_dim != prepared.output_dim:
         raise ValueError(
-            f"Prepared linear design owns output dimension {prepared.output_dim!r}, "
+            f"Prepared linear sensitivity owns output dimension {prepared.output_dim!r}, "
             f"not {output_dim!r}."
         )
     activity = resolve_state_activity(prepared.removed, state_activity)
     vector = add_state_vector(activity, prior_args=prior_args, var_name=var_name)
-    output = apply_linear_design(
+    output = apply_linear_sensitivity(
         prepared,
         vector.state,
         data_name=data_name,
@@ -265,8 +266,8 @@ def add_linear_component(
     )
 
 
-def apply_linear_design(
-    prepared: PreparedLinearDesign,
+def apply_linear_sensitivity(
+    prepared: PreparedLinearSensitivity,
     state: TensorVariable,
     /,
     *,
@@ -274,8 +275,8 @@ def apply_linear_design(
     output_name: str,
     compute_deterministic: bool = True,
 ) -> TensorVariable:
-    """Apply a prepared design to an already-built full state vector."""
-    h = add_model_data(prepared.design, data_name)
+    """Apply a prepared sensitivity to an already-built full state vector."""
+    h = add_model_data(prepared.sensitivity, data_name)
     output = pt.dot(h, state[prepared.retained_indices])
     if compute_deterministic:
         output = pm.Deterministic(output_name, output, dims=prepared.output_dim)
@@ -313,7 +314,7 @@ def add_state_vector(
 
     Notes:
         This helper registers state variables and state coordinates, but it
-        does not inspect or register a linear design and does not construct a
+        does not inspect or register a sensitivity matrix and does not construct a
         forward-model output. The registered activity mask is immutable
         build-time metadata in semantic terms; changing it with ``pm.set_data``
         would not rebuild the latent state layout. Call this helper inside an
