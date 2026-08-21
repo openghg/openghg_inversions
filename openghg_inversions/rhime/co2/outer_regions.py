@@ -13,7 +13,11 @@ import xarray as xr
 
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.models.components import add_correlated_lognormal_state_with_activity, add_model_data
-from openghg_inversions.models.state_activity import detect_zero_sensitivity, resolve_state_activity
+from openghg_inversions.models.state_activity import (
+    ResolvedStateActivity,
+    detect_zero_sensitivity,
+    resolve_state_activity,
+)
 from openghg_inversions.observation_error import AggregationError
 
 
@@ -32,20 +36,21 @@ class CollapsedOuterStates:
 class OuterRegionTreatment:
     """Mutually exclusive outer-region mean, covariance, or sampled state.
 
-    ``fixed_contribution`` is added to the atmospheric baseline.  Only a
-    marginalized treatment has non-zero ``observation_covariance``; only an
-    inferred treatment retains ``sensitivity`` and state-prior moments.  This
-    partition prevents one outer contribution being counted in both the
-    baseline and the sampled state.
+    ``fixed_contribution`` is added to the atmospheric baseline. Only a
+    marginalized treatment has an ``observation_factor``; only an inferred
+    treatment retains ``sensitivity``, state-prior moments, and resolved state
+    activity. This partition prevents one outer contribution being counted in
+    both the baseline and the sampled state.
     """
 
     mode: OuterRegionMode
     fixed_contribution: xr.DataArray
-    observation_covariance: xr.DataArray
+    observation_factor: xr.DataArray | None
     sensitivity: xr.DataArray | None
     prior_mean: xr.DataArray | None
     prior_covariance: xr.DataArray | None
     state_metadata: xr.Dataset
+    resolved_activity: ResolvedStateActivity | None
 
 
 def composite_baseline(
@@ -134,9 +139,10 @@ def _aligned_state_covariance(
     tolerance = 1e-10 * max(float(np.abs(values).max()), 1.0)
     if not np.allclose(values, values.T, rtol=1e-10, atol=tolerance):
         raise ValueError("Outer prior covariance must be symmetric.")
+    values = 0.5 * (values + values.T)
     if float(np.linalg.eigvalsh(values).min()) < -tolerance:
         raise ValueError("Outer prior covariance must be positive semidefinite.")
-    return covariance, covariance_dim
+    return covariance.copy(data=values), covariance_dim
 
 
 def _outer_forward(
@@ -149,48 +155,72 @@ def _outer_forward(
     return xr.dot(sensitivity, state, dim=state_dim).transpose(observation_dim)
 
 
-def _outer_observation_covariance(
+def _outer_observation_factor(
     sensitivity: xr.DataArray,
     covariance: xr.DataArray,
     *,
     observation_dim: str,
     state_dim: str,
-    covariance_dim: str,
 ) -> xr.DataArray:
-    observation_covariance_dim = f"{observation_dim}_cov"
-    right = xr.DataArray(
-        sensitivity.data,
-        dims=(observation_covariance_dim, covariance_dim),
-        coords={
-            observation_covariance_dim: np.asarray(
-                sensitivity.coords.get(
-                    observation_dim,
-                    xr.DataArray(np.arange(sensitivity.sizes[observation_dim])),
-                ).values
-            ),
-        },
+    values = np.asarray(covariance.values, dtype=np.float64)
+    eigenvalues, eigenvectors = np.linalg.eigh(values)
+    eigenvalues = np.clip(eigenvalues, 0.0, None)
+    rank_dim = "outer_covariance_rank"
+    state_factor = xr.DataArray(
+        (eigenvectors * np.sqrt(eigenvalues)[np.newaxis, :]) @ eigenvectors.T,
+        dims=(state_dim, rank_dim),
+        coords={state_dim: sensitivity[state_dim], rank_dim: np.arange(eigenvalues.size)},
     )
-    return xr.dot(
-        xr.dot(sensitivity, covariance, dim=state_dim),
-        right,
-        dim=covariance_dim,
-    ).transpose(observation_dim, observation_covariance_dim)
-
-
-def _zero_observation_covariance(
-    sensitivity: xr.DataArray,
-    *,
-    observation_dim: str,
-) -> xr.DataArray:
-    observation_covariance_dim = f"{observation_dim}_cov"
-    rows = xr.zeros_like(sensitivity.isel({sensitivity.dims[1]: 0}, drop=True))
-    columns = rows.rename({observation_dim: observation_covariance_dim})
-    return (rows * columns).transpose(observation_dim, observation_covariance_dim)
+    return xr.dot(sensitivity, state_factor, dim=state_dim).transpose(
+        observation_dim,
+        rank_dim,
+    )
 
 
 def _state_metadata(sensitivity: xr.DataArray, state_dim: str) -> xr.Dataset:
     variables = {str(name): coord for name, coord in sensitivity.coords.items() if coord.dims == (state_dim,)}
     return xr.Dataset(coords=variables)
+
+
+def _label_outer_basis_group(sensitivity: xr.DataArray, state_dim: str) -> xr.DataArray:
+    """Declare that every state passed through the outer-treatment API is outer."""
+    if "basis_group" in sensitivity.coords:
+        basis_group = sensitivity["basis_group"]
+        if basis_group.dims != (state_dim,) or not bool((basis_group == "outer").all().compute().item()):
+            raise ValueError("Outer sensitivity basis_group metadata must label every state 'outer'.")
+        return sensitivity
+    return sensitivity.assign_coords(
+        basis_group=(state_dim, np.full(sensitivity.sizes[state_dim], "outer", dtype=object))
+    )
+
+
+def _set_metadata_activity(
+    metadata: xr.Dataset,
+    activity: ResolvedStateActivity | None,
+) -> xr.Dataset:
+    """Record the activity of each state or collapsed-state member."""
+    metadata = metadata.copy()
+    metadata_dim = next(iter(metadata.dims))
+    if activity is None:
+        values = np.zeros(metadata.sizes[metadata_dim], dtype=bool)
+    elif metadata_dim == activity.state_dim:
+        values = np.asarray(activity.active.values, dtype=bool)
+    elif "collapsed_state" in metadata:
+        active_by_state = dict(
+            zip(
+                activity.active[activity.state_dim].values,
+                np.asarray(activity.active.values, dtype=bool),
+                strict=True,
+            )
+        )
+        values = np.asarray(
+            [active_by_state[label] for label in metadata["collapsed_state"].values],
+            dtype=bool,
+        )
+    else:
+        raise ValueError("Outer state metadata cannot be aligned to resolved activity.")
+    metadata["activity"] = (metadata_dim, values)
+    return metadata
 
 
 def collapse_outer_sectors(
@@ -209,6 +239,7 @@ def collapse_outer_sectors(
     original state-aligned source, sector, domain, and region coordinates.
     """
     state_dim = _matrix_state_dim(outer_sensitivity, observation_dim)
+    outer_sensitivity = _label_outer_basis_group(outer_sensitivity, state_dim)
     if group_labels.dims != (state_dim,):
         raise ValueError(f"group_labels must have dims ({state_dim!r},); got {group_labels.dims!r}.")
     try:
@@ -240,6 +271,7 @@ def collapse_outer_sectors(
     collapsed = collapsed.assign_coords(
         source=(collapsed_dim, np.full(len(unique_groups), source_label, dtype=object)),
         sector=(collapsed_dim, np.full(len(unique_groups), sector_label, dtype=object)),
+        basis_group=(collapsed_dim, np.full(len(unique_groups), "outer", dtype=object)),
         activity=(collapsed_dim, np.ones(len(unique_groups), dtype=bool)),
         treatment=(collapsed_dim, np.full(len(unique_groups), "collapsed", dtype=object)),
     ).rename("outer_sensitivity")
@@ -282,20 +314,22 @@ def prepare_outer_region_treatment(
         metadata = _state_metadata(sensitivity, state_dim)
 
     state_dim = _matrix_state_dim(sensitivity, observation_dim)
-    sensitivity = sensitivity.transpose(observation_dim, state_dim)
-    zero_covariance = _zero_observation_covariance(
-        sensitivity,
-        observation_dim=observation_dim,
-    ).rename("outer_observation_covariance")
+    sensitivity = _label_outer_basis_group(
+        sensitivity.transpose(observation_dim, state_dim),
+        state_dim,
+    )
     zero_contribution = xr.zeros_like(sensitivity.isel({state_dim: 0}, drop=True)).rename(
         "fixed_outer_contribution"
     )
 
     metadata_dim = next(iter(metadata.dims))
-    metadata["activity"] = (
-        metadata_dim,
-        np.full(metadata.sizes[metadata_dim], mode == "inferred", dtype=bool),
-    )
+    if "basis_group" not in metadata:
+        metadata = metadata.assign_coords(
+            basis_group=(
+                metadata_dim,
+                np.full(metadata.sizes[metadata_dim], "outer", dtype=object),
+            )
+        )
     metadata["treatment"] = (
         metadata_dim,
         np.full(metadata.sizes[metadata_dim], mode, dtype=object),
@@ -316,11 +350,12 @@ def prepare_outer_region_treatment(
                 observation_dim=observation_dim,
                 state_dim=state_dim,
             ).rename("fixed_outer_contribution"),
-            observation_covariance=zero_covariance,
+            observation_factor=None,
             sensitivity=None,
             prior_mean=None,
             prior_covariance=None,
-            state_metadata=metadata,
+            state_metadata=_set_metadata_activity(metadata, None),
+            resolved_activity=None,
         )
 
     if prior_mean is None or prior_covariance is None:
@@ -331,7 +366,7 @@ def prepare_outer_region_treatment(
         state_dim=state_dim,
         name="prior_mean",
     )
-    covariance, covariance_dim = _aligned_state_covariance(
+    covariance, _ = _aligned_state_covariance(
         prior_covariance,
         sensitivity,
         state_dim=state_dim,
@@ -346,27 +381,29 @@ def prepare_outer_region_treatment(
                 observation_dim=observation_dim,
                 state_dim=state_dim,
             ).rename("fixed_outer_contribution"),
-            observation_covariance=_outer_observation_covariance(
+            observation_factor=_outer_observation_factor(
                 sensitivity,
                 covariance,
                 observation_dim=observation_dim,
                 state_dim=state_dim,
-                covariance_dim=covariance_dim,
-            ).rename("outer_observation_covariance"),
+            ).rename("outer_observation_factor"),
             sensitivity=None,
             prior_mean=None,
             prior_covariance=None,
-            state_metadata=metadata,
+            state_metadata=_set_metadata_activity(metadata, None),
+            resolved_activity=None,
         )
 
+    activity = resolve_state_activity(detect_zero_sensitivity(sensitivity, output_dim=observation_dim))
     return OuterRegionTreatment(
         mode=mode,
         fixed_contribution=zero_contribution,
-        observation_covariance=zero_covariance,
+        observation_factor=None,
         sensitivity=sensitivity,
         prior_mean=mean,
         prior_covariance=covariance,
-        state_metadata=metadata,
+        state_metadata=_set_metadata_activity(metadata, activity),
+        resolved_activity=activity,
     )
 
 
@@ -384,6 +421,7 @@ def add_inferred_outer_component(
         or treatment.sensitivity is None
         or treatment.prior_mean is None
         or treatment.prior_covariance is None
+        or treatment.resolved_activity is None
     ):
         raise ValueError("Only an inferred outer-region treatment has a sampled state.")
     sensitivity = treatment.sensitivity.transpose(observation_dim, ...)
@@ -419,7 +457,23 @@ def add_inferred_outer_component(
         covariance,
         covariance_dim=covariance_dim,
     )
-    activity = resolve_state_activity(detect_zero_sensitivity(sensitivity))
+    resolved = treatment.resolved_activity
+
+    def rename_activity_array(array: xr.DataArray) -> xr.DataArray:
+        return array.rename(
+            {
+                name: namespaced
+                for name, namespaced in rename.items()
+                if name in array.dims or name in array.coords
+            }
+        )
+
+    activity = ResolvedStateActivity(
+        state_dim=state_dim,
+        active=rename_activity_array(resolved.active),
+        fixed_value=rename_activity_array(resolved.fixed_value),
+        zero_sensitivity=rename_activity_array(resolved.zero_sensitivity),
+    )
     state = add_correlated_lognormal_state_with_activity(
         activity,
         prior,
@@ -437,32 +491,89 @@ def add_outer_observation_covariance(
     aggregation_error: AggregationError,
     treatment: OuterRegionTreatment,
 ) -> AggregationError:
-    """Add exact Gaussian outer-state covariance to fixed observation error."""
+    """Add exact Gaussian outer-state covariance without densifying structured error."""
     if treatment.mode != "marginalized":
         return aggregation_error
-    outer = treatment.observation_covariance
-    outer_values = np.asarray(outer.values, dtype=np.float64)
-    nmeasure = outer.shape[0]
+    if treatment.observation_factor is None:
+        raise ValueError("Marginalized outer treatment requires an observation factor.")
+    outer = treatment.observation_factor
+    observation_dim, outer_rank_dim = map(str, outer.dims)
+    outer_marginal = np.asarray((outer**2).sum(outer_rank_dim).compute().values)
+    if not outer_marginal.any():
+        return aggregation_error
+
     if aggregation_error.mode == "none":
-        base = np.zeros((nmeasure, nmeasure), dtype=np.float64)
-    elif aggregation_error.mode == "dense":
-        assert aggregation_error.covariance is not None
-        base = np.asarray(aggregation_error.covariance.values, dtype=np.float64)
-    elif aggregation_error.mode == "diagonal":
-        assert aggregation_error.diagonal_variance is not None
-        base = np.diag(np.asarray(aggregation_error.diagonal_variance.values, dtype=np.float64))
-    else:
-        assert aggregation_error.factor is not None
-        assert aggregation_error.diagonal_variance is not None
-        factor = np.asarray(aggregation_error.factor.values, dtype=np.float64)
-        base = factor @ factor.T + np.diag(
-            np.asarray(aggregation_error.diagonal_variance.values, dtype=np.float64)
+        diagonal = xr.zeros_like(outer.isel({outer_rank_dim: 0}, drop=True)).rename(
+            "diagonal_residual_variance"
         )
-    covariance = outer.copy(data=base + outer_values).rename("aggregation_error_covariance")
+        return AggregationError(
+            mode="low_rank",
+            marginal_variance=outer_marginal,
+            factor=outer.rename("low_rank_factor"),
+            diagonal_variance=diagonal,
+        )
+
+    if aggregation_error.mode == "dense":
+        assert aggregation_error.covariance is not None
+        outer, covariance = xr.align(
+            outer,
+            aggregation_error.covariance,
+            join="exact",
+            copy=False,
+        )
+        outer_values = np.asarray(outer.compute().values, dtype=np.float64)
+        values = np.asarray(covariance.values, dtype=np.float64) + outer_values @ outer_values.T
+        return AggregationError(
+            mode="dense",
+            marginal_variance=aggregation_error.marginal_variance + outer_marginal,
+            covariance=covariance.copy(data=values),
+        )
+
+    if aggregation_error.mode == "diagonal":
+        assert aggregation_error.diagonal_variance is not None
+        outer, diagonal = xr.align(
+            outer,
+            aggregation_error.diagonal_variance,
+            join="exact",
+            copy=False,
+        )
+        return AggregationError(
+            mode="low_rank",
+            marginal_variance=aggregation_error.marginal_variance + outer_marginal,
+            factor=outer.rename("low_rank_factor"),
+            diagonal_variance=diagonal,
+        )
+
+    assert aggregation_error.factor is not None
+    assert aggregation_error.diagonal_variance is not None
+    factor, outer, diagonal = xr.align(
+        aggregation_error.factor,
+        outer,
+        aggregation_error.diagonal_variance,
+        join="exact",
+        copy=False,
+    )
+    factor_rank_dim = str(factor.dims[1])
+    factor_rank = factor.sizes[factor_rank_dim]
+    combined_rank_dim = "aggregation_error_rank"
+    if factor_rank_dim != combined_rank_dim:
+        factor = factor.rename({factor_rank_dim: combined_rank_dim})
+    factor = factor.assign_coords({combined_rank_dim: np.arange(factor_rank)})
+    outer_rank = outer.sizes[outer_rank_dim]
+    outer = outer.rename({outer_rank_dim: combined_rank_dim}).assign_coords(
+        {
+            combined_rank_dim: np.arange(
+                factor_rank,
+                factor_rank + outer_rank,
+            )
+        }
+    )
+    combined = xr.concat((factor, outer), dim=combined_rank_dim).rename("low_rank_factor")
     return AggregationError(
-        mode="dense",
-        marginal_variance=np.diag(covariance.values).copy(),
-        covariance=covariance,
+        mode="low_rank",
+        marginal_variance=aggregation_error.marginal_variance + outer_marginal,
+        factor=combined.transpose(observation_dim, combined_rank_dim),
+        diagonal_variance=diagonal,
     )
 
 

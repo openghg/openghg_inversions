@@ -138,26 +138,32 @@ def _reject_outer_state_double_counting(
     flux_sensitivity: xr.DataArray,
     outer_treatment: OuterRegionTreatment | None,
 ) -> None:
-    """Reject inner designs that still contain separately treated outer states."""
+    """Require explicit disjoint inner/outer basis-group partitions."""
     if outer_treatment is None:
         return
     state_dim = next(str(dim) for dim in flux_sensitivity.dims if dim != "nmeasure")
-    if "basis_group" in flux_sensitivity.coords:
-        groups = np.asarray(flux_sensitivity["basis_group"].values).astype(str)
-        if (groups == "outer").any():
-            raise ValueError(
-                "CO2 flux_sensitivity still contains basis_group='outer' states while an "
-                "outer_treatment is supplied; remove them to avoid double counting."
-            )
-    if state_dim in outer_treatment.state_metadata.dims:
-        inner_labels = flux_sensitivity.get_index(state_dim)
-        outer_labels = outer_treatment.state_metadata.get_index(state_dim)
-        overlap = inner_labels.intersection(outer_labels)
-        if len(overlap):
-            raise ValueError(
-                "CO2 flux_sensitivity overlaps outer_treatment state labels "
-                f"{overlap.tolist()!r}; remove them to avoid double counting."
-            )
+    if "basis_group" not in flux_sensitivity.coords:
+        raise ValueError(
+            "CO2 flux_sensitivity requires state-aligned basis_group metadata when an "
+            "outer_treatment is supplied, to prove the partitions are disjoint."
+        )
+    inner_groups = flux_sensitivity["basis_group"]
+    if inner_groups.dims != (state_dim,) or bool(inner_groups.isnull().any().compute().item()):
+        raise ValueError("CO2 flux_sensitivity basis_group metadata must be complete and state-aligned.")
+    if bool((inner_groups == "outer").any().compute().item()):
+        raise ValueError(
+            "CO2 flux_sensitivity contains basis_group='outer' states while an outer_treatment "
+            "is supplied; remove them to avoid double counting."
+        )
+
+    outer_metadata = outer_treatment.state_metadata
+    if "basis_group" not in outer_metadata:
+        raise ValueError("outer_treatment requires basis_group metadata proving every state is outer.")
+    outer_groups = outer_metadata["basis_group"]
+    if outer_groups.ndim != 1 or bool(outer_groups.isnull().any().compute().item()):
+        raise ValueError("outer_treatment basis_group metadata must be complete and one-dimensional.")
+    if not bool((outer_groups == "outer").all().compute().item()):
+        raise ValueError("outer_treatment basis_group metadata must label every state 'outer'.")
 
 
 def build_co2_rhime_model(
