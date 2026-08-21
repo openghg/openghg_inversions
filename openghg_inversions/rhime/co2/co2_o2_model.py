@@ -5,6 +5,7 @@ from __future__ import annotations
 import pymc as pm
 import pytensor.tensor as pt
 import xarray as xr
+from pytensor.tensor.variable import TensorVariable
 
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.models import (
@@ -127,6 +128,72 @@ def co2_o2_prior_forward_mean(
     )
 
 
+def add_co2_o2_affine_signal(
+    co2_sensitivity: PreparedLinearSensitivity,
+    o2_sensitivity: PreparedLinearSensitivity,
+    state: TensorVariable,
+    /,
+    *,
+    prior_state: xr.DataArray,
+    prior_forward_mean: xr.DataArray,
+    output_dim: str,
+) -> TensorVariable:
+    """Add the affine CO2/O2 signal from one shared flux-scaling state."""
+    state_anomaly = state - add_model_data(prior_state)
+    prior_forward_data = add_model_data(prior_forward_mean)
+    co2_adjustment = add_linked_linear_component(
+        co2_sensitivity,
+        state_anomaly,
+        data_name="co2_operator",
+        output_name="co2_flux_adjustment",
+    )
+    # Preparation declares that this operator already contains signed,
+    # source-resolved O2:CO2 oxidation ratios; do not multiply them again.
+    o2_adjustment = add_linked_linear_component(
+        o2_sensitivity,
+        state_anomaly,
+        data_name="o2_operator",
+        output_name="o2_flux_adjustment",
+    )
+    nco2 = co2_sensitivity.sensitivity.sizes[co2_sensitivity.output_dim]
+    return pm.Deterministic(
+        "modelled_concentration",
+        pt.concatenate(
+            (
+                prior_forward_data[:nco2] + co2_adjustment,
+                prior_forward_data[nco2:] + o2_adjustment,
+            )
+        ),
+        dims=output_dim,
+    )
+
+
+def add_co2_o2_fixed_error_likelihood(
+    observations: xr.DataArray,
+    modelled_concentration: TensorVariable,
+    /,
+    *,
+    independent_error_sd: xr.DataArray,
+    aggregation_error: AggregationError,
+    output_dim: str,
+) -> None:
+    """Add the fixed-error joint likelihood for both observation channels."""
+    observed = add_model_data(observations, "observed_concentration")
+    fixed_error = add_model_data(independent_error_sd, "fixed_independent_error_sd")
+    registered_aggregation_error = add_aggregation_error_data(
+        aggregation_error,
+        observations,
+        output_dim=output_dim,
+    )
+    add_gaussian_observation_likelihood(
+        observed=observed,
+        mean=modelled_concentration,
+        independent_variance=fixed_error**2,
+        aggregation_error=registered_aggregation_error,
+        output_dim=output_dim,
+    )
+
+
 def build_co2_o2_model(
     *,
     observations: xr.DataArray,
@@ -145,7 +212,6 @@ def build_co2_o2_model(
     supplies one ppm as ``independent_error_sd`` for each channel; this builder
     does not encode that run policy and does not infer a mismatch amplitude.
     """
-    co2_dim = str(co2_operator.dims[0])
     co2_sensitivity, o2_sensitivity = _prepare_channel_sensitivities(
         co2_operator,
         o2_operator,
@@ -171,44 +237,19 @@ def build_co2_o2_model(
             retained_prior,
             var_name="flux_scaling",
         ).state
-        prior_state_data = add_model_data(prior_state)
-        prior_forward_data = add_model_data(activity_prior_forward)
-        state_anomaly = state - prior_state_data
-        co2_adjustment = add_linked_linear_component(
+        modelled = add_co2_o2_affine_signal(
             co2_sensitivity,
-            state_anomaly,
-            data_name="co2_operator",
-            output_name="co2_flux_adjustment",
-        )
-        o2_adjustment = add_linked_linear_component(
             o2_sensitivity,
-            state_anomaly,
-            data_name="o2_operator",
-            output_name="o2_flux_adjustment",
-        )
-        nco2 = co2_operator.sizes[co2_dim]
-        modelled = pm.Deterministic(
-            "modelled_concentration",
-            pt.concatenate(
-                (
-                    prior_forward_data[:nco2] + co2_adjustment,
-                    prior_forward_data[nco2:] + o2_adjustment,
-                )
-            ),
-            dims=output_dim,
-        )
-        observed = add_model_data(observations, "observed_concentration")
-        fixed_error = add_model_data(independent_error_sd, "fixed_independent_error_sd")
-        registered_aggregation_error = add_aggregation_error_data(
-            aggregation_error,
-            observations,
+            state,
+            prior_state=prior_state,
+            prior_forward_mean=activity_prior_forward,
             output_dim=output_dim,
         )
-        add_gaussian_observation_likelihood(
-            observed=observed,
-            mean=modelled,
-            independent_variance=fixed_error**2,
-            aggregation_error=registered_aggregation_error,
+        add_co2_o2_fixed_error_likelihood(
+            observations,
+            modelled,
+            independent_error_sd=independent_error_sd,
+            aggregation_error=aggregation_error,
             output_dim=output_dim,
         )
     return model

@@ -72,6 +72,7 @@ def _inputs(
             dims=("o2_measure", "state"),
             coords={"o2_measure": o2_labels, "state": state},
         ),
+        "o2_operator_ratio_convention": "embedded_signed_o2_per_co2",
         "co2_aggregation_covariance": xr.DataArray(
             da.from_array(np.eye(2), chunks=(1, 2)),
             dims=("co2_measure", "co2_measure_cov"),
@@ -126,3 +127,11 @@ def test_rejects_co2_loading_on_o2_ocean_state() -> None:
 def test_rejects_o2_loading_on_co2_ocean_state() -> None:
     with pytest.raises(ValueError, match="O2 operator.*CO2-specific ocean"):
         prepare_co2_o2_inputs(**_inputs(o2_co2_ocean_loading=0.1))
+
+
+def test_requires_embedded_signed_o2_ratio_convention() -> None:
+    inputs = _inputs()
+    inputs["o2_operator_ratio_convention"] = "ratio_free"
+
+    with pytest.raises(ValueError, match="signed O2-per-CO2"):
+        prepare_co2_o2_inputs(**inputs)
