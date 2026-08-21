@@ -19,18 +19,28 @@ from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.models.additive_sigma import add_additive_sigma_gaussian_likelihood
 from openghg_inversions.models.components import (
     add_correlated_lognormal_state_with_activity,
+    add_linear_component,
     add_model_data,
 )
+from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.models.coords import registered_model
 from openghg_inversions.models.state_activity import (
     ResolvedStateActivity,
     StateActivity,
     detect_zero_sensitivity,
+    prepare_linear_sensitivity,
     resolve_state_activity,
 )
 from openghg_inversions.observation_error import AggregationError
-from openghg_inversions.rhime.specs import DEFAULT_SIGMA_PRIOR
+from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR, DEFAULT_SIGMA_PRIOR
 from openghg_inversions.sigma import SigmaAlignment
+
+from .outer_regions import (
+    OuterRegionTreatment,
+    add_inferred_outer_component,
+    add_outer_observation_covariance,
+    composite_baseline,
+)
 
 
 def _resolve_co2_state_activity(
@@ -124,6 +134,32 @@ def _fixed_mismatch_array(
     ).rename("fixed_model_mismatch")
 
 
+def _reject_outer_state_double_counting(
+    flux_sensitivity: xr.DataArray,
+    outer_treatment: OuterRegionTreatment | None,
+) -> None:
+    """Reject inner designs that still contain separately treated outer states."""
+    if outer_treatment is None:
+        return
+    state_dim = next(str(dim) for dim in flux_sensitivity.dims if dim != "nmeasure")
+    if "basis_group" in flux_sensitivity.coords:
+        groups = np.asarray(flux_sensitivity["basis_group"].values).astype(str)
+        if (groups == "outer").any():
+            raise ValueError(
+                "CO2 flux_sensitivity still contains basis_group='outer' states while an "
+                "outer_treatment is supplied; remove them to avoid double counting."
+            )
+    if state_dim in outer_treatment.state_metadata.dims:
+        inner_labels = flux_sensitivity.get_index(state_dim)
+        outer_labels = outer_treatment.state_metadata.get_index(state_dim)
+        overlap = inner_labels.intersection(outer_labels)
+        if len(overlap):
+            raise ValueError(
+                "CO2 flux_sensitivity overlaps outer_treatment state labels "
+                f"{overlap.tolist()!r}; remove them to avoid double counting."
+            )
+
+
 def build_co2_rhime_model(
     flux_sensitivity: xr.DataArray,
     *,
@@ -138,6 +174,10 @@ def build_co2_rhime_model(
     sigma_prior: Mapping[str, Any] | None = None,
     fixed_model_mismatch: float | xr.DataArray | None = None,
     state_activity: StateActivity | None = None,
+    outer_treatment: OuterRegionTreatment | None = None,
+    boundary_sensitivity: xr.DataArray | None = None,
+    bc_prior: PriorArgs | None = None,
+    bc_state_activity: StateActivity | None = None,
     no_model_error: bool = False,
 ) -> pm.Model:
     """Build the CO2 coherent-reduction model from explicit scientific arrays.
@@ -152,10 +192,20 @@ def build_co2_rhime_model(
     omitted from the sampled correlated state. ``fixed_model_mismatch`` is an
     optional known concentration standard deviation. OGI leaves this policy
     unset by default; the Verification Games fixed likelihood passes 1 ppm
-    explicitly.
+    explicitly. ``outer_treatment`` is prepared independently of atmospheric
+    boundary conditions: the builder composes its fixed or sampled contribution
+    with optional sampled ``boundary_sensitivity @ bc`` and keeps the coherent
+    ``fixed_prior_contribution`` as a separate affine term.
     """
     sigma_prior = dict(DEFAULT_SIGMA_PRIOR if sigma_prior is None else sigma_prior)
+    bc_prior = dict(DEFAULT_BC_PRIOR if bc_prior is None else bc_prior)
     fixed_mismatch = _fixed_mismatch_array(observations, fixed_model_mismatch)
+    _reject_outer_state_double_counting(flux_sensitivity, outer_treatment)
+    aggregation_error = (
+        aggregation_error
+        if outer_treatment is None
+        else add_outer_observation_covariance(aggregation_error, outer_treatment)
+    )
 
     with registered_model() as model:
         h = add_model_data(flux_sensitivity.transpose("nmeasure", ...), "hx")
@@ -170,9 +220,37 @@ def build_co2_rhime_model(
             fixed_prior_contribution.transpose("nmeasure"),
             "fixed_prior_contribution",
         )
+        boundary_mean = None
+        if boundary_sensitivity is not None:
+            boundary_mean = add_linear_component(
+                prepare_linear_sensitivity(boundary_sensitivity),
+                data_name="hbc",
+                prior_args=bc_prior,
+                var_name="bc",
+                output_name="mu_bc",
+                output_dim="nmeasure",
+                compute_deterministic=True,
+                state_activity=bc_state_activity,
+            ).output
+
+        outer_mean = None
+        fixed_outer = None
+        if outer_treatment is not None:
+            fixed_outer = add_model_data(
+                outer_treatment.fixed_contribution.transpose("nmeasure"),
+                "fixed_outer_contribution",
+            )
+            if outer_treatment.mode == "inferred":
+                outer_mean = add_inferred_outer_component(outer_treatment)
+        baseline_mean = composite_baseline(boundary_mean, fixed_outer)
+        baseline_mean = composite_baseline(baseline_mean, outer_mean)
+        if baseline_mean is not None:
+            baseline_mean = pm.Deterministic("mu_baseline", baseline_mean, dims="nmeasure")
         modelled_mean = pm.Deterministic(
             "mu",
-            fixed_prior + pollution_mean,
+            fixed_prior + pollution_mean
+            if baseline_mean is None
+            else fixed_prior + pollution_mean + baseline_mean,
             dims="nmeasure",
         )
         add_additive_sigma_gaussian_likelihood(
