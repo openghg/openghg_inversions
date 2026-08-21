@@ -43,9 +43,11 @@ openghg_inversions/rhime/
   nested_domain.py       readable nested-domain runner and concrete graph
   co2/
     __init__.py          run_rhime_co2 and run_rhime_co2_o2
-    preparation.py       CO2 and optional linked-channel preparation
-    model.py             concrete CO2-only and CO2/O2 graphs
-    runner.py            two readable procedural pipelines
+    co2_model.py         concrete CO2-only graph
+    co2_runner.py        readable CO2-only pipeline
+    co2_o2_preparation.py  CO2/O2 shared-state preparation
+    co2_o2_model.py      concrete CO2/O2 graph
+    co2_o2_runner.py     CO2/O2 prepared-input replay seam
     outputs.py           tracer-aware output construction
   config/
     nested_domain.ini

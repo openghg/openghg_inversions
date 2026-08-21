@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 import json
-from typing import Any, Literal
+from typing import Any
 
 from dask import compute as dask_compute
 import numpy as np
@@ -23,19 +23,17 @@ from openghg_inversions.observation_error import (
     resolve_aggregation_error,
 )
 
-O2OperatorRatioConvention = Literal["embedded_signed_o2_per_co2"]
-O2_OPERATOR_RATIO_CONVENTION: O2OperatorRatioConvention = "embedded_signed_o2_per_co2"
-
 
 @dataclass(frozen=True, slots=True, eq=False)
 class Co2O2PreparedInputs:
     """Backend-neutral joint inputs with shared land and split-ocean states."""
 
     observations: xr.DataArray
-    prior_forward_mean: xr.DataArray
+    fixed_prior_contribution: xr.DataArray
     co2_operator: xr.DataArray
     o2_operator: xr.DataArray
-    o2_operator_ratio_convention: O2OperatorRatioConvention
+    o2_co2_flux_ratio: xr.DataArray | None
+    o2_co2_flux_ratio_unavailable_reason: str | None
     aggregation_error: AggregationError
     retained_prior: CorrelatedLognormalPrior
     co2_observation_dim: str
@@ -101,7 +99,8 @@ def _validate_ocean_loadings(
     co2_operator: xr.DataArray,
     o2_operator: xr.DataArray,
     state_mean: xr.DataArray,
-) -> None:
+    o2_co2_flux_ratio: xr.DataArray | None,
+) -> np.ndarray:
     """Reject loadings from one channel onto the other channel's ocean state."""
     state_dim = str(state_mean.dims[0])
     roles = [
@@ -114,14 +113,64 @@ def _validate_ocean_loadings(
     ]
     co2_ocean = [index for index, role in enumerate(roles) if role == ("ocean", "co2")]
     o2_ocean = [index for index, role in enumerate(roles) if role == ("ocean", "o2")]
-    co2_cross, o2_cross = dask_compute(
+    collections = [
         co2_operator.isel({state_dim: o2_ocean}).data,
         o2_operator.isel({state_dim: co2_ocean}).data,
-    )
+    ]
+    if o2_co2_flux_ratio is not None:
+        collections.append(o2_co2_flux_ratio.data)
+    computed = dask_compute(*collections)
+    co2_cross, o2_cross = computed[:2]
     if np.any(co2_cross != 0):
         raise ValueError("CO2 operator must have zero loadings for O2-specific ocean states.")
     if np.any(o2_cross != 0):
         raise ValueError("O2 operator must have zero loadings for CO2-specific ocean states.")
+    if o2_co2_flux_ratio is None:
+        return np.empty(0)
+    ratio_values = np.asarray(computed[2])
+    if not np.isfinite(ratio_values).all() or np.any(ratio_values >= 0):
+        raise ValueError("Available O2/CO2 flux ratios must contain only finite negative values.")
+    return ratio_values
+
+
+def _ratio_provenance(
+    value: xr.DataArray | None,
+    unavailable_reason: str | None,
+    state_mean: xr.DataArray,
+) -> xr.DataArray | None:
+    """Validate signed O2-per-CO2 ratios against the retained shared states."""
+    reason = str(unavailable_reason or "").strip()
+    if (value is None) == (not reason):
+        raise ValueError(
+            "Supply exactly one of labelled O2/CO2 flux ratios or a non-empty unavailable reason."
+        )
+    if value is None:
+        return None
+    state_dim = str(state_mean.dims[0])
+    shared = [
+        index
+        for index, scope in enumerate(state_mean["tracer_scope"].values)
+        if str(scope).lower() == "shared"
+    ]
+    shared_mean = state_mean.isel({state_dim: shared})
+    if value.dims != (state_dim,) or state_dim not in value.indexes:
+        raise ValueError(f"O2/CO2 flux ratios must have one indexed {state_dim!r} dimension.")
+    if not value.indexes[state_dim].equals(shared_mean.indexes[state_dim]):
+        raise ValueError("O2/CO2 flux ratio state labels must match the retained shared states.")
+    if "source" not in value.coords or value["source"].dims != (state_dim,):
+        raise ValueError("O2/CO2 flux ratios require a source coordinate on the shared states.")
+    if not np.array_equal(value["source"].values, shared_mean["source"].values):
+        raise ValueError("O2/CO2 flux ratio sources must match the retained shared states.")
+    if value.attrs.get("direction") != "O2 flux per CO2 flux":
+        raise ValueError("O2/CO2 flux ratio direction must be 'O2 flux per CO2 flux'.")
+    expected_sign = "signed; positive CO2 flux has negative O2 loading"
+    if value.attrs.get("sign_convention") != expected_sign:
+        raise ValueError(f"O2/CO2 flux ratio sign_convention must be {expected_sign!r}.")
+    if not str(value.attrs.get("provenance", "")).strip():
+        raise ValueError("Available O2/CO2 flux ratios require non-empty provenance metadata.")
+    if not np.issubdtype(value.dtype, np.number):
+        raise ValueError("O2/CO2 flux ratios must be numeric.")
+    return value.rename("o2_co2_flux_ratio")
 
 
 def _covariance_block(
@@ -240,7 +289,8 @@ def prepare_co2_o2_inputs(
     o2_prior_forward_mean: xr.DataArray,
     co2_operator: xr.DataArray,
     o2_operator: xr.DataArray,
-    o2_operator_ratio_convention: O2OperatorRatioConvention,
+    o2_co2_flux_ratio: xr.DataArray | None,
+    o2_co2_flux_ratio_unavailable_reason: str | None,
     co2_aggregation_covariance: xr.DataArray,
     co2_o2_aggregation_covariance: xr.DataArray,
     o2_aggregation_covariance: xr.DataArray,
@@ -249,12 +299,13 @@ def prepare_co2_o2_inputs(
     o2_units: str,
     provenance: Mapping[str, Any] | None = None,
 ) -> Co2O2PreparedInputs:
-    """Validate separate tracer inputs and form one labelled joint likelihood."""
-    if o2_operator_ratio_convention != O2_OPERATOR_RATIO_CONVENTION:
-        raise ValueError(
-            "The O2 operator must declare signed O2-per-CO2 oxidation ratios embedded "
-            "for shared GPP/TER/FF states; the O2 ocean state is applied directly."
-        )
+    """Validate coherent-reduction channel products and form one joint likelihood.
+
+    The concrete recipe treats the O2 operator as already containing fixed,
+    signed O2-per-CO2 ratios for shared states. Supply their labelled values
+    when they remain available, or an explicit reason why a native paired-flux
+    construction cannot expose scalar ratios at this boundary.
+    """
     if not co2_units.strip() or not o2_units.strip():
         raise ValueError("CO2 and O2 channel units must be non-empty.")
     try:
@@ -271,7 +322,17 @@ def prepare_co2_o2_inputs(
     state_mean, _ = _state(retained_prior)
     _operator(co2_operator, co2_observations, state_mean, "CO2")
     _operator(o2_operator, o2_observations, state_mean, "O2")
-    _validate_ocean_loadings(co2_operator, o2_operator, state_mean)
+    o2_co2_flux_ratio = _ratio_provenance(
+        o2_co2_flux_ratio,
+        o2_co2_flux_ratio_unavailable_reason,
+        state_mean,
+    )
+    ratio_values = _validate_ocean_loadings(
+        co2_operator,
+        o2_operator,
+        state_mean,
+        o2_co2_flux_ratio,
+    )
 
     co2_covariance = _covariance_block(
         co2_aggregation_covariance,
@@ -314,13 +375,25 @@ def prepare_co2_o2_inputs(
         o2_units=o2_units,
         name="observed_concentration",
     )
-    prior_forward_mean = _stack(
-        co2_prior_forward_mean,
-        o2_prior_forward_mean,
+    state_dim = retained_prior.state_dim
+    co2_intercept = co2_prior_forward_mean - xr.dot(
+        co2_operator,
+        retained_prior.mean,
+        dim=state_dim,
+    )
+    o2_intercept = o2_prior_forward_mean - xr.dot(
+        o2_operator,
+        retained_prior.mean,
+        dim=state_dim,
+    )
+    fixed_prior_contribution = _stack(
+        co2_intercept,
+        o2_intercept,
         co2_units=co2_units,
         o2_units=o2_units,
-        name="prior_forward_concentration",
+        name="fixed_prior_contribution",
     )
+    fixed_prior_contribution.attrs["mathematical_name"] = "H m - H_alpha Pi m"
     operator_coords = {name: state_mean[name] for name in ("source", "tracer_scope")}
     co2_operator = co2_operator.rename("co2_effective_observation_operator").assign_coords(
         **{
@@ -329,6 +402,23 @@ def prepare_co2_o2_inputs(
             if name not in co2_operator.coords
         },
     ).assign_attrs(units=f"{co2_units} per dimensionless flux scale")
+    ratio_direction = "O2 flux per CO2 flux"
+    ratio_sign = "signed; positive CO2 flux has negative O2 loading"
+    ratio_status = "available" if o2_co2_flux_ratio is not None else "unavailable"
+    ratio_record: dict[str, object] = {
+        "status": ratio_status,
+        "direction": ratio_direction,
+        "sign_convention": ratio_sign,
+    }
+    if o2_co2_flux_ratio is not None:
+        ratio_record.update(
+            state=[str(label) for label in o2_co2_flux_ratio.indexes[state_dim]],
+            source=[str(source) for source in o2_co2_flux_ratio["source"].values],
+            value=ratio_values.tolist(),
+            provenance=o2_co2_flux_ratio.attrs["provenance"],
+        )
+    else:
+        ratio_record["unavailable_reason"] = o2_co2_flux_ratio_unavailable_reason
     o2_operator = o2_operator.rename("o2_effective_observation_operator").assign_coords(
         **{
             name: coordinate
@@ -337,10 +427,11 @@ def prepare_co2_o2_inputs(
         },
     ).assign_attrs(
         units=f"{o2_units} per dimensionless flux scale",
-        oxidation_ratio_convention=o2_operator_ratio_convention,
-        oxidation_ratio_direction="O2 flux per CO2 flux",
-        oxidation_ratio_sign="signed; positive CO2 flux has negative O2 loading",
+        oxidation_ratio_convention="embedded_signed_o2_per_co2",
+        oxidation_ratio_direction=ratio_direction,
+        oxidation_ratio_sign=ratio_sign,
         oxidation_ratio_scope="shared GPP/TER/FF states; O2 ocean applied directly",
+        oxidation_ratio_provenance=json.dumps(ratio_record, sort_keys=True),
     )
     covariance.attrs["units"] = "observation_units * observation_units_cov"
     aggregation_error = resolve_aggregation_error(
@@ -355,10 +446,15 @@ def prepare_co2_o2_inputs(
     )
     return Co2O2PreparedInputs(
         observations=observations,
-        prior_forward_mean=prior_forward_mean,
+        fixed_prior_contribution=fixed_prior_contribution,
         co2_operator=co2_operator,
         o2_operator=o2_operator,
-        o2_operator_ratio_convention=o2_operator_ratio_convention,
+        o2_co2_flux_ratio=o2_co2_flux_ratio,
+        o2_co2_flux_ratio_unavailable_reason=(
+            None
+            if o2_co2_flux_ratio is not None
+            else str(o2_co2_flux_ratio_unavailable_reason).strip()
+        ),
         aggregation_error=aggregation_error,
         retained_prior=retained_prior,
         co2_observation_dim=co2_dim,

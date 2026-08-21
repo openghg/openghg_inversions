@@ -239,6 +239,95 @@ it. Persist gathered-state traces with
 :func:`openghg_inversions.serialization.save_inferencedata`, which uses the
 same MultiIndex-safe boundary as standard and multisector RHIME outputs.
 
+CO2/O2 shared-state model
+-------------------------
+
+The CO2/O2 recipe applies one retained state to both observation channels.
+Partition that state as
+
+.. math::
+
+   \alpha =
+   \begin{bmatrix}
+      \alpha_{shared} \\
+      \alpha_{CO_2,ocean} \\
+      \alpha_{O_2,ocean}
+   \end{bmatrix},
+
+where :math:`\alpha_{shared}` contains the GPP, TER, and fossil-fuel states.
+The joint affine model is
+
+.. math::
+
+   H_{joint} =
+   \begin{bmatrix}
+      H_{CO_2,shared} & H_{CO_2,ocean} & 0 \\
+      H_{O_2,shared}^{eff} & 0 & H_{O_2,ocean}
+   \end{bmatrix},
+   \qquad
+   b_{joint} =
+   \begin{bmatrix} b_{CO_2} \\ b_{O_2} \end{bmatrix},
+   \qquad
+   \mu_{joint} = b_{joint} + H_{joint}\alpha.
+
+Thus this is a row-stacked, block-sparse operator acting on one state vector,
+not two independent block-diagonal models. Its fixed-error likelihood is
+
+.. math::
+
+   \begin{bmatrix} y_{CO_2} \\ y_{O_2} \end{bmatrix}
+   \mid \alpha
+   \sim \mathcal N\!\left(
+      \mu_{joint},
+      \begin{bmatrix}
+         A_{CO_2,CO_2} & A_{CO_2,O_2} \\
+         A_{O_2,CO_2} & A_{O_2,O_2}
+      \end{bmatrix}
+      + \operatorname{diag}(s_{independent}^2)
+   \right).
+
+These quantities must come from one coherent reduction. With native state
+mean :math:`m`, covariance :math:`B`, joint native observation operator
+:math:`G`, and retained-state restriction :math:`\Pi`,
+
+.. math::
+
+   C_\alpha &= \Pi B\Pi^\mathsf{T}, \\
+   H_{joint} &= GB\Pi^\mathsf{T}C_\alpha^{-1}, \\
+   b_{joint} &= Gm - H_{joint}\Pi m, \\
+   A &= GBG^\mathsf{T} - H_{joint}C_\alpha H_{joint}^\mathsf{T}.
+
+In particular, the off-diagonal :math:`A_{CO_2,O_2}` block is part of the
+coherent-reduction contract. See the :doc:`full derivation
+<coherent_reduction>` for its assumptions and limitations.
+
+The implementation preserves separate channel arrays because CO2 rows in ppm
+and O2 rows in per meg have different units. The displayed row stack is the
+mathematical model: every operator and covariance block must still be produced
+by the same reduction.
+
+The signed oxidation ratio is fixed in this recipe and already folded into the
+shared-state O2 operator. When it is representable by retained-state or
+source-resolved values :math:`R`,
+
+.. math::
+
+   H_{O_2,shared}^{eff}
+   = H_{O_2,ratio\text{-}free}\operatorname{diag}(R).
+
+Native paired-flux construction may instead apply spatially resolved ratios
+before footprint convolution, in which case no unique retained-state
+:math:`R` is available. Preparation records that status and its reason rather
+than inventing scalar values; the supplied effective O2 operator remains the
+scientific input.
+
+The retained/source-resolved form is equivalent to the tracer term
+:math:`H_{tracer}(R\mathbin{\odot}\alpha_{shared})` used by the
+:doc:`Ramsden methane/ethane model <../experimental/ramsden2022>`. Ramsden may
+infer its emission ratio; if :math:`R` were sampled here, the tracer term would
+be bilinear rather than the fixed linear coherent-reduction model implemented
+by the CO2/O2 recipe.
+
 Equivalent construction from public helpers
 -------------------------------------------
 

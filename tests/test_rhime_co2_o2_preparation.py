@@ -15,6 +15,13 @@ def _inputs(
     *,
     co2_o2_ocean_loading: float = 0.0,
     o2_co2_ocean_loading: float = 0.0,
+    ratio_state: list[str] | None = None,
+    ratio_source: list[str] | None = None,
+    ratio_values: list[float] | None = None,
+    ratio_direction: str = "O2 flux per CO2 flux",
+    ratio_sign: str = "signed; positive CO2 flux has negative O2 loading",
+    ratio_available: bool = True,
+    unavailable_reason: str = "",
 ) -> dict[str, object]:
     state = ["gpp:1", "ter:1", "ff:1", "co2-ocean:1", "o2-ocean:1"]
     mean = xr.DataArray(
@@ -72,7 +79,30 @@ def _inputs(
             dims=("o2_measure", "state"),
             coords={"o2_measure": o2_labels, "state": state},
         ),
-        "o2_operator_ratio_convention": "embedded_signed_o2_per_co2",
+        "o2_co2_flux_ratio": (
+            xr.DataArray(
+                da.from_array(
+                    [-1.1, -1.0, -1.4] if ratio_values is None else ratio_values,
+                    chunks=1,
+                ),
+                dims="state",
+                coords={
+                    "state": state[:3] if ratio_state is None else ratio_state,
+                    "source": (
+                        "state",
+                        ["GPP", "TER", "FF"] if ratio_source is None else ratio_source,
+                    ),
+                },
+                attrs={
+                    "direction": ratio_direction,
+                    "sign_convention": ratio_sign,
+                    "provenance": "Verification Games source-resolved O2:CO2 ratios",
+                },
+            )
+            if ratio_available
+            else None
+        ),
+        "o2_co2_flux_ratio_unavailable_reason": unavailable_reason,
         "co2_aggregation_covariance": xr.DataArray(
             da.from_array(np.eye(2), chunks=(1, 2)),
             dims=("co2_measure", "co2_measure_cov"),
@@ -95,12 +125,17 @@ def _inputs(
 
 
 def test_preparation_preserves_lazy_channels_with_staggered_unequal_times() -> None:
-    prepared = prepare_co2_o2_inputs(**_inputs())
+    inputs = _inputs()
+    ratio = inputs["o2_co2_flux_ratio"]
+    assert isinstance(ratio, xr.DataArray)
+    prepared = prepare_co2_o2_inputs(**inputs)
 
     assert isinstance(prepared.observations.data, da.Array)
-    assert isinstance(prepared.prior_forward_mean.data, da.Array)
+    assert isinstance(prepared.fixed_prior_contribution.data, da.Array)
     assert isinstance(prepared.co2_operator.data, da.Array)
     assert isinstance(prepared.o2_operator.data, da.Array)
+    assert isinstance(prepared.o2_co2_flux_ratio.data, da.Array)
+    assert prepared.o2_co2_flux_ratio.data is ratio.data
     assert not isinstance(prepared.aggregation_error.covariance.data, da.Array)
     assert prepared.observations["tracer"].values.tolist() == ["co2", "co2", "o2", "o2", "o2"]
     assert prepared.observations["within_tracer_observation"].values.tolist() == [
@@ -117,6 +152,46 @@ def test_preparation_preserves_lazy_channels_with_staggered_unequal_times() -> N
             dtype="datetime64[D]",
         ),
     )
+    np.testing.assert_allclose(
+        prepared.fixed_prior_contribution,
+        [-8.25, -2.25, -2.5, -4.0, -5.3],
+    )
+    assert prepared.fixed_prior_contribution.attrs["mathematical_name"] == (
+        "H m - H_alpha Pi m"
+    )
+    ratio_provenance = prepared.o2_operator.attrs["oxidation_ratio_provenance"]
+    assert '"state": ["gpp:1", "ter:1", "ff:1"]' in ratio_provenance
+    assert '"value": [-1.1, -1.0, -1.4]' in ratio_provenance
+
+
+def test_tracks_unavailable_ratio_values_without_claiming_source_resolved_provenance() -> None:
+    prepared = prepare_co2_o2_inputs(
+        **_inputs(
+            ratio_available=False,
+            unavailable_reason="Only spatially resolved native O2 flux treatment is documented.",
+        )
+    )
+
+    provenance = prepared.o2_operator.attrs["oxidation_ratio_provenance"]
+    assert prepared.o2_co2_flux_ratio is None
+    assert prepared.o2_co2_flux_ratio_unavailable_reason.startswith("Only spatially")
+    assert '"status": "unavailable"' in provenance
+    assert '"unavailable_reason"' in provenance
+    assert '"value"' not in provenance
+
+
+@pytest.mark.parametrize(
+    ("ratio_available", "reason"),
+    [(False, ""), (True, "Ratio values and an unavailable reason were both supplied.")],
+)
+def test_requires_exactly_one_ratio_values_or_unavailable_reason(
+    ratio_available: bool,
+    reason: str,
+) -> None:
+    with pytest.raises(ValueError, match="exactly one"):
+        prepare_co2_o2_inputs(
+            **_inputs(ratio_available=ratio_available, unavailable_reason=reason)
+        )
 
 
 def test_rejects_co2_loading_on_o2_ocean_state() -> None:
@@ -129,9 +204,33 @@ def test_rejects_o2_loading_on_co2_ocean_state() -> None:
         prepare_co2_o2_inputs(**_inputs(o2_co2_ocean_loading=0.1))
 
 
-def test_requires_embedded_signed_o2_ratio_convention() -> None:
-    inputs = _inputs()
-    inputs["o2_operator_ratio_convention"] = "ratio_free"
+def test_rejects_ratio_provenance_with_nonshared_state_labels() -> None:
+    with pytest.raises(ValueError, match="state labels.*retained shared states"):
+        prepare_co2_o2_inputs(**_inputs(ratio_state=["gpp:1", "ter:1", "co2-ocean:1"]))
 
-    with pytest.raises(ValueError, match="signed O2-per-CO2"):
-        prepare_co2_o2_inputs(**inputs)
+
+def test_rejects_ratio_provenance_with_mismatched_sources() -> None:
+    with pytest.raises(ValueError, match="sources.*retained shared states"):
+        prepare_co2_o2_inputs(**_inputs(ratio_source=["GPP", "TER", "ocean"]))
+
+
+@pytest.mark.parametrize("ratio_values", [[-1.1, 0.0, -1.4], [-1.1, np.nan, -1.4]])
+def test_rejects_unsigned_or_nonfinite_available_ratios(ratio_values: list[float]) -> None:
+    with pytest.raises(ValueError, match="finite negative"):
+        prepare_co2_o2_inputs(**_inputs(ratio_values=ratio_values))
+
+
+@pytest.mark.parametrize(
+    ("direction", "sign", "message"),
+    [
+        ("CO2 flux per O2 flux", "signed; positive CO2 flux has negative O2 loading", "direction"),
+        ("O2 flux per CO2 flux", "unsigned", "sign_convention"),
+    ],
+)
+def test_rejects_ambiguous_ratio_direction_or_sign(
+    direction: str,
+    sign: str,
+    message: str,
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        prepare_co2_o2_inputs(**_inputs(ratio_direction=direction, ratio_sign=sign))

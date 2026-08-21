@@ -56,7 +56,7 @@ def test_replay_rejects_nonpositive_or_nonfinite_independent_error(value: float)
     array = xr.DataArray([1.0], dims="observation")
     prepared = SimpleNamespace(
         observations=array,
-        prior_forward_mean=array,
+        fixed_prior_contribution=array,
         co2_operator=array,
         o2_operator=array,
         aggregation_error=None,

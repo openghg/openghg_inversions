@@ -28,7 +28,7 @@ _CO2_O2_VARIABLE_ROLES = {
     "flux_scaling": "flux_scaling",
     "co2_emissions_sensitivity": "co2_operator",
     "o2_emissions_sensitivity": "o2_operator",
-    "prior_forward_concentration": "prior_forward_concentration",
+    "coherent_prior_contribution": "fixed_prior_contribution",
     "independent_error": "fixed_independent_error_sd",
 }
 
@@ -80,18 +80,19 @@ def _co2_o2_metadata(prepared: Co2O2PreparedInputs) -> dict[str, object]:
         )
         for tracer in ("co2", "o2")
     }
+    ratio_provenance = json.loads(
+        prepared.o2_operator.attrs["oxidation_ratio_provenance"]
+    )
     return {
         "recipe": "co2_o2",
         "prior": "correlated arithmetic-moment lognormal",
         "likelihood": "joint Gaussian with fixed independent channel error",
         "independent_error": "fixed labelled standard deviation supplied by caller",
         "o2_operator_ratio": {
-            "convention": prepared.o2_operator_ratio_convention,
+            "convention": "embedded_signed_o2_per_co2",
             "application": "embedded in the supplied O2 operator; no model multiplier",
-            "reference_ratio": "source/spatially resolved in the paired native O2 flux",
-            "direction": "O2 flux per CO2 flux",
-            "sign": "signed; positive CO2 flux has negative O2 loading",
             "scope": "shared GPP/TER/FF states; O2 ocean applied directly",
+            **ratio_provenance,
         },
         "observation_units": channel_units,
         "provenance": dict(prepared.provenance),
@@ -118,12 +119,11 @@ def _annotate_co2_o2_trace(
         "y",
         "observed_concentration",
         "modelled_concentration",
-        "prior_forward_concentration",
+        "fixed_prior_contribution",
         "fixed_independent_error_sd",
     }
     state_variables = {
         "flux_scaling",
-        "prior_flux_scaling",
         "flux_scaling_fixed_value",
     }
     for group_name in trace.groups():
@@ -164,13 +164,13 @@ def run_rhime_co2_o2_from_prepared_inputs(
     prepared = prepared_inputs
     (
         observations,
-        prior_forward_mean,
+        fixed_prior_contribution,
         co2_operator,
         o2_operator,
         independent_error_sd,
     ) = _materialize_co2_o2_pymc_inputs(
         prepared.observations,
-        prepared.prior_forward_mean,
+        prepared.fixed_prior_contribution,
         prepared.co2_operator,
         prepared.o2_operator,
         independent_error_sd,
@@ -181,7 +181,7 @@ def run_rhime_co2_o2_from_prepared_inputs(
         raise ValueError("independent_error_sd must contain only finite positive values.")
     model = build_co2_o2_model(
         observations=observations,
-        prior_forward_mean=prior_forward_mean,
+        fixed_prior_contribution=fixed_prior_contribution,
         co2_operator=co2_operator,
         o2_operator=o2_operator,
         aggregation_error=prepared.aggregation_error,
