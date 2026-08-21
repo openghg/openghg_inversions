@@ -21,11 +21,7 @@ from openghg_inversions.models.likelihoods import (
     add_aggregation_error_data,
     add_gaussian_observation_likelihood,
 )
-from openghg_inversions.observation_error import (
-    AggregationError,
-    validate_aggregation_error_alignment,
-    validate_observation_alignment,
-)
+from openghg_inversions.observation_error import AggregationError
 
 
 def _validate_linked_arrays(
@@ -57,23 +53,9 @@ def _validate_linked_arrays(
         or not np.isfinite(prior_forward_values).all()
     ):
         raise ValueError(f"{owner} prior forward mean must be finite and numeric.")
-    validate_observation_alignment(
-        observations,
-        prior_forward_mean,
-        input_name="prior_forward_mean",
-        owner=owner,
-        output_dim=output_dim,
-    )
     state_dim = retained_prior.state_dim
     if effective_observation_operator.dims != (output_dim, state_dim):
         raise ValueError(f"{owner} effective operator must have dims {(output_dim, state_dim)!r}.")
-    validate_observation_alignment(
-        observations,
-        effective_observation_operator,
-        input_name="effective_observation_operator",
-        owner=owner,
-        output_dim=output_dim,
-    )
     if not effective_observation_operator.get_index(state_dim).equals(
         retained_prior.mean.get_index(state_dim)
     ):
@@ -99,13 +81,6 @@ def _validate_linked_arrays(
 
     if independent_error_sd.dims != (output_dim,):
         raise ValueError(f"{owner} independent error must have dims ({output_dim!r},).")
-    validate_observation_alignment(
-        observations,
-        independent_error_sd,
-        input_name="independent_error_sd",
-        owner=owner,
-        output_dim=output_dim,
-    )
     if "observation_units" not in observations.coords or "observation_units" not in (
         independent_error_sd.coords
     ):
@@ -123,21 +98,6 @@ def _validate_linked_arrays(
     ):
         raise ValueError(f"{owner} independent error must be finite and positive.")
 
-    if aggregation_error.covariance is not None:
-        validate_observation_alignment(
-            observations,
-            aggregation_error.covariance,
-            input_name="aggregation_error_covariance",
-            owner=owner,
-            output_dim=output_dim,
-        )
-    validate_aggregation_error_alignment(
-        observations,
-        aggregation_error,
-        owner=owner,
-        output_dim=output_dim,
-        covariance_dim=covariance_dim,
-    )
     return independent_error_sd.rename("fixed_independent_error_sd")
 
 
