@@ -194,7 +194,6 @@ def test_fixed_state_changes_prior_closure_and_is_not_sampled() -> None:
             dims=state_dim,
             coords={state_dim: prepared.retained_prior.mean[state_dim]},
         ),
-        prune_zero=False,
     )
     expected_prior = prepared.prior_forward_mean - 0.25 * (
         prepared.effective_observation_operator.isel({state_dim: 2}, drop=True)
@@ -234,7 +233,6 @@ def test_partial_gathered_state_restores_full_multiindex() -> None:
             coords={state_dim: prepared.retained_prior.mean[state_dim]},
         ),
         fixed_value=0.75,
-        prune_zero=False,
     )
     model = _build(prepared, state_activity=activity)
     with model:
@@ -331,7 +329,6 @@ def test_two_site_week_runner_persists_labels_roles_units_and_provenance(tmp_pat
             dims=state_dim,
             coords={state_dim: prepared.retained_prior.mean[state_dim]},
         ),
-        prune_zero=False,
     )
     trace = run_rhime_co2_o2(
         prepared_inputs=prepared,
