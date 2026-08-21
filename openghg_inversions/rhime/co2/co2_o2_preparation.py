@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 import json
-from typing import Any
+from typing import Any, Literal
 
 from dask import compute as dask_compute
 import numpy as np
@@ -23,6 +23,9 @@ from openghg_inversions.observation_error import (
     resolve_aggregation_error,
 )
 
+O2OperatorRatioConvention = Literal["embedded_signed_o2_per_co2"]
+O2_OPERATOR_RATIO_CONVENTION: O2OperatorRatioConvention = "embedded_signed_o2_per_co2"
+
 
 @dataclass(frozen=True, slots=True, eq=False)
 class Co2O2PreparedInputs:
@@ -32,6 +35,7 @@ class Co2O2PreparedInputs:
     prior_forward_mean: xr.DataArray
     co2_operator: xr.DataArray
     o2_operator: xr.DataArray
+    o2_operator_ratio_convention: O2OperatorRatioConvention
     aggregation_error: AggregationError
     retained_prior: CorrelatedLognormalPrior
     co2_observation_dim: str
@@ -236,6 +240,7 @@ def prepare_co2_o2_inputs(
     o2_prior_forward_mean: xr.DataArray,
     co2_operator: xr.DataArray,
     o2_operator: xr.DataArray,
+    o2_operator_ratio_convention: O2OperatorRatioConvention,
     co2_aggregation_covariance: xr.DataArray,
     co2_o2_aggregation_covariance: xr.DataArray,
     o2_aggregation_covariance: xr.DataArray,
@@ -245,6 +250,11 @@ def prepare_co2_o2_inputs(
     provenance: Mapping[str, Any] | None = None,
 ) -> Co2O2PreparedInputs:
     """Validate separate tracer inputs and form one labelled joint likelihood."""
+    if o2_operator_ratio_convention != O2_OPERATOR_RATIO_CONVENTION:
+        raise ValueError(
+            "The O2 operator must declare signed O2-per-CO2 oxidation ratios embedded "
+            "for shared GPP/TER/FF states; the O2 ocean state is applied directly."
+        )
     if not co2_units.strip() or not o2_units.strip():
         raise ValueError("CO2 and O2 channel units must be non-empty.")
     try:
@@ -325,7 +335,13 @@ def prepare_co2_o2_inputs(
             for name, coordinate in operator_coords.items()
             if name not in o2_operator.coords
         },
-    ).assign_attrs(units=f"{o2_units} per dimensionless flux scale")
+    ).assign_attrs(
+        units=f"{o2_units} per dimensionless flux scale",
+        oxidation_ratio_convention=o2_operator_ratio_convention,
+        oxidation_ratio_direction="O2 flux per CO2 flux",
+        oxidation_ratio_sign="signed; positive CO2 flux has negative O2 loading",
+        oxidation_ratio_scope="shared GPP/TER/FF states; O2 ocean applied directly",
+    )
     covariance.attrs["units"] = "observation_units * observation_units_cov"
     aggregation_error = resolve_aggregation_error(
         xr.Dataset(
@@ -342,6 +358,7 @@ def prepare_co2_o2_inputs(
         prior_forward_mean=prior_forward_mean,
         co2_operator=co2_operator,
         o2_operator=o2_operator,
+        o2_operator_ratio_convention=o2_operator_ratio_convention,
         aggregation_error=aggregation_error,
         retained_prior=retained_prior,
         co2_observation_dim=co2_dim,

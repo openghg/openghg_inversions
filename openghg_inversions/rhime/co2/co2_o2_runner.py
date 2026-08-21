@@ -21,7 +21,7 @@ from .co2_o2_preparation import Co2O2PreparedInputs
 
 _CO2_O2_VARIABLE_ROLES = {
     "observation": "observed_concentration",
-    "concentration": "modelled_concentration",
+    "concentration": "y",
     "modelled_concentration": "modelled_concentration",
     "pollution_concentration": "modelled_concentration",
     "flux_scale": "flux_scaling",
@@ -85,6 +85,14 @@ def _co2_o2_metadata(prepared: Co2O2PreparedInputs) -> dict[str, object]:
         "prior": "correlated arithmetic-moment lognormal",
         "likelihood": "joint Gaussian with fixed independent channel error",
         "independent_error": "fixed labelled standard deviation supplied by caller",
+        "o2_operator_ratio": {
+            "convention": prepared.o2_operator_ratio_convention,
+            "application": "embedded in the supplied O2 operator; no model multiplier",
+            "reference_ratio": "source/spatially resolved in the paired native O2 flux",
+            "direction": "O2 flux per CO2 flux",
+            "sign": "signed; positive CO2 flux has negative O2 loading",
+            "scope": "shared GPP/TER/FF states; O2 ocean applied directly",
+        },
         "observation_units": channel_units,
         "provenance": dict(prepared.provenance),
     }
@@ -107,6 +115,7 @@ def _annotate_co2_o2_trace(
         roles_by_variable.setdefault(variable, []).append(role)
 
     concentration_variables = {
+        "y",
         "observed_concentration",
         "modelled_concentration",
         "prior_forward_concentration",

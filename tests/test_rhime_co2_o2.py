@@ -77,6 +77,7 @@ def _inputs(*, gathered_state: bool = False) -> dict[str, object]:
             dims=("o2_measure", "state"),
             coords={"o2_measure": o2["o2_measure"], "state": mean["state"]},
         ),
+        "o2_operator_ratio_convention": "embedded_signed_o2_per_co2",
         "co2_aggregation_covariance": xr.DataArray(
             [[1, 0.2], [0.2, 1.5]],
             dims=("co2_measure", "co2_measure_cov"),
@@ -136,6 +137,8 @@ def test_stacks_unequal_axes_cross_covariance_and_units() -> None:
         "per meg",
         "per meg",
     ]
+    assert prepared.o2_operator_ratio_convention == "embedded_signed_o2_per_co2"
+    assert prepared.o2_operator.attrs["oxidation_ratio_direction"] == "O2 flux per CO2 flux"
     assert prepared.aggregation_error.mode == "dense"
     covariance = prepared.aggregation_error.covariance
     assert covariance is not None
@@ -367,7 +370,14 @@ def test_two_site_week_runner_persists_labels_roles_units_and_provenance(tmp_pat
     roles = json.loads(trace.attrs["rhime_variable_roles"])
     metadata = json.loads(trace.attrs["rhime_model_metadata"])
     assert roles["flux_scaling"] == "flux_scaling"
+    assert roles["concentration"] == "y"
+    assert roles["modelled_concentration"] == "modelled_concentration"
     assert metadata["provenance"]["sites"] == ["TAC", "MHD"]
+    assert metadata["o2_operator_ratio"]["convention"] == "embedded_signed_o2_per_co2"
+    assert metadata["o2_operator_ratio"]["direction"] == "O2 flux per CO2 flux"
+    assert metadata["o2_operator_ratio"]["scope"] == (
+        "shared GPP/TER/FF states; O2 ocean applied directly"
+    )
     assert trace.posterior["flux_scaling"].attrs["units"] == "dimensionless flux scale"
     assert json.loads(trace.posterior["flux_scaling"].attrs["rhime_scientific_roles"]) == [
         "flux_scale",
