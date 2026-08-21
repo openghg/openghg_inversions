@@ -3340,7 +3340,7 @@ def test_complete_model_builder_owns_lazy_aggregation_error_inputs(
             context.prepared_inputs.inv_inputs["aggregation_error_covariance"].data,
             da.Array,
         )
-        with pm.Model() as model:
+        with models.registered_model() as model:
             pm.Normal("custom_y")
         return RhimeModelBuildResult(
             model=model,
