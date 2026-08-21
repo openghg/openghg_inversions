@@ -4,6 +4,7 @@ import json
 
 import dask.array as da
 import numpy as np
+import pandas as pd
 import pytest
 import xarray as xr
 
@@ -74,6 +75,18 @@ def test_tagged_json_scalar_encoding_name_is_versioned() -> None:
         (-2, '["int",-2]'),
         (1.25, '["float",1.25]'),
         (
+            np.datetime64("2021-01-02T03:04:05.123456789", "ns"),
+            '["datetime64",["datetime64[ns]",1609556645123456789]]',
+        ),
+        (
+            np.datetime64("2021-01-03", "2D"),
+            '["datetime64",["datetime64[2D]",9315]]',
+        ),
+        (
+            pd.Timestamp("2021-01-02T03:04:05.123456789+01:00"),
+            '["timestamp","2021-01-02T03:04:05.123456789+01:00"]',
+        ),
+        (
             ("outer", (np.int64(3), np.bool_(False)), 2.5),
             r'["tuple",["[\"str\",\"outer\"]","[\"tuple\",[\"[\\\"int\\\",3]\",'
             r'\"[\\\"bool\\\",false]\"]]","[\"float\",2.5]"]]',
@@ -83,7 +96,10 @@ def test_tagged_json_scalar_encoding_name_is_versioned() -> None:
 def test_tagged_json_scalar_has_stable_bytes_and_roundtrips(value: object, encoded: str) -> None:
     """Supported Python scalars and nested tuples retain type and stable bytes."""
     assert _encode_tagged_json_value(value) == encoded
-    assert _decode_tagged_json_value(encoded) == value
+    decoded = _decode_tagged_json_value(encoded)
+    assert decoded == value
+    if isinstance(value, np.datetime64):
+        assert decoded.dtype == value.dtype
 
 
 @pytest.mark.parametrize(
@@ -134,6 +150,11 @@ def test_tagged_json_scalar_rejects_unsupported_values(value: object) -> None:
         '["str",1]',
         '["tuple","not-a-list"]',
         '["tuple",[["int",1]]]',
+        '["datetime64",["ns",true]]',
+        '["datetime64",["unknown",1]]',
+        '["datetime64",["datetime64[ns]",999999999999999999999999]]',
+        '["timestamp",1]',
+        '["timestamp","not-a-timestamp"]',
     ],
 )
 def test_tagged_json_scalar_rejects_malformed_json_tags_and_payloads(encoded: str) -> None:

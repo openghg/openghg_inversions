@@ -2,18 +2,23 @@
 
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 
+import arviz as az
 import dask.array as da
 from dask import delayed
 from dask.array import Array as DaskArray
 from dask.callbacks import Callback
 import numpy as np
+import pymc as pm
 import pytest
 import xarray as xr
 
 from openghg_inversions.rhime import co2 as co2_public
+from openghg_inversions.rhime.co2 import co2_o2_runner
 from openghg_inversions.rhime.co2.co2_o2_runner import (
+    _CO2_O2_VARIABLE_ROLES,
     _materialize_co2_o2_pymc_inputs,
     run_rhime_co2_o2_from_prepared_inputs,
 )
@@ -22,6 +27,23 @@ from openghg_inversions.rhime.co2.co2_o2_runner import (
 def test_complete_recipe_name_is_reserved() -> None:
     assert not hasattr(co2_public, "run_rhime_co2_o2")
     assert hasattr(co2_public, "run_rhime_co2_o2_from_prepared_inputs")
+
+
+def test_modelled_concentration_is_not_labelled_as_pollution_only() -> None:
+    assert "pollution_concentration" not in _CO2_O2_VARIABLE_ROLES
+    assert _CO2_O2_VARIABLE_ROLES["modelled_concentration"] == "modelled_concentration"
+
+
+def _prepared_stub(array: xr.DataArray) -> SimpleNamespace:
+    return SimpleNamespace(
+        observations=array,
+        fixed_prior_contribution=array,
+        co2_operator=array,
+        o2_operator=array,
+        aggregation_error=None,
+        retained_prior=None,
+        provenance={},
+    )
 
 
 def test_materializes_related_arrays_in_one_shared_graph_without_mutation() -> None:
@@ -51,8 +73,8 @@ def test_materializes_related_arrays_in_one_shared_graph_without_mutation() -> N
         assert not isinstance(dense.data, DaskArray)
 
 
-@pytest.mark.parametrize("value", [0.0, np.nan])
-def test_replay_rejects_nonpositive_or_nonfinite_independent_error(value: float) -> None:
+@pytest.mark.parametrize("value", [0.0, -1.0, np.nan, "bad", 1.0 + 0.0j])
+def test_replay_rejects_invalid_independent_error(value: object) -> None:
     array = xr.DataArray(
         [1.0],
         dims="observation",
@@ -61,19 +83,45 @@ def test_replay_rejects_nonpositive_or_nonfinite_independent_error(value: float)
             "observation_units": ("observation", ["ppm"]),
         },
     )
-    prepared = SimpleNamespace(
-        observations=array,
-        fixed_prior_contribution=array,
-        co2_operator=array,
-        o2_operator=array,
-        aggregation_error=None,
-        retained_prior=None,
-    )
+    prepared = _prepared_stub(array)
 
     with pytest.raises(ValueError, match="finite positive"):
         run_rhime_co2_o2_from_prepared_inputs(
             prepared_inputs=prepared,
             independent_error_sd=array.copy(data=[value]),
+        )
+
+
+@pytest.mark.parametrize(
+    ("name", "values"),
+    [
+        ("observations", [np.nan]),
+        ("observations", ["bad"]),
+        ("observations", [1.0 + 0.0j]),
+        ("fixed_prior_contribution", [np.inf]),
+        ("fixed_prior_contribution", ["bad"]),
+        ("fixed_prior_contribution", [1.0 + 0.0j]),
+    ],
+)
+def test_replay_rejects_non_real_or_nonfinite_model_vectors(
+    name: str,
+    values: list[object],
+) -> None:
+    array = xr.DataArray(
+        [1.0],
+        dims="observation",
+        coords={
+            "observation": [0],
+            "observation_units": ("observation", ["ppm"]),
+        },
+    )
+    prepared = _prepared_stub(array)
+    setattr(prepared, name, array.copy(data=values))
+
+    with pytest.raises(ValueError, match=name):
+        run_rhime_co2_o2_from_prepared_inputs(
+            prepared_inputs=prepared,
+            independent_error_sd=array,
         )
 
 
@@ -86,7 +134,7 @@ def test_replay_rejects_mismatched_independent_error_labels_or_units() -> None:
             "observation_units": ("observation", ["ppm"]),
         },
     )
-    prepared = SimpleNamespace(observations=observations)
+    prepared = _prepared_stub(observations)
 
     with pytest.raises(ValueError, match="dimension and labels"):
         run_rhime_co2_o2_from_prepared_inputs(
@@ -101,3 +149,48 @@ def test_replay_rejects_mismatched_independent_error_labels_or_units() -> None:
                 observation_units=("observation", ["per meg"])
             ),
         )
+
+
+def test_replay_materializes_payloads_and_auxiliary_units_in_one_graph(monkeypatch) -> None:
+    executions: list[str] = []
+
+    @delayed
+    def shared_values() -> np.ndarray:
+        executions.append("values")
+        return np.array([1.0, 2.0])
+
+    @delayed
+    def shared_units() -> np.ndarray:
+        executions.append("units")
+        return np.array(["ppm", "per meg"])
+
+    values = da.from_delayed(shared_values(), shape=(2,), dtype=float)
+    units = da.from_delayed(shared_units(), shape=(2,), dtype="<U7")
+    array = xr.DataArray(
+        values,
+        dims="observation",
+        coords={
+            "observation": [0, 1],
+            "tracer": ("observation", ["co2", "o2"]),
+            "observation_units": ("observation", units),
+        },
+    )
+    prepared = _prepared_stub(array)
+    prepared.o2_operator.attrs["oxidation_ratio_provenance"] = json.dumps({"status": "available"})
+    independent_error_sd = array.copy(deep=False, data=values)
+    monkeypatch.setattr(co2_o2_runner, "build_co2_o2_model", lambda **_: pm.Model())
+    monkeypatch.setattr(co2_o2_runner, "sample_rhime_model", lambda *_: az.InferenceData())
+    compute_graphs: list[object] = []
+
+    with Callback(start=lambda graph: compute_graphs.append(graph)):
+        trace = run_rhime_co2_o2_from_prepared_inputs(
+            prepared_inputs=prepared,
+            independent_error_sd=independent_error_sd,
+        )
+
+    assert len(compute_graphs) == 1
+    assert sorted(executions) == ["units", "values"]
+    assert json.loads(trace.attrs["rhime_model_metadata"])["observation_units"] == {
+        "co2": "ppm",
+        "o2": "per meg",
+    }

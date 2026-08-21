@@ -2,13 +2,21 @@
 
 from __future__ import annotations
 
+import warnings
+
 from dask import array as da
 import numpy as np
+import pandas as pd
 import pytest
 import xarray as xr
 
+from openghg_inversions._serialization_codecs import (
+    _TAGGED_JSON_VALUE_ENCODING,
+    _decode_tagged_json_value,
+)
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.rhime.co2 import prepare_co2_o2_inputs
+from openghg_inversions.rhime.co2.co2_o2_preparation import _stack
 
 
 def _inputs(
@@ -124,6 +132,12 @@ def _inputs(
     }
 
 
+def _decoded_observation_labels(array: xr.DataArray) -> list[object]:
+    encoded = array["within_tracer_observation"]
+    assert array["within_tracer_observation_encoding"].item() == _TAGGED_JSON_VALUE_ENCODING
+    return [_decode_tagged_json_value(value) for value in encoded.values]
+
+
 def test_preparation_preserves_lazy_channels_with_staggered_unequal_times() -> None:
     inputs = _inputs()
     ratio = inputs["o2_co2_flux_ratio"]
@@ -138,7 +152,7 @@ def test_preparation_preserves_lazy_channels_with_staggered_unequal_times() -> N
     assert prepared.o2_co2_flux_ratio.data is ratio.data
     assert not isinstance(prepared.aggregation_error.covariance.data, da.Array)
     assert prepared.observations["tracer"].values.tolist() == ["co2", "co2", "o2", "o2", "o2"]
-    assert prepared.observations["within_tracer_observation"].values.tolist() == [
+    assert _decoded_observation_labels(prepared.observations) == [
         "c1",
         "c2",
         "o1",
@@ -162,6 +176,116 @@ def test_preparation_preserves_lazy_channels_with_staggered_unequal_times() -> N
     ratio_provenance = prepared.o2_operator.attrs["oxidation_ratio_provenance"]
     assert '"state": ["gpp:1", "ter:1", "ff:1"]' in ratio_provenance
     assert '"value": [-1.1, -1.0, -1.4]' in ratio_provenance
+
+
+def test_canonicalizes_operator_state_metadata_without_mutating_inputs() -> None:
+    inputs = _inputs()
+    originals: dict[str, xr.DataArray] = {}
+    for name in ("co2_operator", "o2_operator"):
+        operator = inputs[name]
+        assert isinstance(operator, xr.DataArray)
+        operator = operator.assign_coords(
+            source=("state", ["stale"] * 5),
+            tracer_scope=("state", ["wrong"] * 5),
+        )
+        inputs[name] = operator
+        originals[name] = operator.copy(deep=True)
+
+    prepared = prepare_co2_o2_inputs(**inputs)
+    prior = inputs["retained_prior"]
+    assert isinstance(prior, CorrelatedLognormalPrior)
+    for name, prepared_operator in (
+        ("co2_operator", prepared.co2_operator),
+        ("o2_operator", prepared.o2_operator),
+    ):
+        np.testing.assert_array_equal(prepared_operator["source"], prior.mean["source"])
+        np.testing.assert_array_equal(
+            prepared_operator["tracer_scope"], prior.mean["tracer_scope"]
+        )
+        xr.testing.assert_identical(inputs[name], originals[name])
+
+
+def test_native_label_encoding_roundtrips_mixed_types_and_datetime_auxiliary(tmp_path) -> None:
+    co2_index = pd.Index([1, "1"], dtype=object, name="co2_measure")
+    o2_index = pd.DatetimeIndex(
+        ["2021-01-02", "2021-01-04", "2021-01-05"],
+        name="o2_measure",
+    )
+    co2 = xr.DataArray(
+        [2.0, 3.0],
+        dims="co2_measure",
+        coords={
+            "co2_measure": co2_index,
+            "time": ("co2_measure", np.array(["2021-01-01", "2021-01-03"], dtype="datetime64[D]")),
+        },
+    )
+    o2 = xr.DataArray(
+        [-4.0, -5.0, -6.0],
+        dims="o2_measure",
+        coords={"o2_measure": o2_index, "time": ("o2_measure", o2_index.values)},
+    )
+    originals = (co2.copy(deep=True), o2.copy(deep=True))
+
+    stacked = _stack(co2, o2, co2_units="ppm", o2_units="per meg", name="observations")
+    expected = [*co2_index, *o2_index]
+    decoded = _decoded_observation_labels(stacked)
+    assert decoded == expected
+    assert [type(value) for value in decoded] == [type(value) for value in expected]
+    assert np.issubdtype(stacked["time"].dtype, np.datetime64)
+    xr.testing.assert_identical(co2, originals[0])
+    xr.testing.assert_identical(o2, originals[1])
+
+    path = tmp_path / "mixed_observation_labels.nc"
+    stacked.to_dataset(name="observations").to_netcdf(path, engine="scipy")
+    with xr.open_dataset(path, engine="scipy") as restored:
+        assert _decoded_observation_labels(restored["observations"]) == expected
+
+
+def test_multiindex_observation_labels_roundtrip_without_future_warnings(tmp_path) -> None:
+    co2_index = pd.MultiIndex.from_tuples(
+        [
+            ("TAC", pd.Timestamp("2021-01-01")),
+            ("MHD", pd.Timestamp("2021-01-03")),
+        ],
+        names=("site", "time"),
+    )
+    o2_index = pd.MultiIndex.from_tuples(
+        [
+            ("TAC", pd.Timestamp("2021-01-02")),
+            ("MHD", pd.Timestamp("2021-01-04")),
+            ("TAC", pd.Timestamp("2021-01-05")),
+        ],
+        names=("site", "time"),
+    )
+    co2 = xr.DataArray(
+        [2.0, 3.0],
+        dims="co2_measure",
+        coords=xr.Coordinates.from_pandas_multiindex(co2_index, "co2_measure"),
+    )
+    o2 = xr.DataArray(
+        [-4.0, -5.0, -6.0],
+        dims="o2_measure",
+        coords=xr.Coordinates.from_pandas_multiindex(o2_index, "o2_measure"),
+    )
+    originals = (co2.copy(deep=True), o2.copy(deep=True))
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", FutureWarning)
+        stacked = _stack(co2, o2, co2_units="ppm", o2_units="per meg", name="observations")
+
+    expected = [*co2_index, *o2_index]
+    assert _decoded_observation_labels(stacked) == expected
+    assert stacked["site"].values.tolist() == ["TAC", "MHD", "TAC", "MHD", "TAC"]
+    assert np.issubdtype(stacked["time"].dtype, np.datetime64)
+    xr.testing.assert_identical(co2, originals[0])
+    xr.testing.assert_identical(o2, originals[1])
+
+    path = tmp_path / "multiindex_observation_labels.nc"
+    stacked.to_dataset(name="observations").to_netcdf(path, engine="scipy")
+    with xr.open_dataset(path, engine="scipy") as restored:
+        decoded = _decoded_observation_labels(restored["observations"])
+        assert decoded == expected
+        assert all(isinstance(label, tuple) for label in decoded)
 
 
 def test_tracks_unavailable_ratio_values_without_claiming_source_resolved_provenance() -> None:

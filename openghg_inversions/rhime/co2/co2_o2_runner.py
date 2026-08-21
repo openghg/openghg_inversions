@@ -23,7 +23,6 @@ _CO2_O2_VARIABLE_ROLES = {
     "observation": "y",
     "concentration": "y",
     "modelled_concentration": "modelled_concentration",
-    "pollution_concentration": "modelled_concentration",
     "flux_scale": "flux_scaling",
     "flux_scaling": "flux_scaling",
     "co2_emissions_sensitivity": "co2_operator",
@@ -74,7 +73,7 @@ def _validate_independent_error_labels(
     observations: xr.DataArray,
     independent_error_sd: xr.DataArray,
 ) -> None:
-    """Require the external error vector to use the joint row labels and units."""
+    """Require the external error vector to use the joint row structure."""
     observation_dim = str(observations.dims[0])
     if (
         independent_error_sd.dims != (observation_dim,)
@@ -89,23 +88,44 @@ def _validate_independent_error_labels(
     if (
         "observation_units" not in independent_error_sd.coords
         or independent_error_sd["observation_units"].dims != (observation_dim,)
-        or not np.array_equal(
-            independent_error_sd["observation_units"].values,
-            observations["observation_units"].values,
-        )
     ):
         raise ValueError(
-            "independent_error_sd observation_units must match the prepared observations."
+            "independent_error_sd requires observation_units on the prepared observation dimension."
         )
 
 
-def _co2_o2_metadata(prepared: Co2O2PreparedInputs) -> dict[str, object]:
+def _validate_real_finite_values(
+    array: xr.DataArray,
+    *,
+    name: str,
+    positive: bool = False,
+) -> None:
+    """Validate one materialized real-valued PyMC payload."""
+    values = np.asarray(array.data)
+    valid = (
+        np.issubdtype(values.dtype, np.number)
+        and not np.issubdtype(values.dtype, np.complexfloating)
+        and np.isfinite(values).all()
+        and (not positive or (values > 0).all())
+    )
+    if not valid:
+        qualifier = "finite positive" if positive else "finite"
+        raise ValueError(
+            f"{name} must contain only {qualifier} real numeric values."
+        )
+
+
+def _co2_o2_metadata(
+    prepared: Co2O2PreparedInputs,
+    *,
+    observations: xr.DataArray,
+) -> dict[str, object]:
     """Return JSON-safe scientific identity for the sampled result."""
     channel_units = {
         tracer: str(
-            prepared.observations["observation_units"]
-            .where(prepared.observations["tracer"] == tracer, drop=True)
-            .values[0]
+            observations["observation_units"]
+            .where(observations["tracer"] == tracer, drop=True)
+            .data[0]
         )
         for tracer in ("co2", "o2")
     }
@@ -224,10 +244,11 @@ def run_rhime_co2_o2_from_prepared_inputs(
         JSON model metadata.
 
     Raises:
-        ValueError: If the fixed independent standard deviation is non-finite,
-            non-positive, or fails the model's observation-label/unit contract.
-            Label, state, covariance, and activity errors from model
-            construction are also propagated.
+        ValueError: If observations or the affine intercept are not finite real
+            numeric vectors; the fixed independent standard deviation is not a
+            finite positive real numeric vector; or that error vector fails the
+            model's observation-label/unit contract. Label, state, covariance,
+            and activity errors from model construction are also propagated.
     """
     prepared = prepared_inputs
     _validate_independent_error_labels(
@@ -247,10 +268,23 @@ def run_rhime_co2_o2_from_prepared_inputs(
         prepared.o2_operator,
         independent_error_sd,
     )
-    if not np.isfinite(independent_error_sd.data).all() or (
-        independent_error_sd.data <= 0
-    ).any():
-        raise ValueError("independent_error_sd must contain only finite positive values.")
+    if not np.array_equal(
+        independent_error_sd["observation_units"].data,
+        observations["observation_units"].data,
+    ):
+        raise ValueError(
+            "independent_error_sd observation_units must match the prepared observations."
+        )
+    _validate_real_finite_values(observations, name="observations")
+    _validate_real_finite_values(
+        fixed_prior_contribution,
+        name="fixed_prior_contribution",
+    )
+    _validate_real_finite_values(
+        independent_error_sd,
+        name="independent_error_sd",
+        positive=True,
+    )
     model = build_co2_o2_model(
         observations=observations,
         fixed_prior_contribution=fixed_prior_contribution,
@@ -264,7 +298,7 @@ def run_rhime_co2_o2_from_prepared_inputs(
     built = RhimeModelBuildResult(
         model=model,
         variable_roles=_CO2_O2_VARIABLE_ROLES,
-        metadata=_co2_o2_metadata(prepared),
+        metadata=_co2_o2_metadata(prepared, observations=observations),
     )
     trace = sample_rhime_model(
         built,
