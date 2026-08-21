@@ -49,6 +49,7 @@ from openghg_inversions.models._flux import (
     safe_pymc_name,
 )
 from openghg_inversions.models.components import (
+    add_linked_linear_component,
     add_linear_component,
     add_model_data,
     apply_linear_sensitivity,
@@ -883,9 +884,10 @@ def build_ramsden_model(
                 variable_suffix=variable_suffix,
             )
             tracer_terms.append(
-                apply_linear_sensitivity(
+                add_linked_linear_component(
                     tracer_sensitivity,
-                    state * ratio_factor,
+                    state,
+                    state_multiplier=ratio_factor,
                     data_name=f"hx_{tracer_suffix}_{variable_suffix}",
                     output_name=f"mu_{tracer_suffix}_{variable_suffix}",
                 )
