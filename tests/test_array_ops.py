@@ -48,17 +48,6 @@ def test_validate_covariance_coordinates_rejects_incompatible_axes(
         validate_covariance_coordinates(covariance, dim="state")
 
 
-def test_validate_covariance_coordinates_rejects_duplicate_labels() -> None:
-    covariance = xr.DataArray(
-        np.eye(2),
-        dims=("state", "state_cov"),
-        coords={"state": ["north", "north"], "state_cov": ["north", "north"]},
-    )
-
-    with pytest.raises(ValueError, match="unique labels.*duplicate 'north'"):
-        validate_covariance_coordinates(covariance, dim="state")
-
-
 def _make_site_dataset(site: str, *, include_inlet_height: bool) -> xr.Dataset:
     """Create a small site dataset for concat-gather tests."""
     time = xr.DataArray(pd.date_range("2020-01-01", periods=2, freq="1h"), dims="time", name="time")

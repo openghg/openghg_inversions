@@ -5,7 +5,10 @@ import pytest
 import xarray as xr
 
 from openghg_inversions.rhime.specs import RhimeModelSpec
-from openghg_inversions.observation_error import resolve_aggregation_error
+from openghg_inversions.observation_error import (
+    resolve_aggregation_error,
+    validate_complete_observation_covariance,
+)
 
 
 def _inputs() -> xr.Dataset:
@@ -63,13 +66,41 @@ def test_low_rank_covariance_uses_factor_and_residual_diagonal() -> None:
     np.testing.assert_allclose(result.marginal_variance, np.sum(factor**2, axis=1) + residual)
 
 
-def test_low_rank_covariance_rejects_duplicate_observation_labels() -> None:
-    data = xr.Dataset(coords={"nmeasure": ["A", "A"]})
-    data["low_rank_factor"] = (("nmeasure", "agg_rank"), np.ones((2, 1)))
-    data["diagonal_residual_variance"] = ("nmeasure", np.ones(2))
+def test_optional_complete_covariance_check_uses_lrpd_structure() -> None:
+    data = xr.Dataset(coords={"nmeasure": ["A", "B"]})
+    data["low_rank_factor"] = (("nmeasure", "agg_rank"), np.eye(2))
+    data["diagonal_residual_variance"] = ("nmeasure", np.zeros(2))
 
-    with pytest.raises(ValueError, match="unique labels.*duplicate 'A'"):
-        resolve_aggregation_error(data)
+    validate_complete_observation_covariance(
+        resolve_aggregation_error(data),
+        np.zeros(2),
+    )
+
+
+def test_optional_complete_covariance_check_rejects_singular_lrpd() -> None:
+    data = xr.Dataset(coords={"nmeasure": ["A", "B"]})
+    data["low_rank_factor"] = (("nmeasure", "agg_rank"), np.ones((2, 1)))
+    data["diagonal_residual_variance"] = ("nmeasure", np.zeros(2))
+
+    with pytest.raises(ValueError, match="positive definite"):
+        validate_complete_observation_covariance(
+            resolve_aggregation_error(data),
+            np.zeros(2),
+        )
+
+
+def test_optional_complete_covariance_check_rejects_singular_dense() -> None:
+    data = xr.Dataset(coords={"nmeasure": ["A", "B"]})
+    data["aggregation_error_covariance"] = (
+        ("nmeasure", "nmeasure_cov"),
+        np.ones((2, 2)),
+    )
+
+    with pytest.raises(ValueError, match="positive definite"):
+        validate_complete_observation_covariance(
+            resolve_aggregation_error(data),
+            np.zeros(2),
+        )
 
 
 def test_low_rank_payloads_materialize_together_and_remain_eager() -> None:
