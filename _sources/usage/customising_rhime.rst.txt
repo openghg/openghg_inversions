@@ -119,6 +119,13 @@ labelled observation ``site`` and ``time`` coordinates. Optional
 ``no_model_error`` settings belong to that component and can be supplied in
 ``likelihood_kwargs``.
 
+Built-in aggregation covariance relies on the guarantees of its construction
+pipeline. A custom pipeline that assembles its own covariance may optionally
+call
+:func:`openghg_inversions.observation_error.validate_complete_observation_covariance`
+with its fixed independent variance. Model builders do not run this eager
+diagnostic automatically.
+
 Optional project CLI
 ~~~~~~~~~~~~~~~~~~~~
 

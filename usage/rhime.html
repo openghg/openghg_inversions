@@ -1120,10 +1120,11 @@ tracks the coherent preparation contract.</p>
 labels, they must exactly equal the primary state labels in the same order.
 An unlabelled NumPy covariance is interpreted in the arithmetic mean’s state
 order. Reordered inputs are rejected rather than interpreted positionally.</p>
-<p>The initial public component is intended for custom model builders. Built-in
-<code class="docutils literal notranslate"><span class="pre">RhimeModelSpec</span></code> integration for a gathered joint state and compatibility
-per-sector aliases is follow-up work; current <code class="docutils literal notranslate"><span class="pre">SectorSpec</span></code> priors remain
-independent.</p>
+<p>The built-in CO2 recipe uses this component for one gathered correlated state.
+Promotion into standard and multisector <code class="docutils literal notranslate"><span class="pre">RhimeModelSpec</span></code> recipes remains
+follow-up work in <a class="reference external" href="https://linear.app/openghg-inversions/issue/OPE-78/promote-shared-covg-components-into-standard-and-multisector-rhime">OPE-78</a>;
+reusable source, sector, and state selection is tracked in <a class="reference external" href="https://linear.app/openghg-inversions/issue/OPE-80/extract-source-sector-and-state-selection-from-compiler-plans">OPE-80</a>.
+Current <code class="docutils literal notranslate"><span class="pre">SectorSpec</span></code> priors remain independent.</p>
 </section>
 <section id="basis-aware-prior-standard-deviations">
 <h2>Basis-Aware Prior Standard Deviations<a class="headerlink" href="#basis-aware-prior-standard-deviations" title="Link to this heading">#</a></h2>
