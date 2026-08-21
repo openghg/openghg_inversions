@@ -217,9 +217,7 @@ def test_co2_model_composes_sampled_boundary_and_each_outer_mode() -> None:
                 dims=("region", "region_cov"),
                 coords={"region": ["inner"]},
             ),
-            fixed_prior_contribution=xr.DataArray(
-                [10.0, 20.0], dims="nmeasure", coords={"nmeasure": [0, 1]}
-            ),
+            fixed_prior_contribution=xr.DataArray([10.0, 20.0], dims="nmeasure", coords={"nmeasure": [0, 1]}),
             observations=data["mf"],
             observation_error=data["mf_error"],
             minimum_error=data["min_error"],
@@ -356,9 +354,7 @@ def test_inner_and_outer_state_auxiliary_coords_are_namespaced() -> None:
         prior_mean=outer_mean,
         prior_covariance=outer_covariance,
     )
-    observations = xr.DataArray(
-        [400.0, 401.0], dims="nmeasure", coords={"nmeasure": [0, 1]}
-    )
+    observations = xr.DataArray([400.0, 401.0], dims="nmeasure", coords={"nmeasure": [0, 1]})
     error = xr.zeros_like(observations)
     aggregation_error = resolve_aggregation_error(
         xr.Dataset({"mf": observations, "mf_error": error, "min_error": error}),
@@ -368,9 +364,7 @@ def test_inner_and_outer_state_auxiliary_coords_are_namespaced() -> None:
     model = build_co2_rhime_model(
         inner_h,
         prior_mean=xr.DataArray([1.0], dims="region", coords={"region": ["inner"]}),
-        prior_covariance=xr.DataArray(
-            [[0.1]], dims=("region", "region_cov"), coords={"region": ["inner"]}
-        ),
+        prior_covariance=xr.DataArray([[0.1]], dims=("region", "region_cov"), coords={"region": ["inner"]}),
         fixed_prior_contribution=xr.zeros_like(observations),
         observations=observations,
         observation_error=error,
