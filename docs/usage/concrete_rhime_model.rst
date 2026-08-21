@@ -243,6 +243,13 @@ CO2/O2 shared-state model
 -------------------------
 
 The CO2/O2 recipe applies one retained state to both observation channels.
+Its public boundaries are
+:func:`openghg_inversions.rhime.co2.prepare_co2_o2_inputs` for labelled
+preparation, :func:`openghg_inversions.rhime.co2.build_co2_o2_model` for graph
+construction, and
+:func:`openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs` for
+materialization, sampling, and trace metadata.
+
 Partition that state as
 
 .. math::
@@ -269,6 +276,17 @@ The joint affine model is
    \begin{bmatrix} b_{CO_2} \\ b_{O_2} \end{bmatrix},
    \qquad
    \mu_{joint} = b_{joint} + H_{joint}\alpha.
+
+Equivalently, coherent reduction may be written in centred or affine form,
+
+.. math::
+
+   \mu_{joint}
+   = \mu_{prior} + H_{joint}(\alpha - m_\alpha)
+   = (\mu_{prior} - H_{joint}m_\alpha) + H_{joint}\alpha.
+
+The prepared ``fixed_prior_contribution`` is the parenthesized affine
+intercept, not the complete prior-forward concentration.
 
 Thus this is a row-stacked, block-sparse operator acting on one state vector,
 not two independent block-diagonal models. Its fixed-error likelihood is
@@ -301,10 +319,16 @@ In particular, the off-diagonal :math:`A_{CO_2,O_2}` block is part of the
 coherent-reduction contract. See the :doc:`full derivation
 <coherent_reduction>` for its assumptions and limitations.
 
-The implementation preserves separate channel arrays because CO2 rows in ppm
-and O2 rows in per meg have different units. The displayed row stack is the
-mathematical model: every operator and covariance block must still be produced
-by the same reduction.
+The implementation preserves separate channel arrays so each row retains its
+declared native units and numerical scale. Verification-game inputs may use
+ppm for both channels, while real atmospheric O2 observations may use
+per-meg delta(O2/N2). ``independent_error_sd`` and every covariance row and
+column must use the corresponding observation-row units. Any future numerical
+scaling or whitening must be a named transformation applied consistently to
+observations, model mean, independent error, and all joint covariance blocks,
+while retaining physical-unit outputs and provenance. The displayed row stack
+is the mathematical model: every operator and covariance block must still be
+produced by the same reduction.
 
 The signed oxidation ratio is fixed in this recipe and already folded into the
 shared-state O2 operator. When it is representable by retained-state or
@@ -321,12 +345,15 @@ before footprint convolution, in which case no unique retained-state
 than inventing scalar values; the supplied effective O2 operator remains the
 scientific input.
 
-The retained/source-resolved form is equivalent to the tracer term
-:math:`H_{tracer}(R\mathbin{\odot}\alpha_{shared})` used by the
-:doc:`Ramsden methane/ethane model <../experimental/ramsden2022>`. Ramsden may
-infer its emission ratio; if :math:`R` were sampled here, the tracer term would
-be bilinear rather than the fixed linear coherent-reduction model implemented
-by the CO2/O2 recipe.
+Because this recipe receives the O2 operator with the fixed ratio already
+applied upstream, its builder passes the shared state directly to
+``add_linked_linear_component``. If a fixed or inferred oxidation ratio were
+instead explicit model state, the recipe would visibly form
+``o2_state = oxidation_ratio * co2_state`` and pass ``o2_state`` to that
+component. The :doc:`Ramsden methane/ethane model
+<../experimental/ramsden2022>` follows that explicit pattern for its emission
+ratio. The linked component registers and applies a sensitivity; it does not
+own scientific scaling.
 
 Equivalent construction from public helpers
 -------------------------------------------

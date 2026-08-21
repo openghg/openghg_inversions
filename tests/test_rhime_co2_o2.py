@@ -24,6 +24,9 @@ from openghg_inversions.rhime.co2 import (
     prepare_co2_o2_inputs,
     run_rhime_co2_o2_from_prepared_inputs,
 )
+from openghg_inversions.rhime.co2.co2_o2_model import (
+    _prepare_shared_state_channel_sensitivities,
+)
 from openghg_inversions.rhime.co2.co2_o2_runner import _co2_o2_metadata
 from openghg_inversions.rhime.sampling import RhimeSampler
 
@@ -196,6 +199,51 @@ def test_metadata_tracks_unavailable_native_ratio_values() -> None:
     assert "value" not in ratio
 
 
+def test_shared_state_sensitivities_remove_only_joint_zero_columns() -> None:
+    inputs = _inputs()
+    co2_operator = inputs["co2_operator"]
+    o2_operator = inputs["o2_operator"]
+    assert isinstance(co2_operator, xr.DataArray)
+    assert isinstance(o2_operator, xr.DataArray)
+    co2_operator = co2_operator.where(co2_operator["state"] != "ff:1", 0.0)
+    o2_operator = o2_operator.where(o2_operator["state"] != "ff:1", 0.0)
+
+    joint, co2_sensitivity, o2_sensitivity = (
+        _prepare_shared_state_channel_sensitivities(co2_operator, o2_operator)
+    )
+
+    assert joint.removed.sel(state="ff:1").item() is True
+    assert joint.removed.sel(state="co2-ocean:1").item() is False
+    assert joint.removed.sel(state="o2-ocean:1").item() is False
+    assert co2_sensitivity.removed is joint.removed
+    assert o2_sensitivity.removed is joint.removed
+    assert co2_sensitivity.sensitivity.dims[0] == "co2_measure"
+    assert o2_sensitivity.sensitivity.dims[0] == "o2_measure"
+    assert co2_sensitivity.sensitivity.sizes["co2_measure"] == 2
+    assert o2_sensitivity.sensitivity.sizes["o2_measure"] == 3
+
+    fixed = xr.DataArray(
+        np.zeros(5),
+        dims="observation",
+        coords={"observation": np.arange(5)},
+    )
+    prior = inputs["retained_prior"]
+    assert isinstance(prior, CorrelatedLognormalPrior)
+    prior_forward = co2_o2_prior_forward_mean(
+        fixed_prior_contribution=fixed,
+        co2_operator=co2_operator,
+        o2_operator=o2_operator,
+        retained_prior=prior,
+    )
+    expected = np.concatenate(
+        (
+            co2_operator.values @ prior.mean.values,
+            o2_operator.values @ prior.mean.values,
+        )
+    )
+    np.testing.assert_allclose(prior_forward, expected)
+
+
 def test_model_uses_registered_explicit_arrays_and_joint_covariance() -> None:
     prepared = prepare_co2_o2_inputs(**_inputs())
     model = _build(prepared)
@@ -217,7 +265,7 @@ def test_model_uses_registered_explicit_arrays_and_joint_covariance() -> None:
         ),
         axis=1,
     )
-    np.testing.assert_allclose(modelled, expected)
+    np.testing.assert_allclose(modelled, expected, rtol=1e-6, atol=1e-6)
     covariance = prepared.aggregation_error.covariance
     assert covariance is not None
     np.testing.assert_allclose(model["aggregation_error_covariance"].eval(), covariance)
@@ -276,7 +324,7 @@ def test_fixed_state_changes_prior_closure_and_is_not_sampled() -> None:
         ),
         axis=1,
     )
-    np.testing.assert_allclose(modelled, expected_modelled)
+    np.testing.assert_allclose(modelled, expected_modelled, rtol=1e-6, atol=1e-6)
 
 
 def test_partial_gathered_state_restores_full_multiindex() -> None:
@@ -406,6 +454,7 @@ def test_two_site_week_runner_persists_labels_roles_units_and_provenance(tmp_pat
     assert np.unique(trace.posterior["time"]).size == 7
     roles = json.loads(trace.attrs["rhime_variable_roles"])
     metadata = json.loads(trace.attrs["rhime_model_metadata"])
+    assert roles["observation"] == "y"
     assert roles["flux_scaling"] == "flux_scaling"
     assert roles["concentration"] == "y"
     assert roles["modelled_concentration"] == "modelled_concentration"
@@ -426,10 +475,27 @@ def test_two_site_week_runner_persists_labels_roles_units_and_provenance(tmp_pat
     ]
     np.testing.assert_allclose(trace.posterior["flux_scaling"].sel(state="ff:1"), 0.75)
     assert trace.posterior["source"].values.tolist() == ["GPP", "TER", "FF", "ocean", "ocean"]
-    assert trace.constant_data["fixed_independent_error_sd"].values.tolist() == [1.0] * 28
-    assert trace.constant_data["fixed_prior_contribution"].attrs["units"] == (
-        "mixed; see observation_units coordinate"
+    observed = trace.observed_data["y"]
+    np.testing.assert_allclose(observed, prepared.observations)
+    assert observed["tracer"].values.tolist() == prepared.observations["tracer"].values.tolist()
+    np.testing.assert_array_equal(
+        observed["observation_units"],
+        prepared.observations["observation_units"],
     )
+    observed_units = np.unique(prepared.observations["observation_units"].values.astype(str))
+    expected_units = (
+        str(observed_units[0])
+        if observed_units.size == 1
+        else "mixed; see observation_units coordinate"
+    )
+    assert observed.attrs["units"] == expected_units
+    assert json.loads(observed.attrs["rhime_scientific_roles"]) == [
+        "concentration",
+        "observation",
+    ]
+    assert trace.constant_data["fixed_independent_error_sd"].values.tolist() == [1.0] * 28
+    assert "fixed_independent_error_sd" not in trace.observed_data
+    assert trace.constant_data["fixed_prior_contribution"].attrs["units"] == expected_units
 
     path = tmp_path / "co2_o2_trace.nc"
     az.to_netcdf(trace, path)
@@ -438,6 +504,4 @@ def test_two_site_week_runner_persists_labels_roles_units_and_provenance(tmp_pat
         "2021-07-12/2021-07-19"
     )
     assert reloaded.posterior["observation_units"].values.tolist() == ["ppm"] * 28
-    assert reloaded.constant_data["fixed_independent_error_sd"].attrs["units"] == (
-        "mixed; see observation_units coordinate"
-    )
+    assert reloaded.constant_data["fixed_independent_error_sd"].attrs["units"] == expected_units

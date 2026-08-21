@@ -26,7 +26,49 @@ from openghg_inversions.observation_error import (
 
 @dataclass(frozen=True, slots=True, eq=False)
 class Co2O2PreparedInputs:
-    """Backend-neutral joint inputs with shared land and split-ocean states."""
+    """Backend-neutral joint inputs with shared land and split-ocean states.
+
+    Callers should normally obtain this handoff from
+    :func:`prepare_co2_o2_inputs` rather than constructing it directly.
+
+    Attributes:
+        observations: CO2 followed by O2 observations on ``("observation",)``.
+            Integer joint labels are unique; ``tracer``,
+            ``within_tracer_observation``, and ``observation_units`` retain the
+            native channel identity, labels, and units. Aligned ``site`` and
+            ``time`` coordinates are retained when supplied.
+        fixed_prior_contribution: Joint affine intercept
+            ``H m - H_alpha Pi m`` on the same labelled ``observation`` axis
+            and in the channel-specific observation units.
+        co2_operator: Effective CO2 operator on
+            ``(co2_observation_dim, retained_prior.state_dim)`` with row labels
+            matching the native CO2 observations and state labels matching the
+            retained prior. Units are CO2 observation units per dimensionless
+            flux scale.
+        o2_operator: Effective O2 operator on
+            ``(o2_observation_dim, retained_prior.state_dim)`` with the
+            corresponding O2 row labels and retained-state labels. Shared-state
+            columns already contain signed O2-per-CO2 ratios; the O2-ocean
+            column is applied directly.
+        o2_co2_flux_ratio: Optional signed, finite, negative O2-per-CO2 ratios
+            on ``(retained_prior.state_dim,)`` for exactly the shared GPP, TER,
+            and FF states. The indexed state labels and ``source`` coordinate
+            match the retained prior, while attrs record direction, sign
+            convention, and provenance. The borrowed payload may remain lazy.
+        o2_co2_flux_ratio_unavailable_reason: Non-empty explanation when
+            scalar state-resolved ratios cannot be exposed because the paired
+            native O2 flux embeds spatial ratios before convolution. Exactly
+            one of this value and ``o2_co2_flux_ratio`` is present.
+        aggregation_error: Validated dense joint aggregation error. Covariance
+            rows use ``observation`` and columns use ``observation_cov`` in
+            block order ``[[CO2, CO2/O2], [CO2/O2.T, O2]]``; per-axis unit
+            coordinates describe mixed-unit entries.
+        retained_prior: Correlated prior over shared GPP/TER/FF and separate
+            CO2- and O2-ocean retained states.
+        co2_observation_dim: Native indexed CO2 observation dimension name.
+        o2_observation_dim: Native indexed O2 observation dimension name.
+        provenance: JSON-serializable preparation and data provenance.
+    """
 
     observations: xr.DataArray
     fixed_prior_contribution: xr.DataArray
@@ -95,13 +137,13 @@ def _operator(
         raise ValueError(f"{name} operator state labels do not match the retained prior.")
 
 
-def _validate_ocean_loadings(
+def _materialize_and_validate_ocean_loadings_and_ratio(
     co2_operator: xr.DataArray,
     o2_operator: xr.DataArray,
     state_mean: xr.DataArray,
     o2_co2_flux_ratio: xr.DataArray | None,
 ) -> np.ndarray:
-    """Reject loadings from one channel onto the other channel's ocean state."""
+    """Jointly materialize and validate cross-ocean loadings and ratio values."""
     state_dim = str(state_mean.dims[0])
     roles = [
         (str(source).lower(), str(scope).lower())
@@ -305,6 +347,62 @@ def prepare_co2_o2_inputs(
     signed O2-per-CO2 ratios for shared states. Supply their labelled values
     when they remain available, or an explicit reason why a native paired-flux
     construction cannot expose scalar ratios at this boundary.
+
+    Args:
+        co2_observations: One-dimensional CO2 observations with a unique
+            indexed native observation coordinate.
+        o2_observations: One-dimensional O2 observations with a unique indexed
+            coordinate whose dimension name differs from the CO2 dimension.
+            Times and lengths may differ between channels.
+        co2_prior_forward_mean: Native CO2 prior mean ``H m`` on exactly the
+            CO2 observation dimension and labels.
+        o2_prior_forward_mean: Native O2 prior mean ``H m`` on exactly the O2
+            observation dimension and labels.
+        co2_operator: CO2 effective operator with dimensions
+            ``(CO2 observation, retained state)`` and exact observation and
+            retained-prior indexes. Its O2-ocean column must be zero.
+        o2_operator: O2 effective operator with dimensions
+            ``(O2 observation, retained state)`` and exact observation and
+            retained-prior indexes. Its CO2-ocean column must be zero; signed
+            O2-per-CO2 ratios are already embedded in shared-state columns.
+        o2_co2_flux_ratio: Optional labelled ratios for exactly the shared
+            retained states. Values must be finite and negative, the ``source``
+            coordinate must match the prior, and attrs must declare direction
+            ``"O2 flux per CO2 flux"``, the signed convention, and provenance.
+        o2_co2_flux_ratio_unavailable_reason: Explanation used only when
+            labelled scalar ratios are unavailable. Exactly one of this
+            argument and ``o2_co2_flux_ratio`` must be supplied.
+        co2_aggregation_covariance: CO2-by-CO2 dense covariance. Rows use the
+            CO2 observation dimension; its distinct column dimension carries
+            the same CO2 labels in the same order. Entries have squared CO2
+            observation units.
+        co2_o2_aggregation_covariance: CO2-row by O2-column cross-covariance,
+            labelled by the native CO2 and O2 observation indexes. Entries
+            have CO2 observation units times O2 observation units.
+        o2_aggregation_covariance: O2-by-O2 dense covariance. Rows use the O2
+            observation dimension; its distinct column dimension carries the
+            same O2 labels in the same order. Entries have squared O2
+            observation units.
+        retained_prior: Retained correlated prior whose indexed state axis has
+            ``source`` and ``tracer_scope`` coordinates for shared GPP/TER/FF,
+            CO2 ocean, and O2 ocean states.
+        co2_units: Non-empty units label for CO2 observations and operator rows.
+        o2_units: Non-empty units label for O2 observations and operator rows.
+        provenance: Optional JSON-serializable preparation provenance.
+
+    Returns:
+        Labelled, backend-neutral joint inputs. Observation vectors, affine
+        intercept, operators, and available ratio provenance retain borrowed
+        lazy payloads; dense covariance validation is the explicit eager
+        aggregation-error boundary.
+
+    Raises:
+        ValueError: If units or provenance are invalid; observation, operator,
+            state, ratio, or covariance dimensions/indexes disagree; the
+            ratio exactly-one, direction, sign, provenance, or numerical-value
+            contract fails; cross-tracer ocean loadings are nonzero; or the
+            assembled dense covariance is non-finite, asymmetric, or not
+            positive semidefinite.
     """
     if not co2_units.strip() or not o2_units.strip():
         raise ValueError("CO2 and O2 channel units must be non-empty.")
@@ -327,7 +425,7 @@ def prepare_co2_o2_inputs(
         o2_co2_flux_ratio_unavailable_reason,
         state_mean,
     )
-    ratio_values = _validate_ocean_loadings(
+    ratio_values = _materialize_and_validate_ocean_loadings_and_ratio(
         co2_operator,
         o2_operator,
         state_mean,

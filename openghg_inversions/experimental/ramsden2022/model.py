@@ -883,11 +883,11 @@ def build_ramsden_model(
                 state_dim=sensitivities.state_dim,
                 variable_suffix=variable_suffix,
             )
+            linked_state = state * ratio_factor
             tracer_terms.append(
                 add_linked_linear_component(
                     tracer_sensitivity,
-                    state,
-                    state_multiplier=ratio_factor,
+                    linked_state,
                     data_name=f"hx_{tracer_suffix}_{variable_suffix}",
                     output_name=f"mu_{tracer_suffix}_{variable_suffix}",
                 )
