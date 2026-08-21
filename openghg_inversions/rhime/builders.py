@@ -164,17 +164,17 @@ def validate_model_build_result(
         ValueError: If the requested output is unsupported or a declared
             variable role refers to an absent variable.
     """
-    output_format = context.run_spec.output.output_format
-    if output_format == "none":
-        return
-
-    result.validate_requested_output(output_format)
-
     if get_coord_registry(result.model) is None:
         raise ValueError(
             "A custom RHIME model must carry a `CoordRegistry`; construct it "
             "with `registered_model()`."
         )
+
+    output_format = context.run_spec.output.output_format
+    if output_format == "none":
+        return
+
+    result.validate_requested_output(output_format)
 
     available_names = set(result.model.named_vars) | set(context.prepared_inputs.inv_inputs.variables)
     missing = {role: name for role, name in result.variable_roles.items() if name not in available_names}
