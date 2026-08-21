@@ -53,6 +53,52 @@ class AggregationError:
     diagonal_variance: xr.DataArray | None = None
 
 
+def validate_complete_observation_covariance(
+    aggregation_error: AggregationError,
+    independent_variance: np.ndarray,
+) -> None:
+    """Optionally check a custom complete observation covariance is positive definite (PD).
+
+    Built-in pipelines construct covariance components with known guarantees
+    and do not call this eager diagnostic. Custom pipelines may use it after
+    adding their fixed independent variance. For an LRPD covariance, the
+    structural check uses ``F F.T + diag(d)`` directly: it is positive
+    definite exactly when the rows of ``F`` corresponding to zero entries of
+    non-negative ``d`` are linearly independent.
+    """
+    variance = np.asarray(independent_variance)
+    if variance.shape != aggregation_error.marginal_variance.shape:
+        raise ValueError("Independent variance must match the observation covariance diagonal.")
+    if not np.isfinite(variance).all() or (variance < 0.0).any():
+        raise ValueError("Independent variance must contain only finite non-negative values.")
+
+    if aggregation_error.mode == "dense":
+        assert aggregation_error.covariance is not None
+        complete = np.asarray(aggregation_error.covariance.values) + np.diag(variance)
+        try:
+            np.linalg.cholesky(complete)
+        except np.linalg.LinAlgError as error:
+            raise ValueError(
+                "Complete observation covariance must be positive definite."
+            ) from error
+        return
+
+    diagonal = variance
+    if aggregation_error.diagonal_variance is not None:
+        diagonal = diagonal + np.asarray(aggregation_error.diagonal_variance.values)
+    if aggregation_error.mode == "low_rank":
+        assert aggregation_error.factor is not None
+        zero_diagonal = diagonal == 0.0
+        if not zero_diagonal.any():
+            return
+        zero_rows = np.asarray(aggregation_error.factor.values)[zero_diagonal]
+        if np.linalg.matrix_rank(zero_rows) == int(zero_diagonal.sum()):
+            return
+    elif (diagonal > 0.0).all():
+        return
+    raise ValueError("Complete observation covariance must be positive definite.")
+
+
 def _validate_dense_covariance_values(
     values: np.ndarray,
     *,
