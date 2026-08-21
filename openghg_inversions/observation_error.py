@@ -53,6 +53,57 @@ class AggregationError:
     diagonal_variance: xr.DataArray | None = None
 
 
+def validate_complete_observation_covariance(
+    aggregation_error: AggregationError,
+    independent_variance: np.ndarray,
+    *,
+    dynamic_diagonal: bool = False,
+) -> None:
+    """Require the fully composed observation covariance to be usable.
+
+    ``independent_variance`` is the fixed diagonal contribution. A declared
+    dynamic mismatch term is trusted to regularize the covariance in the model
+    graph. Otherwise dense covariance is checked by the factorization the
+    likelihood needs, and the LRPD Woodbury implementation requires every
+    entry of its assembled diagonal base to be strictly positive. The LRPD
+    component itself needs no eigentest: its validated factor and non-negative
+    diagonal already define a positive-semidefinite covariance.
+    """
+    variance = np.asarray(independent_variance)
+    if variance.shape != aggregation_error.marginal_variance.shape:
+        raise ValueError("Independent variance must match the observation covariance diagonal.")
+    if not np.isfinite(variance).all() or (variance < 0.0).any():
+        raise ValueError("Independent variance must contain only finite non-negative values.")
+    if dynamic_diagonal:
+        return
+
+    if aggregation_error.mode == "dense":
+        assert aggregation_error.covariance is not None
+        complete = np.asarray(aggregation_error.covariance.values) + np.diag(variance)
+        try:
+            np.linalg.cholesky(complete)
+        except np.linalg.LinAlgError as error:
+            raise ValueError(
+                "Complete observation covariance must be positive definite."
+            ) from error
+        return
+
+    diagonal = variance
+    if aggregation_error.diagonal_variance is not None:
+        diagonal = diagonal + np.asarray(aggregation_error.diagonal_variance.values)
+    if (diagonal <= 0.0).any():
+        detail = (
+            " The low-rank likelihood requires a strictly positive assembled "
+            "diagonal base for its Woodbury factorization."
+            if aggregation_error.mode == "low_rank"
+            else ""
+        )
+        raise ValueError(
+            "Complete observation covariance must be positive definite; its "
+            f"diagonal variance is zero.{detail}"
+        )
+
+
 def _validate_dense_covariance_values(
     values: np.ndarray,
     *,
@@ -290,6 +341,13 @@ def resolve_aggregation_error(
     """
     if output_dim not in data.dims:
         raise ValueError(f"Prepared inputs have no observation dimension {output_dim!r}.")
+    observation_index = data.get_index(output_dim)
+    if not observation_index.is_unique:
+        duplicate = observation_index[observation_index.duplicated()][0]
+        raise ValueError(
+            f"Observation coordinate {output_dim!r} must contain unique labels; "
+            f"duplicate {duplicate!r}."
+        )
     selected = select_aggregation_error_mode(data, mode)
     nmeasure = data.sizes[output_dim]
 

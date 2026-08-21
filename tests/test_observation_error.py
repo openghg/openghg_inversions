@@ -63,6 +63,15 @@ def test_low_rank_covariance_uses_factor_and_residual_diagonal() -> None:
     np.testing.assert_allclose(result.marginal_variance, np.sum(factor**2, axis=1) + residual)
 
 
+def test_low_rank_covariance_rejects_duplicate_observation_labels() -> None:
+    data = xr.Dataset(coords={"nmeasure": ["A", "A"]})
+    data["low_rank_factor"] = (("nmeasure", "agg_rank"), np.ones((2, 1)))
+    data["diagonal_residual_variance"] = ("nmeasure", np.ones(2))
+
+    with pytest.raises(ValueError, match="unique labels.*duplicate 'A'"):
+        resolve_aggregation_error(data)
+
+
 def test_low_rank_payloads_materialize_together_and_remain_eager() -> None:
     executions = 0
 

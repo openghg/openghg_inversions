@@ -143,6 +143,107 @@ def test_low_rank_likelihood_retains_observed_y_and_predictive_sampling() -> Non
     assert predictive.prior_predictive["y"].shape == (1, 2, 3)
 
 
+@pytest.mark.parametrize("mode", ["dense", "low_rank"])
+def test_positive_observation_error_regularizes_singular_structured_component(
+    mode: str,
+) -> None:
+    data = _base_data()
+    if mode == "dense":
+        data["aggregation_error_covariance"] = (
+            ("nmeasure", "nmeasure_cov"),
+            np.ones((3, 3)),
+        )
+    else:
+        data["low_rank_factor"] = (("nmeasure", "agg_rank"), np.ones((3, 1)))
+        data["diagonal_residual_variance"] = ("nmeasure", np.zeros(3))
+
+    with registered_model(coords={"nmeasure": np.arange(3)}):
+        state = build_additive_sigma_error(
+            observations=data["mf"],
+            observation_error=data["mf_error"],
+            minimum_error=data["min_error"],
+            aggregation_error=resolve_aggregation_error(data),
+            sigma_alignment=None,
+            sigma_prior={},
+            no_model_error=True,
+        )
+
+    np.testing.assert_allclose(state.independent_variance.eval(), data["mf_error"].values**2)
+
+
+def test_positive_lrpd_diagonal_is_a_standalone_complete_covariance() -> None:
+    data = _base_data()
+    data["mf_error"] = ("nmeasure", np.zeros(3))
+    data["low_rank_factor"] = (("nmeasure", "agg_rank"), np.ones((3, 1)))
+    data["diagonal_residual_variance"] = ("nmeasure", np.full(3, 0.1))
+
+    with registered_model(coords={"nmeasure": np.arange(3)}):
+        state = build_additive_sigma_error(
+            observations=data["mf"],
+            observation_error=data["mf_error"],
+            minimum_error=data["min_error"],
+            aggregation_error=resolve_aggregation_error(data),
+            sigma_alignment=None,
+            sigma_prior={},
+            no_model_error=True,
+        )
+
+    np.testing.assert_allclose(state.independent_variance.eval(), np.zeros(3))
+
+
+def test_sigma_regularizes_zero_fixed_lrpd_diagonal() -> None:
+    data = _base_data()
+    data["mf_error"] = ("nmeasure", np.zeros(3))
+    data["low_rank_factor"] = (("nmeasure", "agg_rank"), np.ones((3, 1)))
+    data["diagonal_residual_variance"] = ("nmeasure", np.zeros(3))
+    sigma_alignment = SigmaAlignment.from_frequency(
+        data["site_indicator"], frequency=None, per_site=False
+    )
+
+    with registered_model(coords={"nmeasure": np.arange(3)}):
+        state = build_additive_sigma_error(
+            observations=data["mf"],
+            observation_error=data["mf_error"],
+            minimum_error=data["min_error"],
+            aggregation_error=resolve_aggregation_error(data),
+            sigma_alignment=sigma_alignment,
+            sigma_prior={"pdf": "uniform", "lower": 0.5, "upper": 0.500001},
+            no_model_error=False,
+        )
+
+    assert np.all(state.independent_variance.eval() > 0.0)
+
+
+@pytest.mark.parametrize("mode", ["dense", "low_rank"])
+def test_singular_complete_structured_covariance_is_rejected_before_model_construction(
+    mode: str,
+) -> None:
+    data = _base_data()
+    data["mf_error"] = ("nmeasure", np.zeros(3))
+    if mode == "dense":
+        data["aggregation_error_covariance"] = (
+            ("nmeasure", "nmeasure_cov"),
+            np.ones((3, 3)),
+        )
+    else:
+        data["low_rank_factor"] = (("nmeasure", "agg_rank"), np.ones((3, 1)))
+        data["diagonal_residual_variance"] = ("nmeasure", np.zeros(3))
+
+    with registered_model(coords={"nmeasure": np.arange(3)}) as model:
+        with pytest.raises(ValueError, match="Complete observation covariance"):
+            build_additive_sigma_error(
+                observations=data["mf"],
+                observation_error=data["mf_error"],
+                minimum_error=data["min_error"],
+                aggregation_error=resolve_aggregation_error(data),
+                sigma_alignment=None,
+                sigma_prior={},
+                no_model_error=True,
+            )
+
+    assert not model.named_vars
+
+
 @pytest.mark.parametrize(
     ("mode", "payload_names"),
     [
