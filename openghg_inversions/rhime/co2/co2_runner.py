@@ -21,7 +21,7 @@ from openghg_inversions.rhime.materialization import materialize_pymc_inputs
 from openghg_inversions.rhime.sampling import RhimeSampler, sample_rhime_model
 from openghg_inversions.sigma import SigmaAlignment
 
-from .model import build_co2_rhime_model
+from .co2_model import build_co2_rhime_model
 
 
 _CO2_SCIENTIFIC_INPUT_NAMES = (

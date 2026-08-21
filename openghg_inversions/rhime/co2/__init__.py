@@ -1,7 +1,7 @@
 """Public CO2-family RHIME recipes."""
 
-from .model import build_co2_rhime_model, co2_prior_forward_mean
-from .runner import co2_model_input_names, run_rhime_co2
+from .co2_model import build_co2_rhime_model, co2_prior_forward_mean
+from .co2_runner import co2_model_input_names, run_rhime_co2
 from .co2_o2_model import (
     build_co2_o2_model,
     co2_o2_prior_forward_mean,

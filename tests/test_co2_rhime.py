@@ -21,7 +21,7 @@ from openghg_inversions.rhime.co2 import (
     co2_prior_forward_mean,
     run_rhime_co2,
 )
-from openghg_inversions.rhime.co2 import runner as co2_runner
+from openghg_inversions.rhime.co2 import co2_runner
 from openghg_inversions.serialization import load_inferencedata, save_inferencedata
 
 

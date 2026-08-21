@@ -24,6 +24,7 @@ from openghg_inversions.rhime.co2 import (
     prepare_co2_o2_inputs,
     run_rhime_co2_o2_from_prepared_inputs,
 )
+from openghg_inversions.rhime.co2.co2_o2_runner import _co2_o2_metadata
 from openghg_inversions.rhime.sampling import RhimeSampler
 
 
@@ -48,6 +49,14 @@ def _inputs(*, gathered_state: bool = False) -> dict[str, object]:
             "source": ("state", ["GPP", "TER", "FF", "ocean", "ocean"]),
             "tracer_scope": ("state", ["shared", "shared", "shared", "co2", "o2"]),
         }
+    ratio_coords = (
+        xr.Coordinates.from_pandas_multiindex(labels[:3], "state")
+        if isinstance(labels, pd.MultiIndex)
+        else {
+            "state": labels[:3],
+            "source": ("state", ["GPP", "TER", "FF"]),
+        }
+    )
     mean = xr.DataArray(
         np.ones(5),
         dims=("state",),
@@ -77,7 +86,17 @@ def _inputs(*, gathered_state: bool = False) -> dict[str, object]:
             dims=("o2_measure", "state"),
             coords={"o2_measure": o2["o2_measure"], "state": mean["state"]},
         ),
-        "o2_operator_ratio_convention": "embedded_signed_o2_per_co2",
+        "o2_co2_flux_ratio": xr.DataArray(
+            [-1.1, -1.0, -1.4],
+            dims="state",
+            coords=ratio_coords,
+            attrs={
+                "direction": "O2 flux per CO2 flux",
+                "sign_convention": "signed; positive CO2 flux has negative O2 loading",
+                "provenance": "Verification Games source-resolved O2:CO2 ratios",
+            },
+        ),
+        "o2_co2_flux_ratio_unavailable_reason": None,
         "co2_aggregation_covariance": xr.DataArray(
             [[1, 0.2], [0.2, 1.5]],
             dims=("co2_measure", "co2_measure_cov"),
@@ -115,7 +134,7 @@ def _independent_error(prepared, value: float = 0.1) -> xr.DataArray:
 def _build(prepared, *, state_activity: StateActivity | None = None):
     return build_co2_o2_model(
         observations=prepared.observations,
-        prior_forward_mean=prepared.prior_forward_mean,
+        fixed_prior_contribution=prepared.fixed_prior_contribution,
         co2_operator=prepared.co2_operator,
         o2_operator=prepared.o2_operator,
         aggregation_error=prepared.aggregation_error,
@@ -137,7 +156,7 @@ def test_stacks_unequal_axes_cross_covariance_and_units() -> None:
         "per meg",
         "per meg",
     ]
-    assert prepared.o2_operator_ratio_convention == "embedded_signed_o2_per_co2"
+    np.testing.assert_allclose(prepared.o2_co2_flux_ratio, [-1.1, -1.0, -1.4])
     assert prepared.o2_operator.attrs["oxidation_ratio_direction"] == "O2 flux per CO2 flux"
     assert prepared.aggregation_error.mode == "dense"
     covariance = prepared.aggregation_error.covariance
@@ -163,21 +182,38 @@ def test_rejects_a_shared_ocean_state() -> None:
         prepare_co2_o2_inputs(**inputs)
 
 
+def test_metadata_tracks_unavailable_native_ratio_values() -> None:
+    inputs = _inputs()
+    inputs["o2_co2_flux_ratio"] = None
+    inputs["o2_co2_flux_ratio_unavailable_reason"] = (
+        "Native paired O2 flux embeds spatial ratios before convolution."
+    )
+
+    ratio = _co2_o2_metadata(prepare_co2_o2_inputs(**inputs))["o2_operator_ratio"]
+
+    assert ratio["status"] == "unavailable"
+    assert ratio["unavailable_reason"].startswith("Native paired O2 flux")
+    assert "value" not in ratio
+
+
 def test_model_uses_registered_explicit_arrays_and_joint_covariance() -> None:
     prepared = prepare_co2_o2_inputs(**_inputs())
     model = _build(prepared)
 
     assert get_coord_registry(model) is not None
+    assert "fixed_prior_contribution" in model.named_vars
+    assert "prior_flux_scaling" not in model.named_vars
+    assert "co2_flux_contribution" in model.named_vars
+    assert "o2_flux_contribution" in model.named_vars
     scaling, modelled = pm.draw(
         [model["flux_scaling"], model["modelled_concentration"]],
         draws=2,
         random_seed=4,
     )
-    state_anomaly = scaling - prepared.retained_prior.mean.values
-    expected = prepared.prior_forward_mean.values + np.concatenate(
+    expected = prepared.fixed_prior_contribution.values + np.concatenate(
         (
-            np.einsum("os,ds->do", prepared.co2_operator.values, state_anomaly),
-            np.einsum("os,ds->do", prepared.o2_operator.values, state_anomaly),
+            np.einsum("os,ds->do", prepared.co2_operator.values, scaling),
+            np.einsum("os,ds->do", prepared.o2_operator.values, scaling),
         ),
         axis=1,
     )
@@ -202,20 +238,22 @@ def test_fixed_state_changes_prior_closure_and_is_not_sampled() -> None:
             coords={state_dim: prepared.retained_prior.mean[state_dim]},
         ),
     )
-    fixed_adjustment = xr.DataArray(
+    prior_state = prepared.retained_prior.mean.copy()
+    prior_state[{state_dim: 2}] = 0.75
+    prior_contribution = xr.DataArray(
         np.concatenate(
             (
-                prepared.co2_operator.isel({state_dim: 2}, drop=True).values,
-                prepared.o2_operator.isel({state_dim: 2}, drop=True).values,
+                prepared.co2_operator.values @ prior_state.values,
+                prepared.o2_operator.values @ prior_state.values,
             )
         ),
         dims="observation",
-        coords={"observation": prepared.prior_forward_mean["observation"]},
+        coords={"observation": prepared.fixed_prior_contribution["observation"]},
     )
-    expected_prior = prepared.prior_forward_mean - 0.25 * fixed_adjustment
+    expected_prior = prepared.fixed_prior_contribution + prior_contribution
     xr.testing.assert_allclose(
         co2_o2_prior_forward_mean(
-            prior_forward_mean=prepared.prior_forward_mean,
+            fixed_prior_contribution=prepared.fixed_prior_contribution,
             co2_operator=prepared.co2_operator,
             o2_operator=prepared.o2_operator,
             retained_prior=prepared.retained_prior,
@@ -231,11 +269,10 @@ def test_fixed_state_changes_prior_closure_and_is_not_sampled() -> None:
         random_seed=8,
     )
     np.testing.assert_allclose(scaling[:, 2], 0.75)
-    state_anomaly = scaling - prepared.retained_prior.mean.values
-    expected_modelled = prepared.prior_forward_mean.values + np.concatenate(
+    expected_modelled = prepared.fixed_prior_contribution.values + np.concatenate(
         (
-            np.einsum("os,ds->do", prepared.co2_operator.values, state_anomaly),
-            np.einsum("os,ds->do", prepared.o2_operator.values, state_anomaly),
+            np.einsum("os,ds->do", prepared.co2_operator.values, scaling),
+            np.einsum("os,ds->do", prepared.o2_operator.values, scaling),
         ),
         axis=1,
     )
@@ -372,9 +409,13 @@ def test_two_site_week_runner_persists_labels_roles_units_and_provenance(tmp_pat
     assert roles["flux_scaling"] == "flux_scaling"
     assert roles["concentration"] == "y"
     assert roles["modelled_concentration"] == "modelled_concentration"
+    assert roles["coherent_prior_contribution"] == "fixed_prior_contribution"
     assert metadata["provenance"]["sites"] == ["TAC", "MHD"]
     assert metadata["o2_operator_ratio"]["convention"] == "embedded_signed_o2_per_co2"
+    assert metadata["o2_operator_ratio"]["status"] == "available"
     assert metadata["o2_operator_ratio"]["direction"] == "O2 flux per CO2 flux"
+    assert metadata["o2_operator_ratio"]["value"] == [-1.1, -1.0, -1.4]
+    assert metadata["o2_operator_ratio"]["source"] == ["GPP", "TER", "FF"]
     assert metadata["o2_operator_ratio"]["scope"] == (
         "shared GPP/TER/FF states; O2 ocean applied directly"
     )
@@ -386,6 +427,9 @@ def test_two_site_week_runner_persists_labels_roles_units_and_provenance(tmp_pat
     np.testing.assert_allclose(trace.posterior["flux_scaling"].sel(state="ff:1"), 0.75)
     assert trace.posterior["source"].values.tolist() == ["GPP", "TER", "FF", "ocean", "ocean"]
     assert trace.constant_data["fixed_independent_error_sd"].values.tolist() == [1.0] * 28
+    assert trace.constant_data["fixed_prior_contribution"].attrs["units"] == (
+        "mixed; see observation_units coordinate"
+    )
 
     path = tmp_path / "co2_o2_trace.nc"
     az.to_netcdf(trace, path)

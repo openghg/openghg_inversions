@@ -70,61 +70,46 @@ def _resolve_activity(
     return resolve_state_activity(sensitivity.removed, state_activity)
 
 
-def _co2_o2_prior_forward_mean(
-    *,
-    prior_forward_mean: xr.DataArray,
-    co2_operator: xr.DataArray,
-    o2_operator: xr.DataArray,
-    retained_prior: CorrelatedLognormalPrior,
-    activity: ResolvedStateActivity,
-    output_dim: str,
-) -> xr.DataArray:
-    """Apply one resolved activity policy to the channel prior signals."""
-    prior_state = xr.where(
-        activity.active,
-        retained_prior.mean,
-        activity.fixed_value,
-    )
-    state_adjustment = prior_state - retained_prior.mean
-    nco2 = co2_operator.sizes[co2_operator.dims[0]]
-    adjustments = []
-    for operator, selection in (
-        (co2_operator, slice(0, nco2)),
-        (o2_operator, slice(nco2, None)),
-    ):
-        channel_dim = str(operator.dims[0])
-        adjustment = xr.dot(
-            operator,
-            state_adjustment,
-            dim=retained_prior.state_dim,
-        ).rename({channel_dim: output_dim})
-        adjustment = adjustment.assign_coords(
-            {output_dim: prior_forward_mean[output_dim].isel({output_dim: selection})}
-        )
-        adjustments.append(adjustment)
-    joint_adjustment = xr.concat(adjustments, dim=output_dim)
-    return (prior_forward_mean + joint_adjustment).rename("prior_forward_concentration")
-
-
 def co2_o2_prior_forward_mean(
     *,
-    prior_forward_mean: xr.DataArray,
+    fixed_prior_contribution: xr.DataArray,
     co2_operator: xr.DataArray,
     o2_operator: xr.DataArray,
     retained_prior: CorrelatedLognormalPrior,
     state_activity: StateActivity | None = None,
     output_dim: str = "observation",
 ) -> xr.DataArray:
-    """Return the deterministic prior concentration after exact state fixing."""
+    """Return the affine model evaluated at the resolved prior state."""
     co2_sensitivity, _ = _prepare_channel_sensitivities(co2_operator, o2_operator)
     activity = _resolve_activity(co2_sensitivity, state_activity)
-    return _co2_o2_prior_forward_mean(
-        prior_forward_mean=prior_forward_mean,
-        co2_operator=co2_operator,
-        o2_operator=o2_operator,
-        retained_prior=retained_prior,
-        activity=activity,
-        output_dim=output_dim,
+    prior_state = xr.where(
+        activity.active,
+        retained_prior.mean,
+        activity.fixed_value,
+    )
+    nco2 = co2_operator.sizes[co2_operator.dims[0]]
+    contributions = []
+    for operator, selection in (
+        (co2_operator, slice(0, nco2)),
+        (o2_operator, slice(nco2, None)),
+    ):
+        channel_dim = str(operator.dims[0])
+        contribution = xr.dot(
+            operator,
+            prior_state,
+            dim=retained_prior.state_dim,
+        ).rename({channel_dim: output_dim})
+        contribution = contribution.assign_coords(
+            {
+                output_dim: fixed_prior_contribution[output_dim].isel(
+                    {output_dim: selection}
+                )
+            }
+        )
+        contributions.append(contribution)
+    joint_contribution = xr.concat(contributions, dim=output_dim)
+    return (fixed_prior_contribution + joint_contribution).rename(
+        "prior_forward_concentration"
     )
 
 
@@ -134,36 +119,31 @@ def add_co2_o2_affine_signal(
     state: TensorVariable,
     /,
     *,
-    prior_state: xr.DataArray,
-    prior_forward_mean: xr.DataArray,
+    fixed_prior_contribution: xr.DataArray,
     output_dim: str,
 ) -> TensorVariable:
     """Add the affine CO2/O2 signal from one shared flux-scaling state."""
-    state_anomaly = state - add_model_data(prior_state)
-    prior_forward_data = add_model_data(prior_forward_mean)
-    co2_adjustment = add_linked_linear_component(
+    fixed_prior_data = add_model_data(
+        fixed_prior_contribution,
+        "fixed_prior_contribution",
+    )
+    co2_signal = add_linked_linear_component(
         co2_sensitivity,
-        state_anomaly,
+        state,
         data_name="co2_operator",
-        output_name="co2_flux_adjustment",
+        output_name="co2_flux_contribution",
     )
     # Preparation declares that this operator already contains signed,
     # source-resolved O2:CO2 oxidation ratios; do not multiply them again.
-    o2_adjustment = add_linked_linear_component(
+    o2_signal = add_linked_linear_component(
         o2_sensitivity,
-        state_anomaly,
+        state,
         data_name="o2_operator",
-        output_name="o2_flux_adjustment",
+        output_name="o2_flux_contribution",
     )
-    nco2 = co2_sensitivity.sensitivity.sizes[co2_sensitivity.output_dim]
     return pm.Deterministic(
         "modelled_concentration",
-        pt.concatenate(
-            (
-                prior_forward_data[:nco2] + co2_adjustment,
-                prior_forward_data[nco2:] + o2_adjustment,
-            )
-        ),
+        fixed_prior_data + pt.concatenate((co2_signal, o2_signal)),
         dims=output_dim,
     )
 
@@ -197,7 +177,7 @@ def add_co2_o2_fixed_error_likelihood(
 def build_co2_o2_model(
     *,
     observations: xr.DataArray,
-    prior_forward_mean: xr.DataArray,
+    fixed_prior_contribution: xr.DataArray,
     co2_operator: xr.DataArray,
     o2_operator: xr.DataArray,
     aggregation_error: AggregationError,
@@ -217,19 +197,6 @@ def build_co2_o2_model(
         o2_operator,
     )
     activity = _resolve_activity(co2_sensitivity, state_activity)
-    prior_state = xr.where(
-        activity.active,
-        retained_prior.mean,
-        activity.fixed_value,
-    ).rename("prior_flux_scaling")
-    activity_prior_forward = _co2_o2_prior_forward_mean(
-        prior_forward_mean=prior_forward_mean,
-        co2_operator=co2_operator,
-        o2_operator=o2_operator,
-        retained_prior=retained_prior,
-        activity=activity,
-        output_dim=output_dim,
-    )
 
     with registered_model() as model:
         state = add_correlated_lognormal_state_with_activity(
@@ -241,8 +208,7 @@ def build_co2_o2_model(
             co2_sensitivity,
             o2_sensitivity,
             state,
-            prior_state=prior_state,
-            prior_forward_mean=activity_prior_forward,
+            fixed_prior_contribution=fixed_prior_contribution,
             output_dim=output_dim,
         )
         add_co2_o2_fixed_error_likelihood(
