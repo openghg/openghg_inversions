@@ -9,8 +9,8 @@ import pytest
 import xarray as xr
 
 from openghg_inversions.observation_error import resolve_aggregation_error
-from openghg_inversions.models.coords import registered_model
-from openghg_inversions.rhime.co2.model import build_co2_rhime_model
+from openghg_inversions.models.coords import get_coord_registry, registered_model
+from openghg_inversions.rhime.co2 import build_co2_rhime_model
 from openghg_inversions.rhime.co2.outer_regions import (
     add_inferred_outer_component,
     collapse_outer_sectors,
@@ -177,6 +177,10 @@ def test_co2_model_composes_sampled_boundary_and_each_outer_mode() -> None:
         [1.0, 1.0],
         dims="outer_region",
         coords={"outer_region": outer_h["outer_region"]},
+    ).assign_coords(
+        source=("outer_region", ["ff", "gpp"]),
+        sector=("outer_region", ["ff", "gpp"]),
+        domain=("outer_region", ["EUROPE", "EUROPE"]),
     )
     outer_covariance = xr.DataArray(
         np.diag([0.04, 0.09]),
@@ -311,3 +315,75 @@ def test_inferred_zero_sensitivity_outer_state_is_fixed_at_one() -> None:
 
     assert "x_outer_active" in model.named_vars
     assert state[1] == 1.0
+
+
+def test_inner_and_outer_state_auxiliary_coords_are_namespaced() -> None:
+    inner_h = xr.DataArray(
+        [[1.0], [2.0]],
+        dims=("nmeasure", "region"),
+        coords={"nmeasure": [0, 1], "region": ["inner"]},
+    ).assign_coords(
+        source=("region", ["ff"]),
+        sector=("region", ["ff"]),
+        domain=("region", ["PARIS"]),
+    )
+    outer_h = xr.DataArray(
+        [[3.0, 4.0], [5.0, 6.0]],
+        dims=("nmeasure", "outer_region"),
+        coords={"nmeasure": [0, 1], "outer_region": ["west", "east"]},
+    ).assign_coords(
+        source=("outer_region", ["ff", "gpp"]),
+        sector=("outer_region", ["ff", "gpp"]),
+        domain=("outer_region", ["EUROPE", "EUROPE"]),
+    )
+    outer_mean = xr.DataArray(
+        [1.0, 1.0],
+        dims="outer_region",
+        coords={"outer_region": outer_h["outer_region"]},
+    ).assign_coords(
+        source=("outer_region", ["ff", "gpp"]),
+        sector=("outer_region", ["ff", "gpp"]),
+        domain=("outer_region", ["EUROPE", "EUROPE"]),
+    )
+    outer_covariance = xr.DataArray(
+        np.diag([0.1, 0.2]),
+        dims=("outer_region", "outer_region_cov"),
+        coords={"outer_region": outer_h["outer_region"]},
+    )
+    treatment = prepare_outer_region_treatment(
+        outer_h,
+        mode="inferred",
+        prior_mean=outer_mean,
+        prior_covariance=outer_covariance,
+    )
+    observations = xr.DataArray(
+        [400.0, 401.0], dims="nmeasure", coords={"nmeasure": [0, 1]}
+    )
+    error = xr.zeros_like(observations)
+    aggregation_error = resolve_aggregation_error(
+        xr.Dataset({"mf": observations, "mf_error": error, "min_error": error}),
+        "none",
+    )
+
+    model = build_co2_rhime_model(
+        inner_h,
+        prior_mean=xr.DataArray([1.0], dims="region", coords={"region": ["inner"]}),
+        prior_covariance=xr.DataArray(
+            [[0.1]], dims=("region", "region_cov"), coords={"region": ["inner"]}
+        ),
+        fixed_prior_contribution=xr.zeros_like(observations),
+        observations=observations,
+        observation_error=error,
+        minimum_error=error,
+        aggregation_error=aggregation_error,
+        outer_treatment=treatment,
+        no_model_error=True,
+    )
+    registry = get_coord_registry(model)
+
+    assert registry is not None
+    assert registry.auxiliary_coords["source"].values.tolist() == ["ff"]
+    assert registry.auxiliary_coords["source_outer"].values.tolist() == ["ff", "gpp"]
+    assert registry.auxiliary_coords["sector_outer"].values.tolist() == ["ff", "gpp"]
+    assert registry.auxiliary_coords["domain_outer"].values.tolist() == ["EUROPE", "EUROPE"]
+    assert model.named_vars_to_dims["x_outer"] == ("outer_region_outer",)

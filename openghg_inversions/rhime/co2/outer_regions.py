@@ -401,9 +401,35 @@ def add_inferred_outer_component(
     covariance_dim = next(
         str(dim) for dim in treatment.prior_covariance.dims if dim != state_dim
     )
+    rename = {state_dim: f"{state_dim}_outer"}
+    rename.update(
+        {
+            str(name): f"{name}_outer"
+            for name, coord in sensitivity.coords.items()
+            if name not in sensitivity.dims and state_dim in coord.dims
+        }
+    )
+    sensitivity = sensitivity.rename(rename)
+    mean = treatment.prior_mean.rename(
+        {
+            name: namespaced
+            for name, namespaced in rename.items()
+            if name in treatment.prior_mean.dims or name in treatment.prior_mean.coords
+        }
+    )
+    covariance_rename = {
+        name: namespaced
+        for name, namespaced in rename.items()
+        if name in treatment.prior_covariance.dims
+        or name in treatment.prior_covariance.coords
+    }
+    covariance_rename[covariance_dim] = f"{covariance_dim}_outer"
+    covariance = treatment.prior_covariance.rename(covariance_rename)
+    state_dim = rename[state_dim]
+    covariance_dim = covariance_rename[covariance_dim]
     prior = CorrelatedLognormalPrior(
-        treatment.prior_mean,
-        treatment.prior_covariance,
+        mean,
+        covariance,
         covariance_dim=covariance_dim,
     )
     activity = resolve_state_activity(detect_zero_sensitivity(sensitivity))
