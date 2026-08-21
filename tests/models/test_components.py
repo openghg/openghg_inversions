@@ -194,7 +194,6 @@ def test_add_coherent_affine_component_registers_fixed_data_and_output() -> None
             fixed,
             linear_signal,
             output_name="modelled_concentration",
-            output_dim="observation",
         )
 
     assert output is model["modelled_concentration"]

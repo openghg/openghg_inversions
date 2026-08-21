@@ -160,7 +160,6 @@ def _add_co2_o2_affine_signal(
     /,
     *,
     fixed_prior_contribution: xr.DataArray,
-    output_dim: str,
 ) -> TensorVariable:
     """Add the affine CO2/O2 signal from one shared flux-scaling state."""
     co2_signal = add_linked_linear_component(
@@ -182,7 +181,6 @@ def _add_co2_o2_affine_signal(
         fixed_prior_contribution,
         joint_signal,
         output_name="modelled_concentration",
-        output_dim=output_dim,
     )
 
 
@@ -293,7 +291,6 @@ def build_co2_o2_model(
             o2_sensitivity,
             state,
             fixed_prior_contribution=fixed_prior_contribution,
-            output_dim=output_dim,
         )
         _add_co2_o2_fixed_error_likelihood(
             observations,

@@ -324,7 +324,6 @@ def add_coherent_affine_component(
     /,
     *,
     output_name: str,
-    output_dim: str,
 ) -> TensorVariable:
     """Add a labelled fixed contribution to an already composed linear signal.
 
@@ -336,7 +335,6 @@ def add_coherent_affine_component(
         linear_signal: Existing linear signal composed by the calling model
             recipe.
         output_name: Name for the affine deterministic output.
-        output_dim: Dimension owned by the deterministic output.
 
     Returns:
         The deterministic sum of the registered fixed contribution and linear
@@ -351,7 +349,7 @@ def add_coherent_affine_component(
         channel signals. The calling recipe owns those scientific choices.
     """
     fixed = add_model_data(fixed_contribution)
-    return pm.Deterministic(output_name, fixed + linear_signal, dims=output_dim)
+    return pm.Deterministic(output_name, fixed + linear_signal, dims=fixed_contribution.dims)
 
 
 def add_state_vector(
