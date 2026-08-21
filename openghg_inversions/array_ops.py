@@ -89,14 +89,6 @@ def validate_covariance_coordinates(
     missing = [name for name in (dim, covariance_dim) if name not in covariance.coords]
     if missing:
         raise ValueError(f"Covariance matrix must carry coordinate(s) {missing!r}.")
-    for name in (dim, covariance_dim):
-        index = covariance.get_index(name)
-        if not index.is_unique:
-            duplicate = index[index.duplicated()][0]
-            raise ValueError(
-                f"Covariance coordinate {name!r} must contain unique labels; "
-                f"duplicate {duplicate!r}."
-            )
     if not np.array_equal(
         np.asarray(covariance.coords[dim].values),
         np.asarray(covariance.coords[covariance_dim].values),

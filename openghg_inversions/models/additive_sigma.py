@@ -35,7 +35,6 @@ from openghg_inversions.models.likelihoods import (
 )
 from openghg_inversions.observation_error import (
     AggregationError,
-    validate_complete_observation_covariance,
     validate_observation_error_arrays,
 )
 from openghg_inversions.sigma import SigmaAlignment
@@ -110,32 +109,6 @@ def build_additive_sigma_error(
             raise ValueError(
                 "Additive-sigma likelihood requires `sigma_alignment` when model error is enabled."
             )
-    fixed_independent_variance = np.asarray(observation_error.values) ** 2
-    if fixed_model_mismatch is not None:
-        if fixed_model_mismatch.dims != (output_dim,):
-            raise ValueError(
-                f"Additive-sigma likelihood input {FIXED_MODEL_MISMATCH!r} must "
-                f"have dims ({output_dim!r},); got {fixed_model_mismatch.dims!r}."
-            )
-        fixed_values = np.asarray(fixed_model_mismatch.values)
-        if not np.issubdtype(fixed_values.dtype, np.number):
-            raise ValueError(f"{FIXED_MODEL_MISMATCH!r} must be numeric.")
-        if not np.isfinite(fixed_values).all() or (fixed_values < 0).any():
-            raise ValueError(f"{FIXED_MODEL_MISMATCH!r} must contain only finite, non-negative values.")
-        fixed_independent_variance = fixed_independent_variance + fixed_values**2
-
-    fixed_independent_variance = fixed_independent_variance + np.maximum(
-        np.asarray(minimum_error.values) ** 2
-        - fixed_independent_variance
-        - aggregation_error.marginal_variance,
-        0.0,
-    )
-    validate_complete_observation_covariance(
-        aggregation_error,
-        fixed_independent_variance,
-        dynamic_diagonal=not no_model_error,
-    )
-
     observed = add_model_data(observations.transpose(output_dim), "Y")
     reported_error = add_model_data(observation_error.transpose(output_dim), "error")
     minimum_error_data = add_model_data(minimum_error.transpose(output_dim), "min_error")
@@ -147,6 +120,16 @@ def build_additive_sigma_error(
 
     independent_variance = reported_error**2
     if fixed_model_mismatch is not None:
+        if fixed_model_mismatch.dims != (output_dim,):
+            raise ValueError(
+                f"Additive-sigma likelihood input {FIXED_MODEL_MISMATCH!r} must "
+                f"have dims ({output_dim!r},); got {fixed_model_mismatch.dims!r}."
+            )
+        fixed_values = np.asarray(fixed_model_mismatch.values)
+        if not np.issubdtype(fixed_values.dtype, np.number):
+            raise ValueError(f"{FIXED_MODEL_MISMATCH!r} must be numeric.")
+        if not np.isfinite(fixed_values).all() or (fixed_values < 0).any():
+            raise ValueError(f"{FIXED_MODEL_MISMATCH!r} must contain only finite, non-negative values.")
         fixed_mismatch_data = add_model_data(
             fixed_model_mismatch.transpose(output_dim),
             FIXED_MODEL_MISMATCH,

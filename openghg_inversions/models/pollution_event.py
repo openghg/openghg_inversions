@@ -31,7 +31,6 @@ from openghg_inversions.models.likelihoods import (
 from openghg_inversions.models.priors import parse_prior
 from openghg_inversions.observation_error import (
     AggregationError,
-    validate_complete_observation_covariance,
     validate_observation_error_arrays,
 )
 from openghg_inversions.sigma import SigmaAlignment
@@ -114,26 +113,6 @@ def build_pollution_event_error(
                 "Pollution-event likelihood requires `sigma_alignment` when "
                 "model error is enabled or unused sigma is retained."
             )
-    fixed_independent_variance = np.asarray(observation_error.values) ** 2
-    if no_model_error:
-        small_amount = 1e-12 * np.nanmean(observations.values)
-        fixed_independent_variance = np.maximum(
-            np.abs(np.asarray(observation_error.values)),
-            small_amount,
-        ) ** 2
-    else:
-        fixed_independent_variance = fixed_independent_variance + np.maximum(
-            np.asarray(minimum_error.values) ** 2
-            - fixed_independent_variance
-            - aggregation_error.marginal_variance,
-            0.0,
-        )
-    validate_complete_observation_covariance(
-        aggregation_error,
-        fixed_independent_variance,
-        dynamic_diagonal=not no_model_error,
-    )
-
     observed = add_model_data(observations.transpose(output_dim), "Y")
     reported_error = add_model_data(observation_error.transpose(output_dim), "error")
     minimum_error_data = add_model_data(minimum_error.transpose(output_dim), "min_error")
