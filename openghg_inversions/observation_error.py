@@ -57,7 +57,7 @@ def validate_complete_observation_covariance(
     aggregation_error: AggregationError,
     independent_variance: np.ndarray,
 ) -> None:
-    """Optionally check a custom complete observation covariance is PD.
+    """Optionally check a custom complete observation covariance is positive definite (PD).
 
     Built-in pipelines construct covariance components with known guarantees
     and do not call this eager diagnostic. Custom pipelines may use it after
