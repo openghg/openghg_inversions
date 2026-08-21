@@ -192,7 +192,8 @@ def test_metadata_tracks_unavailable_native_ratio_values() -> None:
         "Native paired O2 flux embeds spatial ratios before convolution."
     )
 
-    ratio = _co2_o2_metadata(prepare_co2_o2_inputs(**inputs))["o2_operator_ratio"]
+    prepared = prepare_co2_o2_inputs(**inputs)
+    ratio = _co2_o2_metadata(prepared, observations=prepared.observations)["o2_operator_ratio"]
 
     assert ratio["status"] == "unavailable"
     assert ratio["unavailable_reason"].startswith("Native paired O2 flux")
@@ -458,6 +459,7 @@ def test_two_site_week_runner_persists_labels_roles_units_and_provenance(tmp_pat
     assert roles["flux_scaling"] == "flux_scaling"
     assert roles["concentration"] == "y"
     assert roles["modelled_concentration"] == "modelled_concentration"
+    assert "pollution_concentration" not in roles
     assert roles["coherent_prior_contribution"] == "fixed_prior_contribution"
     assert metadata["provenance"]["sites"] == ["TAC", "MHD"]
     assert metadata["o2_operator_ratio"]["convention"] == "embedded_signed_o2_per_co2"

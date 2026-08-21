@@ -14,8 +14,13 @@ from typing import Any
 
 from dask import compute as dask_compute
 import numpy as np
+import pandas as pd
 import xarray as xr
 
+from openghg_inversions._serialization_codecs import (
+    _TAGGED_JSON_VALUE_ENCODING,
+    _encode_tagged_json_value,
+)
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.observation_error import (
     AGGREGATION_ERROR_COVARIANCE,
@@ -33,10 +38,13 @@ class Co2O2PreparedInputs:
 
     Attributes:
         observations: CO2 followed by O2 observations on ``("observation",)``.
-            Integer joint labels are unique; ``tracer``,
-            ``within_tracer_observation``, and ``observation_units`` retain the
-            native channel identity, labels, and units. Aligned ``site`` and
-            ``time`` coordinates are retained when supplied.
+            Integer joint labels are unique; ``tracer`` and
+            ``observation_units`` retain the native channel identity and units.
+            ``within_tracer_observation`` reversibly encodes each native label
+            in a storage-safe string; its scalar ``*_encoding`` coordinate
+            records the codec, while the channel operators retain their native
+            indexes. Aligned ``site`` and ``time`` coordinates are retained
+            when supplied.
         fixed_prior_contribution: Joint affine intercept
             ``H m - H_alpha Pi m`` on the same labelled ``observation`` axis
             and in the channel-specific observation units.
@@ -265,13 +273,11 @@ def _stack(
         units: str,
     ) -> xr.DataArray:
         original_dim = str(value.dims[0])
-        labels = [str(label) for label in value.indexes[original_dim]]
-        result = _channel_vector(value, units=units, tracer=tracer, name=name).rename(
-            {original_dim: "observation"}
-        )
-        return result.assign_coords(
-            observation=np.arange(start, start + value.size),
-            within_tracer_observation=("observation", labels),
+        result = _channel_vector(value, units=units, tracer=tracer, name=name)
+        if isinstance(value.indexes[original_dim], pd.MultiIndex):
+            result = result.reset_index(original_dim)
+        return result.rename({original_dim: "observation"}).assign_coords(
+            observation=np.arange(start, start + value.size)
         )
 
     stacked = xr.concat(
@@ -281,6 +287,15 @@ def _stack(
         ),
         dim="observation",
         join="exact",
+    )
+    native_labels = (*co2.indexes[str(co2.dims[0])], *o2.indexes[str(o2.dims[0])])
+    encoded_labels = np.asarray(
+        [_encode_tagged_json_value(label) for label in native_labels],
+        dtype=str,
+    )
+    stacked = stacked.assign_coords(
+        within_tracer_observation=("observation", encoded_labels),
+        within_tracer_observation_encoding=_TAGGED_JSON_VALUE_ENCODING,
     )
     stacked.attrs["units"] = "mixed; see observation_units coordinate"
     return stacked
@@ -493,12 +508,17 @@ def prepare_co2_o2_inputs(
     )
     fixed_prior_contribution.attrs["mathematical_name"] = "H m - H_alpha Pi m"
     operator_coords = {name: state_mean[name] for name in ("source", "tracer_scope")}
-    co2_operator = co2_operator.rename("co2_effective_observation_operator").assign_coords(
-        **{
+    state_index = state_mean.indexes[state_dim]
+    if isinstance(state_index, pd.MultiIndex):
+        # The validated state index already owns these level coordinates;
+        # replacing individual levels would corrupt the MultiIndex.
+        operator_coords = {
             name: coordinate
             for name, coordinate in operator_coords.items()
-            if name not in co2_operator.coords
-        },
+            if name not in state_index.names
+        }
+    co2_operator = co2_operator.rename("co2_effective_observation_operator").assign_coords(
+        **operator_coords,
     ).assign_attrs(units=f"{co2_units} per dimensionless flux scale")
     ratio_direction = "O2 flux per CO2 flux"
     ratio_sign = "signed; positive CO2 flux has negative O2 loading"
@@ -518,11 +538,7 @@ def prepare_co2_o2_inputs(
     else:
         ratio_record["unavailable_reason"] = o2_co2_flux_ratio_unavailable_reason
     o2_operator = o2_operator.rename("o2_effective_observation_operator").assign_coords(
-        **{
-            name: coordinate
-            for name, coordinate in operator_coords.items()
-            if name not in o2_operator.coords
-        },
+        **operator_coords,
     ).assign_attrs(
         units=f"{o2_units} per dimensionless flux scale",
         oxidation_ratio_convention="embedded_signed_o2_per_co2",
