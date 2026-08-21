@@ -70,8 +70,7 @@ def _matrix_state_dim(sensitivity: xr.DataArray, observation_dim: str) -> str:
     state_dims = [str(dim) for dim in matrix.dims if dim != observation_dim]
     if len(state_dims) != 1:
         raise ValueError(
-            "Outer sensitivity must have one observation and one state dimension; "
-            f"got {matrix.dims!r}."
+            f"Outer sensitivity must have one observation and one state dimension; got {matrix.dims!r}."
         )
     state_dim = state_dims[0]
     if state_dim not in matrix.coords or not matrix.get_index(state_dim).is_unique:
@@ -190,11 +189,7 @@ def _zero_observation_covariance(
 
 
 def _state_metadata(sensitivity: xr.DataArray, state_dim: str) -> xr.Dataset:
-    variables = {
-        str(name): coord
-        for name, coord in sensitivity.coords.items()
-        if coord.dims == (state_dim,)
-    }
+    variables = {str(name): coord for name, coord in sensitivity.coords.items() if coord.dims == (state_dim,)}
     return xr.Dataset(coords=variables)
 
 
@@ -215,9 +210,7 @@ def collapse_outer_sectors(
     """
     state_dim = _matrix_state_dim(outer_sensitivity, observation_dim)
     if group_labels.dims != (state_dim,):
-        raise ValueError(
-            f"group_labels must have dims ({state_dim!r},); got {group_labels.dims!r}."
-        )
+        raise ValueError(f"group_labels must have dims ({state_dim!r},); got {group_labels.dims!r}.")
     try:
         groups, _ = xr.align(
             group_labels,
@@ -279,10 +272,7 @@ def prepare_outer_region_treatment(
 ) -> OuterRegionTreatment:
     """Prepare one exclusive fixed, Gaussian-marginalized, or inferred mode."""
     if mode not in ("fixed", "marginalized", "inferred"):
-        raise ValueError(
-            "Outer-region mode must be 'fixed', 'marginalized', or 'inferred'; "
-            f"got {mode!r}."
-        )
+        raise ValueError(f"Outer-region mode must be 'fixed', 'marginalized', or 'inferred'; got {mode!r}.")
     if isinstance(outer_sensitivity, CollapsedOuterStates):
         sensitivity = outer_sensitivity.sensitivity
         metadata = outer_sensitivity.members.copy()
@@ -297,9 +287,9 @@ def prepare_outer_region_treatment(
         sensitivity,
         observation_dim=observation_dim,
     ).rename("outer_observation_covariance")
-    zero_contribution = xr.zeros_like(
-        sensitivity.isel({state_dim: 0}, drop=True)
-    ).rename("fixed_outer_contribution")
+    zero_contribution = xr.zeros_like(sensitivity.isel({state_dim: 0}, drop=True)).rename(
+        "fixed_outer_contribution"
+    )
 
     metadata_dim = next(iter(metadata.dims))
     metadata["activity"] = (
@@ -398,9 +388,7 @@ def add_inferred_outer_component(
         raise ValueError("Only an inferred outer-region treatment has a sampled state.")
     sensitivity = treatment.sensitivity.transpose(observation_dim, ...)
     state_dim = _matrix_state_dim(sensitivity, observation_dim)
-    covariance_dim = next(
-        str(dim) for dim in treatment.prior_covariance.dims if dim != state_dim
-    )
+    covariance_dim = next(str(dim) for dim in treatment.prior_covariance.dims if dim != state_dim)
     rename = {state_dim: f"{state_dim}_outer"}
     rename.update(
         {
@@ -420,8 +408,7 @@ def add_inferred_outer_component(
     covariance_rename = {
         name: namespaced
         for name, namespaced in rename.items()
-        if name in treatment.prior_covariance.dims
-        or name in treatment.prior_covariance.coords
+        if name in treatment.prior_covariance.dims or name in treatment.prior_covariance.coords
     }
     covariance_rename[covariance_dim] = f"{covariance_dim}_outer"
     covariance = treatment.prior_covariance.rename(covariance_rename)
