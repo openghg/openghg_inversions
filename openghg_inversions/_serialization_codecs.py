@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 
 import numpy as np
-import pandas as pd
+import pandas as pd  # type: ignore[import-untyped]
 
 
 _TAGGED_JSON_VALUE_ENCODING = "tagged_json_v1"
@@ -24,6 +24,7 @@ def _encode_tagged_json_value(value: object) -> str:
     Raises:
         TypeError: If ``value`` has an unsupported type.
     """
+    payload: list[object]
     if isinstance(value, np.datetime64):
         payload = ["datetime64", [str(value.dtype), int(value.astype(np.int64))]]
     elif isinstance(value, pd.Timestamp):
@@ -32,7 +33,6 @@ def _encode_tagged_json_value(value: object) -> str:
         value = value.item()
         return _encode_tagged_json_value(value)
     else:
-        payload: list[object]
         if isinstance(value, tuple):
             payload = ["tuple", [_encode_tagged_json_value(item) for item in value]]
         elif isinstance(value, bool):
