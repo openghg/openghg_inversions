@@ -199,15 +199,26 @@ def test_multisector_rhime_pipeline_writes_latest_paris_flux_schema(
         )
 
     expected_flux_path = tmp_path / "multisector_paris_pipeline_flux_ch4_EUROPE_2019-01-01.nc"
+    expected_concentration_path = (
+        tmp_path / "multisector_paris_pipeline_conc_ch4_EUROPE_2019-01-01.nc"
+    )
     expected_diagnostics_path = tmp_path / "multisector_paris_pipeline2019-01-01_sector_flux_diagnostics.nc"
     assert result.output_metadata["paris_flux_path"] == str(expected_flux_path)
+    assert result.output_metadata["paris_concentration_path"] == str(expected_concentration_path)
     assert result.output_metadata["sector_flux_diagnostics_path"] == str(expected_diagnostics_path)
     assert expected_flux_path.is_file()
+    assert expected_concentration_path.is_file()
     assert expected_diagnostics_path.is_file()
     assert "inversion_output_path" not in result.output_metadata
-    assert "paris_concentration" not in result.outputs
-    assert "paris_concentration_path" not in result.output_metadata
-    assert not list(tmp_path.glob("*concentration*.nc"))
+
+    with xr.open_dataset(expected_concentration_path) as concentration:
+        assert concentration.attrs["paris_concentration_template_version"] == "v04"
+        assert concentration.sizes["index"] == 24
+        assert concentration.sizes["platform"] == 1
+        assert concentration["platform"].dims == ("platform",)
+        for name in ("mf_observed", "mf_prior", "mf_posterior"):
+            assert concentration[name].dims == ("index",)
+            assert np.isfinite(concentration[name]).all()
 
     expected_schema = _expanded_numeric_flux_schema(
         paris_template_files("latest").flux,

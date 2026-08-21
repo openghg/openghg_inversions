@@ -678,8 +678,8 @@ def paris_concentration_outputs_latest(
     report_mode: bool = False,
     obs_avg_period: str = "4h",
 ) -> xr.Dataset:
-    """Create single-sector PARIS concentration outputs for the latest CDL template."""
-    species, domain = _require_paris_metadata(inv_out)
+    """Create total PARIS concentration outputs for the latest CDL template."""
+    species, domain = _require_paris_metadata(inv_out, allow_multisector=True)
     stats = ["kde_mode", "stdev", "quantiles"] if report_mode else ["mean", "stdev", "quantiles"]
     stats_args = {"quantiles__quantiles": [0.159, 0.841]}
 

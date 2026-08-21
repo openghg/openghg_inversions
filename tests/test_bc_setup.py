@@ -4,7 +4,7 @@ import pytest
 import xarray as xr
 
 from openghg_inversions.hbmcmc.inversionsetup import monthly_bcs, create_bc_sensitivity
-from openghg_inversions.inversion_inputs import _transform_bc_freq
+from openghg_inversions.boundary_sensitivity import BoundaryAlignment
 
 # -------------------------
 # Shared fixtures/helpers
@@ -242,7 +242,7 @@ def test_create_bc_sensitivity_matches_reference(bc_regions, freq, start_offset_
 
 @pytest.mark.parametrize("bc_regions", BC_REGIONS_CASES)
 @pytest.mark.parametrize("case", MONTH_CASES)
-def test_transform_bc_freq_monthly_matches_reference_and_no_dead(bc_regions, case):
+def test_prepare_boundary_sensitivity_monthly_matches_reference_and_no_dead(bc_regions, case):
     """
     New monthly expansion should be the default 'correct' answer:
     - matches edge-binning reference on [start_date, end_date)
@@ -254,10 +254,10 @@ def test_transform_bc_freq_monthly_matches_reference_and_no_dead(bc_regions, cas
     times = _make_time_index(start_date, end_date, freq="12h", start_offset_hours=case["start_offset_hours"])
     H_bc = _make_H_bc(bc_regions=bc_regions, times=times)
 
-    out = _transform_bc_freq(H_bc, freq="monthly")  # if you add anchor_time/start_date later, pass it here
+    out = BoundaryAlignment.prepare(H_bc, frequency="monthly").data
     out_np = out.transpose("bc_region", "time").values
 
-    # "Correct" monthly behaviour for _transform_bc_freq is based on time.min(),
+    # Monthly boundary periods are based on time.min(),
     # not on requested start_date/end_date edges.
     period_index, nperiod = _monthly_period_index_like_transform(times)
     ref = _expand_Hbc_by_period(H_bc, period_index=period_index, nperiod=nperiod)
@@ -277,10 +277,10 @@ def test_transform_bc_freq_monthly_matches_reference_and_no_dead(bc_regions, cas
 @pytest.mark.parametrize("bc_regions", BC_REGIONS_CASES)
 @pytest.mark.parametrize("freq", ["8D", "12H"])
 @pytest.mark.parametrize("start_offset_hours", [0, 6])
-def test_transform_bc_freq_freq_matches_reference_and_no_dead(bc_regions, freq, start_offset_hours):
+def test_prepare_boundary_sensitivity_freq_matches_reference_and_no_dead(bc_regions, freq, start_offset_hours):
     """
     New freq-string expansion treated as correct.
-    For correctness relative to old create_bc_sensitivity, _transform_bc_freq must be anchored
+    For correctness relative to old create_bc_sensitivity, boundary preparation must be anchored
     to start_date (not time.min(), not pandas floor origin). This test assumes that.
     """
     start_date = "2019-01-01"
@@ -290,7 +290,7 @@ def test_transform_bc_freq_freq_matches_reference_and_no_dead(bc_regions, freq, 
     times = _make_time_index(start_date, end_date, freq=time_freq, start_offset_hours=start_offset_hours)
     H_bc = _make_H_bc(bc_regions=bc_regions, times=times)
 
-    out = _transform_bc_freq(H_bc, freq=freq, anchor_time=start_date)
+    out = BoundaryAlignment.prepare(H_bc, frequency=freq, anchor_time=start_date).data
     out_np = out.transpose("bc_region", "time").values
 
     edges = _freq_edges_old_create_bc(start_date, end_date, freq=freq)

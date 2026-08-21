@@ -19,9 +19,9 @@ model-error definition, ``sqrt(measurement_error**2 + sigma**2)``.
 
 Use :func:`build_ramsden_model` to construct the graph without sampling and
 :func:`run_ramsden_from_prepared_inputs` to sample it. Coupled primary/tracer
-designs must have exactly matching labelled state coordinates. A ratio may be
-applied directly to a ratio-free tracer design, or interpreted as a multiplier
-when the design already includes an explicit reference ratio. Boundary states
+sensitivities must have exactly matching labelled state coordinates. A ratio may
+be applied directly to a ratio-free tracer sensitivity, or interpreted as a
+multiplier when the sensitivity already includes an explicit reference ratio. Boundary states
 are optional and independent by gas. The caller is responsible for consistent
 units; this module performs no retrieval, conversion, or postprocessing.
 """
@@ -43,11 +43,22 @@ import xarray as xr
 
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.inversion_inputs import DatetimeLike
-from openghg_inversions.models._rhime_flux import _select_sector_design
-from openghg_inversions.models.components import add_linear_component, add_model_data
-from openghg_inversions.models.coords import CoordRegistry, add_coords, attach_coord_registry
+from openghg_inversions.models._flux import (
+    _namespace_sector_state_coords,
+    _select_sector_design,
+    safe_pymc_name,
+)
+from openghg_inversions.models.components import (
+    add_linear_component,
+    add_model_data,
+    apply_linear_sensitivity,
+)
+from openghg_inversions.models.coords import add_coords, registered_model
 from openghg_inversions.models.priors import parse_prior
-from openghg_inversions.models.rhime import safe_pymc_name
+from openghg_inversions.models.state_activity import (
+    PreparedLinearSensitivity,
+    prepare_linear_sensitivity,
+)
 from openghg_inversions.rhime.sampling import RhimeSampler
 from openghg_inversions.sigma import SigmaAlignment
 
@@ -629,31 +640,75 @@ def _sum_terms(terms: list[TensorVariable], *, name: str, dim: str) -> TensorVar
 
 
 def _add_boundary_component(
-    data: xr.Dataset,
+    prepared: PreparedLinearSensitivity | None,
     spec: RamsdenChannelSpec,
     *,
     suffix: str,
 ) -> TensorVariable | None:
     """Add an independent optional boundary state for one channel."""
-    if not spec.use_bc:
+    if prepared is None:
         return None
 
     output_dim = f"nmeasure_{suffix}"
-    design = _rename_observation_axis(data["H_bc"], suffix)
-    state_renames = {str(dim): f"{dim}_{suffix}_bc" for dim in design.dims if str(dim) != output_dim}
-    if state_renames:
-        design = design.rename(state_renames)
     assert spec.bc_prior is not None
-    component = add_linear_component(
-        design,
+    return add_linear_component(
+        prepared,
         data_name=f"hbc_{suffix}",
         prior_args=dict(spec.bc_prior),
         var_name=f"bc_{suffix}",
         output_name=f"mu_bc_{suffix}",
         output_dim=output_dim,
         compute_deterministic=True,
+    ).output
+
+
+def _prepare_boundary_sensitivity(
+    data: xr.Dataset,
+    spec: RamsdenChannelSpec,
+    *,
+    suffix: str,
+) -> PreparedLinearSensitivity | None:
+    """Prepare one optional namespaced channel boundary sensitivity."""
+    if not spec.use_bc:
+        return None
+    output_dim = f"nmeasure_{suffix}"
+    sensitivity = _rename_observation_axis(data["H_bc"], suffix)
+    state_renames = {
+        str(dim): f"{dim}_{suffix}_bc"
+        for dim in sensitivity.dims
+        if str(dim) != output_dim
+    }
+    if state_renames:
+        sensitivity = sensitivity.rename(state_renames)
+    state_dim = next(str(dim) for dim in sensitivity.dims if str(dim) != output_dim)
+    if state_dim not in sensitivity.coords:
+        sensitivity = sensitivity.assign_coords(
+            {state_dim: np.arange(sensitivity.sizes[state_dim])}
+        )
+    return prepare_linear_sensitivity(sensitivity, output_dim=output_dim)
+
+
+def _namespace_retained_sensitivity(
+    prepared: PreparedLinearSensitivity,
+    *,
+    suffix: str,
+) -> PreparedLinearSensitivity:
+    """Namespace only a structurally retained backend state axis."""
+    retained_dim = next(
+        str(dim) for dim in prepared.sensitivity.dims if dim != prepared.output_dim
     )
-    return component.output
+    if retained_dim == prepared.state_dim:
+        return prepared
+    return PreparedLinearSensitivity(
+        sensitivity=_namespace_sector_state_coords(
+            prepared.sensitivity,
+            variable_suffix=suffix,
+            observation_dim=prepared.output_dim,
+            namespace_state_dim=True,
+        ),
+        removed=prepared.removed,
+        output_dim=prepared.output_dim,
+    )
 
 
 def _add_absolute_error_likelihood(
@@ -734,8 +789,8 @@ def build_ramsden_model(
             Observation coordinates may differ, but coupled sector state
             coordinates must match exactly.
         model_spec: Shared-state, ratio, likelihood, unit, and boundary
-            metadata. Direct ratios require ratio-free tracer designs;
-            reference-ratio mode requires tracer designs that already include
+            metadata. Direct ratios require ratio-free tracer sensitivities;
+            reference-ratio mode requires tracer sensitivities that already include
             the declared reference ratio.
 
     Returns:
@@ -755,7 +810,7 @@ def build_ramsden_model(
     _validate_model_spec(model_spec)
     _validate_channel_data(prepared_inputs.primary, model_spec.primary, label="primary")
     _validate_channel_data(prepared_inputs.tracer, model_spec.tracer, label="tracer")
-    sector_designs = [
+    sector_sensitivities = [
         (sector, _select_sector_designs(prepared_inputs, sector)) for sector in model_spec.sectors
     ]
 
@@ -763,59 +818,88 @@ def build_ramsden_model(
     tracer_suffix = _channel_suffix(model_spec.tracer)
     primary_dim = f"nmeasure_{primary_suffix}"
     tracer_dim = f"nmeasure_{tracer_suffix}"
+    prepared_terms = []
+    for sector, sensitivities in sector_sensitivities:
+        variable_suffix = safe_pymc_name(sector.name)
+        primary_sensitivity = _namespace_retained_sensitivity(
+            prepare_linear_sensitivity(
+                _rename_observation_axis(sensitivities.primary, primary_suffix),
+                output_dim=primary_dim,
+            ),
+            suffix=f"{variable_suffix}_{primary_suffix}",
+        )
+        tracer_sensitivity = (
+            None
+            if sensitivities.tracer is None
+            else _namespace_retained_sensitivity(
+                prepare_linear_sensitivity(
+                    _rename_observation_axis(sensitivities.tracer, tracer_suffix),
+                    output_dim=tracer_dim,
+                ),
+                suffix=f"{variable_suffix}_{tracer_suffix}",
+            )
+        )
+        prepared_terms.append(
+            (sector, sensitivities, primary_sensitivity, tracer_sensitivity)
+        )
+    primary_boundary = _prepare_boundary_sensitivity(
+        prepared_inputs.primary,
+        model_spec.primary,
+        suffix=primary_suffix,
+    )
+    tracer_boundary = _prepare_boundary_sensitivity(
+        prepared_inputs.tracer,
+        model_spec.tracer,
+        suffix=tracer_suffix,
+    )
 
-    with pm.Model() as model:
-        attach_coord_registry(model, CoordRegistry())
+    with registered_model() as model:
         primary_terms: list[TensorVariable] = []
         tracer_terms: list[TensorVariable] = []
 
-        for sector, designs in sector_designs:
+        for sector, sensitivities, primary_sensitivity, tracer_sensitivity in prepared_terms:
             variable_suffix = safe_pymc_name(sector.name)
-            primary_design = _rename_observation_axis(designs.primary, primary_suffix)
-            primary_h = add_model_data(primary_design.transpose(primary_dim, ...), f"hx_{variable_suffix}")
+            add_coords(sensitivities.primary.coords, model_dims=(sensitivities.state_dim,))
             state = parse_prior(
                 f"x_{variable_suffix}",
                 sector.x_prior,
-                dims=designs.state_dim,
+                dims=sensitivities.state_dim,
             )
             primary_terms.append(
-                pm.Deterministic(
-                    f"mu_{primary_suffix}_{variable_suffix}",
-                    pt.dot(primary_h, state),
-                    dims=primary_dim,
+                apply_linear_sensitivity(
+                    primary_sensitivity,
+                    state,
+                    data_name=f"hx_{variable_suffix}",
+                    output_name=f"mu_{primary_suffix}_{variable_suffix}",
                 )
             )
 
-            if designs.tracer is None:
+            if tracer_sensitivity is None:
                 continue
-            tracer_design = _rename_observation_axis(designs.tracer, tracer_suffix)
-            tracer_h = add_model_data(
-                tracer_design.transpose(tracer_dim, ...),
-                f"hx_{tracer_suffix}_{variable_suffix}",
-            )
             ratio_factor, _ = _ratio_tensors(
                 sector,
                 state=state,
-                state_dim=designs.state_dim,
+                state_dim=sensitivities.state_dim,
                 variable_suffix=variable_suffix,
             )
             tracer_terms.append(
-                pm.Deterministic(
-                    f"mu_{tracer_suffix}_{variable_suffix}",
-                    pt.dot(tracer_h, state * ratio_factor),
-                    dims=tracer_dim,
+                apply_linear_sensitivity(
+                    tracer_sensitivity,
+                    state * ratio_factor,
+                    data_name=f"hx_{tracer_suffix}_{variable_suffix}",
+                    output_name=f"mu_{tracer_suffix}_{variable_suffix}",
                 )
             )
 
         mu_primary = _sum_terms(primary_terms, name=f"mu_{primary_suffix}", dim=primary_dim)
         mu_tracer = _sum_terms(tracer_terms, name=f"mu_{tracer_suffix}", dim=tracer_dim)
         primary_bc = _add_boundary_component(
-            prepared_inputs.primary,
+            primary_boundary,
             model_spec.primary,
             suffix=primary_suffix,
         )
         tracer_bc = _add_boundary_component(
-            prepared_inputs.tracer,
+            tracer_boundary,
             model_spec.tracer,
             suffix=tracer_suffix,
         )

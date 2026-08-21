@@ -542,11 +542,11 @@ def test_build_inferpymc_model_contains_expected_variables(inv_inputs: xr.Datase
     assert expected_named_vars.issubset(model.named_vars)
 
 
-def test_build_inferpymc_model_keeps_zero_h_states_in_single_sector_graph(
+def test_build_inferpymc_model_prunes_zero_h_states_in_single_sector_graph(
     inv_inputs: xr.Dataset,
     model_args: dict,
 ) -> None:
-    """The legacy single-sector adapter does not adopt modern state pruning."""
+    """The legacy single-sector adapter uses the consolidated state pruning."""
     inputs = inv_inputs.copy()
     sensitivity = inputs["H"].copy()
     sensitivity[{"region": 0}] = 0.0
@@ -554,9 +554,11 @@ def test_build_inferpymc_model_keeps_zero_h_states_in_single_sector_graph(
 
     model = build_inferpymc_model(inputs, **model_args)
 
-    assert model.named_vars["x"] in model.free_RVs
+    assert model.named_vars["x_active"] in model.free_RVs
+    assert model.named_vars["x"] not in model.free_RVs
     assert model.named_vars_to_dims["x"] == ("region",)
-    assert "x_active" not in model.named_vars
+    assert model.named_vars_to_dims["x_active"] == ("region_x_active",)
+    assert not bool(model.named_vars["x_is_active"].eval()[0])
 
 
 def test_build_inferpymc_model_preserves_unlabelled_interpolated_prior(

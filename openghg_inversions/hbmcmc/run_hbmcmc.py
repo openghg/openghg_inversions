@@ -450,7 +450,7 @@ def main(argv: list[str] | None = None) -> None:
     with timed("run_hbmcmc.config_copy"):
         output.copy_config_file(str(config_file), param=param, **command_line_args)
 
-    run_rhime(**rhime_params)
+    run_rhime(preserve_legacy_likelihood=True, **rhime_params)
 
 
 if __name__ == "__main__":

@@ -68,12 +68,27 @@ The complete integration is one named argument:
        likelihood_builder=likelihood_builder,
    )
 
-RHIME calls the function as ``likelihood_builder(context)`` while constructing
-the PyMC model. It returns a
-:class:`~openghg_inversions.models.RhimeLikelihoodResult`, which contains the
-new observed variable and the small amount of information RHIME needs for
-sampling and output. An ordinary caller does not construct the context or
-these supporting records.
+RHIME calls the function with explicit keyword arguments while constructing
+the PyMC model: the prepared observations, completed forward-model mean,
+pollution contribution, pollution-event baseline, selected aggregation error,
+and output dimension. The function adds ``epsilon`` and the canonical observed
+variable ``y`` to the active model and returns ``y``. There is no framework
+context or likelihood-result record to construct.
+
+Options owned only by a custom likelihood can be supplied separately with
+``likelihood_kwargs``. RHIME expands that mapping into the callable without
+hiding the common scientific arrays in an opaque object::
+
+   result = run_rhime(
+       config_file="config.ini",
+       likelihood_builder=likelihood_builder,
+       likelihood_kwargs={"degrees_of_freedom": 4.0},
+   )
+
+These options must be a string-keyed, JSON-compatible mapping. RHIME copies
+the mapping before use and records the copy beside the likelihood identity in
+the result metadata and any saved inversion output. A non-empty mapping is
+rejected when no ``likelihood_builder`` is active.
 
 Editable likelihood
 ~~~~~~~~~~~~~~~~~~~
@@ -86,23 +101,30 @@ construction:
    :language: python
    :linenos:
 
-RHIME records the function's module and name, together with its likelihood
-metadata, in the result and in saved output. It does not copy the Python source
-code into the output, so a project should keep the source and environment used
-for an inversion.
-
-The returned ``RhimeLikelihoodResult`` maps standard meanings to the PyMC
-variable names used by this model. For example, it tells RHIME that
-``student_y`` is the modelled concentration and ``epsilon`` is the model-error
-scale. Sampling and output code can then find these quantities even though the
-custom model uses different names. It also lists the output formats that have
-been checked with this likelihood; this example supports no file output
-(``none``) and the ``inv_out`` format. The Student-t family and degrees of
-freedom are stored as simple metadata.
+RHIME records the function's module and name, together with its explicit
+``likelihood_kwargs``, in the result and in saved output.
+It does not copy the Python source code into the output, so a project should
+keep the source and environment used for an inversion. Ordinary likelihood
+builders retain the canonical ``y`` and ``epsilon`` names used by sampling and
+output code.
 
 The example rejects dense and low-rank aggregation covariance because it uses
 an independent Student-t distribution. Supporting those aggregation-error
 modes would require a multivariate likelihood.
+
+The installed ``rhime.likelihoods.additive_sigma_likelihood_builder`` is a
+drop-in ordinary likelihood builder. It derives sigma alignment from the
+labelled observation ``site`` and ``time`` coordinates. Optional
+``sigma_prior``, ``sigma_freq``, ``sigma_per_site``, ``sigma_freq_anchor``, and
+``no_model_error`` settings belong to that component and can be supplied in
+``likelihood_kwargs``.
+
+Built-in aggregation covariance relies on the guarantees of its construction
+pipeline. A custom pipeline that assembles its own covariance may optionally
+call
+:func:`openghg_inversions.observation_error.validate_complete_observation_covariance`
+with its fixed independent variance. Model builders do not run this eager
+diagnostic automatically.
 
 Optional project CLI
 ~~~~~~~~~~~~~~~~~~~~
@@ -174,13 +196,15 @@ Then the equivalent command is::
    uv run my-inversion inversion.ini \
        --kwargs '{"output_path": "outputs", "output_format": "inv_out"}'
 
-The example and its package-shaped test use only documented names from
-``openghg_inversions.rhime``. The dependency direction is therefore the
-generated project to OpenGHG Inversions; OpenGHG Inversions does not import the
-consumer package. Pin the release or commit used for a scientific run in the
-downstream project's lockfile. An optional RHIME recipe or generated-project
-CI in the generic cookiecutter would be a separate cross-repository change and
-is not required for this workflow.
+The generated runner uses documented names from ``openghg_inversions.rhime``.
+Its likelihood module imports reusable components from their documented owner
+modules: ``models.pollution_event``, ``observation_error``, and ``sigma``.
+The dependency direction is therefore the generated project to OpenGHG
+Inversions; OpenGHG Inversions does not import the consumer package. Pin the
+release or commit used for a scientific run in the downstream project's
+lockfile. An optional RHIME recipe or generated-project CI in the generic
+cookiecutter would be a separate cross-repository change and is not required
+for this workflow.
 
 Copy the complete runner
 ------------------------
@@ -193,7 +217,7 @@ replacing the complete model, or deliberately starting from a different
 preparation graph.
 
 The deliberate change is the likelihood passed to
-``build_standard_rhime_model``: the example selects the same project-owned
+``build_standard_rhime_model_result``: the example selects the same project-owned
 Student-t builder as the preferred form. Acquisition, filtering, basis
 construction, labelled input assembly, conversion of delayed arrays for PyMC,
 sampling, predictive selection, filenames, and output handling remain
@@ -308,9 +332,11 @@ still defer their calculations with Dask. The function derives and normalises
 the two-dimensional weights, loads the country classes, constructs the
 geometry, and creates the region labels. It then combines the labels with the
 current run's flux in a ``BasisFunctions`` object. That object flows unchanged
-through sensitivity construction and labelled assembly. The arrays needed by
-PyMC are converted separately by ``materialize_pymc_inputs`` immediately
-before model construction.
+through sensitivity construction and labelled assembly. The concrete recipe's
+adjacent ``standard_model_input_names`` declaration selects the arrays it
+needs. ``materialize_pymc_inputs`` converts only those arrays, together,
+immediately before model construction; project-owned lazy extensions in
+``RhimePreparedInputs`` remain untouched.
 
 The customisation is concentrated in ``_guarded_basis``. The runner's one
 deliberate substitution is marked by an inline comment where

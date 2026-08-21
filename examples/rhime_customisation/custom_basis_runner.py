@@ -50,14 +50,16 @@ from openghg_inversions.rhime import (
     RhimeResult,
     assemble_rhime_inputs,
     build_rhime_sensitivities,
-    build_standard_rhime_model,
+    build_standard_rhime_model_result,
     filter_rhime_observations,
     make_standard_rhime_result,
+    make_standard_rhime_outputs,
     materialize_pymc_inputs,
     params_from_config,
     resolve_rhime_options,
     retrieve_or_reload_rhime_data,
     sample_rhime_model,
+    standard_model_input_names,
     with_prepared_rhime_sites,
 )
 
@@ -304,17 +306,17 @@ def run_custom_rhime(
     # Cross the explicit eager PyMC boundary without changing canonical inputs.
     model_inputs = materialize_pymc_inputs(
         prepared,
-        aggregation_error_mode=run_spec.model.aggregation_error_mode,
+        variable_names=standard_model_input_names(prepared, run_spec.model),
     )
     build_and_sample_start = perf_counter()
-    model_build_result = build_standard_rhime_model(
+    model_build_result = build_standard_rhime_model_result(
         prepared=prepared,
         model_inputs=model_inputs,
         run_spec=run_spec,
     )
     idata = sample_rhime_model(model_build_result, setup.sampler)
 
-    return make_standard_rhime_result(
+    result = make_standard_rhime_result(
         prepared=prepared,
         run_spec=run_spec,
         sampler=setup.sampler,
@@ -322,6 +324,8 @@ def run_custom_rhime(
         idata=idata,
         build_and_sample_seconds=perf_counter() - build_and_sample_start,
     )
+    make_standard_rhime_outputs(result=result, prepared=prepared)
+    return result
 
 
 def _json_object(value: str) -> dict[str, Any]:

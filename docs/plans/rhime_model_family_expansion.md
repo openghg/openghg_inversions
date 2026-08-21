@@ -299,11 +299,13 @@ nuisance states rather than fixing outer flux at its prior value.
 
 ### Source and state selection
 
-Extract useful pure source/sector/state-selection functions from
-`models/_rhime_flux.py` before removing the compiler path. Preserve available-
-source validation, sector/source binding, labelled state selection, and safe
-naming. Do not preserve compiler plan objects or backend lowering as the public
-abstraction.
+The production compiler path and `models/_rhime_flux.py` have now been removed.
+The reusable labelled source selection and safe-naming operations retained from
+that work live in `models/_flux.py`; RHIME-specific sector binding, state
+activity, and prior resolution now remain visible in the multisector recipe.
+Future model-family work should reuse only the demonstrated ordinary operations
+from `_flux.py` and keep new recipe-specific decisions beside the recipe rather
+than recreating compiler plans or backend lowering.
 
 ### Backend-neutral scientific variable roles
 

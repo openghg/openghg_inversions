@@ -15,10 +15,7 @@ from openghg_inversions.models.components import (
     resolve_model_variable,
 )
 from openghg_inversions.models.coords import CoordRegistry, attach_coord_registry
-from openghg_inversions.models.rhime_likelihood import (
-    RhimeLikelihoodContext,
-    build_absolute_sigma_gaussian_likelihood,
-)
+from openghg_inversions.models.state_activity import prepare_linear_sensitivity
 from openghg_inversions.sigma import SigmaAlignment
 
 
@@ -99,17 +96,18 @@ def test_add_linear_component_creates_expected_named_vars() -> None:
     with pm.Model() as model:
         attach_coord_registry(model, CoordRegistry())
         result = add_linear_component(
-            data,
+            prepare_linear_sensitivity(data),
             data_name="hx",
             prior_args={"pdf": "normal", "mu": 1.0, "sigma": 1.0},
             var_name="x",
             output_name="mu",
         )
 
-    assert isinstance(result, LinearComponentResult)
     assert {"hx", "x", "mu"}.issubset(model.named_vars)
+    assert isinstance(result, LinearComponentResult)
     assert result.data is model.named_vars["hx"]
     assert result.latent is model.named_vars["x"]
+    assert result.state is model.named_vars["x"]
     assert result.output is model.named_vars["mu"]
 
 
@@ -125,7 +123,7 @@ def test_add_linear_component_returns_effective_reparameterised_latent() -> None
     with pm.Model() as model:
         attach_coord_registry(model, CoordRegistry())
         result = add_linear_component(
-            data,
+            prepare_linear_sensitivity(data),
             data_name="hx",
             prior_args={"pdf": "lognormal", "mean": 1.5, "stdev": 0.2, "reparameterise": True},
             var_name="x",
@@ -149,7 +147,7 @@ def test_resolve_model_variable_prefers_latent() -> None:
     with pm.Model() as model:
         attach_coord_registry(model, CoordRegistry())
         add_linear_component(
-            data,
+            prepare_linear_sensitivity(data),
             data_name="hx",
             prior_args={"pdf": "lognormal", "mean": 1.5, "stdev": 0.2, "reparameterise": True},
             var_name="x",
@@ -331,42 +329,6 @@ def test_likelihood_pollution_events_from_obs_can_run_without_boundary_condition
     epsilon = model.named_vars["epsilon"].eval(mode=Mode(linker="py", optimizer="fast_run"))
     assert np.all(np.diff(epsilon) > 0)
     assert "y" in model.named_vars
-
-
-def test_absolute_sigma_gaussian_uses_additive_standard_deviation_terms() -> None:
-    """The opt-in Gaussian matches the verification-games error definition."""
-    data = _likelihood_dataset()
-    data["aggregation_error_sd"] = xr.DataArray(
-        np.full(4, 0.2),
-        dims="nmeasure",
-        coords=data["mf"].coords,
-    )
-    data["min_error"] = data["min_error"].copy(data=np.array([0.01, 1.0, 0.01, 0.01]))
-
-    with pm.Model(coords={"nmeasure": np.arange(4)}) as model:
-        attach_coord_registry(model, CoordRegistry())
-        mu = pm.Data("mu_input", np.ones(4), dims="nmeasure")
-        result = build_absolute_sigma_gaussian_likelihood(
-            RhimeLikelihoodContext(
-                data=data,
-                flux_mean=mu,
-                boundary_mean=None,
-                offset=None,
-                sigma_alignment=_sigma_alignment(data),
-                sigma_prior={"pdf": "uniform", "lower": 0.5, "upper": 0.50000001},
-                power=1.99,
-                pollution_events_from_obs=False,
-                no_model_error=False,
-                aggregation_error_mode="diagonal",
-            )
-        )
-
-    epsilon = model.named_vars["epsilon"].eval(mode=Mode(linker="py", optimizer="fast_run"))
-    expected = np.full(4, np.sqrt(0.1**2 + 0.2**2 + 0.5**2))
-    expected[1] = 1.0
-    np.testing.assert_allclose(epsilon, expected, rtol=1e-7, atol=1e-7)
-    assert result.metadata["family"] == "absolute_sigma_gaussian"
-    assert result.variable_roles == {"concentration": "y", "model_error": "epsilon"}
 
 
 def test_likelihood_samples_prior_predictive_with_shared_sigma_and_registered_site_indicator() -> None:

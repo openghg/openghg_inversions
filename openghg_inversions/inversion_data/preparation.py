@@ -1,10 +1,10 @@
-"""Prepare inversion data for modern RHIME and legacy fixedbasis runners.
+"""Shared mechanics and durable data contracts for inversion preparation.
 
 ``prepare_rhime_inputs`` returns backend-neutral observations, sensitivities,
 basis metadata, and site metadata; component-specific model arrays are
-intentionally absent. ``prepare_fixedbasis_inversion_data`` is a compatibility
-adapter that retains the input variables required by ``fixedbasisMCMC``,
-including its sigma-period index.
+intentionally absent. The temporary legacy fixed-basis orchestration is owned
+by :mod:`openghg_inversions.hbmcmc.preparation` and composes the lower-level
+retrieval, filtering, basis, and array helpers retained here.
 
 ``RhimePreparedInputs`` validates the relationships between these labeled
 arrays when it is constructed. When the retained basis-functions object
@@ -14,15 +14,15 @@ objects without that hook are retained unchanged.
 
 Preparation can read OpenGHG object stores or local merged-data artifacts,
 write merged-data and basis artifacts, emit warnings and progress messages,
-and record timing information. Neither public entry point constructs a PyMC
-model.
+and record timing information. These backend-neutral preparation functions do
+not construct a PyMC model.
 """
 
 from __future__ import annotations
 
 import warnings
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from numbers import Integral
 from pathlib import Path
 from typing import Any, Literal, cast
@@ -33,12 +33,15 @@ import xarray as xr
 from typing_extensions import Self
 
 from openghg_inversions._timing import log_timing, timed, timer_seconds, timer_start
-from openghg_inversions.basis import basis_functions_wrapper, make_basis_functions
+from openghg_inversions.basis import make_basis_functions
 from openghg_inversions.basis._helpers import bc_sensitivity
 from openghg_inversions.basis.basis_functions import (
     BASIS_ARTIFACT_PATH_ATTR,
     BASIS_ARTIFACT_SOURCE_ATTR,
     BasisFunctions,
+)
+from openghg_inversions.boundary_sensitivity import (
+    scale_satellite_boundary_sensitivity_to_column_signal as _scale_satellite_bc_sensitivity_to_column_signal,
 )
 from openghg_inversions.filters import filtering
 from openghg_inversions.flux_sanitization import FluxNonFiniteCheck, sanitize_flux_nonfinite
@@ -56,7 +59,6 @@ from openghg_inversions.serialization import (
     open_datatree_loaded,
     save_datatree,
 )
-from openghg_inversions.sigma import SigmaAlignment
 
 MinErrorConfig = Literal["percentile", "residual"] | dict[str, float] | None | int | float
 RHIME_PREPARED_INPUTS_SCHEMA = "openghg_inversions.rhime_prepared_inputs"
@@ -65,34 +67,6 @@ _SITE_AVERAGING_PERIOD = "averaging_period"
 SiteStringOption = Sequence[str | None] | str | None
 SiteInletOption = Sequence[str | slice | None] | str | None
 SiteIntegerOption = Sequence[int | None] | int | None
-
-
-@dataclass
-class FixedBasisPreparedData:
-    """Data prepared for the legacy fixedbasis runner.
-
-    Args:
-        fp_all: Raw merged-data container returned by data gathering or reload.
-        fp_data: Forward-model data after basis functions and filters.
-        inv_inputs: Canonical inversion inputs consumed by model builders.
-        sites: Retained site names after data gathering and filtering.
-        averaging_period: Averaging periods aligned to retained sites.
-        basis_objects: Basis objects returned by ``basis_functions_wrapper``.
-        basis_artifact_source: Source of the flux basis artifact.
-        basis_artifact_path: Path to the flux basis artifact, when loaded or saved.
-        is_column: Whether any retained observation is a column observation.
-    """
-
-    fp_all: dict
-    fp_data: dict | None = None
-    inv_inputs: xr.Dataset | None = None
-    sites: list[str] = field(default_factory=list)
-    averaging_period: list[str | None] = field(default_factory=list)
-    basis_objects: dict[str, BasisFunctions] = field(default_factory=dict)
-    basis_artifact_source: str = "generated"
-    basis_artifact_path: str | None = None
-    is_column: bool = False
-
 
 @dataclass(frozen=True, init=False)
 class RhimePreparedInputs:
@@ -623,7 +597,15 @@ def _canonicalize_rhime_inv_inputs(
             for index, actual_source in enumerate(source_labels)
             if actual_source == source
         ]
-        return result.isel({state_dim: state_order}), site_metadata
+        state_indexers = {state_dim: state_order}
+        covariance_dim = f"{state_dim}_cov"
+        if covariance_dim in result.dims:
+            if result.sizes[covariance_dim] != len(state_order):
+                raise ValueError(
+                    f"RhimePreparedInputs {covariance_dim} must match the gathered state length."
+                )
+            state_indexers[covariance_dim] = state_order
+        return result.isel(state_indexers), site_metadata
     result = result.assign_coords(source=("source", list(actual_sources)))
     return result.sel(source=list(expected_sources)), site_metadata
 
@@ -952,68 +934,6 @@ def _warn_for_nan_inputs(inv_inputs: xr.Dataset, *, use_bc: bool) -> None:
         warnings.warn(f"H matrix contains {np.isnan(inv_inputs.H.values).flatten().sum()} NaN values")
     if use_bc and "H_bc" in inv_inputs and np.isnan(inv_inputs.H_bc.values).any():
         warnings.warn(f"H_bc matrix contains {np.isnan(inv_inputs.H_bc.values).flatten().sum()} NaN values")
-
-
-def _platform_by_site(sites: Sequence[str], platform: Any) -> dict[str, str | None]:
-    """Return platform values keyed by site name."""
-    if isinstance(platform, str) or platform is None:
-        return {site: platform for site in sites}
-    try:
-        values = list(platform)
-    except TypeError:
-        return {site: None for site in sites}
-    if len(values) != len(sites):
-        return {site: None for site in sites}
-    return {site: None if value is None else str(value) for site, value in zip(sites, values, strict=True)}
-
-
-def _scale_satellite_bc_sensitivity_to_column_signal(
-    inv_inputs: xr.Dataset,
-    *,
-    sites: Sequence[str],
-    platform: Any,
-) -> xr.Dataset:
-    """Scale satellite BC sensitivity into the same corrected column space as ``mf``.
-
-    OpenGHG column retrieval subtracts OCO prior-factor terms from XCO2 before
-    inversion. Boundary-condition sensitivities arrive as a full-column baseline
-    contribution, so satellite rows must be reduced before the model sees them.
-    """
-    required_vars = {"H_bc", "mf", "mf_prior_factor", "mf_prior_upper_level_factor", "site"}
-    if not required_vars <= set(inv_inputs.variables):
-        return inv_inputs
-
-    platform_lookup = _platform_by_site(sites, platform)
-    satellite_sites = {
-        site for site, value in platform_lookup.items() if value is not None and "satellite" in value.lower()
-    }
-    if not satellite_sites:
-        return inv_inputs
-
-    site_values = inv_inputs["site"].astype(str)
-    satellite_mask = site_values.isin(list(satellite_sites))
-    if not bool(satellite_mask.any()):
-        return inv_inputs
-
-    with xr.set_options(keep_attrs="default"):
-        raw_column = (
-            inv_inputs["mf"] + inv_inputs["mf_prior_factor"] + inv_inputs["mf_prior_upper_level_factor"]
-        )
-        # TODO(#553): This is a deliberate BC-scaling workaround while the
-        # retrieval information needed for an exact corrected-column transform
-        # is unavailable. It is not a resolution of the underlying
-        # mathematical limitation; replace it with retrieval-aware handling.
-        scale = xr.where(raw_column > 0, inv_inputs["mf"] / raw_column, 1.0)
-        scale = scale.clip(min=0.0, max=1.0).where(satellite_mask, 1.0)
-
-    result = inv_inputs.copy()
-    attrs = dict(result["H_bc"].attrs)
-    result["H_bc"] = result["H_bc"] * scale
-    result["H_bc"].attrs = attrs
-    result["H_bc"].attrs["satellite_column_bc_scale"] = (
-        "Applied to satellite rows using mf / (mf + mf_prior_factor + mf_prior_upper_level_factor)."
-    )
-    return result
 
 
 def _prepare_merged_data(
@@ -1359,217 +1279,6 @@ def _filter_merged_inversion_data(
     return RhimeMergedData(fp_all=fp_all, site_options=site_options)
 
 
-def prepare_fixedbasis_inversion_data(
-    *,
-    species: str,
-    sites: list[str],
-    domain: str,
-    averaging_period: SiteStringOption,
-    start_date: str,
-    end_date: str,
-    output_name: str,
-    flux_sources: list[str] | None,
-    split_by_sectors: bool = False,
-    bc_store: str = "user",
-    obs_store: str = "user",
-    footprint_store: str = "user",
-    emissions_store: str = "user",
-    met_model: SiteStringOption = None,
-    fp_model: str | None = None,
-    fp_height: SiteStringOption = None,
-    fp_species: str | None = None,
-    inlet: SiteInletOption = None,
-    instrument: SiteStringOption = None,
-    max_level: SiteIntegerOption = None,
-    calibration_scale: str | None = None,
-    obs_data_level: SiteStringOption = None,
-    platform: SiteStringOption = None,
-    use_tracer: bool = False,
-    use_bc: bool = True,
-    fp_basis_case: str | None = None,
-    basis_directory: str | None = None,
-    bc_basis_case: str = "NESW",
-    bc_basis_directory: str | Path | None = None,
-    country_directory: str | None = None,
-    bc_input: str | None = None,
-    basis_algorithm: str = "weighted",
-    nbasis: int = 100,
-    filters: Any = None,
-    fix_basis_outer_regions: bool = False,
-    averaging_error: bool = True,
-    bc_freq: str | None = None,
-    sigma_freq: str | None = None,
-    reload_merged_data: bool = False,
-    save_merged_data: bool = False,
-    merged_data_dir: str | None = None,
-    merged_data_name: str | None = None,
-    basis_output_path: str | None = None,
-    min_error: MinErrorConfig = 0.0,
-    calculate_min_error: Literal["percentile", "residual"] | None = None,
-    min_error_options: Mapping[str, Any] | None = None,
-    return_basis_objects: bool = False,
-    merged_data_only: bool = False,
-    flux_non_finite_check: FluxNonFiniteCheck = "lazy",
-) -> FixedBasisPreparedData:
-    """Prepare data for legacy ``fixedbasisMCMC`` and its output adapters.
-
-    This adapter preserves the fixed-basis inversion-input contract. Unless
-    ``merged_data_only`` is true, the returned ``inv_inputs`` includes
-    ``sigma_freq_index(nmeasure)`` derived from ``sigma_freq`` and anchored to
-    ``start_date``. Modern RHIME preparation intentionally omits this
-    component-specific variable.
-
-    Args:
-        sites: Requested observation site names. At least one unique site is
-            required.
-        averaging_period: Observation averaging period, either scalar or
-            aligned to ``sites``.
-        inlet: Inlet selector, either scalar or aligned to ``sites``. Entries
-            may be strings, legacy ``slice`` selectors, or ``None``.
-        fp_height: Footprint inlet height, either scalar or aligned to
-            ``sites``.
-        instrument: Observation instrument, either scalar or aligned to
-            ``sites``.
-        platform: Observation platform, either scalar or aligned to ``sites``.
-        obs_data_level: Observation data level, either scalar or aligned to
-            ``sites``.
-        met_model: Footprint meteorological model, either scalar or aligned to
-            ``sites``.
-        max_level: Maximum column level, either scalar or aligned to ``sites``.
-            Entries must be integers or ``None``.
-        min_error: Numeric minimum error or ``"residual"``/``"percentile"``
-            calculation method.
-        calculate_min_error: Deprecated calculation-method spelling.
-        min_error_options: Calculated minimum-error options. The only supported
-            key is boolean ``by_site``.
-
-    Returns:
-        Prepared legacy data, including forward-model inputs and optional basis
-        objects. When ``merged_data_only`` is true, only merged data and
-        retained site metadata are populated.
-
-    Raises:
-        ValueError: If site options are empty, duplicated, misaligned, or have
-            invalid types, or if minimum-error options are invalid.
-
-    Warns:
-        FutureWarning: If deprecated ``calculate_min_error`` is supplied.
-    """
-    min_error_options = normalise_min_error_options(min_error_options)
-    merged = _prepare_merged_data(
-        species=species,
-        sites=sites,
-        domain=domain,
-        averaging_period=averaging_period,
-        start_date=start_date,
-        end_date=end_date,
-        output_name=output_name,
-        flux_sources=flux_sources,
-        split_by_sectors=split_by_sectors,
-        bc_store=bc_store,
-        obs_store=obs_store,
-        footprint_store=footprint_store,
-        emissions_store=emissions_store,
-        met_model=met_model,
-        fp_model=fp_model,
-        fp_height=fp_height,
-        fp_species=fp_species,
-        inlet=inlet,
-        instrument=instrument,
-        max_level=max_level,
-        calibration_scale=calibration_scale,
-        obs_data_level=obs_data_level,
-        platform=platform,
-        use_tracer=use_tracer,
-        use_bc=use_bc,
-        bc_input=bc_input,
-        averaging_error=averaging_error,
-        reload_merged_data=reload_merged_data,
-        save_merged_data=save_merged_data,
-        merged_data_dir=merged_data_dir,
-        merged_data_name=merged_data_name,
-        flux_non_finite_check=flux_non_finite_check,
-    )
-
-    if merged_data_only:
-        return FixedBasisPreparedData(
-            fp_all=merged.fp_all,
-            sites=list(merged.sites),
-            averaging_period=list(merged.averaging_period),
-            is_column=merged.site_options.is_column,
-        )
-
-    bc_basis_directory_arg = _bc_basis_directory_arg(bc_basis_directory)
-
-    basis_result = basis_functions_wrapper(
-        basis_algorithm=basis_algorithm,
-        nbasis=nbasis,
-        fp_basis_case=fp_basis_case,
-        bc_basis_case=bc_basis_case,
-        basis_directory=basis_directory,
-        bc_basis_directory=bc_basis_directory_arg,
-        country_directory=country_directory,
-        fp_all=merged.fp_all,
-        use_bc=use_bc,
-        species=species,
-        domain=domain,
-        start_date=start_date,
-        fix_outer_regions=fix_basis_outer_regions,
-        emissions_name=flux_sources,
-        outputname=output_name,
-        output_path=basis_output_path,
-        return_basis_objects=True,
-    )
-    fp_data, fixedbasis_basis_objects = cast(tuple[dict, dict[str, BasisFunctions]], basis_result)
-    emissions_basis = fixedbasis_basis_objects["emissions"]
-    basis_source = emissions_basis.basis_artifact_source or "generated"
-    basis_path = getattr(emissions_basis, "basis_artifact_path", None)
-    basis_objects = fixedbasis_basis_objects if return_basis_objects else {}
-
-    fp_data, prepared_site_options = _apply_filters_and_drop_empty_sites(
-        fp_data=fp_data,
-        site_options=merged.site_options,
-        filters=filters,
-    )
-    prepared_sites = list(prepared_site_options.sites)
-    prepared_averaging_period = list(prepared_site_options.averaging_period)
-    _set_domain_attrs(fp_data, prepared_sites, domain)
-
-    inv_inputs = _make_inv_inputs(
-        fp_data=fp_data,
-        sites=prepared_sites,
-        start_date=start_date,
-        bc_freq=bc_freq,
-        min_error=min_error,
-        calculate_min_error=calculate_min_error,
-        min_error_per_site=min_error_options["by_site"],
-    )
-    inv_inputs = _scale_satellite_bc_sensitivity_to_column_signal(
-        inv_inputs,
-        sites=prepared_sites,
-        platform=prepared_site_options.platform,
-    )
-    sigma_alignment = SigmaAlignment.from_frequency(
-        inv_inputs["site_indicator"],
-        frequency=sigma_freq,
-        anchor_time=start_date,
-    )
-    inv_inputs["sigma_freq_index"] = sigma_alignment.period_index.rename("sigma_freq_index")
-    _warn_for_nan_inputs(inv_inputs, use_bc=use_bc)
-
-    return FixedBasisPreparedData(
-        fp_all=_select_fp_all_sites(merged.fp_all, prepared_sites),
-        fp_data=fp_data,
-        inv_inputs=inv_inputs,
-        basis_objects=basis_objects,
-        basis_artifact_source=basis_source,
-        basis_artifact_path=basis_path,
-        sites=prepared_sites,
-        averaging_period=prepared_averaging_period,
-        is_column=prepared_site_options.is_column,
-    )
-
-
 def prepare_rhime_inputs(
     *,
     species: str,
@@ -1780,3 +1489,19 @@ def prepare_rhime_inputs(
             averaging_period=filtered_merged.averaging_period,
         ),
     )
+
+
+def __getattr__(name: str) -> Any:
+    """Provide warning-emitting aliases for the former fixed-basis location."""
+    if name not in {"FixedBasisPreparedData", "prepare_fixedbasis_inversion_data"}:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+    warnings.warn(
+        f"{__name__}.{name} has moved to openghg_inversions.hbmcmc.preparation; "
+        "the old import path is deprecated.",
+        FutureWarning,
+        stacklevel=2,
+    )
+    from openghg_inversions.hbmcmc import preparation as fixedbasis_preparation
+
+    return getattr(fixedbasis_preparation, name)

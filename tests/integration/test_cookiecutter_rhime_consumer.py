@@ -107,9 +107,9 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
         calls.append("align")
         return actual_spec
 
-    def materialize(actual: Any, *, aggregation_error_mode: str) -> Any:
+    def materialize(actual: Any, *, variable_names: tuple[str, ...]) -> Any:
         assert actual is prepared
-        assert aggregation_error_mode == "diagonal"
+        assert set(variable_names) >= {"H", "mf", "mf_error", "min_error"}
         calls.append("materialize")
         return model_inputs
 
@@ -119,13 +119,15 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
             "model_inputs": model_inputs,
             "run_spec": run_spec,
             "likelihood_builder": likelihoods.likelihood_builder,
+            "likelihood_kwargs": None,
+            "preserve_legacy_likelihood": False,
         }
         calls.append("build")
         return build_result
 
     def sample(*args: Any, **kwargs: Any) -> Any:
         assert args == (build_result, sampler)
-        assert kwargs == {"use_variable_roles": True}
+        assert kwargs == {}
         calls.append("sample")
         return idata
 
@@ -134,8 +136,12 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
         assert kwargs["likelihood_builder"] is likelihoods.likelihood_builder
         assert kwargs["model_build_result"] is build_result
         assert kwargs["idata"] is idata
-        calls.append("output")
+        calls.append("result")
         return expected
+
+    def make_outputs(**kwargs: Any) -> None:
+        assert kwargs == {"result": expected, "prepared": prepared}
+        calls.append("output")
 
     monkeypatch.setattr(rhime_runner, "resolve_rhime_options", resolve)
     monkeypatch.setattr(rhime_runner, "retrieve_or_reload_rhime_data", retrieve)
@@ -144,10 +150,16 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
     monkeypatch.setattr(rhime_runner, "build_rhime_sensitivities", build_sensitivities)
     monkeypatch.setattr(rhime_runner, "assemble_rhime_inputs", assemble)
     monkeypatch.setattr(rhime_runner, "with_prepared_rhime_sites", align)
+    monkeypatch.setattr(
+        rhime_runner,
+        "standard_model_input_names",
+        lambda _actual, _model, **_kwargs: ("H", "mf", "mf_error", "min_error"),
+    )
     monkeypatch.setattr(rhime_runner, "materialize_pymc_inputs", materialize)
-    monkeypatch.setattr(rhime_runner, "build_standard_rhime_model", build)
+    monkeypatch.setattr(rhime_runner, "build_standard_rhime_model_result", build)
     monkeypatch.setattr(rhime_runner, "sample_rhime_model", sample)
     monkeypatch.setattr(rhime_runner, "make_standard_rhime_result", make_result)
+    monkeypatch.setattr(rhime_runner, "make_standard_rhime_outputs", make_outputs)
 
     result = consumer_runner.run(species="ch4", output_format="inv_out")
 
@@ -163,6 +175,7 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
         "materialize",
         "build",
         "sample",
+        "result",
         "output",
     ]
 
@@ -194,8 +207,8 @@ def test_consumer_cli_routes_to_the_same_project_runner(
 
 
 @pytest.mark.parametrize("module_path", [likelihoods.__file__, consumer_runner.__file__])
-def test_consumer_imports_only_the_public_rhime_package(module_path: str | None) -> None:
-    """Consumer modules do not reach into private or non-RHIME library paths."""
+def test_consumer_imports_only_public_supported_modules(module_path: str | None) -> None:
+    """Consumer modules use public recipe or model-component modules."""
     assert module_path is not None
     source = Path(module_path).read_text(encoding="utf-8")
     imports = [
@@ -206,7 +219,13 @@ def test_consumer_imports_only_the_public_rhime_package(module_path: str | None)
 
     for node in imports:
         if isinstance(node, ast.ImportFrom) and (node.module or "").startswith("openghg_inversions"):
-            assert node.module == "openghg_inversions.rhime"
+            assert node.module in {
+                "openghg_inversions.models.additive_sigma",
+                "openghg_inversions.models.pollution_event",
+                "openghg_inversions.observation_error",
+                "openghg_inversions.rhime",
+                "openghg_inversions.sigma",
+            }
             assert all(not alias.name.startswith("_") for alias in node.names)
         elif isinstance(node, ast.Import):
             assert all(not alias.name.startswith("openghg_inversions") for alias in node.names)

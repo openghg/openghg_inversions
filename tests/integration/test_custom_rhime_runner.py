@@ -153,10 +153,10 @@ def test_custom_runner_uses_supported_stages_for_acquisition_and_reload(
         calls.append("align")
         return aligned_spec
 
-    def materialize(actual: Any, *, aggregation_error_mode: str) -> xr.Dataset:
+    def materialize(actual: Any, *, variable_names: tuple[str, ...]) -> xr.Dataset:
         """Record the explicit eager model-input boundary."""
         assert actual is prepared
-        assert aggregation_error_mode == "low_rank"
+        assert set(variable_names) >= {"H", "mf", "mf_error", "min_error"}
         calls.append("materialize")
         return model_inputs
 
@@ -172,7 +172,7 @@ def test_custom_runner_uses_supported_stages_for_acquisition_and_reload(
     def sample(*args: Any, **kwargs: Any) -> Any:
         """Record public sampling."""
         assert args == (build_result, sampler)
-        assert kwargs == {"use_variable_roles": True}
+        assert kwargs == {}
         calls.append("sample")
         return idata
 
@@ -188,6 +188,10 @@ def test_custom_runner_uses_supported_stages_for_acquisition_and_reload(
         calls.append("result")
         return expected_result
 
+    def make_outputs(**kwargs: Any) -> None:
+        assert kwargs == {"result": expected_result, "prepared": prepared}
+        calls.append("outputs")
+
     monkeypatch.setattr(custom_runner, "params_from_config", parse_config)
     monkeypatch.setattr(custom_runner, "resolve_rhime_options", resolve)
     monkeypatch.setattr(custom_runner, "retrieve_or_reload_rhime_data", retrieve)
@@ -196,10 +200,16 @@ def test_custom_runner_uses_supported_stages_for_acquisition_and_reload(
     monkeypatch.setattr(custom_runner, "build_rhime_sensitivities", build_sensitivities)
     monkeypatch.setattr(custom_runner, "assemble_rhime_inputs", assemble)
     monkeypatch.setattr(custom_runner, "with_prepared_rhime_sites", align)
+    monkeypatch.setattr(
+        custom_runner,
+        "standard_model_input_names",
+        lambda _actual, _model: ("H", "mf", "mf_error", "min_error"),
+    )
     monkeypatch.setattr(custom_runner, "materialize_pymc_inputs", materialize)
-    monkeypatch.setattr(custom_runner, "build_standard_rhime_model", build)
+    monkeypatch.setattr(custom_runner, "build_standard_rhime_model_result", build)
     monkeypatch.setattr(custom_runner, "sample_rhime_model", sample)
     monkeypatch.setattr(custom_runner, "make_standard_rhime_result", make_result)
+    monkeypatch.setattr(custom_runner, "make_standard_rhime_outputs", make_outputs)
 
     result = custom_runner.run_custom_rhime(config_file=config_file, **overrides)
 
@@ -216,6 +226,7 @@ def test_custom_runner_uses_supported_stages_for_acquisition_and_reload(
         "build",
         "sample",
         "result",
+        "outputs",
     ]
 
 

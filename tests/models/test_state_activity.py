@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any, cast
 
 import dask.array as da
+from dask.callbacks import Callback
 import numpy as np
 import pymc as pm
 import pytest
@@ -14,21 +15,23 @@ from openghg_inversions.basis import project_basis_prior_stdev
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.models import (
     CoordRegistry,
-    RhimeModelSpec,
-    SectorSpec,
     StateActivity,
     active_prior_args,
-    add_state_linear_component,
     attach_coord_registry,
-    build_rhime_model,
-    build_rhime_model_from_spec,
-    build_rhime_multisector_model,
     detect_zero_sensitivity,
-    build_rhime_multisector_model_from_spec,
+    prepare_linear_sensitivity,
+    registered_model,
     resolve_state_activity,
 )
 from openghg_inversions.models.components import add_linear_component, resolve_model_variable
 from openghg_inversions.models.components import add_state_vector
+from openghg_inversions.observation_error import resolve_aggregation_error
+from openghg_inversions.rhime.multisector import (
+    _prepare_multisector_flux_components,
+    build_multisector_rhime_model as _build_multisector_model,
+)
+from openghg_inversions.rhime.specs import SectorSpec
+from openghg_inversions.rhime.standard import build_standard_rhime_model as _build_standard_model
 from openghg_inversions.sigma import SigmaAlignment
 
 
@@ -69,6 +72,34 @@ def _sigma_alignment(inputs: xr.Dataset) -> SigmaAlignment:
     return SigmaAlignment.from_indices(inputs["site_indicator"], inputs["sigma_freq_index"])
 
 
+def build_rhime_model(inputs: xr.Dataset, **kwargs: Any) -> pm.Model:
+    """Adapt test datasets to the standard builder's named-array contract."""
+    return _build_standard_model(
+        inputs["H"],
+        observations=inputs["mf"],
+        observation_error=inputs["mf_error"],
+        minimum_error=inputs["min_error"],
+        aggregation_error=resolve_aggregation_error(inputs, "none"),
+        boundary_sensitivity=inputs.get("H_bc"),
+        site_indicator=inputs.get("site_indicator"),
+        **kwargs,
+    )
+
+
+def build_rhime_multisector_model(inputs: xr.Dataset, **kwargs: Any) -> pm.Model:
+    """Adapt test datasets to the multisector builder's named-array contract."""
+    return _build_multisector_model(
+        inputs["H"],
+        observations=inputs["mf"],
+        observation_error=inputs["mf_error"],
+        minimum_error=inputs["min_error"],
+        aggregation_error=resolve_aggregation_error(inputs, "none"),
+        boundary_sensitivity=inputs.get("H_bc"),
+        site_indicator=inputs.get("site_indicator"),
+        **kwargs,
+    )
+
+
 def test_detect_zero_sensitivity_validates_and_retains_state_metadata() -> None:
     """Reduce the design to a labelled mask without dropping group metadata."""
     zero_sensitivity = detect_zero_sensitivity(_sensitivity())
@@ -94,6 +125,62 @@ def test_detect_zero_sensitivity_accepts_a_named_output_dimension() -> None:
 
     np.testing.assert_array_equal(zero_sensitivity, [False, True, False, False])
     assert zero_sensitivity.dims == ("region",)
+
+
+def test_prepare_linear_sensitivity_removes_columns_and_retains_full_mapping() -> None:
+    """Structural removal keeps a lossless labelled full-to-retained mapping."""
+    prepared = prepare_linear_sensitivity(_sensitivity())
+
+    assert prepared.sensitivity.dims == ("nmeasure", "region_retained")
+    np.testing.assert_array_equal(
+        prepared.sensitivity["region_retained"], ["inner-a", "outer-a", "inner-b"]
+    )
+    np.testing.assert_array_equal(prepared.removed, [False, True, False, False])
+    np.testing.assert_array_equal(prepared.removed["basis_group"], ["inner", "inner", "outer", "inner"])
+    np.testing.assert_array_equal(prepared.retained_indices, [0, 2, 3])
+
+
+def test_prepare_linear_sensitivity_keeps_retained_dask_payload_lazy() -> None:
+    """Inspect once, then keep retained data lazy until PyMC registration."""
+    executions: list[object] = []
+    callback = Callback(start=lambda graph: executions.append(graph))
+    with callback:
+        prepared = prepare_linear_sensitivity(_sensitivity().chunk({"nmeasure": 1, "region": 2}))
+
+        assert len(executions) == 1
+        assert isinstance(prepared.sensitivity.data, da.Array)
+        assert not isinstance(prepared.removed.data, da.Array)
+
+        with registered_model():
+            add_linear_component(
+                prepared,
+                data_name="hx",
+                prior_args={"pdf": "normal", "mu": 1.0, "sigma": 0.2},
+                var_name="x",
+                output_name="mu",
+            )
+
+        assert len(executions) == 2
+
+
+def test_all_zero_linear_sensitivity_builds_zero_forward_and_full_fixed_state() -> None:
+    """An all-zero sensitivity has no latent variables and reconstructs the full state."""
+    h = xr.zeros_like(_sensitivity())
+    prepared = prepare_linear_sensitivity(h)
+
+    with registered_model() as model:
+        result = add_linear_component(
+            prepared,
+            data_name="hx",
+            prior_args={"pdf": "normal", "mu": 1.0, "sigma": 0.2},
+            var_name="x",
+            output_name="mu",
+        )
+
+    assert prepared.sensitivity.sizes["region_retained"] == 0
+    assert model.free_RVs == []
+    np.testing.assert_allclose(model.named_vars["x"].eval(), np.ones(4))
+    np.testing.assert_allclose(result.output.eval(), np.zeros(2), atol=1e-12)
 
 
 def test_resolve_state_activity_combines_labels_groups_and_exact_zero() -> None:
@@ -320,8 +407,8 @@ def test_state_linear_component_preserves_full_forward_identity() -> None:
     registry = CoordRegistry()
     with pm.Model() as model:
         attach_coord_registry(model, registry)
-        result = add_state_linear_component(
-            h,
+        result = add_linear_component(
+            prepare_linear_sensitivity(h),
             data_name="hx",
             prior_args={"pdf": "normal", "mu": 2.0, "sigma": 0.1},
             var_name="x",
@@ -332,12 +419,16 @@ def test_state_linear_component_preserves_full_forward_identity() -> None:
             ),
         )
 
+    activity = resolve_state_activity(detect_zero_sensitivity(h), StateActivity(
+        fixed_value=fixed_value,
+        fixed_groups=("outer",),
+    ))
     x_full, mu, x_active = pm.draw(
         [result.state, result.output, model.named_vars["x_active"]],
         random_seed=42,
     )
-    active = result.activity.active_indices
-    fixed = result.activity.fixed_indices
+    active = activity.active_indices
+    fixed = activity.fixed_indices
     expected_split = (
         h.values[:, active] @ x_active + h.values[:, fixed] @ fixed_value.sel(region=h.region).values[fixed]
     )
@@ -353,10 +444,9 @@ def test_state_linear_component_preserves_full_forward_identity() -> None:
 def test_add_state_vector_registers_full_state_coord_in_a_fresh_model() -> None:
     """Construct a state graph from a resolved contract and register its coordinate."""
     activity = resolve_state_activity(
-        detect_zero_sensitivity(_sensitivity()),
-        StateActivity(prune_zero=False),
+        xr.zeros_like(detect_zero_sensitivity(_sensitivity()), dtype=bool),
     )
-    with pm.Model() as model:
+    with registered_model() as model:
         result = add_state_vector(
             activity,
             prior_args={"pdf": "normal", "mu": 1.0, "sigma": 0.1},
@@ -367,35 +457,24 @@ def test_add_state_vector_registers_full_state_coord_in_a_fresh_model() -> None:
     assert model.coords["region"] == (0, 1, 2, 3)
 
 
-def test_state_linear_component_preserves_legacy_graph_when_all_states_are_active() -> None:
-    """Use the ordinary base prior graph when state pruning changes nothing."""
+def test_linear_component_preserves_plain_graph_when_all_states_are_retained() -> None:
+    """Use the ordinary base prior graph when preparation removes nothing."""
     h = _sensitivity().drop_sel(region="zero")
     prior = {"pdf": "normal", "mu": 1.0, "sigma": 0.2}
 
     with pm.Model() as linear_model:
         attach_coord_registry(linear_model, CoordRegistry())
-        linear_result = add_linear_component(
-            h,
+        result = add_linear_component(
+            prepare_linear_sensitivity(h),
             data_name="hx",
             prior_args=prior,
             var_name="x",
             output_name="mu",
         )
-    with pm.Model() as state_model:
-        attach_coord_registry(state_model, CoordRegistry())
-        state_result = add_state_linear_component(
-            h,
-            data_name="hx",
-            prior_args=prior,
-            var_name="x",
-            output_name="mu",
-        )
-
-    assert set(state_model.named_vars) == set(linear_model.named_vars) == {"hx", "x", "mu"}
-    assert [rv.name for rv in state_model.free_RVs] == [rv.name for rv in linear_model.free_RVs] == ["x"]
-    assert state_result.state is state_model.named_vars["x"]
-    assert state_result.latent is state_model.named_vars["x"]
-    assert linear_result.latent is linear_model.named_vars["x"]
+    assert set(linear_model.named_vars) == {"hx", "x", "mu"}
+    assert [rv.name for rv in linear_model.free_RVs] == ["x"]
+    assert result.state is linear_model.named_vars["x"]
+    assert result.output is linear_model.named_vars["mu"]
 
 
 def test_state_linear_component_full_activity_preserves_reparameterised_names() -> None:
@@ -403,8 +482,8 @@ def test_state_linear_component_full_activity_preserves_reparameterised_names() 
     h = _sensitivity().drop_sel(region="zero")
     with pm.Model() as model:
         attach_coord_registry(model, CoordRegistry())
-        result = add_state_linear_component(
-            h,
+        result = add_linear_component(
+            prepare_linear_sensitivity(h),
             data_name="hx",
             prior_args={
                 "pdf": "lognormal",
@@ -418,7 +497,7 @@ def test_state_linear_component_full_activity_preserves_reparameterised_names() 
 
     assert set(model.named_vars) == {"hx", "x_latent", "x", "mu"}
     assert [rv.name for rv in model.free_RVs] == ["x_latent"]
-    assert result.state is model.named_vars["x"]
+    assert result.output is model.named_vars["mu"]
     assert result.latent is model.named_vars["x_latent"]
 
 
@@ -432,8 +511,8 @@ def test_state_linear_component_restores_removed_states_in_canonical_order() -> 
     )
     with pm.Model() as model:
         attach_coord_registry(model, CoordRegistry())
-        result = add_state_linear_component(
-            h,
+        result = add_linear_component(
+            prepare_linear_sensitivity(h),
             data_name="hx",
             prior_args={"pdf": "normal", "mu": 2.0, "sigma": 0.1},
             var_name="x",
@@ -449,7 +528,11 @@ def test_state_linear_component_restores_removed_states_in_canonical_order() -> 
         random_seed=42,
     )
     restored = fixed.to_numpy().copy()
-    restored[result.activity.active_indices] = active_state
+    activity = resolve_state_activity(detect_zero_sensitivity(h), StateActivity(
+        active=np.array([True, False, True, False]),
+        fixed_value=fixed,
+    ))
+    restored[activity.active_indices] = active_state
 
     np.testing.assert_allclose(full_state, restored)
     np.testing.assert_allclose(output, h.to_numpy() @ restored)
@@ -462,8 +545,8 @@ def test_state_linear_component_supports_zero_active_states() -> None:
 
     with pm.Model() as model:
         attach_coord_registry(model, CoordRegistry())
-        result = add_state_linear_component(
-            h,
+        result = add_linear_component(
+            prepare_linear_sensitivity(h),
             data_name="hx",
             prior_args={"pdf": "normal", "mu": 1.0, "sigma": 1.0},
             var_name="x",
@@ -474,81 +557,9 @@ def test_state_linear_component_supports_zero_active_states() -> None:
     x_full, mu = pm.draw([result.state, result.output], random_seed=42)
     np.testing.assert_allclose(x_full, np.full(h.sizes["region"], 2.5))
     np.testing.assert_allclose(mu, h.values @ x_full)
-    assert result.latent is None
     assert "x_active" not in model.named_vars
     assert not any(rv.name and rv.name.startswith("x") for rv in model.free_RVs)
     assert resolve_model_variable(model, "x") is model.named_vars["x"]
-
-
-def test_standard_rhime_spec_keeps_default_exact_zero_activity() -> None:
-    """The spec builder keeps exact-zero pruning and the full ordered state."""
-    h = _sensitivity()
-    model_spec = RhimeModelSpec(
-        species="ch4",
-        domain="EUROPE",
-        sectors=(
-            SectorSpec(
-                name="total",
-                flux_source="total",
-                x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.2},
-                variable_suffix="total",
-            ),
-        ),
-        use_bc=False,
-        no_model_error=True,
-    )
-
-    model = build_rhime_model_from_spec(
-        _model_inputs(h),
-        model_spec,
-    )
-
-    assert {"x", "x_active", "x_is_active", "x_fixed_value", "mu"}.issubset(model.named_vars)
-    assert model.named_vars["x_active"].eval().shape == (3,)
-    np.testing.assert_array_equal(model.named_vars["x_is_active"].eval(), [True, False, True, True])
-    assert model.named_vars["x"] not in model.free_RVs
-
-
-def test_standard_rhime_spec_honors_explicit_fixed_states_and_groups() -> None:
-    """A spec policy combines labelled state and group freezes."""
-    h = _sensitivity()
-    explicit = xr.DataArray(
-        [False, True, True, True],
-        dims="region",
-        coords={"region": ["inner-b", "outer-a", "zero", "inner-a"]},
-    )
-    fixed_value = xr.DataArray(
-        [4.0, 3.0, 2.0, 1.0],
-        dims="region",
-        coords={"region": ["inner-b", "outer-a", "zero", "inner-a"]},
-    )
-    model_spec = RhimeModelSpec(
-        species="ch4",
-        domain="EUROPE",
-        sectors=(
-            SectorSpec(
-                name="total",
-                flux_source="total",
-                x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.2},
-                variable_suffix="total",
-            ),
-        ),
-        use_bc=False,
-        no_model_error=True,
-        state_activity=StateActivity(
-            active=explicit,
-            fixed_value=fixed_value,
-            fixed_groups=("outer",),
-        ),
-    )
-
-    model = build_rhime_model_from_spec(_model_inputs(h), model_spec)
-
-    np.testing.assert_array_equal(model.named_vars["x_is_active"].eval(), [True, False, False, False])
-    assert model.named_vars["x_active"].eval().shape == (1,)
-    x_full = model.named_vars["x"].eval()
-    np.testing.assert_allclose(x_full[[1, 2, 3]], [2.0, 3.0, 4.0])
-
 
 def test_multisector_rhime_can_freeze_a_sector_and_use_array_priors() -> None:
     """Per-sector policies can freeze all states while other sectors sample arrays."""
@@ -567,13 +578,21 @@ def test_multisector_rhime_can_freeze_a_sector_and_use_array_priors() -> None:
     model = build_rhime_multisector_model(
         inputs,
         sigma_alignment=_sigma_alignment(inputs),
-        sectors=["FF", "ocean"],
-        sector_sources={"FF": "ff-source", "ocean": "ocean-source"},
-        sector_priors={
-            "FF": {"pdf": "normal", "mu": 1.0, "sigma": 0.2},
-            "ocean": {"pdf": "normal", "mu": ocean_mu, "sigma": 0.3},
-        },
-        sector_state_activities={"FF": StateActivity(active=False)},
+        sectors=(
+            SectorSpec(
+                name="FF",
+                flux_source="ff-source",
+                x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.2},
+                variable_suffix="ff",
+                state_activity=StateActivity(active=False),
+            ),
+            SectorSpec(
+                name="ocean",
+                flux_source="ocean-source",
+                x_prior={"pdf": "normal", "mu": ocean_mu, "sigma": 0.3},
+                variable_suffix="ocean",
+            ),
+        ),
         use_bc=False,
         no_model_error=True,
     )
@@ -582,42 +601,45 @@ def test_multisector_rhime_can_freeze_a_sector_and_use_array_priors() -> None:
     assert "x_ocean_active" in model.named_vars
     np.testing.assert_allclose(model.named_vars["x_ff"].eval(), np.ones(4))
     assert model.named_vars["x_ocean"].eval().shape == (4,)
-    assert model.named_vars["mu"].eval().shape == (2,)
+    assert model.named_vars["mu_ff"].eval().shape == (2,)
+    assert model.named_vars["mu_ocean"].eval().shape == (2,)
+    assert "mu" not in model.named_vars
 
 
-def test_multisector_rhime_spec_honors_shared_and_per_sector_activity() -> None:
-    """A per-sector policy overrides the shared multisector policy."""
+def test_multisector_flux_preparation_applies_sector_override_and_shared_activity() -> None:
+    """Flux preparation applies an override and the shared fallback directly."""
     h = _sensitivity()
     multi_h = xr.concat(
         [h.expand_dims(source=["ff-source"]), (2.0 * h).expand_dims(source=["ocean-source"])],
         dim="source",
     )
-    model_spec = RhimeModelSpec(
-        species="ch4",
-        domain="EUROPE",
-        sectors=(
-            SectorSpec(
-                name="FF",
-                flux_source="ff-source",
-                x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.2},
-                variable_suffix="ff",
-            ),
-            SectorSpec(
-                name="ocean",
-                flux_source="ocean-source",
-                x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.3},
-                variable_suffix="ocean",
-            ),
+    sectors = (
+        SectorSpec(
+            name="FF",
+            flux_source="ff-source",
+            x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.2},
+            variable_suffix="ff",
+            state_activity=StateActivity(active=False, fixed_value=2.0),
         ),
-        use_bc=False,
-        no_model_error=True,
-        state_activity=StateActivity(active=False, fixed_value=3.0),
-        sector_state_activities={"FF": StateActivity(active=False, fixed_value=2.0)},
+        SectorSpec(
+            name="ocean",
+            flux_source="ocean-source",
+            x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.3},
+            variable_suffix="ocean",
+        ),
     )
 
-    model = build_rhime_multisector_model_from_spec(_model_inputs(multi_h), model_spec)
+    components = _prepare_multisector_flux_components(
+        multi_h,
+        sectors,
+        state_activity=StateActivity(active=False, fixed_value=3.0),
+    )
 
-    assert "x_ff_active" not in model.named_vars
-    np.testing.assert_allclose(model.named_vars["x_ff"].eval(), np.full(4, 2.0))
-    assert "x_ocean_active" not in model.named_vars
-    np.testing.assert_allclose(model.named_vars["x_ocean"].eval(), np.full(4, 3.0))
+    ff_sector, _, _, ff_activity = components[0]
+    ocean_sector, _, _, ocean_activity = components[1]
+    assert ff_sector is sectors[0]
+    assert ocean_sector is sectors[1]
+    assert not ff_activity.active.any()
+    assert not ocean_activity.active.any()
+    np.testing.assert_allclose(ff_activity.fixed_value, 2.0)
+    np.testing.assert_allclose(ocean_activity.fixed_value, 3.0)

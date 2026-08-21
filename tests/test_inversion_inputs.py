@@ -18,6 +18,8 @@ import numpy as np
 import pandas as pd
 import pytest
 import xarray as xr
+from dask import array as da
+from dask.callbacks import Callback
 
 from openghg_inversions.inversion_inputs import (
     add_min_error,
@@ -25,6 +27,7 @@ from openghg_inversions.inversion_inputs import (
     concat_gather_datasets,
     make_inv_inputs,
 )
+from openghg_inversions.model_error import MinimumError
 from openghg_inversions.sigma import SigmaAlignment
 
 
@@ -561,3 +564,58 @@ def test_make_inv_inputs_residual_min_error_can_be_site_specific():
 
     expected = np.where(result.site_indicator.values == 0, 1.0, 2.0)
     np.testing.assert_allclose(result.min_error.values, expected)
+
+
+def test_minimum_error_uses_declared_site_order_and_records_provenance(tmp_path: Path):
+    """Per-site values follow labels rather than mapping or alphabetical order."""
+    observations = xr.Dataset(
+        {"mf": ("nmeasure", [1.0, 2.0, 3.0])},
+        coords={"site": ("nmeasure", ["BBB", "AAA", "BBB"])},
+    )
+    observations.mf.attrs["units"] = "ppb"
+
+    result = MinimumError.prepare(observations, {}, {"AAA": 1.0, "BBB": 2.0})
+
+    np.testing.assert_allclose(result.values, [2.0, 1.0, 2.0])
+    assert result.sites == ("BBB", "AAA")
+    assert result.values.attrs == {
+        "units": "ppb",
+        "minimum_error_method": "per_site",
+        "minimum_error_by_site": 1,
+        "minimum_error_sites": "BBB,AAA",
+    }
+    result.values.to_netcdf(tmp_path / "minimum_error.nc")
+
+
+@pytest.mark.parametrize("value", [-1.0, np.inf, np.nan])
+def test_minimum_error_rejects_invalid_values(value: float):
+    observations = xr.Dataset({"mf": ("nmeasure", [1.0])})
+
+    with pytest.raises(ValueError, match="finite and non-negative"):
+        MinimumError.prepare(observations, {}, value)
+
+
+def test_scalar_minimum_error_preserves_lazy_borrowed_observations():
+    mf = xr.DataArray(da.from_array(np.ones(3, dtype=int), chunks=2), dims="nmeasure")
+    site = xr.DataArray(
+        da.from_array(np.array(["AAA", "AAA", "BBB"]), chunks=2),
+        dims="nmeasure",
+    )
+    observations = xr.Dataset({"mf": mf}, coords={"site": site})
+    observations.mf.attrs = {"units": "ppb", "standard_name": "mole_fraction", "calibration": "X"}
+    executed_tasks = []
+
+    with Callback(pretask=lambda *args: executed_tasks.append(args[0])):
+        result = MinimumError.prepare(observations, {}, 0.5)
+
+    assert executed_tasks == []
+    assert result.values.variable._data is not observations.mf.variable._data
+    assert hasattr(result.values.data, "chunks")
+    assert np.issubdtype(result.values.dtype, np.floating)
+    assert result.values.attrs == {
+        "units": "ppb",
+        "minimum_error_method": "scalar",
+        "minimum_error_by_site": 0,
+        "minimum_error_sites": "",
+    }
+    np.testing.assert_allclose(result.values.compute(), 0.5)

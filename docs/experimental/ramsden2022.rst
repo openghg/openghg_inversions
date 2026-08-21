@@ -71,7 +71,7 @@ state coordinates.
      - Meaning
    * - ``H``
      - observation, state, source
-     - Labelled design matrix mapping scaling states into observation space.
+     - Labelled sensitivity matrix mapping scaling states into observation space.
    * - ``mf``
      - observation
      - Measured mole fraction in the channel's declared numeric units.
@@ -87,7 +87,7 @@ state coordinates.
      - Integer site index used to align site-level model error.
    * - ``H_bc``
      - observation, boundary state
-     - Boundary design; required when the channel enables boundary scaling.
+     - Boundary sensitivity; required when the channel enables boundary scaling.
 
 If state labels are positional numbers, retain and pass both
 :class:`~openghg_inversions.basis.basis_functions.BasisFunctions` objects.
@@ -100,12 +100,12 @@ Ratio contracts
 The model supports two explicit ratio conventions:
 
 Direct physical ratio
-   ``reference_ratio=None`` means the tracer design is ratio-free. The
+   ``reference_ratio=None`` means the tracer sensitivity is ratio-free. The
    sampled or fixed value is the dimensionless molar emission ratio, moles of
    tracer divided by moles of primary gas.
 
 Historical multiplier
-   A positive ``reference_ratio`` means the tracer design already contains
+   A positive ``reference_ratio`` means the tracer sensitivity already contains
    that ratio. The sampled or fixed value is a multiplier, and the model
    exposes
 
@@ -115,7 +115,7 @@ Historical multiplier
           R_{\mathrm{reference}} R_{\mathrm{multiplier}}.
 
 The independent ``tracer_design_reference_ratios`` mapping records what is
-already present in every tracer design. The builder rejects inconsistent
+already present in every tracer sensitivity. The builder rejects inconsistent
 declarations to prevent applying a ratio twice or omitting it.
 
 Units
@@ -123,8 +123,8 @@ Units
 
 The builder validates supported unit declarations by mole-fraction scale but
 does not convert numeric values. Observations, measurement errors, minimum
-errors, forward designs, and model-error prior values must already share each
-channel's declared scale.
+errors, forward sensitivities, and model-error prior values must already share
+each channel's declared scale.
 
 For the retained Ramsden case, methane values are numeric ``ppb`` and ethane
 values numeric ``ppt``. The paper prints the ethane model-error bounds as ppb,

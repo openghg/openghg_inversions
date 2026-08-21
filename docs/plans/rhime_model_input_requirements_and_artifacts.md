@@ -1,5 +1,12 @@
 # RHIME model input requirements and prepared artifacts
 
+> **Status (August 2026):** The bill-of-materials object sketched below was
+> superseded by the locality guidance in
+> `docs/development/rhime_model_development.rst` and the OPE-82 implementation.
+> Current recipes keep a small tuple or pure input-name function beside each
+> consumer and pass named scientific arrays directly. The durable prepared and
+> replay-artifact distinctions in this note remain current.
+
 This is a design note for the work that follows the visible `run_rhime`
 orchestration spine. It separates three ideas that are currently too easy to
 conflate:
@@ -60,12 +67,13 @@ Existing `RhimePreparedInputs` and merged-data serialization should evolve
 incrementally. This plan does not require an immediate rename or a single
 monolithic cache format.
 
-### Model input requirements: the bill of materials
+### Model input requirements: component-adjacent declarations
 
-The resolved model specification should derive a small immutable inventory of
-the labelled inputs needed to build that model. Each model component owns the
-requirements it introduces. Explicit composition of the selected components
-produces the complete bill of materials.
+Each concrete recipe derives a small immutable sequence of the labelled inputs
+needed to build that model. Each model component owns the requirements it
+introduces, expressed as a nearby constant or pure function. Explicit recipe
+composition produces the selected input names without a generic requirements
+object.
 
 A first implementation should record only what the built-in model needs to
 select, validate, and jointly materialize its inputs:
@@ -91,20 +99,19 @@ For example, aggregation-error requirements should follow the selected mode:
 | `dense` | dense covariance | marginal standard deviation |
 | `low_rank` | factor and residual diagonal | marginal standard deviation |
 
-The model spec and its components, not an external runner, construct this
-object. Approximate usage is:
+The model spec and its components, not an external runner, select these names.
+Current usage is:
 
 ```python
-requirements = requirements_for_model(run_spec.model)
-requirements.validate(prepared.inv_inputs)
+input_names = standard_model_input_names(prepared, run_spec.model)
 model_inputs = materialize_pymc_inputs(
     prepared,
-    requirements=requirements,
+    variable_names=input_names,
 )
-built = build_standard_rhime_model(
-    prepared,
-    model_inputs,
-    run_spec,
+built = build_standard_rhime_model_result(
+    prepared=prepared,
+    model_inputs=model_inputs,
+    run_spec=run_spec,
 )
 ```
 
@@ -112,11 +119,11 @@ This makes parameter ownership and the eager boundary explicit. It also avoids
 the current transitional pattern in which input selection and validation are
 partly repeated by replay, materialization, and model construction.
 
-The requirements object is an internal derived contract, not a stage registry,
-dependency-injection mechanism, or caller-authored manifest. Ordinary custom
-runners should not construct or thread it through every stage. The concrete
-model/materialization boundary should derive and consume it internally, while
-advanced callers may inspect it for validation and diagnostics.
+The input-name declaration is not a stage registry, dependency-injection
+mechanism, caller-authored manifest, or validation schema. Ordinary custom
+runners call the declaration owned by the concrete recipe. The consuming
+component remains responsible for scientific validation after coordinated
+materialization.
 
 ### Configuration option ownership is a separate contract
 
@@ -214,9 +221,10 @@ or project-specific steps.
    externally supplied data paths explicit, including ownership, provenance,
    compatibility checks, and the scientific stage at which each artifact can
    re-enter the workflow.
-3. **OPE-47 — component-owned requirements.** Colocate the concrete model
-   graph, component contracts, output roles, and the derived model input bill
-   of materials. Make that contract drive validation and PyMC materialization.
+3. **OPE-47 / OPE-82 — component-owned requirements.** Colocate the concrete
+   model graph, component contracts, output roles, and recipe-owned input-name
+   declarations. Use those declarations for PyMC materialization and keep
+   validation in the consuming component.
 4. **OPE-48 — outputs and reconstruction.** Consume the same backend-neutral
    scientific roles and concrete model contract for output compatibility and
    reconstruction. This work does not wait for serialized replay.
@@ -243,14 +251,14 @@ The combined work should eventually demonstrate:
   cache without mutating it;
 - missing, malformed, or incompatible inputs fail with the owning component
   and option named;
-- only inputs selected by the derived requirements cross the PyMC
+- only inputs selected by the recipe-owned declaration cross the PyMC
   materialization boundary, and related Dask graphs compute together;
 - a built-in model spec and prepared data serialize and round-trip as a
   replayable run artifact;
 - a model-bound replay rejects a missing or incompatible spec before sampling
   or output writes; and
-- complete custom builders either supply requirements and serializable
-  identity or clearly own validation and opt out of standard replay.
+- complete custom builders clearly own validation and materialization and opt
+  out of the standard recipe's replayable input contract.
 
 ## Non-goals
 
