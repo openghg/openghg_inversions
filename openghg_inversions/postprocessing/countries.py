@@ -82,7 +82,12 @@ paris_regions_dict = {
                  "NEA_C": ["KOR", "PRK", "JPN_W", "CHN_E"]},
     "westusa": {},
     "saussie": {},
-    "centralasia": {"INDIA": ["INDIA-SOUTH", "INDIA-NORTH", "INDIA-EAST", "INDIA-WEST"]},
+    "centralasia": {"INDIA": ["INDIA-SOUTH", "INDIA-NORTH", "INDIA-EAST", "INDIA-WEST", "INDIA-JK", "INDIA-ANDAMAN"],
+                    "INDIA-noJK": ["INDIA-SOUTH", "INDIA-NORTH", "INDIA-EAST", "INDIA-WEST", "INDIA-ANDAMAN"],
+                    "INDIA-NS": ["INDIA-NORTH", "INDIA-SOUTH"],
+                    "INDIA-NSE": ["INDIA-NORTH", "INDIA-SOUTH", "INDIA-EAST"],
+                    "INDIA-NSW": ["INDIA-NORTH", "INDIA-SOUTH", "INDIA-WEST"],
+                    "INDIA-NSEW": ["INDIA-NORTH", "INDIA-SOUTH", "INDIA-EAST", "INDIA-WEST"],},
 }
 
 
