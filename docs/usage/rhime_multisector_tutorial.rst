@@ -11,18 +11,16 @@ Prerequisites and sector inputs
 -------------------------------
 
 Complete the environment and OpenGHG setup in :doc:`rhime_standard_tutorial`.
-The observation, boundary-condition, boundary-basis, and footprint
-requirements are the same. A multisector run also requires at least two
-distinct flux products on compatible latitude, longitude, and time
-coordinates. Use ``search_flux`` to find their exact OpenGHG metadata
-``source`` values.
+The observation, boundary-condition, and footprint requirements are the same.
+The companion store also supplies two distinct flux products on compatible
+latitude, longitude, and time coordinates.
 
-The example models two scientific sectors, ``anthropogenic`` and ``wetlands``.
+The example models two scientific sectors, ``anthropogenic`` and ``wetlands``,
+using ``edgar-v80-anthropogenic`` and ``wetcharts-v131-wetlands`` respectively.
 ``flux_sources`` lists what OpenGHG retrieves. ``sector_sources`` maps stable,
 human-readable sector labels to those source values. Every source is used once
-because independently inferred sectors may not share one source. Replace the
-two illustrative source values with distinct products in your store; do not
-change the sector keys without also changing ``sector_priors``.
+because independently inferred sectors may not share one source. Do not change
+the sector keys without also changing ``sector_priors``.
 
 Configuration
 -------------
@@ -69,7 +67,7 @@ Inspect labelled state and provenance
    print([(sector.name, sector.flux_source) for sector in result.model_spec.sectors])
    print(result.inv_inputs["H"].dims)
    print(result.inv_inputs["H"].coords)
-   print(result.inv_inputs["H"].sel(source="anthropogenic-ch4"))
+   print(result.inv_inputs["H"].sel(source="edgar-v80-anthropogenic"))
    print(result.model_build_result.variable_roles)
    print(result.idata.posterior[["x_anthropogenic", "x_wetlands"]])
    print(result.inv_out.provenance)
@@ -114,11 +112,11 @@ same limits described by the standard tutorial: it retains prepared arrays,
 basis, trace and resolved metadata, but is not an object-store query snapshot.
 
 For a clean-checkout mechanics test, run
-``uv run pytest tests/test_rhime_tutorials.py -q``. Its multisector case
-replaces the illustrative production source names with two maintained fixture
-products, one a dimension-shuffled numerical duplicate, and uses deterministic
-sampling. That verifies labelled routing and persistence, not scientific
-sector separation.
+``uv run pytest tests/test_rhime_tutorials.py -q``. Its multisector case uses
+two maintained fixture products, one a dimension-shuffled numerical duplicate,
+and deterministic sampling. That verifies labelled routing and persistence,
+not scientific sector separation. Normal CI does not clone or download the
+Git LFS repository.
 
 Common failures
 ---------------

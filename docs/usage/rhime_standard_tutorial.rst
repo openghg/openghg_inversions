@@ -8,47 +8,41 @@ product. It is a basic production workflow, not a Verification Games adapter.
 Prerequisites and data
 ----------------------
 
-Install the package as described in :doc:`installation` and configure an
-OpenGHG object store. Before running, use OpenGHG's ``search_surface``,
-``search_footprints``, ``search_flux``, and ``search_bc`` functions to confirm
-that the store contains, for the same species, site, domain, and time interval:
+Install the package as described in :doc:`installation`, then populate the
+companion OpenGHG store from the `immutable private prototype commit
+<https://github.com/openghg/openghg_inversions_tutorial_data/tree/b69acd1483160fb022813cc011108a7dd7d4d760>`_
+``b69acd1483160fb022813cc011108a7dd7d4d760``. Public redistribution approval
+is still pending, so this commit is available only to collaborators with
+access to the private repository:
 
-* CH4 observations for ``TAC`` at ``185m``, which RHIME will average to the
-  configured hourly cadence;
-* matching NAME footprints for ``TAC`` on the ``EUROPE`` domain; and
-* one CH4 flux product whose metadata ``source`` is
-  ``total-ukghg-edgar7``;
-* CH4 boundary conditions with ``bc_input="cams"``; and
-* a four-curtain ``NESW`` boundary basis below ``bc_basis_functions/EUROPE``.
+.. code-block:: console
 
-The source and boundary-input values are object-store identities, not universal
-filenames. Change them when your store uses other values. Check the required
-records before editing the INI:
+   $ git clone https://github.com/openghg/openghg_inversions_tutorial_data.git
+   $ cd openghg_inversions_tutorial_data
+   $ git checkout b69acd1483160fb022813cc011108a7dd7d4d760
+   $ git lfs pull
+   $ python scripts/populate_store.py
 
-.. code-block:: python
+The population command verifies the LFS files and registers the resulting
+store as ``inversions_tutorial_data``. It contains real January 2020 CH4 data
+for Mace Head (``MHD``) and Tacolneston (``TAC``): observations, matching NAME
+footprints, EDGAR v8 anthropogenic flux, WetCHARTs v1.3.1 wetlands flux, and
+CAMS v22r2 daily boundary conditions. MHD's observation inlet is ``24m`` and
+its footprint release height is ``10m``; TAC uses ``185m`` for both.
 
-   from openghg.retrieve import search_bc, search_flux, search_footprints, search_surface
-
-   interval = {"start_date": "2019-01-01", "end_date": "2019-01-02", "store": "user"}
-   print(search_surface(species="ch4", site="TAC", inlet="185m", **interval))
-   print(search_footprints(site="TAC", inlet="185m", model="NAME", domain="EUROPE", **interval))
-   print(search_flux(
-       species="ch4", source="total-ukghg-edgar7", domain="EUROPE", **interval
-   ))
-   print(search_bc(species="ch4", bc_input="cams", domain="EUROPE", **interval))
-
-Use the returned metadata values in ``flux_sources``, ``bc_input``, and the
-other selectors. An empty result means the tutorial cannot run against that
-store yet. The boundary term is important for an absolute atmospheric CH4
-inversion: without it, the emissions contribution would be asked to explain
-the background concentration as well as enhancements.
+The configured quick run covers the first week, from ``2020-01-01`` inclusive
+to ``2020-01-08`` exclusive, and averages both sites to four hours. Change only
+``end_date`` to ``2020-02-01`` to use the supplied full month. The ``NESW``
+boundary-condition basis is constructed by OpenGHG Inversions and is not part
+of the companion data bundle. The boundary term is important for an absolute
+atmospheric CH4 inversion: without it, the emissions contribution would be
+asked to explain the background concentration as well as enhancements.
 
 Configuration
 -------------
 
 The packaged example is a complete production-shape configuration validated by
-the test suite. It becomes runnable after the named inputs and boundary basis
-exist in the configured locations:
+the test suite. It is runnable after populating the named companion store:
 
 .. literalinclude:: ../../openghg_inversions/rhime/config/standard_tutorial.ini
    :language: ini
@@ -154,7 +148,7 @@ Controlled clean-checkout task test
 -----------------------------------
 
 Repository contributors can exercise the whole documented preparation, model,
-result, and persistence route without a personal object store:
+result, and persistence route without downloading the Git LFS bundle:
 
 .. code-block:: console
 
@@ -170,9 +164,8 @@ Common failures
 ---------------
 
 ``Search found no data`` or a missing-input error
-   Check the configured store names and search every required data type over
-   the exact time interval before running. Replace the example source value
-   with the metadata value returned by ``search_flux``.
+   Rerun ``python scripts/populate_store.py --verify-only`` in the companion
+   checkout, then check the configured store name and exact time interval.
 
 Coordinate or dimension mismatch
    Observations and footprints must describe the same site/time sampling, and

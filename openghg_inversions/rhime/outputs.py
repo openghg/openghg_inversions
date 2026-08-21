@@ -434,7 +434,12 @@ def make_multisector_rhime_outputs(
             result=result,
             prepared=prepared,
         )
-    outputs: dict[str, Any] = {"inversion_output": inv_out}
+    with timed("rhime.output.multisector_diagnostics"):
+        diagnostics = _make_multisector_flux_diagnostics(inv_out)
+    outputs: dict[str, Any] = {
+        "inversion_output": inv_out,
+        "sector_flux_diagnostics": diagnostics,
+    }
     output_metadata: dict[str, Any] = {"inversion_output_contract": "modern"}
     inv_out_path = _resolve_output_path(
         output_spec.save_inversion_output,
@@ -470,8 +475,6 @@ def make_multisector_rhime_outputs(
                 f"Unsupported multi-sector latest PARIS postprocessing kwargs: {unexpected}."
             )
 
-        with timed("rhime.output.multisector_diagnostics"):
-            diagnostics = _make_multisector_flux_diagnostics(inv_out)
         obs_avg_period = prepared.averaging_period[0] or "0h"
         conc_outs = paris_concentration_outputs(
             inv_out,
@@ -493,7 +496,6 @@ def make_multisector_rhime_outputs(
             {
                 "paris_flux": flux_outs,
                 "paris_concentration": conc_outs,
-                "sector_flux_diagnostics": diagnostics,
             }
         )
         output_metadata["paris_note"] = (
@@ -516,21 +518,24 @@ def make_multisector_rhime_outputs(
                 output_name=output_spec.output_name + "_flux",
                 start_date=run_spec.start_date,
             )
-            diagnostics_path = (
-                Path(output_spec.output_path)
-                / f"{output_spec.output_name}{run_spec.start_date}_sector_flux_diagnostics.nc"
-            )
             write_netcdf_preserving_bounds_attrs(conc_outs, conc_file, unlimited_dims=["index"])
             write_netcdf_preserving_bounds_attrs(flux_outs, flux_file, unlimited_dims=["time"])
-            with timed("rhime.output.multisector_diagnostics_netcdf_write", path=diagnostics_path):
-                diagnostics.to_netcdf(diagnostics_path, mode="w", encoding=ncdf_encoding(diagnostics))
             output_metadata.update(
                 {
                     "paris_concentration_path": str(conc_file),
                     "paris_flux_path": str(flux_file),
-                    "sector_flux_diagnostics_path": str(diagnostics_path),
                 }
             )
+
+    if output_spec.output_path is not None:
+        Path(output_spec.output_path).mkdir(parents=True, exist_ok=True)
+        diagnostics_path = (
+            Path(output_spec.output_path)
+            / f"{output_spec.output_name}{run_spec.start_date}_sector_flux_diagnostics.nc"
+        )
+        with timed("rhime.output.multisector_diagnostics_netcdf_write", path=diagnostics_path):
+            diagnostics.to_netcdf(diagnostics_path, mode="w", encoding=ncdf_encoding(diagnostics))
+        output_metadata["sector_flux_diagnostics_path"] = str(diagnostics_path)
 
     if inv_out_path is not None:
         inv_out_path.parent.mkdir(parents=True, exist_ok=True)

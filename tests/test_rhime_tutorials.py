@@ -43,16 +43,28 @@ def _deterministic_trace(model: pm.Model, variable_names: tuple[str, ...]) -> az
 def _test_store_overrides(
     tac_ch4_data_args: dict[str, Any],
     tmp_path: Path,
-    default_bc_basis_directory: Path,
 ) -> dict[str, Any]:
     """Map public tutorial inputs to the maintained repository fixture store."""
     return {
+        "species": tac_ch4_data_args["species"],
+        "sites": tac_ch4_data_args["sites"],
+        "averaging_period": tac_ch4_data_args["averaging_period"],
+        "start_date": tac_ch4_data_args["start_date"],
+        "end_date": tac_ch4_data_args["end_date"],
+        "inlet": tac_ch4_data_args["inlet"],
+        "instrument": tac_ch4_data_args["instrument"],
         "bc_store": tac_ch4_data_args["bc_store"],
         "obs_store": tac_ch4_data_args["obs_store"],
         "footprint_store": tac_ch4_data_args["footprint_store"],
         "emissions_store": tac_ch4_data_args["emissions_store"],
+        "domain": tac_ch4_data_args["domain"],
+        "fp_model": tac_ch4_data_args["fp_model"],
+        "fp_height": tac_ch4_data_args["fp_height"],
+        "fp_species": None,
+        "met_model": None,
+        "flux_sources": tac_ch4_data_args["emissions_name"],
+        "bc_input": "cams",
         "basis_output_path": str(tmp_path),
-        "bc_basis_directory": str(default_bc_basis_directory),
         "output_path": str(tmp_path),
         "reload_merged_data": False,
     }
@@ -63,14 +75,27 @@ def test_packaged_tutorial_configs_are_complete_and_distinct() -> None:
     standard = params_from_config(_STANDARD_CONFIG)
     multisector = params_from_config(_MULTISECTOR_CONFIG)
 
-    assert standard["flux_sources"] == ["total-ukghg-edgar7"]
+    assert standard["sites"] == ["MHD", "TAC"]
+    assert standard["averaging_period"] == ["4h", "4h"]
+    assert standard["start_date"] == "2020-01-01"
+    assert standard["end_date"] == "2020-01-08"
+    assert standard["inlet"] == ["24m", "185m"]
+    assert standard["fp_height"] == ["10m", "185m"]
+    assert standard["flux_sources"] == ["edgar-v80-anthropogenic"]
+    assert standard["bc_input"] == "camsv22r2_daily"
+    assert "bc_basis_directory" not in standard
+    assert standard["obs_store"] == "inversions_tutorial_data"
     assert standard["draws"] == 50
     assert standard["output_format"] == "inv_out"
     assert standard["use_bc"] is True
-    assert multisector["flux_sources"] == ["anthropogenic-ch4", "wetlands-ch4"]
+    assert multisector["sites"] == ["MHD", "TAC"]
+    assert multisector["flux_sources"] == [
+        "edgar-v80-anthropogenic",
+        "wetcharts-v131-wetlands",
+    ]
     assert multisector["sector_sources"] == {
-        "anthropogenic": "anthropogenic-ch4",
-        "wetlands": "wetlands-ch4",
+        "anthropogenic": "edgar-v80-anthropogenic",
+        "wetlands": "wetcharts-v131-wetlands",
     }
     assert set(multisector["sector_priors"]) == {"anthropogenic", "wetlands"}
     assert multisector["use_bc"] is True
@@ -81,7 +106,6 @@ def test_standard_tutorial_runs_to_persisted_output(
     monkeypatch: pytest.MonkeyPatch,
     tac_ch4_data_args: dict[str, Any],
     tmp_path: Path,
-    default_bc_basis_directory: Path,
 ) -> None:
     """Run the documented standard config through real preparation and model build."""
     monkeypatch.setattr(
@@ -91,7 +115,7 @@ def test_standard_tutorial_runs_to_persisted_output(
     )
     result = run_rhime(
         config_file=_STANDARD_CONFIG,
-        **_test_store_overrides(tac_ch4_data_args, tmp_path, default_bc_basis_directory),
+        **_test_store_overrides(tac_ch4_data_args, tmp_path),
     )
 
     assert result.inv_inputs["H"].dims == ("region", "nmeasure")
@@ -109,7 +133,6 @@ def test_multisector_tutorial_runs_to_sector_diagnostics(
     monkeypatch: pytest.MonkeyPatch,
     tac_ch4_data_args: dict[str, Any],
     tmp_path: Path,
-    default_bc_basis_directory: Path,
 ) -> None:
     """Run the documented multisector config with labelled fixture sectors."""
     monkeypatch.setattr(
@@ -117,7 +140,7 @@ def test_multisector_tutorial_runs_to_sector_diagnostics(
         "sample",
         lambda self, model, **kwargs: _deterministic_trace(model, ("x_ff", "x_ocean")),
     )
-    overrides = _test_store_overrides(tac_ch4_data_args, tmp_path, default_bc_basis_directory)
+    overrides = _test_store_overrides(tac_ch4_data_args, tmp_path)
     overrides.update(
         {
             "flux_sources": ["total-ukghg-edgar7", "total-ukghg-edgar7-shuffled"],
