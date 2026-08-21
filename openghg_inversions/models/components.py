@@ -283,6 +283,25 @@ def apply_linear_sensitivity(
     return cast(TensorVariable, output)
 
 
+def add_linked_linear_component(
+    prepared: PreparedLinearSensitivity,
+    state: TensorVariable,
+    /,
+    *,
+    state_multiplier: TensorVariable | np.ndarray | float | None = None,
+    data_name: str,
+    output_name: str,
+) -> TensorVariable:
+    """Apply a prepared sensitivity to an existing, optionally scaled state."""
+    linked_state = state if state_multiplier is None else state * state_multiplier
+    return apply_linear_sensitivity(
+        prepared,
+        linked_state,
+        data_name=data_name,
+        output_name=output_name,
+    )
+
+
 def add_state_vector(
     activity: ResolvedStateActivity,
     /,

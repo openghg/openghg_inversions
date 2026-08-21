@@ -1,8 +1,7 @@
-"""Focused contracts for linked CO2/O2 preparation, modelling, and sampling."""
+"""Focused contracts for CO2/O2 preparation, modelling, and sampling."""
 
 from __future__ import annotations
 
-import configparser
 import json
 from pathlib import Path
 
@@ -20,10 +19,10 @@ from openghg_inversions.models import (
     restore_inferencedata_coords,
 )
 from openghg_inversions.rhime.co2 import (
-    build_linked_co2_o2_model,
-    linked_co2_o2_prior_forward_mean,
-    prepare_linked_co2_o2_inputs,
-    run_rhime_co2_o2,
+    build_co2_o2_model,
+    co2_o2_prior_forward_mean,
+    prepare_co2_o2_inputs,
+    run_rhime_co2_o2_from_prepared_inputs,
 )
 from openghg_inversions.rhime.sampling import RhimeSampler
 
@@ -96,7 +95,7 @@ def _inputs(*, gathered_state: bool = False) -> dict[str, object]:
         "retained_prior": CorrelatedLognormalPrior(mean, covariance),
         "co2_units": "ppm",
         "o2_units": "per meg",
-        "provenance": {"verification_games_issue": "OPE-77", "fixture": "linked"},
+        "provenance": {"verification_games_issue": "OPE-77", "fixture": "co2_o2"},
     }
 
 
@@ -113,10 +112,11 @@ def _independent_error(prepared, value: float = 0.1) -> xr.DataArray:
 
 
 def _build(prepared, *, state_activity: StateActivity | None = None):
-    return build_linked_co2_o2_model(
+    return build_co2_o2_model(
         observations=prepared.observations,
         prior_forward_mean=prepared.prior_forward_mean,
-        effective_observation_operator=prepared.effective_observation_operator,
+        co2_operator=prepared.co2_operator,
+        o2_operator=prepared.o2_operator,
         aggregation_error=prepared.aggregation_error,
         retained_prior=prepared.retained_prior,
         independent_error_sd=_independent_error(prepared),
@@ -126,7 +126,7 @@ def _build(prepared, *, state_activity: StateActivity | None = None):
 
 def test_stacks_unequal_axes_cross_covariance_and_units() -> None:
     inputs = _inputs()
-    prepared = prepare_linked_co2_o2_inputs(**inputs)
+    prepared = prepare_co2_o2_inputs(**inputs)
 
     assert prepared.observations["tracer"].values.tolist() == ["co2", "co2", "o2", "o2", "o2"]
     assert prepared.observations["observation_units"].values.tolist() == [
@@ -141,13 +141,14 @@ def test_stacks_unequal_axes_cross_covariance_and_units() -> None:
     assert covariance is not None
     np.testing.assert_allclose(covariance.values[:2, 2:], inputs["co2_o2_aggregation_covariance"])
     np.testing.assert_allclose(covariance.values[2:, :2], inputs["co2_o2_aggregation_covariance"].T)
-    assert prepared.effective_observation_operator["tracer_scope"].values.tolist() == [
-        "shared",
-        "shared",
-        "shared",
-        "co2",
-        "o2",
-    ]
+    for operator in (prepared.co2_operator, prepared.o2_operator):
+        assert operator["tracer_scope"].values.tolist() == [
+            "shared",
+            "shared",
+            "shared",
+            "co2",
+            "o2",
+        ]
 
 
 def test_rejects_a_shared_ocean_state() -> None:
@@ -156,11 +157,11 @@ def test_rejects_a_shared_ocean_state() -> None:
     mean = prior.mean.assign_coords(tracer_scope=("state", ["shared", "shared", "shared", "shared", "o2"]))
     inputs["retained_prior"] = CorrelatedLognormalPrior(mean, prior.arithmetic_covariance)
     with pytest.raises(ValueError, match="tracer-specific"):
-        prepare_linked_co2_o2_inputs(**inputs)
+        prepare_co2_o2_inputs(**inputs)
 
 
 def test_model_uses_registered_explicit_arrays_and_joint_covariance() -> None:
-    prepared = prepare_linked_co2_o2_inputs(**_inputs())
+    prepared = prepare_co2_o2_inputs(**_inputs())
     model = _build(prepared)
 
     assert get_coord_registry(model) is not None
@@ -169,10 +170,13 @@ def test_model_uses_registered_explicit_arrays_and_joint_covariance() -> None:
         draws=2,
         random_seed=4,
     )
-    expected = prepared.prior_forward_mean.values + np.einsum(
-        "os,ds->do",
-        prepared.effective_observation_operator.values,
-        scaling - prepared.retained_prior.mean.values,
+    state_anomaly = scaling - prepared.retained_prior.mean.values
+    expected = prepared.prior_forward_mean.values + np.concatenate(
+        (
+            np.einsum("os,ds->do", prepared.co2_operator.values, state_anomaly),
+            np.einsum("os,ds->do", prepared.o2_operator.values, state_anomaly),
+        ),
+        axis=1,
     )
     np.testing.assert_allclose(modelled, expected)
     covariance = prepared.aggregation_error.covariance
@@ -181,7 +185,7 @@ def test_model_uses_registered_explicit_arrays_and_joint_covariance() -> None:
 
 
 def test_fixed_state_changes_prior_closure_and_is_not_sampled() -> None:
-    prepared = prepare_linked_co2_o2_inputs(**_inputs())
+    prepared = prepare_co2_o2_inputs(**_inputs())
     state_dim = prepared.retained_prior.state_dim
     activity = StateActivity(
         active=xr.DataArray(
@@ -195,13 +199,22 @@ def test_fixed_state_changes_prior_closure_and_is_not_sampled() -> None:
             coords={state_dim: prepared.retained_prior.mean[state_dim]},
         ),
     )
-    expected_prior = prepared.prior_forward_mean - 0.25 * (
-        prepared.effective_observation_operator.isel({state_dim: 2}, drop=True)
+    fixed_adjustment = xr.DataArray(
+        np.concatenate(
+            (
+                prepared.co2_operator.isel({state_dim: 2}, drop=True).values,
+                prepared.o2_operator.isel({state_dim: 2}, drop=True).values,
+            )
+        ),
+        dims="observation",
+        coords={"observation": prepared.prior_forward_mean["observation"]},
     )
+    expected_prior = prepared.prior_forward_mean - 0.25 * fixed_adjustment
     xr.testing.assert_allclose(
-        linked_co2_o2_prior_forward_mean(
+        co2_o2_prior_forward_mean(
             prior_forward_mean=prepared.prior_forward_mean,
-            effective_observation_operator=prepared.effective_observation_operator,
+            co2_operator=prepared.co2_operator,
+            o2_operator=prepared.o2_operator,
             retained_prior=prepared.retained_prior,
             state_activity=activity,
         ),
@@ -215,16 +228,19 @@ def test_fixed_state_changes_prior_closure_and_is_not_sampled() -> None:
         random_seed=8,
     )
     np.testing.assert_allclose(scaling[:, 2], 0.75)
-    expected_modelled = prepared.prior_forward_mean.values + np.einsum(
-        "os,ds->do",
-        prepared.effective_observation_operator.values,
-        scaling - prepared.retained_prior.mean.values,
+    state_anomaly = scaling - prepared.retained_prior.mean.values
+    expected_modelled = prepared.prior_forward_mean.values + np.concatenate(
+        (
+            np.einsum("os,ds->do", prepared.co2_operator.values, state_anomaly),
+            np.einsum("os,ds->do", prepared.o2_operator.values, state_anomaly),
+        ),
+        axis=1,
     )
     np.testing.assert_allclose(modelled, expected_modelled)
 
 
 def test_partial_gathered_state_restores_full_multiindex() -> None:
-    prepared = prepare_linked_co2_o2_inputs(**_inputs(gathered_state=True))
+    prepared = prepare_co2_o2_inputs(**_inputs(gathered_state=True))
     state_dim = prepared.retained_prior.state_dim
     activity = StateActivity(
         active=xr.DataArray(
@@ -316,7 +332,7 @@ def _two_site_week_inputs() -> dict[str, object]:
 
 
 def test_two_site_week_runner_persists_labels_roles_units_and_provenance(tmp_path: Path) -> None:
-    prepared = prepare_linked_co2_o2_inputs(**_two_site_week_inputs())
+    prepared = prepare_co2_o2_inputs(**_two_site_week_inputs())
     state_dim = prepared.retained_prior.state_dim
     activity = StateActivity(
         active=xr.DataArray(
@@ -330,7 +346,7 @@ def test_two_site_week_runner_persists_labels_roles_units_and_provenance(tmp_pat
             coords={state_dim: prepared.retained_prior.mean[state_dim]},
         ),
     )
-    trace = run_rhime_co2_o2(
+    trace = run_rhime_co2_o2_from_prepared_inputs(
         prepared_inputs=prepared,
         independent_error_sd=_independent_error(prepared, value=1.0),
         state_activity=activity,
@@ -361,7 +377,7 @@ def test_two_site_week_runner_persists_labels_roles_units_and_provenance(tmp_pat
     assert trace.posterior["source"].values.tolist() == ["GPP", "TER", "FF", "ocean", "ocean"]
     assert trace.constant_data["fixed_independent_error_sd"].values.tolist() == [1.0] * 28
 
-    path = tmp_path / "linked_trace.nc"
+    path = tmp_path / "co2_o2_trace.nc"
     az.to_netcdf(trace, path)
     reloaded = az.from_netcdf(path)
     assert json.loads(reloaded.attrs["rhime_model_metadata"])["provenance"]["period"] == (
@@ -371,13 +387,3 @@ def test_two_site_week_runner_persists_labels_roles_units_and_provenance(tmp_pat
     assert reloaded.constant_data["fixed_independent_error_sd"].attrs["units"] == (
         "mixed; see observation_units coordinate"
     )
-
-
-def test_linked_config_documents_fixed_errors_and_no_inferred_mismatch() -> None:
-    config = configparser.ConfigParser()
-    config.read(Path(__file__).parents[1] / "openghg_inversions" / "rhime" / "config" / "co2_o2.ini")
-    assert config["co2_o2"]["infer_mismatch_amplitude"] == "false"
-    assert config["co2_observations"]["fixed_independent_error_sd"] == "1.0"
-    assert config["o2_observations"]["fixed_independent_error_sd"] == "1.0"
-    assert config["sampling"]["nuts_sampler"] == "numpyro"
-    assert config["sampling"]["target_accept"] == "0.95"

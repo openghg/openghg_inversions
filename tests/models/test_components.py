@@ -8,6 +8,7 @@ from pytensor.compile.mode import Mode
 from openghg_inversions.models.components import (
     LinearComponentResult,
     add_inferpymc_likelihood_component,
+    add_linked_linear_component,
     add_linear_component,
     add_model_data,
     add_offset_component,
@@ -133,6 +134,52 @@ def test_add_linear_component_returns_effective_reparameterised_latent() -> None
     assert "x_latent" in model.named_vars
     assert "x" in model.named_vars
     assert result.latent is model.named_vars["x_latent"]
+
+
+def test_add_linked_linear_component_applies_optional_state_multiplier() -> None:
+    """A linked component accepts absent, scalar, and state-resolved multipliers."""
+    sensitivity = xr.DataArray(
+        [[1.0, 2.0], [3.0, 4.0]],
+        dims=("nmeasure", "state"),
+        coords={"nmeasure": [0, 1], "state": ["a", "b"]},
+    )
+    prepared = prepare_linear_sensitivity(sensitivity)
+
+    with pm.Model() as model:
+        attach_coord_registry(model, CoordRegistry())
+        state = add_model_data(
+            xr.DataArray([2.0, 3.0], dims="state", coords={"state": ["a", "b"]}),
+            "linked_state",
+        )
+        multiplier = add_model_data(
+            xr.DataArray([0.5, 2.0], dims="state", coords={"state": ["a", "b"]}),
+            "emission_ratio",
+        )
+        output = add_linked_linear_component(
+            prepared,
+            state,
+            state_multiplier=multiplier,
+            data_name="linked_sensitivity",
+            output_name="linked_signal",
+        )
+        scalar_output = add_linked_linear_component(
+            prepared,
+            state,
+            state_multiplier=0.5,
+            data_name="linked_sensitivity",
+            output_name="scalar_linked_signal",
+        )
+        unscaled_output = add_linked_linear_component(
+            prepared,
+            state,
+            data_name="linked_sensitivity",
+            output_name="unscaled_linked_signal",
+        )
+
+    assert output is model["linked_signal"]
+    np.testing.assert_allclose(output.eval(), [13.0, 27.0])
+    np.testing.assert_allclose(scalar_output.eval(), [4.0, 9.0])
+    np.testing.assert_allclose(unscaled_output.eval(), [8.0, 18.0])
 
 
 def test_resolve_model_variable_prefers_latent() -> None:

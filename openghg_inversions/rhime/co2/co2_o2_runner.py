@@ -1,34 +1,39 @@
-"""Sampling seam for validated linked CO2/O2 scientific inputs."""
+"""Advanced replay seam for prepared CO2/O2 scientific inputs."""
 
 from __future__ import annotations
 
 import json
 
 import arviz as az
+from dask import compute as dask_compute
+from dask.array import Array as DaskArray
+import numpy as np
 import xarray as xr
 
+from openghg_inversions.array_ops import to_dense
 from openghg_inversions.models import StateActivity
 from openghg_inversions.rhime.builders import RhimeModelBuildResult
 from openghg_inversions.rhime.sampling import RhimeSampler, sample_rhime_model
 
-from .linked_model import build_linked_co2_o2_model
-from .linked_preparation import Co2O2PreparedInputs
+from .co2_o2_model import build_co2_o2_model
+from .co2_o2_preparation import Co2O2PreparedInputs
 
 
-_LINKED_VARIABLE_ROLES = {
+_CO2_O2_VARIABLE_ROLES = {
     "observation": "observed_concentration",
     "concentration": "modelled_concentration",
     "modelled_concentration": "modelled_concentration",
     "pollution_concentration": "modelled_concentration",
     "flux_scale": "flux_scaling",
     "flux_scaling": "flux_scaling",
-    "emissions_sensitivity": "effective_observation_operator",
+    "co2_emissions_sensitivity": "co2_operator",
+    "o2_emissions_sensitivity": "o2_operator",
     "prior_forward_concentration": "prior_forward_concentration",
     "independent_error": "fixed_independent_error_sd",
 }
 
 
-def _default_linked_sampler() -> RhimeSampler:
+def _default_co2_o2_sampler() -> RhimeSampler:
     """Return the sampler settings used by the accepted UOB prototype."""
     return RhimeSampler(
         nuts_sampler="numpyro",
@@ -36,7 +41,36 @@ def _default_linked_sampler() -> RhimeSampler:
     )
 
 
-def _linked_metadata(prepared: Co2O2PreparedInputs) -> dict[str, object]:
+def _materialize_co2_o2_pymc_inputs(
+    *arrays: xr.DataArray,
+) -> tuple[xr.DataArray, ...]:
+    """Materialize related labelled arrays together without changing inputs."""
+    lazy_coordinates = [
+        (array_index, name, coordinate)
+        for array_index, array in enumerate(arrays)
+        for name, coordinate in array.coords.items()
+        if isinstance(coordinate.data, DaskArray)
+    ]
+    computed = dask_compute(
+        *(to_dense(array).data for array in arrays),
+        *(coordinate.data for _, _, coordinate in lazy_coordinates),
+    )
+    dense_arrays = [
+        array.copy(deep=False, data=data)
+        for array, data in zip(arrays, computed[: len(arrays)], strict=True)
+    ]
+    for (array_index, name, coordinate), data in zip(
+        lazy_coordinates,
+        computed[len(arrays) :],
+        strict=True,
+    ):
+        dense_arrays[array_index] = dense_arrays[array_index].assign_coords(
+            {name: coordinate.copy(deep=False, data=data)}
+        )
+    return tuple(dense_arrays)
+
+
+def _co2_o2_metadata(prepared: Co2O2PreparedInputs) -> dict[str, object]:
     """Return JSON-safe scientific identity for the sampled result."""
     channel_units = {
         tracer: str(
@@ -56,7 +90,7 @@ def _linked_metadata(prepared: Co2O2PreparedInputs) -> dict[str, object]:
     }
 
 
-def _annotate_linked_trace(
+def _annotate_co2_o2_trace(
     trace: az.InferenceData,
     *,
     built: RhimeModelBuildResult,
@@ -92,10 +126,8 @@ def _annotate_linked_trace(
             group[variable].attrs["units"] = "mixed; see observation_units coordinate"
         for variable in state_variables & set(group.variables):
             group[variable].attrs["units"] = "dimensionless flux scale"
-        if "effective_observation_operator" in group:
-            group["effective_observation_operator"].attrs["units"] = (
-                "observation_units per dimensionless flux scale"
-            )
+        for variable in {"co2_operator", "o2_operator"} & set(group.variables):
+            group[variable].attrs["units"] = "observation_units per dimensionless flux scale"
         if "aggregation_error_covariance" in group:
             group["aggregation_error_covariance"].attrs["units"] = "observation_units * observation_units_cov"
         group.attrs["rhime_recipe"] = "co2_o2"
@@ -103,24 +135,46 @@ def _annotate_linked_trace(
     return trace
 
 
-def run_rhime_co2_o2(
+def run_rhime_co2_o2_from_prepared_inputs(
     *,
     prepared_inputs: Co2O2PreparedInputs,
     independent_error_sd: xr.DataArray,
     state_activity: StateActivity | None = None,
     sampler: RhimeSampler | None = None,
 ) -> az.InferenceData:
-    """Build and sample the linked model from validated scientific inputs.
+    """Build and sample the CO2/O2 model from prepared scientific inputs.
+
+    This advanced replay seam begins after channel preparation. The public
+    ``run_rhime_co2_o2`` name is reserved for the future complete production
+    recipe, including acquisition, preparation, materialization, and outputs.
 
     The fixed independent channel error is required and remains labelled. Run
     policy, such as the UOB prototype's one ppm value for both channels, belongs
     to the caller rather than the model API.
     """
     prepared = prepared_inputs
-    model = build_linked_co2_o2_model(
-        observations=prepared.observations,
-        prior_forward_mean=prepared.prior_forward_mean,
-        effective_observation_operator=prepared.effective_observation_operator,
+    (
+        observations,
+        prior_forward_mean,
+        co2_operator,
+        o2_operator,
+        independent_error_sd,
+    ) = _materialize_co2_o2_pymc_inputs(
+        prepared.observations,
+        prepared.prior_forward_mean,
+        prepared.co2_operator,
+        prepared.o2_operator,
+        independent_error_sd,
+    )
+    if not np.isfinite(independent_error_sd.data).all() or (
+        independent_error_sd.data <= 0
+    ).any():
+        raise ValueError("independent_error_sd must contain only finite positive values.")
+    model = build_co2_o2_model(
+        observations=observations,
+        prior_forward_mean=prior_forward_mean,
+        co2_operator=co2_operator,
+        o2_operator=o2_operator,
         aggregation_error=prepared.aggregation_error,
         retained_prior=prepared.retained_prior,
         independent_error_sd=independent_error_sd,
@@ -128,11 +182,11 @@ def run_rhime_co2_o2(
     )
     built = RhimeModelBuildResult(
         model=model,
-        variable_roles=_LINKED_VARIABLE_ROLES,
-        metadata=_linked_metadata(prepared),
+        variable_roles=_CO2_O2_VARIABLE_ROLES,
+        metadata=_co2_o2_metadata(prepared),
     )
     trace = sample_rhime_model(
         built,
-        _default_linked_sampler() if sampler is None else sampler,
+        _default_co2_o2_sampler() if sampler is None else sampler,
     )
-    return _annotate_linked_trace(trace, built=built)
+    return _annotate_co2_o2_trace(trace, built=built)
