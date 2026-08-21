@@ -109,42 +109,56 @@ def scale_satellite_boundary_sensitivity_to_column_signal(
     *,
     sites: Sequence[str],
     platform: Sequence[str | None],
+    observation_max_level: Sequence[int | None],
+    footprint_max_level: Sequence[int | None],
 ) -> xr.Dataset:
-    """Scale satellite boundary sensitivity into corrected-column space.
+    """Scale satellite boundary sensitivity only for inconsistent vertical extents.
 
     Args:
         inputs: Gathered inversion inputs containing ``H_bc`` and observation
             arrays. The dataset is borrowed and never mutated.
         sites: Site labels in the same order as ``platform``.
         platform: Platform values aligned to ``sites``.
+        observation_max_level: Column-processing levels aligned to ``sites``.
+        footprint_max_level: Footprint vertical extents aligned to ``sites``.
 
     Returns:
-        The unchanged borrowed dataset when scaling is inapplicable, otherwise
-        a shallow copy whose satellite ``H_bc`` rows are explicitly scaled and
-        carry transform provenance.
+        The unchanged borrowed dataset when scaling is inapplicable or the
+        observation and footprint levels match. Otherwise, a shallow copy
+        whose inconsistent satellite ``H_bc`` rows retain the legacy scaling
+        and carry transform provenance.
     """
     required = {"H_bc", "mf", "mf_prior_factor", "mf_prior_upper_level_factor", "site"}
     if not required <= set(inputs.variables):
         return inputs
-    satellite_sites = [
+    inconsistent_satellite_sites = [
         site
-        for site, value in zip(sites, platform, strict=True)
-        if value is not None and "satellite" in str(value).lower()
+        for site, value, obs_level, fp_level in zip(
+            sites,
+            platform,
+            observation_max_level,
+            footprint_max_level,
+            strict=True,
+        )
+        if value is not None
+        and "satellite" in str(value).lower()
+        and not (obs_level is not None and fp_level is not None and obs_level == fp_level)
     ]
-    if not satellite_sites:
+    if not inconsistent_satellite_sites:
         return inputs
-    satellite_mask = inputs["site"].astype(str).isin(satellite_sites)
+    satellite_mask = inputs["site"].astype(str).isin(inconsistent_satellite_sites)
     if not bool(satellite_mask.any()):
         return inputs
 
     raw_column = inputs["mf"] + inputs["mf_prior_factor"] + inputs["mf_prior_upper_level_factor"]
-    # Retain the released workaround until retrieval exposes the information
-    # needed for an exact corrected-column transform.
+    # Retain the released workaround only for footprints whose vertical extent
+    # is missing or inconsistent with the observation processing level.
     scale = xr.where(raw_column > 0, inputs["mf"] / raw_column, 1.0).clip(min=0.0, max=1.0)
     result = inputs.copy(deep=False)
     result["H_bc"] = inputs["H_bc"] * scale.where(satellite_mask, 1.0)
     result["H_bc"].attrs = dict(inputs["H_bc"].attrs)
     result["H_bc"].attrs["satellite_column_bc_scale"] = (
-        "Applied to satellite rows using mf / (mf + mf_prior_factor + mf_prior_upper_level_factor)."
+        "Applied to satellite rows with missing or inconsistent max_level metadata using "
+        "mf / (mf + mf_prior_factor + mf_prior_upper_level_factor)."
     )
     return result
