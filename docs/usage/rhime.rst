@@ -794,10 +794,13 @@ labels, they must exactly equal the primary state labels in the same order.
 An unlabelled NumPy covariance is interpreted in the arithmetic mean's state
 order. Reordered inputs are rejected rather than interpreted positionally.
 
-The initial public component is intended for custom model builders. Built-in
-``RhimeModelSpec`` integration for a gathered joint state and compatibility
-per-sector aliases is follow-up work; current ``SectorSpec`` priors remain
-independent.
+The built-in CO2 recipe uses this component for one gathered correlated state.
+Promotion into standard and multisector ``RhimeModelSpec`` recipes remains
+follow-up work in `OPE-78
+<https://linear.app/openghg-inversions/issue/OPE-78/promote-shared-covg-components-into-standard-and-multisector-rhime>`_;
+reusable source, sector, and state selection is tracked in `OPE-80
+<https://linear.app/openghg-inversions/issue/OPE-80/extract-source-sector-and-state-selection-from-compiler-plans>`_.
+Current ``SectorSpec`` priors remain independent.
 
 Basis-Aware Prior Standard Deviations
 -------------------------------------
