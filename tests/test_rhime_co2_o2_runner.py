@@ -53,7 +53,14 @@ def test_materializes_related_arrays_in_one_shared_graph_without_mutation() -> N
 
 @pytest.mark.parametrize("value", [0.0, np.nan])
 def test_replay_rejects_nonpositive_or_nonfinite_independent_error(value: float) -> None:
-    array = xr.DataArray([1.0], dims="observation")
+    array = xr.DataArray(
+        [1.0],
+        dims="observation",
+        coords={
+            "observation": [0],
+            "observation_units": ("observation", ["ppm"]),
+        },
+    )
     prepared = SimpleNamespace(
         observations=array,
         fixed_prior_contribution=array,
@@ -67,4 +74,30 @@ def test_replay_rejects_nonpositive_or_nonfinite_independent_error(value: float)
         run_rhime_co2_o2_from_prepared_inputs(
             prepared_inputs=prepared,
             independent_error_sd=array.copy(data=[value]),
+        )
+
+
+def test_replay_rejects_mismatched_independent_error_labels_or_units() -> None:
+    observations = xr.DataArray(
+        [1.0],
+        dims="observation",
+        coords={
+            "observation": [0],
+            "observation_units": ("observation", ["ppm"]),
+        },
+    )
+    prepared = SimpleNamespace(observations=observations)
+
+    with pytest.raises(ValueError, match="dimension and labels"):
+        run_rhime_co2_o2_from_prepared_inputs(
+            prepared_inputs=prepared,
+            independent_error_sd=observations.assign_coords(observation=[1]),
+        )
+
+    with pytest.raises(ValueError, match="observation_units"):
+        run_rhime_co2_o2_from_prepared_inputs(
+            prepared_inputs=prepared,
+            independent_error_sd=observations.assign_coords(
+                observation_units=("observation", ["per meg"])
+            ),
         )

@@ -12,6 +12,7 @@ from openghg_inversions.models import (
     PreparedLinearSensitivity,
     ResolvedStateActivity,
     StateActivity,
+    add_coherent_affine_component,
     add_correlated_lognormal_state_with_activity,
     add_linked_linear_component,
     add_model_data,
@@ -26,11 +27,33 @@ from openghg_inversions.models.likelihoods import (
 from openghg_inversions.observation_error import AggregationError
 
 
-def _prepare_channel_sensitivities(
+def _prepare_shared_state_channel_sensitivities(
     co2_operator: xr.DataArray,
     o2_operator: xr.DataArray,
-) -> tuple[PreparedLinearSensitivity, PreparedLinearSensitivity]:
-    """Inspect both channels once and retain their independent output axes."""
+) -> tuple[
+    PreparedLinearSensitivity,
+    PreparedLinearSensitivity,
+    PreparedLinearSensitivity,
+]:
+    """Prepare two unequal observation axes against one shared state mask.
+
+    The channel operators are temporarily row-stacked so zero-column removal
+    sees their joint state support. A state is removed only when its column is
+    zero in both channels. The two returned channel sensitivities therefore
+    share one removal map and one retained-state coordinate, while their
+    original, potentially unequal CO2 and O2 observation axes are restored.
+
+    Args:
+        co2_operator: CO2 sensitivity with its channel observation dimension
+            first and the shared retained-state dimension second.
+        o2_operator: O2 sensitivity with its distinct channel observation
+            dimension first and the same retained-state dimension second.
+
+    Returns:
+        The prepared joint sensitivity followed by prepared CO2 and O2
+        sensitivities. The joint value owns the shared zero-column mask; the
+        channel values retain their original row dimensions and labels.
+    """
     co2_dim = str(co2_operator.dims[0])
     o2_dim = str(o2_operator.dims[0])
     joint_dim = "co2_o2_observation"
@@ -57,6 +80,7 @@ def _prepare_channel_sensitivities(
     )
     o2_sensitivity = o2_sensitivity.assign_coords({o2_dim: o2_operator[o2_dim]})
     return (
+        joint,
         PreparedLinearSensitivity(co2_sensitivity, joint.removed, co2_dim),
         PreparedLinearSensitivity(o2_sensitivity, joint.removed, o2_dim),
     )
@@ -79,41 +103,57 @@ def co2_o2_prior_forward_mean(
     state_activity: StateActivity | None = None,
     output_dim: str = "observation",
 ) -> xr.DataArray:
-    """Return the affine model evaluated at the resolved prior state."""
-    co2_sensitivity, _ = _prepare_channel_sensitivities(co2_operator, o2_operator)
-    activity = _resolve_activity(co2_sensitivity, state_activity)
+    """Evaluate the coherent affine CO2/O2 model at its resolved prior state.
+
+    Args:
+        fixed_prior_contribution: Joint coherent-reduction intercept on
+            ``output_dim``.
+        co2_operator: CO2 retained-state operator with its own observation
+            dimension and the retained-prior state dimension.
+        o2_operator: O2 retained-state operator with a distinct observation
+            dimension and the same retained-prior state dimension.
+        retained_prior: Correlated retained-state arithmetic moments.
+        state_activity: Optional labelled policy fixing or activating retained
+            states. Structural zero columns are inactive in both channels.
+        output_dim: Dimension of the returned joint observation vector.
+
+    Returns:
+        The labelled joint prior-forward concentration
+        ``fixed_prior_contribution + H_joint @ prior_state``.
+
+    Raises:
+        ValueError: If the channel operators cannot form one shared-state
+            sensitivity or ``state_activity`` does not align with that state.
+    """
+    joint_sensitivity, _, _ = _prepare_shared_state_channel_sensitivities(
+        co2_operator,
+        o2_operator,
+    )
+    activity = _resolve_activity(joint_sensitivity, state_activity)
     prior_state = xr.where(
         activity.active,
         retained_prior.mean,
         activity.fixed_value,
     )
-    nco2 = co2_operator.sizes[co2_operator.dims[0]]
-    contributions = []
-    for operator, selection in (
-        (co2_operator, slice(0, nco2)),
-        (o2_operator, slice(nco2, None)),
-    ):
-        channel_dim = str(operator.dims[0])
-        contribution = xr.dot(
-            operator,
-            prior_state,
-            dim=retained_prior.state_dim,
-        ).rename({channel_dim: output_dim})
-        contribution = contribution.assign_coords(
-            {
-                output_dim: fixed_prior_contribution[output_dim].isel(
-                    {output_dim: selection}
-                )
-            }
-        )
-        contributions.append(contribution)
-    joint_contribution = xr.concat(contributions, dim=output_dim)
+    state_dim = retained_prior.state_dim
+    sensitivity_state_dim = str(joint_sensitivity.sensitivity.dims[1])
+    retained_state = prior_state.isel({state_dim: joint_sensitivity.retained_indices})
+    if sensitivity_state_dim != state_dim:
+        retained_state = retained_state.rename({state_dim: sensitivity_state_dim})
+    joint_contribution = xr.dot(
+        joint_sensitivity.sensitivity,
+        retained_state,
+        dim=sensitivity_state_dim,
+    ).rename({joint_sensitivity.output_dim: output_dim})
+    joint_contribution = joint_contribution.assign_coords(
+        {output_dim: fixed_prior_contribution[output_dim]}
+    )
     return (fixed_prior_contribution + joint_contribution).rename(
         "prior_forward_concentration"
     )
 
 
-def add_co2_o2_affine_signal(
+def _add_co2_o2_affine_signal(
     co2_sensitivity: PreparedLinearSensitivity,
     o2_sensitivity: PreparedLinearSensitivity,
     state: TensorVariable,
@@ -123,32 +163,30 @@ def add_co2_o2_affine_signal(
     output_dim: str,
 ) -> TensorVariable:
     """Add the affine CO2/O2 signal from one shared flux-scaling state."""
-    fixed_prior_data = add_model_data(
-        fixed_prior_contribution,
-        "fixed_prior_contribution",
-    )
     co2_signal = add_linked_linear_component(
         co2_sensitivity,
         state,
         data_name="co2_operator",
         output_name="co2_flux_contribution",
     )
-    # Preparation declares that this operator already contains signed,
-    # source-resolved O2:CO2 oxidation ratios; do not multiply them again.
+    # Preparation declares that this operator already contains the fixed,
+    # signed O2:CO2 oxidation ratios; do not multiply them again.
     o2_signal = add_linked_linear_component(
         o2_sensitivity,
         state,
         data_name="o2_operator",
         output_name="o2_flux_contribution",
     )
-    return pm.Deterministic(
-        "modelled_concentration",
-        fixed_prior_data + pt.concatenate((co2_signal, o2_signal)),
-        dims=output_dim,
+    joint_signal = pt.concatenate((co2_signal, o2_signal))
+    return add_coherent_affine_component(
+        fixed_prior_contribution,
+        joint_signal,
+        output_name="modelled_concentration",
+        output_dim=output_dim,
     )
 
 
-def add_co2_o2_fixed_error_likelihood(
+def _add_co2_o2_fixed_error_likelihood(
     observations: xr.DataArray,
     modelled_concentration: TensorVariable,
     /,
@@ -186,17 +224,63 @@ def build_co2_o2_model(
     state_activity: StateActivity | None = None,
     output_dim: str = "observation",
 ) -> pm.Model:
-    """Build separate CO2/O2 signals and one fixed-error joint likelihood.
+    """Build the shared-state CO2/O2 affine model and fixed-error likelihood.
 
-    All scientific inputs are explicit labelled values. The UOB prototype
-    supplies one ppm as ``independent_error_sd`` for each channel; this builder
-    does not encode that run policy and does not infer a mismatch amplitude.
+    ``fixed_prior_contribution``, both channel operators, the retained prior,
+    and every block of ``aggregation_error`` must be products of the same
+    coherent reduction. CO2 and O2 retain separate operator row axes because
+    their numeric units are declared independently for every row. The
+    Verification Games replay uses ppm for both channels; other scientific O2
+    products may, for example, use per meg. Operator rows must already be
+    expressed in their declared channel units per dimensionless flux scaling;
+    covariance blocks use the corresponding row-by-column unit products,
+    including the CO2/O2 cross-covariance.
+
+    The O2 operator unconditionally embeds the fixed, signed O2-per-CO2
+    oxidation ratios declared by CO2/O2 preparation. This builder therefore
+    passes the raw shared state to the linked-sensitivity component and must
+    not multiply those ratios again. A recipe using a ratio-free O2 operator
+    would instead visibly construct ``o2_state = oxidation_ratio * co2_state``
+    immediately before passing ``o2_state`` to that component.
+
+    The prepared-input runner validates the external ``independent_error_sd``
+    as finite and positive. Direct custom callers own that check, exact label
+    alignment, row-unit consistency, coherent covariance provenance, and the
+    embedded-ratio contract before calling this lower-level builder.
+
+    Args:
+        observations: Joint CO2-then-O2 observation vector on ``output_dim``,
+            with row-wise tracer and unit coordinates.
+        fixed_prior_contribution: Joint coherent affine intercept on the same
+            observation axis and in the corresponding row units.
+        co2_operator: CO2 operator with its channel observation axis first and
+            the retained-prior state axis second.
+        o2_operator: O2 operator with its distinct channel observation axis
+            first and the same state axis; its shared-state columns already
+            embed the fixed oxidation ratios.
+        aggregation_error: Joint fixed aggregation covariance, including its
+            cross-channel block.
+        retained_prior: Correlated arithmetic-moment prior for the one state
+            vector shared by both channels.
+        independent_error_sd: Joint per-row independent standard deviations in
+            each observation row's native units.
+        state_activity: Optional labelled policy fixing or activating retained
+            states.
+        output_dim: Joint observation dimension used by the likelihood.
+
+    Returns:
+        A registered PyMC model containing the shared state, separate channel
+        linear signals, coherent affine intercept, and joint Gaussian
+        likelihood.
+
+    Raises:
+        ValueError: If shared-state sensitivity preparation, activity
+            resolution, or registered coordinate alignment fails.
     """
-    co2_sensitivity, o2_sensitivity = _prepare_channel_sensitivities(
-        co2_operator,
-        o2_operator,
+    joint_sensitivity, co2_sensitivity, o2_sensitivity = (
+        _prepare_shared_state_channel_sensitivities(co2_operator, o2_operator)
     )
-    activity = _resolve_activity(co2_sensitivity, state_activity)
+    activity = _resolve_activity(joint_sensitivity, state_activity)
 
     with registered_model() as model:
         state = add_correlated_lognormal_state_with_activity(
@@ -204,14 +288,14 @@ def build_co2_o2_model(
             retained_prior,
             var_name="flux_scaling",
         ).state
-        modelled = add_co2_o2_affine_signal(
+        modelled = _add_co2_o2_affine_signal(
             co2_sensitivity,
             o2_sensitivity,
             state,
             fixed_prior_contribution=fixed_prior_contribution,
             output_dim=output_dim,
         )
-        add_co2_o2_fixed_error_likelihood(
+        _add_co2_o2_fixed_error_likelihood(
             observations,
             modelled,
             independent_error_sd=independent_error_sd,

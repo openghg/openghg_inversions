@@ -20,7 +20,7 @@ from .co2_o2_preparation import Co2O2PreparedInputs
 
 
 _CO2_O2_VARIABLE_ROLES = {
-    "observation": "observed_concentration",
+    "observation": "y",
     "concentration": "y",
     "modelled_concentration": "modelled_concentration",
     "pollution_concentration": "modelled_concentration",
@@ -68,6 +68,35 @@ def _materialize_co2_o2_pymc_inputs(
             {name: coordinate.copy(deep=False, data=data)}
         )
     return tuple(dense_arrays)
+
+
+def _validate_independent_error_labels(
+    observations: xr.DataArray,
+    independent_error_sd: xr.DataArray,
+) -> None:
+    """Require the external error vector to use the joint row labels and units."""
+    observation_dim = str(observations.dims[0])
+    if (
+        independent_error_sd.dims != (observation_dim,)
+        or observation_dim not in independent_error_sd.indexes
+        or not independent_error_sd.indexes[observation_dim].equals(
+            observations.indexes[observation_dim]
+        )
+    ):
+        raise ValueError(
+            "independent_error_sd must use the prepared observation dimension and labels."
+        )
+    if (
+        "observation_units" not in independent_error_sd.coords
+        or independent_error_sd["observation_units"].dims != (observation_dim,)
+        or not np.array_equal(
+            independent_error_sd["observation_units"].values,
+            observations["observation_units"].values,
+        )
+    ):
+        raise ValueError(
+            "independent_error_sd observation_units must match the prepared observations."
+        )
 
 
 def _co2_o2_metadata(prepared: Co2O2PreparedInputs) -> dict[str, object]:
@@ -132,7 +161,17 @@ def _annotate_co2_o2_trace(
             if variable in group:
                 group[variable].attrs["rhime_scientific_roles"] = json.dumps(sorted(roles))
         for variable in concentration_variables & set(group.variables):
-            group[variable].attrs["units"] = "mixed; see observation_units coordinate"
+            unit_coordinate = group[variable].coords.get("observation_units")
+            units = (
+                np.unique(unit_coordinate.values.astype(str))
+                if unit_coordinate is not None
+                else np.array([], dtype=str)
+            )
+            group[variable].attrs["units"] = (
+                str(units[0])
+                if units.size == 1
+                else "mixed; see observation_units coordinate"
+            )
         for variable in state_variables & set(group.variables):
             group[variable].attrs["units"] = "dimensionless flux scale"
         for variable in {"co2_operator", "o2_operator"} & set(group.variables):
@@ -160,8 +199,41 @@ def run_rhime_co2_o2_from_prepared_inputs(
     The fixed independent channel error is required and remains labelled. Run
     policy, such as the UOB prototype's one ppm value for both channels, belongs
     to the caller rather than the model API.
+
+    Args:
+        prepared_inputs: Validated preparation handoff containing joint
+            observations and affine intercept on ``("observation",)``, separate
+            channel operators on their native observation axes and the retained
+            state axis, a dense joint aggregation covariance, retained prior,
+            ratio provenance, units, labels, and scientific provenance.
+        independent_error_sd: Positive finite fixed standard deviations on
+            ``("observation",)``. Labels and ``observation_units`` must match
+            ``prepared_inputs.observations`` exactly. These values remain fixed
+            data and are not an inferred mismatch amplitude.
+        state_activity: Optional labelled active/fixed policy on the retained
+            state dimension. Omitted states use the model's structural activity
+            policy.
+        sampler: Optional RHIME sampler configuration. The accepted CO2/O2
+            NumPyro defaults are used when omitted.
+
+    Returns:
+        Restored inference data with observed concentrations in
+        ``observed_data["y"]``, fixed independent standard deviations in
+        ``constant_data["fixed_independent_error_sd"]``, labelled coordinates,
+        data-dependent concentration units, scientific-role annotations, and
+        JSON model metadata.
+
+    Raises:
+        ValueError: If the fixed independent standard deviation is non-finite,
+            non-positive, or fails the model's observation-label/unit contract.
+            Label, state, covariance, and activity errors from model
+            construction are also propagated.
     """
     prepared = prepared_inputs
+    _validate_independent_error_labels(
+        prepared.observations,
+        independent_error_sd,
+    )
     (
         observations,
         fixed_prior_contribution,
