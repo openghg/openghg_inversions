@@ -41,3 +41,10 @@ excursion.
 
 Tabular results: [diagnostics](hfc134a_likelihood_seed637_diagnostics.csv) and
 [per-chain summary](hfc134a_likelihood_seed637_chain_summary.csv).
+
+The third panel is a same-seed PEFO sensitivity which narrows the emissions
+LogNormal arithmetic standard deviation from 2 to 1. It also fails: maximum BC
+R-hat 1.917, minimum bulk ESS 5.51, and 130.31 ppt maximum between-chain
+baseline disagreement. All four chains have substantially worse summed log
+likelihood than the healthy chain in the original PEFO control. Narrowing the
+emissions prior therefore does not remove the PEFO pathology for this seed.
