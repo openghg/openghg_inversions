@@ -1,0 +1,9 @@
+old_name,new_name,shape,array_equal,max_abs_difference
+hx,hx,"(969, 200)",True,0.0
+hbc,hbc,"(969, 148)",True,0.0
+Y,Y,"(969,)",True,0.0
+error,error,"(969,)",True,0.0
+min_error,min_error,"(969,)",True,0.0
+site_indicator,sigma_site_index,"(969,)",True,0.0
+sigma_freq_index,sigma_period_index,"(969,)",True,0.0
+hx zero columns,x inactive states,"(969, 200)",True,0.0

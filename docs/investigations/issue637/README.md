@@ -48,3 +48,26 @@ R-hat 1.917, minimum bulk ESS 5.51, and 130.31 ppt maximum between-chain
 baseline disagreement. All four chains have substantially worse summed log
 likelihood than the healthy chain in the original PEFO control. Narrowing the
 emissions prior therefore does not remove the PEFO pathology for this seed.
+
+## Same-seed comparison across merge `328cf1c`
+
+![Pre-merge and post-merge baselines by chain](hfc134a_merge_seed637_baseline_by_chain.png)
+
+Exact `456afa3` (pre-merge) and `90a71c4` (post-merge) source, explicit
+NumPyro, GCC 12.3, random seed 637, four chains, and 30,000 retained draws.
+Both revisions fail: maximum BC R-hat is 2.095 and 2.402 respectively, and
+maximum between-chain posterior-baseline disagreement is 106.37 and 106.26
+ppt. Chains 0 and 2 enter nearly identical high-BC/high-sigma states on both
+revisions; chain 3 is healthy before the merge but failed afterward.
+
+Observations, errors, minimum errors, `H`, `H_bc`, site/month indices, and the
+zero-sensitivity mask are exactly equal. The model graph changed: the legacy
+model samples all 200 emissions states, while merged RHIME fixes 60
+zero-sensitivity states and samples 140 active states. This changes NumPyro's
+initialized position and warm-up trajectory even under the same top-level
+seed, but the pre-merge failure shows that the pathological PEFO geometry did
+not originate in the merge.
+
+Tabular results: [diagnostics](hfc134a_merge_seed637_diagnostics.csv),
+[per-chain summary](hfc134a_merge_seed637_chain_summary.csv), and
+[input comparison](hfc134a_merge_seed637_input_comparison.csv).
