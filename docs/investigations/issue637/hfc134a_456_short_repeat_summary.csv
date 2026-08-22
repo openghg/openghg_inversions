@@ -1,0 +1,11 @@
+repeat,seed,chain0_spike,any_chain_spike,number_spiked_chains,any_feb2026_spike,total_divergences
+0,637100,True,True,4,False,0
+1,637101,False,False,0,False,0
+2,637102,True,True,3,True,32
+3,637103,False,False,0,False,0
+4,637104,False,True,1,True,2
+5,637105,False,True,1,False,0
+6,637106,False,True,2,True,1
+7,637107,False,True,1,True,4
+8,637108,True,True,2,False,0
+9,637109,False,True,1,False,2

@@ -71,3 +71,27 @@ not originate in the merge.
 Tabular results: [diagnostics](hfc134a_merge_seed637_diagnostics.csv),
 [per-chain summary](hfc134a_merge_seed637_chain_summary.csv), and
 [input comparison](hfc134a_merge_seed637_input_comparison.csv).
+
+## Ten short pre-merge repeats
+
+![Ten short pre-merge repeat spike summary](hfc134a_456_short_repeat_spikes.png)
+
+Exact `456afa3`, explicit NumPyro, GCC 12.3, four chains, 1,000 tuning plus
+1,000 retained draws, and ten recorded seeds (`637100`--`637109`). A chain is
+classified as spiked when a calendar month's smaller site-level median of
+posterior-mean baseline minus observation exceeds 50 ppt at BCOB and MCOH.
+This is an observation-space diagnostic in ppt, not a scientific posterior
+acceptance test.
+
+Chain 0 spiked in 3/10 repeats; at least one chain spiked in 8/10. Across all
+40 chains, 15 spiked. Four repeats contained the February 2026 spike, including
+one chain-0 occurrence. Fourteen of 15 winning spike months were December 2025,
+January 2026, or February 2026. Thus chain-first output exposes the failure
+intermittently, while the underlying multi-chain problem occurs in most short
+runs and is strongly concentrated at the end of the inversion window.
+
+Tabular results: [repeat summary](hfc134a_456_short_repeat_summary.csv),
+[per-chain summary](hfc134a_456_short_chain_summary.csv), and
+[diagnostics](hfc134a_456_short_diagnostics.csv). The
+[monthly scores](hfc134a_456_short_monthly_scores.csv) contain the plotted
+observation-space statistic for every repeat, chain, site pair, and month.
