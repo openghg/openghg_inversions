@@ -21,3 +21,23 @@ Deterministic posterior mean concentration prediction, in ppt, for each
 archived product and the four-chain pooled reproduction summaries. Pooling is
 shown only to visualize the disagreement; these nonconverged traces are not
 scientifically valid for pooled publication.
+
+## Seeded likelihood control
+
+![Seeded PEFO and additive-sigma baselines by chain](hfc134a_likelihood_seed637_baseline_by_chain.png)
+
+Exact `90a71c4` source, identical serialized inputs, NumPyro, GCC 12.3,
+four chains, 30,000 retained draws, and random seed 637. The PEFO arm retains
+the production fractional-error likelihood and `Uniform(0, 0.1)` sigma. The
+additive arm uses response-independent absolute sigma with a monthly,
+site-specific `HalfNormal(5 ppt)` prior.
+
+PEFO reproduced the failure: maximum BC R-hat 2.402, minimum bulk ESS 4.85,
+and maximum between-chain baseline disagreement 106.26 ppt. The additive arm
+had maximum R-hat 1.00021 across x/BC/sigma, minimum bulk ESS 39,598, and only
+0.065 ppt maximum baseline disagreement. The black high observation in the
+additive BCOB panel is a real isolated observation, not a modelled-baseline
+excursion.
+
+Tabular results: [diagnostics](hfc134a_likelihood_seed637_diagnostics.csv) and
+[per-chain summary](hfc134a_likelihood_seed637_chain_summary.csv).
