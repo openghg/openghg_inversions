@@ -211,6 +211,32 @@ y_obs = multivariate_normal(
 )
 ```
 
+### Fixed and uncertain cross-channel couplings
+
+A fixed oxidative ratio or other cross-channel coupling is a labelled
+scientific input. Its contract must state its units, direction, sign,
+coordinate scope, alignment, and provenance. A prepared operator may embed a
+fixed coupling, but its metadata and the consuming recipe must say so
+explicitly to prevent the coupling from being applied twice or omitted.
+
+An uncertain coupling is an explicit sampled parameter in the concrete model
+recipe, not metadata attached to a fixed operator. For example, a latent
+O2-per-CO2 ratio requires a ratio-free O2 operator and a visible graph of the
+form:
+
+```text
+oxidative_ratio = positive_parameter(...)
+o2_contribution = H_o2_ratio_free @ (-oxidative_ratio * x_shared)
+```
+
+This is bilinear in the ratio and shared flux state. Preparation must therefore
+not silently reuse an operator or aggregation covariance derived for a fixed
+ratio. Any covariance held fixed under the uncertain coupling must have a
+scientific justification and be recorded as an approximation. Configuration
+may offer a recipe-owned choice between a fixed value and a prior
+specification; this does not require a generic parameter graph or nested-prior
+language.
+
 Keep the first model literal and local: shared sources and tracer-specific
 sources should be plainly visible rather than normalized through a generic
 multigas schema. A `Co2O2PreparedInputs`-style handoff is justified because it

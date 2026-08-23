@@ -648,8 +648,10 @@ sector roles use keys such as ``flux_scale:FF`` and
 ``pm.Model``; the corresponding ``*_model_result`` wrappers add the runner and
 output metadata contract.
 
-The more general semantic model and observation-channel representation remains
-tracked in `issue #528 <https://github.com/openghg/openghg_inversions/issues/528>`_.
+Structurally distinct observation-channel models belong in readable named
+recipes with concrete builders. The active design guidance is
+:doc:`../development/rhime_model_development`; the retired semantic-model work
+in issue #528 remains research evidence rather than production architecture.
 
 Customization boundaries
 ------------------------
