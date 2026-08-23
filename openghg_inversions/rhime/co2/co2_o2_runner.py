@@ -25,8 +25,8 @@ _CO2_O2_VARIABLE_ROLES = {
     "modelled_concentration": "modelled_concentration",
     "flux_scale": "flux_scaling",
     "flux_scaling": "flux_scaling",
-    "co2_emissions_sensitivity": "co2_operator",
-    "o2_emissions_sensitivity": "o2_operator",
+    "emissions_sensitivity": "co2_o2_operator",
+    "flux_contribution": "co2_o2_flux_contribution",
     "coherent_prior_contribution": "fixed_prior_contribution",
     "independent_error": "fixed_independent_error_sd",
 }
@@ -81,6 +81,8 @@ def _validate_independent_error_labels(
         or not independent_error_sd.indexes[observation_dim].equals(
             observations.indexes[observation_dim]
         )
+        or independent_error_sd.indexes[observation_dim].names
+        != observations.indexes[observation_dim].names
     ):
         raise ValueError(
             "independent_error_sd must use the prepared observation dimension and labels."
@@ -94,24 +96,18 @@ def _validate_independent_error_labels(
         )
 
 
-def _validate_real_finite_values(
-    array: xr.DataArray,
-    *,
-    name: str,
-    positive: bool = False,
-) -> None:
-    """Validate one materialized real-valued PyMC payload."""
+def _validate_independent_error_values(array: xr.DataArray) -> None:
+    """Validate the materialized external independent-error payload."""
     values = np.asarray(array.data)
     valid = (
         np.issubdtype(values.dtype, np.number)
         and not np.issubdtype(values.dtype, np.complexfloating)
         and np.isfinite(values).all()
-        and (not positive or (values > 0).all())
+        and (values > 0).all()
     )
     if not valid:
-        qualifier = "finite positive" if positive else "finite"
         raise ValueError(
-            f"{name} must contain only {qualifier} real numeric values."
+            "independent_error_sd must contain only finite positive real numeric values."
         )
 
 
@@ -122,12 +118,12 @@ def _co2_o2_metadata(
 ) -> dict[str, object]:
     """Return JSON-safe scientific identity for the sampled result."""
     channel_units = {
-        tracer: str(
+        species: str(
             observations["observation_units"]
-            .where(observations["tracer"] == tracer, drop=True)
+            .where(observations["species"] == species, drop=True)
             .data[0]
         )
-        for tracer in ("co2", "o2")
+        for species in ("co2", "o2")
     }
     ratio_provenance = json.loads(
         prepared.o2_operator.attrs["oxidation_ratio_provenance"]
@@ -139,7 +135,7 @@ def _co2_o2_metadata(
         "independent_error": "fixed labelled standard deviation supplied by caller",
         "o2_operator_ratio": {
             "convention": "embedded_signed_o2_per_co2",
-            "application": "embedded in the supplied O2 operator; no model multiplier",
+            "application": "embedded in the O2 rows of the supplied joint operator; no model multiplier",
             "scope": "shared GPP/TER/FF states; O2 ocean applied directly",
             **ratio_provenance,
         },
@@ -168,6 +164,7 @@ def _annotate_co2_o2_trace(
         "y",
         "observed_concentration",
         "modelled_concentration",
+        "co2_o2_flux_contribution",
         "fixed_prior_contribution",
         "fixed_independent_error_sd",
     }
@@ -194,7 +191,7 @@ def _annotate_co2_o2_trace(
             )
         for variable in state_variables & set(group.variables):
             group[variable].attrs["units"] = "dimensionless flux scale"
-        for variable in {"co2_operator", "o2_operator"} & set(group.variables):
+        for variable in {"co2_o2_operator"} & set(group.variables):
             group[variable].attrs["units"] = "observation_units per dimensionless flux scale"
         if "aggregation_error_covariance" in group:
             group["aggregation_error_covariance"].attrs["units"] = "observation_units * observation_units_cov"
@@ -244,11 +241,10 @@ def run_rhime_co2_o2_from_prepared_inputs(
         JSON model metadata.
 
     Raises:
-        ValueError: If observations or the affine intercept are not finite real
-            numeric vectors; the fixed independent standard deviation is not a
-            finite positive real numeric vector; or that error vector fails the
-            model's observation-label/unit contract. Label, state, covariance,
-            and activity errors from model construction are also propagated.
+        ValueError: If the fixed independent standard deviation is not a finite
+            positive real numeric vector or fails the model's
+            observation-label/unit contract. Label, state, covariance, and
+            activity errors from model construction are also propagated.
     """
     prepared = prepared_inputs
     _validate_independent_error_labels(
@@ -275,16 +271,7 @@ def run_rhime_co2_o2_from_prepared_inputs(
         raise ValueError(
             "independent_error_sd observation_units must match the prepared observations."
         )
-    _validate_real_finite_values(observations, name="observations")
-    _validate_real_finite_values(
-        fixed_prior_contribution,
-        name="fixed_prior_contribution",
-    )
-    _validate_real_finite_values(
-        independent_error_sd,
-        name="independent_error_sd",
-        positive=True,
-    )
+    _validate_independent_error_values(independent_error_sd)
     model = build_co2_o2_model(
         observations=observations,
         fixed_prior_contribution=fixed_prior_contribution,

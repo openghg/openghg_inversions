@@ -11,6 +11,7 @@ from dask import delayed
 from dask.array import Array as DaskArray
 from dask.callbacks import Callback
 import numpy as np
+import pandas as pd
 import pymc as pm
 import pytest
 import xarray as xr
@@ -32,6 +33,8 @@ def test_complete_recipe_name_is_reserved() -> None:
 def test_modelled_concentration_is_not_labelled_as_pollution_only() -> None:
     assert "pollution_concentration" not in _CO2_O2_VARIABLE_ROLES
     assert _CO2_O2_VARIABLE_ROLES["modelled_concentration"] == "modelled_concentration"
+    assert _CO2_O2_VARIABLE_ROLES["emissions_sensitivity"] == "co2_o2_operator"
+    assert _CO2_O2_VARIABLE_ROLES["flux_contribution"] == "co2_o2_flux_contribution"
 
 
 def _prepared_stub(array: xr.DataArray) -> SimpleNamespace:
@@ -92,39 +95,6 @@ def test_replay_rejects_invalid_independent_error(value: object) -> None:
         )
 
 
-@pytest.mark.parametrize(
-    ("name", "values"),
-    [
-        ("observations", [np.nan]),
-        ("observations", ["bad"]),
-        ("observations", [1.0 + 0.0j]),
-        ("fixed_prior_contribution", [np.inf]),
-        ("fixed_prior_contribution", ["bad"]),
-        ("fixed_prior_contribution", [1.0 + 0.0j]),
-    ],
-)
-def test_replay_rejects_non_real_or_nonfinite_model_vectors(
-    name: str,
-    values: list[object],
-) -> None:
-    array = xr.DataArray(
-        [1.0],
-        dims="observation",
-        coords={
-            "observation": [0],
-            "observation_units": ("observation", ["ppm"]),
-        },
-    )
-    prepared = _prepared_stub(array)
-    setattr(prepared, name, array.copy(data=values))
-
-    with pytest.raises(ValueError, match=name):
-        run_rhime_co2_o2_from_prepared_inputs(
-            prepared_inputs=prepared,
-            independent_error_sd=array,
-        )
-
-
 def test_replay_rejects_mismatched_independent_error_labels_or_units() -> None:
     observations = xr.DataArray(
         [1.0],
@@ -151,6 +121,35 @@ def test_replay_rejects_mismatched_independent_error_labels_or_units() -> None:
         )
 
 
+def test_replay_rejects_stale_independent_error_multiindex_level_names() -> None:
+    observation_index = pd.MultiIndex.from_tuples(
+        [("co2", "c1")],
+        names=("species", "channel_observation"),
+    )
+    observations = xr.DataArray(
+        [1.0],
+        dims="observation",
+        coords=xr.Coordinates.from_pandas_multiindex(
+            observation_index,
+            "observation",
+        ),
+    ).assign_coords(observation_units=("observation", ["ppm"]))
+    stale_error = xr.DataArray(
+        [1.0],
+        dims="observation",
+        coords=xr.Coordinates.from_pandas_multiindex(
+            observation_index.set_names(("stale_species", "stale_observation")),
+            "observation",
+        ),
+    ).assign_coords(observation_units=("observation", ["ppm"]))
+
+    with pytest.raises(ValueError, match="dimension and labels"):
+        run_rhime_co2_o2_from_prepared_inputs(
+            prepared_inputs=_prepared_stub(observations),
+            independent_error_sd=stale_error,
+        )
+
+
 def test_replay_materializes_payloads_and_auxiliary_units_in_one_graph(monkeypatch) -> None:
     executions: list[str] = []
 
@@ -171,7 +170,7 @@ def test_replay_materializes_payloads_and_auxiliary_units_in_one_graph(monkeypat
         dims="observation",
         coords={
             "observation": [0, 1],
-            "tracer": ("observation", ["co2", "o2"]),
+            "species": ("observation", ["co2", "o2"]),
             "observation_units": ("observation", units),
         },
     )

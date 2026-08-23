@@ -17,10 +17,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from openghg_inversions._serialization_codecs import (
-    _TAGGED_JSON_VALUE_ENCODING,
-    _encode_tagged_json_value,
-)
+from openghg_inversions.array_ops import concat_gather_data_arrays
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.observation_error import (
     AGGREGATION_ERROR_COVARIANCE,
@@ -38,13 +35,9 @@ class Co2O2PreparedInputs:
 
     Attributes:
         observations: CO2 followed by O2 observations on ``("observation",)``.
-            Integer joint labels are unique; ``tracer`` and
-            ``observation_units`` retain the native channel identity and units.
-            ``within_tracer_observation`` reversibly encodes each native label
-            in a storage-safe string; its scalar ``*_encoding`` coordinate
-            records the codec, while the channel operators retain their native
-            indexes. Aligned ``site`` and ``time`` coordinates are retained
-            when supplied.
+            Its gathered MultiIndex records ``species`` and the native channel
+            labels, while ``observation_units`` records channel units. Aligned
+            ``site`` and ``time`` coordinates are retained when supplied.
         fixed_prior_contribution: Joint affine intercept
             ``H m - H_alpha Pi m`` on the same labelled ``observation`` axis
             and in the channel-specific observation units.
@@ -102,8 +95,15 @@ def _axis(array: xr.DataArray, name: str) -> str:
 
 def _same_axis(reference: xr.DataArray, candidate: xr.DataArray, name: str) -> None:
     dim = str(reference.dims[0])
-    if candidate.dims != (dim,) or not candidate.indexes[dim].equals(reference.indexes[dim]):
+    if candidate.dims != (dim,) or not _same_index(
+        candidate.indexes[dim], reference.indexes[dim]
+    ):
         raise ValueError(f"{name} labels must exactly match its observations.")
+
+
+def _same_index(left: pd.Index, right: pd.Index) -> bool:
+    """Compare index values and metadata used by xarray alignment."""
+    return left.equals(right) and left.names == right.names
 
 
 def _state(prior: CorrelatedLognormalPrior) -> tuple[xr.DataArray, str]:
@@ -139,10 +139,12 @@ def _operator(
     state_dim = str(state_mean.dims[0])
     if value.dims != (observation_dim, state_dim):
         raise ValueError(f"{name} operator must have dimensions {(observation_dim, state_dim)!r}.")
-    if not value.indexes[observation_dim].equals(observation.indexes[observation_dim]):
+    if not _same_index(value.indexes[observation_dim], observation.indexes[observation_dim]):
         raise ValueError(f"{name} operator rows do not match its observations.")
-    if not value.indexes[state_dim].equals(state_mean.indexes[state_dim]):
-        raise ValueError(f"{name} operator state labels do not match the retained prior.")
+    if not _same_index(value.indexes[state_dim], state_mean.indexes[state_dim]):
+        raise ValueError(
+            f"{name} operator state labels and index level names must match the retained prior."
+        )
 
 
 def _materialize_and_validate_ocean_loadings_and_ratio(
@@ -205,7 +207,7 @@ def _ratio_provenance(
     shared_mean = state_mean.isel({state_dim: shared})
     if value.dims != (state_dim,) or state_dim not in value.indexes:
         raise ValueError(f"O2/CO2 flux ratios must have one indexed {state_dim!r} dimension.")
-    if not value.indexes[state_dim].equals(shared_mean.indexes[state_dim]):
+    if not _same_index(value.indexes[state_dim], shared_mean.indexes[state_dim]):
         raise ValueError("O2/CO2 flux ratio state labels must match the retained shared states.")
     if "source" not in value.coords or value["source"].dims != (state_dim,):
         raise ValueError("O2/CO2 flux ratios require a source coordinate on the shared states.")
@@ -234,7 +236,7 @@ def _covariance_block(
     if value.ndim != 2 or value.dims[0] != row_dim or value.shape != (row.size, column.size):
         raise ValueError(f"{name} shape or row dimension does not match its observation axes.")
     value_column_dim = str(value.dims[1])
-    if not value.indexes[row_dim].equals(row.indexes[row_dim]):
+    if not _same_index(value.indexes[row_dim], row.indexes[row_dim]):
         raise ValueError(f"{name} row labels do not match its observations.")
     if not value.indexes[value_column_dim].equals(column.indexes[column_dim]):
         raise ValueError(f"{name} column labels do not match its observations.")
@@ -245,12 +247,10 @@ def _channel_vector(
     value: xr.DataArray,
     *,
     units: str,
-    tracer: str,
     name: str,
 ) -> xr.DataArray:
     dim = str(value.dims[0])
     return value.rename(name).assign_coords(
-        tracer=(dim, np.repeat(tracer, value.size)),
         observation_units=(dim, np.repeat(units, value.size)),
     )
 
@@ -264,38 +264,21 @@ def _stack(
     name: str,
 ) -> xr.DataArray:
     """Stack labelled channel vectors while preserving their lazy payloads."""
-
-    def channel(
-        value: xr.DataArray,
-        *,
-        start: int,
-        tracer: str,
-        units: str,
-    ) -> xr.DataArray:
-        original_dim = str(value.dims[0])
-        result = _channel_vector(value, units=units, tracer=tracer, name=name)
-        if isinstance(value.indexes[original_dim], pd.MultiIndex):
-            result = result.reset_index(original_dim)
-        return result.rename({original_dim: "observation"}).assign_coords(
-            observation=np.arange(start, start + value.size)
+    channels = {
+        species: _channel_vector(value, units=units, name=name).rename(
+            {str(value.dims[0]): "channel_observation"}
         )
-
-    stacked = xr.concat(
-        (
-            channel(co2, start=0, tracer="co2", units=co2_units),
-            channel(o2, start=co2.size, tracer="o2", units=o2_units),
-        ),
-        dim="observation",
+        for species, value, units in (
+            ("co2", co2, co2_units),
+            ("o2", o2, o2_units),
+        )
+    }
+    stacked = concat_gather_data_arrays(
+        channels,
+        key_dim="species",
+        ragged_dim="channel_observation",
+        stack_dim="observation",
         join="exact",
-    )
-    native_labels = (*co2.indexes[str(co2.dims[0])], *o2.indexes[str(o2.dims[0])])
-    encoded_labels = np.asarray(
-        [_encode_tagged_json_value(label) for label in native_labels],
-        dtype=str,
-    )
-    stacked = stacked.assign_coords(
-        within_tracer_observation=("observation", encoded_labels),
-        within_tracer_observation_encoding=_TAGGED_JSON_VALUE_ENCODING,
     )
     stacked.attrs["units"] = "mixed; see observation_units coordinate"
     return stacked
@@ -306,10 +289,11 @@ def _joint_covariance(
     cross_covariance: xr.DataArray,
     o2_covariance: xr.DataArray,
     *,
-    nco2: int,
-    no2: int,
+    observation_index: pd.MultiIndex,
 ) -> xr.DataArray:
     """Combine validated labelled channel blocks without materializing them."""
+    nco2 = co2_covariance.shape[0]
+    no2 = o2_covariance.shape[0]
     co2_labels = np.arange(nco2)
     o2_labels = np.arange(nco2, nco2 + no2)
 
@@ -331,10 +315,16 @@ def _joint_covariance(
     top = xr.concat((co2, cross), dim="observation_cov", join="exact")
     bottom = xr.concat((cross_transpose, o2), dim="observation_cov", join="exact")
     covariance = xr.concat((top, bottom), dim="observation", join="exact")
-    tracer = np.repeat(("co2", "o2"), (nco2, no2))
+    covariance = covariance.drop_indexes(("observation", "observation_cov")).drop_vars(
+        ("observation", "observation_cov")
+    )
+    column_index = observation_index.set_names(
+        [f"{name}_cov" for name in observation_index.names]
+    )
     return covariance.assign_coords(
-        tracer=("observation", tracer),
-        tracer_cov=("observation_cov", tracer),
+        xr.Coordinates.from_pandas_multiindex(observation_index, "observation")
+    ).assign_coords(
+        xr.Coordinates.from_pandas_multiindex(column_index, "observation_cov")
     ).rename(AGGREGATION_ERROR_COVARIANCE)
 
 
@@ -465,12 +455,21 @@ def prepare_co2_o2_inputs(
         o2_observations,
         "O2 covariance",
     )
+    observations = _stack(
+        co2_observations,
+        o2_observations,
+        co2_units=co2_units,
+        o2_units=o2_units,
+        name="observed_concentration",
+    )
+    observation_index = observations.indexes["observation"]
+    if not isinstance(observation_index, pd.MultiIndex):  # pragma: no cover - helper invariant
+        raise TypeError("Joint observations require a gathered MultiIndex.")
     covariance = _joint_covariance(
         co2_covariance,
         cross_covariance,
         o2_covariance,
-        nco2=co2_observations.size,
-        no2=o2_observations.size,
+        observation_index=observation_index,
     ).assign_coords(
         observation_units=(
             "observation",
@@ -480,13 +479,6 @@ def prepare_co2_o2_inputs(
             "observation_cov",
             np.repeat((co2_units, o2_units), (co2_observations.size, o2_observations.size)),
         ),
-    )
-    observations = _stack(
-        co2_observations,
-        o2_observations,
-        co2_units=co2_units,
-        o2_units=o2_units,
-        name="observed_concentration",
     )
     state_dim = retained_prior.state_dim
     co2_intercept = co2_prior_forward_mean - xr.dot(

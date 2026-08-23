@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 
 import numpy as np
-import pandas as pd  # type: ignore[import-untyped]
 
 
 _TAGGED_JSON_VALUE_ENCODING = "tagged_json_v1"
@@ -15,8 +14,8 @@ def _encode_tagged_json_value(value: object) -> str:
     """Encode a supported scalar or nested tuple as compact tagged JSON.
 
     Args:
-        value: String, Boolean, integer, float, NumPy scalar, timestamp, or
-            nested tuple composed from those types.
+        value: String, Boolean, integer, float, NumPy scalar, or nested tuple
+            composed from those types.
 
     Returns:
         Tagged compact JSON representation of ``value``.
@@ -25,11 +24,7 @@ def _encode_tagged_json_value(value: object) -> str:
         TypeError: If ``value`` has an unsupported type.
     """
     payload: list[object]
-    if isinstance(value, np.datetime64):
-        payload = ["datetime64", [str(value.dtype), int(value.astype(np.int64))]]
-    elif isinstance(value, pd.Timestamp):
-        payload = ["timestamp", value.isoformat()]
-    elif isinstance(value, np.generic):
+    if isinstance(value, np.generic):
         value = value.item()
         return _encode_tagged_json_value(value)
     else:
@@ -70,29 +65,6 @@ def _decode_tagged_json_value(encoded: str) -> object:
         raise ValueError("Encoded tagged JSON value must be a two-item tagged array")
 
     kind, value = payload
-    if kind == "datetime64":
-        if (
-            not isinstance(value, list)
-            or len(value) != 2
-            or not isinstance(value[0], str)
-            or not isinstance(value[1], int)
-            or isinstance(value[1], bool)
-        ):
-            raise ValueError("Encoded tagged JSON datetime64 must contain a dtype and integer value")
-        try:
-            dtype = np.dtype(value[0])
-            if dtype.kind != "M":
-                raise TypeError
-            return np.asarray(value[1], dtype=dtype)[()]
-        except (OverflowError, TypeError, ValueError) as error:
-            raise ValueError("Encoded tagged JSON datetime64 has an invalid dtype or value") from error
-    if kind == "timestamp":
-        if not isinstance(value, str):
-            raise ValueError("Encoded tagged JSON timestamp must contain a string")
-        try:
-            return pd.Timestamp(value)
-        except ValueError as error:
-            raise ValueError("Encoded tagged JSON timestamp is invalid") from error
     if kind == "tuple":
         if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
             raise ValueError("Encoded tagged JSON tuple must contain encoded string elements")
