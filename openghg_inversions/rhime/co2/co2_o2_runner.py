@@ -24,20 +24,11 @@ _CO2_O2_VARIABLE_ROLES = {
     "concentration": "y",
     "modelled_concentration": "modelled_concentration",
     "flux_scale": "flux_scaling",
-    "flux_scaling": "flux_scaling",
     "emissions_sensitivity": "co2_o2_operator",
     "flux_contribution": "co2_o2_flux_contribution",
     "coherent_prior_contribution": "fixed_prior_contribution",
     "independent_error": "fixed_independent_error_sd",
 }
-
-
-def _default_co2_o2_sampler() -> RhimeSampler:
-    """Return the sampler settings used by the accepted UOB prototype."""
-    return RhimeSampler(
-        nuts_sampler="numpyro",
-        sample_kwargs={"target_accept": 0.95},
-    )
 
 
 def _materialize_co2_o2_pymc_inputs(
@@ -191,12 +182,11 @@ def _annotate_co2_o2_trace(
             )
         for variable in state_variables & set(group.variables):
             group[variable].attrs["units"] = "dimensionless flux scale"
-        for variable in {"co2_o2_operator"} & set(group.variables):
-            group[variable].attrs["units"] = "observation_units per dimensionless flux scale"
+        if "co2_o2_operator" in group:
+            group["co2_o2_operator"].attrs["units"] = "observation_units per dimensionless flux scale"
         if "aggregation_error_covariance" in group:
             group["aggregation_error_covariance"].attrs["units"] = "observation_units * observation_units_cov"
         group.attrs["rhime_recipe"] = "co2_o2"
-        setattr(trace, group_name, group)
     return trace
 
 
@@ -287,8 +277,8 @@ def run_rhime_co2_o2_from_prepared_inputs(
         variable_roles=_CO2_O2_VARIABLE_ROLES,
         metadata=_co2_o2_metadata(prepared, observations=observations),
     )
-    trace = sample_rhime_model(
-        built,
-        _default_co2_o2_sampler() if sampler is None else sampler,
+    sampler = sampler or RhimeSampler(
+        nuts_sampler="numpyro", sample_kwargs={"target_accept": 0.95}
     )
+    trace = sample_rhime_model(built, sampler)
     return _annotate_co2_o2_trace(trace, built=built)

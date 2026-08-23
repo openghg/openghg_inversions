@@ -41,16 +41,15 @@ class Co2O2PreparedInputs:
         fixed_prior_contribution: Joint affine intercept
             ``H m - H_alpha Pi m`` on the same labelled ``observation`` axis
             and in the channel-specific observation units.
-        co2_operator: Effective CO2 operator on
-            ``(co2_observation_dim, retained_prior.state_dim)`` with row labels
+        co2_operator: Effective CO2 operator on the native CO2 observation and
+            retained-state dimensions, with row labels
             matching the native CO2 observations and state labels matching the
             retained prior. Units are CO2 observation units per dimensionless
             flux scale.
-        o2_operator: Effective O2 operator on
-            ``(o2_observation_dim, retained_prior.state_dim)`` with the
-            corresponding O2 row labels and retained-state labels. Shared-state
-            columns already contain signed O2-per-CO2 ratios; the O2-ocean
-            column is applied directly.
+        o2_operator: Effective O2 operator on the native O2 observation and
+            retained-state dimensions, with corresponding row and state
+            labels. Shared-state columns already contain signed O2-per-CO2
+            ratios; the O2-ocean column is applied directly.
         o2_co2_flux_ratio: Optional signed, finite, negative O2-per-CO2 ratios
             on ``(retained_prior.state_dim,)`` for exactly the shared GPP, TER,
             and FF states. The indexed state labels and ``source`` coordinate
@@ -66,8 +65,6 @@ class Co2O2PreparedInputs:
             coordinates describe mixed-unit entries.
         retained_prior: Correlated prior over shared GPP/TER/FF and separate
             CO2- and O2-ocean retained states.
-        co2_observation_dim: Native indexed CO2 observation dimension name.
-        o2_observation_dim: Native indexed O2 observation dimension name.
         provenance: JSON-serializable preparation and data provenance.
     """
 
@@ -79,8 +76,6 @@ class Co2O2PreparedInputs:
     o2_co2_flux_ratio_unavailable_reason: str | None
     aggregation_error: AggregationError
     retained_prior: CorrelatedLognormalPrior
-    co2_observation_dim: str
-    o2_observation_dim: str
     provenance: Mapping[str, Any] = field(default_factory=dict)
 
 
@@ -106,9 +101,8 @@ def _same_index(left: pd.Index, right: pd.Index) -> bool:
     return left.equals(right) and left.names == right.names
 
 
-def _state(prior: CorrelatedLognormalPrior) -> tuple[xr.DataArray, str]:
+def _state(prior: CorrelatedLognormalPrior) -> xr.DataArray:
     mean = prior.mean
-    state_dim = prior.state_dim
     if any(name not in mean.coords for name in ("source", "tracer_scope")):
         raise ValueError("Retained states require source and tracer_scope coordinates.")
     pairs = {
@@ -126,7 +120,7 @@ def _state(prior: CorrelatedLognormalPrior) -> tuple[xr.DataArray, str]:
         raise ValueError(
             "Retained states must contain only shared GPP/TER/FF and tracer-specific CO2/O2 ocean states."
         )
-    return mean, state_dim
+    return mean
 
 
 def _operator(
@@ -191,8 +185,7 @@ def _ratio_provenance(
     state_mean: xr.DataArray,
 ) -> xr.DataArray | None:
     """Validate signed O2-per-CO2 ratios against the retained shared states."""
-    reason = str(unavailable_reason or "").strip()
-    if (value is None) == (not reason):
+    if (value is None) == (unavailable_reason is None):
         raise ValueError(
             "Supply exactly one of labelled O2/CO2 flux ratios or a non-empty unavailable reason."
         )
@@ -243,18 +236,6 @@ def _covariance_block(
     return value
 
 
-def _channel_vector(
-    value: xr.DataArray,
-    *,
-    units: str,
-    name: str,
-) -> xr.DataArray:
-    dim = str(value.dims[0])
-    return value.rename(name).assign_coords(
-        observation_units=(dim, np.repeat(units, value.size)),
-    )
-
-
 def _stack(
     co2: xr.DataArray,
     o2: xr.DataArray,
@@ -265,8 +246,10 @@ def _stack(
 ) -> xr.DataArray:
     """Stack labelled channel vectors while preserving their lazy payloads."""
     channels = {
-        species: _channel_vector(value, units=units, name=name).rename(
-            {str(value.dims[0]): "channel_observation"}
+        species: value.rename(name).assign_coords(
+            observation_units=(value.dims[0], np.full(value.size, units)),
+        ).rename(
+            {value.dims[0]: "channel_observation"}
         )
         for species, value, units in (
             ("co2", co2, co2_units),
@@ -422,9 +405,12 @@ def prepare_co2_o2_inputs(
         raise ValueError("CO2 and O2 require distinct pre-stacking dimension names.")
     _same_axis(co2_observations, co2_prior_forward_mean, "CO2 prior forward mean")
     _same_axis(o2_observations, o2_prior_forward_mean, "O2 prior forward mean")
-    state_mean, _ = _state(retained_prior)
+    state_mean = _state(retained_prior)
     _operator(co2_operator, co2_observations, state_mean, "CO2")
     _operator(o2_operator, o2_observations, state_mean, "O2")
+    o2_co2_flux_ratio_unavailable_reason = str(
+        o2_co2_flux_ratio_unavailable_reason or ""
+    ).strip() or None
     o2_co2_flux_ratio = _ratio_provenance(
         o2_co2_flux_ratio,
         o2_co2_flux_ratio_unavailable_reason,
@@ -471,13 +457,10 @@ def prepare_co2_o2_inputs(
         o2_covariance,
         observation_index=observation_index,
     ).assign_coords(
-        observation_units=(
-            "observation",
-            np.repeat((co2_units, o2_units), (co2_observations.size, o2_observations.size)),
-        ),
+        observation_units=observations["observation_units"],
         observation_units_cov=(
             "observation_cov",
-            np.repeat((co2_units, o2_units), (co2_observations.size, o2_observations.size)),
+            observations["observation_units"].values,
         ),
     )
     state_dim = retained_prior.state_dim
@@ -514,9 +497,8 @@ def prepare_co2_o2_inputs(
     ).assign_attrs(units=f"{co2_units} per dimensionless flux scale")
     ratio_direction = "O2 flux per CO2 flux"
     ratio_sign = "signed; positive CO2 flux has negative O2 loading"
-    ratio_status = "available" if o2_co2_flux_ratio is not None else "unavailable"
     ratio_record: dict[str, object] = {
-        "status": ratio_status,
+        "status": "available" if o2_co2_flux_ratio is not None else "unavailable",
         "direction": ratio_direction,
         "sign_convention": ratio_sign,
     }
@@ -556,14 +538,8 @@ def prepare_co2_o2_inputs(
         co2_operator=co2_operator,
         o2_operator=o2_operator,
         o2_co2_flux_ratio=o2_co2_flux_ratio,
-        o2_co2_flux_ratio_unavailable_reason=(
-            None
-            if o2_co2_flux_ratio is not None
-            else str(o2_co2_flux_ratio_unavailable_reason).strip()
-        ),
+        o2_co2_flux_ratio_unavailable_reason=o2_co2_flux_ratio_unavailable_reason,
         aggregation_error=aggregation_error,
         retained_prior=retained_prior,
-        co2_observation_dim=co2_dim,
-        o2_observation_dim=o2_dim,
         provenance=prepared_provenance,
     )

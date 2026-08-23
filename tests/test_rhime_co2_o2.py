@@ -217,7 +217,7 @@ def test_shared_state_sensitivity_removes_only_joint_zero_columns(
     inputs["o2_operator"] = o2_operator
     prepared = prepare_co2_o2_inputs(**inputs)
 
-    joint = _prepare_shared_state_sensitivity(
+    joint, _ = _prepare_shared_state_sensitivity(
         prepared.co2_operator,
         prepared.o2_operator,
     )
@@ -460,7 +460,6 @@ def test_two_site_week_runner_persists_labels_roles_units_and_provenance(tmp_pat
     roles = json.loads(trace.attrs["rhime_variable_roles"])
     metadata = json.loads(trace.attrs["rhime_model_metadata"])
     assert roles["observation"] == "y"
-    assert roles["flux_scaling"] == "flux_scaling"
     assert roles["concentration"] == "y"
     assert roles["modelled_concentration"] == "modelled_concentration"
     assert roles["emissions_sensitivity"] == "co2_o2_operator"
@@ -479,10 +478,7 @@ def test_two_site_week_runner_persists_labels_roles_units_and_provenance(tmp_pat
         "shared GPP/TER/FF states; O2 ocean applied directly"
     )
     assert trace.posterior["flux_scaling"].attrs["units"] == "dimensionless flux scale"
-    assert json.loads(trace.posterior["flux_scaling"].attrs["rhime_scientific_roles"]) == [
-        "flux_scale",
-        "flux_scaling",
-    ]
+    assert json.loads(trace.posterior["flux_scaling"].attrs["rhime_scientific_roles"]) == ["flux_scale"]
     np.testing.assert_allclose(trace.posterior["flux_scaling"].sel(state="ff:1"), 0.75)
     assert trace.posterior["source"].values.tolist() == ["GPP", "TER", "FF", "ocean", "ocean"]
     observed = trace.observed_data["y"]

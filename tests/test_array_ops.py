@@ -1,3 +1,5 @@
+import warnings
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -255,22 +257,25 @@ def test_concat_gather_flattens_and_restores_native_multiindex() -> None:
     }
     originals = {key: value.copy(deep=True) for key, value in channels.items()}
 
-    gathered = concat_gather_data_arrays(
-        channels,
-        key_dim="species",
-        ragged_dim="channel_observation",
-        stack_dim="observation",
-        join="exact",
-    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", FutureWarning)
+        warnings.simplefilter("error", DeprecationWarning)
+        gathered = concat_gather_data_arrays(
+            channels,
+            key_dim="species",
+            ragged_dim="channel_observation",
+            stack_dim="observation",
+            join="exact",
+        )
+        selected = select_gathered_data_array(
+            gathered,
+            key="co2",
+            key_dim="species",
+            ragged_dim="channel_observation",
+            stack_dim="observation",
+        )
     assert gathered.indexes["observation"].names == ["species", "site", "time"]
-
-    selected = select_gathered_data_array(
-        gathered,
-        key="co2",
-        key_dim="species",
-        ragged_dim="channel_observation",
-        stack_dim="observation",
-    )
+    assert selected.indexes["observation"].names == ["site", "time"]
     assert selected.indexes["observation"].equals(co2_index)
     np.testing.assert_allclose(selected, channels["co2"])
     for key in channels:

@@ -413,7 +413,9 @@ def concat_gather_data_arrays(
 
         key_vals.append(np.full(n, k))
 
-    # concat pieces
+    # Preserve xarray's current coordinate policy across its pending default change.
+    concat_kwargs.setdefault("coords", "different")
+    concat_kwargs.setdefault("compat", "equals")
     da = xr.concat(pieces, dim=stack_dim, **concat_kwargs)
 
     # now create and assign multi-index
@@ -477,6 +479,9 @@ def select_gathered_data_array(
     if key not in index.get_level_values(key_dim):
         raise ValueError(f"Gathered dimension {stack_dim!r} does not contain {key_dim} value {key!r}.")
 
+    # Prefer an explicit rebuild to ``da.sel`` here: xarray's MultiIndex
+    # selection can retain or drop level coordinates differently across
+    # versions, while this restores both ordinary and native ragged indexes.
     positions = np.flatnonzero(index.get_level_values(key_dim) == key)
     selected = da.isel({stack_dim: positions}).reset_index(stack_dim)
     selected = selected.drop_vars(key_dim)
@@ -514,13 +519,12 @@ def concat_gather_datasets(
             not recognised.
     """
     dvs = _resolve_shared_data_vars(ds_dict, missing_data_vars=missing_data_vars)
-
     gathered_dvs = {}
-
     for dv in dvs:
         da_dict = {k: v[dv] for k, v in ds_dict.items()}
-        gathered_dvs[dv] = concat_gather_data_arrays(da_dict, key_dim, ragged_dim, stack_dim, **concat_kwargs)
-
+        gathered_dvs[dv] = concat_gather_data_arrays(
+            da_dict, key_dim, ragged_dim, stack_dim, **concat_kwargs
+        )
     return xr.Dataset(gathered_dvs)
 
 
@@ -547,15 +551,14 @@ def concat_gather_datatree(
         Dataset containing gathered versions of the selected data variables.
     """
     ds_dict = {str(k): v.to_dataset() for k, v in dt.items()}
-    dvs = _resolve_shared_data_vars(ds_dict, missing_data_vars=missing_data_vars)
-
-    gathered_dvs = {}
-
-    for dv in dvs:
-        da_dict = {k: v[dv] for k, v in ds_dict.items()}
-        gathered_dvs[dv] = concat_gather_data_arrays(da_dict, key_dim, ragged_dim, stack_dim, **concat_kwargs)
-
-    return xr.Dataset(gathered_dvs)
+    return concat_gather_datasets(
+        ds_dict,
+        key_dim,
+        ragged_dim,
+        stack_dim,
+        missing_data_vars=missing_data_vars,
+        **concat_kwargs,
+    )
 
 
 def _resolve_shared_data_vars(

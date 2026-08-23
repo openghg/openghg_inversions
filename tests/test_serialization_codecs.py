@@ -83,8 +83,7 @@ def test_tagged_json_scalar_encoding_name_is_versioned() -> None:
 def test_tagged_json_scalar_has_stable_bytes_and_roundtrips(value: object, encoded: str) -> None:
     """Supported Python scalars and nested tuples retain type and stable bytes."""
     assert _encode_tagged_json_value(value) == encoded
-    decoded = _decode_tagged_json_value(encoded)
-    assert decoded == value
+    assert _decode_tagged_json_value(encoded) == value
 
 
 @pytest.mark.parametrize(
