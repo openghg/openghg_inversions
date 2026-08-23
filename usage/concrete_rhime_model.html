@@ -970,8 +970,10 @@ sector roles use keys such as <code class="docutils literal notranslate"><span c
 <code class="docutils literal notranslate"><span class="pre">flux_contribution:FF</span></code>. The low-level recipe builders return a plain
 <code class="docutils literal notranslate"><span class="pre">pm.Model</span></code>; the corresponding <code class="docutils literal notranslate"><span class="pre">*_model_result</span></code> wrappers add the runner and
 output metadata contract.</p>
-<p>The more general semantic model and observation-channel representation remains
-tracked in <a class="reference external" href="https://github.com/openghg/openghg_inversions/issues/528">issue #528</a>.</p>
+<p>Structurally distinct observation-channel models belong in readable named
+recipes with concrete builders. The active design guidance is
+<a class="reference internal" href="../development/rhime_model_development.html"><span class="doc">Developing RHIME models</span></a>; the retired semantic-model work
+in issue #528 remains research evidence rather than production architecture.</p>
 </section>
 </section>
 <section id="customization-boundaries">
