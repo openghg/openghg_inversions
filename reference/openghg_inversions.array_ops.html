@@ -382,8 +382,11 @@
 </details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.rhime.html">openghg_inversions.rhime</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l3 has-children"><a class="reference internal" href="openghg_inversions.rhime.co2.html">openghg_inversions.rhime.co2</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.model.html">openghg_inversions.rhime.co2.model</a></li>
-<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.runner.html">openghg_inversions.rhime.co2.runner</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_model.html">openghg_inversions.rhime.co2.co2_model</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_model.html">openghg_inversions.rhime.co2.co2_o2_model</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_preparation.html">openghg_inversions.rhime.co2.co2_o2_preparation</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_runner.html">openghg_inversions.rhime.co2.co2_o2_runner</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_runner.html">openghg_inversions.rhime.co2.co2_runner</a></li>
 </ul>
 </details></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.builders.html">openghg_inversions.rhime.builders</a></li>
@@ -586,8 +589,10 @@ installed on <cite>multi_dim</cite>.</p>
 then the stacked dimension is the usual <code class="docutils literal notranslate"><span class="pre">nmeasure</span></code> coordinate with
 <code class="docutils literal notranslate"><span class="pre">(site,</span> <span class="pre">time)</span></code> levels. The same operation can gather source-specific
 state blocks into <code class="docutils literal notranslate"><span class="pre">(source,</span> <span class="pre">region_in_source)</span></code> without rectangular
-padding. Any alignment policy for dimensions other than <code class="docutils literal notranslate"><span class="pre">ragged_dim</span></code>
-should be passed explicitly through <code class="docutils literal notranslate"><span class="pre">concat_kwargs</span></code>.</p>
+padding. A native MultiIndex on <code class="docutils literal notranslate"><span class="pre">ragged_dim</span></code> is flattened after the key
+level rather than stored as tuple-valued labels. Any alignment policy for
+dimensions other than <code class="docutils literal notranslate"><span class="pre">ragged_dim</span></code> should be passed explicitly through
+<code class="docutils literal notranslate"><span class="pre">concat_kwargs</span></code>.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -726,15 +731,16 @@ distinct value in the input DataArray.</p>
 <dd><p>Select one key from a gathered DataArray and restore its ragged index.</p>
 <p>This is the labelled inverse of one branch of
 <a class="reference internal" href="#openghg_inversions.array_ops.concat_gather_data_arrays" title="openghg_inversions.array_ops.concat_gather_data_arrays"><code class="xref py py-func docutils literal notranslate"><span class="pre">concat_gather_data_arrays()</span></code></a>. The gathered dimension remains named
-<code class="docutils literal notranslate"><span class="pre">stack_dim</span></code>, but its <code class="docutils literal notranslate"><span class="pre">(key_dim,</span> <span class="pre">ragged_dim)</span></code> MultiIndex is reduced to
-the selected <code class="docutils literal notranslate"><span class="pre">ragged_dim</span></code> labels.</p>
+<code class="docutils literal notranslate"><span class="pre">stack_dim</span></code>, but its key level is removed. An ordinary ragged index is
+restored directly; flattened native MultiIndex levels are restored as a
+MultiIndex.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>da</strong> – DataArray containing a gathered MultiIndex dimension.</p></li>
 <li><p><strong>key</strong> – Key value to select from the gathered index.</p></li>
 <li><p><strong>key_dim</strong> – Name of the key level in the gathered MultiIndex.</p></li>
-<li><p><strong>ragged_dim</strong> – Name of the ragged level in the gathered MultiIndex.</p></li>
+<li><p><strong>ragged_dim</strong> – Name of the original ragged dimension.</p></li>
 <li><p><strong>stack_dim</strong> – Name of the gathered dimension.</p></li>
 </ul>
 </dd>

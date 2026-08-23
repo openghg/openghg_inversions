@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>openghg_inversions.rhime.co2.model &#8212; openghg_inversions  documentation</title>
+    <title>openghg_inversions.rhime.co2.co2_o2_runner &#8212; openghg_inversions  documentation</title>
   
   
   
@@ -47,12 +47,12 @@
     <script src="../_static/thebelab-helper.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
-    <script>DOCUMENTATION_OPTIONS.pagename = 'reference/openghg_inversions.rhime.co2.model';</script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'reference/openghg_inversions.rhime.co2.co2_o2_runner';</script>
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="openghg_inversions.rhime.co2.runner" href="openghg_inversions.rhime.co2.runner.html" />
-    <link rel="prev" title="openghg_inversions.rhime.co2" href="openghg_inversions.rhime.co2.html" />
+    <link rel="next" title="openghg_inversions.rhime.co2.co2_runner" href="openghg_inversions.rhime.co2.co2_runner.html" />
+    <link rel="prev" title="openghg_inversions.rhime.co2.co2_o2_preparation" href="openghg_inversions.rhime.co2.co2_o2_preparation.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="" />
@@ -382,8 +382,11 @@
 </details></li>
 <li class="toctree-l2 current active has-children"><a class="reference internal" href="openghg_inversions.rhime.html">openghg_inversions.rhime</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
 <li class="toctree-l3 current active has-children"><a class="reference internal" href="openghg_inversions.rhime.co2.html">openghg_inversions.rhime.co2</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
-<li class="toctree-l4 current active"><a class="current reference internal" href="#">openghg_inversions.rhime.co2.model</a></li>
-<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.runner.html">openghg_inversions.rhime.co2.runner</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_model.html">openghg_inversions.rhime.co2.co2_model</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_model.html">openghg_inversions.rhime.co2.co2_o2_model</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_preparation.html">openghg_inversions.rhime.co2.co2_o2_preparation</a></li>
+<li class="toctree-l4 current active"><a class="current reference internal" href="#">openghg_inversions.rhime.co2.co2_o2_runner</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_runner.html">openghg_inversions.rhime.co2.co2_runner</a></li>
 </ul>
 </details></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.builders.html">openghg_inversions.rhime.builders</a></li>
@@ -470,7 +473,7 @@
     
     <li class="breadcrumb-item"><a href="openghg_inversions.rhime.co2.html" class="nav-link">openghg_inversions.rhime.co2</a></li>
     
-    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">openghg_inversions.rhime.co2.model</span></li>
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">openghg_inversions.rhime.co2.co2_o2_runner</span></li>
   </ul>
 </nav>
 </div>
@@ -487,35 +490,52 @@
 <div id="searchbox"></div>
                 <article class="bd-article">
                   
-  <section id="module-openghg_inversions.rhime.co2.model">
-<span id="openghg-inversions-rhime-co2-model"></span><h1>openghg_inversions.rhime.co2.model<a class="headerlink" href="#module-openghg_inversions.rhime.co2.model" title="Link to this heading">#</a></h1>
-<p>Concrete PyMC graph for the CO2 coherent-reduction recipe.</p>
-<p>The recipe is deliberately procedural. It samples one labelled retained
-state, applies the reduced observation operator, adds the fixed affine prior
-contribution, and finally constructs the observation likelihood.</p>
+  <section id="module-openghg_inversions.rhime.co2.co2_o2_runner">
+<span id="openghg-inversions-rhime-co2-co2-o2-runner"></span><h1>openghg_inversions.rhime.co2.co2_o2_runner<a class="headerlink" href="#module-openghg_inversions.rhime.co2.co2_o2_runner" title="Link to this heading">#</a></h1>
+<p>Advanced replay seam for prepared CO2/O2 scientific inputs.</p>
 <dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.model.build_co2_rhime_model">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.rhime.co2.model.</span></span><span class="sig-name descname"><span class="pre">build_co2_rhime_model</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">flux_sensitivity</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">prior_mean</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">prior_covariance</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">fixed_prior_contribution</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">observations</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">observation_error</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">minimum_error</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">aggregation_error</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.AggregationError" title="openghg_inversions.observation_error.AggregationError"><span class="pre">AggregationError</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">sigma_alignment</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.sigma.html#openghg_inversions.sigma.SigmaAlignment" title="openghg_inversions.sigma.SigmaAlignment"><span class="pre">SigmaAlignment</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sigma_prior</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.14)"><span class="pre">Mapping</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><span class="pre">Any</span></a><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fixed_model_mismatch</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">state_activity</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.StateActivity" title="openghg_inversions.models.state_activity.StateActivity"><span class="pre">StateActivity</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">no_model_error</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://www.pymc.io/projects/docs/en/stable/api/model/generated/pymc.model.core.Model.html#pymc.model.core.Model" title="(in PyMC v6.3.1)"><span class="pre">Model</span></a></span></span><a class="headerlink" href="#openghg_inversions.rhime.co2.model.build_co2_rhime_model" title="Link to this definition">#</a></dt>
-<dd><p>Build the CO2 coherent-reduction model from explicit scientific arrays.</p>
-<p><code class="docutils literal notranslate"><span class="pre">flux_sensitivity</span></code> is the reduced operator <code class="docutils literal notranslate"><span class="pre">H_alpha</span></code> and
-<code class="docutils literal notranslate"><span class="pre">fixed_prior_contribution</span></code> is the affine term
-<code class="docutils literal notranslate"><span class="pre">H</span> <span class="pre">m</span> <span class="pre">-</span> <span class="pre">H_alpha</span> <span class="pre">(Pi</span> <span class="pre">m)</span></code>. The latter is a fixed prior contribution, not an
-atmospheric boundary condition. <code class="docutils literal notranslate"><span class="pre">prior_covariance</span></code> is the labelled
-arithmetic covariance of the retained positive state.</p>
-<p>Known fixed states remain in <code class="docutils literal notranslate"><span class="pre">x</span></code> and in the forward calculation, but are
-omitted from the sampled correlated state. <code class="docutils literal notranslate"><span class="pre">fixed_model_mismatch</span></code> is an
-optional known concentration standard deviation. OGI leaves this policy
-unset by default; the Verification Games fixed likelihood passes 1 ppm
-explicitly.</p>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.model.co2_prior_forward_mean">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.rhime.co2.model.</span></span><span class="sig-name descname"><span class="pre">co2_prior_forward_mean</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">flux_sensitivity</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">prior_mean</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">fixed_prior_contribution</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">state_activity</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.StateActivity" title="openghg_inversions.models.state_activity.StateActivity"><span class="pre">StateActivity</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></span><a class="headerlink" href="#openghg_inversions.rhime.co2.model.co2_prior_forward_mean" title="Link to this definition">#</a></dt>
-<dd><p>Return the deterministic prior-mean concentration for closure checks.</p>
-<p>The affine closure equation is <code class="docutils literal notranslate"><span class="pre">fixed_prior_contribution</span> <span class="pre">+</span> <span class="pre">H</span> <span class="pre">&#64;</span> <span class="pre">x_prior</span></code>.
-Active states use <code class="docutils literal notranslate"><span class="pre">prior_mean</span></code> and inactive states use their exact fixed
-values.</p>
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.co2_o2_runner.run_rhime_co2_o2_from_prepared_inputs">
+<span class="sig-prename descclassname"><span class="pre">openghg_inversions.rhime.co2.co2_o2_runner.</span></span><span class="sig-name descname"><span class="pre">run_rhime_co2_o2_from_prepared_inputs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">prepared_inputs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_preparation.html#openghg_inversions.rhime.co2.co2_o2_preparation.Co2O2PreparedInputs" title="openghg_inversions.rhime.co2.co2_o2_preparation.Co2O2PreparedInputs"><span class="pre">Co2O2PreparedInputs</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">independent_error_sd</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">state_activity</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.StateActivity" title="openghg_inversions.models.state_activity.StateActivity"><span class="pre">StateActivity</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sampler</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.rhime.sampling.html#openghg_inversions.rhime.sampling.RhimeSampler" title="openghg_inversions.rhime.sampling.RhimeSampler"><span class="pre">RhimeSampler</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">InferenceData</span></span></span><a class="headerlink" href="#openghg_inversions.rhime.co2.co2_o2_runner.run_rhime_co2_o2_from_prepared_inputs" title="Link to this definition">#</a></dt>
+<dd><p>Build and sample the CO2/O2 model from prepared scientific inputs.</p>
+<p>This advanced replay seam begins after channel preparation. The public
+<code class="docutils literal notranslate"><span class="pre">run_rhime_co2_o2</span></code> name is reserved for the future complete production
+recipe, including acquisition, preparation, materialization, and outputs.</p>
+<p>The fixed independent channel error is required and remains labelled. Run
+policy, such as the UOB prototype’s one ppm value for both channels, belongs
+to the caller rather than the model API.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>prepared_inputs</strong> – Validated preparation handoff containing joint
+observations and affine intercept on <code class="docutils literal notranslate"><span class="pre">(&quot;observation&quot;,)</span></code>, separate
+channel operators on their native observation axes and the retained
+state axis, a dense joint aggregation covariance, retained prior,
+ratio provenance, units, labels, and scientific provenance.</p></li>
+<li><p><strong>independent_error_sd</strong> – Positive finite fixed standard deviations on
+<code class="docutils literal notranslate"><span class="pre">(&quot;observation&quot;,)</span></code>. Labels and <code class="docutils literal notranslate"><span class="pre">observation_units</span></code> must match
+<code class="docutils literal notranslate"><span class="pre">prepared_inputs.observations</span></code> exactly. These values remain fixed
+data and are not an inferred mismatch amplitude.</p></li>
+<li><p><strong>state_activity</strong> – Optional labelled active/fixed policy on the retained
+state dimension. Omitted states use the model’s structural activity
+policy.</p></li>
+<li><p><strong>sampler</strong> – Optional RHIME sampler configuration. The accepted CO2/O2
+NumPyro defaults are used when omitted.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Restored inference data with observed concentrations in
+<code class="docutils literal notranslate"><span class="pre">observed_data[&quot;y&quot;]</span></code>, fixed independent standard deviations in
+<code class="docutils literal notranslate"><span class="pre">constant_data[&quot;fixed_independent_error_sd&quot;]</span></code>, labelled coordinates,
+data-dependent concentration units, scientific-role annotations, and
+JSON model metadata.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If the fixed independent standard deviation is not a finite
+    positive real numeric vector or fails the model’s
+    observation-label/unit contract. Label, state, covariance, and
+    activity errors from model construction are also propagated.</p>
+</dd>
+</dl>
 </dd></dl>
 
 </section>
@@ -531,20 +551,20 @@ values.</p>
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="openghg_inversions.rhime.co2.html"
+       href="openghg_inversions.rhime.co2.co2_o2_preparation.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">openghg_inversions.rhime.co2</p>
+        <p class="prev-next-title">openghg_inversions.rhime.co2.co2_o2_preparation</p>
       </div>
     </a>
     <a class="right-next"
-       href="openghg_inversions.rhime.co2.runner.html"
+       href="openghg_inversions.rhime.co2.co2_runner.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">openghg_inversions.rhime.co2.runner</p>
+        <p class="prev-next-title">openghg_inversions.rhime.co2.co2_runner</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -567,15 +587,14 @@ values.</p>
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.model.build_co2_rhime_model"><code class="docutils literal notranslate"><span class="pre">build_co2_rhime_model()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.model.co2_prior_forward_mean"><code class="docutils literal notranslate"><span class="pre">co2_prior_forward_mean()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.co2_o2_runner.run_rhime_co2_o2_from_prepared_inputs"><code class="docutils literal notranslate"><span class="pre">run_rhime_co2_o2_from_prepared_inputs()</span></code></a></li>
 </ul>
   </nav></div>
 
   <div class="sidebar-secondary-item">
 
   <div class="tocsection sourcelink">
-    <a href="../_sources/reference/openghg_inversions.rhime.co2.model.rst.txt">
+    <a href="../_sources/reference/openghg_inversions.rhime.co2.co2_o2_runner.rst.txt">
       <i class="fa-solid fa-file-lines"></i> Show Source
     </a>
   </div>

@@ -614,6 +614,102 @@ it. Persist gathered-state traces with
 <a class="reference internal" href="../reference/openghg_inversions.serialization.html#openghg_inversions.serialization.save_inferencedata" title="openghg_inversions.serialization.save_inferencedata"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.serialization.save_inferencedata()</span></code></a>, which uses the
 same MultiIndex-safe boundary as standard and multisector RHIME outputs.</p>
 </section>
+<section id="co2-o2-shared-state-model">
+<h2>CO2/O2 shared-state model<a class="headerlink" href="#co2-o2-shared-state-model" title="Link to this heading">#</a></h2>
+<p>The CO2/O2 recipe applies one retained state to both observation channels.
+Its public boundaries are
+<a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.prepare_co2_o2_inputs" title="openghg_inversions.rhime.co2.prepare_co2_o2_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.prepare_co2_o2_inputs()</span></code></a> for labelled
+preparation, <a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.build_co2_o2_model" title="openghg_inversions.rhime.co2.build_co2_o2_model"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.build_co2_o2_model()</span></code></a> for graph
+construction, and
+<a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs" title="openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs()</span></code></a> for
+materialization, sampling, and trace metadata.</p>
+<p>Partition that state as</p>
+<div class="math notranslate nohighlight">
+\[\begin{split}\alpha =
+\begin{bmatrix}
+   \alpha_{shared} \\
+   \alpha_{CO_2,ocean} \\
+   \alpha_{O_2,ocean}
+\end{bmatrix},\end{split}\]</div>
+<p>where <span class="math notranslate nohighlight">\(\alpha_{shared}\)</span> contains the GPP, TER, and fossil-fuel states.
+The joint affine model is</p>
+<div class="math notranslate nohighlight">
+\[\begin{split}H_{joint} =
+\begin{bmatrix}
+   H_{CO_2,shared} &amp; H_{CO_2,ocean} &amp; 0 \\
+   H_{O_2,shared}^{eff} &amp; 0 &amp; H_{O_2,ocean}
+\end{bmatrix},
+\qquad
+b_{joint} =
+\begin{bmatrix} b_{CO_2} \\ b_{O_2} \end{bmatrix},
+\qquad
+\mu_{joint} = b_{joint} + H_{joint}\alpha.\end{split}\]</div>
+<p>Equivalently, coherent reduction may be written in centred or affine form,</p>
+<div class="math notranslate nohighlight">
+\[\mu_{joint}
+= \mu_{prior} + H_{joint}(\alpha - m_\alpha)
+= (\mu_{prior} - H_{joint}m_\alpha) + H_{joint}\alpha.\]</div>
+<p>The prepared <code class="docutils literal notranslate"><span class="pre">fixed_prior_contribution</span></code> is the parenthesized affine
+intercept, not the complete prior-forward concentration.</p>
+<p>Thus this is a row-stacked, block-sparse operator acting on one state vector,
+not two independent block-diagonal models. Its fixed-error likelihood is</p>
+<div class="math notranslate nohighlight">
+\[\begin{split}\begin{bmatrix} y_{CO_2} \\ y_{O_2} \end{bmatrix}
+\mid \alpha
+\sim \mathcal N\!\left(
+   \mu_{joint},
+   \begin{bmatrix}
+      A_{CO_2,CO_2} &amp; A_{CO_2,O_2} \\
+      A_{O_2,CO_2} &amp; A_{O_2,O_2}
+   \end{bmatrix}
+   + \operatorname{diag}(s_{independent}^2)
+\right).\end{split}\]</div>
+<p>These quantities must come from one coherent reduction. With native state
+mean <span class="math notranslate nohighlight">\(m\)</span>, covariance <span class="math notranslate nohighlight">\(B\)</span>, joint native observation operator
+<span class="math notranslate nohighlight">\(G\)</span>, and retained-state restriction <span class="math notranslate nohighlight">\(\Pi\)</span>,</p>
+<div class="math notranslate nohighlight">
+\[\begin{split}C_\alpha &amp;= \Pi B\Pi^\mathsf{T}, \\
+H_{joint} &amp;= GB\Pi^\mathsf{T}C_\alpha^{-1}, \\
+b_{joint} &amp;= Gm - H_{joint}\Pi m, \\
+A &amp;= GBG^\mathsf{T} - H_{joint}C_\alpha H_{joint}^\mathsf{T}.\end{split}\]</div>
+<p>In particular, the off-diagonal <span class="math notranslate nohighlight">\(A_{CO_2,O_2}\)</span> block is part of the
+coherent-reduction contract. See the <a class="reference internal" href="coherent_reduction.html"><span class="doc">full derivation</span></a> for its assumptions and limitations.</p>
+<p>Preparation accepts separate native channel arrays, then gathers their rows on
+one <code class="docutils literal notranslate"><span class="pre">(species,</span> <span class="pre">channel_observation)</span></code> observation index before the model
+applies the joint operator once. Each row still retains its declared native
+units and numerical scale. Verification-game inputs may use ppm for both
+channels, while real atmospheric O2 observations may use per-meg delta(O2/N2).
+<code class="docutils literal notranslate"><span class="pre">independent_error_sd</span></code> and every covariance row and column must use the
+corresponding observation-row units. Any future numerical scaling or whitening
+must be a named transformation applied consistently to observations, model
+mean, independent error, and all joint covariance blocks, while retaining
+physical-unit outputs and provenance. The displayed row stack is the
+mathematical model: every operator and covariance block must still be produced
+by the same reduction.</p>
+<p>Persist sampled CO2/O2 results with
+<a class="reference internal" href="../reference/openghg_inversions.serialization.html#openghg_inversions.serialization.save_inferencedata" title="openghg_inversions.serialization.save_inferencedata"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.serialization.save_inferencedata()</span></code></a> and restore them
+with <a class="reference internal" href="../reference/openghg_inversions.serialization.html#openghg_inversions.serialization.load_inferencedata" title="openghg_inversions.serialization.load_inferencedata"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.serialization.load_inferencedata()</span></code></a>; this is the
+declared boundary for preserving gathered MultiIndex coordinates.</p>
+<p>The signed oxidation ratio is fixed in this recipe and already folded into the
+shared-state O2 operator. When it is representable by retained-state or
+source-resolved values <span class="math notranslate nohighlight">\(R\)</span>,</p>
+<div class="math notranslate nohighlight">
+\[H_{O_2,shared}^{eff}
+= H_{O_2,ratio\text{-}free}\operatorname{diag}(R).\]</div>
+<p>Native paired-flux construction may instead apply spatially resolved ratios
+before footprint convolution, in which case no unique retained-state
+<span class="math notranslate nohighlight">\(R\)</span> is available. Preparation records that status and its reason rather
+than inventing scalar values; the supplied effective O2 operator remains the
+scientific input.</p>
+<p>Because this recipe receives the O2 operator with the fixed ratio already
+applied upstream, its builder passes the shared state directly to
+<code class="docutils literal notranslate"><span class="pre">add_linked_linear_component</span></code>. If a fixed or inferred oxidation ratio were
+instead explicit model state, the recipe would visibly form
+<code class="docutils literal notranslate"><span class="pre">o2_state</span> <span class="pre">=</span> <span class="pre">oxidation_ratio</span> <span class="pre">*</span> <span class="pre">co2_state</span></code> and pass <code class="docutils literal notranslate"><span class="pre">o2_state</span></code> to that
+component. The <a class="reference internal" href="../experimental/ramsden2022.html"><span class="doc">Ramsden methane/ethane model</span></a> follows that explicit pattern for its emission
+ratio. The linked component registers and applies a sensitivity; it does not
+own scientific scaling.</p>
+</section>
 <section id="equivalent-construction-from-public-helpers">
 <h2>Equivalent construction from public helpers<a class="headerlink" href="#equivalent-construction-from-public-helpers" title="Link to this heading">#</a></h2>
 <p>The default production builder constructs the graph in the same direct style
@@ -948,6 +1044,7 @@ component is insufficient.</p>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#stability-contract">Stability contract</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#standard-single-flux-model">Standard single-flux model</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#co2-coherent-reduction-model">CO2 coherent-reduction model</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#co2-o2-shared-state-model">CO2/O2 shared-state model</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#equivalent-construction-from-public-helpers">Equivalent construction from public helpers</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#multisector-model">Multisector model</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#names-and-generated-names">Names and generated names</a></li>

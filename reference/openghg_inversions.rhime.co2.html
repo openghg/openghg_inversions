@@ -51,7 +51,7 @@
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="openghg_inversions.rhime.co2.model" href="openghg_inversions.rhime.co2.model.html" />
+    <link rel="next" title="openghg_inversions.rhime.co2.co2_model" href="openghg_inversions.rhime.co2.co2_model.html" />
     <link rel="prev" title="openghg_inversions.rhime" href="openghg_inversions.rhime.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
@@ -382,8 +382,11 @@
 </details></li>
 <li class="toctree-l2 current active has-children"><a class="reference internal" href="openghg_inversions.rhime.html">openghg_inversions.rhime</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
 <li class="toctree-l3 current active has-children"><a class="current reference internal" href="#">openghg_inversions.rhime.co2</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.model.html">openghg_inversions.rhime.co2.model</a></li>
-<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.runner.html">openghg_inversions.rhime.co2.runner</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_model.html">openghg_inversions.rhime.co2.co2_model</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_model.html">openghg_inversions.rhime.co2.co2_o2_model</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_preparation.html">openghg_inversions.rhime.co2.co2_o2_preparation</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_runner.html">openghg_inversions.rhime.co2.co2_o2_runner</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_runner.html">openghg_inversions.rhime.co2.co2_runner</a></li>
 </ul>
 </details></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.builders.html">openghg_inversions.rhime.builders</a></li>
@@ -486,7 +489,155 @@
                   
   <section id="module-openghg_inversions.rhime.co2">
 <span id="openghg-inversions-rhime-co2"></span><h1>openghg_inversions.rhime.co2<a class="headerlink" href="#module-openghg_inversions.rhime.co2" title="Link to this heading">#</a></h1>
-<p>CO2-only RHIME recipe.</p>
+<p>Public CO2-family RHIME recipes.</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.Co2O2PreparedInputs">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">openghg_inversions.rhime.co2.</span></span><span class="sig-name descname"><span class="pre">Co2O2PreparedInputs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">observations</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">fixed_prior_contribution</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">co2_operator</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">o2_operator</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">o2_co2_flux_ratio</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">o2_co2_flux_ratio_unavailable_reason</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">aggregation_error</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.AggregationError" title="openghg_inversions.observation_error.AggregationError"><span class="pre">AggregationError</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">retained_prior</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.correlated_state.html#openghg_inversions.correlated_state.CorrelatedLognormalPrior" title="openghg_inversions.correlated_state.CorrelatedLognormalPrior"><span class="pre">CorrelatedLognormalPrior</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">provenance</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Mapping[str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">~typing.Any]</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">&lt;factory&gt;</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.rhime.co2.Co2O2PreparedInputs" title="Link to this definition">#</a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>Backend-neutral joint inputs with shared land and split-ocean states.</p>
+<p>Callers should normally obtain this handoff from
+<a class="reference internal" href="#openghg_inversions.rhime.co2.prepare_co2_o2_inputs" title="openghg_inversions.rhime.co2.prepare_co2_o2_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">prepare_co2_o2_inputs()</span></code></a> rather than constructing it directly.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Variables<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>observations</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>xarray.core.dataarray.DataArray</em></a>) – CO2 followed by O2 observations on <code class="docutils literal notranslate"><span class="pre">(&quot;observation&quot;,)</span></code>.
+Its gathered MultiIndex records <code class="docutils literal notranslate"><span class="pre">species</span></code> and the native channel
+labels, while <code class="docutils literal notranslate"><span class="pre">observation_units</span></code> records channel units. Aligned
+<code class="docutils literal notranslate"><span class="pre">site</span></code> and <code class="docutils literal notranslate"><span class="pre">time</span></code> coordinates are retained when supplied.</p></li>
+<li><p><strong>fixed_prior_contribution</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>xarray.core.dataarray.DataArray</em></a>) – Joint affine intercept
+<code class="docutils literal notranslate"><span class="pre">H</span> <span class="pre">m</span> <span class="pre">-</span> <span class="pre">H_alpha</span> <span class="pre">Pi</span> <span class="pre">m</span></code> on the same labelled <code class="docutils literal notranslate"><span class="pre">observation</span></code> axis
+and in the channel-specific observation units.</p></li>
+<li><p><strong>co2_operator</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>xarray.core.dataarray.DataArray</em></a>) – Effective CO2 operator on the native CO2 observation and
+retained-state dimensions, with row labels
+matching the native CO2 observations and state labels matching the
+retained prior. Units are CO2 observation units per dimensionless
+flux scale.</p></li>
+<li><p><strong>o2_operator</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>xarray.core.dataarray.DataArray</em></a>) – Effective O2 operator on the native O2 observation and
+retained-state dimensions, with corresponding row and state
+labels. Shared-state columns already contain signed O2-per-CO2
+ratios; the O2-ocean column is applied directly.</p></li>
+<li><p><strong>o2_co2_flux_ratio</strong> (<a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><em>xarray.core.dataarray.DataArray</em></a><em> | </em><em>None</em>) – Optional signed, finite, negative O2-per-CO2 ratios
+on <code class="docutils literal notranslate"><span class="pre">(retained_prior.state_dim,)</span></code> for exactly the shared GPP, TER,
+and FF states. The indexed state labels and <code class="docutils literal notranslate"><span class="pre">source</span></code> coordinate
+match the retained prior, while attrs record direction, sign
+convention, and provenance. The borrowed payload may remain lazy.</p></li>
+<li><p><strong>o2_co2_flux_ratio_unavailable_reason</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em>) – Non-empty explanation when
+scalar state-resolved ratios cannot be exposed because the paired
+native O2 flux embeds spatial ratios before convolution. Exactly
+one of this value and <code class="docutils literal notranslate"><span class="pre">o2_co2_flux_ratio</span></code> is present.</p></li>
+<li><p><strong>aggregation_error</strong> (<a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.AggregationError" title="openghg_inversions.observation_error.AggregationError"><em>openghg_inversions.observation_error.AggregationError</em></a>) – Validated dense joint aggregation error. Covariance
+rows use <code class="docutils literal notranslate"><span class="pre">observation</span></code> and columns use <code class="docutils literal notranslate"><span class="pre">observation_cov</span></code> in
+block order <code class="docutils literal notranslate"><span class="pre">[[CO2,</span> <span class="pre">CO2/O2],</span> <span class="pre">[CO2/O2.T,</span> <span class="pre">O2]]</span></code>; per-axis unit
+coordinates describe mixed-unit entries.</p></li>
+<li><p><strong>retained_prior</strong> (<a class="reference internal" href="openghg_inversions.correlated_state.html#openghg_inversions.correlated_state.CorrelatedLognormalPrior" title="openghg_inversions.correlated_state.CorrelatedLognormalPrior"><em>openghg_inversions.correlated_state.CorrelatedLognormalPrior</em></a>) – Correlated prior over shared GPP/TER/FF and separate
+CO2- and O2-ocean retained states.</p></li>
+<li><p><strong>provenance</strong> (<a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.14)"><em>collections.abc.Mapping</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><em>Any</em><em>]</em>) – JSON-serializable preparation and data provenance.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.Co2O2PreparedInputs.aggregation_error">
+<span class="sig-name descname"><span class="pre">aggregation_error</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.AggregationError" title="openghg_inversions.observation_error.AggregationError"><span class="pre">AggregationError</span></a></span><a class="headerlink" href="#openghg_inversions.rhime.co2.Co2O2PreparedInputs.aggregation_error" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.Co2O2PreparedInputs.co2_operator">
+<span class="sig-name descname"><span class="pre">co2_operator</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span><a class="headerlink" href="#openghg_inversions.rhime.co2.Co2O2PreparedInputs.co2_operator" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.Co2O2PreparedInputs.fixed_prior_contribution">
+<span class="sig-name descname"><span class="pre">fixed_prior_contribution</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span><a class="headerlink" href="#openghg_inversions.rhime.co2.Co2O2PreparedInputs.fixed_prior_contribution" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.Co2O2PreparedInputs.o2_co2_flux_ratio">
+<span class="sig-name descname"><span class="pre">o2_co2_flux_ratio</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><a class="headerlink" href="#openghg_inversions.rhime.co2.Co2O2PreparedInputs.o2_co2_flux_ratio" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.Co2O2PreparedInputs.o2_co2_flux_ratio_unavailable_reason">
+<span class="sig-name descname"><span class="pre">o2_co2_flux_ratio_unavailable_reason</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><a class="headerlink" href="#openghg_inversions.rhime.co2.Co2O2PreparedInputs.o2_co2_flux_ratio_unavailable_reason" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.Co2O2PreparedInputs.o2_operator">
+<span class="sig-name descname"><span class="pre">o2_operator</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span><a class="headerlink" href="#openghg_inversions.rhime.co2.Co2O2PreparedInputs.o2_operator" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.Co2O2PreparedInputs.observations">
+<span class="sig-name descname"><span class="pre">observations</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span><a class="headerlink" href="#openghg_inversions.rhime.co2.Co2O2PreparedInputs.observations" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.Co2O2PreparedInputs.provenance">
+<span class="sig-name descname"><span class="pre">provenance</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.14)"><span class="pre">Mapping</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><span class="pre">Any</span></a><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.rhime.co2.Co2O2PreparedInputs.provenance" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.Co2O2PreparedInputs.retained_prior">
+<span class="sig-name descname"><span class="pre">retained_prior</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="openghg_inversions.correlated_state.html#openghg_inversions.correlated_state.CorrelatedLognormalPrior" title="openghg_inversions.correlated_state.CorrelatedLognormalPrior"><span class="pre">CorrelatedLognormalPrior</span></a></span><a class="headerlink" href="#openghg_inversions.rhime.co2.Co2O2PreparedInputs.retained_prior" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.build_co2_o2_model">
+<span class="sig-prename descclassname"><span class="pre">openghg_inversions.rhime.co2.</span></span><span class="sig-name descname"><span class="pre">build_co2_o2_model</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">observations</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">fixed_prior_contribution</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">co2_operator</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">o2_operator</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">aggregation_error</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.AggregationError" title="openghg_inversions.observation_error.AggregationError"><span class="pre">AggregationError</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">retained_prior</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.correlated_state.html#openghg_inversions.correlated_state.CorrelatedLognormalPrior" title="openghg_inversions.correlated_state.CorrelatedLognormalPrior"><span class="pre">CorrelatedLognormalPrior</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">independent_error_sd</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">state_activity</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.StateActivity" title="openghg_inversions.models.state_activity.StateActivity"><span class="pre">StateActivity</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_dim</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'observation'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://www.pymc.io/projects/docs/en/stable/api/model/generated/pymc.model.core.Model.html#pymc.model.core.Model" title="(in PyMC v6.3.1)"><span class="pre">Model</span></a></span></span><a class="headerlink" href="#openghg_inversions.rhime.co2.build_co2_o2_model" title="Link to this definition">#</a></dt>
+<dd><p>Build the shared-state CO2/O2 affine model and fixed-error likelihood.</p>
+<p><code class="docutils literal notranslate"><span class="pre">fixed_prior_contribution</span></code>, both channel operators, the retained prior,
+and every block of <code class="docutils literal notranslate"><span class="pre">aggregation_error</span></code> must be products of the same
+coherent reduction. CO2 and O2 retain separate operator row axes because
+their numeric units are declared independently for every row. The
+Verification Games replay uses ppm for both channels; other scientific O2
+products may, for example, use per meg. Operator rows must already be
+expressed in their declared channel units per dimensionless flux scaling;
+covariance blocks use the corresponding row-by-column unit products,
+including the CO2/O2 cross-covariance.</p>
+<p>The O2 operator unconditionally embeds the fixed, signed O2-per-CO2
+oxidation ratios declared by CO2/O2 preparation. The two channel operators
+are therefore gathered and applied to the raw shared state once. A recipe
+starting from a ratio-free O2 operator would need to apply its labelled
+species/state ratio factor before constructing that joint sensitivity.</p>
+<p>The prepared-input runner validates the external <code class="docutils literal notranslate"><span class="pre">independent_error_sd</span></code>
+as finite and positive. Direct custom callers own that check, exact label
+alignment, row-unit consistency, coherent covariance provenance, and the
+embedded-ratio contract before calling this lower-level builder.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>observations</strong> – Joint CO2-then-O2 observation vector on <code class="docutils literal notranslate"><span class="pre">output_dim</span></code>,
+with row-wise species and unit coordinates.</p></li>
+<li><p><strong>fixed_prior_contribution</strong> – Joint coherent affine intercept on the same
+observation axis and in the corresponding row units.</p></li>
+<li><p><strong>co2_operator</strong> – CO2 operator with its channel observation axis first and
+the retained-prior state axis second.</p></li>
+<li><p><strong>o2_operator</strong> – O2 operator with its distinct channel observation axis
+first and the same state axis; its shared-state columns already
+embed the fixed oxidation ratios.</p></li>
+<li><p><strong>aggregation_error</strong> – Joint fixed aggregation covariance, including its
+cross-channel block.</p></li>
+<li><p><strong>retained_prior</strong> – Correlated arithmetic-moment prior for the one state
+vector shared by both channels.</p></li>
+<li><p><strong>independent_error_sd</strong> – Joint per-row independent standard deviations in
+each observation row’s native units.</p></li>
+<li><p><strong>state_activity</strong> – Optional labelled policy fixing or activating retained
+states.</p></li>
+<li><p><strong>output_dim</strong> – Joint observation dimension used by the likelihood.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A registered PyMC model containing the shared state, gathered joint
+linear signal, coherent affine intercept, and joint Gaussian likelihood.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If shared-state sensitivity preparation, activity
+    resolution, or registered coordinate alignment fails.</p>
+</dd>
+</dl>
+</dd></dl>
+
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.co2.build_co2_rhime_model">
 <span class="sig-prename descclassname"><span class="pre">openghg_inversions.rhime.co2.</span></span><span class="sig-name descname"><span class="pre">build_co2_rhime_model</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">flux_sensitivity</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">prior_mean</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">prior_covariance</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">fixed_prior_contribution</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">observations</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">observation_error</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">minimum_error</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">aggregation_error</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.AggregationError" title="openghg_inversions.observation_error.AggregationError"><span class="pre">AggregationError</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">sigma_alignment</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.sigma.html#openghg_inversions.sigma.SigmaAlignment" title="openghg_inversions.sigma.SigmaAlignment"><span class="pre">SigmaAlignment</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sigma_prior</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.14)"><span class="pre">Mapping</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><span class="pre">Any</span></a><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fixed_model_mismatch</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">state_activity</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.StateActivity" title="openghg_inversions.models.state_activity.StateActivity"><span class="pre">StateActivity</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">no_model_error</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://www.pymc.io/projects/docs/en/stable/api/model/generated/pymc.model.core.Model.html#pymc.model.core.Model" title="(in PyMC v6.3.1)"><span class="pre">Model</span></a></span></span><a class="headerlink" href="#openghg_inversions.rhime.co2.build_co2_rhime_model" title="Link to this definition">#</a></dt>
@@ -519,6 +670,106 @@ values.</p>
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.evaluate_co2_o2_prior_forward_mean">
+<span class="sig-prename descclassname"><span class="pre">openghg_inversions.rhime.co2.</span></span><span class="sig-name descname"><span class="pre">evaluate_co2_o2_prior_forward_mean</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">fixed_prior_contribution</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">co2_operator</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">o2_operator</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">retained_prior</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.correlated_state.html#openghg_inversions.correlated_state.CorrelatedLognormalPrior" title="openghg_inversions.correlated_state.CorrelatedLognormalPrior"><span class="pre">CorrelatedLognormalPrior</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">state_activity</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.StateActivity" title="openghg_inversions.models.state_activity.StateActivity"><span class="pre">StateActivity</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_dim</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'observation'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></span><a class="headerlink" href="#openghg_inversions.rhime.co2.evaluate_co2_o2_prior_forward_mean" title="Link to this definition">#</a></dt>
+<dd><p>Evaluate the reduced model so callers can verify prior-forward preservation.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>fixed_prior_contribution</strong> – Joint coherent-reduction intercept on
+<code class="docutils literal notranslate"><span class="pre">output_dim</span></code>.</p></li>
+<li><p><strong>co2_operator</strong> – CO2 retained-state operator with its own observation
+dimension and the retained-prior state dimension.</p></li>
+<li><p><strong>o2_operator</strong> – O2 retained-state operator with a distinct observation
+dimension and the same retained-prior state dimension.</p></li>
+<li><p><strong>retained_prior</strong> – Correlated retained-state arithmetic moments.</p></li>
+<li><p><strong>state_activity</strong> – Optional labelled policy fixing or activating retained
+states. Structural zero columns are inactive in both channels.</p></li>
+<li><p><strong>output_dim</strong> – Dimension of the returned joint observation vector.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The labelled joint prior-forward concentration
+<code class="docutils literal notranslate"><span class="pre">fixed_prior_contribution</span> <span class="pre">+</span> <span class="pre">H_joint</span> <span class="pre">&#64;</span> <span class="pre">prior_state</span></code>.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If the channel operators cannot form one shared-state
+    sensitivity or <code class="docutils literal notranslate"><span class="pre">state_activity</span></code> does not align with that state.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.prepare_co2_o2_inputs">
+<span class="sig-prename descclassname"><span class="pre">openghg_inversions.rhime.co2.</span></span><span class="sig-name descname"><span class="pre">prepare_co2_o2_inputs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">co2_observations</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">o2_observations</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">co2_prior_forward_mean</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">o2_prior_forward_mean</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">co2_operator</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">o2_operator</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">o2_co2_flux_ratio</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">o2_co2_flux_ratio_unavailable_reason</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">co2_aggregation_covariance</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">co2_o2_aggregation_covariance</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">o2_aggregation_covariance</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">retained_prior</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.correlated_state.html#openghg_inversions.correlated_state.CorrelatedLognormalPrior" title="openghg_inversions.correlated_state.CorrelatedLognormalPrior"><span class="pre">CorrelatedLognormalPrior</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">co2_units</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">o2_units</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">provenance</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.14)"><span class="pre">Mapping</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><span class="pre">Any</span></a><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_preparation.html#openghg_inversions.rhime.co2.co2_o2_preparation.Co2O2PreparedInputs" title="openghg_inversions.rhime.co2.co2_o2_preparation.Co2O2PreparedInputs"><span class="pre">Co2O2PreparedInputs</span></a></span></span><a class="headerlink" href="#openghg_inversions.rhime.co2.prepare_co2_o2_inputs" title="Link to this definition">#</a></dt>
+<dd><p>Validate coherent-reduction channel products and form one joint likelihood.</p>
+<p>The concrete recipe treats the O2 operator as already containing fixed,
+signed O2-per-CO2 ratios for shared states. Supply their labelled values
+when they remain available, or an explicit reason why a native paired-flux
+construction cannot expose scalar ratios at this boundary.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>co2_observations</strong> – One-dimensional CO2 observations with a unique
+indexed native observation coordinate.</p></li>
+<li><p><strong>o2_observations</strong> – One-dimensional O2 observations with a unique indexed
+coordinate whose dimension name differs from the CO2 dimension.
+Times and lengths may differ between channels.</p></li>
+<li><p><strong>co2_prior_forward_mean</strong> – Native CO2 prior mean <code class="docutils literal notranslate"><span class="pre">H</span> <span class="pre">m</span></code> on exactly the
+CO2 observation dimension and labels.</p></li>
+<li><p><strong>o2_prior_forward_mean</strong> – Native O2 prior mean <code class="docutils literal notranslate"><span class="pre">H</span> <span class="pre">m</span></code> on exactly the O2
+observation dimension and labels.</p></li>
+<li><p><strong>co2_operator</strong> – CO2 effective operator with dimensions
+<code class="docutils literal notranslate"><span class="pre">(CO2</span> <span class="pre">observation,</span> <span class="pre">retained</span> <span class="pre">state)</span></code> and exact observation and
+retained-prior indexes. Its O2-ocean column must be zero.</p></li>
+<li><p><strong>o2_operator</strong> – O2 effective operator with dimensions
+<code class="docutils literal notranslate"><span class="pre">(O2</span> <span class="pre">observation,</span> <span class="pre">retained</span> <span class="pre">state)</span></code> and exact observation and
+retained-prior indexes. Its CO2-ocean column must be zero; signed
+O2-per-CO2 ratios are already embedded in shared-state columns.</p></li>
+<li><p><strong>o2_co2_flux_ratio</strong> – Optional labelled ratios for exactly the shared
+retained states. Values must be finite and negative, the <code class="docutils literal notranslate"><span class="pre">source</span></code>
+coordinate must match the prior, and attrs must declare direction
+<code class="docutils literal notranslate"><span class="pre">&quot;O2</span> <span class="pre">flux</span> <span class="pre">per</span> <span class="pre">CO2</span> <span class="pre">flux&quot;</span></code>, the signed convention, and provenance.</p></li>
+<li><p><strong>o2_co2_flux_ratio_unavailable_reason</strong> – Explanation used only when
+labelled scalar ratios are unavailable. Exactly one of this
+argument and <code class="docutils literal notranslate"><span class="pre">o2_co2_flux_ratio</span></code> must be supplied.</p></li>
+<li><p><strong>co2_aggregation_covariance</strong> – CO2-by-CO2 dense covariance. Rows use the
+CO2 observation dimension; its distinct column dimension carries
+the same CO2 labels in the same order. Entries have squared CO2
+observation units.</p></li>
+<li><p><strong>co2_o2_aggregation_covariance</strong> – CO2-row by O2-column cross-covariance,
+labelled by the native CO2 and O2 observation indexes. Entries
+have CO2 observation units times O2 observation units.</p></li>
+<li><p><strong>o2_aggregation_covariance</strong> – O2-by-O2 dense covariance. Rows use the O2
+observation dimension; its distinct column dimension carries the
+same O2 labels in the same order. Entries have squared O2
+observation units.</p></li>
+<li><p><strong>retained_prior</strong> – Retained correlated prior whose indexed state axis has
+<code class="docutils literal notranslate"><span class="pre">source</span></code> and <code class="docutils literal notranslate"><span class="pre">tracer_scope</span></code> coordinates for shared GPP/TER/FF,
+CO2 ocean, and O2 ocean states.</p></li>
+<li><p><strong>co2_units</strong> – Non-empty units label for CO2 observations and operator rows.</p></li>
+<li><p><strong>o2_units</strong> – Non-empty units label for O2 observations and operator rows.</p></li>
+<li><p><strong>provenance</strong> – Optional JSON-serializable preparation provenance.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Labelled, backend-neutral joint inputs. Observation vectors, affine
+intercept, operators, and available ratio provenance retain borrowed
+lazy payloads; dense covariance validation is the explicit eager
+aggregation-error boundary.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If units or provenance are invalid; observation, operator,
+    state, ratio, or covariance dimensions/indexes disagree; the
+    ratio exactly-one, direction, sign, provenance, or numerical-value
+    contract fails; cross-tracer ocean loadings are nonzero; or the
+    assembled dense covariance is non-finite, asymmetric, or not
+    positive semidefinite.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.co2.run_rhime_co2">
 <span class="sig-prename descclassname"><span class="pre">openghg_inversions.rhime.co2.</span></span><span class="sig-name descname"><span class="pre">run_rhime_co2</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">prepared_inputs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.inversion_data.preparation.html#openghg_inversions.inversion_data.preparation.RhimePreparedInputs" title="openghg_inversions.inversion_data.preparation.RhimePreparedInputs"><span class="pre">RhimePreparedInputs</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">sigma_alignment</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.sigma.html#openghg_inversions.sigma.SigmaAlignment" title="openghg_inversions.sigma.SigmaAlignment"><span class="pre">SigmaAlignment</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sigma_prior</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fixed_model_mismatch</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sampler</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.rhime.sampling.html#openghg_inversions.rhime.sampling.RhimeSampler" title="openghg_inversions.rhime.sampling.RhimeSampler"><span class="pre">RhimeSampler</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">aggregation_error_mode</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><span class="pre">Literal</span></a><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'auto'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'none'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'dense'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'low_rank'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'diagonal'</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'dense'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">no_model_error</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">InferenceData</span></span></span><a class="headerlink" href="#openghg_inversions.rhime.co2.run_rhime_co2" title="Link to this definition">#</a></dt>
 <dd><p>Materialize, build, and sample the CO2 coherent-reduction model.</p>
@@ -534,16 +785,86 @@ The Verification Games fixed-likelihood harness passes 1 ppm and disables
 inferred model error.</p>
 </dd></dl>
 
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs">
+<span class="sig-prename descclassname"><span class="pre">openghg_inversions.rhime.co2.</span></span><span class="sig-name descname"><span class="pre">run_rhime_co2_o2_from_prepared_inputs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">prepared_inputs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_preparation.html#openghg_inversions.rhime.co2.co2_o2_preparation.Co2O2PreparedInputs" title="openghg_inversions.rhime.co2.co2_o2_preparation.Co2O2PreparedInputs"><span class="pre">Co2O2PreparedInputs</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">independent_error_sd</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">state_activity</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.StateActivity" title="openghg_inversions.models.state_activity.StateActivity"><span class="pre">StateActivity</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sampler</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.rhime.sampling.html#openghg_inversions.rhime.sampling.RhimeSampler" title="openghg_inversions.rhime.sampling.RhimeSampler"><span class="pre">RhimeSampler</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">InferenceData</span></span></span><a class="headerlink" href="#openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs" title="Link to this definition">#</a></dt>
+<dd><p>Build and sample the CO2/O2 model from prepared scientific inputs.</p>
+<p>This advanced replay seam begins after channel preparation. The public
+<code class="docutils literal notranslate"><span class="pre">run_rhime_co2_o2</span></code> name is reserved for the future complete production
+recipe, including acquisition, preparation, materialization, and outputs.</p>
+<p>The fixed independent channel error is required and remains labelled. Run
+policy, such as the UOB prototype’s one ppm value for both channels, belongs
+to the caller rather than the model API.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>prepared_inputs</strong> – Validated preparation handoff containing joint
+observations and affine intercept on <code class="docutils literal notranslate"><span class="pre">(&quot;observation&quot;,)</span></code>, separate
+channel operators on their native observation axes and the retained
+state axis, a dense joint aggregation covariance, retained prior,
+ratio provenance, units, labels, and scientific provenance.</p></li>
+<li><p><strong>independent_error_sd</strong> – Positive finite fixed standard deviations on
+<code class="docutils literal notranslate"><span class="pre">(&quot;observation&quot;,)</span></code>. Labels and <code class="docutils literal notranslate"><span class="pre">observation_units</span></code> must match
+<code class="docutils literal notranslate"><span class="pre">prepared_inputs.observations</span></code> exactly. These values remain fixed
+data and are not an inferred mismatch amplitude.</p></li>
+<li><p><strong>state_activity</strong> – Optional labelled active/fixed policy on the retained
+state dimension. Omitted states use the model’s structural activity
+policy.</p></li>
+<li><p><strong>sampler</strong> – Optional RHIME sampler configuration. The accepted CO2/O2
+NumPyro defaults are used when omitted.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Restored inference data with observed concentrations in
+<code class="docutils literal notranslate"><span class="pre">observed_data[&quot;y&quot;]</span></code>, fixed independent standard deviations in
+<code class="docutils literal notranslate"><span class="pre">constant_data[&quot;fixed_independent_error_sd&quot;]</span></code>, labelled coordinates,
+data-dependent concentration units, scientific-role annotations, and
+JSON model metadata.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If the fixed independent standard deviation is not a finite
+    positive real numeric vector or fails the model’s
+    observation-label/unit contract. Label, state, covariance, and
+    activity errors from model construction are also propagated.</p>
+</dd>
+</dl>
+</dd></dl>
+
 <div class="toctree-wrapper compound">
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="openghg_inversions.rhime.co2.model.html">openghg_inversions.rhime.co2.model</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.model.html#openghg_inversions.rhime.co2.model.build_co2_rhime_model"><code class="docutils literal notranslate"><span class="pre">build_co2_rhime_model()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.model.html#openghg_inversions.rhime.co2.model.co2_prior_forward_mean"><code class="docutils literal notranslate"><span class="pre">co2_prior_forward_mean()</span></code></a></li>
+<li class="toctree-l1"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_model.html">openghg_inversions.rhime.co2.co2_model</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_model.html#openghg_inversions.rhime.co2.co2_model.build_co2_rhime_model"><code class="docutils literal notranslate"><span class="pre">build_co2_rhime_model()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_model.html#openghg_inversions.rhime.co2.co2_model.co2_prior_forward_mean"><code class="docutils literal notranslate"><span class="pre">co2_prior_forward_mean()</span></code></a></li>
 </ul>
 </li>
-<li class="toctree-l1"><a class="reference internal" href="openghg_inversions.rhime.co2.runner.html">openghg_inversions.rhime.co2.runner</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.runner.html#openghg_inversions.rhime.co2.runner.co2_model_input_names"><code class="docutils literal notranslate"><span class="pre">co2_model_input_names()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.runner.html#openghg_inversions.rhime.co2.runner.run_rhime_co2"><code class="docutils literal notranslate"><span class="pre">run_rhime_co2()</span></code></a></li>
+<li class="toctree-l1"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_model.html">openghg_inversions.rhime.co2.co2_o2_model</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_model.html#openghg_inversions.rhime.co2.co2_o2_model.build_co2_o2_model"><code class="docutils literal notranslate"><span class="pre">build_co2_o2_model()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_model.html#openghg_inversions.rhime.co2.co2_o2_model.evaluate_co2_o2_prior_forward_mean"><code class="docutils literal notranslate"><span class="pre">evaluate_co2_o2_prior_forward_mean()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_preparation.html">openghg_inversions.rhime.co2.co2_o2_preparation</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_preparation.html#openghg_inversions.rhime.co2.co2_o2_preparation.Co2O2PreparedInputs"><code class="docutils literal notranslate"><span class="pre">Co2O2PreparedInputs</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_preparation.html#openghg_inversions.rhime.co2.co2_o2_preparation.Co2O2PreparedInputs.aggregation_error"><code class="docutils literal notranslate"><span class="pre">Co2O2PreparedInputs.aggregation_error</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_preparation.html#openghg_inversions.rhime.co2.co2_o2_preparation.Co2O2PreparedInputs.co2_operator"><code class="docutils literal notranslate"><span class="pre">Co2O2PreparedInputs.co2_operator</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_preparation.html#openghg_inversions.rhime.co2.co2_o2_preparation.Co2O2PreparedInputs.fixed_prior_contribution"><code class="docutils literal notranslate"><span class="pre">Co2O2PreparedInputs.fixed_prior_contribution</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_preparation.html#openghg_inversions.rhime.co2.co2_o2_preparation.Co2O2PreparedInputs.o2_co2_flux_ratio"><code class="docutils literal notranslate"><span class="pre">Co2O2PreparedInputs.o2_co2_flux_ratio</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_preparation.html#openghg_inversions.rhime.co2.co2_o2_preparation.Co2O2PreparedInputs.o2_co2_flux_ratio_unavailable_reason"><code class="docutils literal notranslate"><span class="pre">Co2O2PreparedInputs.o2_co2_flux_ratio_unavailable_reason</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_preparation.html#openghg_inversions.rhime.co2.co2_o2_preparation.Co2O2PreparedInputs.o2_operator"><code class="docutils literal notranslate"><span class="pre">Co2O2PreparedInputs.o2_operator</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_preparation.html#openghg_inversions.rhime.co2.co2_o2_preparation.Co2O2PreparedInputs.observations"><code class="docutils literal notranslate"><span class="pre">Co2O2PreparedInputs.observations</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_preparation.html#openghg_inversions.rhime.co2.co2_o2_preparation.Co2O2PreparedInputs.provenance"><code class="docutils literal notranslate"><span class="pre">Co2O2PreparedInputs.provenance</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_preparation.html#openghg_inversions.rhime.co2.co2_o2_preparation.Co2O2PreparedInputs.retained_prior"><code class="docutils literal notranslate"><span class="pre">Co2O2PreparedInputs.retained_prior</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_preparation.html#openghg_inversions.rhime.co2.co2_o2_preparation.prepare_co2_o2_inputs"><code class="docutils literal notranslate"><span class="pre">prepare_co2_o2_inputs()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_runner.html">openghg_inversions.rhime.co2.co2_o2_runner</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_runner.html#openghg_inversions.rhime.co2.co2_o2_runner.run_rhime_co2_o2_from_prepared_inputs"><code class="docutils literal notranslate"><span class="pre">run_rhime_co2_o2_from_prepared_inputs()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_runner.html">openghg_inversions.rhime.co2.co2_runner</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_runner.html#openghg_inversions.rhime.co2.co2_runner.co2_model_input_names"><code class="docutils literal notranslate"><span class="pre">co2_model_input_names()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_runner.html#openghg_inversions.rhime.co2.co2_runner.run_rhime_co2"><code class="docutils literal notranslate"><span class="pre">run_rhime_co2()</span></code></a></li>
 </ul>
 </li>
 </ul>
@@ -570,11 +891,11 @@ inferred model error.</p>
       </div>
     </a>
     <a class="right-next"
-       href="openghg_inversions.rhime.co2.model.html"
+       href="openghg_inversions.rhime.co2.co2_model.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">openghg_inversions.rhime.co2.model</p>
+        <p class="prev-next-title">openghg_inversions.rhime.co2.co2_model</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -597,10 +918,26 @@ inferred model error.</p>
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.Co2O2PreparedInputs"><code class="docutils literal notranslate"><span class="pre">Co2O2PreparedInputs</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.Co2O2PreparedInputs.aggregation_error"><code class="docutils literal notranslate"><span class="pre">Co2O2PreparedInputs.aggregation_error</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.Co2O2PreparedInputs.co2_operator"><code class="docutils literal notranslate"><span class="pre">Co2O2PreparedInputs.co2_operator</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.Co2O2PreparedInputs.fixed_prior_contribution"><code class="docutils literal notranslate"><span class="pre">Co2O2PreparedInputs.fixed_prior_contribution</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.Co2O2PreparedInputs.o2_co2_flux_ratio"><code class="docutils literal notranslate"><span class="pre">Co2O2PreparedInputs.o2_co2_flux_ratio</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.Co2O2PreparedInputs.o2_co2_flux_ratio_unavailable_reason"><code class="docutils literal notranslate"><span class="pre">Co2O2PreparedInputs.o2_co2_flux_ratio_unavailable_reason</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.Co2O2PreparedInputs.o2_operator"><code class="docutils literal notranslate"><span class="pre">Co2O2PreparedInputs.o2_operator</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.Co2O2PreparedInputs.observations"><code class="docutils literal notranslate"><span class="pre">Co2O2PreparedInputs.observations</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.Co2O2PreparedInputs.provenance"><code class="docutils literal notranslate"><span class="pre">Co2O2PreparedInputs.provenance</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.Co2O2PreparedInputs.retained_prior"><code class="docutils literal notranslate"><span class="pre">Co2O2PreparedInputs.retained_prior</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.build_co2_o2_model"><code class="docutils literal notranslate"><span class="pre">build_co2_o2_model()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.build_co2_rhime_model"><code class="docutils literal notranslate"><span class="pre">build_co2_rhime_model()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.co2_model_input_names"><code class="docutils literal notranslate"><span class="pre">co2_model_input_names()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.co2_prior_forward_mean"><code class="docutils literal notranslate"><span class="pre">co2_prior_forward_mean()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.evaluate_co2_o2_prior_forward_mean"><code class="docutils literal notranslate"><span class="pre">evaluate_co2_o2_prior_forward_mean()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.prepare_co2_o2_inputs"><code class="docutils literal notranslate"><span class="pre">prepare_co2_o2_inputs()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.run_rhime_co2"><code class="docutils literal notranslate"><span class="pre">run_rhime_co2()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs"><code class="docutils literal notranslate"><span class="pre">run_rhime_co2_o2_from_prepared_inputs()</span></code></a></li>
 </ul>
   </nav></div>
 

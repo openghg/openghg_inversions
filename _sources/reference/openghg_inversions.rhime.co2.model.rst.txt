@@ -1,7 +1,0 @@
-openghg\_inversions.rhime.co2.model
-===================================
-
-.. automodule:: openghg_inversions.rhime.co2.model
-   :members:
-   :show-inheritance:
-   :undoc-members:

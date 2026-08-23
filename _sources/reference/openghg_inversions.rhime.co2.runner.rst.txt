@@ -1,7 +1,0 @@
-openghg\_inversions.rhime.co2.runner
-====================================
-
-.. automodule:: openghg_inversions.rhime.co2.runner
-   :members:
-   :show-inheritance:
-   :undoc-members:

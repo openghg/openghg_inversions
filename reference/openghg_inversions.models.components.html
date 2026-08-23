@@ -382,8 +382,11 @@
 </details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.rhime.html">openghg_inversions.rhime</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l3 has-children"><a class="reference internal" href="openghg_inversions.rhime.co2.html">openghg_inversions.rhime.co2</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.model.html">openghg_inversions.rhime.co2.model</a></li>
-<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.runner.html">openghg_inversions.rhime.co2.runner</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_model.html">openghg_inversions.rhime.co2.co2_model</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_model.html">openghg_inversions.rhime.co2.co2_o2_model</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_preparation.html">openghg_inversions.rhime.co2.co2_o2_preparation</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_runner.html">openghg_inversions.rhime.co2.co2_o2_runner</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_runner.html">openghg_inversions.rhime.co2.co2_runner</a></li>
 </ul>
 </details></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.builders.html">openghg_inversions.rhime.builders</a></li>
@@ -604,6 +607,35 @@ state is fixed.</p></li>
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.models.components.add_coherent_affine_component">
+<span class="sig-prename descclassname"><span class="pre">openghg_inversions.models.components.</span></span><span class="sig-name descname"><span class="pre">add_coherent_affine_component</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fixed_contribution</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">linear_signal</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">TensorVariable</span></span></em>, <em class="sig-param"><span class="positional-only-separator o"><abbr title="Positional-only parameter separator (PEP 570)"><span class="pre">/</span></abbr></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">TensorVariable</span></span></span><a class="headerlink" href="#openghg_inversions.models.components.add_coherent_affine_component" title="Link to this definition">#</a></dt>
+<dd><p>Add a labelled fixed contribution to an already composed linear signal.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>fixed_contribution</strong> – Labelled affine intercept
+<code class="docutils literal notranslate"><span class="pre">mu_prior</span> <span class="pre">-</span> <span class="pre">H_alpha</span> <span class="pre">&#64;</span> <span class="pre">m_alpha</span></code>, not the full prior-forward mean.
+Its name owns the registered <code class="docutils literal notranslate"><span class="pre">pm.Data</span></code> name and its coordinates
+own the output axis labels.</p></li>
+<li><p><strong>linear_signal</strong> – Existing linear signal composed by the calling model
+recipe.</p></li>
+<li><p><strong>output_name</strong> – Name for the affine deterministic output.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The deterministic sum of the registered fixed contribution and linear
+signal.</p>
+</dd>
+</dl>
+<p class="rubric">Notes</p>
+<p>This component uses the equivalent coherent-reduction identity
+<code class="docutils literal notranslate"><span class="pre">mu</span> <span class="pre">=</span> <span class="pre">mu_prior</span> <span class="pre">+</span> <span class="pre">H_alpha</span> <span class="pre">&#64;</span> <span class="pre">(x</span> <span class="pre">-</span> <span class="pre">m_alpha)</span> <span class="pre">=</span></code>
+<code class="docutils literal notranslate"><span class="pre">(mu_prior</span> <span class="pre">-</span> <span class="pre">H_alpha</span> <span class="pre">&#64;</span> <span class="pre">m_alpha)</span> <span class="pre">+</span> <span class="pre">H_alpha</span> <span class="pre">&#64;</span> <span class="pre">x</span></code>.</p>
+<p>This helper does not construct states, sensitivities, ratios, or
+channel signals. The calling recipe owns those scientific choices.</p>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.models.components.add_correlated_lognormal_state">
 <span class="sig-prename descclassname"><span class="pre">openghg_inversions.models.components.</span></span><span class="sig-name descname"><span class="pre">add_correlated_lognormal_state</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">prior</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.correlated_state.html#openghg_inversions.correlated_state.CorrelatedLognormalPrior" title="openghg_inversions.correlated_state.CorrelatedLognormalPrior"><span class="pre">CorrelatedLognormalPrior</span></a></span></em>, <em class="sig-param"><span class="positional-only-separator o"><abbr title="Positional-only parameter separator (PEP 570)"><span class="pre">/</span></abbr></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">var_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#openghg_inversions.models.components.CorrelatedStateResult" title="openghg_inversions.models.components.CorrelatedStateResult"><span class="pre">CorrelatedStateResult</span></a></span></span><a class="headerlink" href="#openghg_inversions.models.components.add_correlated_lognormal_state" title="Link to this definition">#</a></dt>
 <dd><p>Add a whitened correlated LogNormal state to the active PyMC model.</p>
@@ -716,6 +748,32 @@ state. <code class="docutils literal notranslate"><span class="pre">None</span><
 contribution, and resolved activity.</p>
 </dd>
 </dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.models.components.add_linked_linear_component">
+<span class="sig-prename descclassname"><span class="pre">openghg_inversions.models.components.</span></span><span class="sig-name descname"><span class="pre">add_linked_linear_component</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">prepared</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.models.state_activity.html#openghg_inversions.models.state_activity.PreparedLinearSensitivity" title="openghg_inversions.models.state_activity.PreparedLinearSensitivity"><span class="pre">PreparedLinearSensitivity</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">linked_state</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">TensorVariable</span></span></em>, <em class="sig-param"><span class="positional-only-separator o"><abbr title="Positional-only parameter separator (PEP 570)"><span class="pre">/</span></abbr></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">TensorVariable</span></span></span><a class="headerlink" href="#openghg_inversions.models.components.add_linked_linear_component" title="Link to this definition">#</a></dt>
+<dd><p>Apply a prepared sensitivity to an already constructed linked state.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>prepared</strong> – Sensitivity prepared by <code class="xref py py-func docutils literal notranslate"><span class="pre">prepare_linear_sensitivity()</span></code>.
+It owns retained-state selection and the output dimension.</p></li>
+<li><p><strong>linked_state</strong> – Existing full state expression in the state order owned
+by <code class="docutils literal notranslate"><span class="pre">prepared</span></code>. The caller owns any ratio or other transformation
+used to construct this expression.</p></li>
+<li><p><strong>data_name</strong> – Name used to register the prepared sensitivity as
+<code class="docutils literal notranslate"><span class="pre">pm.Data</span></code>.</p></li>
+<li><p><strong>output_name</strong> – Name for the output-dimension-aligned deterministic.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The linked linear signal registered as <code class="docutils literal notranslate"><span class="pre">output_name</span></code>.</p>
+</dd>
+</dl>
+<p class="rubric">Notes</p>
+<p>This helper creates neither a state nor a multiplier. It only registers
+the prepared sensitivity and owns the resulting deterministic output.</p>
 </dd></dl>
 
 <dl class="py function">
@@ -936,10 +994,12 @@ present on <code class="docutils literal notranslate"><span class="pre">model</s
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.components.StateVectorResult.state"><code class="docutils literal notranslate"><span class="pre">StateVectorResult.state</span></code></a></li>
 </ul>
 </li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.components.add_coherent_affine_component"><code class="docutils literal notranslate"><span class="pre">add_coherent_affine_component()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.components.add_correlated_lognormal_state"><code class="docutils literal notranslate"><span class="pre">add_correlated_lognormal_state()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.components.add_correlated_lognormal_state_with_activity"><code class="docutils literal notranslate"><span class="pre">add_correlated_lognormal_state_with_activity()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.components.add_inferpymc_likelihood_component"><code class="docutils literal notranslate"><span class="pre">add_inferpymc_likelihood_component()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.components.add_linear_component"><code class="docutils literal notranslate"><span class="pre">add_linear_component()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.components.add_linked_linear_component"><code class="docutils literal notranslate"><span class="pre">add_linked_linear_component()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.components.add_model_data"><code class="docutils literal notranslate"><span class="pre">add_model_data()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.components.add_offset_component"><code class="docutils literal notranslate"><span class="pre">add_offset_component()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.components.add_sigma_component"><code class="docutils literal notranslate"><span class="pre">add_sigma_component()</span></code></a></li>
