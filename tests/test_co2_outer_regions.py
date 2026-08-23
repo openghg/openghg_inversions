@@ -12,13 +12,15 @@ import xarray as xr
 
 from openghg_inversions.observation_error import AggregationError, resolve_aggregation_error
 from openghg_inversions.models.coords import get_coord_registry, registered_model
-from openghg_inversions.rhime.co2 import build_co2_rhime_model
-from openghg_inversions.rhime.co2.outer_regions import (
-    add_inferred_outer_component,
-    add_outer_observation_covariance,
+from openghg_inversions.rhime.co2 import (
+    build_co2_rhime_model,
     collapse_outer_sectors,
     composite_baseline,
     prepare_outer_region_treatment,
+)
+from openghg_inversions.rhime.co2.outer_regions import (
+    add_inferred_outer_component,
+    add_outer_observation_covariance,
 )
 
 
