@@ -319,16 +319,23 @@ In particular, the off-diagonal :math:`A_{CO_2,O_2}` block is part of the
 coherent-reduction contract. See the :doc:`full derivation
 <coherent_reduction>` for its assumptions and limitations.
 
-The implementation preserves separate channel arrays so each row retains its
-declared native units and numerical scale. Verification-game inputs may use
-ppm for both channels, while real atmospheric O2 observations may use
-per-meg delta(O2/N2). ``independent_error_sd`` and every covariance row and
-column must use the corresponding observation-row units. Any future numerical
-scaling or whitening must be a named transformation applied consistently to
-observations, model mean, independent error, and all joint covariance blocks,
-while retaining physical-unit outputs and provenance. The displayed row stack
-is the mathematical model: every operator and covariance block must still be
-produced by the same reduction.
+Preparation accepts separate native channel arrays, then gathers their rows on
+one ``(species, channel_observation)`` observation index before the model
+applies the joint operator once. Each row still retains its declared native
+units and numerical scale. Verification-game inputs may use ppm for both
+channels, while real atmospheric O2 observations may use per-meg delta(O2/N2).
+``independent_error_sd`` and every covariance row and column must use the
+corresponding observation-row units. Any future numerical scaling or whitening
+must be a named transformation applied consistently to observations, model
+mean, independent error, and all joint covariance blocks, while retaining
+physical-unit outputs and provenance. The displayed row stack is the
+mathematical model: every operator and covariance block must still be produced
+by the same reduction.
+
+Persist sampled CO2/O2 results with
+:func:`openghg_inversions.serialization.save_inferencedata` and restore them
+with :func:`openghg_inversions.serialization.load_inferencedata`; this is the
+declared boundary for preserving gathered MultiIndex coordinates.
 
 The signed oxidation ratio is fixed in this recipe and already folded into the
 shared-state O2 operator. When it is representable by retained-state or
