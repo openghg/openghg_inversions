@@ -15,6 +15,7 @@ from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.models import (
     StateActivity,
     get_coord_registry,
+    prepare_linear_sensitivity,
     restore_inferencedata_coords,
 )
 from openghg_inversions.rhime.co2 import (
@@ -24,7 +25,7 @@ from openghg_inversions.rhime.co2 import (
     run_rhime_co2_o2_from_prepared_inputs,
 )
 from openghg_inversions.rhime.co2.co2_o2_model import (
-    _prepare_shared_state_sensitivity,
+    _gather_co2_o2_operator,
 )
 from openghg_inversions.rhime.co2.co2_o2_runner import _co2_o2_metadata
 from openghg_inversions.rhime.sampling import RhimeSampler
@@ -217,10 +218,11 @@ def test_shared_state_sensitivity_removes_only_joint_zero_columns(
     inputs["o2_operator"] = o2_operator
     prepared = prepare_co2_o2_inputs(**inputs)
 
-    joint, _ = _prepare_shared_state_sensitivity(
+    joint_operator = _gather_co2_o2_operator(
         prepared.co2_operator,
         prepared.o2_operator,
     )
+    joint = prepare_linear_sensitivity(joint_operator, output_dim="observation")
 
     assert joint.removed.isel(state=2).item() is True
     assert joint.removed.isel(state=3).item() is False

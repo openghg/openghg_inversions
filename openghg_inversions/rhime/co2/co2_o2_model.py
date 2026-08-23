@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import pymc as pm
 import xarray as xr
+from pytensor.tensor.variable import TensorVariable
 
 from openghg_inversions.array_ops import concat_gather_data_arrays
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.models import (
-    PreparedLinearSensitivity,
     StateActivity,
     add_coherent_affine_component,
     add_correlated_lognormal_state_with_activity,
@@ -25,17 +25,16 @@ from openghg_inversions.models.likelihoods import (
 from openghg_inversions.observation_error import AggregationError
 
 
-def _prepare_shared_state_sensitivity(
+def _gather_co2_o2_operator(
     co2_operator: xr.DataArray,
     o2_operator: xr.DataArray,
     *,
     output_dim: str = "observation",
-) -> tuple[PreparedLinearSensitivity, xr.DataArray]:
-    """Prepare unequal CO2/O2 rows against one shared state mask.
+) -> xr.DataArray:
+    """Gather unequal CO2/O2 rows on one labelled observation axis.
 
     The gathered ``(species, channel_observation)`` index retains each native
-    channel axis. A state is removed only when its column is zero in both
-    channels.
+    channel axis.
 
     Args:
         co2_operator: CO2 sensitivity with its channel observation dimension
@@ -45,11 +44,10 @@ def _prepare_shared_state_sensitivity(
         output_dim: Name for the gathered observation dimension.
 
     Returns:
-        The prepared sensitivity with its shared zero-column mask, followed
-        by the full gathered operator used for prior-forward evaluation.
+        The full gathered operator.
     """
     channel_dim = "channel_observation"
-    joint_operator = concat_gather_data_arrays(
+    return concat_gather_data_arrays(
         {
             "co2": co2_operator.rename({co2_operator.dims[0]: channel_dim}),
             "o2": o2_operator.rename({o2_operator.dims[0]: channel_dim}),
@@ -58,10 +56,6 @@ def _prepare_shared_state_sensitivity(
         ragged_dim=channel_dim,
         stack_dim=output_dim,
         join="exact",
-    )
-    return (
-        prepare_linear_sensitivity(joint_operator, output_dim=output_dim),
-        joint_operator,
     )
 
 
@@ -74,7 +68,7 @@ def evaluate_co2_o2_prior_forward_mean(
     state_activity: StateActivity | None = None,
     output_dim: str = "observation",
 ) -> xr.DataArray:
-    """Evaluate the coherent affine CO2/O2 model at its resolved prior state.
+    """Evaluate the reduced model so callers can verify prior-forward preservation.
 
     Args:
         fixed_prior_contribution: Joint coherent-reduction intercept on
@@ -96,9 +90,13 @@ def evaluate_co2_o2_prior_forward_mean(
         ValueError: If the channel operators cannot form one shared-state
             sensitivity or ``state_activity`` does not align with that state.
     """
-    joint_sensitivity, joint_operator = _prepare_shared_state_sensitivity(
+    joint_operator = _gather_co2_o2_operator(
         co2_operator,
         o2_operator,
+        output_dim=output_dim,
+    )
+    joint_sensitivity = prepare_linear_sensitivity(
+        joint_operator,
         output_dim=output_dim,
     )
     activity = resolve_state_activity(joint_sensitivity.removed, state_activity)
@@ -115,6 +113,35 @@ def evaluate_co2_o2_prior_forward_mean(
     )
     return (fixed_prior_contribution + joint_contribution).rename(
         "prior_forward_concentration"
+    )
+
+
+def _add_co2_o2_fixed_error_likelihood(
+    observations: xr.DataArray,
+    modelled_concentration: TensorVariable,
+    /,
+    *,
+    independent_error_sd: xr.DataArray,
+    aggregation_error: AggregationError,
+    output_dim: str,
+) -> None:
+    """Add the registered joint fixed-error likelihood for both species."""
+    observed = add_model_data(observations, "observed_concentration")
+    fixed_error = add_model_data(
+        independent_error_sd,
+        "fixed_independent_error_sd",
+    )
+    registered_aggregation_error = add_aggregation_error_data(
+        aggregation_error,
+        observations,
+        output_dim=output_dim,
+    )
+    add_gaussian_observation_likelihood(
+        observed=observed,
+        mean=modelled_concentration,
+        independent_variance=fixed_error**2,
+        aggregation_error=registered_aggregation_error,
+        output_dim=output_dim,
     )
 
 
@@ -181,9 +208,13 @@ def build_co2_o2_model(
         ValueError: If shared-state sensitivity preparation, activity
             resolution, or registered coordinate alignment fails.
     """
-    joint_sensitivity, _ = _prepare_shared_state_sensitivity(
+    joint_operator = _gather_co2_o2_operator(
         co2_operator,
         o2_operator,
+        output_dim=output_dim,
+    )
+    joint_sensitivity = prepare_linear_sensitivity(
+        joint_operator,
         output_dim=output_dim,
     )
     activity = resolve_state_activity(joint_sensitivity.removed, state_activity)
@@ -209,21 +240,11 @@ def build_co2_o2_model(
             output_name="modelled_concentration",
         )
 
-        observed = add_model_data(observations, "observed_concentration")
-        fixed_error = add_model_data(
-            independent_error_sd,
-            "fixed_independent_error_sd",
-        )
-        registered_aggregation_error = add_aggregation_error_data(
-            aggregation_error,
+        _add_co2_o2_fixed_error_likelihood(
             observations,
-            output_dim=output_dim,
-        )
-        add_gaussian_observation_likelihood(
-            observed=observed,
-            mean=modelled,
-            independent_variance=fixed_error**2,
-            aggregation_error=registered_aggregation_error,
+            modelled,
+            independent_error_sd=independent_error_sd,
+            aggregation_error=aggregation_error,
             output_dim=output_dim,
         )
     return model
