@@ -15,11 +15,10 @@ from openghg_inversions.models.coords import get_coord_registry, registered_mode
 from openghg_inversions.rhime.co2 import (
     build_co2_rhime_model,
     collapse_outer_sectors,
-    composite_baseline,
     prepare_outer_region_treatment,
 )
 from openghg_inversions.rhime.co2.outer_regions import (
-    add_inferred_outer_component,
+    add_outer_state_component,
     add_outer_observation_covariance,
 )
 
@@ -56,8 +55,6 @@ def _outer_inputs() -> tuple[xr.DataArray, xr.DataArray, xr.DataArray]:
 
 def test_outer_modes_partition_prediction_and_covariance_without_double_counting() -> None:
     h, mean, covariance = _outer_inputs()
-    atmospheric = xr.DataArray([400.0, 401.0], dims="nmeasure")
-
     fixed = prepare_outer_region_treatment(h, mode="fixed")
     marginalized = prepare_outer_region_treatment(
         h,
@@ -72,26 +69,19 @@ def test_outer_modes_partition_prediction_and_covariance_without_double_counting
         prior_covariance=covariance,
     )
 
-    np.testing.assert_allclose(
-        composite_baseline(atmospheric, fixed.fixed_contribution),
-        atmospheric.values + h.values @ np.ones(h.sizes["region"]),
-    )
-    np.testing.assert_allclose(
-        composite_baseline(atmospheric, marginalized.fixed_contribution),
-        atmospheric.values + h.values @ mean.values,
-    )
+    assert fixed.mean_contribution is None
+    assert fixed.sensitivity is not None
+    assert fixed.resolved_activity is not None
+    assert not fixed.resolved_activity.active.any().item()
+    np.testing.assert_allclose(fixed.resolved_activity.fixed_value, 1.0)
+    np.testing.assert_allclose(marginalized.mean_contribution, h.values @ mean.values)
     assert marginalized.observation_factor is not None
     np.testing.assert_allclose(
         marginalized.observation_factor.values @ marginalized.observation_factor.values.T,
         h.values @ covariance.values @ h.values.T,
     )
-    np.testing.assert_allclose(inferred.fixed_contribution, 0.0)
-    np.testing.assert_allclose(
-        composite_baseline(atmospheric, inferred.fixed_contribution)
-        + inferred.sensitivity @ inferred.prior_mean,
-        atmospheric.values + h.values @ mean.values,
-    )
-    assert fixed.sensitivity is None
+    assert inferred.mean_contribution is None
+    np.testing.assert_allclose(inferred.sensitivity @ inferred.prior_mean, h.values @ mean.values)
     assert fixed.observation_factor is None
     assert marginalized.sensitivity is None
     assert inferred.observation_factor is None
@@ -267,7 +257,9 @@ def test_collapse_outer_sectors_is_orthogonal_to_treatment_and_keeps_members() -
         prior_mean=collapsed_mean,
         prior_covariance=collapsed_covariance,
     )
-    np.testing.assert_allclose(fixed.fixed_contribution, h.values @ np.ones(4))
+    with registered_model() as model:
+        add_outer_state_component(fixed)
+    np.testing.assert_allclose(pm.draw(model["mu_outer"]), h.values @ np.ones(4))
     assert inferred.sensitivity is not None
     assert inferred.sensitivity.sizes["outer_state"] == 2
 
@@ -303,7 +295,7 @@ def test_collapsed_member_metadata_uses_resolved_group_activity() -> None:
 
     assert treatment.state_metadata["activity"].values.tolist() == [True, True, False]
     with registered_model() as model:
-        add_inferred_outer_component(treatment)
+        add_outer_state_component(treatment)
     assert pm.draw(model["x_outer"], random_seed=42)[1] == 1.0
 
 
@@ -377,9 +369,16 @@ def test_co2_model_composes_sampled_boundary_and_each_outer_mode() -> None:
     inferred = build("inferred")
 
     assert "bc" in fixed.named_vars
-    assert "x_outer" not in fixed.named_vars
+    assert "x_outer" in fixed.named_vars
+    assert "x_outer_active" not in fixed.named_vars
     assert "x_outer" not in marginalized.named_vars
     assert "bc" in inferred.named_vars and "x_outer" in inferred.named_vars
+    assert "mu_baseline" not in fixed.named_vars
+    assert "mu_baseline" not in marginalized.named_vars
+    assert "mu_baseline" not in inferred.named_vars
+    np.testing.assert_allclose(pm.draw(fixed["x_outer"]), 1.0)
+    np.testing.assert_allclose(pm.draw(fixed["mu_outer"]), outer_h.values @ np.ones(2))
+    np.testing.assert_allclose(pm.draw(marginalized["mu_outer"]), outer_h.values @ outer_mean.values)
     expected_outer_covariance = outer_h.values @ outer_covariance.values @ outer_h.values.T
     np.testing.assert_allclose(
         marginalized["low_rank_factor"].eval() @ marginalized["low_rank_factor"].eval().T,
@@ -486,7 +485,7 @@ def test_inferred_zero_sensitivity_outer_state_is_fixed_at_one() -> None:
     )
 
     with registered_model() as model:
-        add_inferred_outer_component(treatment)
+        add_outer_state_component(treatment)
     state = pm.draw(model["x_outer"], random_seed=42)
 
     assert "x_outer_active" in model.named_vars

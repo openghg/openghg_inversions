@@ -13,7 +13,6 @@ from .outer_regions import (
     OuterRegionMode,
     OuterRegionTreatment,
     collapse_outer_sectors,
-    composite_baseline,
     prepare_outer_region_treatment,
 )
 
@@ -24,7 +23,6 @@ __all__ = [
     "collapse_outer_sectors",
     "co2_model_input_names",
     "co2_prior_forward_mean",
-    "composite_baseline",
     "evaluate_co2_o2_prior_forward_mean",
     "CollapsedOuterStates",
     "OuterRegionMode",
