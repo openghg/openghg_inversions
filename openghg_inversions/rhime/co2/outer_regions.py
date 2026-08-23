@@ -12,9 +12,14 @@ import pytensor.tensor as pt
 import xarray as xr
 
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
-from openghg_inversions.models.components import add_correlated_lognormal_state_with_activity, add_model_data
+from openghg_inversions.models.components import (
+    add_correlated_lognormal_state_with_activity,
+    add_model_data,
+    add_state_vector,
+)
 from openghg_inversions.models.state_activity import (
     ResolvedStateActivity,
+    StateActivity,
     detect_zero_sensitivity,
     resolve_state_activity,
 )
@@ -36,38 +41,29 @@ class CollapsedOuterStates:
 class OuterRegionTreatment:
     """Mutually exclusive outer-region mean, covariance, or sampled state.
 
-    ``fixed_contribution`` is added to the atmospheric baseline. Only a
-    marginalized treatment has an ``observation_factor``; only an inferred
-    treatment retains ``sensitivity``, state-prior moments, and resolved state
-    activity. This partition prevents one outer contribution being counted in
-    both the baseline and the sampled state.
+    Fixed and inferred treatments retain the ordinary sensitivity/state-vector
+    contract. A marginalized treatment instead exposes its Gaussian mean
+    contribution and observation-space factor, without sampling outer states.
+
+    Marginalization is outer-scoped here because these states describe flux
+    outside the scored inversion domain: callers may propagate their prior
+    uncertainty while keeping them out of the sampled retained state. Upstream
+    preparation selects the mode explicitly. General marginalization of weak
+    states inside any basis group belongs in a shared state-disposition API,
+    rather than being inferred implicitly by this outer-region recipe.
+
+    Atmospheric boundary conditions and outer flux remain separate model
+    components. Reporting code may group them when presenting a baseline.
     """
 
     mode: OuterRegionMode
-    fixed_contribution: xr.DataArray
+    mean_contribution: xr.DataArray | None
     observation_factor: xr.DataArray | None
     sensitivity: xr.DataArray | None
     prior_mean: xr.DataArray | None
     prior_covariance: xr.DataArray | None
     state_metadata: xr.Dataset
     resolved_activity: ResolvedStateActivity | None
-
-
-def composite_baseline(
-    atmospheric_baseline: Any | None,
-    fixed_outer_contribution: Any | None,
-) -> Any | None:
-    """Return atmospheric boundary conditions plus fixed outer flux.
-
-    Inputs may be labelled arrays or backend tensors.  The function deliberately
-    does only the scientifically named addition; state treatment is resolved
-    before model construction.
-    """
-    if atmospheric_baseline is None:
-        return fixed_outer_contribution
-    if fixed_outer_contribution is None:
-        return atmospheric_baseline
-    return atmospheric_baseline + fixed_outer_contribution
 
 
 def _matrix_state_dim(sensitivity: xr.DataArray, observation_dim: str) -> str:
@@ -318,10 +314,6 @@ def prepare_outer_region_treatment(
         sensitivity.transpose(observation_dim, state_dim),
         state_dim,
     )
-    zero_contribution = xr.zeros_like(sensitivity.isel({state_dim: 0}, drop=True)).rename(
-        "fixed_outer_contribution"
-    )
-
     metadata_dim = next(iter(metadata.dims))
     if "basis_group" not in metadata:
         metadata = metadata.assign_coords(
@@ -342,20 +334,19 @@ def prepare_outer_region_treatment(
             state_dim=state_dim,
             name="fixed_scale",
         )
+        activity = resolve_state_activity(
+            detect_zero_sensitivity(sensitivity, output_dim=observation_dim),
+            StateActivity(active=False, fixed_value=scale),
+        )
         return OuterRegionTreatment(
             mode=mode,
-            fixed_contribution=_outer_forward(
-                sensitivity,
-                scale,
-                observation_dim=observation_dim,
-                state_dim=state_dim,
-            ).rename("fixed_outer_contribution"),
+            mean_contribution=None,
             observation_factor=None,
-            sensitivity=None,
+            sensitivity=sensitivity,
             prior_mean=None,
             prior_covariance=None,
-            state_metadata=_set_metadata_activity(metadata, None),
-            resolved_activity=None,
+            state_metadata=_set_metadata_activity(metadata, activity),
+            resolved_activity=activity,
         )
 
     if prior_mean is None or prior_covariance is None:
@@ -375,12 +366,12 @@ def prepare_outer_region_treatment(
     if mode == "marginalized":
         return OuterRegionTreatment(
             mode=mode,
-            fixed_contribution=_outer_forward(
+            mean_contribution=_outer_forward(
                 sensitivity,
                 mean,
                 observation_dim=observation_dim,
                 state_dim=state_dim,
-            ).rename("fixed_outer_contribution"),
+            ).rename("mu_outer"),
             observation_factor=_outer_observation_factor(
                 sensitivity,
                 covariance,
@@ -397,7 +388,7 @@ def prepare_outer_region_treatment(
     activity = resolve_state_activity(detect_zero_sensitivity(sensitivity, output_dim=observation_dim))
     return OuterRegionTreatment(
         mode=mode,
-        fixed_contribution=zero_contribution,
+        mean_contribution=None,
         observation_factor=None,
         sensitivity=sensitivity,
         prior_mean=mean,
@@ -407,7 +398,7 @@ def prepare_outer_region_treatment(
     )
 
 
-def add_inferred_outer_component(
+def add_outer_state_component(
     treatment: OuterRegionTreatment,
     *,
     var_name: str = "x_outer",
@@ -415,18 +406,13 @@ def add_inferred_outer_component(
     output_name: str = "mu_outer",
     observation_dim: str = "nmeasure",
 ) -> Any:
-    """Add the sampled collapsed-or-sector-resolved outer contribution."""
-    if (
-        treatment.mode != "inferred"
-        or treatment.sensitivity is None
-        or treatment.prior_mean is None
-        or treatment.prior_covariance is None
-        or treatment.resolved_activity is None
-    ):
-        raise ValueError("Only an inferred outer-region treatment has a sampled state.")
+    """Add a fixed or inferred outer state through the ordinary linear path."""
+    if treatment.mode not in ("fixed", "inferred"):
+        raise ValueError("Only fixed and inferred outer treatments retain a state vector.")
+    if treatment.sensitivity is None or treatment.resolved_activity is None:
+        raise ValueError(f"Outer-region treatment {treatment.mode!r} is missing its state contract.")
     sensitivity = treatment.sensitivity.transpose(observation_dim, ...)
     state_dim = _matrix_state_dim(sensitivity, observation_dim)
-    covariance_dim = next(str(dim) for dim in treatment.prior_covariance.dims if dim != state_dim)
     rename = {state_dim: f"{state_dim}_outer"}
     rename.update(
         {
@@ -436,27 +422,7 @@ def add_inferred_outer_component(
         }
     )
     sensitivity = sensitivity.rename(rename)
-    mean = treatment.prior_mean.rename(
-        {
-            name: namespaced
-            for name, namespaced in rename.items()
-            if name in treatment.prior_mean.dims or name in treatment.prior_mean.coords
-        }
-    )
-    covariance_rename = {
-        name: namespaced
-        for name, namespaced in rename.items()
-        if name in treatment.prior_covariance.dims or name in treatment.prior_covariance.coords
-    }
-    covariance_rename[covariance_dim] = f"{covariance_dim}_outer"
-    covariance = treatment.prior_covariance.rename(covariance_rename)
     state_dim = rename[state_dim]
-    covariance_dim = covariance_rename[covariance_dim]
-    prior = CorrelatedLognormalPrior(
-        mean,
-        covariance,
-        covariance_dim=covariance_dim,
-    )
     resolved = treatment.resolved_activity
 
     def rename_activity_array(array: xr.DataArray) -> xr.DataArray:
@@ -474,11 +440,36 @@ def add_inferred_outer_component(
         fixed_value=rename_activity_array(resolved.fixed_value),
         zero_sensitivity=rename_activity_array(resolved.zero_sensitivity),
     )
-    state = add_correlated_lognormal_state_with_activity(
-        activity,
-        prior,
-        var_name=var_name,
-    ).state
+    if treatment.mode == "fixed":
+        state = add_state_vector(activity, {}, var_name=var_name).state
+    else:
+        if treatment.prior_mean is None or treatment.prior_covariance is None:
+            raise ValueError("Inferred outer treatment is missing its prior moments.")
+        covariance_dim = next(str(dim) for dim in treatment.prior_covariance.dims if dim not in rename)
+        mean = treatment.prior_mean.rename(
+            {
+                name: namespaced
+                for name, namespaced in rename.items()
+                if name in treatment.prior_mean.dims or name in treatment.prior_mean.coords
+            }
+        )
+        covariance_rename = {
+            name: namespaced
+            for name, namespaced in rename.items()
+            if name in treatment.prior_covariance.dims or name in treatment.prior_covariance.coords
+        }
+        covariance_rename[covariance_dim] = f"{covariance_dim}_outer"
+        covariance = treatment.prior_covariance.rename(covariance_rename)
+        prior = CorrelatedLognormalPrior(
+            mean,
+            covariance,
+            covariance_dim=covariance_rename[covariance_dim],
+        )
+        state = add_correlated_lognormal_state_with_activity(
+            activity,
+            prior,
+            var_name=var_name,
+        ).state
     design = add_model_data(sensitivity, sensitivity_name)
     return pm.Deterministic(
         output_name,
@@ -581,9 +572,8 @@ __all__ = [
     "CollapsedOuterStates",
     "OuterRegionMode",
     "OuterRegionTreatment",
-    "add_inferred_outer_component",
+    "add_outer_state_component",
     "add_outer_observation_covariance",
     "collapse_outer_sectors",
-    "composite_baseline",
     "prepare_outer_region_treatment",
 ]

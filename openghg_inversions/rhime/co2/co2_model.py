@@ -37,9 +37,8 @@ from openghg_inversions.sigma import SigmaAlignment
 
 from .outer_regions import (
     OuterRegionTreatment,
-    add_inferred_outer_component,
+    add_outer_state_component,
     add_outer_observation_covariance,
-    composite_baseline,
 )
 
 
@@ -199,9 +198,10 @@ def build_co2_rhime_model(
     optional known concentration standard deviation. OGI leaves this policy
     unset by default; the Verification Games fixed likelihood passes 1 ppm
     explicitly. ``outer_treatment`` is prepared independently of atmospheric
-    boundary conditions: the builder composes its fixed or sampled contribution
-    with optional sampled ``boundary_sensitivity @ bc`` and keeps the coherent
-    ``fixed_prior_contribution`` as a separate affine term.
+    boundary conditions: the builder keeps ``mu_outer`` and optional sampled
+    ``boundary_sensitivity @ bc`` as separate model components, alongside the
+    coherent ``fixed_prior_contribution`` affine term. Reporting code may group
+    boundary and outer concentrations when presenting a baseline.
     """
     sigma_prior = dict(DEFAULT_SIGMA_PRIOR if sigma_prior is None else sigma_prior)
     bc_prior = dict(DEFAULT_BC_PRIOR if bc_prior is None else bc_prior)
@@ -240,23 +240,26 @@ def build_co2_rhime_model(
             ).output
 
         outer_mean = None
-        fixed_outer = None
         if outer_treatment is not None:
-            fixed_outer = add_model_data(
-                outer_treatment.fixed_contribution.transpose("nmeasure"),
-                "fixed_outer_contribution",
-            )
-            if outer_treatment.mode == "inferred":
-                outer_mean = add_inferred_outer_component(outer_treatment)
-        baseline_mean = composite_baseline(boundary_mean, fixed_outer)
-        baseline_mean = composite_baseline(baseline_mean, outer_mean)
-        if baseline_mean is not None:
-            baseline_mean = pm.Deterministic("mu_baseline", baseline_mean, dims="nmeasure")
+            if outer_treatment.mode == "marginalized":
+                assert outer_treatment.mean_contribution is not None
+                outer_mean_data = add_model_data(
+                    outer_treatment.mean_contribution.transpose("nmeasure"),
+                    "outer_mean_contribution",
+                )
+                outer_mean = pm.Deterministic(
+                    "mu_outer",
+                    outer_mean_data,
+                    dims="nmeasure",
+                )
+            else:
+                outer_mean = add_outer_state_component(outer_treatment)
+        extra_mean = boundary_mean
+        if outer_mean is not None:
+            extra_mean = outer_mean if extra_mean is None else extra_mean + outer_mean
         modelled_mean = pm.Deterministic(
             "mu",
-            fixed_prior + pollution_mean
-            if baseline_mean is None
-            else fixed_prior + pollution_mean + baseline_mean,
+            fixed_prior + pollution_mean if extra_mean is None else fixed_prior + pollution_mean + extra_mean,
             dims="nmeasure",
         )
         add_additive_sigma_gaussian_likelihood(
