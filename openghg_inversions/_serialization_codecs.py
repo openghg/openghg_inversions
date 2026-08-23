@@ -23,23 +23,21 @@ def _encode_tagged_json_value(value: object) -> str:
     Raises:
         TypeError: If ``value`` has an unsupported type.
     """
-    payload: list[object]
     if isinstance(value, np.generic):
         value = value.item()
-        return _encode_tagged_json_value(value)
+    payload: list[object]
+    if isinstance(value, tuple):
+        payload = ["tuple", [_encode_tagged_json_value(item) for item in value]]
+    elif isinstance(value, bool):
+        payload = ["bool", value]
+    elif isinstance(value, int):
+        payload = ["int", value]
+    elif isinstance(value, float):
+        payload = ["float", value]
+    elif isinstance(value, str):
+        payload = ["str", value]
     else:
-        if isinstance(value, tuple):
-            payload = ["tuple", [_encode_tagged_json_value(item) for item in value]]
-        elif isinstance(value, bool):
-            payload = ["bool", value]
-        elif isinstance(value, int):
-            payload = ["int", value]
-        elif isinstance(value, float):
-            payload = ["float", value]
-        elif isinstance(value, str):
-            payload = ["str", value]
-        else:
-            raise TypeError(f"Unsupported tagged JSON value type: {type(value).__name__}")
+        raise TypeError(f"Unsupported tagged JSON value type: {type(value).__name__}")
     return json.dumps(payload, separators=(",", ":"))
 
 
