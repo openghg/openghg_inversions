@@ -270,6 +270,8 @@ def _select_additive_sigma_likelihood(
         for name in _ADDITIVE_SIGMA_OPTION_NAMES
         if name in rhime_params
     }
+    if options.get("sigma_freq") not in (None, "monthly"):
+        options.setdefault("sigma_freq_anchor", rhime_params["start_date"])
     resolved_prior = (
         rhime_params.get("sigma_prior", DEFAULT_ADDITIVE_SIGMA_PRIOR)
         if additive_sigma_prior is None

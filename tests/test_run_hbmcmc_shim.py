@@ -3,9 +3,12 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pytest
+import xarray as xr
 
 import openghg_inversions.hbmcmc.run_hbmcmc as run_hbmcmc
+from openghg_inversions.sigma import SigmaAlignment
 
 
 def _fixedbasis_config(path: Path) -> None:
@@ -109,6 +112,35 @@ def test_additive_sigma_selection_forces_no_aggregation_error(tmp_path: Path) ->
         "sigma_prior": {"pdf": "halfnormal", "sigma": 5.0},
         "sigma_freq": "monthly",
     }
+
+
+def test_additive_sigma_fixed_periods_keep_inversion_start_anchor(tmp_path: Path) -> None:
+    config_file = tmp_path / "hbmcmc.ini"
+    _fixedbasis_config(config_file)
+    params = run_hbmcmc.hbmcmc_extract_param(str(config_file), print_param=False)
+    params.update(likelihood="additive_sigma", sigma_freq="8D")
+
+    translated = run_hbmcmc.fixedbasis_params_to_rhime(params)
+    options = run_hbmcmc._select_additive_sigma_likelihood(params, translated)
+    site_index = xr.DataArray(
+        [0, 0],
+        dims="nmeasure",
+        coords={
+            "time": (
+                "nmeasure",
+                np.array(["2019-01-10", "2019-01-17"], dtype="datetime64[ns]"),
+            )
+        },
+    )
+    alignment = SigmaAlignment.from_frequency(
+        site_index,
+        frequency=options["sigma_freq"],
+        per_site=False,
+        anchor_time=options["sigma_freq_anchor"],
+    )
+
+    assert options["sigma_freq_anchor"] == "2019-01-01"
+    np.testing.assert_array_equal(alignment.period_index, [0, 1])
 
 
 def test_additive_sigma_prior_takes_precedence_over_sigprior(tmp_path: Path) -> None:
