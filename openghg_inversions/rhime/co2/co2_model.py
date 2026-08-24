@@ -164,24 +164,6 @@ def _reject_outer_state_double_counting(
         raise ValueError("outer_treatment basis_group metadata must label every state 'outer'.")
 
 
-def _validate_outer_observation_alignment(
-    observations: xr.DataArray,
-    outer_treatment: OuterRegionTreatment | None,
-) -> None:
-    """Reject conflicting explicit indexes at the component boundary."""
-    if outer_treatment is None:
-        return
-    prepared = outer_treatment.prepared_sensitivity
-    if prepared.output_dim != "nmeasure":
-        raise ValueError("outer_treatment must use the CO2 observation dimension 'nmeasure'.")
-    outer_index = prepared.sensitivity.indexes.get("nmeasure")
-    observation_index = observations.indexes.get("nmeasure")
-    if outer_index is None or observation_index is None:
-        return
-    if not outer_index.equals(observation_index) or outer_index.names != observation_index.names:
-        raise ValueError("outer_treatment observation labels must exactly match CO2 observations.")
-
-
 def build_co2_rhime_model(
     flux_sensitivity: xr.DataArray,
     *,
@@ -228,7 +210,6 @@ def build_co2_rhime_model(
     bc_prior = dict(DEFAULT_BC_PRIOR if bc_prior is None else bc_prior)
     fixed_mismatch = _fixed_mismatch_array(observations, fixed_model_mismatch)
     prepared_flux = prepare_linear_sensitivity(flux_sensitivity, output_dim="nmeasure")
-    _validate_outer_observation_alignment(observations, outer_treatment)
     _reject_outer_state_double_counting(prepared_flux, outer_treatment)
     aggregation_error = (
         aggregation_error
