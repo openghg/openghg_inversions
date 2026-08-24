@@ -1,0 +1,4 @@
+revision,shape,all_zero_columns,equals_456afa3,max_abs_difference_from_456afa3
+456afa3,"(969, 148)",0,True,0.0
+v0.6-pr642-prefix,"(969, 152)",4,False,0.0
+v0.6-pr642-postfix,"(969, 148)",0,True,0.0

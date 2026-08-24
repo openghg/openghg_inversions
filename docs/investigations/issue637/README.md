@@ -95,3 +95,29 @@ Tabular results: [repeat summary](hfc134a_456_short_repeat_summary.csv),
 [diagnostics](hfc134a_456_short_diagnostics.csv). The
 [monthly scores](hfc134a_456_short_monthly_scores.csv) contain the plotted
 observation-space statistic for every repeat, chain, site pair, and month.
+
+## v0.6 CENTRALASIA backport replay
+
+![v0.6 backport and 456afa3 baselines by chain](hfc134a_v06_pr642_postfix_baseline_by_chain.png)
+
+Draft PR #642 backports Ben's CENTRALASIA domain work onto exact tag `v0.6.0`.
+Its first seeded replay exposed four prior-only January 2023 boundary states:
+the configured inversion began in January, while retained observations began
+in February. The follow-up commit drops BC states with no sensitivity at any
+retained observation after all sites have been combined.
+
+The post-fix H_bc matrix is 969 by 148 and is byte-for-byte equal to the
+`456afa3` matrix. The run still fails convergence: chains 2 and 3 enter the
+January 2026 high-BC/high-sigma state, while chains 0 and 1 are healthy.
+Maximum R-hat is 1.645 for emissions, 1.733 for BC, and 1.730 for sigma;
+minimum bulk ESS is about 6, with zero divergences. Maximum between-chain
+posterior-baseline disagreement is 104.61 ppt.
+
+The compaction is a valid v0.6 bug fix and explains why changing a seemingly
+irrelevant state layout changes seeded chain trajectories. It does not repair
+the PEFO posterior geometry.
+
+Tabular results: [diagnostics](hfc134a_v06_pr642_postfix_diagnostics.csv),
+[per-chain summary](hfc134a_v06_pr642_postfix_chain_summary.csv),
+[H_bc comparison](hfc134a_v06_pr642_postfix_hbc_comparison.csv), and
+[monthly spike summary](hfc134a_v06_pr642_postfix_monthly_spikes.csv).
