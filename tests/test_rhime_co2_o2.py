@@ -25,7 +25,7 @@ from openghg_inversions.rhime.co2 import (
     run_rhime_co2_o2_from_prepared_inputs,
 )
 from openghg_inversions.rhime.co2.co2_o2_model import (
-    _gather_co2_o2_operator,
+    _gather_co2_o2_sensitivity,
 )
 from openghg_inversions.rhime.co2.co2_o2_runner import _co2_o2_metadata
 from openghg_inversions.rhime.sampling import RhimeSampler
@@ -80,12 +80,12 @@ def _inputs(*, gathered_state: bool = False) -> dict[str, object]:
         "o2_observations": o2,
         "co2_prior_forward_mean": co2 - 0.25,
         "o2_prior_forward_mean": o2 + 0.5,
-        "co2_operator": xr.DataArray(
+        "co2_sensitivity": xr.DataArray(
             [[1, 2, 3, 4, 0], [0.5, 1, 1.5, 2, 0]],
             dims=("co2_measure", "state"),
             coords={"co2_measure": co2["co2_measure"], "state": mean["state"]},
         ),
-        "o2_operator": xr.DataArray(
+        "o2_sensitivity": xr.DataArray(
             [[-1, -2, -3, 0, 5], [-0.5, -1, -1.5, 0, 2.5], [-0.2, -0.4, -0.6, 0, 1]],
             dims=("o2_measure", "state"),
             coords={"o2_measure": o2["o2_measure"], "state": mean["state"]},
@@ -139,8 +139,8 @@ def _build(prepared, *, state_activity: StateActivity | None = None):
     return build_co2_o2_model(
         observations=prepared.observations,
         fixed_prior_contribution=prepared.fixed_prior_contribution,
-        co2_operator=prepared.co2_operator,
-        o2_operator=prepared.o2_operator,
+        co2_sensitivity=prepared.co2_sensitivity,
+        o2_sensitivity=prepared.o2_sensitivity,
         aggregation_error=prepared.aggregation_error,
         retained_prior=prepared.retained_prior,
         independent_error_sd=_independent_error(prepared),
@@ -161,14 +161,14 @@ def test_stacks_unequal_axes_cross_covariance_and_units() -> None:
         "per meg",
     ]
     np.testing.assert_allclose(prepared.o2_co2_flux_ratio, [-1.1, -1.0, -1.4])
-    assert prepared.o2_operator.attrs["oxidation_ratio_direction"] == "O2 flux per CO2 flux"
+    assert prepared.o2_sensitivity.attrs["oxidation_ratio_direction"] == "O2 flux per CO2 flux"
     assert prepared.aggregation_error.mode == "dense"
     covariance = prepared.aggregation_error.covariance
     assert covariance is not None
     np.testing.assert_allclose(covariance.values[:2, 2:], inputs["co2_o2_aggregation_covariance"])
     np.testing.assert_allclose(covariance.values[2:, :2], inputs["co2_o2_aggregation_covariance"].T)
-    for operator in (prepared.co2_operator, prepared.o2_operator):
-        assert operator["tracer_scope"].values.tolist() == [
+    for sensitivity in (prepared.co2_sensitivity, prepared.o2_sensitivity):
+        assert sensitivity["tracer_scope"].values.tolist() == [
             "shared",
             "shared",
             "shared",
@@ -194,7 +194,7 @@ def test_metadata_tracks_unavailable_native_ratio_values() -> None:
     )
 
     prepared = prepare_co2_o2_inputs(**inputs)
-    ratio = _co2_o2_metadata(prepared, observations=prepared.observations)["o2_operator_ratio"]
+    ratio = _co2_o2_metadata(prepared, observations=prepared.observations)["o2_sensitivity_ratio"]
 
     assert ratio["status"] == "unavailable"
     assert ratio["unavailable_reason"].startswith("Native paired O2 flux")
@@ -206,23 +206,23 @@ def test_shared_state_sensitivity_removes_only_joint_zero_columns(
     gathered_state: bool,
 ) -> None:
     inputs = _inputs(gathered_state=gathered_state)
-    co2_operator = inputs["co2_operator"]
-    o2_operator = inputs["o2_operator"]
-    assert isinstance(co2_operator, xr.DataArray)
-    assert isinstance(o2_operator, xr.DataArray)
-    co2_operator = co2_operator.copy()
-    o2_operator = o2_operator.copy()
-    co2_operator[{"state": 2}] = 0.0
-    o2_operator[{"state": 2}] = 0.0
-    inputs["co2_operator"] = co2_operator
-    inputs["o2_operator"] = o2_operator
+    co2_sensitivity = inputs["co2_sensitivity"]
+    o2_sensitivity = inputs["o2_sensitivity"]
+    assert isinstance(co2_sensitivity, xr.DataArray)
+    assert isinstance(o2_sensitivity, xr.DataArray)
+    co2_sensitivity = co2_sensitivity.copy()
+    o2_sensitivity = o2_sensitivity.copy()
+    co2_sensitivity[{"state": 2}] = 0.0
+    o2_sensitivity[{"state": 2}] = 0.0
+    inputs["co2_sensitivity"] = co2_sensitivity
+    inputs["o2_sensitivity"] = o2_sensitivity
     prepared = prepare_co2_o2_inputs(**inputs)
 
-    joint_operator = _gather_co2_o2_operator(
-        prepared.co2_operator,
-        prepared.o2_operator,
+    joint_sensitivity = _gather_co2_o2_sensitivity(
+        prepared.co2_sensitivity,
+        prepared.o2_sensitivity,
     )
-    joint = prepare_linear_sensitivity(joint_operator, output_dim="observation")
+    joint = prepare_linear_sensitivity(joint_sensitivity, output_dim="observation")
 
     assert joint.removed.isel(state=2).item() is True
     assert joint.removed.isel(state=3).item() is False
@@ -233,14 +233,14 @@ def test_shared_state_sensitivity_removes_only_joint_zero_columns(
 
     prior_forward = evaluate_co2_o2_prior_forward_mean(
         fixed_prior_contribution=prepared.fixed_prior_contribution,
-        co2_operator=prepared.co2_operator,
-        o2_operator=prepared.o2_operator,
+        co2_sensitivity=prepared.co2_sensitivity,
+        o2_sensitivity=prepared.o2_sensitivity,
         retained_prior=prepared.retained_prior,
     )
     expected_contribution = np.concatenate(
         (
-            prepared.co2_operator.values @ prepared.retained_prior.mean.values,
-            prepared.o2_operator.values @ prepared.retained_prior.mean.values,
+            prepared.co2_sensitivity.values @ prepared.retained_prior.mean.values,
+            prepared.o2_sensitivity.values @ prepared.retained_prior.mean.values,
         )
     )
     np.testing.assert_allclose(
@@ -256,7 +256,7 @@ def test_model_uses_registered_explicit_arrays_and_joint_covariance() -> None:
     assert get_coord_registry(model) is not None
     assert "fixed_prior_contribution" in model.named_vars
     assert "prior_flux_scaling" not in model.named_vars
-    assert "co2_o2_operator" in model.named_vars
+    assert "co2_o2_sensitivity" in model.named_vars
     assert "co2_o2_flux_contribution" in model.named_vars
     assert "co2_flux_contribution" not in model.named_vars
     assert "o2_flux_contribution" not in model.named_vars
@@ -267,8 +267,8 @@ def test_model_uses_registered_explicit_arrays_and_joint_covariance() -> None:
     )
     expected = prepared.fixed_prior_contribution.values + np.concatenate(
         (
-            np.einsum("os,ds->do", prepared.co2_operator.values, scaling),
-            np.einsum("os,ds->do", prepared.o2_operator.values, scaling),
+            np.einsum("os,ds->do", prepared.co2_sensitivity.values, scaling),
+            np.einsum("os,ds->do", prepared.o2_sensitivity.values, scaling),
         ),
         axis=1,
     )
@@ -298,8 +298,8 @@ def test_fixed_state_changes_prior_closure_and_is_not_sampled() -> None:
     prior_contribution = xr.DataArray(
         np.concatenate(
             (
-                prepared.co2_operator.values @ prior_state.values,
-                prepared.o2_operator.values @ prior_state.values,
+                prepared.co2_sensitivity.values @ prior_state.values,
+                prepared.o2_sensitivity.values @ prior_state.values,
             )
         ),
         dims="observation",
@@ -309,8 +309,8 @@ def test_fixed_state_changes_prior_closure_and_is_not_sampled() -> None:
     xr.testing.assert_allclose(
         evaluate_co2_o2_prior_forward_mean(
             fixed_prior_contribution=prepared.fixed_prior_contribution,
-            co2_operator=prepared.co2_operator,
-            o2_operator=prepared.o2_operator,
+            co2_sensitivity=prepared.co2_sensitivity,
+            o2_sensitivity=prepared.o2_sensitivity,
             retained_prior=prepared.retained_prior,
             state_activity=activity,
         ),
@@ -326,8 +326,8 @@ def test_fixed_state_changes_prior_closure_and_is_not_sampled() -> None:
     np.testing.assert_allclose(scaling[:, 2], 0.75)
     expected_modelled = prepared.fixed_prior_contribution.values + np.concatenate(
         (
-            np.einsum("os,ds->do", prepared.co2_operator.values, scaling),
-            np.einsum("os,ds->do", prepared.o2_operator.values, scaling),
+            np.einsum("os,ds->do", prepared.co2_sensitivity.values, scaling),
+            np.einsum("os,ds->do", prepared.o2_sensitivity.values, scaling),
         ),
         axis=1,
     )
@@ -389,12 +389,12 @@ def _two_site_week_inputs() -> dict[str, object]:
             "o2_observations": o2,
             "co2_prior_forward_mean": co2.copy(),
             "o2_prior_forward_mean": o2.copy(),
-            "co2_operator": xr.DataArray(
+            "co2_sensitivity": xr.DataArray(
                 np.tile([[-0.4, 0.3, 0.2, -0.1, 0.0]], (nmeasure, 1)),
                 dims=("co2_measure", "state"),
                 coords={"co2_measure": co2["co2_measure"], "state": state_labels},
             ),
-            "o2_operator": xr.DataArray(
+            "o2_sensitivity": xr.DataArray(
                 np.tile([[0.5, -0.4, -0.3, 0.0, 0.2]], (nmeasure, 1)),
                 dims=("o2_measure", "state"),
                 coords={"o2_measure": o2["o2_measure"], "state": state_labels},
@@ -464,19 +464,19 @@ def test_two_site_week_runner_persists_labels_roles_units_and_provenance(tmp_pat
     assert roles["observation"] == "y"
     assert roles["concentration"] == "y"
     assert roles["modelled_concentration"] == "modelled_concentration"
-    assert roles["emissions_sensitivity"] == "co2_o2_operator"
+    assert roles["emissions_sensitivity"] == "co2_o2_sensitivity"
     assert roles["flux_contribution"] == "co2_o2_flux_contribution"
     assert "co2_emissions_sensitivity" not in roles
     assert "o2_emissions_sensitivity" not in roles
     assert "pollution_concentration" not in roles
     assert roles["coherent_prior_contribution"] == "fixed_prior_contribution"
     assert metadata["provenance"]["sites"] == ["TAC", "MHD"]
-    assert metadata["o2_operator_ratio"]["convention"] == "embedded_signed_o2_per_co2"
-    assert metadata["o2_operator_ratio"]["status"] == "available"
-    assert metadata["o2_operator_ratio"]["direction"] == "O2 flux per CO2 flux"
-    assert metadata["o2_operator_ratio"]["value"] == [-1.1, -1.0, -1.4]
-    assert metadata["o2_operator_ratio"]["source"] == ["GPP", "TER", "FF"]
-    assert metadata["o2_operator_ratio"]["scope"] == (
+    assert metadata["o2_sensitivity_ratio"]["convention"] == "embedded_signed_o2_per_co2"
+    assert metadata["o2_sensitivity_ratio"]["status"] == "available"
+    assert metadata["o2_sensitivity_ratio"]["direction"] == "O2 flux per CO2 flux"
+    assert metadata["o2_sensitivity_ratio"]["value"] == [-1.1, -1.0, -1.4]
+    assert metadata["o2_sensitivity_ratio"]["source"] == ["GPP", "TER", "FF"]
+    assert metadata["o2_sensitivity_ratio"]["scope"] == (
         "shared GPP/TER/FF states; O2 ocean applied directly"
     )
     assert trace.posterior["flux_scaling"].attrs["units"] == "dimensionless flux scale"
@@ -505,7 +505,7 @@ def test_two_site_week_runner_persists_labels_roles_units_and_provenance(tmp_pat
     assert "fixed_independent_error_sd" not in trace.observed_data
     assert trace.constant_data["fixed_prior_contribution"].attrs["units"] == expected_units
     assert json.loads(
-        trace.constant_data["co2_o2_operator"].attrs["rhime_scientific_roles"]
+        trace.constant_data["co2_o2_sensitivity"].attrs["rhime_scientific_roles"]
     ) == ["emissions_sensitivity"]
     assert json.loads(
         trace.posterior["co2_o2_flux_contribution"].attrs["rhime_scientific_roles"]

@@ -24,7 +24,7 @@ _CO2_O2_VARIABLE_ROLES = {
     "concentration": "y",
     "modelled_concentration": "modelled_concentration",
     "flux_scale": "flux_scaling",
-    "emissions_sensitivity": "co2_o2_operator",
+    "emissions_sensitivity": "co2_o2_sensitivity",
     "flux_contribution": "co2_o2_flux_contribution",
     "coherent_prior_contribution": "fixed_prior_contribution",
     "independent_error": "fixed_independent_error_sd",
@@ -117,16 +117,16 @@ def _co2_o2_metadata(
         for species in ("co2", "o2")
     }
     ratio_provenance = json.loads(
-        prepared.o2_operator.attrs["oxidation_ratio_provenance"]
+        prepared.o2_sensitivity.attrs["oxidation_ratio_provenance"]
     )
     return {
         "recipe": "co2_o2",
         "prior": "correlated arithmetic-moment lognormal",
         "likelihood": "joint Gaussian with fixed independent channel error",
         "independent_error": "fixed labelled standard deviation supplied by caller",
-        "o2_operator_ratio": {
+        "o2_sensitivity_ratio": {
             "convention": "embedded_signed_o2_per_co2",
-            "application": "embedded in the O2 rows of the supplied joint operator; no model multiplier",
+            "application": "embedded in the O2 rows of the supplied joint sensitivity; no model multiplier",
             "scope": "shared GPP/TER/FF states; O2 ocean applied directly",
             **ratio_provenance,
         },
@@ -182,8 +182,10 @@ def _annotate_co2_o2_trace(
             )
         for variable in state_variables & set(group.variables):
             group[variable].attrs["units"] = "dimensionless flux scale"
-        if "co2_o2_operator" in group:
-            group["co2_o2_operator"].attrs["units"] = "observation_units per dimensionless flux scale"
+        if "co2_o2_sensitivity" in group:
+            group["co2_o2_sensitivity"].attrs["units"] = (
+                "observation_units per dimensionless flux scale"
+            )
         if "aggregation_error_covariance" in group:
             group["aggregation_error_covariance"].attrs["units"] = "observation_units * observation_units_cov"
         group.attrs["rhime_recipe"] = "co2_o2"
@@ -210,7 +212,7 @@ def run_rhime_co2_o2_from_prepared_inputs(
     Args:
         prepared_inputs: Validated preparation handoff containing joint
             observations and affine intercept on ``("observation",)``, separate
-            channel operators on their native observation axes and the retained
+            channel sensitivities on their native observation axes and the retained
             state axis, a dense joint aggregation covariance, retained prior,
             ratio provenance, units, labels, and scientific provenance.
         independent_error_sd: Positive finite fixed standard deviations on
@@ -244,14 +246,14 @@ def run_rhime_co2_o2_from_prepared_inputs(
     (
         observations,
         fixed_prior_contribution,
-        co2_operator,
-        o2_operator,
+        co2_sensitivity,
+        o2_sensitivity,
         independent_error_sd,
     ) = _materialize_co2_o2_pymc_inputs(
         prepared.observations,
         prepared.fixed_prior_contribution,
-        prepared.co2_operator,
-        prepared.o2_operator,
+        prepared.co2_sensitivity,
+        prepared.o2_sensitivity,
         independent_error_sd,
     )
     if not np.array_equal(
@@ -265,8 +267,8 @@ def run_rhime_co2_o2_from_prepared_inputs(
     model = build_co2_o2_model(
         observations=observations,
         fixed_prior_contribution=fixed_prior_contribution,
-        co2_operator=co2_operator,
-        o2_operator=o2_operator,
+        co2_sensitivity=co2_sensitivity,
+        o2_sensitivity=o2_sensitivity,
         aggregation_error=prepared.aggregation_error,
         retained_prior=prepared.retained_prior,
         independent_error_sd=independent_error_sd,
