@@ -195,22 +195,21 @@ The important default model-data and deterministic names are:
 CO2 coherent-reduction model
 ----------------------------
 
-The public :func:`openghg_inversions.rhime.build_co2_rhime_model` recipe
+The public :func:`openghg_inversions.rhime.build_co2_model` recipe
 consumes the labelled products of a coherent state reduction. Let
-``H_alpha`` be the retained-state operator, ``m_alpha`` and ``C_alpha`` its
+``H_alpha`` be the retained-state sensitivity, ``m_alpha`` and ``C_alpha`` its
 arithmetic prior mean and covariance, and ``b_fixed`` the fixed affine prior
-contribution. The recipe constructs
+contribution. The core retained-state terms are
 
 .. math::
 
    x &\sim \operatorname{LogNormalMoments}(m_\alpha, C_\alpha), \\
-   \mu_{pollution} &= H_\alpha x, \\
-   \mu &= b_{fixed} + \mu_{pollution}.
+   \mu_{CO_2} &= H_\alpha x.
 
 The affine term is part of coherent prior closure; it is not an atmospheric
 boundary condition. An explicit state-activity policy omits inactive elements
 from the sampled correlated vector while restoring their exact fixed values
-in the full public ``x`` vector and in ``mu_pollution``.
+in the full public ``flux_scaling`` vector and in ``co2_flux_contribution``.
 
 The CO2 likelihood uses the explicit :class:`~openghg_inversions.observation_error.AggregationError`
 selected from prepared inputs. With reported observation standard deviation
@@ -228,6 +227,85 @@ Verification Games fixed-only policy passes ``fixed_model_mismatch=1.0`` and
 ``no_model_error=True`` visibly. A runnable CO2 configuration and resolver are
 tracked in `OPE-79 <https://linear.app/openghg-inversions/issue/OPE-79>`_.
 
+CO2 outer-region treatment
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The direct CO2 builder accepts an optional outer-region treatment prepared with
+:func:`openghg_inversions.rhime.co2.prepare_outer_region_treatment`. The three
+modes are mutually exclusive:
+
+.. list-table:: Outer-region modes
+   :header-rows: 1
+   :widths: 18 32 32
+
+   * - Mode
+     - Mean contribution
+     - Uncertainty treatment
+   * - ``fixed``
+     - :math:`\mu_{outer}=H_{outer}s`, with ``fixed_scale=1`` by default
+     - ``outer_flux_scaling`` is retained as a fixed state; no outer prior
+       uncertainty is added
+   * - ``marginalized``
+     - :math:`\mu_{outer}=H_{outer}m_{outer}`
+     - No ``outer_flux_scaling`` is sampled and
+       :math:`H_{outer}C_{outer}H_{outer}^{\mathsf T}` is added to the
+       observation covariance
+   * - ``inferred``
+     - :math:`\mu_{outer}=H_{outer}x_{outer}`
+     - ``outer_flux_scaling`` is inferred with the labelled correlated
+       arithmetic-moment LogNormal prior
+
+All modes expose ``outer_flux_contribution``. Fixed and inferred modes also
+retain ``outer_flux_scaling`` and model data named ``outer_sensitivity``;
+marginalized mode has no outer state vector.
+
+The marginalized mode is an explicit Gaussian marginalization using the
+supplied arithmetic mean and covariance. It is not an exact marginalization of
+the LogNormal state used by inferred mode. This surface was motivated by
+Verification Games/PARIS experiments: current PARIS evidence selects inferred
+outer states. Marginalized mode is implemented and tested, but is not
+established as a production or non-Verification-Games default. Those
+experiments use synthetic observations from known flux and transport, so the
+posterior flux can be scored against known truth.
+
+With both optional components present, the current CO2 builder's complete
+likelihood mean is
+
+.. math::
+
+   \mathtt{modelled\_concentration}
+   = \mathtt{fixed\_prior\_contribution}
+   + \mathtt{co2\_flux\_contribution}
+   + \mathtt{mu\_bc}
+   + \mathtt{outer\_flux\_contribution}.
+
+``modelled_concentration`` is the mean passed to the likelihood, not a
+pollution-only subtotal. Any future declared mean term, such as an offset, must
+also be included in this sum before likelihood construction. The graph and
+reporting names remain separate: atmospheric boundary conditions produce
+``mu_bc``, outer flux produces ``outer_flux_contribution``, and the coherent
+affine term remains ``fixed_prior_contribution``. Grouping boundary and outer
+concentrations as a baseline is a reporting choice only; it does not create a
+combined model component or alter this composition.
+
+Outer sensitivity must have exactly one state dimension with unique state
+labels. For the CO2 builder the observation dimension is ``nmeasure``. When
+outer sensitivity and observations carry explicit indexes, their labels,
+order, and index-level names must match; the builder rejects conflicting
+indexes. Direct callers remain responsible for the semantics of unlabeled
+arrays. Labelled outer prior means and covariance rows and columns must likewise
+match the outer-state coordinate exactly. Direct custom callers are responsible
+for ensuring that inner and outer sensitivities represent disjoint state
+partitions and do not double count flux.
+
+:func:`openghg_inversions.rhime.co2.collapse_outer_sectors` may be applied
+before any of the three modes. Explicit state-aligned ``group_labels`` select
+which sensitivity columns are summed into one shared outer scaling state, while
+the returned member table preserves the original source, sector, domain, and
+region metadata. Collapsing is orthogonal to treatment: it does not choose a
+mode or derive collapsed prior moments, so callers supply any collapsed mean
+and covariance to ``prepare_outer_region_treatment`` afterward.
+
 The model builder accepts explicit scientific arrays rather than a dataset.
 For durable prepared artifacts, :func:`openghg_inversions.rhime.run_rhime_co2`
 is the public replay seam: it validates and materializes the selected arrays,
@@ -238,6 +316,9 @@ runner argument is ``None``; an explicit scalar or labelled vector overrides
 it. Persist gathered-state traces with
 :func:`openghg_inversions.serialization.save_inferencedata`, which uses the
 same MultiIndex-safe boundary as standard and multisector RHIME outputs.
+The current prepared-input runner does not accept or construct an
+``outer_treatment``; outer-region treatment is therefore a direct-builder
+surface until prepared-artifact and runner integration is added.
 
 CO2/O2 shared-state model
 -------------------------
@@ -288,7 +369,7 @@ Equivalently, coherent reduction may be written in centred or affine form,
 The prepared ``fixed_prior_contribution`` is the parenthesized affine
 intercept, not the complete prior-forward concentration.
 
-Thus this is a row-stacked, block-sparse operator acting on one state vector,
+Thus this is a row-stacked, block-sparse sensitivity acting on one state vector,
 not two independent block-diagonal models. Its fixed-error likelihood is
 
 .. math::
@@ -305,7 +386,7 @@ not two independent block-diagonal models. Its fixed-error likelihood is
    \right).
 
 These quantities must come from one coherent reduction. With native state
-mean :math:`m`, covariance :math:`B`, joint native observation operator
+mean :math:`m`, covariance :math:`B`, joint native observation sensitivity
 :math:`G`, and retained-state restriction :math:`\Pi`,
 
 .. math::
@@ -321,16 +402,29 @@ coherent-reduction contract. See the :doc:`full derivation
 
 Preparation accepts separate native channel arrays, then gathers their rows on
 one ``(species, channel_observation)`` observation index before the model
-applies the joint operator once. Each row still retains its declared native
+applies the joint sensitivity once. Each row still retains its declared native
 units and numerical scale. Verification-game inputs may use ppm for both
 channels, while real atmospheric O2 observations may use per-meg delta(O2/N2).
+The prepared channel fields are named ``co2_sensitivity`` and
+``o2_sensitivity``; their gathered model-data variable is
+``co2_o2_sensitivity``.
 ``independent_error_sd`` and every covariance row and column must use the
 corresponding observation-row units. Any future numerical scaling or whitening
 must be a named transformation applied consistently to observations, model
 mean, independent error, and all joint covariance blocks, while retaining
 physical-unit outputs and provenance. The displayed row stack is the
-mathematical model: every operator and covariance block must still be produced
+mathematical model: every sensitivity and covariance block must still be produced
 by the same reduction.
+
+The graph names the gathered linear signal ``co2_o2_flux_contribution`` and the
+complete affine sum and likelihood mean ``modelled_concentration``. In
+model-variable vocabulary,
+
+.. math::
+
+   \mathtt{modelled\_concentration}
+   = \mathtt{fixed\_prior\_contribution}
+   + \mathtt{co2\_o2\_flux\_contribution}.
 
 Persist sampled CO2/O2 results with
 :func:`openghg_inversions.serialization.save_inferencedata` and restore them
@@ -338,7 +432,7 @@ with :func:`openghg_inversions.serialization.load_inferencedata`; this is the
 declared boundary for preserving gathered MultiIndex coordinates.
 
 The signed oxidation ratio is fixed in this recipe and already folded into the
-shared-state O2 operator. When it is representable by retained-state or
+shared-state O2 sensitivity. When it is representable by retained-state or
 source-resolved values :math:`R`,
 
 .. math::
@@ -349,10 +443,10 @@ source-resolved values :math:`R`,
 Native paired-flux construction may instead apply spatially resolved ratios
 before footprint convolution, in which case no unique retained-state
 :math:`R` is available. Preparation records that status and its reason rather
-than inventing scalar values; the supplied effective O2 operator remains the
+than inventing scalar values; the supplied effective O2 sensitivity remains the
 scientific input.
 
-Because this recipe receives the O2 operator with the fixed ratio already
+Because this recipe receives the O2 sensitivity with the fixed ratio already
 applied upstream, its builder passes the shared state directly to
 ``add_linked_linear_component``. If a fixed or inferred oxidation ratio were
 instead explicit model state, the recipe would visibly form

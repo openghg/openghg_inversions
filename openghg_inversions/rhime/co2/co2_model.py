@@ -7,99 +7,35 @@ contribution, and finally constructs the observation likelihood.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from typing import Any
-
 import numpy as np
 import pymc as pm
-import pytensor.tensor as pt
 import xarray as xr
 
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.models.additive_sigma import add_additive_sigma_gaussian_likelihood
 from openghg_inversions.models.components import (
+    add_coherent_affine_component,
     add_correlated_lognormal_state_with_activity,
+    add_linear_component,
     add_model_data,
+    apply_linear_sensitivity,
 )
 from openghg_inversions.models.coords import registered_model
+from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.models.state_activity import (
-    ResolvedStateActivity,
     StateActivity,
-    detect_zero_sensitivity,
+    prepare_linear_sensitivity,
     resolve_state_activity,
 )
 from openghg_inversions.observation_error import AggregationError
-from openghg_inversions.rhime.specs import DEFAULT_SIGMA_PRIOR
+from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR, DEFAULT_SIGMA_PRIOR
 from openghg_inversions.sigma import SigmaAlignment
 
-
-def _resolve_co2_state_activity(
-    flux_sensitivity: xr.DataArray,
-    state_activity: StateActivity | None,
-) -> ResolvedStateActivity:
-    """Resolve activity once in the retained-state coordinate order."""
-    return resolve_state_activity(
-        detect_zero_sensitivity(flux_sensitivity),
-        state_activity,
-    )
-
-
-def co2_prior_forward_mean(
-    flux_sensitivity: xr.DataArray,
-    *,
-    prior_mean: xr.DataArray,
-    fixed_prior_contribution: xr.DataArray,
-    state_activity: StateActivity | None = None,
-) -> xr.DataArray:
-    """Return the deterministic prior-mean concentration for closure checks.
-
-    The affine closure equation is ``fixed_prior_contribution + H @ x_prior``.
-    Active states use ``prior_mean`` and inactive states use their exact fixed
-    values.
-    """
-    sensitivity = flux_sensitivity.transpose("nmeasure", ...)
-    state_dim = next(str(dim) for dim in sensitivity.dims if dim != "nmeasure")
-    activity = _resolve_co2_state_activity(sensitivity, state_activity)
-    mean = prior_mean.transpose(state_dim)
-    sensitivity, mean = xr.align(sensitivity, mean, join="exact", copy=False)
-    mean = xr.where(activity.active, mean, activity.fixed_value)
-    pollution_mean = xr.dot(sensitivity, mean, dim=state_dim)
-    fixed_prior, pollution_mean = xr.align(
-        fixed_prior_contribution.transpose("nmeasure"),
-        pollution_mean,
-        join="exact",
-        copy=False,
-    )
-    return (fixed_prior + pollution_mean).rename("prior_forward_mean")
-
-
-def _add_co2_retained_state(
-    flux_sensitivity: xr.DataArray,
-    *,
-    prior_mean: xr.DataArray,
-    prior_covariance: xr.DataArray,
-    state_activity: StateActivity | None,
-) -> Any:
-    """Add the correlated active state and restore fixed states in full order."""
-    design = flux_sensitivity.transpose("nmeasure", ...)
-    state_dim = next(str(dim) for dim in design.dims if dim != "nmeasure")
-    activity = _resolve_co2_state_activity(design, state_activity)
-    covariance_dims = [str(dim) for dim in prior_covariance.dims if dim != state_dim]
-    if len(covariance_dims) != 1:
-        raise ValueError(
-            "CO2 prior covariance must have the retained state dimension and "
-            f"one covariance-column dimension; got {prior_covariance.dims!r}."
-        )
-    prior = CorrelatedLognormalPrior(
-        prior_mean,
-        prior_covariance,
-        covariance_dim=covariance_dims[0],
-    )
-    return add_correlated_lognormal_state_with_activity(
-        activity,
-        prior,
-        var_name="x",
-    ).state
+from .outer_regions import (
+    OuterRegionTreatment,
+    add_outer_state_component,
+    add_outer_observation_covariance,
+)
 
 
 def _fixed_mismatch_array(
@@ -124,7 +60,7 @@ def _fixed_mismatch_array(
     ).rename("fixed_model_mismatch")
 
 
-def build_co2_rhime_model(
+def build_co2_model(
     flux_sensitivity: xr.DataArray,
     *,
     prior_mean: xr.DataArray,
@@ -135,45 +71,144 @@ def build_co2_rhime_model(
     minimum_error: xr.DataArray,
     aggregation_error: AggregationError,
     sigma_alignment: SigmaAlignment | None = None,
-    sigma_prior: Mapping[str, Any] | None = None,
+    sigma_prior: PriorArgs | None = None,
     fixed_model_mismatch: float | xr.DataArray | None = None,
     state_activity: StateActivity | None = None,
+    outer_treatment: OuterRegionTreatment | None = None,
+    boundary_sensitivity: xr.DataArray | None = None,
+    bc_prior: PriorArgs | None = None,
+    bc_state_activity: StateActivity | None = None,
     no_model_error: bool = False,
 ) -> pm.Model:
     """Build the CO2 coherent-reduction model from explicit scientific arrays.
 
-    ``flux_sensitivity`` is the reduced operator ``H_alpha`` and
+    ``flux_sensitivity`` is prepared once as the reduced operator ``H_alpha``:
+    exact-zero columns are omitted from the backend ``co2_sensitivity`` while
+    ``flux_scaling`` retains the complete labelled scientific state.
+    ``fixed_prior_contribution`` is then added with the shared coherent-affine
+    component to produce ``modelled_concentration``.
+
     ``fixed_prior_contribution`` is the affine term
     ``H m - H_alpha (Pi m)``. The latter is a fixed prior contribution, not an
     atmospheric boundary condition. ``prior_covariance`` is the labelled
     arithmetic covariance of the retained positive state.
 
-    Known fixed states remain in ``x`` and in the forward calculation, but are
-    omitted from the sampled correlated state. ``fixed_model_mismatch`` is an
-    optional known concentration standard deviation. OGI leaves this policy
-    unset by default; the Verification Games fixed likelihood passes 1 ppm
-    explicitly.
+    Known fixed states remain in the public state and forward calculation but
+    are omitted from the sampled correlated state. ``fixed_model_mismatch`` is
+    an optional known concentration standard deviation. ``openghg_inversions``
+    leaves this policy unset by default; the Verification Games fixed likelihood
+    passes 1 ppm explicitly. ``outer_treatment`` and optional sampled
+    ``boundary_sensitivity @ bc`` remain separate linear components named
+    ``outer_flux_contribution`` and ``mu_bc``. Reporting code may group them
+    when presenting a baseline. The composed mean is therefore
+    ``fixed_prior_contribution + co2_flux_contribution``, plus ``mu_bc`` and
+    ``outer_flux_contribution`` when those components are supplied.
+
+    Direct custom callers are responsible for supplying scientifically
+    coherent arrays from one preparation and for their positional semantics
+    when labels are absent.
+
+    Args:
+        flux_sensitivity: Reduced CO2 sensitivity with observation dimension
+            ``nmeasure`` and one labelled retained-state dimension. When
+            ``outer_treatment`` is supplied, this sensitivity must exclude the
+            separately represented outer states.
+        prior_mean: Arithmetic mean of the retained positive state.
+        prior_covariance: Dense arithmetic covariance of the retained state.
+        fixed_prior_contribution: Fixed coherent-reduction affine intercept
+            named ``fixed_prior_contribution`` on ``nmeasure``.
+        observations: Observed CO2 concentrations on ``nmeasure``.
+        observation_error: Reported observation standard deviation.
+        minimum_error: Minimum independent model-data mismatch standard
+            deviation.
+        aggregation_error: Prepared fixed aggregation-error representation.
+        sigma_alignment: Optional grouping policy for inferred additive model
+            error.
+        sigma_prior: Optional prior arguments for inferred additive model
+            error.
+        fixed_model_mismatch: Optional known scalar or labelled concentration
+            standard deviation.
+        state_activity: Optional labelled activity policy for retained flux
+            states.
+        outer_treatment: Optional prepared outer-region state treatment whose
+            states are disjoint from ``flux_sensitivity``.
+        boundary_sensitivity: Optional atmospheric boundary-condition
+            sensitivity.
+        bc_prior: Optional prior arguments for boundary-condition scaling.
+        bc_state_activity: Optional labelled activity policy for boundary
+            states.
+        no_model_error: If true, omit inferred additive model error.
+
+    Returns:
+        A registered PyMC model containing the complete affine concentration
+        and Gaussian likelihood.
+
+    Raises:
+        ValueError: If shared preparation, prior construction, or registered
+            coordinate alignment fails.
     """
     sigma_prior = dict(DEFAULT_SIGMA_PRIOR if sigma_prior is None else sigma_prior)
+    bc_prior = dict(DEFAULT_BC_PRIOR if bc_prior is None else bc_prior)
     fixed_mismatch = _fixed_mismatch_array(observations, fixed_model_mismatch)
+    prepared_flux = prepare_linear_sensitivity(flux_sensitivity, output_dim="nmeasure")
+    activity = resolve_state_activity(prepared_flux.removed, state_activity)
+    covariance_dim = str(prior_covariance.dims[-1])
+    retained_prior = CorrelatedLognormalPrior(
+        prior_mean,
+        prior_covariance,
+        covariance_dim=covariance_dim,
+    )
+    aggregation_error = (
+        aggregation_error
+        if outer_treatment is None
+        else add_outer_observation_covariance(aggregation_error, outer_treatment)
+    )
 
     with registered_model() as model:
-        h = add_model_data(flux_sensitivity.transpose("nmeasure", ...), "hx")
-        x = _add_co2_retained_state(
-            flux_sensitivity,
-            prior_mean=prior_mean,
-            prior_covariance=prior_covariance,
-            state_activity=state_activity,
+        flux_scaling = add_correlated_lognormal_state_with_activity(
+            activity,
+            retained_prior,
+            var_name="flux_scaling",
+        ).state
+        co2_flux_contribution = apply_linear_sensitivity(
+            prepared_flux,
+            flux_scaling,
+            data_name="co2_sensitivity",
+            output_name="co2_flux_contribution",
         )
-        pollution_mean = pm.Deterministic("mu_pollution", pt.dot(h, x), dims="nmeasure")
-        fixed_prior = add_model_data(
-            fixed_prior_contribution.transpose("nmeasure"),
-            "fixed_prior_contribution",
-        )
-        modelled_mean = pm.Deterministic(
-            "mu",
-            fixed_prior + pollution_mean,
-            dims="nmeasure",
+        modelled_linear_signal = co2_flux_contribution
+        if boundary_sensitivity is not None:
+            boundary_contribution = add_linear_component(
+                prepare_linear_sensitivity(boundary_sensitivity),
+                data_name="hbc",
+                prior_args=bc_prior,
+                var_name="bc",
+                output_name="mu_bc",
+                output_dim="nmeasure",
+                compute_deterministic=True,
+                state_activity=bc_state_activity,
+            ).output
+            modelled_linear_signal = modelled_linear_signal + boundary_contribution
+
+        if outer_treatment is not None:
+            if outer_treatment.mode == "marginalized":
+                assert outer_treatment.mean_contribution is not None
+                outer_mean_data = add_model_data(
+                    outer_treatment.mean_contribution.transpose("nmeasure"),
+                    "outer_mean_contribution",
+                )
+                outer_flux_contribution = pm.Deterministic(
+                    "outer_flux_contribution",
+                    outer_mean_data,
+                    dims="nmeasure",
+                )
+            else:
+                outer_flux_contribution = add_outer_state_component(outer_treatment)
+            modelled_linear_signal = modelled_linear_signal + outer_flux_contribution
+        modelled_mean = add_coherent_affine_component(
+            fixed_prior_contribution,
+            modelled_linear_signal,
+            output_name="modelled_concentration",
         )
         add_additive_sigma_gaussian_likelihood(
             observations=observations,
@@ -190,4 +225,4 @@ def build_co2_rhime_model(
     return model
 
 
-__all__ = ["build_co2_rhime_model", "co2_prior_forward_mean"]
+__all__ = ["build_co2_model"]

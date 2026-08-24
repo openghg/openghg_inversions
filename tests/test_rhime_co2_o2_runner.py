@@ -33,7 +33,7 @@ def test_complete_recipe_name_is_reserved() -> None:
 def test_modelled_concentration_is_not_labelled_as_pollution_only() -> None:
     assert "pollution_concentration" not in _CO2_O2_VARIABLE_ROLES
     assert _CO2_O2_VARIABLE_ROLES["modelled_concentration"] == "modelled_concentration"
-    assert _CO2_O2_VARIABLE_ROLES["emissions_sensitivity"] == "co2_o2_operator"
+    assert _CO2_O2_VARIABLE_ROLES["emissions_sensitivity"] == "co2_o2_sensitivity"
     assert _CO2_O2_VARIABLE_ROLES["flux_contribution"] == "co2_o2_flux_contribution"
 
 
@@ -41,8 +41,8 @@ def _prepared_stub(array: xr.DataArray) -> SimpleNamespace:
     return SimpleNamespace(
         observations=array,
         fixed_prior_contribution=array,
-        co2_operator=array,
-        o2_operator=array,
+        co2_sensitivity=array,
+        o2_sensitivity=array,
         aggregation_error=None,
         retained_prior=None,
         provenance={},
@@ -175,7 +175,9 @@ def test_replay_materializes_payloads_and_auxiliary_units_in_one_graph(monkeypat
         },
     )
     prepared = _prepared_stub(array)
-    prepared.o2_operator.attrs["oxidation_ratio_provenance"] = json.dumps({"status": "available"})
+    prepared.o2_sensitivity.attrs["oxidation_ratio_provenance"] = json.dumps(
+        {"status": "available"}
+    )
     independent_error_sd = array.copy(deep=False, data=values)
     monkeypatch.setattr(co2_o2_runner, "build_co2_o2_model", lambda **_: pm.Model())
     monkeypatch.setattr(co2_o2_runner, "sample_rhime_model", lambda *_: az.InferenceData())

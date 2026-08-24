@@ -25,7 +25,7 @@ from .builders import (
     RhimeModelBuilderContext,
     RhimeModelBuildResult,
 )
-from .co2 import build_co2_rhime_model, co2_model_input_names, co2_prior_forward_mean, run_rhime_co2
+from .co2 import build_co2_model, co2_model_input_names, run_rhime_co2
 from .materialization import materialize_pymc_inputs
 from .params import params_from_config, resolve_flux_sources, resolve_rhime_options
 from .preparation import (
@@ -69,7 +69,7 @@ __all__ = [
     "params_from_config",
     "assemble_rhime_inputs",
     "build_multisector_rhime_model",
-    "build_co2_rhime_model",
+    "build_co2_model",
     "build_multisector_rhime_model_result",
     "build_rhime_basis",
     "build_rhime_sensitivities",
@@ -82,7 +82,6 @@ __all__ = [
     "make_standard_rhime_outputs",
     "materialize_pymc_inputs",
     "co2_model_input_names",
-    "co2_prior_forward_mean",
     "multisector_model_input_names",
     "retrieve_or_reload_rhime_data",
     "resolve_flux_sources",

@@ -64,7 +64,7 @@ def _inputs(
         "o2_observations": o2,
         "co2_prior_forward_mean": co2 - 0.25,
         "o2_prior_forward_mean": o2 + 0.5,
-        "co2_operator": xr.DataArray(
+        "co2_sensitivity": xr.DataArray(
             da.from_array(
                 [[1, 2, 3, 4, co2_o2_ocean_loading], [0.5, 1, 1.5, 2, 0]],
                 chunks=(1, 5),
@@ -72,7 +72,7 @@ def _inputs(
             dims=("co2_measure", "state"),
             coords={"co2_measure": co2_labels, "state": state},
         ),
-        "o2_operator": xr.DataArray(
+        "o2_sensitivity": xr.DataArray(
             da.from_array(
                 [
                     [-1, -2, -3, o2_co2_ocean_loading, 5],
@@ -137,8 +137,8 @@ def test_preparation_preserves_lazy_channels_with_staggered_unequal_times(tmp_pa
 
     assert isinstance(prepared.observations.data, da.Array)
     assert isinstance(prepared.fixed_prior_contribution.data, da.Array)
-    assert isinstance(prepared.co2_operator.data, da.Array)
-    assert isinstance(prepared.o2_operator.data, da.Array)
+    assert isinstance(prepared.co2_sensitivity.data, da.Array)
+    assert isinstance(prepared.o2_sensitivity.data, da.Array)
     assert isinstance(prepared.o2_co2_flux_ratio.data, da.Array)
     assert prepared.o2_co2_flux_ratio.data is ratio.data
     assert not isinstance(prepared.aggregation_error.covariance.data, da.Array)
@@ -195,34 +195,34 @@ def test_preparation_preserves_lazy_channels_with_staggered_unequal_times(tmp_pa
     assert prepared.fixed_prior_contribution.attrs["mathematical_name"] == (
         "H m - H_alpha Pi m"
     )
-    ratio_provenance = prepared.o2_operator.attrs["oxidation_ratio_provenance"]
+    ratio_provenance = prepared.o2_sensitivity.attrs["oxidation_ratio_provenance"]
     assert '"state": ["gpp:1", "ter:1", "ff:1"]' in ratio_provenance
     assert '"value": [-1.1, -1.0, -1.4]' in ratio_provenance
 
 
-def test_canonicalizes_operator_state_metadata_without_mutating_inputs() -> None:
+def test_canonicalizes_sensitivity_state_metadata_without_mutating_inputs() -> None:
     inputs = _inputs()
     originals: dict[str, xr.DataArray] = {}
-    for name in ("co2_operator", "o2_operator"):
-        operator = inputs[name]
-        assert isinstance(operator, xr.DataArray)
-        operator = operator.assign_coords(
+    for name in ("co2_sensitivity", "o2_sensitivity"):
+        sensitivity = inputs[name]
+        assert isinstance(sensitivity, xr.DataArray)
+        sensitivity = sensitivity.assign_coords(
             source=("state", ["stale"] * 5),
             tracer_scope=("state", ["wrong"] * 5),
         )
-        inputs[name] = operator
-        originals[name] = operator.copy(deep=True)
+        inputs[name] = sensitivity
+        originals[name] = sensitivity.copy(deep=True)
 
     prepared = prepare_co2_o2_inputs(**inputs)
     prior = inputs["retained_prior"]
     assert isinstance(prior, CorrelatedLognormalPrior)
-    for name, prepared_operator in (
-        ("co2_operator", prepared.co2_operator),
-        ("o2_operator", prepared.o2_operator),
+    for name, prepared_sensitivity in (
+        ("co2_sensitivity", prepared.co2_sensitivity),
+        ("o2_sensitivity", prepared.o2_sensitivity),
     ):
-        np.testing.assert_array_equal(prepared_operator["source"], prior.mean["source"])
+        np.testing.assert_array_equal(prepared_sensitivity["source"], prior.mean["source"])
         np.testing.assert_array_equal(
-            prepared_operator["tracer_scope"], prior.mean["tracer_scope"]
+            prepared_sensitivity["tracer_scope"], prior.mean["tracer_scope"]
         )
         xr.testing.assert_identical(inputs[name], originals[name])
 
@@ -241,7 +241,7 @@ def _with_state_index(array: xr.DataArray, index: pd.MultiIndex) -> xr.DataArray
     return result.assign_coords(xr.Coordinates.from_pandas_multiindex(index, "state"))
 
 
-def test_rejects_operator_with_stale_gathered_state_level_names() -> None:
+def test_rejects_sensitivity_with_stale_gathered_state_level_names() -> None:
     inputs = _inputs()
     state_index = pd.MultiIndex.from_arrays(
         [
@@ -257,7 +257,7 @@ def test_rejects_operator_with_stale_gathered_state_level_names() -> None:
         _with_state_index(prior.mean, state_index),
         np.eye(5) * 0.01,
     )
-    for name in ("co2_operator", "o2_operator"):
+    for name in ("co2_sensitivity", "o2_sensitivity"):
         value = inputs[name]
         assert isinstance(value, xr.DataArray)
         inputs[name] = _with_state_index(value, state_index)
@@ -265,10 +265,10 @@ def test_rejects_operator_with_stale_gathered_state_level_names() -> None:
     assert isinstance(ratio, xr.DataArray)
     inputs["o2_co2_flux_ratio"] = _with_state_index(ratio, state_index[:3])
 
-    operator = inputs["co2_operator"]
-    assert isinstance(operator, xr.DataArray)
-    inputs["co2_operator"] = _with_state_index(
-        operator,
+    sensitivity = inputs["co2_sensitivity"]
+    assert isinstance(sensitivity, xr.DataArray)
+    inputs["co2_sensitivity"] = _with_state_index(
+        sensitivity,
         state_index.set_names(("bad_source", "bad_scope", "bad_region")),
     )
 
@@ -385,7 +385,7 @@ def test_tracks_unavailable_ratio_values_without_claiming_source_resolved_proven
         )
     )
 
-    provenance = prepared.o2_operator.attrs["oxidation_ratio_provenance"]
+    provenance = prepared.o2_sensitivity.attrs["oxidation_ratio_provenance"]
     assert prepared.o2_co2_flux_ratio is None
     assert prepared.o2_co2_flux_ratio_unavailable_reason.startswith("Only spatially")
     assert '"status": "unavailable"' in provenance
@@ -408,12 +408,12 @@ def test_requires_exactly_one_ratio_values_or_unavailable_reason(
 
 
 def test_rejects_co2_loading_on_o2_ocean_state() -> None:
-    with pytest.raises(ValueError, match="CO2 operator.*O2-specific ocean"):
+    with pytest.raises(ValueError, match="CO2 sensitivity.*O2-specific ocean"):
         prepare_co2_o2_inputs(**_inputs(co2_o2_ocean_loading=0.1))
 
 
 def test_rejects_o2_loading_on_co2_ocean_state() -> None:
-    with pytest.raises(ValueError, match="O2 operator.*CO2-specific ocean"):
+    with pytest.raises(ValueError, match="O2 sensitivity.*CO2-specific ocean"):
         prepare_co2_o2_inputs(**_inputs(o2_co2_ocean_loading=0.1))
 
 
