@@ -56,6 +56,10 @@ class OuterRegionTreatment:
 
     Atmospheric boundary conditions and outer flux remain separate model
     components. Reporting code may group them when presenting a baseline.
+
+    This API is currently motivated by the PARIS Verification Games, where
+    synthetic observations have known flux and transport truth. Current
+    evidence uses inferred outer states; wider use is not yet established.
     """
 
     mode: OuterRegionMode

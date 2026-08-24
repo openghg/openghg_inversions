@@ -264,7 +264,9 @@ supplied arithmetic mean and covariance. It is not an exact marginalization of
 the LogNormal state used by inferred mode. This surface was motivated by
 Verification Games/PARIS experiments: current PARIS evidence selects inferred
 outer states. Marginalized mode is implemented and tested, but is not
-established as a production or non-Verification-Games default.
+established as a production or non-Verification-Games default. Those
+experiments use synthetic observations from known flux and transport, so the
+posterior flux can be scored against known truth.
 
 With both optional components present, the current CO2 builder's complete
 likelihood mean is
