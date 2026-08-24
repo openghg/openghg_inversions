@@ -12,7 +12,10 @@ import pymc as pm
 import xarray as xr
 
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
-from openghg_inversions.models.additive_sigma import add_additive_sigma_gaussian_likelihood
+from openghg_inversions.models.additive_sigma import (
+    DEFAULT_ADDITIVE_SIGMA_PRIOR,
+    add_additive_sigma_gaussian_likelihood,
+)
 from openghg_inversions.models.components import (
     add_coherent_affine_component,
     add_correlated_lognormal_state_with_activity,
@@ -28,7 +31,7 @@ from openghg_inversions.models.state_activity import (
     resolve_state_activity,
 )
 from openghg_inversions.observation_error import AggregationError
-from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR, DEFAULT_SIGMA_PRIOR
+from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR
 from openghg_inversions.sigma import SigmaAlignment
 
 from .outer_regions import (
@@ -147,7 +150,7 @@ def build_co2_model(
         ValueError: If shared preparation, prior construction, or registered
             coordinate alignment fails.
     """
-    sigma_prior = dict(DEFAULT_SIGMA_PRIOR if sigma_prior is None else sigma_prior)
+    sigma_prior = dict(DEFAULT_ADDITIVE_SIGMA_PRIOR if sigma_prior is None else sigma_prior)
     bc_prior = dict(DEFAULT_BC_PRIOR if bc_prior is None else bc_prior)
     fixed_mismatch = _fixed_mismatch_array(observations, fixed_model_mismatch)
     prepared_flux = prepare_linear_sensitivity(flux_sensitivity, output_dim="nmeasure")
@@ -217,9 +220,8 @@ def build_co2_model(
             aggregation_error=aggregation_error,
             fixed_model_mismatch=fixed_mismatch,
             mean=modelled_mean,
-            sigma_alignment=sigma_alignment,
-            sigma_prior=sigma_prior,
-            no_model_error=no_model_error,
+            sigma_alignment=None if no_model_error else sigma_alignment,
+            sigma_prior=None if no_model_error else sigma_prior,
             output_dim="nmeasure",
         )
     return model

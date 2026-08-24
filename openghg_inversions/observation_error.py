@@ -188,7 +188,7 @@ def _validate_vector(
 def validate_observation_error_arrays(
     observations: xr.DataArray,
     observation_error: xr.DataArray,
-    minimum_error: xr.DataArray,
+    minimum_error: xr.DataArray | None,
     *,
     owner: str,
     output_dim: str = "nmeasure",
@@ -198,7 +198,7 @@ def validate_observation_error_arrays(
     Args:
         observations: Observed mole fractions.
         observation_error: Reported observation-error standard deviations.
-        minimum_error: Minimum total-error standard deviations.
+        minimum_error: Optional minimum total-error standard deviations.
         owner: Name of the likelihood/error component consuming the arrays.
         output_dim: Required observation dimension.
 
@@ -213,10 +213,10 @@ def validate_observation_error_arrays(
         )
     _numeric_finite("observations", observations, owner=f"{owner} input")
     nmeasure = observations.sizes[output_dim]
-    for name, array in (
-        ("observation_error", observation_error),
-        ("minimum_error", minimum_error),
-    ):
+    arrays = [("observation_error", observation_error)]
+    if minimum_error is not None:
+        arrays.append(("minimum_error", minimum_error))
+    for name, array in arrays:
         if array.dims != (output_dim,):
             raise ValueError(
                 f"{owner} input {name!r} must have dims "

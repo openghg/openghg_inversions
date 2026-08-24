@@ -8,12 +8,13 @@ not build a model, retrieve data, sample, or write outputs.
 """
 
 import pymc as pm
+import pytensor.tensor as pt
 import xarray as xr
 from pytensor.tensor.variable import TensorVariable
 
-from openghg_inversions.models.additive_sigma import build_additive_sigma_error
 from openghg_inversions.observation_error import (
     AggregationError,
+    validate_observation_error_arrays,
 )
 
 
@@ -67,22 +68,42 @@ def likelihood_builder(
     if degrees_of_freedom <= 0:
         raise ValueError("Student-t degrees of freedom must be positive.")
     del pollution_mean, pollution_event_baseline
-    state = build_additive_sigma_error(
-        observations=observations,
-        observation_error=observation_error,
-        minimum_error=minimum_error,
-        aggregation_error=aggregation_error,
-        sigma_alignment=None,
-        sigma_prior={},
-        no_model_error=True,
+    validate_observation_error_arrays(
+        observations,
+        observation_error,
+        minimum_error,
+        owner="Custom Student-t likelihood",
         output_dim=output_dim,
+    )
+    reported_error = pm.Data(
+        "error",
+        pm.floatX(observation_error.transpose(output_dim).compute().values),
+        dims=output_dim,
+    )
+    minimum_error_data = pm.Data(
+        "min_error",
+        pm.floatX(minimum_error.transpose(output_dim).compute().values),
+        dims=output_dim,
+    )
+    aggregation_variance = pm.Data(
+        "aggregation_error_marginal_variance",
+        pm.floatX(aggregation_error.marginal_variance),
+        dims=output_dim,
+    )
+    epsilon = pm.Deterministic(
+        "epsilon",
+        pt.maximum(
+            pt.sqrt(reported_error**2 + aggregation_variance),
+            minimum_error_data,
+        ),
+        dims=output_dim,
     )
     observed = pm.StudentT(
         "y",
         nu=degrees_of_freedom,
         mu=mean,
-        sigma=state.error_scale,
-        observed=state.observed,
+        sigma=epsilon,
+        observed=pm.floatX(observations.transpose(output_dim).compute().values),
         dims=output_dim,
     )
     return observed

@@ -109,10 +109,9 @@ def test_co2_model_exposes_affine_correlated_dense_covariance_graph() -> None:
         "co2_flux_contribution",
         "fixed_prior_contribution",
         "modelled_concentration",
-        "Y",
         "error",
-        "fixed_model_mismatch",
         "min_error",
+        "fixed_model_mismatch",
         "epsilon",
         "y",
     } <= set(model.named_vars)

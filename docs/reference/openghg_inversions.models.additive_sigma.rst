@@ -5,8 +5,8 @@ openghg\_inversions.models.additive\_sigma
 A model recipe supplies its completed forward-model mean explicitly; the
 likelihood then combines reported observation uncertainty, additive
 model-data-mismatch variance, and any selected fixed aggregation covariance.
-``build_additive_sigma_error`` remains available when a different observation
-distribution needs the same error construction.
+An optional prepared minimum error applies the historical floor on total
+marginal standard deviation.
 
 .. automodule:: openghg_inversions.models.additive_sigma
    :members:
