@@ -9,6 +9,7 @@ import arviz as az
 import xarray as xr
 
 from openghg_inversions.inversion_data import RhimePreparedInputs
+from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.models.state_activity import StateActivity
 from openghg_inversions.observation_error import (
     AggregationErrorMode,
@@ -21,7 +22,7 @@ from openghg_inversions.rhime.materialization import materialize_pymc_inputs
 from openghg_inversions.rhime.sampling import RhimeSampler, sample_rhime_model
 from openghg_inversions.sigma import SigmaAlignment
 
-from .co2_model import build_co2_rhime_model
+from .co2_model import build_co2_model
 
 
 _CO2_SCIENTIFIC_INPUT_NAMES = (
@@ -129,7 +130,24 @@ def co2_model_input_names(
     preserve_prepared_fixed_mismatch: bool,
     derive_sigma_alignment: bool = False,
 ) -> tuple[str, ...]:
-    """Declare prepared arrays consumed by the selected CO2 components."""
+    """Declare prepared arrays consumed by the selected CO2 components.
+
+    Args:
+        prepared_inputs: Prepared RHIME artifact containing the candidate
+            inversion inputs.
+        aggregation_error_mode: Aggregation-error representation selected for
+            the likelihood.
+        preserve_prepared_fixed_mismatch: Include a prepared fixed mismatch
+            field when present.
+        derive_sigma_alignment: Include the site indicator needed to derive
+            the default mismatch-error grouping.
+
+    Returns:
+        Names of the arrays to materialize for model construction.
+
+    Raises:
+        ValueError: If a required prepared input is absent.
+    """
     inputs = prepared_inputs.inv_inputs
     names = list(_CO2_SCIENTIFIC_INPUT_NAMES)
     names.extend(aggregation_error_input_names(inputs, aggregation_error_mode))
@@ -151,7 +169,7 @@ def run_rhime_co2(
     *,
     prepared_inputs: RhimePreparedInputs,
     sigma_alignment: SigmaAlignment | None = None,
-    sigma_prior: dict | None = None,
+    sigma_prior: PriorArgs | None = None,
     fixed_model_mismatch: float | xr.DataArray | None = None,
     sampler: RhimeSampler | None = None,
     aggregation_error_mode: AggregationErrorMode = "dense",
@@ -170,6 +188,28 @@ def run_rhime_co2(
     that alignment; ``no_model_error=True`` disables inferred model error.
     The Verification Games fixed-likelihood harness passes 1 ppm and disables
     inferred model error.
+
+    Args:
+        prepared_inputs: Validated coherent-reduction inputs for the CO2
+            recipe.
+        sigma_alignment: Optional grouping policy for inferred additive model
+            error. The default is derived from the prepared site indicator.
+        sigma_prior: Optional prior arguments for inferred additive model
+            error.
+        fixed_model_mismatch: Optional known scalar or labelled mismatch
+            standard deviation. When omitted, a prepared value is preserved.
+        sampler: Optional RHIME sampler configuration.
+        aggregation_error_mode: Prepared aggregation-error representation to
+            use in the likelihood.
+        no_model_error: If true, omit inferred additive model error.
+
+    Returns:
+        Sampled inference data annotated with the CO2 variable-role and model
+        manifests.
+
+    Raises:
+        ValueError: If prepared inputs are missing, inconsistent, or fail
+            model construction.
     """
     prepared = prepared_inputs.validated()
     names = co2_model_input_names(
@@ -188,7 +228,7 @@ def run_rhime_co2(
     prepared_mismatch = (
         model_inputs.get("fixed_model_mismatch") if fixed_model_mismatch is None else fixed_model_mismatch
     )
-    model = build_co2_rhime_model(
+    model = build_co2_model(
         model_inputs["H"],
         prior_mean=model_inputs["alpha_prior_mean"],
         prior_covariance=model_inputs["alpha_prior_covariance"],

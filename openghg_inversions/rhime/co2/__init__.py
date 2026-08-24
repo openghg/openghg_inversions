@@ -1,6 +1,6 @@
 """Public CO2-family RHIME recipes."""
 
-from .co2_model import build_co2_rhime_model
+from .co2_model import build_co2_model
 from .co2_runner import co2_model_input_names, run_rhime_co2
 from .co2_o2_model import (
     build_co2_o2_model,
@@ -18,7 +18,7 @@ from .outer_regions import (
 
 __all__ = [
     "Co2O2PreparedInputs",
-    "build_co2_rhime_model",
+    "build_co2_model",
     "build_co2_o2_model",
     "collapse_outer_sectors",
     "co2_model_input_names",

@@ -195,7 +195,7 @@ The important default model-data and deterministic names are:
 CO2 coherent-reduction model
 ----------------------------
 
-The public :func:`openghg_inversions.rhime.build_co2_rhime_model` recipe
+The public :func:`openghg_inversions.rhime.build_co2_model` recipe
 consumes the labelled products of a coherent state reduction. Let
 ``H_alpha`` be the retained-state sensitivity, ``m_alpha`` and ``C_alpha`` its
 arithmetic prior mean and covariance, and ``b_fixed`` the fixed affine prior
