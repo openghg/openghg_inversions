@@ -294,11 +294,9 @@ outer sensitivity and observations carry explicit indexes, their labels,
 order, and index-level names must match; the builder rejects conflicting
 indexes. Direct callers remain responsible for the semantics of unlabeled
 arrays. Labelled outer prior means and covariance rows and columns must likewise
-match the outer-state coordinate exactly. When an
-outer treatment is supplied, the inner ``flux_sensitivity`` must carry complete
-state-aligned ``basis_group`` metadata with no state labelled ``"outer"``. The
-preparation helper labels its outer states ``"outer"`` and rejects conflicting
-supplied metadata, preventing one state from appearing in both sensitivities.
+match the outer-state coordinate exactly. Direct custom callers are responsible
+for ensuring that inner and outer sensitivities represent disjoint state
+partitions and do not double count flux.
 
 :func:`openghg_inversions.rhime.co2.collapse_outer_sectors` may be applied
 before any of the three modes. Explicit state-aligned ``group_labels`` select
