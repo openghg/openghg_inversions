@@ -10,7 +10,6 @@ import numpy as np
 import pandas as pd
 import pymc as pm
 import arviz as az
-import pytest
 import xarray as xr
 
 from openghg_inversions.models.coords import get_coord_registry
@@ -18,7 +17,6 @@ from openghg_inversions.models.state_activity import StateActivity
 from openghg_inversions.observation_error import resolve_aggregation_error
 from openghg_inversions.rhime.co2 import (
     build_co2_rhime_model,
-    co2_prior_forward_mean,
     run_rhime_co2,
 )
 from openghg_inversions.rhime.co2 import co2_runner
@@ -99,75 +97,6 @@ def _build_model(inputs: xr.Dataset, **kwargs: Any) -> pm.Model:
         no_model_error=True,
         **kwargs,
     )
-
-
-def test_co2_prior_forward_mean_matches_ope74_golden_contract() -> None:
-    inputs = _golden_inputs()
-    fixture = json.loads(FIXTURE.read_text())
-    xr.testing.assert_allclose(
-        co2_prior_forward_mean(
-            inputs["H"],
-            prior_mean=inputs["alpha_prior_mean"],
-            fixed_prior_contribution=inputs["fixed_prior_contribution"],
-        ),
-        xr.DataArray(
-            fixture["prior_forward_mf"],
-            dims="nmeasure",
-            coords={"nmeasure": inputs["nmeasure"]},
-            name="prior_forward_mean",
-        ),
-    )
-
-
-def test_co2_prior_forward_mean_uses_fixed_values_for_inactive_states() -> None:
-    inputs = _golden_inputs()
-    nstate = inputs.sizes["region"]
-    prior_mean = xr.DataArray(
-        np.arange(nstate, dtype=float) + 2.0,
-        dims="region",
-        coords={"region": inputs["region"]},
-    )
-    is_active = xr.DataArray(
-        [True, False, True, True],
-        dims="region",
-        coords={"region": inputs["region"]},
-    )
-    fixed_value = xr.DataArray(
-        np.full(nstate, 9.0),
-        dims="region",
-        coords={"region": inputs["region"]},
-    )
-    activity = StateActivity(active=is_active, fixed_value=fixed_value)
-
-    expected_state = np.where(is_active, prior_mean, fixed_value)
-    expected = inputs["fixed_prior_contribution"].values + inputs["H"].values @ expected_state
-    actual = co2_prior_forward_mean(
-        inputs["H"],
-        prior_mean=prior_mean,
-        fixed_prior_contribution=inputs["fixed_prior_contribution"],
-        state_activity=activity,
-    )
-
-    np.testing.assert_allclose(actual, expected)
-
-
-def test_co2_prior_forward_mean_rejects_mismatched_labels() -> None:
-    inputs = _golden_inputs()
-    reordered_state = inputs["alpha_prior_mean"].isel(region=[1, 0, 2, 3])
-    reordered_observations = inputs["fixed_prior_contribution"].isel(nmeasure=slice(None, None, -1))
-
-    with pytest.raises(ValueError, match="cannot align.*region"):
-        co2_prior_forward_mean(
-            inputs["H"],
-            prior_mean=reordered_state,
-            fixed_prior_contribution=inputs["fixed_prior_contribution"],
-        )
-    with pytest.raises(ValueError, match="cannot align.*nmeasure"):
-        co2_prior_forward_mean(
-            inputs["H"],
-            prior_mean=inputs["alpha_prior_mean"],
-            fixed_prior_contribution=reordered_observations,
-        )
 
 
 def test_co2_model_exposes_affine_correlated_dense_covariance_graph() -> None:

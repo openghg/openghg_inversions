@@ -23,11 +23,9 @@ from openghg_inversions.models.components import (
     add_model_data,
     apply_linear_sensitivity,
 )
-from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.models.coords import registered_model
+from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.models.state_activity import (
-    PreparedLinearSensitivity,
-    ResolvedStateActivity,
     StateActivity,
     prepare_linear_sensitivity,
     resolve_state_activity,
@@ -41,72 +39,6 @@ from .outer_regions import (
     add_outer_state_component,
     add_outer_observation_covariance,
 )
-
-
-def _resolve_co2_state_activity(
-    prepared_sensitivity: PreparedLinearSensitivity,
-    state_activity: StateActivity | None,
-) -> ResolvedStateActivity:
-    """Resolve activity once from the prepared full-state mapping."""
-    return resolve_state_activity(prepared_sensitivity.removed, state_activity)
-
-
-def co2_prior_forward_mean(
-    flux_sensitivity: xr.DataArray,
-    *,
-    prior_mean: xr.DataArray,
-    fixed_prior_contribution: xr.DataArray,
-    state_activity: StateActivity | None = None,
-) -> xr.DataArray:
-    """Return the deterministic prior-mean concentration for closure checks.
-
-    The affine closure equation is ``fixed_prior_contribution + H @ x_prior``.
-    Active states use ``prior_mean`` and inactive states use their exact fixed
-    values.
-    """
-    sensitivity = flux_sensitivity.transpose("nmeasure", ...)
-    prepared = prepare_linear_sensitivity(sensitivity)
-    state_dim = prepared.state_dim
-    activity = _resolve_co2_state_activity(prepared, state_activity)
-    mean = prior_mean.transpose(state_dim)
-    sensitivity, mean = xr.align(sensitivity, mean, join="exact", copy=False)
-    mean = xr.where(activity.active, mean, activity.fixed_value)
-    pollution_mean = xr.dot(sensitivity, mean, dim=state_dim)
-    fixed_prior, pollution_mean = xr.align(
-        fixed_prior_contribution.transpose("nmeasure"),
-        pollution_mean,
-        join="exact",
-        copy=False,
-    )
-    return (fixed_prior + pollution_mean).rename("prior_forward_mean")
-
-
-def _add_co2_retained_state(
-    prepared_sensitivity: PreparedLinearSensitivity,
-    *,
-    prior_mean: xr.DataArray,
-    prior_covariance: xr.DataArray,
-    state_activity: StateActivity | None,
-) -> Any:
-    """Add the correlated active state and restore fixed states in full order."""
-    state_dim = prepared_sensitivity.state_dim
-    activity = _resolve_co2_state_activity(prepared_sensitivity, state_activity)
-    covariance_dims = [str(dim) for dim in prior_covariance.dims if dim != state_dim]
-    if len(covariance_dims) != 1:
-        raise ValueError(
-            "CO2 prior covariance must have the retained state dimension and "
-            f"one covariance-column dimension; got {prior_covariance.dims!r}."
-        )
-    prior = CorrelatedLognormalPrior(
-        prior_mean,
-        prior_covariance,
-        covariance_dim=covariance_dims[0],
-    )
-    return add_correlated_lognormal_state_with_activity(
-        activity,
-        prior,
-        var_name="flux_scaling",
-    ).state
 
 
 def _fixed_mismatch_array(
@@ -129,39 +61,6 @@ def _fixed_mismatch_array(
         fixed_model_mismatch,
         dtype=np.float64,
     ).rename("fixed_model_mismatch")
-
-
-def _reject_outer_state_double_counting(
-    prepared_sensitivity: PreparedLinearSensitivity,
-    outer_treatment: OuterRegionTreatment | None,
-) -> None:
-    """Require explicit disjoint inner/outer basis-group partitions."""
-    if outer_treatment is None:
-        return
-    state_dim = prepared_sensitivity.state_dim
-    full_state = prepared_sensitivity.removed
-    if "basis_group" not in full_state.coords:
-        raise ValueError(
-            "CO2 flux_sensitivity requires state-aligned basis_group metadata when an "
-            "outer_treatment is supplied, to prove the partitions are disjoint."
-        )
-    inner_groups = full_state["basis_group"]
-    if inner_groups.dims != (state_dim,) or bool(inner_groups.isnull().any().compute().item()):
-        raise ValueError("CO2 flux_sensitivity basis_group metadata must be complete and state-aligned.")
-    if bool((inner_groups == "outer").any().compute().item()):
-        raise ValueError(
-            "CO2 flux_sensitivity contains basis_group='outer' states while an outer_treatment "
-            "is supplied; remove them to avoid double counting."
-        )
-
-    outer_metadata = outer_treatment.state_metadata
-    if "basis_group" not in outer_metadata:
-        raise ValueError("outer_treatment requires basis_group metadata proving every state is outer.")
-    outer_groups = outer_metadata["basis_group"]
-    if outer_groups.ndim != 1 or bool(outer_groups.isnull().any().compute().item()):
-        raise ValueError("outer_treatment basis_group metadata must be complete and one-dimensional.")
-    if not bool((outer_groups == "outer").all().compute().item()):
-        raise ValueError("outer_treatment basis_group metadata must label every state 'outer'.")
 
 
 def build_co2_rhime_model(
@@ -205,12 +104,58 @@ def build_co2_rhime_model(
     ``boundary_sensitivity @ bc`` remain separate linear components named
     ``outer_flux_contribution`` and ``mu_bc``. Reporting code may group them
     when presenting a baseline.
+
+    Direct custom callers are responsible for supplying scientifically
+    coherent arrays from one preparation and for their positional semantics
+    when labels are absent.
+
+    Args:
+        flux_sensitivity: Reduced CO2 sensitivity with observation dimension
+            ``nmeasure`` and one labelled retained-state dimension.
+        prior_mean: Arithmetic mean of the retained positive state.
+        prior_covariance: Dense arithmetic covariance of the retained state.
+        fixed_prior_contribution: Fixed coherent-reduction affine intercept on
+            ``nmeasure``.
+        observations: Observed CO2 concentrations on ``nmeasure``.
+        observation_error: Reported observation standard deviation.
+        minimum_error: Minimum independent model-data mismatch standard
+            deviation.
+        aggregation_error: Prepared fixed aggregation-error representation.
+        sigma_alignment: Optional grouping policy for inferred additive model
+            error.
+        sigma_prior: Optional prior arguments for inferred additive model
+            error.
+        fixed_model_mismatch: Optional known scalar or labelled concentration
+            standard deviation.
+        state_activity: Optional labelled activity policy for retained flux
+            states.
+        outer_treatment: Optional prepared outer-region state treatment.
+        boundary_sensitivity: Optional atmospheric boundary-condition
+            sensitivity.
+        bc_prior: Optional prior arguments for boundary-condition scaling.
+        bc_state_activity: Optional labelled activity policy for boundary
+            states.
+        no_model_error: If true, omit inferred additive model error.
+
+    Returns:
+        A registered PyMC model containing the complete affine concentration
+        and Gaussian likelihood.
+
+    Raises:
+        ValueError: If shared preparation, prior construction, or registered
+            coordinate alignment fails.
     """
     sigma_prior = dict(DEFAULT_SIGMA_PRIOR if sigma_prior is None else sigma_prior)
     bc_prior = dict(DEFAULT_BC_PRIOR if bc_prior is None else bc_prior)
     fixed_mismatch = _fixed_mismatch_array(observations, fixed_model_mismatch)
     prepared_flux = prepare_linear_sensitivity(flux_sensitivity, output_dim="nmeasure")
-    _reject_outer_state_double_counting(prepared_flux, outer_treatment)
+    activity = resolve_state_activity(prepared_flux.removed, state_activity)
+    covariance_dim = str(prior_covariance.dims[-1])
+    retained_prior = CorrelatedLognormalPrior(
+        prior_mean,
+        prior_covariance,
+        covariance_dim=covariance_dim,
+    )
     aggregation_error = (
         aggregation_error
         if outer_treatment is None
@@ -218,12 +163,11 @@ def build_co2_rhime_model(
     )
 
     with registered_model() as model:
-        flux_scaling = _add_co2_retained_state(
-            prepared_flux,
-            prior_mean=prior_mean,
-            prior_covariance=prior_covariance,
-            state_activity=state_activity,
-        )
+        flux_scaling = add_correlated_lognormal_state_with_activity(
+            activity,
+            retained_prior,
+            var_name="flux_scaling",
+        ).state
         linear_signal = apply_linear_sensitivity(
             prepared_flux,
             flux_scaling,
@@ -278,4 +222,4 @@ def build_co2_rhime_model(
     return model
 
 
-__all__ = ["build_co2_rhime_model", "co2_prior_forward_mean"]
+__all__ = ["build_co2_rhime_model"]
