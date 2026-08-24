@@ -13,7 +13,7 @@ import xarray as xr
 from openghg_inversions.observation_error import AggregationError, resolve_aggregation_error
 from openghg_inversions.models.coords import get_coord_registry, registered_model
 from openghg_inversions.rhime.co2 import (
-    build_co2_rhime_model,
+    build_co2_model,
     collapse_outer_sectors,
     prepare_outer_region_treatment,
 )
@@ -380,7 +380,7 @@ def test_co2_model_composes_sampled_boundary_and_each_outer_mode() -> None:
             prior_mean=outer_mean if mode != "fixed" else None,
             prior_covariance=outer_covariance if mode != "fixed" else None,
         )
-        return build_co2_rhime_model(
+        return build_co2_model(
             inner_h,
             prior_mean=xr.DataArray([1.0], dims="region", coords={"region": ["west"]}),
             prior_covariance=xr.DataArray(
@@ -388,7 +388,12 @@ def test_co2_model_composes_sampled_boundary_and_each_outer_mode() -> None:
                 dims=("region", "region_cov"),
                 coords={"region": ["west"]},
             ),
-            fixed_prior_contribution=xr.DataArray([10.0, 20.0], dims="nmeasure", coords={"nmeasure": [0, 1]}),
+            fixed_prior_contribution=xr.DataArray(
+                [10.0, 20.0],
+                dims="nmeasure",
+                coords={"nmeasure": [0, 1]},
+                name="fixed_prior_contribution",
+            ),
             observations=observations,
             observation_error=data["mf_error"],
             minimum_error=data["min_error"],
@@ -525,11 +530,11 @@ def test_inner_and_outer_state_auxiliary_coords_are_namespaced() -> None:
         "none",
     )
 
-    model = build_co2_rhime_model(
+    model = build_co2_model(
         inner_h,
         prior_mean=xr.DataArray([1.0], dims="region", coords={"region": ["inner"]}),
         prior_covariance=xr.DataArray([[0.1]], dims=("region", "region_cov"), coords={"region": ["inner"]}),
-        fixed_prior_contribution=xr.zeros_like(observations),
+        fixed_prior_contribution=xr.zeros_like(observations).rename("fixed_prior_contribution"),
         observations=observations,
         observation_error=error,
         minimum_error=error,

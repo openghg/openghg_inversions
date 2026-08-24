@@ -7,9 +7,6 @@ contribution, and finally constructs the observation likelihood.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from typing import Any
-
 import numpy as np
 import pymc as pm
 import xarray as xr
@@ -63,7 +60,7 @@ def _fixed_mismatch_array(
     ).rename("fixed_model_mismatch")
 
 
-def build_co2_rhime_model(
+def build_co2_model(
     flux_sensitivity: xr.DataArray,
     *,
     prior_mean: xr.DataArray,
@@ -74,7 +71,7 @@ def build_co2_rhime_model(
     minimum_error: xr.DataArray,
     aggregation_error: AggregationError,
     sigma_alignment: SigmaAlignment | None = None,
-    sigma_prior: Mapping[str, Any] | None = None,
+    sigma_prior: PriorArgs | None = None,
     fixed_model_mismatch: float | xr.DataArray | None = None,
     state_activity: StateActivity | None = None,
     outer_treatment: OuterRegionTreatment | None = None,
@@ -98,12 +95,14 @@ def build_co2_rhime_model(
 
     Known fixed states remain in the public state and forward calculation but
     are omitted from the sampled correlated state. ``fixed_model_mismatch`` is
-    an optional known concentration standard deviation. OGI leaves this policy
-    unset by default; the Verification Games fixed likelihood passes 1 ppm
-    explicitly. ``outer_treatment`` and optional sampled
+    an optional known concentration standard deviation. ``openghg_inversions``
+    leaves this policy unset by default; the Verification Games fixed likelihood
+    passes 1 ppm explicitly. ``outer_treatment`` and optional sampled
     ``boundary_sensitivity @ bc`` remain separate linear components named
     ``outer_flux_contribution`` and ``mu_bc``. Reporting code may group them
-    when presenting a baseline.
+    when presenting a baseline. The composed mean is therefore
+    ``fixed_prior_contribution + co2_flux_contribution``, plus ``mu_bc`` and
+    ``outer_flux_contribution`` when those components are supplied.
 
     Direct custom callers are responsible for supplying scientifically
     coherent arrays from one preparation and for their positional semantics
@@ -111,11 +110,13 @@ def build_co2_rhime_model(
 
     Args:
         flux_sensitivity: Reduced CO2 sensitivity with observation dimension
-            ``nmeasure`` and one labelled retained-state dimension.
+            ``nmeasure`` and one labelled retained-state dimension. When
+            ``outer_treatment`` is supplied, this sensitivity must exclude the
+            separately represented outer states.
         prior_mean: Arithmetic mean of the retained positive state.
         prior_covariance: Dense arithmetic covariance of the retained state.
-        fixed_prior_contribution: Fixed coherent-reduction affine intercept on
-            ``nmeasure``.
+        fixed_prior_contribution: Fixed coherent-reduction affine intercept
+            named ``fixed_prior_contribution`` on ``nmeasure``.
         observations: Observed CO2 concentrations on ``nmeasure``.
         observation_error: Reported observation standard deviation.
         minimum_error: Minimum independent model-data mismatch standard
@@ -129,7 +130,8 @@ def build_co2_rhime_model(
             standard deviation.
         state_activity: Optional labelled activity policy for retained flux
             states.
-        outer_treatment: Optional prepared outer-region state treatment.
+        outer_treatment: Optional prepared outer-region state treatment whose
+            states are disjoint from ``flux_sensitivity``.
         boundary_sensitivity: Optional atmospheric boundary-condition
             sensitivity.
         bc_prior: Optional prior arguments for boundary-condition scaling.
@@ -168,14 +170,15 @@ def build_co2_rhime_model(
             retained_prior,
             var_name="flux_scaling",
         ).state
-        linear_signal = apply_linear_sensitivity(
+        co2_flux_contribution = apply_linear_sensitivity(
             prepared_flux,
             flux_scaling,
             data_name="co2_sensitivity",
             output_name="co2_flux_contribution",
         )
+        modelled_linear_signal = co2_flux_contribution
         if boundary_sensitivity is not None:
-            boundary_mean = add_linear_component(
+            boundary_contribution = add_linear_component(
                 prepare_linear_sensitivity(boundary_sensitivity),
                 data_name="hbc",
                 prior_args=bc_prior,
@@ -185,7 +188,7 @@ def build_co2_rhime_model(
                 compute_deterministic=True,
                 state_activity=bc_state_activity,
             ).output
-            linear_signal = linear_signal + boundary_mean
+            modelled_linear_signal = modelled_linear_signal + boundary_contribution
 
         if outer_treatment is not None:
             if outer_treatment.mode == "marginalized":
@@ -194,17 +197,17 @@ def build_co2_rhime_model(
                     outer_treatment.mean_contribution.transpose("nmeasure"),
                     "outer_mean_contribution",
                 )
-                outer_mean = pm.Deterministic(
+                outer_flux_contribution = pm.Deterministic(
                     "outer_flux_contribution",
                     outer_mean_data,
                     dims="nmeasure",
                 )
             else:
-                outer_mean = add_outer_state_component(outer_treatment)
-            linear_signal = linear_signal + outer_mean
+                outer_flux_contribution = add_outer_state_component(outer_treatment)
+            modelled_linear_signal = modelled_linear_signal + outer_flux_contribution
         modelled_mean = add_coherent_affine_component(
-            fixed_prior_contribution.transpose("nmeasure").rename("fixed_prior_contribution"),
-            linear_signal,
+            fixed_prior_contribution,
+            modelled_linear_signal,
             output_name="modelled_concentration",
         )
         add_additive_sigma_gaussian_likelihood(
@@ -222,4 +225,4 @@ def build_co2_rhime_model(
     return model
 
 
-__all__ = ["build_co2_rhime_model"]
+__all__ = ["build_co2_model"]

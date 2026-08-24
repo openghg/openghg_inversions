@@ -16,7 +16,7 @@ from openghg_inversions.models.coords import get_coord_registry
 from openghg_inversions.models.state_activity import StateActivity
 from openghg_inversions.observation_error import resolve_aggregation_error
 from openghg_inversions.rhime.co2 import (
-    build_co2_rhime_model,
+    build_co2_model,
     run_rhime_co2,
 )
 from openghg_inversions.rhime.co2 import co2_runner
@@ -85,7 +85,7 @@ def _empty_sampled_trace(inputs: xr.Dataset) -> az.InferenceData:
 
 
 def _build_model(inputs: xr.Dataset, **kwargs: Any) -> pm.Model:
-    return build_co2_rhime_model(
+    return build_co2_model(
         inputs["H"],
         prior_mean=inputs["alpha_prior_mean"],
         prior_covariance=inputs["alpha_prior_covariance"],

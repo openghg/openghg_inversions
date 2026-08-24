@@ -30,7 +30,12 @@ OuterRegionMode: TypeAlias = Literal["fixed", "marginalized", "inferred"]
 
 @dataclass(frozen=True)
 class CollapsedOuterStates:
-    """Outer-sector sensitivities collapsed onto explicitly labelled states."""
+    """Outer-sector sensitivities collapsed onto explicitly labelled states.
+
+    Attributes:
+        sensitivity: Observation-by-collapsed-state outer sensitivity.
+        members: Metadata mapping original outer states to collapsed states.
+    """
 
     sensitivity: xr.DataArray
     members: xr.Dataset
@@ -60,6 +65,22 @@ class OuterRegionTreatment:
     This API is currently motivated by the PARIS Verification Games, where
     synthetic observations have known flux and transport truth. Current
     evidence uses inferred outer states; wider use is not yet established.
+
+    Attributes:
+        mode: Selected fixed, marginalized, or inferred treatment.
+        prepared_sensitivity: Prepared outer sensitivity and full-state
+            mapping.
+        mean_contribution: Fixed observation-space mean for marginalized
+            treatment, otherwise ``None``.
+        observation_factor: Observation-by-rank covariance factor for
+            marginalized treatment, otherwise ``None``.
+        prior_mean: Arithmetic prior mean retained by inferred treatment.
+        prior_covariance: Arithmetic prior covariance retained by inferred
+            treatment.
+        state_metadata: Scientific metadata and resolved treatment for each
+            original outer state.
+        resolved_activity: Fixed or inferred state-activity contract, or
+            ``None`` for marginalized treatment.
     """
 
     mode: OuterRegionMode
@@ -239,6 +260,22 @@ def collapse_outer_sectors(
     ``group_labels`` is required and state-aligned; no region-kind strings or
     positional conventions are parsed.  The returned member table retains all
     original state-aligned source, sector, domain, and region coordinates.
+
+    Args:
+        outer_sensitivity: Observation-by-state outer sensitivity.
+        group_labels: State-aligned label selecting the collapsed state for
+            each original column.
+        observation_dim: Observation dimension in ``outer_sensitivity``.
+        collapsed_dim: Dimension name for the collapsed states.
+        source_label: Source metadata assigned to every collapsed state.
+        sector_label: Sector metadata assigned to every collapsed state.
+
+    Returns:
+        Collapsed sensitivity and original-member metadata.
+
+    Raises:
+        ValueError: If dimensions or labels are incompatible, group labels are
+            missing, or one collapsed group spans multiple domains.
     """
     state_dim = _matrix_state_dim(outer_sensitivity, observation_dim)
     outer_sensitivity = _label_outer_basis_group(outer_sensitivity, state_dim)
@@ -317,6 +354,24 @@ def prepare_outer_region_treatment(
     prior uncertainty without joining the sampled state. Its usefulness as a
     general outer-state policy has not yet been established; marginalizing
     weak states in any basis group belongs in a shared state-disposition API.
+
+    Args:
+        outer_sensitivity: Observation-by-state outer sensitivity, optionally
+            with a prior sector-collapse mapping.
+        mode: Fixed, Gaussian-marginalized, or inferred outer-state treatment.
+        prior_mean: Arithmetic prior mean required by marginalized and inferred
+            modes.
+        prior_covariance: Arithmetic prior covariance required by marginalized
+            and inferred modes.
+        fixed_scale: Exact outer scaling used by fixed mode.
+        observation_dim: Observation dimension in the outer sensitivity.
+
+    Returns:
+        Prepared treatment consumed by CO2 graph construction.
+
+    Raises:
+        ValueError: If the mode is unsupported or required dimensions, labels,
+            prior moments, or fixed values are inconsistent.
     """
     if mode not in ("fixed", "marginalized", "inferred"):
         raise ValueError(f"Outer-region mode must be 'fixed', 'marginalized', or 'inferred'; got {mode!r}.")
@@ -463,7 +518,21 @@ def add_outer_state_component(
     sensitivity_name: str = "outer_sensitivity",
     output_name: str = "outer_flux_contribution",
 ) -> Any:
-    """Build and apply a fixed or inferred outer state from its prepared contract."""
+    """Build and apply a fixed or inferred outer state from its prepared contract.
+
+    Args:
+        treatment: Prepared fixed or inferred outer-region treatment.
+        var_name: Name for the complete outer state vector.
+        sensitivity_name: Name for retained outer-sensitivity model data.
+        output_name: Name for the observation-space outer contribution.
+
+    Returns:
+        Symbolic observation-space outer flux contribution.
+
+    Raises:
+        ValueError: If the treatment does not retain a state or lacks its
+            resolved activity or inferred prior moments.
+    """
     if treatment.mode not in ("fixed", "inferred"):
         raise ValueError("Only fixed and inferred outer treatments retain a state vector.")
     if treatment.resolved_activity is None:
@@ -533,7 +602,20 @@ def add_outer_observation_covariance(
     aggregation_error: AggregationError,
     treatment: OuterRegionTreatment,
 ) -> AggregationError:
-    """Add exact Gaussian outer-state covariance without densifying structured error."""
+    """Add exact Gaussian outer-state covariance without densifying structured error.
+
+    Args:
+        aggregation_error: Existing fixed aggregation-error representation.
+        treatment: Prepared outer-region treatment.
+
+    Returns:
+        The unchanged error for fixed or inferred treatment, or an error with
+        the marginalized outer covariance added in its structured form.
+
+    Raises:
+        ValueError: If a marginalized treatment lacks its observation factor
+            or labelled error components cannot align.
+    """
     if treatment.mode != "marginalized":
         return aggregation_error
     if treatment.observation_factor is None:
