@@ -91,6 +91,36 @@ def test_outer_modes_partition_prediction_and_covariance_without_double_counting
     assert inferred.prior_covariance is not None
 
 
+@pytest.mark.parametrize("mode", ["fixed", "marginalized", "inferred"])
+@pytest.mark.parametrize(
+    ("observation_labels", "message"),
+    [
+        (None, "must provide an explicit ordered 'nmeasure' observation coordinate"),
+        ([0, 0], "requires unique 'nmeasure' observation labels"),
+    ],
+    ids=["missing", "duplicate"],
+)
+def test_outer_treatment_requires_unique_observation_labels(
+    mode: str,
+    observation_labels: list[int] | None,
+    message: str,
+) -> None:
+    h, mean, covariance = _outer_inputs()
+    h = (
+        h.drop_vars("nmeasure")
+        if observation_labels is None
+        else h.assign_coords(nmeasure=observation_labels)
+    )
+
+    with pytest.raises(ValueError, match=message):
+        prepare_outer_region_treatment(
+            h,
+            mode=mode,
+            prior_mean=mean if mode != "fixed" else None,
+            prior_covariance=covariance if mode != "fixed" else None,
+        )
+
+
 def test_marginalized_outer_factor_preserves_each_aggregation_error_representation() -> None:
     h, mean, covariance = _outer_inputs()
     treatment = prepare_outer_region_treatment(
@@ -339,9 +369,13 @@ def test_co2_model_composes_sampled_boundary_and_each_outer_mode() -> None:
     )
     aggregation_error = resolve_aggregation_error(data, "none")
 
-    def build(mode: str) -> pm.Model:
+    def build(
+        mode: str,
+        outer_sensitivity: xr.DataArray = outer_h,
+        observations: xr.DataArray = data["mf"],
+    ) -> pm.Model:
         treatment = prepare_outer_region_treatment(
-            outer_h,
+            outer_sensitivity,
             mode=mode,
             prior_mean=outer_mean if mode != "fixed" else None,
             prior_covariance=outer_covariance if mode != "fixed" else None,
@@ -355,7 +389,7 @@ def test_co2_model_composes_sampled_boundary_and_each_outer_mode() -> None:
                 coords={"region": ["west"]},
             ),
             fixed_prior_contribution=xr.DataArray([10.0, 20.0], dims="nmeasure", coords={"nmeasure": [0, 1]}),
-            observations=data["mf"],
+            observations=observations,
             observation_error=data["mf_error"],
             minimum_error=data["min_error"],
             aggregation_error=aggregation_error,
@@ -367,6 +401,11 @@ def test_co2_model_composes_sampled_boundary_and_each_outer_mode() -> None:
     fixed = build("fixed")
     marginalized = build("marginalized")
     inferred = build("inferred")
+    for mode in ("fixed", "marginalized", "inferred"):
+        with pytest.raises(ValueError, match="must exactly match CO2 observations"):
+            build(mode, outer_h.sel(nmeasure=[1, 0]))
+    with pytest.raises(ValueError, match="must provide an explicit ordered 'nmeasure' coordinate"):
+        build("fixed", observations=data["mf"].drop_vars("nmeasure"))
 
     assert "bc" in fixed.named_vars
     assert "x_outer" in fixed.named_vars
@@ -411,7 +450,8 @@ def test_co2_builder_rejects_outer_states_present_in_both_designs() -> None:
             "mf": ("nmeasure", [400.0, 401.0]),
             "mf_error": ("nmeasure", [0.0, 0.0]),
             "min_error": ("nmeasure", [0.0, 0.0]),
-        }
+        },
+        coords={"nmeasure": [0, 1]},
     )
     with pytest.raises(ValueError, match="avoid double counting"):
         build_co2_rhime_model(

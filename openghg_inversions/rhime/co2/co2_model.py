@@ -165,6 +165,39 @@ def _reject_outer_state_double_counting(
         raise ValueError("outer_treatment basis_group metadata must label every state 'outer'.")
 
 
+def _validate_outer_observation_alignment(
+    observations: xr.DataArray,
+    outer_treatment: OuterRegionTreatment | None,
+) -> None:
+    """Require outer contributions to use the exact observation order."""
+    if outer_treatment is None:
+        return
+    outer = (
+        outer_treatment.mean_contribution
+        if outer_treatment.mode == "marginalized"
+        else outer_treatment.sensitivity
+    )
+    if (
+        outer is None
+        or "nmeasure" not in outer.coords
+        or outer.coords["nmeasure"].dims != ("nmeasure",)
+        or not outer.get_index("nmeasure").is_unique
+    ):
+        raise ValueError("outer_treatment requires unique 'nmeasure' observation labels.")
+    if (
+        observations.dims != ("nmeasure",)
+        or "nmeasure" not in observations.coords
+        or observations.coords["nmeasure"].dims != ("nmeasure",)
+    ):
+        raise ValueError("CO2 observations must provide an explicit ordered 'nmeasure' coordinate.")
+    if not observations.get_index("nmeasure").is_unique:
+        raise ValueError("CO2 observations require unique 'nmeasure' labels with an outer_treatment.")
+    outer_index = outer.get_index("nmeasure")
+    observation_index = observations.get_index("nmeasure")
+    if not outer_index.equals(observation_index) or outer_index.names != observation_index.names:
+        raise ValueError("outer_treatment observation labels must exactly match CO2 observations.")
+
+
 def build_co2_rhime_model(
     flux_sensitivity: xr.DataArray,
     *,
@@ -206,6 +239,7 @@ def build_co2_rhime_model(
     sigma_prior = dict(DEFAULT_SIGMA_PRIOR if sigma_prior is None else sigma_prior)
     bc_prior = dict(DEFAULT_BC_PRIOR if bc_prior is None else bc_prior)
     fixed_mismatch = _fixed_mismatch_array(observations, fixed_model_mismatch)
+    _validate_outer_observation_alignment(observations, outer_treatment)
     _reject_outer_state_double_counting(flux_sensitivity, outer_treatment)
     aggregation_error = (
         aggregation_error
