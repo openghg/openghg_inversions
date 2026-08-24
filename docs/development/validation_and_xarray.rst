@@ -14,6 +14,16 @@ Public APIs should document their required dimensions, coordinates, units,
 and numerical assumptions. Put checks at the boundary which owns those
 assumptions:
 
+.. important::
+
+   Coordinate validation has a fixed order: use labelled xarray operations
+   such as ``xr.align(..., join="exact")`` while preparing or composing data,
+   then rely on ``CoordRegistry`` when labelled arrays enter a registered PyMC
+   model. Do not add a custom coordinate check which duplicates either
+   mechanism. A bespoke check requires a documented invariant that neither
+   xarray nor the registry can express, the scientific failure it prevents,
+   and a focused test demonstrating that gap.
+
 * use static types for ordinary Python type contracts; do not add routine
   ``isinstance`` checks only to improve errors for callers which ignore type
   checking;
