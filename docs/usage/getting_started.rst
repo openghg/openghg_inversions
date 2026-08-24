@@ -371,7 +371,8 @@ The following file, ``my_hbmcmc_inputs.ini`` can be used to run an
    ; Definitions of PDF shape and parameters for inputs
    ; - xprior (dict) - emissions
    ; - bcprior (dict) - boundary conditions
-   ; - sigprior (dict) - model error
+   ; - sigprior (dict) - historical fractional model error
+   ; - additive_sigma_prior (dict) - additive model error in observation units
 
    ; Each of these inputs should be dictionary with the name of probability distribution and shape parameters.
    ; See https://docs.pymc.io/api/distributions/continuous.html
@@ -379,10 +380,8 @@ The following file, ``my_hbmcmc_inputs.ini`` can be used to run an
 
    xprior   = {"pdf":"lognormal", "stdev":1}  ; lognormal with mean = 1, stdev = 1
    bcprior  = {"pdf":"truncatednormal", "mu":1.0, "sigma":0.02}  ; truncated normal with mean = 1, stdev 0.02
-   sigprior = {"pdf":"halfnormal", "sigma":5.0}  ; additive sigma, in observation units
-   ; For the historical pollution-event likelihood instead, omit `likelihood`
-   ; below and use a dimensionless fractional prior such as:
-   ; sigprior = {"pdf":"uniform", "lower":0.0, "upper":0.2}
+   sigprior = {"pdf":"uniform", "lower":0.0, "upper":0.2}
+   additive_sigma_prior = {"pdf":"halfnormal", "sigma":5.0}  ; observation units
    ;add_offset = False
    ;offsetprior = {"pdf": "normal"}
    ;offset_args = {"drop_first": False}  ;; set to True if you want first site to have offset 0.0
@@ -474,7 +473,7 @@ The ``run_hbmcmc.py`` INI route can select a response-independent additive
 Gaussian model-error term with::
 
    [MCMC.PDF]
-   sigprior = {"pdf": "halfnormal", "sigma": 5.0}
+   additive_sigma_prior = {"pdf": "halfnormal", "sigma": {"MHD": 5.0, "TAC": 2.0}}
 
    [MCMC.BC_SPLIT]
    sigma_freq = "monthly"
@@ -490,6 +489,11 @@ enhancement and does not add aggregation error. ``min_error`` works as before
 as an optional floor on the total standard deviation; it defaults to ``0.0``.
 We recommend first trying the half-normal model with ``min_error = 0.0``.
 ``aggregation_error_mode`` is unavailable for this ``run_hbmcmc.py`` option.
+``additive_sigma_prior`` takes precedence for this likelihood; when it is
+omitted, the compatibility entry point falls back to ``sigprior``. A mapping
+from site name to scale gives each retained site its own half-normal prior
+scale. Every retained site must be present; entries for sites removed during
+preparation are ignored. Site mappings require ``sigma_per_site = True``.
 
 A half-normal prior is the recommended starting family. Its ``sigma`` input is
 the half-normal *scale*, and
@@ -506,8 +510,9 @@ starting point, choosing a somewhat smaller scale gives a correspondingly
 smaller prior mean. This scale is in the same physical units and on the same
 numerical scale as the observations (for example, ppt). It is not the
 dimensionless fractional ``sigma`` used by the pollution-event scaling
-options. Consequently, ``sigprior`` has different units and meaning depending
-on the selected likelihood.
+options. ``additive_sigma_prior`` avoids overloading the historical,
+dimensionless ``sigprior``; the latter remains available as a compatibility
+fallback for additive-sigma configurations.
 
 Description of HBMCMC output file
 ---------------------------------

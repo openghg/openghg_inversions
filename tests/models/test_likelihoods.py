@@ -14,7 +14,10 @@ from openghg_inversions.models.likelihoods import (
 )
 from openghg_inversions.models.pollution_event import build_pollution_event_error
 from openghg_inversions.observation_error import resolve_aggregation_error
-from openghg_inversions.rhime.likelihoods import additive_sigma_likelihood_builder
+from openghg_inversions.rhime.likelihoods import (
+    _resolve_site_sigma_prior,
+    additive_sigma_likelihood_builder,
+)
 from openghg_inversions.sigma import SigmaAlignment
 
 
@@ -459,6 +462,40 @@ def test_rhime_additive_sigma_adapter_accepts_pollution_event_inputs() -> None:
 
     assert likelihood is model.named_vars["y"]
     np.testing.assert_allclose(model.named_vars["y"].owner.inputs[-2].eval(), np.ones(3))
+
+
+def test_rhime_additive_sigma_adapter_aligns_site_prior_scales() -> None:
+    site = xr.DataArray(["TAC", "MHD", "TAC"], dims="nmeasure")
+
+    resolved = _resolve_site_sigma_prior(
+        {
+            "pdf": "halfnormal",
+            "sigma": {"MHD": 5.0, "unused": 9.0, "TAC": 2.0},
+        },
+        site,
+        per_site=True,
+    )
+
+    assert resolved["pdf"] == "halfnormal"
+    np.testing.assert_array_equal(resolved["sigma"], [[2.0], [5.0]])
+
+
+def test_rhime_additive_sigma_adapter_rejects_incomplete_site_prior_scales() -> None:
+    site = xr.DataArray(["MHD", "TAC"], dims="nmeasure")
+
+    with pytest.raises(ValueError, match="missing retained site.*TAC"):
+        _resolve_site_sigma_prior(
+            {"pdf": "halfnormal", "sigma": {"MHD": 5.0}},
+            site,
+            per_site=True,
+        )
+
+    with pytest.raises(ValueError, match="sigma_per_site=True"):
+        _resolve_site_sigma_prior(
+            {"pdf": "halfnormal", "sigma": {"MHD": 5.0, "TAC": 2.0}},
+            site,
+            per_site=False,
+        )
 
 
 def test_observation_derived_pollution_event_subtracts_complete_baseline() -> None:

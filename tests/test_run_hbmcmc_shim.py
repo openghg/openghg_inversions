@@ -111,6 +111,58 @@ def test_additive_sigma_selection_forces_no_aggregation_error(tmp_path: Path) ->
     }
 
 
+def test_additive_sigma_prior_takes_precedence_over_sigprior(tmp_path: Path) -> None:
+    config_file = tmp_path / "hbmcmc.ini"
+    _fixedbasis_config(config_file)
+    params = run_hbmcmc.hbmcmc_extract_param(str(config_file), print_param=False)
+    params["likelihood"] = "additive_sigma"
+    params["additive_sigma_prior"] = {
+        "pdf": "halfnormal",
+        "sigma": {"MHD": 5.0, "TAC": 2.0},
+    }
+
+    translated = run_hbmcmc.fixedbasis_params_to_rhime(params)
+    options = run_hbmcmc._select_additive_sigma_likelihood(params, translated)
+
+    assert "additive_sigma_prior" not in translated
+    assert translated["sigma_prior"] == {
+        "pdf": "halfnormal",
+        "sigma": {"MHD": 5.0, "TAC": 2.0},
+    }
+    assert options == {
+        "sigma_prior": {
+            "pdf": "halfnormal",
+            "sigma": {"MHD": 5.0, "TAC": 2.0},
+        }
+    }
+
+
+def test_additive_sigma_selection_defaults_to_half_normal(tmp_path: Path) -> None:
+    config_file = tmp_path / "hbmcmc.ini"
+    _fixedbasis_config(config_file)
+    params = run_hbmcmc.hbmcmc_extract_param(str(config_file), print_param=False)
+    params["likelihood"] = "additive_sigma"
+    del params["sigprior"]
+
+    translated = run_hbmcmc.fixedbasis_params_to_rhime(params)
+    options = run_hbmcmc._select_additive_sigma_likelihood(params, translated)
+
+    assert translated["sigma_prior"] == run_hbmcmc.DEFAULT_ADDITIVE_SIGMA_PRIOR
+    assert options == {"sigma_prior": run_hbmcmc.DEFAULT_ADDITIVE_SIGMA_PRIOR}
+
+
+def test_additive_sigma_prior_requires_additive_likelihood(tmp_path: Path) -> None:
+    config_file = tmp_path / "hbmcmc.ini"
+    _fixedbasis_config(config_file)
+    params = run_hbmcmc.hbmcmc_extract_param(str(config_file), print_param=False)
+    params["additive_sigma_prior"] = {"pdf": "halfnormal", "sigma": 5.0}
+
+    translated = run_hbmcmc.fixedbasis_params_to_rhime(params)
+
+    with pytest.raises(ValueError, match="requires likelihood='additive_sigma'"):
+        run_hbmcmc._select_additive_sigma_likelihood(params, translated)
+
+
 def test_additive_sigma_selection_rejects_aggregation_error(tmp_path: Path) -> None:
     config_file = tmp_path / "hbmcmc.ini"
     _fixedbasis_config(config_file)
@@ -270,7 +322,12 @@ def test_run_hbmcmc_main_selects_additive_sigma_from_ini(
     config_file = tmp_path / "hbmcmc.ini"
     _fixedbasis_config(config_file)
     config_file.write_text(
-        config_file.read_text(encoding="utf-8").replace(
+        config_file.read_text(encoding="utf-8")
+        .replace(
+            "[MCMC.PDF]",
+            '[MCMC.PDF]\nadditive_sigma_prior = {"pdf": "halfnormal", "sigma": {"TAC": 2.0}}',
+        )
+        .replace(
             "[MCMC.OPTIONS]",
             '[MCMC.OPTIONS]\nlikelihood = "additive_sigma"',
         ),
@@ -285,8 +342,9 @@ def test_run_hbmcmc_main_selects_additive_sigma_from_ini(
 
     assert seen["likelihood_builder"] is run_hbmcmc.additive_sigma_likelihood_builder
     assert seen["likelihood_kwargs"] == {
-        "sigma_prior": {"pdf": "uniform", "lower": 0.1, "upper": 10.0},
+        "sigma_prior": {"pdf": "halfnormal", "sigma": {"TAC": 2.0}},
     }
+    assert seen["sigma_prior"] == {"pdf": "halfnormal", "sigma": {"TAC": 2.0}}
     assert seen["aggregation_error_mode"] == "none"
     assert seen["preserve_legacy_likelihood"] is False
 
