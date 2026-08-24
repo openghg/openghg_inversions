@@ -199,15 +199,26 @@ def test_multisector_rhime_pipeline_writes_latest_paris_flux_schema(
         )
 
     expected_flux_path = tmp_path / "multisector_paris_pipeline_flux_ch4_EUROPE_2019-01-01.nc"
+    expected_concentration_path = (
+        tmp_path / "multisector_paris_pipeline_conc_ch4_EUROPE_2019-01-01.nc"
+    )
     expected_diagnostics_path = tmp_path / "multisector_paris_pipeline2019-01-01_sector_flux_diagnostics.nc"
     assert result.output_metadata["paris_flux_path"] == str(expected_flux_path)
+    assert result.output_metadata["paris_concentration_path"] == str(expected_concentration_path)
     assert result.output_metadata["sector_flux_diagnostics_path"] == str(expected_diagnostics_path)
     assert expected_flux_path.is_file()
+    assert expected_concentration_path.is_file()
     assert expected_diagnostics_path.is_file()
     assert "inversion_output_path" not in result.output_metadata
-    assert "paris_concentration" not in result.outputs
-    assert "paris_concentration_path" not in result.output_metadata
-    assert not list(tmp_path.glob("*concentration*.nc"))
+
+    with xr.open_dataset(expected_concentration_path) as concentration:
+        assert concentration.attrs["paris_concentration_template_version"] == "v04"
+        assert concentration.sizes["index"] == 24
+        assert concentration.sizes["platform"] == 1
+        assert concentration["platform"].dims == ("platform",)
+        for name in ("mf_observed", "mf_prior", "mf_posterior"):
+            assert concentration[name].dims == ("index",)
+            assert np.isfinite(concentration[name]).all()
 
     expected_schema = _expanded_numeric_flux_schema(
         paris_template_files("latest").flux,
@@ -225,9 +236,13 @@ def test_multisector_rhime_pipeline_writes_latest_paris_flux_schema(
         assert reloaded.sizes["latitude"] == 293
         assert reloaded.sizes["time"] == 1
         assert tuple(reloaded.country.values) == PARIS_LATEST_COUNTRIES
+        assert tuple(reloaded.country_2.values) == PARIS_LATEST_COUNTRIES
         assert tuple(reloaded.sector.values) == ("ff", "ocean")
+        assert tuple(reloaded.sector_2.values) == ("ff", "ocean")
         assert reloaded.country.attrs["long_name"] == "country_ISO_3166_1_alpha3"
+        assert reloaded.country_2.attrs == reloaded.country.attrs
         assert reloaded.sector.attrs["long_name"] == "short name of flux sector"
+        assert reloaded.sector_2.attrs == reloaded.sector.attrs
         assert reloaded.attrs["paris_flux_template_version"] == "v03"
         assert {
             "title",
@@ -241,25 +256,27 @@ def test_multisector_rhime_pipeline_writes_latest_paris_flux_schema(
             "project",
             "references",
             "history",
-            "conventions",
+            "Conventions",
             "license",
         }.issubset(reloaded.attrs)
+        assert reloaded.attrs["Conventions"] == "CF-1.8"
+        assert "conventions" not in reloaded.attrs
         assert reloaded["covariance_flux_total_posterior_country"].dims == (
+            "country",
+            "country_2",
             "time",
-            "country",
-            "country",
         )
         for sector in ("ff", "ocean"):
             assert reloaded[f"covariance_flux_{sector}_posterior_country"].dims == (
+                "country",
+                "country_2",
                 "time",
-                "country",
-                "country",
             )
         assert reloaded["covariance_flux_sectors_posterior_country"].dims == (
-            "time",
+            "sector_2",
+            "sector",
             "country",
-            "sector",
-            "sector",
+            "time",
         )
         assert "covariance_flux_total_posterior_country" in schema_info
         assert "covariance_flux_sectors_posterior_country" in schema_info

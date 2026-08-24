@@ -449,7 +449,7 @@ class IndependentSourceCovariance:
         *,
         operation: Literal["apply", "solve"],
     ) -> xr.DataArray:
-        """Validate labels and dispatch one covariance operation per source.
+        """Align labels and dispatch one covariance operation per source.
 
         Args:
             rhs: Candidate labelled right-hand side.
@@ -459,25 +459,23 @@ class IndependentSourceCovariance:
             Concatenated block results transposed to the input dimension order.
 
         Raises:
-            TypeError: If ``rhs`` is not an xarray data array.
-            ValueError: If source or spatial labels are missing or do not
-                exactly match the configured labels, or values are invalid.
+            ValueError: If source or spatial labels do not exactly match the
+                configured labels.
             numpy.linalg.LinAlgError: If a requested class-blocked solve does
                 not converge.
         """
-        if not isinstance(rhs, xr.DataArray):
-            raise TypeError("rhs must be an xarray.DataArray")
-        if self.source_dim not in rhs.dims or self.source_dim not in rhs.coords:
-            raise ValueError(f"rhs must contain labelled source dimension coordinate {self.source_dim!r}")
         expected = xr.DataArray(
             list(self.source_labels),
             dims=self.source_dim,
             coords={self.source_dim: list(self.source_labels)},
         )
-        try:
-            aligned_rhs, _ = xr.align(rhs, expected, join="exact", copy=False)
-        except xr.AlignmentError as error:
-            raise ValueError("rhs source labels/order do not match covariance configuration") from error
+        # As for native grids, xarray treats an unindexed equal-sized dimension
+        # positionally. Source blocks must instead be selected by explicit label.
+        if self.source_dim not in rhs.indexes:
+            raise ValueError(f"rhs is missing indexed source coordinate {self.source_dim!r}")
+        # Each block is selected by label below, so prohibit xarray's usual
+        # permissive alignment from dropping or introducing source blocks.
+        aligned_rhs, _ = xr.align(rhs, expected, join="exact", copy=False)
 
         original_dims = tuple(str(dim) for dim in rhs.dims)
         results: list[xr.DataArray] = []

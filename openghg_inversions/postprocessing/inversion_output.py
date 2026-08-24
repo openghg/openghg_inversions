@@ -230,6 +230,7 @@ DEFAULT_VARIABLE_ROLES: dict[str, str] = {
     "model_error": "epsilon",
     "concentration": "y",
     "baseline": "mu_bc",
+    "boundary": "mu_bc",
     "offset": "offset",
     "emissions_sensitivity": "hx",
     "baseline_sensitivity": "hbc",

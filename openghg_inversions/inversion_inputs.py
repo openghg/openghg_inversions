@@ -8,7 +8,6 @@ explicit empty selection is an error.
 """
 
 import datetime as dt
-import numbers
 from collections.abc import Iterable
 from typing import Any, Literal
 
@@ -16,14 +15,10 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from openghg_inversions.array_ops import concat_gather_datasets, get_xr_dummies
+from openghg_inversions.array_ops import concat_gather_datasets
 from openghg_inversions.model_error import (
+    MinimumError,
     normalise_min_error_options as normalise_min_error_options,  # noqa: PLC0414
-)
-from openghg_inversions.model_error import (
-    percentile_error_method,
-    residual_error_method,
-    xr_setup_min_error,
 )
 
 DatetimeLike = str | dt.datetime | np.datetime64 | pd.Timestamp
@@ -159,61 +154,14 @@ def add_min_error(
     min_error: str | dict[str, float] | int | float = 0.0,
     min_error_per_site: bool = True,
 ) -> xr.Dataset:
-    """Add min_error to combined Dataset."""
-    min_error_data: xr.DataArray | float | np.ndarray
-
-    def site_names_for_min_error() -> list[str]:
-        if "site_names" in ds:
-            return [str(site) for site in ds.site_names.values]
-        if "site" in ds:
-            return [str(site) for site in make_site_names(ds.site).values]
-        return [site for site in fp_data if not site.startswith(".")]
-
-    def site_indicator_for_min_error() -> xr.DataArray:
-        if "site_indicator" in ds:
-            return ds.site_indicator
-        if "site" in ds:
-            return xr_unique_inv(ds.site, sort=False).rename("site_indicator")
-        raise ValueError("Per-site min_error values require site_indicator or site data.")
-
-    def fp_data_for_ds_sites() -> dict[str, Any]:
-        return {site: fp_data[site] for site in site_names_for_min_error()}
-
-    if isinstance(min_error, numbers.Real) and not isinstance(min_error, bool):
-        min_error_data = float(min_error) * xr.ones_like(ds.mf)
-    elif isinstance(min_error, np.ndarray) and min_error.ndim == 0:
-        min_error_data = min_error * xr.ones_like(ds.mf)
-    elif isinstance(min_error, dict):
-        fp_data_for_sites = fp_data_for_ds_sites()
-        sites = list(fp_data_for_sites)
-        missing_sites = [site for site in sites if site not in min_error]
-        if missing_sites:
-            raise ValueError(f"min_error mapping is missing values for site(s): {missing_sites}")
-        err_per_site = np.array([min_error[site] for site in sites])
-        min_error_data = xr_setup_min_error(err_per_site, site_indicator_for_min_error())
-    elif min_error == "residual":
-        fp_data_for_sites = fp_data_for_ds_sites()
-        res_err = residual_error_method(fp_data_for_sites, by_site=min_error_per_site)
-        if min_error_per_site:
-            min_error_data = xr_setup_min_error(res_err, site_indicator_for_min_error())
-        else:
-            min_error_data = res_err
-    elif min_error == "percentile":
-        fp_data_for_sites = fp_data_for_ds_sites()
-        perc_err = percentile_error_method(fp_data_for_sites)
-        min_error_data = xr_setup_min_error(perc_err, site_indicator_for_min_error())
-    else:
-        raise ValueError(f"Option '{min_error}' is not valid.")
-
-    if not isinstance(min_error_data, xr.DataArray):
-        min_error_data = xr.full_like(ds.mf, min_error_data).rename("min_error")
-    elif "nmeasure" not in min_error_data.dims:
-        min_error_data = xr.full_like(ds.mf, min_error_data.values).rename("min_error")
-    else:
-        min_error_data = min_error_data.rename("min_error")
-
-    assert isinstance(min_error_data, xr.DataArray)
-    ds["min_error"] = xr.DataArray(min_error_data.data, dims=("nmeasure",), name="min_error")
+    """Add a prepared, observation-aligned minimum error to a dataset."""
+    prepared = MinimumError.prepare(ds, fp_data, min_error, by_site=min_error_per_site)
+    ds["min_error"] = xr.DataArray(
+        prepared.values.data,
+        dims=prepared.values.dims,
+        name="min_error",
+        attrs=prepared.values.attrs,
+    )
     return ds
 
 
@@ -223,45 +171,6 @@ def add_site_indicator(ds: xr.Dataset, sort: bool = False) -> xr.Dataset:
         ds.site, indicator_name="site_indicator", label_name="site_names", label_dim="nsite", sort=sort
     )
     return xr.merge([ds, to_add])
-
-
-# TRANSFORM FUNCTIONS
-def _transform_bc_freq(
-    H_bc: xr.DataArray, freq: Literal["monthly"] | str | None = None, anchor_time: DatetimeLike | None = None
-) -> xr.DataArray:
-    freq_arr = (
-        make_freq_indicator(H_bc.time, freq, anchor_time=anchor_time)
-        if freq is not None
-        else xr.zeros_like(H_bc.time)
-    )
-    dums = get_xr_dummies(freq_arr, return_sparse=False, cat_dim="bc_period")
-    return (H_bc.rename(bc_region="bc_curtain") * dums).stack(bc_region=("bc_curtain", "bc_period"))
-
-
-def transform_bc(
-    ds: xr.Dataset, freq: Literal["monthly"] | str | None = None, anchor_time: DatetimeLike | None = None
-) -> xr.Dataset:
-    """Convert ds so that ds.H_bc is converted to (curtain, period) coordinates."""
-    if "H_bc" not in ds:
-        raise ValueError("Cannot setup boundary conditions sensitivity; H_bc not in dataset.")
-
-    # save temp version so we can drop "bc_region"; we need to reset this coordinate because
-    # it has been modified.
-    temp = _transform_bc_freq(ds.H_bc, freq=freq, anchor_time=anchor_time).transpose("bc_region", ...)
-    ds = ds.drop_dims("bc_region")
-
-    # IMPORTANT: strip the RHS of the nmeasure MultiIndex bundle to avoid merge logic
-    # This is a hack to avoid a deprecation warning due to how xarray uses pandas' multi-index.
-    # Just assigning ds["H_bc"] = temp is fine, but emits a warning.
-    temp_values_only = xr.DataArray(
-        temp.data,
-        dims=("bc_region", "nmeasure"),
-        coords={"bc_region": temp["bc_region"]},  # keep only the new dim coord(s)
-        name="H_bc",
-    )
-
-    ds["H_bc"] = temp_values_only
-    return ds
 
 
 # INVERSION INPUTS PIPELINE
@@ -461,7 +370,21 @@ def make_inv_inputs(
     )
 
     if "H_bc" in ds:
-        ds = transform_bc(ds, freq=bc_freq, anchor_time=start_date)
+        from openghg_inversions.boundary_sensitivity import BoundaryAlignment
+
+        boundary_sensitivity = BoundaryAlignment.prepare(
+            ds["H_bc"],
+            frequency=bc_freq,
+            anchor_time=start_date,
+        ).data.transpose("bc_region", "nmeasure")
+        ds = ds.drop_dims("bc_region")
+        ds["H_bc"] = xr.DataArray(
+            boundary_sensitivity.data,
+            dims=("bc_region", "nmeasure"),
+            coords={"bc_region": boundary_sensitivity["bc_region"]},
+            name="H_bc",
+            attrs=boundary_sensitivity.attrs,
+        )
 
     ds = add_site_indicator(ds)
     ds = add_min_error(ds, fp_data=fp_data, min_error=min_error, min_error_per_site=min_error_per_site)

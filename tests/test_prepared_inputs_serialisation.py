@@ -13,22 +13,25 @@ import pymc as pm
 import pytest
 import xarray as xr
 
-import openghg_inversions.rhime.runner as rhime_runner
+import openghg_inversions.rhime.multisector as rhime_multisector
+import openghg_inversions.rhime.prepared as rhime_prepared
+import openghg_inversions.rhime.standard as rhime_standard
 from openghg_inversions.basis.basis_functions import (
     BASIS_ARTIFACT_PATH_ATTR,
     BASIS_ARTIFACT_SOURCE_ATTR,
     BasisFunctions,
 )
 from openghg_inversions.basis.operators import MultiSourceBucketBasisOperator
+from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.inversion_data import RhimePreparedInputs, prepare_rhime_inputs
-from openghg_inversions.models import RhimeModelSpec, SectorSpec
 from openghg_inversions.rhime import (
+    RhimeModelSpec,
     RhimeOutputSpec,
     RhimeRunSpec,
     RhimeSampler,
+    SectorSpec,
     run_rhime_from_prepared_inputs,
 )
-from openghg_inversions.rhime.outputs import RhimeOutputBundle
 from openghg_inversions.serialization import (
     MULTIINDEX_DIMS_ATTR,
     encode_multiindexes_for_storage,
@@ -91,6 +94,7 @@ def _prepared_inputs(
             "H": (("region", "nmeasure"), [[1.0, 2.0], [3.0, 4.0]]),
             "mf": ("nmeasure", [10.0, 11.0]),
             "mf_error": ("nmeasure", [0.5, 0.6]),
+            "min_error": ("nmeasure", [0.0, 0.0]),
             "site_indicator": ("nmeasure", [0, 1]),
         },
         coords={
@@ -160,6 +164,7 @@ def test_derived_outputs_reject_aggregation_error_until_reconstruction_lands() -
             ),
         ),
         use_bc=False,
+        aggregation_error_mode="diagonal",
     )
     run_spec = RhimeRunSpec(
         start_date="2019-01-01",
@@ -196,6 +201,7 @@ def _multisource_prepared_inputs() -> RhimePreparedInputs:
             "H": (("source", "region", "nmeasure"), np.ones((2, 2, 1))),
             "mf": ("nmeasure", [10.0]),
             "mf_error": ("nmeasure", [0.5]),
+            "min_error": ("nmeasure", [0.0]),
             "site_indicator": ("nmeasure", [0]),
         },
         coords={
@@ -225,8 +231,8 @@ def test_prepared_inputs_normalizes_h_to_basis_source_order() -> None:
     assert prepared.inv_inputs.source.values.tolist() == ["B", "A"]
 
 
-def test_prepared_inputs_normalizes_gathered_h_to_basis_source_order() -> None:
-    """Gathered H state blocks follow basis order without losing state coordinates."""
+def test_prepared_inputs_normalizes_gathered_state_covariance_to_basis_source_order() -> None:
+    """Gathered H and both prior-covariance axes follow the basis source order."""
     original = _multisource_prepared_inputs()
     state_index = pd.MultiIndex.from_tuples(
         [("A", 0), ("B", 0), ("A", 1), ("B", 1)],
@@ -242,6 +248,29 @@ def test_prepared_inputs_normalizes_gathered_h_to_basis_source_order() -> None:
             "state_note": ("region", ["a0", "b0", "a1", "b1"]),
         },
     )
+    inv_inputs["alpha_prior_mean"] = ("region", [1.0, 2.0, 3.0, 4.0])
+    covariance = np.array(
+        [
+            [0.40, 0.01, 0.02, 0.03],
+            [0.01, 0.50, 0.04, 0.05],
+            [0.02, 0.04, 0.60, 0.06],
+            [0.03, 0.05, 0.06, 0.70],
+        ]
+    )
+    column_labels = [
+        json.dumps(label, ensure_ascii=False, separators=(",", ":"))
+        for label in state_index.tolist()
+    ]
+    inv_inputs["alpha_prior_covariance"] = (
+        ("region", "region_cov"),
+        covariance,
+    )
+    cross_covariance = np.arange(8, dtype=float).reshape(2, 4)
+    inv_inputs["native_retained_cross_covariance"] = (
+        ("native_state", "region_cov"),
+        cross_covariance,
+    )
+    inv_inputs = inv_inputs.assign_coords(region_cov_label=("region_cov", column_labels))
 
     prepared = RhimePreparedInputs(
         inv_inputs=inv_inputs,
@@ -256,6 +285,23 @@ def test_prepared_inputs_normalizes_gathered_h_to_basis_source_order() -> None:
     assert prepared.inv_inputs.indexes["region"].equals(expected_index)
     assert prepared.inv_inputs["H"].values[:, 0].tolist() == [20.0, 40.0, 10.0, 30.0]
     assert prepared.inv_inputs["state_note"].values.tolist() == ["b0", "b1", "a0", "a1"]
+    state_order = [1, 3, 0, 2]
+    np.testing.assert_array_equal(
+        prepared.inv_inputs["alpha_prior_covariance"],
+        covariance[np.ix_(state_order, state_order)],
+    )
+    assert prepared.inv_inputs["region_cov_label"].values.tolist() == [
+        column_labels[index] for index in state_order
+    ]
+    np.testing.assert_array_equal(
+        prepared.inv_inputs["native_retained_cross_covariance"],
+        cross_covariance[:, state_order],
+    )
+    CorrelatedLognormalPrior(
+        prepared.inv_inputs["alpha_prior_mean"],
+        prepared.inv_inputs["alpha_prior_covariance"],
+        covariance_dim="region_cov",
+    )
 
 
 def test_prepared_inputs_rejects_h_source_mismatch() -> None:
@@ -463,6 +509,7 @@ def test_prepared_inputs_roundtrip_observation_aligned_release_metadata() -> Non
     assert "release_lon" not in restored.site_metadata
 
 
+@pytest.mark.rhime_contract
 def test_site_indicator_is_derived_from_measurement_sites() -> None:
     """Supplied positional codes are replaced by the labeled measurement relation."""
     original = _prepared_inputs()
@@ -482,6 +529,7 @@ def test_site_indicator_is_derived_from_measurement_sites() -> None:
     np.testing.assert_array_equal(decoded, restored.inv_inputs["site"].values)
 
 
+@pytest.mark.rhime_contract
 @pytest.mark.parametrize("suffix", [".nc", ".zarr"])
 def test_real_prepared_inputs_save_load_and_run_without_repreparation(
     monkeypatch: pytest.MonkeyPatch,
@@ -489,7 +537,12 @@ def test_real_prepared_inputs_save_load_and_run_without_repreparation(
     prepared_from_real_route: RhimePreparedInputs,
     suffix: str,
 ) -> None:
-    """Real RHIME preparation survives both stores and runs without repeating preparation."""
+    """Freeze the labeled prepared-input round-trip and replay contract.
+
+    Both NetCDF and Zarr must preserve dimensions, indexed and auxiliary
+    coordinates, values, site alignment, and retained-basis metadata. Replaying
+    either artifact must also bypass data preparation.
+    """
     prepared = prepared_from_real_route
     serialized = prepared.to_datatree()
     encoded_inputs = serialized["inv_inputs"].to_dataset()
@@ -531,34 +584,45 @@ def test_real_prepared_inputs_save_load_and_run_without_repreparation(
         model=model_spec,
         output=RhimeOutputSpec(output_format="none", save_inversion_output=False),
     )
-    built_model = pm.Model()
     sampled = az.InferenceData()
     observed: dict[str, object] = {}
+    original_builder = rhime_standard.build_standard_rhime_model
 
     def fail_preparation(*args: object, **kwargs: object) -> None:
         """Fail if the loaded-input runner attempts data preparation."""
         raise AssertionError("loaded prepared inputs must bypass preparation")
 
-    def fake_builder(inv_inputs: xr.Dataset, spec: RhimeModelSpec) -> object:
-        """Record the loaded builder inputs and return a sentinel model."""
-        observed["builder_inputs"] = inv_inputs
-        observed["builder_spec"] = spec
-        return built_model
+    def fake_builder(
+        flux_sensitivity: xr.DataArray,
+        **kwargs: Any,
+    ) -> pm.Model:
+        """Record the loaded builder inputs and build the real canonical graph."""
+        assert kwargs["likelihood_builder"] is None
+        assert kwargs["preserve_legacy_likelihood"] is False
+        observed["builder_inputs"] = flux_sensitivity
+        observed["observations"] = kwargs["observations"]
+        return original_builder(flux_sensitivity, **kwargs)
 
-    def fake_sample(self: RhimeSampler, model: object) -> az.InferenceData:
+    def fake_sample(
+        self: RhimeSampler,
+        model: pm.Model,
+        *,
+        variable_roles: dict[str, str],
+    ) -> az.InferenceData:
         """Record the model passed to sampling and return a sentinel trace."""
         observed["sample_model"] = model
+        assert variable_roles["concentration"] == "y"
         return sampled
 
-    def fake_outputs(**kwargs: Any) -> RhimeOutputBundle:
+    def fake_outputs(**kwargs: Any) -> None:
         """Record the loaded object used for output construction."""
         observed["output_prepared"] = kwargs["prepared"]
-        return RhimeOutputBundle(outputs={"loaded": True})
+        kwargs["result"].outputs["loaded"] = True
 
-    monkeypatch.setattr(rhime_runner, "prepare_rhime_inputs", fail_preparation)
-    monkeypatch.setattr(rhime_runner, "build_rhime_model_from_spec", fake_builder)
+    monkeypatch.setattr(rhime_standard, "retrieve_or_reload_rhime_data", fail_preparation)
+    monkeypatch.setattr(rhime_standard, "build_standard_rhime_model", fake_builder)
     monkeypatch.setattr(RhimeSampler, "sample", fake_sample)
-    monkeypatch.setattr(rhime_runner, "make_standard_output_bundle", fake_outputs)
+    monkeypatch.setattr(rhime_prepared, "make_standard_rhime_outputs", fake_outputs)
 
     result = run_rhime_from_prepared_inputs(
         prepared_inputs=loaded,
@@ -568,11 +632,11 @@ def test_real_prepared_inputs_save_load_and_run_without_repreparation(
 
     builder_inputs = observed["builder_inputs"]
     output_prepared = observed["output_prepared"]
-    assert isinstance(builder_inputs, xr.Dataset)
+    assert isinstance(builder_inputs, xr.DataArray)
     assert isinstance(output_prepared, RhimePreparedInputs)
-    xr.testing.assert_identical(builder_inputs, loaded.inv_inputs)
-    assert observed["builder_spec"] is model_spec
-    assert observed["sample_model"] is built_model
+    xr.testing.assert_identical(builder_inputs, loaded.inv_inputs["H"])
+    xr.testing.assert_identical(observed["observations"], loaded.inv_inputs["mf"])
+    assert "y" in observed["sample_model"].named_vars
     assert result.inv_inputs is output_prepared.inv_inputs
     assert result.basis_functions is output_prepared.basis_functions
     assert result.basis_functions.operator is loaded.basis_functions.operator
@@ -877,7 +941,6 @@ def test_loaded_prepared_inputs_run_through_existing_seam(
         model=model_spec,
         output=RhimeOutputSpec(output_format="none", save_inversion_output=False),
     )
-    built_model = pm.Model()
     sampled = az.InferenceData(
         posterior=xr.Dataset(
             {"x": (("chain", "draw", "region"), np.ones((1, 1, 2)))},
@@ -885,32 +948,44 @@ def test_loaded_prepared_inputs_run_through_existing_seam(
         )
     )
     observed: dict[str, Any] = {}
+    original_builder = rhime_standard.build_standard_rhime_model
 
     def fail_preparation(*args: object, **kwargs: object) -> None:
         """Fail if execution attempts to prepare inputs again."""
         raise AssertionError("prepared-input execution must not repeat preparation")
 
-    def fake_builder(inv_inputs: xr.Dataset, spec: RhimeModelSpec) -> object:
-        """Record model-builder inputs and return the sentinel model."""
-        observed["builder_inputs"] = inv_inputs
-        observed["builder_spec"] = spec
-        return built_model
+    def fake_builder(
+        flux_sensitivity: xr.DataArray,
+        **kwargs: Any,
+    ) -> pm.Model:
+        """Record model-builder inputs and build the real canonical graph."""
+        assert kwargs["likelihood_builder"] is None
+        assert kwargs["preserve_legacy_likelihood"] is False
+        observed["builder_inputs"] = flux_sensitivity
+        observed["observations"] = kwargs["observations"]
+        return original_builder(flux_sensitivity, **kwargs)
 
-    def fake_sample(self: RhimeSampler, model: object) -> az.InferenceData:
+    def fake_sample(
+        self: RhimeSampler,
+        model: pm.Model,
+        *,
+        variable_roles: dict[str, str],
+    ) -> az.InferenceData:
         """Record the sampled model and return the sentinel posterior."""
         observed["sample_model"] = model
+        assert variable_roles["concentration"] == "y"
         return sampled
 
-    def fake_outputs(**kwargs: Any) -> RhimeOutputBundle:
-        """Record output inputs and return a sentinel output bundle."""
+    def fake_outputs(**kwargs: Any) -> None:
+        """Record output inputs and attach a sentinel product."""
         observed["output_prepared"] = kwargs["prepared"]
-        observed["output_idata"] = kwargs["idata"]
-        return RhimeOutputBundle(outputs={"loaded": True})
+        observed["output_idata"] = kwargs["result"].idata
+        kwargs["result"].outputs["loaded"] = True
 
-    monkeypatch.setattr(rhime_runner, "prepare_rhime_inputs", fail_preparation)
-    monkeypatch.setattr(rhime_runner, "build_rhime_model_from_spec", fake_builder)
+    monkeypatch.setattr(rhime_standard, "retrieve_or_reload_rhime_data", fail_preparation)
+    monkeypatch.setattr(rhime_standard, "build_standard_rhime_model", fake_builder)
     monkeypatch.setattr(RhimeSampler, "sample", fake_sample)
-    monkeypatch.setattr(rhime_runner, "make_standard_output_bundle", fake_outputs)
+    monkeypatch.setattr(rhime_prepared, "make_standard_rhime_outputs", fake_outputs)
 
     result = run_rhime_from_prepared_inputs(
         prepared_inputs=loaded,
@@ -920,11 +995,11 @@ def test_loaded_prepared_inputs_run_through_existing_seam(
 
     builder_inputs = observed["builder_inputs"]
     output_prepared = observed["output_prepared"]
-    assert isinstance(builder_inputs, xr.Dataset)
+    assert isinstance(builder_inputs, xr.DataArray)
     assert isinstance(output_prepared, RhimePreparedInputs)
-    xr.testing.assert_identical(builder_inputs, loaded.inv_inputs)
-    assert observed["builder_spec"] is model_spec
-    assert observed["sample_model"] is built_model
+    xr.testing.assert_identical(builder_inputs, loaded.inv_inputs["H"])
+    xr.testing.assert_identical(observed["observations"], loaded.inv_inputs["mf"])
+    assert "y" in observed["sample_model"].named_vars
     assert observed["output_idata"] is sampled
     assert result.inv_inputs is output_prepared.inv_inputs
     assert result.run_spec.sites == loaded.sites
@@ -987,22 +1062,32 @@ def test_multisource_order_survives_load_run_and_reconstruction(
         output=RhimeOutputSpec(output_format="none", save_inversion_output=False),
         split_by_sectors=True,
     )
-    built_model = pm.Model()
     sampled = az.InferenceData()
     observed: dict[str, object] = {}
+    original_builder = rhime_multisector.build_multisector_rhime_model
 
-    def fake_builder(inv_inputs: xr.Dataset, spec: RhimeModelSpec) -> object:
-        """Record ordered builder inputs and return the sentinel model."""
-        observed["source_order"] = tuple(inv_inputs.source.values)
-        observed["model_spec"] = spec
-        return built_model
+    def fake_builder(
+        flux_sensitivity: xr.DataArray,
+        **kwargs: Any,
+    ) -> pm.Model:
+        """Record ordered builder inputs and build the real canonical graph."""
+        assert kwargs["likelihood_builder"] is None
+        observed["source_order"] = tuple(flux_sensitivity.source.values)
+        observed["sectors"] = kwargs["sectors"]
+        return original_builder(flux_sensitivity, **kwargs)
 
-    def fake_sample(self: RhimeSampler, model: object) -> az.InferenceData:
+    def fake_sample(
+        self: RhimeSampler,
+        model: pm.Model,
+        *,
+        variable_roles: dict[str, str],
+    ) -> az.InferenceData:
         """Return a sentinel trace for the multisource prepared run."""
-        assert model is built_model
+        assert "y" in model.named_vars
+        assert variable_roles["concentration"] == "y"
         return sampled
 
-    def fake_outputs(**kwargs: Any) -> RhimeOutputBundle:
+    def fake_outputs(**kwargs: Any) -> None:
         """Exercise postprocessing reconstruction on the loaded retained basis."""
         output_prepared = kwargs["prepared"]
         assert isinstance(output_prepared, RhimePreparedInputs)
@@ -1013,11 +1098,11 @@ def test_multisource_order_survives_load_run_and_reconstruction(
             output_prepared.basis_functions.interpolate(state, flux=True),
             expected_reconstruction,
         )
-        return RhimeOutputBundle(outputs={"postprocessed": True})
+        kwargs["result"].outputs["postprocessed"] = True
 
-    monkeypatch.setattr(rhime_runner, "build_rhime_multisector_model_from_spec", fake_builder)
+    monkeypatch.setattr(rhime_multisector, "build_multisector_rhime_model", fake_builder)
     monkeypatch.setattr(RhimeSampler, "sample", fake_sample)
-    monkeypatch.setattr(rhime_runner, "make_multisector_output_bundle", fake_outputs)
+    monkeypatch.setattr(rhime_prepared, "make_multisector_rhime_outputs", fake_outputs)
 
     result = run_rhime_from_prepared_inputs(
         prepared_inputs=loaded,
@@ -1026,6 +1111,6 @@ def test_multisource_order_survives_load_run_and_reconstruction(
     )
 
     assert observed["source_order"] == ("B", "A")
-    assert observed["model_spec"] is model_spec
+    assert observed["sectors"] is model_spec.sectors
     assert observed["output_order"] == ("B", "A")
     assert result.outputs == {"postprocessed": True}

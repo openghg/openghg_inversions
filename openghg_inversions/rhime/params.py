@@ -5,6 +5,9 @@ public RHIME runner. It is intentionally limited to INI compatibility, legacy
 alias handling, simple scalar coercion, and validation of raw dictionaries.
 Future YAML/schema frontends should target the same normalized parameter model
 before constructing RHIME specs.
+Preparation-option ownership is fixed by
+``RHIME_PREPARATION_OPTION_NAMES`` rather than inferred from a callable
+signature.
 """
 
 from __future__ import annotations
@@ -15,18 +18,19 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
+from openghg_inversions._timing import log_timing, timer_seconds, timer_start
 from openghg_inversions.config import config
 from openghg_inversions.model_error import normalise_min_error_options
-from openghg_inversions.models import (
-    AggregationErrorMode,
-    DEFAULT_X_PRIOR,
-    RhimeBuilderStrategy,
-    RhimeModelSpec,
-    SectorSpec,
-    safe_pymc_name,
-)
+from openghg_inversions.models._flux import safe_pymc_name
+from openghg_inversions.observation_error import AggregationErrorMode
 from openghg_inversions.rhime.sampling import RhimeSampler
-from openghg_inversions.rhime.specs import RhimeRunSpec, make_output_spec
+from openghg_inversions.rhime.specs import (
+    DEFAULT_X_PRIOR,
+    RhimeModelSpec,
+    RhimeRunSpec,
+    SectorSpec,
+    make_output_spec,
+)
 
 _ALIASES = {
     "outputpath": "output_path",
@@ -52,6 +56,115 @@ _MAPPING_OPTIONS = (
     "sector_sources",
 )
 _PRIOR_OPTIONS = ("x_prior", "bc_prior", "sigma_prior", "offset_prior")
+
+#: This is the authoritative routing schema between raw RHIME options and
+# ``prepare_rhime_inputs``.  Keep it explicit: accepted configuration must not
+# change merely because an implementation helper gains a parameter.
+RHIME_PREPARATION_OPTION_NAMES = frozenset(
+    {
+        "species",
+        "sites",
+        "domain",
+        "averaging_period",
+        "start_date",
+        "end_date",
+        "output_name",
+        "flux_sources",
+        "split_by_sectors",
+        "bc_store",
+        "obs_store",
+        "footprint_store",
+        "emissions_store",
+        "met_model",
+        "fp_model",
+        "fp_height",
+        "fp_species",
+        "inlet",
+        "instrument",
+        "max_level",
+        "calibration_scale",
+        "obs_data_level",
+        "platform",
+        "use_tracer",
+        "use_bc",
+        "fp_basis_case",
+        "basis_directory",
+        "bc_basis_case",
+        "bc_basis_directory",
+        "country_directory",
+        "bc_input",
+        "basis_algorithm",
+        "nbasis",
+        "filters",
+        "fix_basis_outer_regions",
+        "averaging_error",
+        "bc_freq",
+        "reload_merged_data",
+        "save_merged_data",
+        "merged_data_dir",
+        "merged_data_name",
+        "basis_output_path",
+        "min_error",
+        "min_error_options",
+        "flux_non_finite_check",
+    }
+)
+
+
+def resolve_rhime_options(
+    *,
+    params: Mapping[str, Any],
+    multisector: bool,
+) -> RhimeRunnerSetup:
+    """Normalize raw options into preparation, model, sampling, and output settings."""
+    timing_start = timer_start()
+    setup = make_rhime_runner_setup(params=params, multisector=multisector)
+    log_timing("rhime.runner_setup", timer_seconds(timing_start), multisector=multisector)
+    return setup
+
+# Resolve stage defaults once, before the scientific recipe starts.  Keeping
+# this mapping beside the explicit routing schema makes ``data_args`` a
+# complete, inspectable preparation contract rather than asking individual
+# stages to infer omitted values independently.
+RHIME_PREPARATION_DEFAULTS: dict[str, Any] = {
+    "split_by_sectors": False,
+    "bc_store": "user",
+    "obs_store": "user",
+    "footprint_store": "user",
+    "emissions_store": "user",
+    "met_model": None,
+    "fp_model": None,
+    "fp_height": None,
+    "fp_species": None,
+    "inlet": None,
+    "instrument": None,
+    "max_level": None,
+    "calibration_scale": None,
+    "obs_data_level": None,
+    "platform": None,
+    "use_tracer": False,
+    "use_bc": True,
+    "fp_basis_case": None,
+    "basis_directory": None,
+    "bc_basis_case": "NESW",
+    "bc_basis_directory": None,
+    "country_directory": None,
+    "bc_input": None,
+    "basis_algorithm": "weighted",
+    "nbasis": 100,
+    "filters": None,
+    "fix_basis_outer_regions": False,
+    "averaging_error": True,
+    "bc_freq": None,
+    "reload_merged_data": False,
+    "save_merged_data": False,
+    "merged_data_dir": None,
+    "merged_data_name": None,
+    "basis_output_path": None,
+    "min_error": 0.0,
+    "min_error_options": None,
+    "flux_non_finite_check": "lazy",
+}
 
 
 @dataclass(frozen=True)
@@ -122,6 +235,7 @@ def params_from_config(
     end_date: str | None = None,
     output_path: str | None = None,
     extra_kwargs: Mapping[str, Any] | None = None,
+    normalise: bool = True,
 ) -> dict[str, Any]:
     """Load RHIME run parameters from an INI config file.
 
@@ -131,6 +245,8 @@ def params_from_config(
         end_date: Optional command-line end-date override.
         output_path: Optional command-line output-path override.
         extra_kwargs: Optional keyword overrides, normally parsed from CLI JSON.
+        normalise: Whether to normalize and validate the merged parameters.
+            Complete runners defer this to their public resolution stage.
 
     Returns:
         Normalized RHIME run parameters using snake-case public names.
@@ -148,7 +264,7 @@ def params_from_config(
         params["output_path"] = output_path
     if extra_kwargs:
         params.update(extra_kwargs)
-    return normalise_rhime_params(params)
+    return normalise_rhime_params(params) if normalise else params
 
 
 def normalise_rhime_params(params: Mapping[str, Any]) -> dict[str, Any]:
@@ -358,8 +474,19 @@ def validate_required_params(params: Mapping[str, Any]) -> None:
         raise ValueError(f"Required RHIME parameter(s) missing: {missing!r}")
 
 
-def validate_supported_params(params: Mapping[str, Any], *, data_params: set[str]) -> None:
-    """Raise if normalized run parameters contain unsupported keys."""
+def validate_supported_params(params: Mapping[str, Any]) -> None:
+    """Raise if normalized run parameters contain unsupported keys.
+
+    Preparation-option ownership is explicit in
+    :data:`RHIME_PREPARATION_OPTION_NAMES`; this validator never reflects over
+    a callable signature.
+
+    Args:
+        params: Normalized RHIME parameters to validate.
+
+    Raises:
+        ValueError: If ``params`` contains one or more unsupported names.
+    """
     runner_params = {
         "x_prior",
         "bc_prior",
@@ -389,13 +516,12 @@ def validate_supported_params(params: Mapping[str, Any], *, data_params: set[str
         "add_offset",
         "sigma_per_site",
         "sigma_freq",
-        "builder_strategy",
         "aggregation_error_mode",
     }
-    supported = data_params | runner_params | required_run_params()
+    supported = RHIME_PREPARATION_OPTION_NAMES | runner_params | required_run_params()
     unsupported = sorted(set(params) - supported)
     if unsupported:
-        raise ValueError(f"Unsupported RHIME parameter(s): {unsupported!r}")
+        raise ValueError(f"Unsupported RHIME parameter(s) for `resolve_rhime_options`: {unsupported!r}")
 
 
 def _tuple_from_optional_sequence(value: Any) -> tuple[str | None, ...]:
@@ -461,7 +587,6 @@ def _make_model_spec(
     no_model_error: bool,
     power: dict[str, Any] | float,
     offset_args: dict[str, Any] | None,
-    builder_strategy: RhimeBuilderStrategy,
     aggregation_error_mode: AggregationErrorMode,
 ) -> RhimeModelSpec:
     """Create a lightweight model spec from normalized run parameters."""
@@ -518,7 +643,6 @@ def _make_model_spec(
         sigma_prior=sigma_prior,
         offset_prior=offset_prior,
         offset_args=offset_args,
-        builder_strategy=builder_strategy,
         aggregation_error_mode=aggregation_error_mode,
     )
 
@@ -527,12 +651,23 @@ def make_rhime_runner_setup(
     *,
     params: Mapping[str, Any],
     multisector: bool,
-    data_param_names: set[str],
 ) -> RhimeRunnerSetup:
-    """Normalize raw RHIME parameters into specs and preparation arguments."""
+    """Normalize raw RHIME parameters into specs and preparation arguments.
+
+    Args:
+        params: Raw direct-Python or configuration-derived RHIME options.
+        multisector: Whether to construct the multi-sector runner setup.
+
+    Returns:
+        Resolved run specification, sampler, and preparation arguments.
+
+    Raises:
+        ValueError: If options are missing, unsupported, malformed, or
+            incompatible with the selected runner mode.
+    """
     normalized = normalise_rhime_params(params)
     validate_required_params(normalized)
-    validate_supported_params(normalized, data_params=data_param_names)
+    validate_supported_params(normalized)
 
     remaining = dict(normalized)
     flux_sources = resolve_flux_sources(flux_sources=remaining.pop("flux_sources", None))
@@ -574,13 +709,9 @@ def make_rhime_runner_setup(
     pollution_events_from_obs = remaining.pop("pollution_events_from_obs", False)
     no_model_error = remaining.pop("no_model_error", False)
     power = remaining.pop("power", 1.99)
-    builder_strategy = cast(
-        RhimeBuilderStrategy,
-        remaining.pop("builder_strategy", "concrete"),
-    )
     aggregation_error_mode = cast(
         AggregationErrorMode,
-        remaining.pop("aggregation_error_mode", "auto"),
+        remaining.pop("aggregation_error_mode", "none"),
     )
 
     sampler = RhimeSampler(
@@ -629,7 +760,6 @@ def make_rhime_runner_setup(
         no_model_error=no_model_error,
         power=power,
         offset_args=offset_args,
-        builder_strategy=builder_strategy,
         aggregation_error_mode=aggregation_error_mode,
     )
     run_spec = RhimeRunSpec(
@@ -643,6 +773,7 @@ def make_rhime_runner_setup(
     )
 
     data_candidate_args = {
+        **RHIME_PREPARATION_DEFAULTS,
         **remaining,
         "species": species,
         "sites": sites,
@@ -654,5 +785,8 @@ def make_rhime_runner_setup(
         "flux_sources": data_flux_sources,
         "split_by_sectors": multisector,
     }
-    data_args = {name: value for name, value in data_candidate_args.items() if name in data_param_names}
+    data_args = {
+        name: value for name, value in data_candidate_args.items() if name in RHIME_PREPARATION_OPTION_NAMES
+    }
+    data_args["min_error_options"] = normalise_min_error_options(data_args["min_error_options"])
     return RhimeRunnerSetup(run_spec=run_spec, sampler=sampler, data_args=data_args)

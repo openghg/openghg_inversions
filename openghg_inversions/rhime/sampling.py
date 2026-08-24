@@ -13,8 +13,39 @@ import xarray as xr
 from openghg_inversions._timing import log_timing, timer_seconds, timer_start
 from openghg_inversions._sampling import _reset_retained_draws as _shared_reset_retained_draws
 from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords
+from openghg_inversions.rhime.builders import RhimeModelBuildResult
 
 NutsSampler = Literal["pymc", "nutpie", "numpyro", "blackjax"]
+
+
+def sample_rhime_model(
+    model_build_result: RhimeModelBuildResult,
+    sampler: RhimeSampler,
+) -> az.InferenceData:
+    """Sample a built RHIME graph at the named sampler boundary.
+
+    Args:
+        model_build_result: Concrete graph and semantic variable roles.
+        sampler: Configured sampler used for posterior and predictive draws.
+
+    Returns:
+        Sampled posterior and predictive groups.
+    """
+    timing_start = timer_start()
+    idata = sampler.sample(
+        model_build_result.model,
+        variable_roles=model_build_result.variable_roles,
+    )
+    log_timing(
+        "rhime.sampler_total",
+        timer_seconds(timing_start),
+        draws=sampler.draws,
+        burn=sampler.burn,
+        tune=sampler.tune,
+        chains=sampler.chains,
+        nuts_sampler=sampler.nuts_sampler,
+    )
+    return idata
 
 
 def _finite_values(data: xr.DataArray) -> np.ndarray:

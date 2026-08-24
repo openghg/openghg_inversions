@@ -24,12 +24,12 @@ from openghg_inversions import utils  # noqa: E402
 from openghg_inversions._sampling import _reset_retained_draws  # noqa: E402
 from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename  # noqa: E402
 from openghg_inversions.config.version import code_version  # noqa: E402
-from openghg_inversions.models import build_rhime_model  # noqa: E402
+from openghg_inversions.rhime.standard import build_standard_rhime_model  # noqa: E402
 from openghg_inversions.models.components import resolve_model_variable  # noqa: E402
 from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords  # noqa: E402
 from openghg_inversions.models.priors import PriorArgs  # noqa: E402
-from openghg_inversions.models.state_activity import StateActivity  # noqa: E402
 from openghg_inversions.inversion_inputs import _compact_integer_index  # noqa: E402
+from openghg_inversions.observation_error import resolve_aggregation_error  # noqa: E402
 from openghg_inversions.sigma import SigmaAlignment  # noqa: E402
 
 # ----------------------------------------
@@ -148,10 +148,23 @@ def build_inferpymc_model(
         inv_inputs["sigma_freq_index"],
         per_site=sigma_per_site,
     )
+    flux_sensitivity = inv_inputs["H"]
+    state_dims = [dim for dim in flux_sensitivity.dims if dim != "nmeasure"]
+    if len(state_dims) == 1 and state_dims[0] not in flux_sensitivity.coords:
+        state_dim = state_dims[0]
+        flux_sensitivity = flux_sensitivity.assign_coords(
+            {state_dim: np.arange(flux_sensitivity.sizes[state_dim])}
+        )
 
-    return build_rhime_model(
-        inv_inputs,
+    return build_standard_rhime_model(
+        flux_sensitivity,
+        observations=inv_inputs["mf"],
+        observation_error=inv_inputs["mf_error"],
+        minimum_error=inv_inputs["min_error"],
+        aggregation_error=resolve_aggregation_error(inv_inputs, "none"),
         sigma_alignment=sigma_alignment,
+        boundary_sensitivity=inv_inputs.get("H_bc"),
+        site_indicator=inv_inputs.get("site_indicator"),
         x_prior=xprior,
         bc_prior=bcprior,
         sigma_prior=sigprior,
@@ -162,9 +175,7 @@ def build_inferpymc_model(
         no_model_error=no_model_error,
         offset_args=offset_args,
         power=power,
-        # Keep fixedbasisMCMC/inferpymc's legacy single-sector state graph.
-        # Modern RHIME model specs opt into exact-zero pruning separately.
-        state_activity=StateActivity(prune_zero=False),
+        preserve_legacy_likelihood=True,
     )
 
 

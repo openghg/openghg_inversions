@@ -252,8 +252,9 @@ def test_covariance_round_trips_through_h5netcdf(
 
 def test_single_class_uses_unblocked_covariance(
     coordinates: tuple[xr.DataArray, xr.DataArray],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A single class is algebraically identical to the separable covariance."""
+    """A single class uses the allocation-free separable path."""
     latitude, longitude = coordinates
     labels = xr.DataArray(
         np.full((3, 2), "all"),
@@ -268,6 +269,11 @@ def test_single_class_uses_unblocked_covariance(
         coords={"lat": latitude, "lon": longitude},
     )
 
+    def reject_blocked_result_allocation(*args: object, **kwargs: object) -> None:
+        """Fail if apply enters the multi-class masked accumulation path."""
+        raise AssertionError("single-class covariance allocated a blocked result")
+
+    monkeypatch.setattr(native_covariance_module.np, "zeros_like", reject_blocked_result_allocation)
     xr.testing.assert_allclose(blocked.apply(rhs), unblocked.apply(rhs))
     xr.testing.assert_allclose(blocked.solve(rhs), unblocked.solve(rhs))
 

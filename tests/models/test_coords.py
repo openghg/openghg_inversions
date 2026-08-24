@@ -10,6 +10,7 @@ from openghg_inversions.models.coords import (
     add_coords,
     attach_coord_registry,
     get_coord_registry,
+    registered_model,
     restore_inferencedata_coords,
     sanitize_coords_for_pymc,
 )
@@ -49,20 +50,47 @@ def test_coord_registry_repeated_registration_and_conflict() -> None:
         registry.add({"nx": np.array([0, 2, 3])})
 
 
-def test_add_coords_works_with_and_without_registry() -> None:
-    """Check add_coords works whether or not a coord registry is attached."""
+def test_add_coords_requires_registered_model() -> None:
+    """Coordinate registration is an enforced model invariant."""
     coords = {"nmeasure": xr.DataArray([1, 2], dims=("nmeasure",))}
 
-    with pm.Model() as model:
-        add_coords(coords)
-        assert "nmeasure" in model.coords
-        assert get_coord_registry(model) is None
+    with pm.Model():
+        with pytest.raises(RuntimeError, match="registered_model"):
+            add_coords(coords)
 
-    with pm.Model() as model:
-        registry = CoordRegistry()
-        attach_coord_registry(model, registry)
+    with registered_model() as model:
         add_coords(coords)
+        registry = get_coord_registry(model)
+        assert registry is not None
         assert "nmeasure" in registry.original_coords
+
+
+def test_registered_model_forwards_model_arguments() -> None:
+    """Constructor coordinates are sanitized and scientifically registered."""
+    with registered_model(coords={"state": ["west", "east"]}) as model:
+        registry = get_coord_registry(model)
+        assert registry is not None
+        assert model.coords["state"] == (0, 1)
+        np.testing.assert_array_equal(registry.original_coords["state"], ["west", "east"])
+
+
+def test_registered_model_keeps_xarray_auxiliary_coordinates_out_of_pymc_dims() -> None:
+    """Constructor xarray coords seed rich registry metadata, not false dims."""
+    index = pd.MultiIndex.from_arrays(
+        [["MHD", "TAC"], pd.to_datetime(["2019-01-01", "2019-01-02"])],
+        names=["site", "time"],
+    )
+    coords = xr.Coordinates.from_pandas_multiindex(index, "nmeasure")
+
+    with registered_model(coords=coords) as model:
+        registry = get_coord_registry(model)
+
+    assert model.coords["nmeasure"] == (0, 1)
+    assert "site" not in model.coords
+    assert "time" not in model.coords
+    assert registry is not None
+    assert registry.original_coords["nmeasure"].equals(index)
+    assert {"site", "time"} <= set(registry.auxiliary_coords)
 
 
 def test_add_coords_preserves_auxiliary_coords_for_model_dims() -> None:

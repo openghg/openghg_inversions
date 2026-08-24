@@ -1,5 +1,23 @@
 # Clean Up Inversions Refactor
 
+> **Status:** Historical plan. Do not use this note as an active delivery
+> roadmap. The P0 readability plan and its model-family expansion companion are
+> authoritative.
+>
+> **Priority update (2026-08-14):** The P0
+> [`run_rhime` readability and modifiability plan](run_rhime_readability_and_modifiability.md)
+> supersedes this note wherever it assumes that routing old configurations
+> through the current layered `run_rhime` implementation is sufficient for
+> removing the legacy path. `run_rhime` remains the default, but it must first
+> become a readable, end-to-end reference workflow with a full-pipeline model
+> variation path that is easy to copy or compose. An explicit legacy execution
+> escape hatch is tracked as short-term user relief.
+>
+> W1 is complete. The active delivery sequence is now W3a (visible
+> orchestration), W2.0 (tested full copy-and-modify runner), W2a (Python-only
+> likelihood callable on `run_rhime`), W2b (cookiecutter-generated downstream
+> package proof), then W4-W7. The detailed P0 plan is authoritative.
+
 This note tracks the near-term refactor sequence for moving from the legacy
 `fixedbasisMCMC` path to the modern `run_rhime` pipeline.
 
@@ -62,26 +80,28 @@ Before expanding broad user docs, keep a concise maintainer-facing map of the
 modern responsibilities:
 
 - `openghg_inversions.rhime.__init__`: public RHIME re-export surface.
-- `openghg_inversions.rhime.runner`: orchestration; normalize setup, prepare
-  inputs, build the model, sample, and dispatch outputs.
+- `openghg_inversions.rhime.standard` and
+  `openghg_inversions.rhime.multisector`: readable orchestration recipes that
+  normalize setup, prepare inputs, build the model, sample, and dispatch
+  outputs.
 - `openghg_inversions.rhime.params`: config/API parameter loading, legacy alias
   handling, scalar coercion, and validation before spec construction.
-- `openghg_inversions.rhime.specs`: run/output specs and output-format
+- `openghg_inversions.rhime.specs`: model/run/output specs and output-format
   validation.
 - `openghg_inversions.rhime.sampling`: executable PyMC sampler settings and
   predictive sampling.
 - `openghg_inversions.rhime.outputs`: construction, saving, and compatibility
   formatting of RHIME output bundles.
-- `openghg_inversions.models.rhime`: RHIME PyMC builders plus the current
-  `RhimeModelSpec` and `SectorSpec`.
+- `openghg_inversions.rhime.standard` and `.multisector`: readable RHIME PyMC
+  recipe builders.
 - `openghg_inversions.inversion_data.preparation`: data gathering/filtering,
   basis construction, and `RhimePreparedInputs`.
 - `openghg_inversions.postprocessing.*`: product-specific output schemas and
   capability checks over modern `InversionOutput`.
 
 Document current workarounds explicitly rather than hiding them. In particular,
-`RhimeModelSpec` and `SectorSpec` currently live under
-`openghg_inversions.models` beside the concrete RHIME builders. That is
+`RhimeModelSpec` and `SectorSpec` live under
+`openghg_inversions.rhime.specs` beside the concrete RHIME recipes. That is
 intentional for the near-term dependency direction,
 `openghg_inversions.rhime -> openghg_inversions.models`, and should remain
 until a `SemanticModel` or equivalent abstract model-spec contract makes
@@ -111,7 +131,7 @@ choosing the legacy route for new work.
 - 2026-05-31: #400 / PR #434 moved RHIME orchestration into
   `openghg_inversions.rhime.runner`, kept the package `__init__` as the public
   re-export surface, kept lightweight model specs with the RHIME builders in
-  `openghg_inversions.models.rhime`, kept `RhimeRunSpec` as run metadata, and
+  the concrete RHIME recipe modules, kept `RhimeRunSpec` as run metadata, and
   carried the executable `RhimeSampler` on runner setup/results.
 - 2026-05-31: #400 / PR #434 moved RHIME setup construction into
   `openghg_inversions.rhime.params` and output adapters into

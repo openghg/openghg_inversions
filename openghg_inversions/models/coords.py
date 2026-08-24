@@ -218,6 +218,35 @@ def get_coord_registry(model: pm.Model) -> CoordRegistry | None:
     return getattr(model, "_openghg_coord_registry", None)
 
 
+def registered_model(*args: Any, **kwargs: Any) -> pm.Model:
+    """Construct a PyMC model with RHIME coordinate tracking attached.
+
+    Args:
+        *args: Positional arguments forwarded to :class:`pymc.Model`.
+        **kwargs: Keyword arguments forwarded to :class:`pymc.Model`. A
+            scientific ``coords`` mapping is sanitized for PyMC and retained in
+            the attached registry.
+
+    Returns:
+        A new PyMC model with a seeded :class:`CoordRegistry` attached.
+    """
+    coords = kwargs.pop("coords", None)
+    registry = CoordRegistry()
+    if coords is None:
+        model = pm.Model(*args, **kwargs)
+    else:
+        model_dims = tuple(coords.dims) if isinstance(coords, xr.Coordinates) else tuple(coords)
+        pymc_coords = sanitize_coords_for_pymc(coords, model_dims=model_dims)
+        model = pm.Model(
+            *args,
+            coords={name: coord.tolist() for name, coord in pymc_coords.items()},
+            **kwargs,
+        )
+        registry.add(coords, model_dims=model_dims)
+    attach_coord_registry(model, registry)
+    return model
+
+
 def add_coords(
     coords: dict[str, np.ndarray] | xr.Coordinates,
     *,
@@ -237,11 +266,14 @@ def add_coords(
     pymc_coords_list = {name: coord.tolist() for name, coord in pymc_coords.items()}
 
     with pm.modelcontext(None) as model:
-        model.add_coords(pymc_coords_list)
-
         registry = get_coord_registry(model)
-        if registry is not None:
-            registry.add(coords, model_dims=model_dims)
+        if registry is None:
+            raise RuntimeError(
+                "Labelled OpenGHG model components require a `CoordRegistry`; "
+                "construct the model with `registered_model()`."
+            )
+        model.add_coords(pymc_coords_list)
+        registry.add(coords, model_dims=model_dims)
 
 
 def restore_inferencedata_coords(

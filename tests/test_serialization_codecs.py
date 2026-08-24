@@ -215,7 +215,7 @@ def test_source_dispatch_requires_the_exact_configured_index(source_labels: list
     """Xarray exact alignment rejects reordered, missing, extra, duplicate, or mistyped labels."""
     covariance = _source_covariance()
 
-    with pytest.raises(ValueError, match="source labels/order do not match covariance configuration"):
+    with pytest.raises(ValueError, match=r"join='exact'|align|native_source"):
         covariance.apply(_source_rhs(source_labels))
 
 

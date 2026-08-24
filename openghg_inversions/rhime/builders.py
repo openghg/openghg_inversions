@@ -1,4 +1,8 @@
-"""Public extension contracts for complete RHIME model builders."""
+"""Public model-build contracts and validation for RHIME customizations.
+
+The validation applies both to complete-model builders and to built-in model
+results that wrap a custom likelihood builder.
+"""
 
 from __future__ import annotations
 
@@ -8,19 +12,45 @@ import json
 from typing import Any, Protocol
 
 import pymc as pm
+import xarray as xr
+from pytensor.tensor.variable import TensorVariable
 
 from openghg_inversions.inversion_data import RhimePreparedInputs
+from openghg_inversions.models.coords import get_coord_registry
+from openghg_inversions.observation_error import AggregationError
 from openghg_inversions.rhime.specs import OutputFormat, RhimeRunSpec
 
 
-_OUTPUT_FORMATS: frozenset[OutputFormat] = frozenset(
-    {"none", "inv_out", "basic", "paris", "legacy"}
-)
+_OUTPUT_FORMATS: frozenset[OutputFormat] = frozenset({"none", "inv_out", "basic", "paris", "legacy"})
+
+
+class RhimeLikelihoodBuilder(Protocol):
+    """Explicit callable contract for a complete RHIME likelihood component."""
+
+    def __call__(
+        self,
+        *,
+        observations: xr.DataArray,
+        observation_error: xr.DataArray,
+        minimum_error: xr.DataArray,
+        aggregation_error: AggregationError,
+        mean: TensorVariable,
+        pollution_mean: TensorVariable,
+        pollution_event_baseline: TensorVariable | None,
+        output_dim: str,
+    ) -> TensorVariable:
+        """Add canonical ``y`` and ``epsilon`` variables to the active model."""
+        ...
 
 
 @dataclass(frozen=True)
 class RhimeModelBuilderContext:
-    """Labelled inputs supplied to a complete model builder.
+    """Advanced compatibility input supplied only to a complete model builder.
+
+    Ordinary in-tree recipes and components use explicit named scientific
+    inputs. This context remains solely for user-owned complete models invoked
+    through ``run_rhime_from_prepared_inputs``; those builders own validation
+    and materialization of any lazy arrays they consume.
 
     Args:
         prepared_inputs: Validated canonical inputs, retained basis functions,
@@ -66,8 +96,7 @@ class RhimeModelBuildResult:
         """Copy and validate the serializable portion of the result."""
         if not isinstance(self.model, pm.Model):
             raise TypeError(
-                "`RhimeModelBuildResult.model` must be a `pymc.Model`; "
-                f"got {type(self.model).__name__}."
+                f"`RhimeModelBuildResult.model` must be a `pymc.Model`; got {type(self.model).__name__}."
             )
 
         roles = {str(role): str(name) for role, name in self.variable_roles.items()}
@@ -103,9 +132,18 @@ class RhimeModelBuildResult:
         object.__setattr__(self, "supported_output_formats", output_formats)
         object.__setattr__(self, "metadata", metadata)
 
+    def validate_requested_output(self, output_format: str) -> None:
+        """Reject an output this model contract does not support."""
+        if output_format not in self.supported_output_formats:
+            raise ValueError(
+                f"RHIME model does not declare output_format={output_format!r} compatible. "
+                f"Declared formats: {list(self.supported_output_formats)!r}. Use output_format='none' or "
+                "select a model that explicitly supports the requested RHIME output contract."
+            )
+
 
 class RhimeModelBuilder(Protocol):
-    """Callable contract for a complete user-owned RHIME model factory."""
+    """Advanced callable contract for a complete user-owned model factory."""
 
     def __call__(self, context: RhimeModelBuilderContext, /) -> RhimeModelBuildResult:
         """Build a concrete model from validated prepared inputs and settings."""
@@ -117,19 +155,29 @@ def validate_model_build_result(
     *,
     context: RhimeModelBuilderContext,
 ) -> None:
-    """Validate a custom build result before sampling or postprocessing."""
-    output_format = context.run_spec.output.output_format
-    if output_format not in result.supported_output_formats:
+    """Validate a custom build result before sampling or postprocessing.
+
+    Args:
+        result: Complete model build result to validate.
+        context: Prepared inputs and run settings for the active model build.
+    Raises:
+        ValueError: If the requested output is unsupported or a declared
+            variable role refers to an absent variable.
+    """
+    if get_coord_registry(result.model) is None:
         raise ValueError(
-            f"Custom RHIME model builder does not declare output_format={output_format!r} compatible. "
-            f"Declared formats: {list(result.supported_output_formats)!r}. Use output_format='none' or "
-            "return a build result that explicitly supports the requested RHIME output contract."
+            "A custom RHIME model must carry a `CoordRegistry`; construct it "
+            "with `registered_model()`."
         )
 
+    output_format = context.run_spec.output.output_format
+    if output_format == "none":
+        return
+
+    result.validate_requested_output(output_format)
+
     available_names = set(result.model.named_vars) | set(context.prepared_inputs.inv_inputs.variables)
-    missing = {
-        role: name for role, name in result.variable_roles.items() if name not in available_names
-    }
+    missing = {role: name for role, name in result.variable_roles.items() if name not in available_names}
     if missing:
         details = ", ".join(f"{role}={name!r}" for role, name in sorted(missing.items()))
         raise ValueError(
@@ -137,15 +185,17 @@ def validate_model_build_result(
             f"prepared inversion inputs: {details}."
         )
 
-    if "concentration" not in result.variable_roles:
-        raise ValueError(
-            "Custom RHIME model variable roles must declare `concentration` so predictive sampling "
-            "and concentration outputs do not infer the observed-variable name."
-        )
-
 
 def callable_metadata(builder: Callable[..., Any]) -> dict[str, str]:
-    """Return stable, serializable direct-Python callable identity metadata."""
+    """Return stable, serializable direct-Python callable identity metadata.
+
+    Args:
+        builder: Callable whose import module and qualified name identify the
+            runtime customization.
+
+    Returns:
+        JSON-serializable module and qualified-name fields.
+    """
     return {
         "module": getattr(builder, "__module__", type(builder).__module__),
         "qualname": getattr(builder, "__qualname__", type(builder).__qualname__),
