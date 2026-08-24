@@ -56,11 +56,18 @@ def _annotate_co2_trace(
         "min_error": ["minimum_error"],
         "fixed_model_mismatch": ["fixed_model_mismatch"],
         "fixed_prior_contribution": ["coherent_prior_contribution"],
-        "hx": ["emissions_sensitivity"],
-        "mu": ["model_mean"],
-        "mu_pollution": ["pollution_concentration"],
-        "x": ["flux_scale"],
-        "x_active": ["active_flux_scale"],
+        "co2_sensitivity": ["emissions_sensitivity"],
+        "modelled_concentration": ["model_mean"],
+        "co2_flux_contribution": ["pollution_concentration"],
+        "flux_scaling": ["flux_scale"],
+        "flux_scaling_active": ["active_flux_scale"],
+        "outer_sensitivity": ["outer_emissions_sensitivity"],
+        "outer_flux_contribution": ["outer_pollution_concentration"],
+        "outer_flux_scaling": ["outer_flux_scale"],
+        "outer_flux_scaling_active": ["active_outer_flux_scale"],
+        "hbc": ["boundary_sensitivity"],
+        "bc": ["boundary_scale"],
+        "mu_bc": ["boundary_concentration"],
         "epsilon": ["model_error"],
         "y": ["concentration"],
     }
@@ -73,8 +80,10 @@ def _annotate_co2_trace(
         "min_error",
         "fixed_model_mismatch",
         "fixed_prior_contribution",
-        "mu",
-        "mu_pollution",
+        "modelled_concentration",
+        "co2_flux_contribution",
+        "outer_flux_contribution",
+        "mu_bc",
         "epsilon",
         "y",
     }
@@ -87,7 +96,13 @@ def _annotate_co2_trace(
             scientific_roles = sorted(set(roles_by_variable.get(name, ())))
             if scientific_roles:
                 variable.attrs["rhime_scientific_roles"] = json.dumps(scientific_roles)
-            if name in {"x", "x_active"}:
+            if name in {
+                "bc",
+                "flux_scaling",
+                "flux_scaling_active",
+                "outer_flux_scaling",
+                "outer_flux_scaling_active",
+            }:
                 variable.attrs["units"] = "1"
             elif concentration_units is not None and name in concentration_variables:
                 variable.attrs["units"] = concentration_units
@@ -196,10 +211,10 @@ def run_rhime_co2(
             "minimum_error": "min_error",
             "concentration": "y",
             "model_error": "epsilon",
-            "model_mean": "mu",
-            "pollution_concentration": "mu_pollution",
-            "flux_scale": "x",
-            "emissions_sensitivity": "hx",
+            "model_mean": "modelled_concentration",
+            "pollution_concentration": "co2_flux_contribution",
+            "flux_scale": "flux_scaling",
+            "emissions_sensitivity": "co2_sensitivity",
             "coherent_prior_contribution": "fixed_prior_contribution",
         },
         metadata={

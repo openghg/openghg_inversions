@@ -70,7 +70,7 @@ def test_outer_modes_partition_prediction_and_covariance_without_double_counting
     )
 
     assert fixed.mean_contribution is None
-    assert fixed.sensitivity is not None
+    assert fixed.prepared_sensitivity.sensitivity is not None
     assert fixed.resolved_activity is not None
     assert not fixed.resolved_activity.active.any().item()
     np.testing.assert_allclose(fixed.resolved_activity.fixed_value, 1.0)
@@ -81,44 +81,16 @@ def test_outer_modes_partition_prediction_and_covariance_without_double_counting
         h.values @ covariance.values @ h.values.T,
     )
     assert inferred.mean_contribution is None
-    np.testing.assert_allclose(inferred.sensitivity @ inferred.prior_mean, h.values @ mean.values)
+    np.testing.assert_allclose(
+        inferred.prepared_sensitivity.sensitivity @ inferred.prior_mean,
+        h.values @ mean.values,
+    )
     assert fixed.observation_factor is None
-    assert marginalized.sensitivity is None
     assert inferred.observation_factor is None
-    assert inferred.sensitivity is not None
+    assert inferred.prepared_sensitivity.state_dim == "region"
     assert fixed.prior_covariance is None
     assert marginalized.prior_covariance is None
     assert inferred.prior_covariance is not None
-
-
-@pytest.mark.parametrize("mode", ["fixed", "marginalized", "inferred"])
-@pytest.mark.parametrize(
-    ("observation_labels", "message"),
-    [
-        (None, "must provide an explicit ordered 'nmeasure' observation coordinate"),
-        ([0, 0], "requires unique 'nmeasure' observation labels"),
-    ],
-    ids=["missing", "duplicate"],
-)
-def test_outer_treatment_requires_unique_observation_labels(
-    mode: str,
-    observation_labels: list[int] | None,
-    message: str,
-) -> None:
-    h, mean, covariance = _outer_inputs()
-    h = (
-        h.drop_vars("nmeasure")
-        if observation_labels is None
-        else h.assign_coords(nmeasure=observation_labels)
-    )
-
-    with pytest.raises(ValueError, match=message):
-        prepare_outer_region_treatment(
-            h,
-            mode=mode,
-            prior_mean=mean if mode != "fixed" else None,
-            prior_covariance=covariance if mode != "fixed" else None,
-        )
 
 
 def test_marginalized_outer_factor_preserves_each_aggregation_error_representation() -> None:
@@ -289,9 +261,8 @@ def test_collapse_outer_sectors_is_orthogonal_to_treatment_and_keeps_members() -
     )
     with registered_model() as model:
         add_outer_state_component(fixed)
-    np.testing.assert_allclose(pm.draw(model["mu_outer"]), h.values @ np.ones(4))
-    assert inferred.sensitivity is not None
-    assert inferred.sensitivity.sizes["outer_state"] == 2
+    np.testing.assert_allclose(pm.draw(model["outer_flux_contribution"]), h.values @ np.ones(4))
+    assert inferred.prepared_sensitivity.removed.sizes["outer_state"] == 2
 
 
 def test_collapsed_member_metadata_uses_resolved_group_activity() -> None:
@@ -326,7 +297,36 @@ def test_collapsed_member_metadata_uses_resolved_group_activity() -> None:
     assert treatment.state_metadata["activity"].values.tolist() == [True, True, False]
     with registered_model() as model:
         add_outer_state_component(treatment)
-    assert pm.draw(model["x_outer"], random_seed=42)[1] == 1.0
+    assert pm.draw(model["outer_flux_scaling"], random_seed=42)[1] == 1.0
+
+
+def test_outer_treatment_carries_custom_output_dimension_into_components() -> None:
+    h, mean, covariance = _outer_inputs()
+    h = h.rename(nmeasure="observation").assign_coords(observation=["a", "b"])
+    fixed = prepare_outer_region_treatment(h, mode="fixed", observation_dim="observation")
+    marginalized = prepare_outer_region_treatment(
+        h,
+        mode="marginalized",
+        prior_mean=mean,
+        prior_covariance=covariance,
+        observation_dim="observation",
+    )
+
+    with registered_model() as model:
+        add_outer_state_component(fixed)
+    combined = add_outer_observation_covariance(
+        AggregationError(mode="none", marginal_variance=np.zeros(2)),
+        marginalized,
+    )
+
+    assert fixed.prepared_sensitivity.output_dim == "observation"
+    assert model.named_vars_to_dims["outer_flux_contribution"] == ("observation",)
+    np.testing.assert_allclose(
+        pm.draw(model["outer_flux_contribution"]),
+        h.values @ np.ones(h.sizes["region"]),
+    )
+    assert combined.factor is not None
+    assert combined.factor.dims == ("observation", "outer_covariance_rank")
 
 
 def test_co2_model_composes_sampled_boundary_and_each_outer_mode() -> None:
@@ -404,20 +404,24 @@ def test_co2_model_composes_sampled_boundary_and_each_outer_mode() -> None:
     for mode in ("fixed", "marginalized", "inferred"):
         with pytest.raises(ValueError, match="must exactly match CO2 observations"):
             build(mode, outer_h.sel(nmeasure=[1, 0]))
-    with pytest.raises(ValueError, match="must provide an explicit ordered 'nmeasure' coordinate"):
-        build("fixed", observations=data["mf"].drop_vars("nmeasure"))
 
     assert "bc" in fixed.named_vars
-    assert "x_outer" in fixed.named_vars
-    assert "x_outer_active" not in fixed.named_vars
-    assert "x_outer" not in marginalized.named_vars
-    assert "bc" in inferred.named_vars and "x_outer" in inferred.named_vars
+    assert "outer_flux_scaling" in fixed.named_vars
+    assert "outer_flux_scaling_active" not in fixed.named_vars
+    assert "outer_flux_scaling" not in marginalized.named_vars
+    assert "bc" in inferred.named_vars and "outer_flux_scaling" in inferred.named_vars
     assert "mu_baseline" not in fixed.named_vars
     assert "mu_baseline" not in marginalized.named_vars
     assert "mu_baseline" not in inferred.named_vars
-    np.testing.assert_allclose(pm.draw(fixed["x_outer"]), 1.0)
-    np.testing.assert_allclose(pm.draw(fixed["mu_outer"]), outer_h.values @ np.ones(2))
-    np.testing.assert_allclose(pm.draw(marginalized["mu_outer"]), outer_h.values @ outer_mean.values)
+    np.testing.assert_allclose(pm.draw(fixed["outer_flux_scaling"]), 1.0)
+    np.testing.assert_allclose(
+        pm.draw(fixed["outer_flux_contribution"]),
+        outer_h.values @ np.ones(2),
+    )
+    np.testing.assert_allclose(
+        pm.draw(marginalized["outer_flux_contribution"]),
+        outer_h.values @ outer_mean.values,
+    )
     expected_outer_covariance = outer_h.values @ outer_covariance.values @ outer_h.values.T
     np.testing.assert_allclose(
         marginalized["low_rank_factor"].eval() @ marginalized["low_rank_factor"].eval().T,
@@ -426,10 +430,10 @@ def test_co2_model_composes_sampled_boundary_and_each_outer_mode() -> None:
 
     mu, pollution, boundary, outer, fixed_prior = pm.draw(
         [
-            inferred["mu"],
-            inferred["mu_pollution"],
+            inferred["modelled_concentration"],
+            inferred["co2_flux_contribution"],
             inferred["mu_bc"],
-            inferred["mu_outer"],
+            inferred["outer_flux_contribution"],
             inferred["fixed_prior_contribution"],
         ],
         random_seed=42,
@@ -526,9 +530,9 @@ def test_inferred_zero_sensitivity_outer_state_is_fixed_at_one() -> None:
 
     with registered_model() as model:
         add_outer_state_component(treatment)
-    state = pm.draw(model["x_outer"], random_seed=42)
+    state = pm.draw(model["outer_flux_scaling"], random_seed=42)
 
-    assert "x_outer_active" in model.named_vars
+    assert "outer_flux_scaling_active" in model.named_vars
     assert treatment.resolved_activity is not None
     assert treatment.state_metadata["activity"].values.tolist() == [True, False]
     xr.testing.assert_equal(
@@ -604,4 +608,4 @@ def test_inner_and_outer_state_auxiliary_coords_are_namespaced() -> None:
     assert registry.auxiliary_coords["source_outer"].values.tolist() == ["ff", "gpp"]
     assert registry.auxiliary_coords["sector_outer"].values.tolist() == ["ff", "gpp"]
     assert registry.auxiliary_coords["domain_outer"].values.tolist() == ["EUROPE", "EUROPE"]
-    assert model.named_vars_to_dims["x_outer"] == ("outer_region_outer",)
+    assert model.named_vars_to_dims["outer_flux_scaling"] == ("outer_region_outer",)

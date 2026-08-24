@@ -203,10 +203,13 @@ The production recipe should visibly:
 The concrete graph is approximately:
 
 ```text
-x = correlated_lognormal_state(...)
-mu = fixed_contribution + design @ x
+flux_scaling = correlated_lognormal_state(...)
+co2_o2_flux_contribution = joint_sensitivity @ flux_scaling
+modelled_concentration = (
+    fixed_prior_contribution + co2_o2_flux_contribution
+)
 y_obs = multivariate_normal(
-    mu,
+    modelled_concentration,
     aggregation_covariance + mismatch_covariance,
 )
 ```
@@ -215,13 +218,13 @@ y_obs = multivariate_normal(
 
 A fixed oxidative ratio or other cross-channel coupling is a labelled
 scientific input. Its contract must state its units, direction, sign,
-coordinate scope, alignment, and provenance. A prepared operator may embed a
+coordinate scope, alignment, and provenance. A prepared sensitivity may embed a
 fixed coupling, but its metadata and the consuming recipe must say so
 explicitly to prevent the coupling from being applied twice or omitted.
 
 An uncertain coupling is an explicit sampled parameter in the concrete model
-recipe, not metadata attached to a fixed operator. For example, a latent
-O2-per-CO2 ratio requires a ratio-free O2 operator and a visible graph of the
+recipe, not metadata attached to a fixed sensitivity. For example, a latent
+O2-per-CO2 ratio requires a ratio-free O2 sensitivity and a visible graph of the
 form:
 
 ```text
@@ -230,7 +233,7 @@ o2_contribution = H_o2_ratio_free @ (-oxidative_ratio * x_shared)
 ```
 
 This is bilinear in the ratio and shared flux state. Preparation must therefore
-not silently reuse an operator or aggregation covariance derived for a fixed
+not silently reuse a sensitivity or aggregation covariance derived for a fixed
 ratio. Any covariance held fixed under the uncertain coupling must have a
 scientific justification and be recorded as an approximation. Configuration
 may offer a recipe-owned choice between a fixed value and a prior
@@ -248,9 +251,9 @@ establish a reproducible commit or archived evidence bundle before claiming
 exact parity.
 
 This prototype intentionally uses the exact inner region and does not contain
-the separate outer-regions-as-baseline implementation. Do not couple porting
-the two features. Port the recovered baseline behavior described below as a
-separate composite component.
+the separate outer-region treatment. OPE-76 subsequently landed that treatment
+as a separate CO2 direct-builder surface rather than coupling it to the linked
+CO2/O2 port.
 
 The CO2-family subpackage is a landing and integration point, not a permanent silo.
 After the model is reproduced, promote its generally useful features—prior
@@ -258,18 +261,21 @@ covariance, coherent reduction, aggregation covariance, and any genuinely
 shared likelihood pieces—into ordinary functions that standard RHIME and
 multisector RHIME can call directly.
 
-Outer-region treatment is incomplete and must not be presented as finished.
-The eventual CO2 family should support the same explicit state treatments for
-outer regions as for other scientific states:
+OPE-76 provides explicit, mutually exclusive CO2 outer-state treatments:
 
-- fix their scale, initially at one;
-- marginalize them coherently where the probability model permits it; or
-- infer/optimize them with random scaling factors.
+- fix their scale, at one by default;
+- marginalize a Gaussian outer state into its observation mean and covariance;
+  or
+- infer correlated positive scaling factors.
 
-For CO2, configuration must also be able to combine all outer sectors into one
-state when that is the intended model. This work can follow the first CO2-only
-and linked-tracer landings, but the prepared state/source labels must not make
-it impossible.
+The same surface can first collapse explicitly labelled outer-sector columns
+into shared scaling states while retaining member metadata. Collapse and state
+treatment remain orthogonal choices. The implementation is motivated by
+Verification Games/PARIS work, whose current evidence selects inferred outer
+states. Marginalized mode is implemented and tested but is not established as a
+production or non-Verification-Games default. Prepared-artifact, runner, and
+configuration integration remain follow-up work; the current API is the direct
+CO2 builder.
 
 ## Verification Games scientific components
 
@@ -286,8 +292,8 @@ inputs to more than one model recipe.
 Add a plainly named preparation operation, provisionally
 `openghg_inversions/coherent_reduction.py`. It should return one mathematically
 meaningful result containing the retained prior mean/covariance, transformed
-forward operator, and unresolved aggregation covariance. These quantities must
-be reduced together, including cross-tracer covariance blocks.
+forward sensitivity, and unresolved aggregation covariance. These quantities
+must be reduced together, including cross-tracer covariance blocks.
 
 This result is a justified scientific data object. It is not a semantic model,
 compiler plan, or execution manifest.
@@ -299,31 +305,33 @@ existing representations in `observation_error.py`. Each model recipe decides
 which representation it supports and makes that choice visible at preparation
 and likelihood construction.
 
-### Outer-region baseline
+### Outer-region treatment
 
-Verification Games contains a partial implementation that maps fixed outer-
-region flux contributions into a baseline. It was not completed and validated
-as a general outer-region component, and it is separate from the recent CO2/O2
-prototype. Its implemented scientific operation is:
+Verification Games provided prototype evidence that fixed outer-region flux
+contributions could be grouped with the atmospheric baseline for reporting. Its
+implemented scientific operation was:
 
 ```text
 composite_baseline = atmospheric_baseline + sum(H_outer_fixed)
 ```
 
-The prototype marks outer states inactive with a fixed scale of one, retains
-their sensitivity columns, and adds those columns to the atmospheric baseline.
-The behavior is distributed across
+The prototype marks outer states inactive with a fixed scale of one and retains
+their sensitivity columns. The historical behavior is distributed across
 `scripts/prepare_met_office_followup_input.py`,
 `src/verification_games/rhime_calibration/model.py`, and
 `src/verification_games/rhime_calibration/analytic.py`. Relevant provenance is
 recorded in Verification Games commits `c840a2d`, `25931e1`, and `df1c704`.
 
-Treat this as prototype evidence, not a completed feature. When completing the
-CO2 family, turn it into an explicitly named baseline/state-treatment component
-with focused tests for fixed, marginalized, and inferred outer states. Keep it
-distinct from the alternative in
-`src/verification_games/outer_region_states.py`, which samples collapsed outer
-nuisance states rather than fixing outer flux at its prior value.
+The OPE-76 implementation keeps outer flux as the explicitly named
+``outer_flux_contribution`` component, separate from atmospheric ``mu_bc`` and
+the coherent affine prior term. The complete ``modelled_concentration`` passed
+to the likelihood composes those terms with ``co2_flux_contribution`` and every
+other declared mean contribution. Grouping boundary and outer concentrations is
+reporting only; it does not change model composition. The implementation
+supports fixed, Gaussian-marginalized, and inferred states. Its optional
+labelled collapse operation incorporates the alternative evidence in
+`src/verification_games/outer_region_states.py` without making collapse imply a
+particular treatment mode.
 
 ### Source and state selection
 

@@ -7,20 +7,19 @@ from typing import Any, Literal, TypeAlias
 
 import numpy as np
 import pandas as pd
-import pymc as pm
-import pytensor.tensor as pt
 import xarray as xr
 
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.models.components import (
     add_correlated_lognormal_state_with_activity,
-    add_model_data,
     add_state_vector,
+    apply_linear_sensitivity,
 )
 from openghg_inversions.models.state_activity import (
+    PreparedLinearSensitivity,
     ResolvedStateActivity,
     StateActivity,
-    detect_zero_sensitivity,
+    prepare_linear_sensitivity,
     resolve_state_activity,
 )
 from openghg_inversions.observation_error import AggregationError
@@ -41,9 +40,12 @@ class CollapsedOuterStates:
 class OuterRegionTreatment:
     """Mutually exclusive outer-region mean, covariance, or sampled state.
 
-    Fixed and inferred treatments retain the ordinary sensitivity/state-vector
-    contract. A marginalized treatment instead exposes its Gaussian mean
-    contribution and observation-space factor, without sampling outer states.
+    ``prepared_sensitivity`` is the sole authority for the observation and
+    state dimensions, structurally retained columns, and full-state mapping.
+    Fixed and inferred treatments use that contract to build a full public
+    state and apply only the retained operator. A marginalized treatment uses
+    the same prepared roles while exposing its Gaussian mean contribution and
+    observation-space factor without sampling outer states.
 
     Marginalization is outer-scoped here because these states describe flux
     outside the scored inversion domain: callers may propagate their prior
@@ -57,9 +59,9 @@ class OuterRegionTreatment:
     """
 
     mode: OuterRegionMode
+    prepared_sensitivity: PreparedLinearSensitivity
     mean_contribution: xr.DataArray | None
     observation_factor: xr.DataArray | None
-    sensitivity: xr.DataArray | None
     prior_mean: xr.DataArray | None
     prior_covariance: xr.DataArray | None
     state_metadata: xr.Dataset
@@ -73,12 +75,6 @@ def _matrix_state_dim(sensitivity: xr.DataArray, observation_dim: str) -> str:
         raise ValueError(
             f"Outer sensitivity must have one observation and one state dimension; got {matrix.dims!r}."
         )
-    if observation_dim not in matrix.coords or matrix.coords[observation_dim].dims != (observation_dim,):
-        raise ValueError(
-            f"Outer sensitivity must provide an explicit ordered {observation_dim!r} observation coordinate."
-        )
-    if not matrix.get_index(observation_dim).is_unique:
-        raise ValueError(f"Outer sensitivity requires unique {observation_dim!r} observation labels.")
     state_dim = state_dims[0]
     if state_dim not in matrix.coords or not matrix.get_index(state_dim).is_unique:
         raise ValueError(f"Outer sensitivity requires unique {state_dim!r} state labels.")
@@ -304,7 +300,20 @@ def prepare_outer_region_treatment(
     fixed_scale: float | xr.DataArray = 1.0,
     observation_dim: str = "nmeasure",
 ) -> OuterRegionTreatment:
-    """Prepare one exclusive fixed, Gaussian-marginalized, or inferred mode."""
+    """Prepare one exclusive fixed, Gaussian-marginalized, or inferred mode.
+
+    The two-dimensional preparation boundary resolves the observation and
+    state roles once and stores the resulting
+    :class:`PreparedLinearSensitivity`. Graph construction consumes that
+    contract without accepting another dimension authority or rediscovering
+    the state axis.
+
+    Marginalized outer flux is currently motivated by the PARIS Verification
+    Games, where context outside the scored domain can propagate Gaussian
+    prior uncertainty without joining the sampled state. Its usefulness as a
+    general outer-state policy has not yet been established; marginalizing
+    weak states in any basis group belongs in a shared state-disposition API.
+    """
     if mode not in ("fixed", "marginalized", "inferred"):
         raise ValueError(f"Outer-region mode must be 'fixed', 'marginalized', or 'inferred'; got {mode!r}.")
     if isinstance(outer_sensitivity, CollapsedOuterStates):
@@ -320,6 +329,7 @@ def prepare_outer_region_treatment(
         sensitivity.transpose(observation_dim, state_dim),
         state_dim,
     )
+    prepared = prepare_linear_sensitivity(sensitivity, output_dim=observation_dim)
     metadata_dim = next(iter(metadata.dims))
     if "basis_group" not in metadata:
         metadata = metadata.assign_coords(
@@ -341,14 +351,14 @@ def prepare_outer_region_treatment(
             name="fixed_scale",
         )
         activity = resolve_state_activity(
-            detect_zero_sensitivity(sensitivity, output_dim=observation_dim),
+            prepared.removed,
             StateActivity(active=False, fixed_value=scale),
         )
         return OuterRegionTreatment(
             mode=mode,
+            prepared_sensitivity=prepared,
             mean_contribution=None,
             observation_factor=None,
-            sensitivity=sensitivity,
             prior_mean=None,
             prior_covariance=None,
             state_metadata=_set_metadata_activity(metadata, activity),
@@ -372,31 +382,31 @@ def prepare_outer_region_treatment(
     if mode == "marginalized":
         return OuterRegionTreatment(
             mode=mode,
+            prepared_sensitivity=prepared,
             mean_contribution=_outer_forward(
                 sensitivity,
                 mean,
                 observation_dim=observation_dim,
                 state_dim=state_dim,
-            ).rename("mu_outer"),
+            ).rename("outer_flux_contribution"),
             observation_factor=_outer_observation_factor(
                 sensitivity,
                 covariance,
                 observation_dim=observation_dim,
                 state_dim=state_dim,
             ).rename("outer_observation_factor"),
-            sensitivity=None,
             prior_mean=None,
             prior_covariance=None,
             state_metadata=_set_metadata_activity(metadata, None),
             resolved_activity=None,
         )
 
-    activity = resolve_state_activity(detect_zero_sensitivity(sensitivity, output_dim=observation_dim))
+    activity = resolve_state_activity(prepared.removed)
     return OuterRegionTreatment(
         mode=mode,
+        prepared_sensitivity=prepared,
         mean_contribution=None,
         observation_factor=None,
-        sensitivity=sensitivity,
         prior_mean=mean,
         prior_covariance=covariance,
         state_metadata=_set_metadata_activity(metadata, activity),
@@ -404,31 +414,58 @@ def prepare_outer_region_treatment(
     )
 
 
+def _namespace_outer_prepared(
+    prepared: PreparedLinearSensitivity,
+) -> tuple[PreparedLinearSensitivity, dict[str, str]]:
+    """Namespace one prepared outer contract at the PyMC coordinate boundary."""
+    state_dim = prepared.state_dim
+    state_rename = {state_dim: f"{state_dim}_outer"}
+    state_rename.update(
+        {
+            str(name): f"{name}_outer"
+            for name, coord in prepared.removed.coords.items()
+            if name not in prepared.removed.dims and state_dim in coord.dims
+        }
+    )
+    removed = prepared.removed.rename(state_rename)
+
+    retained_dim = str(prepared.sensitivity.dims[1])
+    retained_rename = {
+        retained_dim: (
+            state_rename[state_dim] if retained_dim == state_dim else f"{state_rename[state_dim]}_retained"
+        )
+    }
+    retained_rename.update(
+        {
+            str(name): f"{name}_outer"
+            for name, coord in prepared.sensitivity.coords.items()
+            if name not in prepared.sensitivity.dims and retained_dim in coord.dims
+        }
+    )
+    return (
+        PreparedLinearSensitivity(
+            sensitivity=prepared.sensitivity.rename(retained_rename),
+            removed=removed,
+            output_dim=prepared.output_dim,
+        ),
+        state_rename,
+    )
+
+
 def add_outer_state_component(
     treatment: OuterRegionTreatment,
     *,
-    var_name: str = "x_outer",
-    sensitivity_name: str = "h_outer",
-    output_name: str = "mu_outer",
-    observation_dim: str = "nmeasure",
+    var_name: str = "outer_flux_scaling",
+    sensitivity_name: str = "outer_sensitivity",
+    output_name: str = "outer_flux_contribution",
 ) -> Any:
-    """Add a fixed or inferred outer state through the ordinary linear path."""
+    """Build and apply a fixed or inferred outer state from its prepared contract."""
     if treatment.mode not in ("fixed", "inferred"):
         raise ValueError("Only fixed and inferred outer treatments retain a state vector.")
-    if treatment.sensitivity is None or treatment.resolved_activity is None:
+    if treatment.resolved_activity is None:
         raise ValueError(f"Outer-region treatment {treatment.mode!r} is missing its state contract.")
-    sensitivity = treatment.sensitivity.transpose(observation_dim, ...)
-    state_dim = _matrix_state_dim(sensitivity, observation_dim)
-    rename = {state_dim: f"{state_dim}_outer"}
-    rename.update(
-        {
-            str(name): f"{name}_outer"
-            for name, coord in sensitivity.coords.items()
-            if name not in sensitivity.dims and state_dim in coord.dims
-        }
-    )
-    sensitivity = sensitivity.rename(rename)
-    state_dim = rename[state_dim]
+    prepared, rename = _namespace_outer_prepared(treatment.prepared_sensitivity)
+    state_dim = prepared.state_dim
     resolved = treatment.resolved_activity
 
     def rename_activity_array(array: xr.DataArray) -> xr.DataArray:
@@ -451,7 +488,11 @@ def add_outer_state_component(
     else:
         if treatment.prior_mean is None or treatment.prior_covariance is None:
             raise ValueError("Inferred outer treatment is missing its prior moments.")
-        covariance_dim = next(str(dim) for dim in treatment.prior_covariance.dims if dim not in rename)
+        original_state_dim = treatment.prepared_sensitivity.state_dim
+        covariance_dims = [str(dim) for dim in treatment.prior_covariance.dims if dim != original_state_dim]
+        if len(covariance_dims) != 1:
+            raise ValueError("Inferred outer treatment prior covariance must have one column dimension.")
+        covariance_dim = covariance_dims[0]
         mean = treatment.prior_mean.rename(
             {
                 name: namespaced
@@ -476,11 +517,11 @@ def add_outer_state_component(
             prior,
             var_name=var_name,
         ).state
-    design = add_model_data(sensitivity, sensitivity_name)
-    return pm.Deterministic(
-        output_name,
-        pt.dot(design, state),
-        dims=observation_dim,
+    return apply_linear_sensitivity(
+        prepared,
+        state,
+        data_name=sensitivity_name,
+        output_name=output_name,
     )
 
 
@@ -493,8 +534,9 @@ def add_outer_observation_covariance(
         return aggregation_error
     if treatment.observation_factor is None:
         raise ValueError("Marginalized outer treatment requires an observation factor.")
-    outer = treatment.observation_factor
-    observation_dim, outer_rank_dim = map(str, outer.dims)
+    observation_dim = treatment.prepared_sensitivity.output_dim
+    outer = treatment.observation_factor.transpose(observation_dim, ...)
+    outer_rank_dim = str(outer.dims[1])
     outer_marginal = np.asarray((outer**2).sum(outer_rank_dim).compute().values)
     if not outer_marginal.any():
         return aggregation_error

@@ -12,22 +12,23 @@ from typing import Any
 
 import numpy as np
 import pymc as pm
-import pytensor.tensor as pt
 import xarray as xr
 
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.models.additive_sigma import add_additive_sigma_gaussian_likelihood
 from openghg_inversions.models.components import (
+    add_coherent_affine_component,
     add_correlated_lognormal_state_with_activity,
     add_linear_component,
     add_model_data,
+    apply_linear_sensitivity,
 )
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.models.coords import registered_model
 from openghg_inversions.models.state_activity import (
+    PreparedLinearSensitivity,
     ResolvedStateActivity,
     StateActivity,
-    detect_zero_sensitivity,
     prepare_linear_sensitivity,
     resolve_state_activity,
 )
@@ -43,14 +44,11 @@ from .outer_regions import (
 
 
 def _resolve_co2_state_activity(
-    flux_sensitivity: xr.DataArray,
+    prepared_sensitivity: PreparedLinearSensitivity,
     state_activity: StateActivity | None,
 ) -> ResolvedStateActivity:
-    """Resolve activity once in the retained-state coordinate order."""
-    return resolve_state_activity(
-        detect_zero_sensitivity(flux_sensitivity),
-        state_activity,
-    )
+    """Resolve activity once from the prepared full-state mapping."""
+    return resolve_state_activity(prepared_sensitivity.removed, state_activity)
 
 
 def co2_prior_forward_mean(
@@ -67,8 +65,9 @@ def co2_prior_forward_mean(
     values.
     """
     sensitivity = flux_sensitivity.transpose("nmeasure", ...)
-    state_dim = next(str(dim) for dim in sensitivity.dims if dim != "nmeasure")
-    activity = _resolve_co2_state_activity(sensitivity, state_activity)
+    prepared = prepare_linear_sensitivity(sensitivity)
+    state_dim = prepared.state_dim
+    activity = _resolve_co2_state_activity(prepared, state_activity)
     mean = prior_mean.transpose(state_dim)
     sensitivity, mean = xr.align(sensitivity, mean, join="exact", copy=False)
     mean = xr.where(activity.active, mean, activity.fixed_value)
@@ -83,16 +82,15 @@ def co2_prior_forward_mean(
 
 
 def _add_co2_retained_state(
-    flux_sensitivity: xr.DataArray,
+    prepared_sensitivity: PreparedLinearSensitivity,
     *,
     prior_mean: xr.DataArray,
     prior_covariance: xr.DataArray,
     state_activity: StateActivity | None,
 ) -> Any:
     """Add the correlated active state and restore fixed states in full order."""
-    design = flux_sensitivity.transpose("nmeasure", ...)
-    state_dim = next(str(dim) for dim in design.dims if dim != "nmeasure")
-    activity = _resolve_co2_state_activity(design, state_activity)
+    state_dim = prepared_sensitivity.state_dim
+    activity = _resolve_co2_state_activity(prepared_sensitivity, state_activity)
     covariance_dims = [str(dim) for dim in prior_covariance.dims if dim != state_dim]
     if len(covariance_dims) != 1:
         raise ValueError(
@@ -107,7 +105,7 @@ def _add_co2_retained_state(
     return add_correlated_lognormal_state_with_activity(
         activity,
         prior,
-        var_name="x",
+        var_name="flux_scaling",
     ).state
 
 
@@ -134,19 +132,20 @@ def _fixed_mismatch_array(
 
 
 def _reject_outer_state_double_counting(
-    flux_sensitivity: xr.DataArray,
+    prepared_sensitivity: PreparedLinearSensitivity,
     outer_treatment: OuterRegionTreatment | None,
 ) -> None:
     """Require explicit disjoint inner/outer basis-group partitions."""
     if outer_treatment is None:
         return
-    state_dim = next(str(dim) for dim in flux_sensitivity.dims if dim != "nmeasure")
-    if "basis_group" not in flux_sensitivity.coords:
+    state_dim = prepared_sensitivity.state_dim
+    full_state = prepared_sensitivity.removed
+    if "basis_group" not in full_state.coords:
         raise ValueError(
             "CO2 flux_sensitivity requires state-aligned basis_group metadata when an "
             "outer_treatment is supplied, to prove the partitions are disjoint."
         )
-    inner_groups = flux_sensitivity["basis_group"]
+    inner_groups = full_state["basis_group"]
     if inner_groups.dims != (state_dim,) or bool(inner_groups.isnull().any().compute().item()):
         raise ValueError("CO2 flux_sensitivity basis_group metadata must be complete and state-aligned.")
     if bool((inner_groups == "outer").any().compute().item()):
@@ -169,31 +168,16 @@ def _validate_outer_observation_alignment(
     observations: xr.DataArray,
     outer_treatment: OuterRegionTreatment | None,
 ) -> None:
-    """Require outer contributions to use the exact observation order."""
+    """Reject conflicting explicit indexes at the component boundary."""
     if outer_treatment is None:
         return
-    outer = (
-        outer_treatment.mean_contribution
-        if outer_treatment.mode == "marginalized"
-        else outer_treatment.sensitivity
-    )
-    if (
-        outer is None
-        or "nmeasure" not in outer.coords
-        or outer.coords["nmeasure"].dims != ("nmeasure",)
-        or not outer.get_index("nmeasure").is_unique
-    ):
-        raise ValueError("outer_treatment requires unique 'nmeasure' observation labels.")
-    if (
-        observations.dims != ("nmeasure",)
-        or "nmeasure" not in observations.coords
-        or observations.coords["nmeasure"].dims != ("nmeasure",)
-    ):
-        raise ValueError("CO2 observations must provide an explicit ordered 'nmeasure' coordinate.")
-    if not observations.get_index("nmeasure").is_unique:
-        raise ValueError("CO2 observations require unique 'nmeasure' labels with an outer_treatment.")
-    outer_index = outer.get_index("nmeasure")
-    observation_index = observations.get_index("nmeasure")
+    prepared = outer_treatment.prepared_sensitivity
+    if prepared.output_dim != "nmeasure":
+        raise ValueError("outer_treatment must use the CO2 observation dimension 'nmeasure'.")
+    outer_index = prepared.sensitivity.indexes.get("nmeasure")
+    observation_index = observations.indexes.get("nmeasure")
+    if outer_index is None or observation_index is None:
+        return
     if not outer_index.equals(observation_index) or outer_index.names != observation_index.names:
         raise ValueError("outer_treatment observation labels must exactly match CO2 observations.")
 
@@ -220,27 +204,32 @@ def build_co2_rhime_model(
 ) -> pm.Model:
     """Build the CO2 coherent-reduction model from explicit scientific arrays.
 
-    ``flux_sensitivity`` is the reduced operator ``H_alpha`` and
+    ``flux_sensitivity`` is prepared once as the reduced operator ``H_alpha``:
+    exact-zero columns are omitted from the backend ``co2_sensitivity`` while
+    ``flux_scaling`` retains the complete labelled scientific state.
+    ``fixed_prior_contribution`` is then added with the shared coherent-affine
+    component to produce ``modelled_concentration``.
+
     ``fixed_prior_contribution`` is the affine term
     ``H m - H_alpha (Pi m)``. The latter is a fixed prior contribution, not an
     atmospheric boundary condition. ``prior_covariance`` is the labelled
     arithmetic covariance of the retained positive state.
 
-    Known fixed states remain in ``x`` and in the forward calculation, but are
-    omitted from the sampled correlated state. ``fixed_model_mismatch`` is an
-    optional known concentration standard deviation. OGI leaves this policy
+    Known fixed states remain in the public state and forward calculation but
+    are omitted from the sampled correlated state. ``fixed_model_mismatch`` is
+    an optional known concentration standard deviation. OGI leaves this policy
     unset by default; the Verification Games fixed likelihood passes 1 ppm
-    explicitly. ``outer_treatment`` is prepared independently of atmospheric
-    boundary conditions: the builder keeps ``mu_outer`` and optional sampled
-    ``boundary_sensitivity @ bc`` as separate model components, alongside the
-    coherent ``fixed_prior_contribution`` affine term. Reporting code may group
-    boundary and outer concentrations when presenting a baseline.
+    explicitly. ``outer_treatment`` and optional sampled
+    ``boundary_sensitivity @ bc`` remain separate linear components named
+    ``outer_flux_contribution`` and ``mu_bc``. Reporting code may group them
+    when presenting a baseline.
     """
     sigma_prior = dict(DEFAULT_SIGMA_PRIOR if sigma_prior is None else sigma_prior)
     bc_prior = dict(DEFAULT_BC_PRIOR if bc_prior is None else bc_prior)
     fixed_mismatch = _fixed_mismatch_array(observations, fixed_model_mismatch)
+    prepared_flux = prepare_linear_sensitivity(flux_sensitivity, output_dim="nmeasure")
     _validate_outer_observation_alignment(observations, outer_treatment)
-    _reject_outer_state_double_counting(flux_sensitivity, outer_treatment)
+    _reject_outer_state_double_counting(prepared_flux, outer_treatment)
     aggregation_error = (
         aggregation_error
         if outer_treatment is None
@@ -248,19 +237,18 @@ def build_co2_rhime_model(
     )
 
     with registered_model() as model:
-        h = add_model_data(flux_sensitivity.transpose("nmeasure", ...), "hx")
-        x = _add_co2_retained_state(
-            flux_sensitivity,
+        flux_scaling = _add_co2_retained_state(
+            prepared_flux,
             prior_mean=prior_mean,
             prior_covariance=prior_covariance,
             state_activity=state_activity,
         )
-        pollution_mean = pm.Deterministic("mu_pollution", pt.dot(h, x), dims="nmeasure")
-        fixed_prior = add_model_data(
-            fixed_prior_contribution.transpose("nmeasure"),
-            "fixed_prior_contribution",
+        linear_signal = apply_linear_sensitivity(
+            prepared_flux,
+            flux_scaling,
+            data_name="co2_sensitivity",
+            output_name="co2_flux_contribution",
         )
-        boundary_mean = None
         if boundary_sensitivity is not None:
             boundary_mean = add_linear_component(
                 prepare_linear_sensitivity(boundary_sensitivity),
@@ -272,8 +260,8 @@ def build_co2_rhime_model(
                 compute_deterministic=True,
                 state_activity=bc_state_activity,
             ).output
+            linear_signal = linear_signal + boundary_mean
 
-        outer_mean = None
         if outer_treatment is not None:
             if outer_treatment.mode == "marginalized":
                 assert outer_treatment.mean_contribution is not None
@@ -282,19 +270,17 @@ def build_co2_rhime_model(
                     "outer_mean_contribution",
                 )
                 outer_mean = pm.Deterministic(
-                    "mu_outer",
+                    "outer_flux_contribution",
                     outer_mean_data,
                     dims="nmeasure",
                 )
             else:
                 outer_mean = add_outer_state_component(outer_treatment)
-        extra_mean = boundary_mean
-        if outer_mean is not None:
-            extra_mean = outer_mean if extra_mean is None else extra_mean + outer_mean
-        modelled_mean = pm.Deterministic(
-            "mu",
-            fixed_prior + pollution_mean if extra_mean is None else fixed_prior + pollution_mean + extra_mean,
-            dims="nmeasure",
+            linear_signal = linear_signal + outer_mean
+        modelled_mean = add_coherent_affine_component(
+            fixed_prior_contribution.transpose("nmeasure").rename("fixed_prior_contribution"),
+            linear_signal,
+            output_name="modelled_concentration",
         )
         add_additive_sigma_gaussian_likelihood(
             observations=observations,

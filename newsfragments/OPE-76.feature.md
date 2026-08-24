@@ -1,1 +1,1 @@
-Add explicit fixed, marginalized, inferred, and cross-sector-collapsed CO2 outer-region state treatment.
+Add a Verification Games-motivated CO2 outer-region treatment surface with fixed, Gaussian-marginalized, or inferred states and optional explicit cross-sector collapse. Current PARIS evidence selects inferred treatment; marginalized support is tested but is not a new production default.

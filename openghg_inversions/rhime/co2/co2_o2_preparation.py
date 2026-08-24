@@ -41,12 +41,12 @@ class Co2O2PreparedInputs:
         fixed_prior_contribution: Joint affine intercept
             ``H m - H_alpha Pi m`` on the same labelled ``observation`` axis
             and in the channel-specific observation units.
-        co2_operator: Effective CO2 operator on the native CO2 observation and
+        co2_sensitivity: Effective CO2 sensitivity on the native CO2 observation and
             retained-state dimensions, with row labels
             matching the native CO2 observations and state labels matching the
             retained prior. Units are CO2 observation units per dimensionless
             flux scale.
-        o2_operator: Effective O2 operator on the native O2 observation and
+        o2_sensitivity: Effective O2 sensitivity on the native O2 observation and
             retained-state dimensions, with corresponding row and state
             labels. Shared-state columns already contain signed O2-per-CO2
             ratios; the O2-ocean column is applied directly.
@@ -70,8 +70,8 @@ class Co2O2PreparedInputs:
 
     observations: xr.DataArray
     fixed_prior_contribution: xr.DataArray
-    co2_operator: xr.DataArray
-    o2_operator: xr.DataArray
+    co2_sensitivity: xr.DataArray
+    o2_sensitivity: xr.DataArray
     o2_co2_flux_ratio: xr.DataArray | None
     o2_co2_flux_ratio_unavailable_reason: str | None
     aggregation_error: AggregationError
@@ -123,7 +123,7 @@ def _state(prior: CorrelatedLognormalPrior) -> xr.DataArray:
     return mean
 
 
-def _operator(
+def _sensitivity(
     value: xr.DataArray,
     observation: xr.DataArray,
     state_mean: xr.DataArray,
@@ -132,18 +132,18 @@ def _operator(
     observation_dim = str(observation.dims[0])
     state_dim = str(state_mean.dims[0])
     if value.dims != (observation_dim, state_dim):
-        raise ValueError(f"{name} operator must have dimensions {(observation_dim, state_dim)!r}.")
+        raise ValueError(f"{name} sensitivity must have dimensions {(observation_dim, state_dim)!r}.")
     if not _same_index(value.indexes[observation_dim], observation.indexes[observation_dim]):
-        raise ValueError(f"{name} operator rows do not match its observations.")
+        raise ValueError(f"{name} sensitivity rows do not match its observations.")
     if not _same_index(value.indexes[state_dim], state_mean.indexes[state_dim]):
         raise ValueError(
-            f"{name} operator state labels and index level names must match the retained prior."
+            f"{name} sensitivity state labels and index level names must match the retained prior."
         )
 
 
 def _materialize_and_validate_ocean_loadings_and_ratio(
-    co2_operator: xr.DataArray,
-    o2_operator: xr.DataArray,
+    co2_sensitivity: xr.DataArray,
+    o2_sensitivity: xr.DataArray,
     state_mean: xr.DataArray,
     o2_co2_flux_ratio: xr.DataArray | None,
 ) -> np.ndarray:
@@ -160,17 +160,17 @@ def _materialize_and_validate_ocean_loadings_and_ratio(
     co2_ocean = [index for index, role in enumerate(roles) if role == ("ocean", "co2")]
     o2_ocean = [index for index, role in enumerate(roles) if role == ("ocean", "o2")]
     collections = [
-        co2_operator.isel({state_dim: o2_ocean}).data,
-        o2_operator.isel({state_dim: co2_ocean}).data,
+        co2_sensitivity.isel({state_dim: o2_ocean}).data,
+        o2_sensitivity.isel({state_dim: co2_ocean}).data,
     ]
     if o2_co2_flux_ratio is not None:
         collections.append(o2_co2_flux_ratio.data)
     computed = dask_compute(*collections)
     co2_cross, o2_cross = computed[:2]
     if np.any(co2_cross != 0):
-        raise ValueError("CO2 operator must have zero loadings for O2-specific ocean states.")
+        raise ValueError("CO2 sensitivity must have zero loadings for O2-specific ocean states.")
     if np.any(o2_cross != 0):
-        raise ValueError("O2 operator must have zero loadings for CO2-specific ocean states.")
+        raise ValueError("O2 sensitivity must have zero loadings for CO2-specific ocean states.")
     if o2_co2_flux_ratio is None:
         return np.empty(0)
     ratio_values = np.asarray(computed[2])
@@ -317,8 +317,8 @@ def prepare_co2_o2_inputs(
     o2_observations: xr.DataArray,
     co2_prior_forward_mean: xr.DataArray,
     o2_prior_forward_mean: xr.DataArray,
-    co2_operator: xr.DataArray,
-    o2_operator: xr.DataArray,
+    co2_sensitivity: xr.DataArray,
+    o2_sensitivity: xr.DataArray,
     o2_co2_flux_ratio: xr.DataArray | None,
     o2_co2_flux_ratio_unavailable_reason: str | None,
     co2_aggregation_covariance: xr.DataArray,
@@ -331,7 +331,7 @@ def prepare_co2_o2_inputs(
 ) -> Co2O2PreparedInputs:
     """Validate coherent-reduction channel products and form one joint likelihood.
 
-    The concrete recipe treats the O2 operator as already containing fixed,
+    The concrete recipe treats the O2 sensitivity as already containing fixed,
     signed O2-per-CO2 ratios for shared states. Supply their labelled values
     when they remain available, or an explicit reason why a native paired-flux
     construction cannot expose scalar ratios at this boundary.
@@ -346,10 +346,10 @@ def prepare_co2_o2_inputs(
             CO2 observation dimension and labels.
         o2_prior_forward_mean: Native O2 prior mean ``H m`` on exactly the O2
             observation dimension and labels.
-        co2_operator: CO2 effective operator with dimensions
+        co2_sensitivity: CO2 effective sensitivity with dimensions
             ``(CO2 observation, retained state)`` and exact observation and
             retained-prior indexes. Its O2-ocean column must be zero.
-        o2_operator: O2 effective operator with dimensions
+        o2_sensitivity: O2 effective sensitivity with dimensions
             ``(O2 observation, retained state)`` and exact observation and
             retained-prior indexes. Its CO2-ocean column must be zero; signed
             O2-per-CO2 ratios are already embedded in shared-state columns.
@@ -374,18 +374,18 @@ def prepare_co2_o2_inputs(
         retained_prior: Retained correlated prior whose indexed state axis has
             ``source`` and ``tracer_scope`` coordinates for shared GPP/TER/FF,
             CO2 ocean, and O2 ocean states.
-        co2_units: Non-empty units label for CO2 observations and operator rows.
-        o2_units: Non-empty units label for O2 observations and operator rows.
+        co2_units: Non-empty units label for CO2 observations and sensitivity rows.
+        o2_units: Non-empty units label for O2 observations and sensitivity rows.
         provenance: Optional JSON-serializable preparation provenance.
 
     Returns:
         Labelled, backend-neutral joint inputs. Observation vectors, affine
-        intercept, operators, and available ratio provenance retain borrowed
+        intercept, sensitivities, and available ratio provenance retain borrowed
         lazy payloads; dense covariance validation is the explicit eager
         aggregation-error boundary.
 
     Raises:
-        ValueError: If units or provenance are invalid; observation, operator,
+        ValueError: If units or provenance are invalid; observation, sensitivity,
             state, ratio, or covariance dimensions/indexes disagree; the
             ratio exactly-one, direction, sign, provenance, or numerical-value
             contract fails; cross-tracer ocean loadings are nonzero; or the
@@ -406,8 +406,8 @@ def prepare_co2_o2_inputs(
     _same_axis(co2_observations, co2_prior_forward_mean, "CO2 prior forward mean")
     _same_axis(o2_observations, o2_prior_forward_mean, "O2 prior forward mean")
     state_mean = _state(retained_prior)
-    _operator(co2_operator, co2_observations, state_mean, "CO2")
-    _operator(o2_operator, o2_observations, state_mean, "O2")
+    _sensitivity(co2_sensitivity, co2_observations, state_mean, "CO2")
+    _sensitivity(o2_sensitivity, o2_observations, state_mean, "O2")
     o2_co2_flux_ratio_unavailable_reason = str(
         o2_co2_flux_ratio_unavailable_reason or ""
     ).strip() or None
@@ -417,8 +417,8 @@ def prepare_co2_o2_inputs(
         state_mean,
     )
     ratio_values = _materialize_and_validate_ocean_loadings_and_ratio(
-        co2_operator,
-        o2_operator,
+        co2_sensitivity,
+        o2_sensitivity,
         state_mean,
         o2_co2_flux_ratio,
     )
@@ -465,12 +465,12 @@ def prepare_co2_o2_inputs(
     )
     state_dim = retained_prior.state_dim
     co2_intercept = co2_prior_forward_mean - xr.dot(
-        co2_operator,
+        co2_sensitivity,
         retained_prior.mean,
         dim=state_dim,
     )
     o2_intercept = o2_prior_forward_mean - xr.dot(
-        o2_operator,
+        o2_sensitivity,
         retained_prior.mean,
         dim=state_dim,
     )
@@ -482,18 +482,18 @@ def prepare_co2_o2_inputs(
         name="fixed_prior_contribution",
     )
     fixed_prior_contribution.attrs["mathematical_name"] = "H m - H_alpha Pi m"
-    operator_coords = {name: state_mean[name] for name in ("source", "tracer_scope")}
+    sensitivity_coords = {name: state_mean[name] for name in ("source", "tracer_scope")}
     state_index = state_mean.indexes[state_dim]
     if isinstance(state_index, pd.MultiIndex):
         # The validated state index already owns these level coordinates;
         # replacing individual levels would corrupt the MultiIndex.
-        operator_coords = {
+        sensitivity_coords = {
             name: coordinate
-            for name, coordinate in operator_coords.items()
+            for name, coordinate in sensitivity_coords.items()
             if name not in state_index.names
         }
-    co2_operator = co2_operator.rename("co2_effective_observation_operator").assign_coords(
-        **operator_coords,
+    co2_sensitivity = co2_sensitivity.rename("co2_effective_sensitivity").assign_coords(
+        **sensitivity_coords,
     ).assign_attrs(units=f"{co2_units} per dimensionless flux scale")
     ratio_direction = "O2 flux per CO2 flux"
     ratio_sign = "signed; positive CO2 flux has negative O2 loading"
@@ -511,8 +511,8 @@ def prepare_co2_o2_inputs(
         )
     else:
         ratio_record["unavailable_reason"] = o2_co2_flux_ratio_unavailable_reason
-    o2_operator = o2_operator.rename("o2_effective_observation_operator").assign_coords(
-        **operator_coords,
+    o2_sensitivity = o2_sensitivity.rename("o2_effective_sensitivity").assign_coords(
+        **sensitivity_coords,
     ).assign_attrs(
         units=f"{o2_units} per dimensionless flux scale",
         oxidation_ratio_convention="embedded_signed_o2_per_co2",
@@ -535,8 +535,8 @@ def prepare_co2_o2_inputs(
     return Co2O2PreparedInputs(
         observations=observations,
         fixed_prior_contribution=fixed_prior_contribution,
-        co2_operator=co2_operator,
-        o2_operator=o2_operator,
+        co2_sensitivity=co2_sensitivity,
+        o2_sensitivity=o2_sensitivity,
         o2_co2_flux_ratio=o2_co2_flux_ratio,
         o2_co2_flux_ratio_unavailable_reason=o2_co2_flux_ratio_unavailable_reason,
         aggregation_error=aggregation_error,
