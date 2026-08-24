@@ -73,6 +73,12 @@ def _matrix_state_dim(sensitivity: xr.DataArray, observation_dim: str) -> str:
         raise ValueError(
             f"Outer sensitivity must have one observation and one state dimension; got {matrix.dims!r}."
         )
+    if observation_dim not in matrix.coords or matrix.coords[observation_dim].dims != (observation_dim,):
+        raise ValueError(
+            f"Outer sensitivity must provide an explicit ordered {observation_dim!r} observation coordinate."
+        )
+    if not matrix.get_index(observation_dim).is_unique:
+        raise ValueError(f"Outer sensitivity requires unique {observation_dim!r} observation labels.")
     state_dim = state_dims[0]
     if state_dim not in matrix.coords or not matrix.get_index(state_dim).is_unique:
         raise ValueError(f"Outer sensitivity requires unique {state_dim!r} state labels.")
