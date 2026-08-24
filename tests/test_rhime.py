@@ -50,7 +50,6 @@ from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInpu
 from openghg_inversions.inversion_inputs import make_inv_inputs
 from openghg_inversions.models import StateActivity
 from openghg_inversions.models._flux import safe_pymc_name
-from openghg_inversions.models.additive_sigma import build_additive_sigma_error
 from openghg_inversions.observation_error import AggregationError, resolve_aggregation_error
 from openghg_inversions.postprocessing._basis_products import (
     BASIS_ARTIFACT_PATH_OUTPUT_ATTR,
@@ -3581,21 +3580,11 @@ def test_run_rhime_rejects_noncanonical_custom_likelihood_before_sampling(
 
     def noncanonical_likelihood(**kwargs: Any) -> Any:
         """Build an intentionally noncanonical likelihood variable."""
-        state = build_additive_sigma_error(
-            observations=kwargs["observations"],
-            observation_error=kwargs["observation_error"],
-            minimum_error=kwargs["minimum_error"],
-            aggregation_error=kwargs["aggregation_error"],
-            sigma_alignment=None,
-            sigma_prior={},
-            no_model_error=True,
-            output_dim=kwargs["output_dim"],
-        )
         return pm.Normal(
             "sampling_only_y",
             mu=kwargs["mean"],
-            sigma=state.error_scale,
-            observed=state.observed,
+            sigma=kwargs["observation_error"].values,
+            observed=kwargs["observations"].values,
             dims=kwargs["output_dim"],
         )
 

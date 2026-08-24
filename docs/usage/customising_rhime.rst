@@ -117,7 +117,9 @@ drop-in ordinary likelihood builder. It derives sigma alignment from the
 labelled observation ``site`` and ``time`` coordinates. Optional
 ``sigma_prior``, ``sigma_freq``, ``sigma_per_site``, ``sigma_freq_anchor``, and
 ``no_model_error`` settings belong to that component and can be supplied in
-``likelihood_kwargs``.
+``likelihood_kwargs``. This model adds absolute ``sigma**2`` directly to the
+independent variance. The prepared ``minimum_error`` retains its historical
+meaning as an optional floor on total standard deviation.
 
 Built-in aggregation covariance relies on the guarantees of its construction
 pipeline. A custom pipeline that assembles its own covariance may optionally

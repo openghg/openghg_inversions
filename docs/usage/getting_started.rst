@@ -379,7 +379,10 @@ The following file, ``my_hbmcmc_inputs.ini`` can be used to run an
 
    xprior   = {"pdf":"lognormal", "stdev":1}  ; lognormal with mean = 1, stdev = 1
    bcprior  = {"pdf":"truncatednormal", "mu":1.0, "sigma":0.02}  ; truncated normal with mean = 1, stdev 0.02
-   sigprior = {"pdf":"uniform", "lower":0.5, "upper":10}
+   sigprior = {"pdf":"halfnormal", "sigma":5.0}  ; additive sigma, in observation units
+   ; For the historical pollution-event likelihood instead, omit `likelihood`
+   ; below and use a dimensionless fractional prior such as:
+   ; sigprior = {"pdf":"uniform", "lower":0.0, "upper":0.2}
    ;add_offset = False
    ;offsetprior = {"pdf": "normal"}
    ;offset_args = {"drop_first": False}  ;; set to True if you want first site to have offset 0.0
@@ -413,6 +416,9 @@ The following file, ``my_hbmcmc_inputs.ini`` can be used to run an
    nchain = 4
 
    [MCMC.OPTIONS]
+   ; Select response-independent absolute model error. Omit this option to use
+   ; the historical pollution-event likelihood.
+   likelihood = "additive_sigma"
    ; averaging_error (bool): Add variability in averaging period to the measurement error (Note: currently this
    ;                         doesn't work correctly)
    ; min_error: numeric lower bound for model-measurement mismatch, or "residual"/"percentile"
@@ -438,12 +444,12 @@ The following file, ``my_hbmcmc_inputs.ini`` can be used to run an
    ; sampler_kwargs (dict): Kwargs to pass to the sampler (e.g. sampler_kwargs = {'target_accept': 0.99})
 
    averaging_error = True
-   min_error = "residual"
+   min_error = 0.0
    fix_basis_outer_regions = False
    use_bc = True
    nuts_sampler = "numpyro"
    save_trace = True
-   min_error_options = {"by_site": True}  ; mapping; only supported key is boolean by_site (residual only)
+   ;min_error_options = {"by_site": True}  ; mapping; only supported key is boolean by_site (residual only)
    pollution_events_from_obs = True
    no_model_error = False
    reparameterise_log_normal = False
@@ -460,6 +466,48 @@ The following file, ``my_hbmcmc_inputs.ini`` can be used to run an
 
    outputpath = '/user/work/ab12345/my_inversions'  ; (required)
    outputname = 'ch4_TAC_test'  ; (required)
+
+Additive-sigma likelihood
+-------------------------
+
+The ``run_hbmcmc.py`` INI route can select a response-independent additive
+Gaussian model-error term with::
+
+   [MCMC.PDF]
+   sigprior = {"pdf": "halfnormal", "sigma": 5.0}
+
+   [MCMC.BC_SPLIT]
+   sigma_freq = "monthly"
+   sigma_per_site = True
+
+   [MCMC.OPTIONS]
+   likelihood = "additive_sigma"
+   min_error = 0.0
+
+This gives the independent likelihood variance
+:math:`s_y^2 + \sigma_{site,period}^2`. It does not use the pollution
+enhancement and does not add aggregation error. ``min_error`` works as before
+as an optional floor on the total standard deviation; it defaults to ``0.0``.
+We recommend first trying the half-normal model with ``min_error = 0.0``.
+``aggregation_error_mode`` is unavailable for this ``run_hbmcmc.py`` option.
+
+A half-normal prior is the recommended starting family. Its ``sigma`` input is
+the half-normal *scale*, and
+
+.. math::
+
+   E[\sigma_{site,period}] = \sigma_{prior}\sqrt{2/\pi},
+   \qquad
+   \sigma_{prior} = E[\sigma_{site,period}]\sqrt{\pi/2}.
+
+Thus the scale which exactly matches a desired prior mean is about 1.25 times
+that mean. If the empirical "average model error" is only a rough upper
+starting point, choosing a somewhat smaller scale gives a correspondingly
+smaller prior mean. This scale is in the same physical units and on the same
+numerical scale as the observations (for example, ppt). It is not the
+dimensionless fractional ``sigma`` used by the pollution-event scaling
+options. Consequently, ``sigprior`` has different units and meaning depending
+on the selected likelihood.
 
 Description of HBMCMC output file
 ---------------------------------

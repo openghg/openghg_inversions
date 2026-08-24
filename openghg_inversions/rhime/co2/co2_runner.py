@@ -52,7 +52,6 @@ def _annotate_co2_trace(
     # PyMC data names differ from prepared-array role names. Keep those
     # concrete scientific identities visible on stored constants too.
     concrete_roles = {
-        "Y": ["observation"],
         "error": ["observation_error"],
         "min_error": ["minimum_error"],
         "fixed_model_mismatch": ["fixed_model_mismatch"],
@@ -76,7 +75,6 @@ def _annotate_co2_trace(
         roles_by_variable[name].extend(scientific_roles)
 
     concentration_variables = {
-        "Y",
         "error",
         "min_error",
         "fixed_model_mismatch",
@@ -246,7 +244,7 @@ def run_rhime_co2(
     built = RhimeModelBuildResult(
         model=model,
         variable_roles={
-            "observation": "mf",
+            "observation": "y",
             "observation_error": "mf_error",
             "minimum_error": "min_error",
             "concentration": "y",

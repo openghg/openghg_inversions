@@ -10,13 +10,11 @@ from pytensor.tensor.variable import TensorVariable
 
 from openghg_inversions.inversion_inputs import DatetimeLike, make_site_indicator
 from openghg_inversions.models.additive_sigma import (
+    DEFAULT_ADDITIVE_SIGMA_PRIOR,
     add_additive_sigma_gaussian_likelihood,
 )
 from openghg_inversions.observation_error import AggregationError
 from openghg_inversions.sigma import SigmaAlignment
-
-from .specs import DEFAULT_SIGMA_PRIOR
-
 
 def additive_sigma_likelihood_builder(
     *,
@@ -89,10 +87,13 @@ def additive_sigma_likelihood_builder(
         aggregation_error=aggregation_error,
         mean=mean,
         sigma_alignment=sigma_alignment,
-        sigma_prior=dict(DEFAULT_SIGMA_PRIOR if sigma_prior is None else sigma_prior),
-        no_model_error=no_model_error,
+        sigma_prior=(
+            None
+            if no_model_error
+            else dict(DEFAULT_ADDITIVE_SIGMA_PRIOR if sigma_prior is None else sigma_prior)
+        ),
         output_dim=output_dim,
     )
 
 
-__all__ = ["additive_sigma_likelihood_builder"]
+__all__ = ["DEFAULT_ADDITIVE_SIGMA_PRIOR", "additive_sigma_likelihood_builder"]

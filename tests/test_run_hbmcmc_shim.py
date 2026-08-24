@@ -91,6 +91,38 @@ def test_fixedbasis_default_does_not_opt_into_aggregation_error(tmp_path: Path) 
     assert setup.run_spec.model.aggregation_error_mode == "none"
 
 
+def test_additive_sigma_selection_forces_no_aggregation_error(tmp_path: Path) -> None:
+    """The compatibility entry point owns the no-aggregation policy."""
+    config_file = tmp_path / "hbmcmc.ini"
+    _fixedbasis_config(config_file)
+    params = run_hbmcmc.hbmcmc_extract_param(str(config_file), print_param=False)
+    params["likelihood"] = "additive_sigma"
+    params["sigprior"] = {"pdf": "halfnormal", "sigma": 5.0}
+    params["sigma_freq"] = "monthly"
+
+    translated = run_hbmcmc.fixedbasis_params_to_rhime(params)
+    options = run_hbmcmc._select_additive_sigma_likelihood(params, translated)
+
+    assert "likelihood" not in translated
+    assert translated["aggregation_error_mode"] == "none"
+    assert options == {
+        "sigma_prior": {"pdf": "halfnormal", "sigma": 5.0},
+        "sigma_freq": "monthly",
+    }
+
+
+def test_additive_sigma_selection_rejects_aggregation_error(tmp_path: Path) -> None:
+    config_file = tmp_path / "hbmcmc.ini"
+    _fixedbasis_config(config_file)
+    params = run_hbmcmc.hbmcmc_extract_param(str(config_file), print_param=False)
+    params.update(likelihood="additive_sigma", aggregation_error_mode="dense")
+
+    translated = run_hbmcmc.fixedbasis_params_to_rhime(params)
+
+    with pytest.raises(ValueError, match="does not support.*aggregation_error_mode"):
+        run_hbmcmc._select_additive_sigma_likelihood(params, translated)
+
+
 def test_fixedbasis_params_to_rhime_translates_reparameterise_log_normal(tmp_path: Path) -> None:
     """Legacy lognormal translation warns visibly and updates both priors."""
     config_file = tmp_path / "hbmcmc.ini"
@@ -229,6 +261,34 @@ def test_run_hbmcmc_main_routes_to_run_rhime(monkeypatch: pytest.MonkeyPatch, tm
     assert seen["run_rhime_kwargs"]["output_format"] == "legacy"
     assert seen["run_rhime_kwargs"]["output_filename_convention"] == "legacy"
     assert seen["run_rhime_kwargs"]["preserve_legacy_likelihood"] is True
+
+
+def test_run_hbmcmc_main_selects_additive_sigma_from_ini(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    config_file = tmp_path / "hbmcmc.ini"
+    _fixedbasis_config(config_file)
+    config_file.write_text(
+        config_file.read_text(encoding="utf-8").replace(
+            "[MCMC.OPTIONS]",
+            '[MCMC.OPTIONS]\nlikelihood = "additive_sigma"',
+        ),
+        encoding="utf-8",
+    )
+    seen: dict[str, Any] = {}
+
+    monkeypatch.setattr(run_hbmcmc.output, "copy_config_file", lambda *args, **kwargs: None)
+    monkeypatch.setattr(run_hbmcmc, "run_rhime", lambda **kwargs: seen.update(kwargs))
+
+    run_hbmcmc.main(["-c", str(config_file)])
+
+    assert seen["likelihood_builder"] is run_hbmcmc.additive_sigma_likelihood_builder
+    assert seen["likelihood_kwargs"] == {
+        "sigma_prior": {"pdf": "uniform", "lower": 0.1, "upper": 10.0},
+    }
+    assert seen["aggregation_error_mode"] == "none"
+    assert seen["preserve_legacy_likelihood"] is False
 
 
 def test_run_hbmcmc_legacy_fixedbasis_parser_is_explicit(tmp_path: Path) -> None:
