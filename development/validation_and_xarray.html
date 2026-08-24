@@ -388,6 +388,16 @@ this package.</p>
 <p>Public APIs should document their required dimensions, coordinates, units,
 and numerical assumptions. Put checks at the boundary which owns those
 assumptions:</p>
+<div class="admonition important">
+<p class="admonition-title">Important</p>
+<p>Coordinate validation has a fixed order: use labelled xarray operations
+such as <code class="docutils literal notranslate"><span class="pre">xr.align(...,</span> <span class="pre">join=&quot;exact&quot;)</span></code> while preparing or composing data,
+then rely on <code class="docutils literal notranslate"><span class="pre">CoordRegistry</span></code> when labelled arrays enter a registered PyMC
+model. Do not add a custom coordinate check which duplicates either
+mechanism. A bespoke check requires a documented invariant that neither
+xarray nor the registry can express, the scientific failure it prevents,
+and a focused test demonstrating that gap.</p>
+</div>
 <ul class="simple">
 <li><p>use static types for ordinary Python type contracts; do not add routine
 <code class="docutils literal notranslate"><span class="pre">isinstance</span></code> checks only to improve errors for callers which ignore type

@@ -387,6 +387,7 @@
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_preparation.html">openghg_inversions.rhime.co2.co2_o2_preparation</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_runner.html">openghg_inversions.rhime.co2.co2_o2_runner</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_runner.html">openghg_inversions.rhime.co2.co2_runner</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.outer_regions.html">openghg_inversions.rhime.co2.outer_regions</a></li>
 </ul>
 </details></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.builders.html">openghg_inversions.rhime.builders</a></li>
@@ -1542,7 +1543,7 @@
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.assemble_rhime_inputs"><code class="docutils literal notranslate"><span class="pre">assemble_rhime_inputs()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.build_co2_rhime_model"><code class="docutils literal notranslate"><span class="pre">build_co2_rhime_model()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.build_co2_model"><code class="docutils literal notranslate"><span class="pre">build_co2_model()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.build_multisector_rhime_model"><code class="docutils literal notranslate"><span class="pre">build_multisector_rhime_model()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.build_multisector_rhime_model_result"><code class="docutils literal notranslate"><span class="pre">build_multisector_rhime_model_result()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.build_rhime_basis"><code class="docutils literal notranslate"><span class="pre">build_rhime_basis()</span></code></a></li>
@@ -1550,7 +1551,6 @@
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.build_standard_rhime_model"><code class="docutils literal notranslate"><span class="pre">build_standard_rhime_model()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.build_standard_rhime_model_result"><code class="docutils literal notranslate"><span class="pre">build_standard_rhime_model_result()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.co2_model_input_names"><code class="docutils literal notranslate"><span class="pre">co2_model_input_names()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.co2_prior_forward_mean"><code class="docutils literal notranslate"><span class="pre">co2_prior_forward_mean()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.filter_rhime_observations"><code class="docutils literal notranslate"><span class="pre">filter_rhime_observations()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.make_multisector_rhime_outputs"><code class="docutils literal notranslate"><span class="pre">make_multisector_rhime_outputs()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.html#openghg_inversions.rhime.make_multisector_rhime_result"><code class="docutils literal notranslate"><span class="pre">make_multisector_rhime_result()</span></code></a></li>
@@ -1572,27 +1572,43 @@
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.co2.html">openghg_inversions.rhime.co2</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2O2PreparedInputs"><code class="docutils literal notranslate"><span class="pre">Co2O2PreparedInputs</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2O2PreparedInputs.aggregation_error"><code class="docutils literal notranslate"><span class="pre">Co2O2PreparedInputs.aggregation_error</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2O2PreparedInputs.co2_operator"><code class="docutils literal notranslate"><span class="pre">Co2O2PreparedInputs.co2_operator</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2O2PreparedInputs.co2_sensitivity"><code class="docutils literal notranslate"><span class="pre">Co2O2PreparedInputs.co2_sensitivity</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2O2PreparedInputs.fixed_prior_contribution"><code class="docutils literal notranslate"><span class="pre">Co2O2PreparedInputs.fixed_prior_contribution</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2O2PreparedInputs.o2_co2_flux_ratio"><code class="docutils literal notranslate"><span class="pre">Co2O2PreparedInputs.o2_co2_flux_ratio</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2O2PreparedInputs.o2_co2_flux_ratio_unavailable_reason"><code class="docutils literal notranslate"><span class="pre">Co2O2PreparedInputs.o2_co2_flux_ratio_unavailable_reason</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2O2PreparedInputs.o2_operator"><code class="docutils literal notranslate"><span class="pre">Co2O2PreparedInputs.o2_operator</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2O2PreparedInputs.o2_sensitivity"><code class="docutils literal notranslate"><span class="pre">Co2O2PreparedInputs.o2_sensitivity</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2O2PreparedInputs.observations"><code class="docutils literal notranslate"><span class="pre">Co2O2PreparedInputs.observations</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2O2PreparedInputs.provenance"><code class="docutils literal notranslate"><span class="pre">Co2O2PreparedInputs.provenance</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2O2PreparedInputs.retained_prior"><code class="docutils literal notranslate"><span class="pre">Co2O2PreparedInputs.retained_prior</span></code></a></li>
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.CollapsedOuterStates"><code class="docutils literal notranslate"><span class="pre">CollapsedOuterStates</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.CollapsedOuterStates.members"><code class="docutils literal notranslate"><span class="pre">CollapsedOuterStates.members</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.CollapsedOuterStates.sensitivity"><code class="docutils literal notranslate"><span class="pre">CollapsedOuterStates.sensitivity</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.OuterRegionTreatment"><code class="docutils literal notranslate"><span class="pre">OuterRegionTreatment</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.OuterRegionTreatment.mean_contribution"><code class="docutils literal notranslate"><span class="pre">OuterRegionTreatment.mean_contribution</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.OuterRegionTreatment.mode"><code class="docutils literal notranslate"><span class="pre">OuterRegionTreatment.mode</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.OuterRegionTreatment.observation_factor"><code class="docutils literal notranslate"><span class="pre">OuterRegionTreatment.observation_factor</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.OuterRegionTreatment.prepared_sensitivity"><code class="docutils literal notranslate"><span class="pre">OuterRegionTreatment.prepared_sensitivity</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.OuterRegionTreatment.prior_covariance"><code class="docutils literal notranslate"><span class="pre">OuterRegionTreatment.prior_covariance</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.OuterRegionTreatment.prior_mean"><code class="docutils literal notranslate"><span class="pre">OuterRegionTreatment.prior_mean</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.OuterRegionTreatment.resolved_activity"><code class="docutils literal notranslate"><span class="pre">OuterRegionTreatment.resolved_activity</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.OuterRegionTreatment.state_metadata"><code class="docutils literal notranslate"><span class="pre">OuterRegionTreatment.state_metadata</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.build_co2_model"><code class="docutils literal notranslate"><span class="pre">build_co2_model()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.build_co2_o2_model"><code class="docutils literal notranslate"><span class="pre">build_co2_o2_model()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.build_co2_rhime_model"><code class="docutils literal notranslate"><span class="pre">build_co2_rhime_model()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.co2_model_input_names"><code class="docutils literal notranslate"><span class="pre">co2_model_input_names()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.co2_prior_forward_mean"><code class="docutils literal notranslate"><span class="pre">co2_prior_forward_mean()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.collapse_outer_sectors"><code class="docutils literal notranslate"><span class="pre">collapse_outer_sectors()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.evaluate_co2_o2_prior_forward_mean"><code class="docutils literal notranslate"><span class="pre">evaluate_co2_o2_prior_forward_mean()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.prepare_co2_o2_inputs"><code class="docutils literal notranslate"><span class="pre">prepare_co2_o2_inputs()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.prepare_outer_region_treatment"><code class="docutils literal notranslate"><span class="pre">prepare_outer_region_treatment()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.run_rhime_co2"><code class="docutils literal notranslate"><span class="pre">run_rhime_co2()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs"><code class="docutils literal notranslate"><span class="pre">run_rhime_co2_o2_from_prepared_inputs()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_model.html">openghg_inversions.rhime.co2.co2_model</a><ul>
-<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_model.html#openghg_inversions.rhime.co2.co2_model.build_co2_rhime_model"><code class="docutils literal notranslate"><span class="pre">build_co2_rhime_model()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_model.html#openghg_inversions.rhime.co2.co2_model.co2_prior_forward_mean"><code class="docutils literal notranslate"><span class="pre">co2_prior_forward_mean()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_model.html#openghg_inversions.rhime.co2.co2_model.build_co2_model"><code class="docutils literal notranslate"><span class="pre">build_co2_model()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_model.html">openghg_inversions.rhime.co2.co2_o2_model</a><ul>
@@ -1612,6 +1628,15 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_runner.html">openghg_inversions.rhime.co2.co2_runner</a><ul>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_runner.html#openghg_inversions.rhime.co2.co2_runner.co2_model_input_names"><code class="docutils literal notranslate"><span class="pre">co2_model_input_names()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_runner.html#openghg_inversions.rhime.co2.co2_runner.run_rhime_co2"><code class="docutils literal notranslate"><span class="pre">run_rhime_co2()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.co2.outer_regions.html">openghg_inversions.rhime.co2.outer_regions</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.outer_regions.html#openghg_inversions.rhime.co2.outer_regions.CollapsedOuterStates"><code class="docutils literal notranslate"><span class="pre">CollapsedOuterStates</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.outer_regions.html#openghg_inversions.rhime.co2.outer_regions.OuterRegionTreatment"><code class="docutils literal notranslate"><span class="pre">OuterRegionTreatment</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.outer_regions.html#openghg_inversions.rhime.co2.outer_regions.add_outer_observation_covariance"><code class="docutils literal notranslate"><span class="pre">add_outer_observation_covariance()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.outer_regions.html#openghg_inversions.rhime.co2.outer_regions.add_outer_state_component"><code class="docutils literal notranslate"><span class="pre">add_outer_state_component()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.outer_regions.html#openghg_inversions.rhime.co2.outer_regions.collapse_outer_sectors"><code class="docutils literal notranslate"><span class="pre">collapse_outer_sectors()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.outer_regions.html#openghg_inversions.rhime.co2.outer_regions.prepare_outer_region_treatment"><code class="docutils literal notranslate"><span class="pre">prepare_outer_region_treatment()</span></code></a></li>
 </ul>
 </li>
 </ul>

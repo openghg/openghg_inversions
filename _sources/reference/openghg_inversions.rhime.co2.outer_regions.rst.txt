@@ -1,0 +1,7 @@
+openghg\_inversions.rhime.co2.outer\_regions
+============================================
+
+.. automodule:: openghg_inversions.rhime.co2.outer_regions
+   :members:
+   :show-inheritance:
+   :undoc-members:
