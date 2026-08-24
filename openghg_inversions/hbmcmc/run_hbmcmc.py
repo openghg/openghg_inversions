@@ -33,6 +33,7 @@ import inspect
 import json
 import sys
 import warnings
+from collections.abc import Mapping
 from pathlib import Path
 from shutil import copyfile
 from typing import Any
@@ -44,6 +45,7 @@ from openghg_inversions._timing import log_timing, timed, timer_seconds, timer_s
 from openghg_inversions.config import config
 from openghg_inversions.config.paths import Paths
 from openghg_inversions.hbmcmc.hbmcmc import _LEGACY_FIXEDBASIS_OUTPUT_FORMAT, fixedbasisMCMC
+from openghg_inversions.models.additive_sigma import DEFAULT_ADDITIVE_SIGMA_PRIOR
 from openghg_inversions.rhime import resolve_rhime_options, run_rhime
 from openghg_inversions.rhime.likelihoods import additive_sigma_likelihood_builder
 from openghg_inversions.rhime.params import normalise_rhime_params
@@ -62,6 +64,7 @@ _LEGACY_INFERPYMC_PARAM_NAMES = set(inspect.signature(inversion_pymc.inferpymc).
 _LEGACY_FIXEDBASIS_EXTRA_PARAM_NAMES = {"flux_non_finite_check"}
 _LEGACY_FIXEDBASIS_OUTPUT_ALIASES = {"hbmcmc", "hbmcmc_postprocessing"}
 _ADDITIVE_SIGMA_LIKELIHOOD = "additive_sigma"
+_ADDITIVE_SIGMA_PRIOR = "additive_sigma_prior"
 _ADDITIVE_SIGMA_OPTION_NAMES = (
     "sigma_prior",
     "sigma_freq",
@@ -221,6 +224,7 @@ def fixedbasis_params_to_rhime(params: dict[str, Any]) -> dict[str, Any]:
     """
     translated = dict(params)
     translated.pop("likelihood", None)
+    translated.pop(_ADDITIVE_SIGMA_PRIOR, None)
     mcmc_type = translated.pop("mcmc_type", "fixed_basis")
     if mcmc_type != "fixed_basis":
         raise ValueError(f"Unsupported run_hbmcmc mcmc_type {mcmc_type!r}; expected 'fixed_basis'.")
@@ -245,7 +249,10 @@ def _select_additive_sigma_likelihood(
     serving CO2-family recipes which do own fixed aggregation covariance.
     """
     likelihood = raw_params.get("likelihood")
+    additive_sigma_prior = raw_params.get(_ADDITIVE_SIGMA_PRIOR)
     if likelihood is None:
+        if additive_sigma_prior is not None:
+            raise ValueError("`additive_sigma_prior` requires likelihood='additive_sigma'.")
         return None
     if not isinstance(likelihood, str) or likelihood.strip().lower() != _ADDITIVE_SIGMA_LIKELIHOOD:
         raise ValueError(
@@ -258,11 +265,23 @@ def _select_additive_sigma_likelihood(
             "remove it or set it to 'none'."
         )
     rhime_params["aggregation_error_mode"] = "none"
-    return {
+    options = {
         name: rhime_params[name]
         for name in _ADDITIVE_SIGMA_OPTION_NAMES
         if name in rhime_params
     }
+    resolved_prior = (
+        rhime_params.get("sigma_prior", DEFAULT_ADDITIVE_SIGMA_PRIOR)
+        if additive_sigma_prior is None
+        else additive_sigma_prior
+    )
+    if not isinstance(resolved_prior, Mapping):
+        name = "sigma_prior" if additive_sigma_prior is None else _ADDITIVE_SIGMA_PRIOR
+        raise ValueError(f"`{name}` must be a mapping/dict.")
+    resolved_prior = dict(resolved_prior)
+    rhime_params["sigma_prior"] = resolved_prior
+    options["sigma_prior"] = resolved_prior
+    return options
 
 
 def validate_rhime_params(params: dict[str, Any]) -> None:
