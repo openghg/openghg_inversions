@@ -402,7 +402,7 @@ def test_co2_model_composes_sampled_boundary_and_each_outer_mode() -> None:
     marginalized = build("marginalized")
     inferred = build("inferred")
     for mode in ("fixed", "marginalized", "inferred"):
-        with pytest.raises(ValueError, match="must exactly match CO2 observations"):
+        with pytest.raises(ValueError, match="Conflicting coord registration|align.*join='exact'"):
             build(mode, outer_h.sel(nmeasure=[1, 0]))
 
     assert "bc" in fixed.named_vars
