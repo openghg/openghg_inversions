@@ -12,6 +12,7 @@ import pymc as pm
 import arviz as az
 import xarray as xr
 
+from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.models.coords import get_coord_registry
 from openghg_inversions.models.state_activity import StateActivity
 from openghg_inversions.observation_error import resolve_aggregation_error
@@ -85,10 +86,14 @@ def _empty_sampled_trace(inputs: xr.Dataset) -> az.InferenceData:
 
 
 def _build_model(inputs: xr.Dataset, **kwargs: Any) -> pm.Model:
+    retained_prior = CorrelatedLognormalPrior(
+        inputs["alpha_prior_mean"],
+        inputs["alpha_prior_covariance"],
+        covariance_dim="region_cov",
+    )
     return build_co2_model(
         inputs["H"],
-        prior_mean=inputs["alpha_prior_mean"],
-        prior_covariance=inputs["alpha_prior_covariance"],
+        retained_prior=retained_prior,
         fixed_prior_contribution=inputs["fixed_prior_contribution"],
         observations=inputs["mf"],
         observation_error=inputs["mf_error"],
@@ -238,6 +243,14 @@ def test_public_co2_runner_persists_fixed_mismatch_manifest(
             return self
 
     monkeypatch.setattr(co2_runner, "materialize_pymc_inputs", lambda *_args, **_kwargs: inputs)
+    builder_kwargs: dict[str, Any] = {}
+    original_builder = co2_runner.build_co2_model
+
+    def build_model(flux_sensitivity: xr.DataArray, **kwargs: Any) -> pm.Model:
+        builder_kwargs.update(kwargs)
+        return original_builder(flux_sensitivity, **kwargs)
+
+    monkeypatch.setattr(co2_runner, "build_co2_model", build_model)
     sampled_models: list[pm.Model] = []
 
     def sample_model(built: Any, _sampler: Any) -> az.InferenceData:
@@ -252,6 +265,17 @@ def test_public_co2_runner_persists_fixed_mismatch_manifest(
     )
 
     assert "sigma" not in sampled_models[0].named_vars
+    assert builder_kwargs["sigma_alignment"] is None
+    assert builder_kwargs["sigma_prior"] is None
+    assert isinstance(builder_kwargs["retained_prior"], CorrelatedLognormalPrior)
+    xr.testing.assert_equal(
+        builder_kwargs["retained_prior"].mean,
+        CorrelatedLognormalPrior(
+            inputs["alpha_prior_mean"],
+            inputs["alpha_prior_covariance"],
+            covariance_dim="region_cov",
+        ).mean,
+    )
     np.testing.assert_allclose(sampled_models[0]["fixed_model_mismatch"].eval(), 1.0)
     roles = json.loads(result.attrs["rhime_variable_roles"])
     metadata = json.loads(result.attrs["rhime_model_metadata"])
@@ -318,6 +342,30 @@ def test_public_co2_runner_derives_default_model_error_alignment(monkeypatch: An
         np.zeros(inputs.sizes["nmeasure"]),
     )
     assert "sigma" in sampled_models[0].named_vars
+
+
+def test_co2_runner_aligns_retained_prior_to_sensitivity_labels() -> None:
+    inputs = _golden_inputs()
+    permutation = [3, 1, 0, 2]
+    permuted_mean = inputs["alpha_prior_mean"].isel(region=permutation)
+    permuted_covariance = inputs["alpha_prior_covariance"].values[
+        np.ix_(permutation, permutation)
+    ]
+    prior = co2_runner._retained_prior_from_inputs(
+        inputs["H"],
+        permuted_mean,
+        xr.DataArray(
+            permuted_covariance,
+            dims=("region", "region_cov"),
+            coords={"region": permuted_mean["region"]},
+        ),
+    )
+
+    xr.testing.assert_equal(prior.mean, inputs["alpha_prior_mean"])
+    np.testing.assert_allclose(
+        prior.arithmetic_covariance,
+        inputs["alpha_prior_covariance"],
+    )
 
 
 def test_public_co2_runner_preserves_materialized_fixed_mismatch(monkeypatch: Any) -> None:

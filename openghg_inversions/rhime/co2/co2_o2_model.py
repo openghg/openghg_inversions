@@ -11,7 +11,7 @@ from openghg_inversions.models import (
     StateActivity,
     add_coherent_affine_component,
     add_correlated_lognormal_state_with_activity,
-    add_linked_linear_component,
+    apply_linear_sensitivity,
     prepare_linear_sensitivity,
     registered_model,
     resolve_state_activity,
@@ -194,7 +194,7 @@ def build_co2_o2_model(
 
         # Preparation declares that this sensitivity already contains the fixed,
         # signed O2:CO2 oxidation ratios; do not multiply them again.
-        joint_signal = add_linked_linear_component(
+        joint_signal = apply_linear_sensitivity(
             prepared_sensitivity,
             state,
             data_name="co2_o2_sensitivity",
