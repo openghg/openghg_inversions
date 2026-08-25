@@ -11,7 +11,6 @@ import numpy as np
 import pymc as pm
 import pytensor.tensor as pt
 import xarray as xr
-from pytensor.tensor.variable import TensorVariable
 
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.models.additive_sigma import (
@@ -22,7 +21,6 @@ from openghg_inversions.models.components import (
     add_coherent_affine_component,
     add_correlated_lognormal_state_with_activity,
     add_linear_component,
-    add_model_data,
     add_offset_component,
     apply_linear_sensitivity,
 )
@@ -61,33 +59,50 @@ def _fixed_mismatch_array(
     ).rename("fixed_model_mismatch")
 
 
-def _add_group_flux_contribution(
+def _retained_group_indices(
     prepared_flux: PreparedLinearSensitivity,
-    flux_scaling: TensorVariable,
     *,
     group: str,
-    output_name: str,
-) -> TensorVariable | None:
-    """Expose one labelled group as a view of the complete flux state."""
+) -> tuple[np.ndarray, np.ndarray]:
+    """Locate one group's retained sensitivity columns and full-state entries.
+
+    Sensitivity preparation removes exact-zero columns while preserving the
+    complete scientific state in ``prepared_flux.removed``. A reporting
+    projection therefore needs both the compact column positions used by the
+    registered sensitivity and the corresponding positions in the complete
+    flux state.
+
+    Args:
+        prepared_flux: Prepared sensitivity with the retained-to-full-state
+            mapping and state-aligned ``basis_group`` metadata.
+        group: ``basis_group`` label to select.
+
+    Returns:
+        A pair containing the selected column positions in the retained
+        sensitivity and their corresponding positions in the complete state.
+        Both arrays are empty when ``basis_group`` is absent or the requested
+        group has no retained sensitivity columns.
+
+    Raises:
+        ValueError: If ``basis_group`` is not indexed solely by the complete
+            flux-state dimension.
+
+    Notes:
+        This function only resolves labelled positions. It neither constructs
+        PyMC variables nor creates a separate state for the selected group.
+    """
     state_dim = prepared_flux.state_dim
     if "basis_group" not in prepared_flux.removed.coords:
-        return None
+        empty = np.empty(0, dtype=int)
+        return empty, empty
     basis_group = prepared_flux.removed["basis_group"]
     if basis_group.dims != (state_dim,):
         raise ValueError("`basis_group` must be indexed only by the flux state dimension.")
 
     group_values = np.asarray(basis_group.compute().values).astype(str)
     retained_indices = prepared_flux.retained_indices
-    retained_group_indices = np.flatnonzero(group_values[retained_indices] == group)
-    if not retained_group_indices.size:
-        return None
-
-    sensitivity = pm.modelcontext(None)["co2_sensitivity"]
-    contribution = pt.dot(
-        sensitivity[:, retained_group_indices],
-        flux_scaling[retained_indices[retained_group_indices]],
-    )
-    return pm.Deterministic(output_name, contribution, dims=prepared_flux.output_dim)
+    group_columns = np.flatnonzero(group_values[retained_indices] == group)
+    return group_columns, retained_indices[group_columns]
 
 
 def build_co2_model(
@@ -186,9 +201,9 @@ def build_co2_model(
     fixed_mismatch = _fixed_mismatch_array(observations, fixed_model_mismatch)
     prepared_flux = prepare_linear_sensitivity(flux_sensitivity, output_dim="nmeasure")
     activity = resolve_state_activity(prepared_flux.removed, state_activity)
+    outer_columns, outer_states = _retained_group_indices(prepared_flux, group="outer")
 
     with registered_model() as model:
-        add_model_data(prepared_flux.sensitivity, "co2_sensitivity")
         flux_scaling = add_correlated_lognormal_state_with_activity(
             activity,
             retained_prior,
@@ -200,12 +215,16 @@ def build_co2_model(
             data_name="co2_sensitivity",
             output_name="co2_flux_contribution",
         )
-        _add_group_flux_contribution(
-            prepared_flux,
-            flux_scaling,
-            group="outer",
-            output_name="outer_flux_contribution",
-        )
+        if outer_columns.size:
+            outer_flux_contribution = pt.dot(
+                model["co2_sensitivity"][:, outer_columns],
+                flux_scaling[outer_states],
+            )
+            pm.Deterministic(
+                "outer_flux_contribution",
+                outer_flux_contribution,
+                dims=prepared_flux.output_dim,
+            )
         modelled_linear_signal = co2_flux_contribution
         if boundary_sensitivity is not None:
             boundary_contribution = add_linear_component(
