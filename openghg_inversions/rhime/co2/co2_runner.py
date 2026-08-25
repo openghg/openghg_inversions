@@ -8,6 +8,7 @@ import json
 import arviz as az
 import xarray as xr
 
+from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.inversion_data import RhimePreparedInputs
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.models.state_activity import StateActivity
@@ -61,13 +62,11 @@ def _annotate_co2_trace(
         "co2_flux_contribution": ["pollution_concentration"],
         "flux_scaling": ["flux_scale"],
         "flux_scaling_active": ["active_flux_scale"],
-        "outer_sensitivity": ["outer_emissions_sensitivity"],
         "outer_flux_contribution": ["outer_pollution_concentration"],
-        "outer_flux_scaling": ["outer_flux_scale"],
-        "outer_flux_scaling_active": ["active_outer_flux_scale"],
         "hbc": ["boundary_sensitivity"],
         "bc": ["boundary_scale"],
         "mu_bc": ["boundary_concentration"],
+        "offset": ["offset_concentration"],
         "epsilon": ["model_error"],
         "y": ["concentration"],
     }
@@ -83,6 +82,7 @@ def _annotate_co2_trace(
         "co2_flux_contribution",
         "outer_flux_contribution",
         "mu_bc",
+        "offset",
         "epsilon",
         "y",
     }
@@ -99,8 +99,6 @@ def _annotate_co2_trace(
                 "bc",
                 "flux_scaling",
                 "flux_scaling_active",
-                "outer_flux_scaling",
-                "outer_flux_scaling_active",
             }:
                 variable.attrs["units"] = "1"
             elif concentration_units is not None and name in concentration_variables:
@@ -118,6 +116,60 @@ def _state_activity_from_inputs(model_inputs: xr.Dataset) -> StateActivity | Non
     return StateActivity(
         active=model_inputs["state_is_active"],
         fixed_value=fixed_value,
+    )
+
+
+def _retained_prior_from_inputs(
+    flux_sensitivity: xr.DataArray,
+    prior_mean: xr.DataArray,
+    prior_covariance: xr.DataArray,
+) -> CorrelatedLognormalPrior:
+    """Construct the retained prior in labelled sensitivity-state order."""
+    state_dims = [str(dim) for dim in flux_sensitivity.dims if dim != "nmeasure"]
+    if len(state_dims) != 1 or prior_mean.dims != (state_dims[0],):
+        raise ValueError(
+            "CO2 sensitivity and retained prior must use the same sole state "
+            f"dimension; found {state_dims!r} and {prior_mean.dims!r}."
+        )
+
+    state_dim = state_dims[0]
+    covariance_dim = str(prior_covariance.dims[-1])
+    if prior_covariance.dims != (state_dim, covariance_dim):
+        raise ValueError(
+            "CO2 retained covariance must use the state dimension followed by "
+            f"one covariance dimension; found {prior_covariance.dims!r}."
+        )
+
+    sensitivity_index = flux_sensitivity.indexes.get(state_dim)
+    if sensitivity_index is None:
+        raise ValueError(f"CO2 sensitivity must have a labelled {state_dim!r} coordinate.")
+    prior_index = prior_mean.indexes.get(state_dim)
+    covariance_index = prior_covariance.indexes.get(state_dim)
+    if prior_index is None or covariance_index is None:
+        raise ValueError(f"CO2 retained prior must have a labelled {state_dim!r} coordinate.")
+    if len(sensitivity_index) != len(prior_index):
+        raise ValueError("CO2 sensitivity and retained prior state labels must match exactly.")
+    positions = prior_index.get_indexer(sensitivity_index)
+    if (positions < 0).any():
+        raise ValueError("CO2 sensitivity and retained prior state labels must match exactly.")
+    covariance_positions = covariance_index.get_indexer(prior_index)
+    if len(covariance_index) != len(prior_index) or (covariance_positions < 0).any():
+        raise ValueError("CO2 retained mean and covariance state labels must match exactly.")
+
+    aligned_mean = prior_mean.isel({state_dim: positions})
+    aligned_covariance = prior_covariance.isel(
+        {
+            state_dim: covariance_positions[positions],
+            covariance_dim: covariance_positions[positions],
+        }
+    )
+    for name, coordinate in flux_sensitivity.coords.items():
+        if name not in aligned_mean.coords and coordinate.dims == (state_dim,):
+            aligned_mean = aligned_mean.assign_coords({name: coordinate})
+    return CorrelatedLognormalPrior(
+        aligned_mean,
+        aligned_covariance,
+        covariance_dim=covariance_dim,
     )
 
 
@@ -177,7 +229,8 @@ def run_rhime_co2(
 
     This callable is the public production replay seam for an already
     validated :class:`RhimePreparedInputs` artifact. It alone unpacks the
-    prepared dataset; the model builder receives named scientific arrays.
+    prepared dataset and constructs the complete retained prior; the model
+    builder receives named scientific values.
 
     ``fixed_model_mismatch=None`` preserves a prepared fixed-mismatch field if
     present, otherwise omits the term. An explicit scalar or labelled vector
@@ -229,10 +282,14 @@ def run_rhime_co2(
     prepared_mismatch = (
         model_inputs.get("fixed_model_mismatch") if fixed_model_mismatch is None else fixed_model_mismatch
     )
+    retained_prior = _retained_prior_from_inputs(
+        model_inputs["H"],
+        model_inputs["alpha_prior_mean"],
+        model_inputs["alpha_prior_covariance"],
+    )
     model = build_co2_model(
         model_inputs["H"],
-        prior_mean=model_inputs["alpha_prior_mean"],
-        prior_covariance=model_inputs["alpha_prior_covariance"],
+        retained_prior=retained_prior,
         fixed_prior_contribution=model_inputs["fixed_prior_contribution"],
         observations=model_inputs["mf"],
         observation_error=model_inputs["mf_error"],

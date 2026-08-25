@@ -250,10 +250,9 @@ Verification Games worktree. Preserve it as a golden scientific reference, but
 establish a reproducible commit or archived evidence bundle before claiming
 exact parity.
 
-This prototype intentionally uses the exact inner region and does not contain
-the separate outer-region treatment. OPE-76 subsequently landed that treatment
-as a separate CO2 direct-builder surface rather than coupling it to the linked
-CO2/O2 port.
+This prototype intentionally uses the exact inner region. Same-grid outer
+entries in the CO2-only recipe are now ordinary labelled members of its one
+retained state rather than a separate model subsystem.
 
 The CO2-family subpackage is a landing and integration point, not a permanent silo.
 After the model is reproduced, promote its generally useful features—prior
@@ -261,21 +260,16 @@ covariance, coherent reduction, aggregation covariance, and any genuinely
 shared likelihood pieces—into ordinary functions that standard RHIME and
 multisector RHIME can call directly.
 
-OPE-76 provides explicit, mutually exclusive CO2 outer-state treatments:
+OPE-119 supersedes OPE-76's experimental outer-state model surface. Same-grid
+inner and outer entries share one labelled sensitivity, one retained prior,
+and one ``flux_scaling`` state. ``basis_group`` identifies geography;
+``StateActivity(fixed_groups=("outer",), fixed_value=1.0)`` preserves the
+fixed-at-one case, while leaving that group active infers it. Group-specific
+moments are resolved into the complete ordered prior before graph construction,
+including any intended inner/outer cross-covariance.
 
-- fix their scale, at one by default;
-- marginalize a Gaussian outer state into its observation mean and covariance;
-  or
-- infer correlated positive scaling factors.
-
-The same surface can first collapse explicitly labelled outer-sector columns
-into shared scaling states while retaining member metadata. Collapse and state
-treatment remain orthogonal choices. The implementation is motivated by
-Verification Games/PARIS work, whose current evidence selects inferred outer
-states. Marginalized mode is implemented and tested but is not established as a
-production or non-Verification-Games default. Prepared-artifact, runner, and
-configuration integration remain follow-up work; the current API is the direct
-CO2 builder.
+Gaussian outer-state marginalization and outer-only sector collapse are not
+production behavior. General sector combinations belong to GitHub #628.
 
 ## Verification Games scientific components
 
@@ -305,7 +299,7 @@ existing representations in `observation_error.py`. Each model recipe decides
 which representation it supports and makes that choice visible at preparation
 and likelihood construction.
 
-### Outer-region treatment
+### Grouped inner/outer reporting
 
 Verification Games provided prototype evidence that fixed outer-region flux
 contributions could be grouped with the atmospheric baseline for reporting. Its
@@ -322,16 +316,14 @@ their sensitivity columns. The historical behavior is distributed across
 `src/verification_games/rhime_calibration/analytic.py`. Relevant provenance is
 recorded in Verification Games commits `c840a2d`, `25931e1`, and `df1c704`.
 
-The OPE-76 implementation keeps outer flux as the explicitly named
-``outer_flux_contribution`` component, separate from atmospheric ``mu_bc`` and
-the coherent affine prior term. The complete ``modelled_concentration`` passed
-to the likelihood composes those terms with ``co2_flux_contribution`` and every
-other declared mean contribution. Grouping boundary and outer concentrations is
-reporting only; it does not change model composition. The implementation
-supports fixed, Gaussian-marginalized, and inferred states. Its optional
-labelled collapse operation incorporates the alternative evidence in
-`src/verification_games/outer_region_states.py` without making collapse imply a
-particular treatment mode.
+The CO2 recipe keeps enough state and sensitivity metadata to project the
+single full flux contribution into inner and outer reporting views. A
+transitional ``outer_flux_contribution`` deterministic may expose that
+projection, but it is not a separate prior, latent state, or likelihood term.
+Atmospheric ``mu_bc``, ``offset``, the coherent affine prior term, and outer
+flux remain scientifically distinct. Reporting may compose boundary, offset,
+and outer flux as a baseline without changing model construction or stored
+provenance.
 
 ### Source and state selection
 

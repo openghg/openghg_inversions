@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import numpy as np
 import pymc as pm
+import pytensor.tensor as pt
 import xarray as xr
+from pytensor.tensor.variable import TensorVariable
 
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.models.additive_sigma import (
@@ -21,11 +23,13 @@ from openghg_inversions.models.components import (
     add_correlated_lognormal_state_with_activity,
     add_linear_component,
     add_model_data,
+    add_offset_component,
     apply_linear_sensitivity,
 )
 from openghg_inversions.models.coords import registered_model
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.models.state_activity import (
+    PreparedLinearSensitivity,
     StateActivity,
     prepare_linear_sensitivity,
     resolve_state_activity,
@@ -33,12 +37,6 @@ from openghg_inversions.models.state_activity import (
 from openghg_inversions.observation_error import AggregationError
 from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR
 from openghg_inversions.sigma import SigmaAlignment
-
-from .outer_regions import (
-    OuterRegionTreatment,
-    add_outer_state_component,
-    add_outer_observation_covariance,
-)
 
 
 def _fixed_mismatch_array(
@@ -63,11 +61,39 @@ def _fixed_mismatch_array(
     ).rename("fixed_model_mismatch")
 
 
+def _add_group_flux_contribution(
+    prepared_flux: PreparedLinearSensitivity,
+    flux_scaling: TensorVariable,
+    *,
+    group: str,
+    output_name: str,
+) -> TensorVariable | None:
+    """Expose one labelled group as a view of the complete flux state."""
+    state_dim = prepared_flux.state_dim
+    if "basis_group" not in prepared_flux.removed.coords:
+        return None
+    basis_group = prepared_flux.removed["basis_group"]
+    if basis_group.dims != (state_dim,):
+        raise ValueError("`basis_group` must be indexed only by the flux state dimension.")
+
+    group_values = np.asarray(basis_group.compute().values).astype(str)
+    retained_indices = prepared_flux.retained_indices
+    retained_group_indices = np.flatnonzero(group_values[retained_indices] == group)
+    if not retained_group_indices.size:
+        return None
+
+    sensitivity = pm.modelcontext(None)["co2_sensitivity"]
+    contribution = pt.dot(
+        sensitivity[:, retained_group_indices],
+        flux_scaling[retained_indices[retained_group_indices]],
+    )
+    return pm.Deterministic(output_name, contribution, dims=prepared_flux.output_dim)
+
+
 def build_co2_model(
     flux_sensitivity: xr.DataArray,
     *,
-    prior_mean: xr.DataArray,
-    prior_covariance: xr.DataArray,
+    retained_prior: CorrelatedLognormalPrior,
     fixed_prior_contribution: xr.DataArray,
     observations: xr.DataArray,
     observation_error: xr.DataArray,
@@ -77,10 +103,12 @@ def build_co2_model(
     sigma_prior: PriorArgs | None = None,
     fixed_model_mismatch: float | xr.DataArray | None = None,
     state_activity: StateActivity | None = None,
-    outer_treatment: OuterRegionTreatment | None = None,
     boundary_sensitivity: xr.DataArray | None = None,
     bc_prior: PriorArgs | None = None,
     bc_state_activity: StateActivity | None = None,
+    site_indicator: xr.DataArray | None = None,
+    offset_prior: PriorArgs | None = None,
+    offset_args: dict | None = None,
 ) -> pm.Model:
     """Build the CO2 coherent-reduction model from explicit scientific arrays.
 
@@ -92,19 +120,19 @@ def build_co2_model(
 
     ``fixed_prior_contribution`` is the affine term
     ``H m - H_alpha (Pi m)``. The latter is a fixed prior contribution, not an
-    atmospheric boundary condition. ``prior_covariance`` is the labelled
-    arithmetic covariance of the retained positive state.
+    atmospheric boundary condition. ``retained_prior`` contains the complete
+    labelled arithmetic moments for the positive flux state.
 
     Known fixed states remain in the public state and forward calculation but
     are omitted from the sampled correlated state. ``fixed_model_mismatch`` is
     an optional known concentration standard deviation. ``openghg_inversions``
     leaves this policy unset by default; the Verification Games fixed likelihood
-    passes 1 ppm explicitly. ``outer_treatment`` and optional sampled
-    ``boundary_sensitivity @ bc`` remain separate linear components named
-    ``outer_flux_contribution`` and ``mu_bc``. Reporting code may group them
-    when presenting a baseline. The composed mean is therefore
-    ``fixed_prior_contribution + co2_flux_contribution``, plus ``mu_bc`` and
-    ``outer_flux_contribution`` when those components are supplied.
+    passes 1 ppm explicitly. Inner and outer same-grid states remain in this one
+    flux state and are distinguished by ``basis_group`` metadata. When that
+    metadata includes ``"outer"``, ``outer_flux_contribution`` is exposed as a
+    reporting projection of ``co2_sensitivity @ flux_scaling``; it is never
+    added to the mean a second time. Optional boundary and offset terms remain
+    scientifically distinct components named ``mu_bc`` and ``offset``.
 
     Direct custom callers are responsible for supplying scientifically
     coherent arrays from one preparation and for their positional semantics
@@ -112,11 +140,9 @@ def build_co2_model(
 
     Args:
         flux_sensitivity: Reduced CO2 sensitivity with observation dimension
-            ``nmeasure`` and one labelled retained-state dimension. When
-            ``outer_treatment`` is supplied, this sensitivity must exclude the
-            separately represented outer states.
-        prior_mean: Arithmetic mean of the retained positive state.
-        prior_covariance: Dense arithmetic covariance of the retained state.
+            ``nmeasure`` and one labelled retained-state dimension.
+        retained_prior: Complete labelled arithmetic-moment prior for the
+            retained positive state.
         fixed_prior_contribution: Fixed coherent-reduction affine intercept
             named ``fixed_prior_contribution`` on ``nmeasure``.
         observations: Observed CO2 concentrations on ``nmeasure``.
@@ -132,13 +158,15 @@ def build_co2_model(
             standard deviation.
         state_activity: Optional labelled activity policy for retained flux
             states.
-        outer_treatment: Optional prepared outer-region state treatment whose
-            states are disjoint from ``flux_sensitivity``.
         boundary_sensitivity: Optional atmospheric boundary-condition
             sensitivity.
         bc_prior: Optional prior arguments for boundary-condition scaling.
         bc_state_activity: Optional labelled activity policy for boundary
             states.
+        site_indicator: Optional observation-to-site index used by an offset.
+        offset_prior: Optional prior for an offset component. When omitted, no
+            offset is added.
+        offset_args: Extra keyword arguments for the offset component.
 
     Returns:
         A registered PyMC model containing the complete affine concentration
@@ -153,22 +181,14 @@ def build_co2_model(
     else:
         sigma_prior = None
     bc_prior = dict(DEFAULT_BC_PRIOR if bc_prior is None else bc_prior)
+    if offset_prior is not None:
+        offset_prior = dict(offset_prior)
     fixed_mismatch = _fixed_mismatch_array(observations, fixed_model_mismatch)
     prepared_flux = prepare_linear_sensitivity(flux_sensitivity, output_dim="nmeasure")
     activity = resolve_state_activity(prepared_flux.removed, state_activity)
-    covariance_dim = str(prior_covariance.dims[-1])
-    retained_prior = CorrelatedLognormalPrior(
-        prior_mean,
-        prior_covariance,
-        covariance_dim=covariance_dim,
-    )
-    aggregation_error = (
-        aggregation_error
-        if outer_treatment is None
-        else add_outer_observation_covariance(aggregation_error, outer_treatment)
-    )
 
     with registered_model() as model:
+        add_model_data(prepared_flux.sensitivity, "co2_sensitivity")
         flux_scaling = add_correlated_lognormal_state_with_activity(
             activity,
             retained_prior,
@@ -179,6 +199,12 @@ def build_co2_model(
             flux_scaling,
             data_name="co2_sensitivity",
             output_name="co2_flux_contribution",
+        )
+        _add_group_flux_contribution(
+            prepared_flux,
+            flux_scaling,
+            group="outer",
+            output_name="outer_flux_contribution",
         )
         modelled_linear_signal = co2_flux_contribution
         if boundary_sensitivity is not None:
@@ -194,21 +220,17 @@ def build_co2_model(
             ).output
             modelled_linear_signal = modelled_linear_signal + boundary_contribution
 
-        if outer_treatment is not None:
-            if outer_treatment.mode == "marginalized":
-                assert outer_treatment.mean_contribution is not None
-                outer_mean_data = add_model_data(
-                    outer_treatment.mean_contribution.transpose("nmeasure"),
-                    "outer_mean_contribution",
-                )
-                outer_flux_contribution = pm.Deterministic(
-                    "outer_flux_contribution",
-                    outer_mean_data,
-                    dims="nmeasure",
-                )
-            else:
-                outer_flux_contribution = add_outer_state_component(outer_treatment)
-            modelled_linear_signal = modelled_linear_signal + outer_flux_contribution
+        if offset_prior is not None:
+            if site_indicator is None:
+                raise ValueError("CO2 offset component requires `site_indicator`.")
+            offset = add_offset_component(
+                site_indicator,
+                prior_args=offset_prior,
+                output_name="offset",
+                output_dim="nmeasure",
+                **(offset_args or {}),
+            )
+            modelled_linear_signal = modelled_linear_signal + offset
         modelled_mean = add_coherent_affine_component(
             fixed_prior_contribution,
             modelled_linear_signal,
