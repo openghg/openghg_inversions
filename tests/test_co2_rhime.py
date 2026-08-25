@@ -119,6 +119,7 @@ def test_co2_model_exposes_affine_correlated_dense_covariance_graph() -> None:
         "epsilon",
         "y",
     } <= set(model.named_vars)
+    assert "outer_flux_contribution" not in model.named_vars
     assert model.named_vars_to_dims["flux_scaling"] == ("region",)
     assert model.named_vars_to_dims["modelled_concentration"] == ("nmeasure",)
     assert isinstance(model["y"].owner.op, pm.MvNormal.rv_op.__class__)
@@ -268,13 +269,18 @@ def test_public_co2_runner_persists_fixed_mismatch_manifest(
     assert builder_kwargs["sigma_alignment"] is None
     assert builder_kwargs["sigma_prior"] is None
     assert isinstance(builder_kwargs["retained_prior"], CorrelatedLognormalPrior)
+    expected_prior = CorrelatedLognormalPrior(
+        inputs["alpha_prior_mean"],
+        inputs["alpha_prior_covariance"],
+        covariance_dim="region_cov",
+    )
     xr.testing.assert_equal(
         builder_kwargs["retained_prior"].mean,
-        CorrelatedLognormalPrior(
-            inputs["alpha_prior_mean"],
-            inputs["alpha_prior_covariance"],
-            covariance_dim="region_cov",
-        ).mean,
+        expected_prior.mean,
+    )
+    xr.testing.assert_equal(
+        builder_kwargs["retained_prior"].arithmetic_covariance,
+        expected_prior.arithmetic_covariance,
     )
     np.testing.assert_allclose(sampled_models[0]["fixed_model_mismatch"].eval(), 1.0)
     roles = json.loads(result.attrs["rhime_variable_roles"])
@@ -342,30 +348,6 @@ def test_public_co2_runner_derives_default_model_error_alignment(monkeypatch: An
         np.zeros(inputs.sizes["nmeasure"]),
     )
     assert "sigma" in sampled_models[0].named_vars
-
-
-def test_co2_runner_aligns_retained_prior_to_sensitivity_labels() -> None:
-    inputs = _golden_inputs()
-    permutation = [3, 1, 0, 2]
-    permuted_mean = inputs["alpha_prior_mean"].isel(region=permutation)
-    permuted_covariance = inputs["alpha_prior_covariance"].values[
-        np.ix_(permutation, permutation)
-    ]
-    prior = co2_runner._retained_prior_from_inputs(
-        inputs["H"],
-        permuted_mean,
-        xr.DataArray(
-            permuted_covariance,
-            dims=("region", "region_cov"),
-            coords={"region": permuted_mean["region"]},
-        ),
-    )
-
-    xr.testing.assert_equal(prior.mean, inputs["alpha_prior_mean"])
-    np.testing.assert_allclose(
-        prior.arithmetic_covariance,
-        inputs["alpha_prior_covariance"],
-    )
 
 
 def test_public_co2_runner_preserves_materialized_fixed_mismatch(monkeypatch: Any) -> None:

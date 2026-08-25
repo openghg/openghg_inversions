@@ -119,60 +119,6 @@ def _state_activity_from_inputs(model_inputs: xr.Dataset) -> StateActivity | Non
     )
 
 
-def _retained_prior_from_inputs(
-    flux_sensitivity: xr.DataArray,
-    prior_mean: xr.DataArray,
-    prior_covariance: xr.DataArray,
-) -> CorrelatedLognormalPrior:
-    """Construct the retained prior in labelled sensitivity-state order."""
-    state_dims = [str(dim) for dim in flux_sensitivity.dims if dim != "nmeasure"]
-    if len(state_dims) != 1 or prior_mean.dims != (state_dims[0],):
-        raise ValueError(
-            "CO2 sensitivity and retained prior must use the same sole state "
-            f"dimension; found {state_dims!r} and {prior_mean.dims!r}."
-        )
-
-    state_dim = state_dims[0]
-    covariance_dim = str(prior_covariance.dims[-1])
-    if prior_covariance.dims != (state_dim, covariance_dim):
-        raise ValueError(
-            "CO2 retained covariance must use the state dimension followed by "
-            f"one covariance dimension; found {prior_covariance.dims!r}."
-        )
-
-    sensitivity_index = flux_sensitivity.indexes.get(state_dim)
-    if sensitivity_index is None:
-        raise ValueError(f"CO2 sensitivity must have a labelled {state_dim!r} coordinate.")
-    prior_index = prior_mean.indexes.get(state_dim)
-    covariance_index = prior_covariance.indexes.get(state_dim)
-    if prior_index is None or covariance_index is None:
-        raise ValueError(f"CO2 retained prior must have a labelled {state_dim!r} coordinate.")
-    if len(sensitivity_index) != len(prior_index):
-        raise ValueError("CO2 sensitivity and retained prior state labels must match exactly.")
-    positions = prior_index.get_indexer(sensitivity_index)
-    if (positions < 0).any():
-        raise ValueError("CO2 sensitivity and retained prior state labels must match exactly.")
-    covariance_positions = covariance_index.get_indexer(prior_index)
-    if len(covariance_index) != len(prior_index) or (covariance_positions < 0).any():
-        raise ValueError("CO2 retained mean and covariance state labels must match exactly.")
-
-    aligned_mean = prior_mean.isel({state_dim: positions})
-    aligned_covariance = prior_covariance.isel(
-        {
-            state_dim: covariance_positions[positions],
-            covariance_dim: covariance_positions[positions],
-        }
-    )
-    for name, coordinate in flux_sensitivity.coords.items():
-        if name not in aligned_mean.coords and coordinate.dims == (state_dim,):
-            aligned_mean = aligned_mean.assign_coords({name: coordinate})
-    return CorrelatedLognormalPrior(
-        aligned_mean,
-        aligned_covariance,
-        covariance_dim=covariance_dim,
-    )
-
-
 def co2_model_input_names(
     prepared_inputs: RhimePreparedInputs,
     *,
@@ -282,10 +228,11 @@ def run_rhime_co2(
     prepared_mismatch = (
         model_inputs.get("fixed_model_mismatch") if fixed_model_mismatch is None else fixed_model_mismatch
     )
-    retained_prior = _retained_prior_from_inputs(
-        model_inputs["H"],
+    prior_covariance = model_inputs["alpha_prior_covariance"]
+    retained_prior = CorrelatedLognormalPrior(
         model_inputs["alpha_prior_mean"],
-        model_inputs["alpha_prior_covariance"],
+        prior_covariance,
+        covariance_dim=str(prior_covariance.dims[-1]),
     )
     model = build_co2_model(
         model_inputs["H"],
