@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import pymc as pm
 import xarray as xr
-from pytensor.tensor.variable import TensorVariable
 
 from openghg_inversions.array_ops import concat_gather_data_arrays
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
@@ -112,26 +111,6 @@ def evaluate_co2_o2_prior_forward_mean(
     )
 
 
-def _add_co2_o2_fixed_error_likelihood(
-    observations: xr.DataArray,
-    modelled_concentration: TensorVariable,
-    /,
-    *,
-    independent_error_sd: xr.DataArray,
-    aggregation_error: AggregationError,
-    output_dim: str,
-) -> None:
-    """Add the reusable fixed-error form of the additive-sigma likelihood."""
-    add_additive_sigma_gaussian_likelihood(
-        observations=observations,
-        observation_error=independent_error_sd,
-        mean=modelled_concentration,
-        aggregation_error=aggregation_error,
-        output_dim=output_dim,
-        observation_error_name="fixed_independent_error_sd",
-    )
-
-
 def build_co2_o2_model(
     *,
     observations: xr.DataArray,
@@ -227,11 +206,12 @@ def build_co2_o2_model(
             output_name="modelled_concentration",
         )
 
-        _add_co2_o2_fixed_error_likelihood(
-            observations,
-            modelled,
-            independent_error_sd=independent_error_sd,
+        add_additive_sigma_gaussian_likelihood(
+            observations=observations,
+            observation_error=independent_error_sd,
+            mean=modelled,
             aggregation_error=aggregation_error,
             output_dim=output_dim,
+            observation_error_name="fixed_independent_error_sd",
         )
     return model
