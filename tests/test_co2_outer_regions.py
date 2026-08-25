@@ -400,7 +400,6 @@ def test_co2_model_composes_sampled_boundary_and_each_outer_mode() -> None:
             aggregation_error=aggregation_error,
             outer_treatment=treatment,
             boundary_sensitivity=boundary_h,
-            no_model_error=True,
         )
 
     fixed = build("fixed")
@@ -540,7 +539,6 @@ def test_inner_and_outer_state_auxiliary_coords_are_namespaced() -> None:
         minimum_error=error,
         aggregation_error=aggregation_error,
         outer_treatment=treatment,
-        no_model_error=True,
     )
     registry = get_coord_registry(model)
 
