@@ -107,7 +107,7 @@ def test_latest_paris_flux_output_processes_multisector_sectors(
     fake_multisector_basis_functions_matching_country_grid: Callable[..., BasisFunctions],
     multisector_postprocessing_inv_out: Callable[..., InversionOutput],
 ) -> None:
-    """Latest multisector PARIS output projects countries before population covariance."""
+    """Latest multisector PARIS output projects countries and combines cleanly across time."""
     inv_out = multisector_postprocessing_inv_out(
         fake_multisector_basis_functions_matching_country_grid(
             europe_country_file,
@@ -291,6 +291,7 @@ def test_latest_paris_flux_output_processes_multisector_sectors(
     assert _flux_nonfinite_metadata(flux_outputs).policy == NONFINITE_POLICY_ZERO_FILL
 
     flux_file = tmp_path / "latest_multisector_flux.nc"
+    shifted_flux_file = tmp_path / "latest_multisector_flux_shifted.nc"
     flux_outputs.to_netcdf(flux_file)
     with xr.open_dataset(flux_file) as reloaded_flux:
         assert tuple(reloaded_flux.sector.values) == ("ff", "ocean")
@@ -317,6 +318,13 @@ def test_latest_paris_flux_output_processes_multisector_sectors(
         assert reloaded_flux.attrs["Conventions"] == "CF-1.8"
         assert "conventions" not in reloaded_flux.attrs
         _assert_latest_flux_dimension_order(reloaded_flux)
+        shifted_flux = reloaded_flux.assign_coords(time=reloaded_flux.time + np.timedelta64(1, "D"))
+        shifted_flux["time_bnds"] = shifted_flux.time_bnds + np.timedelta64(1, "D")
+        shifted_flux.to_netcdf(shifted_flux_file)
+    with xr.open_mfdataset([flux_file, shifted_flux_file], combine="by_coords") as combined_flux:
+        assert combined_flux.sizes["time"] == 2
+        for variable_name, expected_dims in covariance_dims.items():
+            assert combined_flux[variable_name].dims == expected_dims
     with xr.open_dataset(flux_file, decode_cf=False) as raw_flux:
         assert raw_flux.attrs["Conventions"] == "CF-1.8"
         assert "conventions" not in raw_flux.attrs
