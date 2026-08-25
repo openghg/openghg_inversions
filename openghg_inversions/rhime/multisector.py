@@ -66,7 +66,7 @@ from .builders import (
     validate_model_build_result,
 )
 from .materialization import materialize_pymc_inputs
-from .outputs import RhimeResult, make_multisector_rhime_outputs
+from .outputs import RhimeResult, annotate_likelihood_trace, make_multisector_rhime_outputs
 from .params import params_from_config, resolve_rhime_options
 from .preparation import (
     assemble_rhime_inputs,
@@ -653,6 +653,12 @@ def make_multisector_rhime_result(
     if likelihood_builder is not None:
         identity = callable_metadata(likelihood_builder)
         result.output_metadata["likelihood_builder"] = identity
+        annotate_likelihood_trace(
+            result.idata,
+            builder_identity=identity,
+            likelihood_kwargs=likelihood_kwargs,
+            concentration_units=prepared.inv_inputs["mf"].attrs.get("units"),
+        )
     if likelihood_kwargs is not None:
         result.output_metadata["likelihood_kwargs"] = likelihood_kwargs
     return result

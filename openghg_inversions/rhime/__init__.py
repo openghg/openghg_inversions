@@ -27,6 +27,7 @@ from .builders import (
 )
 from .co2 import build_co2_model, co2_model_input_names, run_rhime_co2
 from .materialization import materialize_pymc_inputs
+from .likelihoods import fixed_ou_likelihood_builder
 from .params import params_from_config, resolve_flux_sources, resolve_rhime_options
 from .preparation import (
     assemble_rhime_inputs,
@@ -76,6 +77,7 @@ __all__ = [
     "build_standard_rhime_model",
     "build_standard_rhime_model_result",
     "filter_rhime_observations",
+    "fixed_ou_likelihood_builder",
     "make_multisector_rhime_result",
     "make_multisector_rhime_outputs",
     "make_standard_rhime_result",

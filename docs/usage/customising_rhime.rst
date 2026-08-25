@@ -121,6 +121,33 @@ labelled observation ``site`` and ``time`` coordinates. Optional
 independent variance. The prepared ``minimum_error`` retains its historical
 meaning as an optional floor on total standard deviation.
 
+The installed ``rhime.likelihoods.fixed_ou_likelihood_builder`` adds a fixed-
+timescale, within-site Ornstein--Uhlenbeck mismatch covariance. For example::
+
+   from openghg_inversions.rhime import fixed_ou_likelihood_builder, run_rhime
+
+   result = run_rhime(
+       ...,
+       likelihood_builder=fixed_ou_likelihood_builder,
+       likelihood_kwargs={
+           "tau_hours": 5.0,
+           "site_amplitude_prior": {"pdf": "halfnormal", "sigma": 0.75},
+       },
+   )
+
+``tau_hours`` may instead be an exact mapping from retained site labels to
+fixed positive timescales. Pass ``fixed_site_amplitudes`` as a scalar or exact
+site mapping to use known amplitudes instead of the inferred prior. Amplitudes
+have the observation units and tau has units of hours. Observation rows may be
+interleaved or nonmonotonic in time; the component preserves their order and
+sets cross-site OU covariance exactly to zero.
+
+The component applies ``min_error`` to the fixed aggregation-plus-reported-
+error marginal before adding OU variance. It evaluates low-rank aggregation
+covariance with the fixed-OU generalized-eigen and Woodbury method, without
+forming a dense observation covariance. Sampled tau and the cached blocked
+sampler are separate extensions.
+
 Built-in aggregation covariance relies on the guarantees of its construction
 pipeline. A custom pipeline that assembles its own covariance may optionally
 call
