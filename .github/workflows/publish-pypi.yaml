@@ -3,10 +3,22 @@ name: Publish to PyPI
 on:
   release:
     types: [published]
-  workflow_dispatch:  # Allow manual triggering
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version without the v prefix; publishes the current main commit
+        required: true
+        type: string
 
 permissions:
+  actions: write
   contents: read
+  checks: read
+  statuses: read
+
+concurrency:
+  group: publish-release
+  cancel-in-progress: false
 
 jobs:
   build-and-publish:
@@ -15,10 +27,17 @@ jobs:
       name: pypi
       url: https://pypi.org/p/openghg-inversions
     permissions:
+      actions: write
       id-token: write  # Required for trusted publishing
+      contents: write
+      checks: read
+      statuses: read
     
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && 'main' || github.ref }}
+          fetch-depth: 0
       
       - name: Set up uv
         uses: astral-sh/setup-uv@v5
@@ -30,9 +49,32 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Verify Towncrier release notes were assembled
+      - name: Verify release metadata and exact-commit gates
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED_VERSION: ${{ inputs.version }}
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            VERSION=$REQUESTED_VERSION
+          else
+            VERSION="${GITHUB_REF_NAME#v}"
+          fi
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Release versions must look like 0.7.0."
+            exit 1
+          fi
+          PACKAGE_VERSION=$(python - <<'PY'
+          import tomllib
+
+          with open("pyproject.toml", "rb") as stream:
+              print(tomllib.load(stream)["project"]["version"])
+          PY
+          )
+          if [ "$PACKAGE_VERSION" != "$VERSION" ]; then
+            echo "Requested version ${VERSION} does not match package version ${PACKAGE_VERSION}."
+            exit 1
+          fi
           if find newsfragments -maxdepth 1 -type f ! -name '.gitkeep' ! -name 'template.md' -print -quit | grep -q .; then
             echo "Unassembled Towncrier fragments found; run 'towncrier build --version ${VERSION}' and commit CHANGELOG.md before creating the release."
             exit 1
@@ -41,9 +83,64 @@ jobs:
             echo "CHANGELOG.md has no Towncrier entry for ${VERSION}."
             exit 1
           }
+
+          SHA=$(git rev-parse HEAD)
+          CI_RESULT=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${SHA}/check-runs" \
+            --jq '[.check_runs[] | select(.name == "CI Gate")] | sort_by(.completed_at) | last | .conclusion // ""')
+          if [ "$CI_RESULT" != "success" ]; then
+            echo "CI Gate is not successful for exact release commit ${SHA}: ${CI_RESULT:-missing}."
+            exit 1
+          fi
+
+          HPC_RESULT=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${SHA}/status" \
+            --jq '[.statuses[] | select(.context == "HPC / test_inversions")] | sort_by(.updated_at) | last | .state // ""')
+          if [ "$HPC_RESULT" != "success" ]; then
+            echo "HPC / test_inversions is not successful for exact release commit ${SHA}: ${HPC_RESULT:-missing}."
+            exit 1
+          fi
+          {
+            echo "sha=$SHA"
+            echo "tag=v$VERSION"
+            echo "version=$VERSION"
+          } >> "$GITHUB_OUTPUT"
       
       - name: Build package
         run: uv build
+
+      - name: Smoke-test the built wheel
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          uv venv "$RUNNER_TEMP/release-smoke"
+          uv pip install --python "$RUNNER_TEMP/release-smoke/bin/python" dist/*.whl
+          EXPECTED_VERSION="$VERSION" "$RUNNER_TEMP/release-smoke/bin/python" - <<'PY'
+          import os
+          from importlib.metadata import version
+
+          installed = version("openghg_inversions")
+          expected = os.environ["EXPECTED_VERSION"]
+          if installed != expected:
+              raise SystemExit(f"installed wheel version {installed} does not match {expected}")
+          import openghg_inversions  # noqa: F401
+          PY
       
       - name: Publish to PyPI
         run: uv publish --trusted-publishing always
+
+      - name: Create GitHub release for an automated publication
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ steps.release.outputs.sha }}
+          TAG: ${{ steps.release.outputs.tag }}
+        run: gh release create "$TAG" --target "$SHA" --title "$TAG" --generate-notes
+
+      # Release events created by GITHUB_TOKEN do not trigger other workflows.
+      - name: Dispatch release follow-up workflows
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          gh workflow run release-follow-up.yaml -f tag="$TAG"
+          gh workflow run docs.yaml --ref "$TAG"

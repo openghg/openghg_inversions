@@ -525,13 +525,19 @@ which will pass the positional argument "openghg_inversions/hbmcmc" to the comma
 
 ### Using branches
 
-To contribute new code, make a branch off of the `devel` branch.
-When your code is ready to be added, push it to github (`origin`).
-You can then open a "pull request" on github and request a code review.
-It's helpful to write a description of the changes made in your PR, as well as linking to any relevant issues.
+Published PyPI packages and tagged releases are the supported installation
+targets. The `devel` branch is unsupported integration for the next monthly
+release; users should not run scientific work from it.
 
-Your code must past the tests and be reviewed before it can be merged.
-After this, you can merge your branch and close it (it can always be recovered later if necessary).
+Contributors create feature branches from `devel` and merge only release-ready
+changes through reviewed pull requests. Active feature PRs are checked weekly
+for drift from `devel`; same-repository PRs can opt into clean automatic updates
+with the `auto-sync-devel` label. Current-line hotfixes start from `main`, are
+released as patch versions, and are then forwarded to `devel`.
+
+See the [release and branch maintenance guide](docs/development/releasing.rst)
+for the automated monthly release, HPC approval, hotfix, synchronization, and
+stale-PR workflows.
 
 ## Citation and contributors
 

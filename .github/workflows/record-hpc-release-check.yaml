@@ -1,0 +1,129 @@
+name: Record HPC release check
+
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Full openghg_inversions commit SHA tested on HPC
+        required: true
+        type: string
+      state:
+        description: Reviewed outcome
+        required: true
+        type: choice
+        options:
+          - success
+          - failure
+          - error
+      evidence_url:
+        description: HTTPS URL for the compact hpc-ci evidence and scientific review
+        required: true
+        type: string
+      description:
+        description: Short result summary
+        required: true
+        type: string
+  repository_dispatch:
+    types: [hpc-test-inversions-result]
+
+permissions:
+  contents: read
+  statuses: write
+
+concurrency:
+  group: hpc-release-review-${{ github.event.client_payload.sha || inputs.sha }}
+  cancel-in-progress: false
+
+jobs:
+  record:
+    environment: hpc-release-review
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read and validate attestation
+        id: attestation
+        env:
+          DISPATCH_DESCRIPTION: ${{ github.event.client_payload.description }}
+          DISPATCH_EVIDENCE_URL: ${{ github.event.client_payload.evidence_url }}
+          DISPATCH_SHA: ${{ github.event.client_payload.sha }}
+          DISPATCH_STATE: ${{ github.event.client_payload.state }}
+          MANUAL_DESCRIPTION: ${{ inputs.description }}
+          MANUAL_EVIDENCE_URL: ${{ inputs.evidence_url }}
+          MANUAL_SHA: ${{ inputs.sha }}
+          MANUAL_STATE: ${{ inputs.state }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "repository_dispatch" ]; then
+            SHA=$DISPATCH_SHA
+            STATE=$DISPATCH_STATE
+            EVIDENCE_URL=$DISPATCH_EVIDENCE_URL
+            DESCRIPTION=$DISPATCH_DESCRIPTION
+          else
+            SHA=$MANUAL_SHA
+            STATE=$MANUAL_STATE
+            EVIDENCE_URL=$MANUAL_EVIDENCE_URL
+            DESCRIPTION=$MANUAL_DESCRIPTION
+          fi
+
+          if ! [[ "$SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "A full lowercase commit SHA is required."
+            exit 1
+          fi
+          case "$STATE" in
+            success|failure|error) ;;
+            *) echo "Unsupported status state: $STATE"; exit 1 ;;
+          esac
+          if ! [[ "$EVIDENCE_URL" =~ ^https:// ]] || [[ "$EVIDENCE_URL" == *$'\n'* ]] || [[ "$EVIDENCE_URL" == *$'\r'* ]]; then
+            echo "The evidence URL must use HTTPS."
+            exit 1
+          fi
+          if [ -z "$DESCRIPTION" ] || [ "${#DESCRIPTION}" -gt 140 ] || [[ "$DESCRIPTION" == *$'\n'* ]] || [[ "$DESCRIPTION" == *$'\r'* ]]; then
+            echo "The description must contain 1-140 characters."
+            exit 1
+          fi
+
+          git fetch origin main
+          git cat-file -e "${SHA}^{commit}"
+          if ! git merge-base --is-ancestor "$SHA" origin/main; then
+            echo "$SHA is not part of the current main history."
+            exit 1
+          fi
+
+          {
+            echo "sha=$SHA"
+            echo "state=$STATE"
+            echo "evidence_url=$EVIDENCE_URL"
+            echo "description=$DESCRIPTION"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Record exact-commit HPC status
+        env:
+          DESCRIPTION: ${{ steps.attestation.outputs.description }}
+          EVIDENCE_URL: ${{ steps.attestation.outputs.evidence_url }}
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ steps.attestation.outputs.sha }}
+          STATE: ${{ steps.attestation.outputs.state }}
+        run: |
+          gh api \
+            --method POST \
+            "repos/${GITHUB_REPOSITORY}/statuses/${SHA}" \
+            -f state="$STATE" \
+            -f context='HPC / test_inversions' \
+            -f target_url="$EVIDENCE_URL" \
+            -f description="$DESCRIPTION"
+
+      - name: Summarize
+        env:
+          EVIDENCE_URL: ${{ steps.attestation.outputs.evidence_url }}
+          SHA: ${{ steps.attestation.outputs.sha }}
+          STATE: ${{ steps.attestation.outputs.state }}
+        run: |
+          {
+            echo "### HPC / test_inversions"
+            echo "- Commit: \`$SHA\`"
+            echo "- Reviewed status: \`$STATE\`"
+            echo "- Evidence: $EVIDENCE_URL"
+          } >> "$GITHUB_STEP_SUMMARY"
