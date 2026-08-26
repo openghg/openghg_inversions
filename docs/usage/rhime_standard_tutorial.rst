@@ -109,7 +109,11 @@ The equivalent supported Python entry point is:
 
 .. jupyter-output::
 
-   Run ``docs-tutorials-record`` to refresh this output.
+   {'OpenGHG Inversions commit': '9202222950c3ef2eb7bc83d040df3bcf6c26f94c',
+    'tutorial data': 'v1.0.0',
+    'sites': ['MHD', 'TAC'],
+    'observations': 84,
+    'posterior samples': {'chain': 2, 'draw': 50}}
 
 Configuration is resolved once at the runner boundary. Explicit Python or CLI
 values such as ``output_path`` override the INI file.
@@ -138,7 +142,33 @@ canonical labelled arrays, the ArviZ trace, and generated products together:
 
 .. jupyter-output::
 
-   Run ``docs-tutorials-record`` to refresh this output.
+   {'period': ('2020-01-01', '2020-01-08'),
+    'sectors': [('edgar-v80-anthropogenic', 'edgar-v80-anthropogenic')],
+    'H dimensions': ('region', 'nmeasure'),
+    'input sizes': {'nmeasure': 84,
+     'lat': 293,
+     'lon': 391,
+     'height': 20,
+     'region': 4,
+     'bc_region': 4,
+     'nsite': 2},
+    'measurement sites': ['MHD', 'TAC'],
+    'x dimensions': ('chain', 'draw', 'region'),
+    'variable roles': {'observation': 'mf',
+     'observation_error': 'mf_error',
+     'minimum_error': 'min_error',
+     'concentration': 'y',
+     'model_error': 'epsilon',
+     'observation_repeatability': 'mf_repeatability',
+     'observation_variability': 'mf_variability',
+     'flux_scale': 'x',
+     'flux_contribution': 'mu',
+     'emissions_sensitivity': 'hx',
+     'boundary': 'mu_bc',
+     'baseline_scale': 'bc',
+     'baseline_sensitivity': 'hbc',
+     'baseline': 'mu_bc'},
+    'output products': ['inversion_output']}
 
 ``mf(nmeasure)`` is the observed mole fraction and ``mf_error(nmeasure)`` is
 its supplied observation uncertainty. ``H(region, nmeasure)`` is the labelled
@@ -165,7 +195,17 @@ Inspect diagnostics before interpreting any posterior quantity:
 
 .. jupyter-output::
 
-   Run ``docs-tutorials-record`` to refresh this output.
+                 mcse_mean  mcse_sd  ess_bulk  ess_tail  r_hat  divergences
+   x[0]               0.03     0.04      12.0      23.0   1.36            0
+   x[1]               0.22     0.02       3.0      23.0   2.36            0
+   x[2]               0.38     0.05       3.0      23.0   2.00            0
+   x[3]               0.07     0.03       5.0      18.0   1.45            0
+   bc[('n', 0)]       0.19     0.12       4.0      13.0   1.80            0
+   bc[('e', 0)]       0.01     0.00      18.0      49.0   1.36            0
+   bc[('s', 0)]       0.14     0.03       4.0      19.0   1.68            0
+   bc[('w', 0)]       0.00     0.00       3.0      17.0   1.81            0
+   sigma[0, 0]        0.21     0.03       3.0      18.0   2.44            0
+   sigma[1, 0]        0.11     0.09       4.0      13.0   1.52            0
 
 The 50-draw tutorial result is too short for scientific interpretation.
 Increase chains, tuning, and retained draws; require acceptable R-hat,
@@ -193,7 +233,19 @@ The configured ``inv_out`` product is available in memory and on disk:
 
 .. jupyter-output::
 
-   Run ``docs-tutorials-record`` to refresh this output.
+   {'provenance contract': 'modern_rhime_inversion_output',
+    'basis artifact source': 'generated',
+    'split by sectors': False,
+    'saved file': 'standard_tutorial2020-01-01_inversion_output.nc',
+    'posterior variables': ['bc', 'epsilon', 'mu', 'mu_bc', 'sigma', 'x'],
+    'posterior sizes': {'chain': 2,
+     'draw': 50,
+     'region': 4,
+     'bc_region': 4,
+     'nsigma_site': 2,
+     'nsigma_time': 1,
+     'nmeasure': 84},
+    'sampler fields': ['burn', 'chains', 'draws', 'nuts_sampler', 'tune']}
 
 The file retains the trace, canonical inputs, basis functions, run/model/output
 metadata, and provenance needed by supported postprocessing. It is not a

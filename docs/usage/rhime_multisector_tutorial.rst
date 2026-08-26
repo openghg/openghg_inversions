@@ -82,7 +82,11 @@ The supported Python route is:
 
 .. jupyter-output::
 
-   Run ``docs-tutorials-record`` to refresh this output.
+   {'OpenGHG Inversions commit': '9202222950c3ef2eb7bc83d040df3bcf6c26f94c',
+    'tutorial data': 'v1.0.0',
+    'sites': ['MHD', 'TAC'],
+    'observations': 84,
+    'posterior samples': {'chain': 2, 'draw': 50}}
 
 Inspect labelled state and provenance
 -------------------------------------
@@ -105,7 +109,29 @@ Inspect labelled state and provenance
 
 .. jupyter-output::
 
-   Run ``docs-tutorials-record`` to refresh this output.
+   {'sectors': [('anthropogenic', 'edgar-v80-anthropogenic'),
+     ('wetlands', 'wetcharts-v131-wetlands')],
+    'H dimensions': ('region', 'nmeasure', 'source'),
+    'source labels': ['edgar-v80-anthropogenic', 'wetcharts-v131-wetlands'],
+    'scale variables': ['x_anthropogenic', 'x_wetlands'],
+    'variable roles': {'observation': 'mf',
+     'observation_error': 'mf_error',
+     'minimum_error': 'min_error',
+     'concentration': 'y',
+     'model_error': 'epsilon',
+     'observation_repeatability': 'mf_repeatability',
+     'observation_variability': 'mf_variability',
+     'flux_scale:anthropogenic': 'x_anthropogenic',
+     'flux_contribution:anthropogenic': 'mu_anthropogenic',
+     'emissions_sensitivity:anthropogenic': 'hx_anthropogenic',
+     'flux_scale:wetlands': 'x_wetlands',
+     'flux_contribution:wetlands': 'mu_wetlands',
+     'emissions_sensitivity:wetlands': 'hx_wetlands',
+     'boundary': 'mu_bc',
+     'baseline_scale': 'bc',
+     'baseline_sensitivity': 'hbc',
+     'baseline': 'mu_bc'},
+    'provenance contract': 'modern_rhime_inversion_output'}
 
 Shared-basis preparation represents sensitivity as
 ``H(region, nmeasure, source)``. Source-specific bases may instead use one
@@ -147,7 +173,31 @@ configured ``inv_out`` output they are also persisted:
 
 .. jupyter-output::
 
-   Run ``docs-tutorials-record`` to refresh this output.
+   {'diagnostic variables': ['flux_anthropogenic_posterior_mean',
+     'flux_anthropogenic_prior_mean',
+     'flux_total_posterior_mean',
+     'flux_total_prior_mean',
+     'flux_wetlands_posterior_mean',
+     'flux_wetlands_prior_mean',
+     'scaling_anthropogenic_posterior_mean',
+     'scaling_anthropogenic_prior_mean',
+     'scaling_wetlands_posterior_mean',
+     'scaling_wetlands_prior_mean'],
+    'diagnostic sizes': {'flux_time': 1, 'lat': 293, 'lon': 391},
+    'variable dimensions': {'flux_anthropogenic_posterior_mean': ('flux_time',
+      'lat',
+      'lon'),
+     'flux_anthropogenic_prior_mean': ('flux_time', 'lat', 'lon'),
+     'flux_total_posterior_mean': ('flux_time', 'lat', 'lon'),
+     'flux_total_prior_mean': ('flux_time', 'lat', 'lon'),
+     'flux_wetlands_posterior_mean': ('flux_time', 'lat', 'lon'),
+     'flux_wetlands_prior_mean': ('flux_time', 'lat', 'lon'),
+     'scaling_anthropogenic_posterior_mean': ('lat', 'lon'),
+     'scaling_anthropogenic_prior_mean': ('lat', 'lon'),
+     'scaling_wetlands_posterior_mean': ('lat', 'lon'),
+     'scaling_wetlands_prior_mean': ('lat', 'lon')},
+    'sector diagnostics file': 'multisector_tutorial2020-01-01_sector_flux_diagnostics.nc',
+    'inversion output file': 'multisector_tutorial2020-01-01_inversion_output.nc'}
 
 Sector posterior flux is the retained prior flux multiplied by that sector's
 posterior scaling. ``flux_total_posterior_mean`` is the sum of sector fluxes,
