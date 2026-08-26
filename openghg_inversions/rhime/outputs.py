@@ -427,6 +427,25 @@ def make_multisector_rhime_outputs(
     if output_spec.output_format == "none":
         return
 
+    paris_kwargs = dict(output_spec.paris_postprocessing_kwargs or {})
+    if output_spec.output_format == "paris":
+        template_version = paris_kwargs.pop("template_version", "latest")
+        if template_version != "latest":
+            raise ValueError(
+                "Multi-sector PARIS output supports only template_version='latest'."
+            )
+        supported = {
+            "country_selections",
+            "flux_frequency",
+            "inversion_grid",
+            "report_mode",
+            "time_point",
+        }
+        if unexpected := ", ".join(sorted(paris_kwargs.keys() - supported)):
+            raise ValueError(
+                f"Unsupported multi-sector latest PARIS postprocessing kwargs: {unexpected}."
+            )
+
     run_spec = result.run_spec
     model_spec = result.model_spec
     with timed("rhime.output.inversion_output_create", output_format=output_spec.output_format):
@@ -448,12 +467,6 @@ def make_multisector_rhime_outputs(
     )
 
     if output_spec.output_format == "paris":
-        paris_kwargs = dict(output_spec.paris_postprocessing_kwargs or {})
-        template_version = paris_kwargs.pop("template_version", "latest")
-        if template_version != "latest":
-            raise ValueError(
-                "Multi-sector PARIS output supports only template_version='latest'."
-            )
         from openghg_inversions.postprocessing.make_paris_outputs import (
             infer_flux_frequency,
             paris_concentration_outputs,
@@ -469,11 +482,6 @@ def make_multisector_rhime_outputs(
         country_selection_kwargs = {}
         if "country_selections" in paris_kwargs:
             country_selection_kwargs["country_selections"] = paris_kwargs.pop("country_selections")
-        if paris_kwargs:
-            unexpected = ", ".join(sorted(paris_kwargs))
-            raise ValueError(
-                f"Unsupported multi-sector latest PARIS postprocessing kwargs: {unexpected}."
-            )
 
         obs_avg_period = prepared.averaging_period[0] or "0h"
         conc_outs = paris_concentration_outputs(
