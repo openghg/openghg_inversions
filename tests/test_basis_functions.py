@@ -2258,6 +2258,82 @@ def test_multisource_sensitivity_accepts_reordered_exact_sources() -> None:
     xr.testing.assert_identical(actual, expected)
 
 
+def test_multisource_sensitivity_avoids_configured_state_dimension_collision() -> None:
+    """The temporary native source axis must not collide with the retained state axis."""
+    sources = ["A", "B"]
+    basis = make_basis_flat_from_blocks([[1, 1], [2, 2]])
+    colliding = BasisFunctions.from_multi_source_flat_basis(
+        basis_flat={source: basis for source in sources},
+        flux=xr.ones_like(basis, dtype=float),
+        operator_kwargs={"state_dim": "native_source"},
+    )
+    reference = BasisFunctions.from_multi_source_flat_basis(
+        basis_flat={source: basis for source in sources},
+        flux=xr.ones_like(basis, dtype=float),
+        operator_kwargs={"state_dim": "region"},
+    )
+    fp_x_flux = make_fp_x_flux_sectoral(sources=sources, nlat=2, nlon=2, ntime=3)
+
+    actual = colliding.sensitivity(fp_x_flux)
+    expected = reference.sensitivity(fp_x_flux)
+
+    assert actual.dims == ("native_source", "time")
+    assert actual.get_index("native_source").equals(expected.get_index("region"))
+    np.testing.assert_allclose(actual.values, expected.values)
+
+
+def test_multisource_sensitivity_avoids_extra_dimension_collision() -> None:
+    """A valid surviving ``native_source`` dimension remains distinct from the temporary axis."""
+    sources = ["A", "B"]
+    basis = make_basis_flat_from_blocks([[1, 1], [2, 2]])
+    basis_functions = BasisFunctions.from_multi_source_flat_basis(
+        basis_flat={source: basis for source in sources},
+        flux=xr.ones_like(basis, dtype=float),
+        operator_kwargs={"state_dim": "region"},
+    )
+    fp_x_flux = make_fp_x_flux_sectoral(sources=sources, nlat=2, nlon=2, ntime=3)
+    factor = xr.DataArray(
+        [1.0, 2.0],
+        dims="native_source",
+        coords={"native_source": ["first", "second"]},
+    )
+
+    actual = basis_functions.sensitivity(fp_x_flux.expand_dims(native_source=factor.native_source) * factor)
+    expected = (basis_functions.sensitivity(fp_x_flux) * factor).transpose(
+        "region", "time", "native_source"
+    )
+
+    xr.testing.assert_identical(actual, expected)
+
+
+def test_multisource_sensitivity_preserves_source_dependent_auxiliary_coordinate() -> None:
+    """Source coordinates on surviving dimensions are gathered onto retained state."""
+    sources = ["A", "B"]
+    basis = make_basis_flat_from_blocks([[1, 1], [2, 2]])
+    basis_functions = BasisFunctions.from_multi_source_flat_basis(
+        basis_flat={source: basis for source in sources},
+        flux=xr.ones_like(basis, dtype=float),
+        operator_kwargs={"state_dim": "region"},
+    )
+    fp_x_flux = make_fp_x_flux_sectoral(sources=sources, nlat=2, nlon=2, ntime=3)
+    calibration = xr.DataArray(
+        np.arange(6).reshape(2, 3),
+        dims=("source", "time"),
+        coords={"source": sources, "time": fp_x_flux.time},
+        name="calibration",
+        attrs={"units": "1"},
+    )
+    fp_x_flux = fp_x_flux.assign_coords(calibration=calibration)
+
+    actual = basis_functions.sensitivity(fp_x_flux).coords["calibration"]
+    expected_values = calibration.sel(source=["A", "A", "B", "B"]).values
+
+    assert actual.dims == ("region", "time")
+    assert actual.get_index("region").equals(basis_functions.operator.basis_matrix.get_index("region"))
+    assert actual.attrs == calibration.attrs
+    np.testing.assert_array_equal(actual.values, expected_values)
+
+
 def test_multisource_sensitivity_rejects_reordered_grid() -> None:
     """The native contraction keeps the existing exact grid-order contract."""
     sources = ["A", "B"]

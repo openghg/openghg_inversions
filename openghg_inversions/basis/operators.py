@@ -1015,17 +1015,45 @@ class MultiSourceBucketBasisOperator(BasisOperator):
         every retained state while keeping the source pairing sparse.
         """
         if self.source_dim in fp_x_flux.dims:
+            state_coordinate = self.basis_matrix[self.meta.state_dim]
             source_order = [
                 source
                 for source, _, _ in iter_multi_index_level_slices(
                     fp_x_flux,
-                    multi_index=self.basis_matrix[self.meta.state_dim],
+                    multi_index=state_coordinate,
                     multi_dim=self.meta.state_dim,
                     level=self.source_dim,
                     array_dim=self.source_dim,
                 )
             ]
-            native_source_dim = f"native_{self.source_dim}"
+            surviving_source_coordinates = {
+                name: align_to_multi_index_level_values(
+                    coordinate,
+                    multi_index=state_coordinate,
+                    multi_dim=self.meta.state_dim,
+                    level=self.source_dim,
+                    other_dim=self.source_dim,
+                )
+                for name, coordinate in fp_x_flux.coords.items()
+                if name != self.source_dim
+                and self.source_dim in coordinate.dims
+                and not set(coordinate.dims).intersection(self.meta.grid_dims)
+            }
+            occupied_names = {
+                name
+                for name in (
+                    *fp_x_flux.dims,
+                    *fp_x_flux.coords,
+                    *self.basis_matrix.dims,
+                    *self.basis_matrix.coords,
+                )
+            }
+            native_source_base = f"native_{self.source_dim}"
+            native_source_dim = native_source_base
+            suffix = 2
+            while native_source_dim in occupied_names:
+                native_source_dim = f"{native_source_base}_{suffix}"
+                suffix += 1
             fp_native = fp_x_flux.sel({self.source_dim: source_order}).rename(
                 {self.source_dim: native_source_dim}
             )
@@ -1045,6 +1073,8 @@ class MultiSourceBucketBasisOperator(BasisOperator):
                 prolongation,
                 dim=(native_source_dim, *self.meta.grid_dims),
             ).as_numpy()
+            if surviving_source_coordinates:
+                h = h.assign_coords(surviving_source_coordinates)
         else:
             mat_aligned = force_align(self.basis_matrix, fp_x_flux, dims=list(self.meta.grid_dims))
             mat_aligned = mat_aligned.transpose(*self.meta.grid_dims, ...)
