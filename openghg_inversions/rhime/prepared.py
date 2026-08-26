@@ -13,8 +13,8 @@ from openghg_inversions.observation_error import (
     select_aggregation_error_mode,
 )
 
-from ._model_building import validate_likelihood_kwargs
-from .builders import RhimeLikelihoodBuilder, RhimeModelBuilder
+from .builders import RhimeModelBuilder
+from .likelihood_seam import RhimeLikelihoodBuilder, validate_likelihood_kwargs
 from .materialization import materialize_pymc_inputs
 from .multisector import build_multisector_rhime_model_result, make_multisector_rhime_result
 from .multisector import multisector_model_input_names

@@ -436,8 +436,7 @@ helpers:
        prepare_linear_sensitivity,
        registered_model,
    )
-   from openghg_inversions.models.gaussian_likelihood import add_gaussian_observation_likelihood
-   from openghg_inversions.models.pollution_event import build_pollution_event_error
+   from openghg_inversions.models.pollution_event import add_pollution_event_likelihood
    from openghg_inversions.observation_error import resolve_aggregation_error
    from openghg_inversions.sigma import SigmaAlignment
 
@@ -484,11 +483,12 @@ helpers:
        baseline_mean = boundary.output
        modelled_mean = pollution_mean + baseline_mean
 
-       error_state = build_pollution_event_error(
+       add_pollution_event_likelihood(
            observations=inv_inputs["mf"],
            observation_error=inv_inputs["mf_error"],
            minimum_error=inv_inputs["min_error"],
            aggregation_error=resolve_aggregation_error(inv_inputs, "none"),
+           mean=modelled_mean,
            pollution_mean=pollution_mean,
            pollution_event_baseline=baseline_mean,
            sigma_alignment=sigma_alignment,
@@ -496,13 +496,6 @@ helpers:
            power=1.99,
            pollution_events_from_obs=False,
            no_model_error=False,
-           output_dim="nmeasure",
-       )
-       add_gaussian_observation_likelihood(
-           observed=error_state.observed,
-           mean=modelled_mean,
-           independent_variance=error_state.independent_variance,
-           aggregation_error=error_state.aggregation_error,
            output_dim="nmeasure",
        )
 
@@ -570,13 +563,13 @@ Callables are never read from configuration or stored on ``RhimeModelSpec`` or
 entry-point or config-file plugin registry.
 
 A concrete recipe owns the complete forward-model mean: pollution, baseline,
-and optional offset contributions are composed visibly before the likelihood
-seam. A likelihood builder owns error construction and the observed
-distribution. RHIME passes the completed concentration, prepared observations
-and errors, a validated ``AggregationError``, and output dimension as explicit
-arguments. Pollution contribution and pollution-event baseline remain private
-to the built-in pollution-event equations. Options specific to a custom
-likelihood travel separately in ``likelihood_kwargs``.
+and optional offset contributions are composed visibly before a custom
+likelihood is called. A likelihood builder owns error construction and the
+observed distribution. RHIME passes the completed concentration, prepared observations
+and reported observation error, a validated ``AggregationError``, and output
+dimension as explicit arguments. Minimum-error floors, pollution contribution,
+and pollution-event baseline remain private to built-in equations. Options
+specific to a custom likelihood travel separately in ``likelihood_kwargs``.
 The builder adds and returns the canonical observed variable ``y`` and also
 adds the canonical marginal error scale ``epsilon``.
 

@@ -7,16 +7,14 @@ import xarray as xr
 from scipy.stats import multivariate_normal
 
 from openghg_inversions.models.additive_sigma import (
-    _resolve_site_sigma_prior,
-    add_additive_sigma_gaussian_likelihood,
-    additive_sigma_likelihood_builder,
+    add_additive_sigma_likelihood,
 )
 from openghg_inversions.models.coords import registered_model
-from openghg_inversions.models.gaussian_likelihood import (
+from openghg_inversions.models._gaussian_observation import (
     add_aggregation_error_data,
     add_gaussian_observation_likelihood,
 )
-from openghg_inversions.models.pollution_event import build_pollution_event_error
+from openghg_inversions.models.pollution_event import add_pollution_event_likelihood
 from openghg_inversions.observation_error import resolve_aggregation_error
 from openghg_inversions.sigma import SigmaAlignment
 
@@ -41,11 +39,12 @@ def _add_pollution_event_likelihood(
     if offset is not None:
         baseline = offset if baseline is None else baseline + offset
     mean = mu if baseline is None else mu + baseline
-    state = build_pollution_event_error(
+    add_pollution_event_likelihood(
         observations=data["mf"],
         observation_error=data["mf_error"],
         minimum_error=data["min_error"],
         aggregation_error=resolve_aggregation_error(data, aggregation_error_mode),
+        mean=mean,
         pollution_mean=mu,
         pollution_event_baseline=baseline,
         sigma_alignment=sigma_alignment,
@@ -54,13 +53,6 @@ def _add_pollution_event_likelihood(
         pollution_events_from_obs=pollution_events_from_obs,
         no_model_error=no_model_error,
         retain_unused_sigma=retain_unused_sigma,
-    )
-    add_gaussian_observation_likelihood(
-        observed=state.observed,
-        mean=mean,
-        independent_variance=state.independent_variance,
-        aggregation_error=state.aggregation_error,
-        output_dim="nmeasure",
     )
 
 
@@ -279,11 +271,12 @@ def test_pollution_event_validation_names_malformed_input_and_owner() -> None:
             ValueError,
             match="Pollution-event likelihood input 'observation_error'.*finite",
         ):
-            build_pollution_event_error(
+            add_pollution_event_likelihood(
                 observations=data["mf"],
                 observation_error=data["mf_error"],
                 minimum_error=data["min_error"],
                 aggregation_error=resolve_aggregation_error(data, "none"),
+                mean=pollution_mean,
                 pollution_mean=pollution_mean,
                 pollution_event_baseline=None,
                 sigma_alignment=sigma_alignment,
@@ -307,13 +300,13 @@ def test_additive_sigma_validation_names_malformed_input_and_owner() -> None:
             ValueError,
             match="Additive-sigma likelihood input 'observation_error'.*dims",
         ):
-            add_additive_sigma_gaussian_likelihood(
+            add_additive_sigma_likelihood(
                 observations=data["mf"],
                 observation_error=malformed_error,
                 aggregation_error=resolve_aggregation_error(data, "none"),
                 mean=pm.math.constant(np.ones(3)),
-                sigma_alignment=sigma_alignment,
-                sigma_prior={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
+                additive_scale_alignment=sigma_alignment,
+                additive_scale_prior={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
             )
 
 
@@ -335,11 +328,12 @@ def test_likelihoods_reject_reordered_observation_error_coordinates(
         ):
             if component == "pollution-event":
                 pollution_mean = pm.Data("pollution_mean", np.ones(3), dims="nmeasure")
-                build_pollution_event_error(
+                add_pollution_event_likelihood(
                     observations=data["mf"],
                     observation_error=reordered_error,
                     minimum_error=data["min_error"],
                     aggregation_error=resolve_aggregation_error(data, "none"),
+                    mean=pollution_mean,
                     pollution_mean=pollution_mean,
                     pollution_event_baseline=None,
                     sigma_alignment=sigma_alignment,
@@ -349,13 +343,13 @@ def test_likelihoods_reject_reordered_observation_error_coordinates(
                     no_model_error=False,
                 )
             else:
-                add_additive_sigma_gaussian_likelihood(
+                add_additive_sigma_likelihood(
                     observations=data["mf"],
                     observation_error=reordered_error,
                     aggregation_error=resolve_aggregation_error(data, "none"),
                     mean=pm.math.constant(np.ones(3)),
-                    sigma_alignment=sigma_alignment,
-                    sigma_prior={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
+                    additive_scale_alignment=sigma_alignment,
+                    additive_scale_prior={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
                 )
 
 
@@ -368,14 +362,14 @@ def test_additive_sigma_likelihood_applies_minimum_error_floor() -> None:
         data["site_indicator"], frequency=None, per_site=False
     )
     with registered_model(coords={"nmeasure": np.arange(3)}) as model:
-        add_additive_sigma_gaussian_likelihood(
+        add_additive_sigma_likelihood(
             observations=data["mf"],
             observation_error=data["mf_error"],
-            minimum_error=data["min_error"],
+            minimum_error_floor=data["min_error"],
             aggregation_error=resolve_aggregation_error(data, "diagonal"),
             mean=pm.math.constant(np.ones(3)),
-            sigma_alignment=sigma_alignment,
-            sigma_prior={"pdf": "uniform", "lower": 0.5, "upper": 0.500001},
+            additive_scale_alignment=sigma_alignment,
+            additive_scale_prior={"pdf": "uniform", "lower": 0.5, "upper": 0.500001},
         )
 
     sigma = np.asarray(model.named_vars["sigma"].eval()).item()
@@ -392,7 +386,7 @@ def test_additive_sigma_likelihood_omits_optional_sigma_and_minimum_error() -> N
     """The fixed-error form has no disconnected optional variables."""
     data = _base_data()
     with registered_model(coords={"nmeasure": np.arange(3)}) as model:
-        add_additive_sigma_gaussian_likelihood(
+        add_additive_sigma_likelihood(
             observations=data["mf"],
             observation_error=data["mf_error"],
             aggregation_error=resolve_aggregation_error(data, "none"),
@@ -405,7 +399,7 @@ def test_additive_sigma_likelihood_omits_optional_sigma_and_minimum_error() -> N
     np.testing.assert_allclose(model["epsilon"].eval(), data["mf_error"].values)
 
 
-def test_additive_sigma_gaussian_likelihood_uses_completed_mean() -> None:
+def test_additive_sigma_likelihood_uses_completed_mean() -> None:
     """The installed likelihood consumes the complete recipe-owned mean."""
     data = _base_data()
     data["mf_error"] = ("nmeasure", np.full(3, 0.5))
@@ -415,14 +409,14 @@ def test_additive_sigma_gaussian_likelihood_uses_completed_mean() -> None:
     )
     with registered_model(coords={"nmeasure": np.arange(3)}) as model:
         mean = pm.Data("completed_mean", completed_mean, dims="nmeasure")
-        likelihood = add_additive_sigma_gaussian_likelihood(
+        likelihood = add_additive_sigma_likelihood(
             observations=data["mf"],
             observation_error=data["mf_error"],
-            minimum_error=data["min_error"],
+            minimum_error_floor=data["min_error"],
             aggregation_error=resolve_aggregation_error(data, "none"),
             mean=mean,
-            sigma_alignment=sigma_alignment,
-            sigma_prior={"pdf": "uniform", "lower": 0.2, "upper": 0.200001},
+            additive_scale_alignment=sigma_alignment,
+            additive_scale_prior={"pdf": "uniform", "lower": 0.2, "upper": 0.200001},
         )
 
     assert likelihood is model.named_vars["y"]
@@ -432,68 +426,6 @@ def test_additive_sigma_gaussian_likelihood_uses_completed_mean() -> None:
         + np.squeeze(np.asarray(model.named_vars["sigma"].eval())) ** 2
     )
     np.testing.assert_allclose(model.named_vars["epsilon"].eval(), expected_scale)
-
-
-def test_additive_sigma_likelihood_builder_uses_only_common_inputs() -> None:
-    """The model-owned builder derives sigma alignment without PEFO inputs."""
-    data = _base_data()
-    data = data.assign_coords(
-        site=("nmeasure", ["MHD", "MHD", "TAC"]),
-        time=(
-            "nmeasure",
-            np.array(["2019-01-01", "2019-01-02", "2019-01-03"], dtype="datetime64[ns]"),
-        ),
-    )
-    with registered_model(coords={"nmeasure": np.arange(3)}) as model:
-        mean = pm.Data("completed_mean", np.ones(3), dims="nmeasure")
-        likelihood = additive_sigma_likelihood_builder(
-            observations=data["mf"],
-            observation_error=data["mf_error"],
-            minimum_error=data["min_error"],
-            aggregation_error=resolve_aggregation_error(data, "none"),
-            mean=mean,
-            sigma_prior={"pdf": "uniform", "lower": 0.2, "upper": 0.200001},
-            sigma_freq="1d",
-            sigma_per_site=False,
-            output_dim="nmeasure",
-        )
-
-    assert likelihood is model.named_vars["y"]
-    np.testing.assert_allclose(model.named_vars["y"].owner.inputs[-2].eval(), np.ones(3))
-
-
-def test_additive_sigma_likelihood_builder_aligns_site_prior_scales() -> None:
-    site = xr.DataArray(["TAC", "MHD", "TAC"], dims="nmeasure")
-
-    resolved = _resolve_site_sigma_prior(
-        {
-            "pdf": "halfnormal",
-            "sigma": {"MHD": 5.0, "unused": 9.0, "TAC": 2.0},
-        },
-        site,
-        per_site=True,
-    )
-
-    assert resolved["pdf"] == "halfnormal"
-    np.testing.assert_array_equal(resolved["sigma"], [[2.0], [5.0]])
-
-
-def test_additive_sigma_likelihood_builder_rejects_incomplete_site_prior_scales() -> None:
-    site = xr.DataArray(["MHD", "TAC"], dims="nmeasure")
-
-    with pytest.raises(ValueError, match="missing retained site.*TAC"):
-        _resolve_site_sigma_prior(
-            {"pdf": "halfnormal", "sigma": {"MHD": 5.0}},
-            site,
-            per_site=True,
-        )
-
-    with pytest.raises(ValueError, match="sigma_per_site=True"):
-        _resolve_site_sigma_prior(
-            {"pdf": "halfnormal", "sigma": {"MHD": 5.0, "TAC": 2.0}},
-            site,
-            per_site=False,
-        )
 
 
 def test_observation_derived_pollution_event_subtracts_complete_baseline() -> None:
