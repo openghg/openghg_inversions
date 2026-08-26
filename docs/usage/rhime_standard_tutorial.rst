@@ -19,19 +19,19 @@ Install the package as described in :doc:`installation`, then populate the
 companion OpenGHG store from the versioned `v1.0.0 data release
 <https://github.com/openghg/openghg_inversions_tutorial_data/tree/v1.0.0>`_.
 The repository is currently private, so the release is available only to
-collaborators with repository access. Making the repository public will change
-who can clone it, not the pinned release used by this tutorial:
+collaborators with repository access. The following direct-download command
+will work without Git LFS after the repository is made public; publication will
+change access, not the pinned release used by this tutorial:
 
 .. code-block:: console
 
-   $ git clone https://github.com/openghg/openghg_inversions_tutorial_data.git
-   $ cd openghg_inversions_tutorial_data
-   $ git checkout v1.0.0
-   $ git lfs pull
-   $ python scripts/populate_store.py
+   $ pixi run -e dev python scripts/download_tutorial_data.py
+   $ cd build/tutorial-data-v1.0.0
+   $ pixi run -e dev python scripts/populate_store.py
 
-The population command verifies the LFS files and registers the resulting
-store as ``inversions_tutorial_data``. It contains real January 2020 CH4 data
+The download and population commands verify every data file against the pinned
+manifest and register the resulting store as ``inversions_tutorial_data``. It
+contains real January 2020 CH4 data
 for Mace Head (``MHD``) and Tacolneston (``TAC``): observations, matching NAME
 footprints, EDGAR v8 anthropogenic flux, WetCHARTs v1.3.1 wetlands flux, and
 CAMS v22r2 daily boundary conditions. MHD's observation inlet is ``24m`` and
@@ -269,8 +269,8 @@ a clean source checkout, run:
 
    $ pixi run -e dev docs-tutorials-record
 
-This opt-in command clones the pinned ``v1.0.0`` companion release under the
-ignored ``build`` directory, verifies its Git LFS files against the manifest,
+This opt-in command downloads the pinned ``v1.0.0`` companion release under the
+ignored ``build`` directory and verifies its files against the manifest,
 populates the named OpenGHG store, executes both downloadable notebooks, and
 updates only their paired output blocks. It records the current clean
 OpenGHG Inversions commit and the data tag, then rebuilds the rendered pages.
@@ -283,7 +283,7 @@ Controlled clean-checkout task test
 -----------------------------------
 
 Repository contributors can exercise the whole documented preparation, model,
-result, and persistence route without downloading the Git LFS bundle:
+result, and persistence route without downloading the companion data bundle:
 
 .. code-block:: console
 

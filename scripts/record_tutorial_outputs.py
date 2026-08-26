@@ -13,11 +13,11 @@ from typing import Iterator, Sequence
 
 import nbformat
 
+from scripts.download_tutorial_data import DATA_TAG, download_release
+
 
 _ROOT = Path(__file__).resolve().parents[1]
-_DATA_REPOSITORY = "git@github.com:openghg/openghg_inversions_tutorial_data.git"
-_DATA_TAG = "v1.0.0"
-_DEFAULT_DATA_DIRECTORY = _ROOT / "build" / f"tutorial-data-{_DATA_TAG}"
+_DEFAULT_DATA_DIRECTORY = _ROOT / "build" / f"tutorial-data-{DATA_TAG}"
 _NOTEBOOK_DIRECTORY = _ROOT / "docs" / "_build" / "jupyter_execute" / "usage"
 _RUN_DIRECTORY = _ROOT / "docs" / "_build" / "tutorial-runs"
 _RECORDER_HOME = _RUN_DIRECTORY / "home"
@@ -122,24 +122,7 @@ def _require_clean_checkout() -> str:
 
 def _prepare_data(directory: Path) -> None:
     """Obtain, verify, and populate the pinned companion-data release."""
-    if not directory.exists():
-        _run(
-            [
-                "git",
-                "clone",
-                "--branch",
-                _DATA_TAG,
-                "--depth",
-                "1",
-                _DATA_REPOSITORY,
-                str(directory),
-            ]
-        )
-    head = _run(["git", "rev-parse", "HEAD"], cwd=directory)
-    tag = _run(["git", "rev-list", "-n", "1", _DATA_TAG], cwd=directory)
-    if head != tag:
-        raise RuntimeError(f"{directory} is not checked out at {_DATA_TAG} ({tag}).")
-    _run(["git", "lfs", "pull"], cwd=directory)
+    download_release(directory)
     _RECORDER_HOME.mkdir(parents=True, exist_ok=True)
     env = {**os.environ, "HOME": str(_RECORDER_HOME)}
     _run([sys.executable, "scripts/populate_store.py"], cwd=directory, env=env)
@@ -151,7 +134,7 @@ def _recording_environment(code_ref: str, output_path: Path) -> Iterator[None]:
     values = {
         "HOME": str(_RECORDER_HOME),
         "OPENGHG_TUTORIAL_CODE_REF": code_ref,
-        "OPENGHG_TUTORIAL_DATA_TAG": _DATA_TAG,
+        "OPENGHG_TUTORIAL_DATA_TAG": DATA_TAG,
         "OPENGHG_TUTORIAL_OUTPUT_PATH": str(output_path),
     }
     previous = {name: os.environ.get(name) for name in values}

@@ -211,7 +211,7 @@ For a clean-checkout mechanics test, run
 two maintained fixture products, one a dimension-shuffled numerical duplicate,
 and deterministic sampling. That verifies labelled routing and persistence,
 not scientific sector separation. Normal CI does not clone or download the
-Git LFS repository.
+companion data repository.
 
 Common failures
 ---------------

@@ -21,23 +21,26 @@ def test_run_reports_captured_subprocess_output(monkeypatch: pytest.MonkeyPatch)
         record_tutorial_outputs._run(["example", "command"])
 
 
-def test_prepare_data_uses_an_isolated_openghg_home(
+def test_prepare_data_downloads_release_and_uses_an_isolated_openghg_home(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     data_directory = tmp_path / "data"
     data_directory.mkdir()
     recorder_home = tmp_path / "recorder-home"
     calls: list[tuple[list[str], dict[str, str] | None]] = []
+    downloads = []
 
     def fake_run(command, *, cwd=record_tutorial_outputs._ROOT, env=None):
         calls.append((command, env))
-        return "same-commit" if command[:2] == ["git", "rev-parse"] else "same-commit"
+        return ""
 
     monkeypatch.setattr(record_tutorial_outputs, "_RECORDER_HOME", recorder_home)
     monkeypatch.setattr(record_tutorial_outputs, "_run", fake_run)
+    monkeypatch.setattr(record_tutorial_outputs, "download_release", downloads.append)
 
     record_tutorial_outputs._prepare_data(data_directory)
 
+    assert downloads == [data_directory]
     populate_env = calls[-1][1]
     assert populate_env is not None
     assert populate_env["HOME"] == str(recorder_home)
