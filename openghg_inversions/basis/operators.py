@@ -60,6 +60,7 @@ from openghg_inversions.array_ops import (
     concat_gather_data_arrays,
     force_align,
     get_xr_dummies,
+    iter_multi_index_level_slices,
 )
 from openghg_inversions.basis.layout import (
     BasisStateMetadata,
@@ -1016,22 +1017,30 @@ class MultiSourceBucketBasisOperator(BasisOperator):
         mat_aligned = mat_aligned.transpose(*self.meta.grid_dims, ...)
 
         if self.source_dim in fp_x_flux.dims:
-            state_sources = np.asarray(mat_aligned[self.source_dim].values)
             pieces = []
-            for source in self.source_labels:
-                source_flux = fp_x_flux.sel({self.source_dim: source}, drop=True)
+            positions = []
+            for _, source_positions, source_flux in iter_multi_index_level_slices(
+                fp_x_flux,
+                multi_index=mat_aligned[self.meta.state_dim],
+                multi_dim=self.meta.state_dim,
+                level=self.source_dim,
+                array_dim=self.source_dim,
+            ):
                 if fillna:
                     source_flux = source_flux.fillna(0.0)
+                positions.append(source_positions)
                 pieces.append(
                     xr.dot(
                         source_flux,
-                        mat_aligned.isel(
-                            {self.meta.state_dim: np.flatnonzero(state_sources == source)}
-                        ),
+                        mat_aligned.isel({self.meta.state_dim: source_positions}),
                         dim=list(self.meta.grid_dims),
                     )
                 )
-            h = xr.concat(pieces, dim=self.meta.state_dim).as_numpy()
+            gathered_positions = np.concatenate(positions)
+            h = xr.concat(pieces, dim=self.meta.state_dim)
+            if not np.array_equal(gathered_positions, np.arange(mat_aligned.sizes[self.meta.state_dim])):
+                h = h.isel({self.meta.state_dim: np.argsort(gathered_positions)})
+            h = h.as_numpy()
         elif fillna:
             h = xr.dot(fp_x_flux.fillna(0.0), mat_aligned, dim=list(self.meta.grid_dims)).as_numpy()
         else:

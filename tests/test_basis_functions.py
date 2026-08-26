@@ -2237,6 +2237,42 @@ def test_multisource_sensitivity_projects_each_source_before_gathering(monkeypat
     assert all("region" not in dims and "source" not in dims for dims in projected_dims)
 
 
+def test_multisource_sensitivity_accepts_reordered_exact_sources() -> None:
+    """Source labels, rather than input position, select each gathered state block."""
+    sources = ["A", "B"]
+    basis = make_basis_flat_from_blocks([[1, 1], [2, 2]])
+    basis_functions = BasisFunctions.from_multi_source_flat_basis(
+        basis_flat={source: basis for source in sources},
+        flux=xr.ones_like(basis, dtype=float),
+        operator_kwargs={"state_dim": "region"},
+    )
+    fp_x_flux = make_fp_x_flux_sectoral(sources=sources, nlat=2, nlon=2, ntime=3)
+
+    expected = basis_functions.sensitivity(fp_x_flux)
+    actual = basis_functions.sensitivity(fp_x_flux.sel(source=["B", "A"]))
+
+    xr.testing.assert_identical(actual, expected)
+
+
+def test_multisource_sensitivity_source_independent_control() -> None:
+    """A shared spatial input retains the ordinary single-dot path."""
+    basis = make_basis_flat_from_blocks([[1, 1], [2, 2]])
+    basis_functions = BasisFunctions.from_multi_source_flat_basis(
+        basis_flat={"A": basis, "B": basis},
+        flux=xr.ones_like(basis, dtype=float),
+        operator_kwargs={"state_dim": "region"},
+    )
+    fp_x_flux = make_fp_x_flux(nlat=2, nlon=2, ntime=3)
+
+    sensitivity = basis_functions.sensitivity(fp_x_flux)
+
+    assert sensitivity.dims == ("region", "time")
+    xr.testing.assert_identical(
+        sensitivity.sel(source="A", drop=True),
+        sensitivity.sel(source="B", drop=True),
+    )
+
+
 def test_basis_functions_from_fp_all_flat_basis(tac_ch4_data_args):
     """Construct BasisFunctions object from fp_all side-channel flux data."""
     fp_all, *_ = data_processing_surface_notracer(**tac_ch4_data_args)

@@ -11,6 +11,7 @@ from openghg_inversions.array_ops import (
     concat_gather_data_arrays,
     concat_gather_datatree,
     concat_gather_datasets,
+    iter_multi_index_level_slices,
     select_gathered_data_array,
     validate_covariance_coordinates,
 )
@@ -159,6 +160,65 @@ def test_align_to_multi_index_level_values_broadcasts_source_to_state():
     # the coordinate for `other_dim` is not dropped before assigning the MultiIndex.
     # The test here is just that this doesn't cause an error.
     _ = res * expected_da
+
+
+def test_iter_multi_index_level_slices_preserves_target_order_and_positions() -> None:
+    """Unique-level inputs may be reordered while gathered positions remain canonical."""
+    values = xr.DataArray(
+        [[20.0, 21.0], [10.0, 11.0]],
+        dims=("source", "time"),
+        coords={"source": ["B", "A"]},
+    )
+    index = pd.MultiIndex.from_tuples(
+        [("B", 0), ("A", 0), ("B", 1), ("A", 1)],
+        names=("source", "region_in_source"),
+    )
+    state = xr.Coordinates.from_pandas_multiindex(index, "state")["state"]
+
+    slices = list(
+        iter_multi_index_level_slices(
+            values,
+            multi_index=state,
+            multi_dim="state",
+            level="source",
+            array_dim="source",
+        )
+    )
+
+    assert [value for value, _, _ in slices] == ["B", "A"]
+    np.testing.assert_array_equal(slices[0][1], [0, 2])
+    np.testing.assert_array_equal(slices[1][1], [1, 3])
+    xr.testing.assert_identical(slices[0][2], values.sel(source="B", drop=True))
+    xr.testing.assert_identical(slices[1][2], values.sel(source="A", drop=True))
+
+
+@pytest.mark.parametrize(
+    ("labels", "match"),
+    [
+        (["A"], "missing.*B"),
+        (["A", "B", "C"], "extra.*C"),
+        (["A", "A", "B"], "must be unique"),
+    ],
+)
+def test_iter_multi_index_level_slices_rejects_invalid_unique_labels(labels, match) -> None:
+    """Split application requires one input for every represented level value."""
+    values = xr.DataArray(np.arange(len(labels)), dims="source", coords={"source": labels})
+    index = pd.MultiIndex.from_tuples(
+        [("A", 0), ("B", 0), ("B", 1)],
+        names=("source", "region_in_source"),
+    )
+    state = xr.Coordinates.from_pandas_multiindex(index, "state")["state"]
+
+    with pytest.raises(ValueError, match=match):
+        list(
+            iter_multi_index_level_slices(
+                values,
+                multi_index=state,
+                multi_dim="state",
+                level="source",
+                array_dim="source",
+            )
+        )
 
 
 def test_align_to_multi_index_level_values_with_other_level_as_coord_raises():
