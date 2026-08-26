@@ -15,6 +15,7 @@ from pathlib import Path
 import dask
 import numpy as np
 import xarray as xr
+from sparse import SparseArray
 
 from openghg_inversions.array_ops import (
     align_to_multi_index_level_values,
@@ -100,6 +101,21 @@ def sensitivity_pr651(operator: MultiSourceBucketBasisOperator, fp_x_flux: xr.Da
     return result.transpose(operator.meta.state_dim, "time", ...)
 
 
+def sensitivity_native(operator: MultiSourceBucketBasisOperator, fp_x_flux: xr.DataArray) -> xr.DataArray:
+    native_source_dim = "native_source"
+    fp_native = fp_x_flux.rename({operator.source_dim: native_source_dim})
+    prolongation = operator.native_prolongation(
+        fp_native,
+        native_dims=(native_source_dim, *operator.meta.grid_dims),
+    )
+    result = xr.dot(
+        fp_native.fillna(0.0),
+        prolongation,
+        dim=(native_source_dim, *operator.meta.grid_dims),
+    ).as_numpy()
+    return result.transpose(operator.meta.state_dim, "time", ...)
+
+
 def interpolation_sourcewise(
     operator: MultiSourceBucketBasisOperator,
     state: xr.DataArray,
@@ -153,7 +169,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "operation",
-        choices=("sensitivity-broadcast", "sensitivity-pr651", "sensitivity-helper", "interpolation-current", "interpolation-sourcewise", "sensitivity-shared", "interpolation-shared"),
+        choices=("sensitivity-broadcast", "sensitivity-pr651", "sensitivity-helper", "sensitivity-native", "interpolation-current", "interpolation-sourcewise", "sensitivity-shared", "interpolation-shared"),
     )
     parser.add_argument("--execution", choices=("eager", "dask"), default="eager")
     parser.add_argument("--states", default="12,15,18,8")
@@ -171,11 +187,23 @@ def main() -> None:
 
     operator, fp_x_flux, weights, state = make_fixture(args)
     tasks: set[object] = set()
-    callbacks = dask.callbacks.Callback(pretask=lambda key, _graph, _state: tasks.add(key))
+    observed_chunk_bytes = {"dense": 0, "sparse": 0}
+
+    def record_chunk(_key, result, _graph, _state, _worker_id) -> None:
+        if isinstance(result, np.ndarray):
+            observed_chunk_bytes["dense"] = max(observed_chunk_bytes["dense"], result.nbytes)
+        elif isinstance(result, SparseArray):
+            observed_chunk_bytes["sparse"] = max(observed_chunk_bytes["sparse"], result.nbytes)
+
+    callbacks = dask.callbacks.Callback(
+        pretask=lambda key, _graph, _state: tasks.add(key),
+        posttask=record_chunk,
+    )
     operations: dict[str, Callable[[], xr.DataArray]] = {
         "sensitivity-broadcast": lambda: sensitivity_broadcast(operator, fp_x_flux),
         "sensitivity-pr651": lambda: sensitivity_pr651(operator, fp_x_flux),
         "sensitivity-helper": lambda: operator.sensitivity(fp_x_flux),
+        "sensitivity-native": lambda: sensitivity_native(operator, fp_x_flux),
         "interpolation-current": lambda: operator.interpolate(state, weights=weights),
         "interpolation-sourcewise": lambda: interpolation_sourcewise(operator, state, weights),
         "sensitivity-shared": lambda: operator.sensitivity(fp_x_flux.sum("source")),
@@ -222,6 +250,8 @@ def main() -> None:
                 "wall_seconds": wall_seconds,
                 "peak_rss_mib": peak_rss_kib / 1024,
                 "dask_tasks": len(tasks),
+                "max_observed_dense_chunk_mib": observed_chunk_bytes["dense"] / 1024**2,
+                "max_observed_sparse_chunk_mib": observed_chunk_bytes["sparse"] / 1024**2,
                 "broadcast_intermediate_shape": [
                     operator.basis_matrix.sizes["state"],
                     args.time,

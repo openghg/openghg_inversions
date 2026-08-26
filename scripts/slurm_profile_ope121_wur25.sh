@@ -12,14 +12,17 @@ VG_REVISION="${VG_REVISION:?VG_REVISION must name the exact VG commit}"
 OGI_CHECKOUT="${OGI_CHECKOUT:?OGI_CHECKOUT must name the exact OGI checkout}"
 OGI_REVISION="${OGI_REVISION:?OGI_REVISION must name the exact OGI commit}"
 OUTPUT_ROOT="${OUTPUT_ROOT:?OUTPUT_ROOT must name a new output directory}"
-PROFILE_MODE="${PROFILE_MODE:?PROFILE_MODE must be single or full}"
+PROFILE_MODE="${PROFILE_MODE:?PROFILE_MODE must be single, single-native, or full}"
 PYTHON="${PYTHON:-/group/chem/acrg/verification_games_round_2/verification-games/.venv/bin/python}"
 OBS_PATH="${OBS_PATH:-/group/chem/acrg/verification_games_round_2/games_catalog/data/verification_games_obs/WUR/CTE_STILT_EUROPE_BASE_co2_concentrations_2021.nc}"
 
+unset OPE121_STOP_AFTER_FIRST OPE121_COMPARE_PR651 OPE121_PROFILE_NATIVE
 if [[ "${PROFILE_MODE}" == "single" ]]; then
   export OPE121_STOP_AFTER_FIRST=1 OPE121_COMPARE_PR651=1
+elif [[ "${PROFILE_MODE}" == "single-native" ]]; then
+  export OPE121_STOP_AFTER_FIRST=1 OPE121_COMPARE_PR651=1 OPE121_PROFILE_NATIVE=1
 elif [[ "${PROFILE_MODE}" != "full" ]]; then
-  echo "PROFILE_MODE must be single or full" >&2
+  echo "PROFILE_MODE must be single, single-native, or full" >&2
   exit 2
 fi
 
