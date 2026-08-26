@@ -442,8 +442,6 @@ def build_multisector_rhime_model(
                 minimum_error=minimum_error,
                 aggregation_error=aggregation_error,
                 mean=modelled_mean,
-                pollution_mean=pollution_mean,
-                pollution_event_baseline=baseline_mean,
                 output_dim="nmeasure",
                 **(likelihood_kwargs or {}),
             )

@@ -50,6 +50,7 @@ from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInpu
 from openghg_inversions.inversion_inputs import make_inv_inputs
 from openghg_inversions.models import StateActivity
 from openghg_inversions.models._flux import safe_pymc_name
+from openghg_inversions.models.additive_sigma import additive_sigma_likelihood_builder
 from openghg_inversions.observation_error import AggregationError, resolve_aggregation_error
 from openghg_inversions.postprocessing._basis_products import (
     BASIS_ARTIFACT_PATH_OUTPUT_ATTR,
@@ -67,6 +68,7 @@ from openghg_inversions.postprocessing.make_paris_outputs import PARIS_LATEST_CO
 from openghg_inversions.rhime import (
     RhimeModelBuilderContext,
     RhimeModelBuildResult,
+    RhimeLikelihoodBuilder,
     RhimeModelSpec,
     RhimeOutputSpec,
     RhimeResult,
@@ -79,7 +81,6 @@ from openghg_inversions.rhime import (
     run_rhime_from_prepared_inputs,
     run_rhime_multisector,
 )
-from openghg_inversions.rhime.likelihoods import additive_sigma_likelihood_builder
 from openghg_inversions.rhime.multisector import (
     build_multisector_rhime_model as _build_rhime_multisector_model,
 )
@@ -900,8 +901,12 @@ def test_recipe_passes_completed_forward_mean_to_custom_likelihood(
         model = build_rhime_multisector_model(
             multisector_inv_inputs,
             sectors=(
-                _sector("total-ukghg-edgar7", prior=builder_args["x_prior"]),
-                _sector("sector-2", prior=builder_args["x_prior"]),
+                _sector(
+                    "total-ukghg-edgar7",
+                    suffix="ff",
+                    prior=builder_args["x_prior"],
+                ),
+                _sector("sector-2", suffix="ocean", prior=builder_args["x_prior"]),
             ),
             **_multisector_args(kwargs),
         )
@@ -916,24 +921,25 @@ def test_recipe_passes_completed_forward_mean_to_custom_likelihood(
         "minimum_error",
         "aggregation_error",
         "mean",
-        "pollution_mean",
-        "pollution_event_baseline",
         "output_dim",
     }
-    assert call["pollution_event_baseline"] is not None
-    mean, pollution, baseline, boundary, offset = pm.draw(
+    pollution = model["mu_ff"] + model["mu_ocean"] if multisector else model["mu"]
+    mean, pollution_value, boundary, offset = pm.draw(
         [
             call["mean"],
-            call["pollution_mean"],
-            call["pollution_event_baseline"],
+            pollution,
             model["mu_bc"],
             model["offset"],
         ],
         draws=1,
         random_seed=123,
     )
-    np.testing.assert_allclose(baseline, boundary + offset, rtol=5e-7, atol=1e-5)
-    np.testing.assert_allclose(mean, pollution + baseline, rtol=5e-7, atol=1e-5)
+    np.testing.assert_allclose(
+        mean,
+        pollution_value + boundary + offset,
+        rtol=5e-7,
+        atol=1e-5,
+    )
     assert "mu_baseline" not in model.named_vars
     if multisector:
         assert "mu" not in model.named_vars
@@ -951,6 +957,22 @@ def test_editable_example_builder_adds_canonical_student_t_likelihood(
     )
     assert example_likelihoods.likelihood_builder.__module__ == example_likelihoods.__name__
     assert type(example_model["y"].owner.op).__name__ == "StudentTRV"
+
+
+def test_non_pefo_likelihood_builders_use_the_common_contract() -> None:
+    """General likelihood seams expose no pollution-event-only inputs."""
+    pefo_inputs = {"pollution_mean", "pollution_event_baseline"}
+    for builder in (
+        RhimeLikelihoodBuilder.__call__,
+        additive_sigma_likelihood_builder,
+        example_likelihoods.likelihood_builder,
+    ):
+        assert pefo_inputs.isdisjoint(inspect.signature(builder).parameters)
+
+    assert (
+        additive_sigma_likelihood_builder.__module__
+        == "openghg_inversions.models.additive_sigma"
+    )
 
 
 def test_recipe_expands_only_explicit_custom_likelihood_options(
@@ -1007,8 +1029,6 @@ def test_editable_example_builder_rejects_correlated_aggregation_error(
                 minimum_error=data["min_error"],
                 aggregation_error=resolve_aggregation_error(data, cast(Any, aggregation_error_mode)),
                 mean=pm.math.constant(np.zeros(data.sizes["nmeasure"])),
-                pollution_mean=pm.math.constant(np.zeros(data.sizes["nmeasure"])),
-                pollution_event_baseline=None,
                 output_dim="nmeasure",
             )
     assert model.named_vars == {}
@@ -2365,12 +2385,12 @@ def test_multisector_model_preserves_additive_semantics(
     }
     model = build_rhime_multisector_model(multisector_inv_inputs, **kwargs)
 
-    pollution, ff, ocean = pm.draw(
-        [captured["pollution_mean"], model["mu_ff"], model["mu_ocean"]],
+    completed_mean, ff, ocean_and_baseline = pm.draw(
+        [captured["mean"], model["mu_ff"], model["mu_ocean"] + model["mu_bc"]],
         draws=2,
         random_seed=403,
     )
-    np.testing.assert_allclose(pollution, ff + ocean)
+    np.testing.assert_allclose(completed_mean, ff + ocean_and_baseline)
     assert "mu" not in model.named_vars
 
 

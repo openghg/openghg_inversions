@@ -279,9 +279,11 @@ def build_standard_rhime_model(
         if offset is not None:
             baseline_mean = offset if baseline_mean is None else baseline_mean + offset
         modelled_mean = pollution_mean if baseline_mean is None else pollution_mean + baseline_mean
-        pollution_event_baseline = boundary_mean if preserve_legacy_likelihood else baseline_mean
 
         if likelihood_builder is None:
+            pollution_event_baseline = (
+                boundary_mean if preserve_legacy_likelihood else baseline_mean
+            )
             build_pollution_event_gaussian_likelihood(
                 observations=observations,
                 observation_error=observation_error,
@@ -305,8 +307,6 @@ def build_standard_rhime_model(
                 minimum_error=minimum_error,
                 aggregation_error=aggregation_error,
                 mean=modelled_mean,
-                pollution_mean=pollution_mean,
-                pollution_event_baseline=pollution_event_baseline,
                 output_dim="nmeasure",
                 **(likelihood_kwargs or {}),
             )

@@ -6,18 +6,18 @@ import pytest
 import xarray as xr
 from scipy.stats import multivariate_normal
 
-from openghg_inversions.models.additive_sigma import add_additive_sigma_gaussian_likelihood
+from openghg_inversions.models.additive_sigma import (
+    _resolve_site_sigma_prior,
+    add_additive_sigma_gaussian_likelihood,
+    additive_sigma_likelihood_builder,
+)
 from openghg_inversions.models.coords import registered_model
-from openghg_inversions.models.likelihoods import (
+from openghg_inversions.models.gaussian_likelihood import (
     add_aggregation_error_data,
     add_gaussian_observation_likelihood,
 )
 from openghg_inversions.models.pollution_event import build_pollution_event_error
 from openghg_inversions.observation_error import resolve_aggregation_error
-from openghg_inversions.rhime.likelihoods import (
-    _resolve_site_sigma_prior,
-    additive_sigma_likelihood_builder,
-)
 from openghg_inversions.sigma import SigmaAlignment
 
 
@@ -434,8 +434,8 @@ def test_additive_sigma_gaussian_likelihood_uses_completed_mean() -> None:
     np.testing.assert_allclose(model.named_vars["epsilon"].eval(), expected_scale)
 
 
-def test_rhime_additive_sigma_adapter_accepts_pollution_event_inputs() -> None:
-    """The RHIME adapter owns sigma alignment and ignores pollution inputs."""
+def test_additive_sigma_likelihood_builder_uses_only_common_inputs() -> None:
+    """The model-owned builder derives sigma alignment without PEFO inputs."""
     data = _base_data()
     data = data.assign_coords(
         site=("nmeasure", ["MHD", "MHD", "TAC"]),
@@ -452,8 +452,6 @@ def test_rhime_additive_sigma_adapter_accepts_pollution_event_inputs() -> None:
             minimum_error=data["min_error"],
             aggregation_error=resolve_aggregation_error(data, "none"),
             mean=mean,
-            pollution_mean=pm.math.constant(np.full(3, 99.0)),
-            pollution_event_baseline=pm.math.constant(np.full(3, -99.0)),
             sigma_prior={"pdf": "uniform", "lower": 0.2, "upper": 0.200001},
             sigma_freq="1d",
             sigma_per_site=False,
@@ -464,7 +462,7 @@ def test_rhime_additive_sigma_adapter_accepts_pollution_event_inputs() -> None:
     np.testing.assert_allclose(model.named_vars["y"].owner.inputs[-2].eval(), np.ones(3))
 
 
-def test_rhime_additive_sigma_adapter_aligns_site_prior_scales() -> None:
+def test_additive_sigma_likelihood_builder_aligns_site_prior_scales() -> None:
     site = xr.DataArray(["TAC", "MHD", "TAC"], dims="nmeasure")
 
     resolved = _resolve_site_sigma_prior(
@@ -480,7 +478,7 @@ def test_rhime_additive_sigma_adapter_aligns_site_prior_scales() -> None:
     np.testing.assert_array_equal(resolved["sigma"], [[2.0], [5.0]])
 
 
-def test_rhime_additive_sigma_adapter_rejects_incomplete_site_prior_scales() -> None:
+def test_additive_sigma_likelihood_builder_rejects_incomplete_site_prior_scales() -> None:
     site = xr.DataArray(["MHD", "TAC"], dims="nmeasure")
 
     with pytest.raises(ValueError, match="missing retained site.*TAC"):
