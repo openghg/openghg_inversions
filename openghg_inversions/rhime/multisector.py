@@ -37,7 +37,6 @@ from openghg_inversions.models.state_activity import (
 )
 from openghg_inversions.observation_error import (
     AggregationError,
-    OBSERVATION_ERROR_INPUT_NAMES,
     aggregation_error_input_names,
     resolve_aggregation_error,
 )
@@ -47,6 +46,7 @@ from .specs import (
     DEFAULT_BC_PRIOR,
     DEFAULT_OFFSET_PRIOR,
     DEFAULT_SIGMA_PRIOR,
+    MismatchModel,
     RhimeModelSpec,
     RhimeRunSpec,
     SectorSpec,
@@ -65,8 +65,8 @@ from .builders import (
 )
 from .likelihood_seam import (
     RhimeLikelihoodBuilder,
-    legacy_additive_sigma_options,
-    prepare_legacy_additive_sigma,
+    prepare_additive_sigma_inputs,
+    translate_legacy_likelihood_selection,
     validate_custom_likelihood_result,
     validate_likelihood_kwargs,
 )
@@ -86,6 +86,7 @@ from .sampling import RhimeSampler, sample_rhime_model
 
 _SectorComponent = tuple[SectorSpec, PreparedLinearSensitivity, PriorArgs, StateActivity]
 _MULTISECTOR_FLUX_INPUT_NAMES = ("H",)
+_OBSERVATION_INPUT_NAMES = ("mf", "mf_error")
 _MODEL_ERROR_ALIGNMENT_INPUT_NAMES = ("site_indicator",)
 _BASELINE_INPUT_NAMES = ("H_bc",)
 
@@ -107,7 +108,6 @@ def multisector_model_input_names(
     model_spec: RhimeModelSpec,
     *,
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
-    likelihood_kwargs: Mapping[str, Any] | None = None,
 ) -> tuple[str, ...]:
     """Declare arrays required by selected multisector-model components.
 
@@ -116,9 +116,6 @@ def multisector_model_input_names(
         model_spec: Resolved multisector component options.
         likelihood_builder: Custom likelihood which owns any additional error
             inputs itself.
-        likelihood_kwargs: Options supplied to a custom or compatibility
-            likelihood seam.
-
     Returns:
         Prepared variable names selected for coordinated materialization.
 
@@ -133,17 +130,15 @@ def multisector_model_input_names(
     )
     _require_component_inputs(
         prepared,
-        OBSERVATION_ERROR_INPUT_NAMES,
+        _OBSERVATION_INPUT_NAMES,
         owner="Observation-error component",
     )
     names = [
         *_MULTISECTOR_FLUX_INPUT_NAMES,
-        *OBSERVATION_ERROR_INPUT_NAMES,
+        *_OBSERVATION_INPUT_NAMES,
     ]
-    legacy_additive = legacy_additive_sigma_options(likelihood_builder, likelihood_kwargs)
-    needs_model_error_alignment = (
-        legacy_additive is not None and not legacy_additive.get("no_model_error", False)
-    ) or (likelihood_builder is None and not model_spec.no_model_error)
+    builtin_mismatch = likelihood_builder is None
+    needs_model_error_alignment = builtin_mismatch and not model_spec.no_model_error
     if needs_model_error_alignment:
         _require_component_inputs(
             prepared,
@@ -151,6 +146,17 @@ def multisector_model_input_names(
             owner="Model-error alignment component",
         )
         names.extend(_MODEL_ERROR_ALIGNMENT_INPUT_NAMES)
+    needs_minimum_error = builtin_mismatch and (
+        model_spec.mismatch_model == "pollution_event"
+        or model_spec.use_minimum_error_floor
+    )
+    if needs_minimum_error:
+        _require_component_inputs(
+            prepared,
+            ("min_error",),
+            owner="Selected minimum-error floor",
+        )
+        names.append("min_error")
     if model_spec.use_bc:
         _require_component_inputs(
             prepared,
@@ -302,7 +308,7 @@ def build_multisector_rhime_model(
     *,
     observations: xr.DataArray,
     observation_error: xr.DataArray,
-    minimum_error: xr.DataArray,
+    minimum_error: xr.DataArray | None = None,
     aggregation_error: AggregationError,
     sigma_alignment: SigmaAlignment | None = None,
     sectors: Sequence[SectorSpec],
@@ -318,7 +324,7 @@ def build_multisector_rhime_model(
     power: PriorArgs | float = 1.99,
     state_activity: StateActivity | None = None,
     bc_state_activity: StateActivity | None = None,
-    mismatch_model: str = "pollution_event",
+    mismatch_model: MismatchModel = "pollution_event",
     additive_scale_alignment: SigmaAlignment | None = None,
     additive_scale_prior: Mapping[str, Any] | None = None,
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
@@ -336,7 +342,9 @@ def build_multisector_rhime_model(
             either shared-basis or gathered source-specific state layout.
         observations: Observed mole fractions.
         observation_error: Reported observation-error standard deviations.
-        minimum_error: Minimum total-error standard deviations.
+        minimum_error: Optional minimum total-error standard deviations. The
+            pollution-event mismatch requires it; additive sigma uses it only
+            when the resolved model spec opts into the historical floor.
         aggregation_error: Validated fixed aggregation-error representation.
         sigma_alignment: Observation alignment for mismatch parameters when
             model error is enabled.
@@ -464,6 +472,10 @@ def build_multisector_rhime_model(
                 output_dim="nmeasure",
             )
         else:
+            if minimum_error is None:
+                raise ValueError(
+                    "Pollution-event mismatch requires the prepared `min_error` input."
+                )
             add_pollution_event_likelihood(
                 observations=observations,
                 observation_error=observation_error,
@@ -590,11 +602,6 @@ def build_multisector_rhime_model_result(
         validate_model_build_result(result, context=builder_context)
     else:
         model_spec = run_spec.model
-        legacy_additive = legacy_additive_sigma_options(likelihood_builder, likelihood_kwargs)
-        custom_likelihood_builder = (
-            None if legacy_additive is not None else likelihood_builder
-        )
-        custom_likelihood_kwargs = None if legacy_additive is not None else likelihood_kwargs
         sigma_alignment = (
             SigmaAlignment.from_frequency(
                 model_inputs["site_indicator"],
@@ -602,19 +609,23 @@ def build_multisector_rhime_model_result(
                 per_site=model_spec.sigma_per_site,
                 anchor_time=model_spec.sigma_freq_anchor,
             )
-            if custom_likelihood_builder is None
-            and legacy_additive is None
+            if likelihood_builder is None
+            and model_spec.mismatch_model == "pollution_event"
             and not model_spec.no_model_error
             else None
         )
         additive_scale_alignment = None
         additive_scale_prior = None
-        if legacy_additive is not None:
-            additive_scale_alignment, additive_scale_prior = prepare_legacy_additive_sigma(
+        if likelihood_builder is None and model_spec.mismatch_model == "additive_sigma":
+            additive_scale_alignment, additive_scale_prior = prepare_additive_sigma_inputs(
                 model_inputs["mf"],
                 output_dim="nmeasure",
                 site_indicator=model_inputs.get("site_indicator"),
-                **legacy_additive,
+                sigma_prior=model_spec.sigma_prior,
+                sigma_freq=model_spec.sigma_freq,
+                sigma_per_site=model_spec.sigma_per_site,
+                sigma_freq_anchor=model_spec.sigma_freq_anchor,
+                no_model_error=model_spec.no_model_error,
             )
         aggregation_error = resolve_aggregation_error(
             model_inputs,
@@ -624,16 +635,14 @@ def build_multisector_rhime_model_result(
             model_inputs["H"],
             observations=model_inputs["mf"],
             observation_error=model_inputs["mf_error"],
-            minimum_error=model_inputs["min_error"],
+            minimum_error=model_inputs.get("min_error"),
             aggregation_error=aggregation_error,
             sigma_alignment=sigma_alignment,
             sectors=model_spec.sectors,
             boundary_sensitivity=model_inputs.get("H_bc"),
             bc_prior=model_spec.bc_prior,
             bc_state_activity=model_spec.bc_state_activity,
-            mismatch_model=(
-                "additive_sigma" if legacy_additive is not None else "pollution_event"
-            ),
+            mismatch_model=model_spec.mismatch_model,
             additive_scale_alignment=additive_scale_alignment,
             additive_scale_prior=additive_scale_prior,
             sigma_prior=model_spec.sigma_prior,
@@ -645,14 +654,14 @@ def build_multisector_rhime_model_result(
             offset_args=model_spec.offset_args,
             power=model_spec.power,
             state_activity=model_spec.state_activity,
-            likelihood_builder=custom_likelihood_builder,
-            likelihood_kwargs=custom_likelihood_kwargs,
+            likelihood_builder=likelihood_builder,
+            likelihood_kwargs=likelihood_kwargs,
         )
         result = builtin_model_build_result(
             model,
             model_spec=run_spec.model,
             multisector=True,
-            input_names=tuple(str(name) for name in prepared.inv_inputs.data_vars),
+            input_names=tuple(str(name) for name in model_inputs.data_vars),
         )
     log_timing("rhime.model_build", timer_seconds(timing_start), multisector=True)
     return result
@@ -769,6 +778,11 @@ def run_rhime_multisector(
         if config_file is not None
         else dict(kwargs)
     )
+    model_options, likelihood_builder, likelihood_kwargs = translate_legacy_likelihood_selection(
+        likelihood_builder,
+        likelihood_kwargs,
+    )
+    params.update(model_options)
     setup = resolve_rhime_options(params=params, multisector=True)
 
     preparation_start = timer_start()
@@ -804,7 +818,6 @@ def run_rhime_multisector(
             prepared,
             run_spec.model,
             likelihood_builder=likelihood_builder,
-            likelihood_kwargs=likelihood_kwargs,
         ),
     )
     build_and_sample_start = timer_start()

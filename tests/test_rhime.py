@@ -897,7 +897,12 @@ def test_recipe_passes_completed_forward_mean_to_custom_likelihood(
         calls.append(kwargs)
         return example_likelihoods.likelihood_builder(**kwargs)
 
-    kwargs = {**builder_args, "add_offset": True, "likelihood_builder": capture_inputs}
+    kwargs = {
+        key: value
+        for key, value in builder_args.items()
+        if key != "minimum_error"
+    }
+    kwargs.update(add_offset=True, likelihood_builder=capture_inputs)
     if multisector:
         model = build_rhime_multisector_model(
             multisector_inv_inputs,
@@ -955,7 +960,11 @@ def test_builtin_additive_peer_uses_completed_forward_mean(
     """Both recipes compose their full mean before the additive component."""
     inv_inputs = multisector_inv_inputs if multisector else rhime_inv_inputs
     kwargs = {
-        **builder_args,
+        **{
+            key: value
+            for key, value in builder_args.items()
+            if key != "minimum_error"
+        },
         "add_offset": True,
         "mismatch_model": "additive_sigma",
         "additive_scale_alignment": SigmaAlignment.from_frequency(
@@ -1481,7 +1490,10 @@ def test_non_default_sigma_owner_does_not_construct_sigma_alignment(
     custom_likelihood: bool,
 ) -> None:
     """Fixed-error specs and custom likelihoods do not inherit built-in sigma wiring."""
-    inv_inputs = _minimal_output_inv_inputs().drop_vars("site_indicator")
+    dropped_inputs = ["site_indicator"]
+    if custom_likelihood:
+        dropped_inputs.append("min_error")
+    inv_inputs = _minimal_output_inv_inputs().drop_vars(dropped_inputs)
     model_spec, _, run_spec = _minimal_output_specs(output_format="none")
     sectors = model_spec.sectors
     if multisector:
@@ -1536,6 +1548,8 @@ def test_non_default_sigma_owner_does_not_construct_sigma_alignment(
         )
 
     assert "sigma" not in result.model.named_vars
+    if custom_likelihood:
+        assert "min_error" not in names
 
 
 def test_custom_likelihood_does_not_inherit_legacy_sigma_retention(
@@ -2912,7 +2926,11 @@ def test_public_rhime_runners_follow_named_stage_order(
         variable_names: tuple[str, ...],
     ) -> xr.Dataset:
         """Record public model-input materialization."""
-        assert set(variable_names) >= {"H", "mf", "mf_error", "min_error"}
+        expected_names = {"H", "mf", "mf_error"}
+        if not custom_likelihood:
+            expected_names.update({"min_error", "site_indicator"})
+        assert set(variable_names) >= expected_names
+        assert ("min_error" in variable_names) is not custom_likelihood
         calls.append("materialize")
         return model_inputs
 
@@ -3563,7 +3581,85 @@ def test_legacy_additive_adapter_selects_direct_builtin_component(
         prepared.inv_inputs["min_error"],
     )
     assert {"sigma", "epsilon", "y"} <= set(sampled_models[0].named_vars)
+    assert result.model_spec.mismatch_model == "additive_sigma"
+    assert result.model_spec.use_minimum_error_floor is True
     assert result.outputs == {}
+
+
+def test_modern_additive_mismatch_uses_model_spec_without_minimum_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Modern additive sigma is selected independently of a likelihood callback."""
+    _, _, run_spec = _minimal_output_specs(output_format="none")
+    run_spec = replace(
+        run_spec,
+        model=replace(
+            run_spec.model,
+            use_bc=False,
+            mismatch_model="additive_sigma",
+        ),
+    )
+    prepared = RhimePreparedInputs(
+        inv_inputs=_minimal_output_inv_inputs().drop_vars("min_error"),
+        basis_functions=_fake_basis_functions(),
+        site_metadata=_prepared_site_metadata(),
+    )
+    direct_calls: list[dict[str, Any]] = []
+    direct_additive = rhime_standard.add_additive_sigma_likelihood
+
+    def capture_direct_additive(**kwargs: Any) -> Any:
+        direct_calls.append(kwargs)
+        return direct_additive(**kwargs)
+
+    monkeypatch.setattr(
+        rhime_standard,
+        "add_additive_sigma_likelihood",
+        capture_direct_additive,
+    )
+    monkeypatch.setattr(
+        RhimeSampler,
+        "sample",
+        lambda self, model, *, variable_roles: _minimal_output_idata(),
+    )
+
+    result = run_rhime_from_prepared_inputs(
+        prepared_inputs=prepared,
+        run_spec=run_spec,
+    )
+
+    assert len(direct_calls) == 1
+    assert direct_calls[0]["minimum_error_floor"] is None
+    assert result.model_spec.mismatch_model == "additive_sigma"
+    assert "minimum_error" not in result.model_build_result.variable_roles
+
+
+def test_custom_likelihood_prepared_run_does_not_require_minimum_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A custom likelihood can run from a prepared artifact without min_error."""
+    _, _, run_spec = _minimal_output_specs(output_format="none")
+    run_spec = replace(run_spec, model=replace(run_spec.model, use_bc=False))
+    prepared = RhimePreparedInputs(
+        inv_inputs=_minimal_output_inv_inputs().drop_vars("min_error"),
+        basis_functions=_fake_basis_functions(),
+        site_metadata=_prepared_site_metadata(),
+    )
+    monkeypatch.setattr(
+        RhimeSampler,
+        "sample",
+        lambda self, model, *, variable_roles: _minimal_output_idata(),
+    )
+
+    result = run_rhime_from_prepared_inputs(
+        prepared_inputs=prepared,
+        run_spec=run_spec,
+        likelihood_builder=example_likelihoods.likelihood_builder,
+    )
+
+    assert result.model is not None
+    assert {"epsilon", "y"} <= set(result.model.named_vars)
+    assert "min_error" not in result.model.named_vars
+    assert "minimum_error" not in result.model_build_result.variable_roles
 
 
 @pytest.mark.parametrize(
@@ -4051,6 +4147,7 @@ def test_rhime_runner_setup_builds_specs_before_preparation(tmp_path: Path) -> N
             "ocean": {"pdf": "normal", "mu": 1.0, "sigma": 0.5},
         },
         "sigma_freq": "8D",
+        "mismatch_model": "additive_sigma",
         "draws": "7",
         "burn": "1",
         "tune": "2",
@@ -4098,6 +4195,9 @@ def test_rhime_runner_setup_builds_specs_before_preparation(tmp_path: Path) -> N
     assert setup.run_spec.model.sectors[1].x_prior == {"pdf": "normal", "mu": 0.7, "sigma": 0.2}
     assert setup.run_spec.model.sigma_freq == "8D"
     assert setup.run_spec.model.sigma_freq_anchor == "2019-01-01"
+    assert setup.run_spec.model.mismatch_model == "additive_sigma"
+    assert setup.run_spec.model.use_minimum_error_floor is False
+    assert "mismatch_model" not in setup.data_args
 
 
 def test_rhime_runner_setup_rejects_removed_builder_strategy() -> None:

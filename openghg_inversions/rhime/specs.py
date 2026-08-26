@@ -13,6 +13,7 @@ from openghg_inversions.observation_error import AggregationErrorMode
 
 OutputFormat = Literal["none", "inv_out", "basic", "paris", "legacy"]
 OutputFilenameConvention = Literal["rhime", "legacy"]
+MismatchModel = Literal["pollution_event", "additive_sigma"]
 
 DEFAULT_X_PRIOR: PriorArgs = {
     "pdf": "lognormal",
@@ -63,6 +64,11 @@ class RhimeModelSpec:
         sectors: Flux sectors included in the model. Each sector is optimized
             separately and is normally backed by one OpenGHG flux ``source``.
         use_bc: Whether boundary-condition scaling is included.
+        mismatch_model: Built-in model-data mismatch equation. Custom
+            likelihoods remain a separate Python-only extension point.
+        use_minimum_error_floor: Whether a built-in mismatch component other
+            than pollution-event scaling opts into the historical minimum
+            total-error floor. Pollution-event scaling always owns this floor.
         sigma_per_site: Whether model-error terms vary by site.
         sigma_freq: Frequency used to derive observation-aligned sigma periods.
             ``None`` uses one shared period.
@@ -94,6 +100,8 @@ class RhimeModelSpec:
     domain: str
     sectors: tuple[SectorSpec, ...]
     use_bc: bool = True
+    mismatch_model: MismatchModel = field(default="pollution_event", kw_only=True)
+    use_minimum_error_floor: bool = field(default=False, kw_only=True)
     sigma_per_site: bool = True
     sigma_freq: str | None = None
     sigma_freq_anchor: DatetimeLike | None = None
@@ -111,6 +119,11 @@ class RhimeModelSpec:
 
     def __post_init__(self) -> None:
         """Validate model options resolved before graph construction."""
+        if self.mismatch_model not in ("pollution_event", "additive_sigma"):
+            raise ValueError(
+                "`mismatch_model` must be 'pollution_event' or 'additive_sigma'; "
+                f"got {self.mismatch_model!r}."
+            )
         if self.aggregation_error_mode not in ("auto", "none", "dense", "low_rank", "diagonal"):
             raise ValueError(
                 "`aggregation_error_mode` must be one of 'auto', 'none', 'dense', "
