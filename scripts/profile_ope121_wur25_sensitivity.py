@@ -15,6 +15,7 @@ from pathlib import Path
 import dask
 import numpy as np
 import xarray as xr
+from sparse import SparseArray
 
 from openghg_inversions.array_ops import force_align
 from openghg_inversions.basis.basis_functions import BasisFunctions
@@ -64,6 +65,49 @@ def _sensitivity_pr651(
     return result.transpose(operator.meta.state_dim, "time", ...)
 
 
+def _sensitivity_native(
+    basis_functions: BasisFunctions, fp_x_flux: xr.DataArray, *, fillna: bool
+) -> xr.DataArray:
+    """Contract source-native input with the sparse block-diagonal prolongation."""
+    operator = basis_functions.operator
+    native_source_dim = "native_source"
+    fp_native = fp_x_flux.rename({operator.source_dim: native_source_dim})
+    prolongation = operator.native_prolongation(
+        fp_native,
+        native_dims=(native_source_dim, *operator.meta.grid_dims),
+    )
+    if fillna:
+        fp_native = fp_native.fillna(0.0)
+    result = xr.dot(
+        fp_native,
+        prolongation,
+        dim=(native_source_dim, *operator.meta.grid_dims),
+    ).as_numpy()
+    return result.transpose(operator.meta.state_dim, "time", ...)
+
+
+def _compare(actual: xr.DataArray, reference: xr.DataArray) -> dict[str, object]:
+    reference = reference.transpose(*actual.dims)
+    difference = np.abs(np.asarray(actual) - np.asarray(reference))
+    denominator = np.maximum(
+        np.abs(np.asarray(reference)), np.finfo(reference.dtype).tiny
+    )
+    try:
+        xr.testing.assert_identical(
+            actual.coords.to_dataset(), reference.coords.to_dataset()
+        )
+        coordinates_identical = True
+    except AssertionError:
+        coordinates_identical = False
+    return {
+        "coordinates_identical": coordinates_identical,
+        "max_absolute_difference": float(difference.max(initial=0.0)),
+        "max_relative_difference": float(
+            (difference / denominator).max(initial=0.0)
+        ),
+    }
+
+
 def main() -> None:
     original = BasisFunctions.sensitivity
     call_count = 0
@@ -86,24 +130,38 @@ def main() -> None:
             reference = _sensitivity_pr651(
                 basis_functions, fp_x_flux, fillna=fillna
             )
-            reference = reference.transpose(*output.dims)
-            difference = np.abs(np.asarray(output) - np.asarray(reference))
-            denominator = np.maximum(
-                np.abs(np.asarray(reference)), np.finfo(reference.dtype).tiny
-            )
-            try:
-                xr.testing.assert_identical(
-                    output.coords.to_dataset(), reference.coords.to_dataset()
+            comparison = _compare(output, reference)
+
+        native_candidate: dict[str, object] | None = None
+        if os.environ.get("OPE121_PROFILE_NATIVE") == "1":
+            native_tasks: set[object] = set()
+            observed_chunk_bytes = {"dense": 0, "sparse": 0}
+
+            def record_chunk(_key, result, _graph, _state, _worker_id) -> None:
+                if isinstance(result, np.ndarray):
+                    observed_chunk_bytes["dense"] = max(
+                        observed_chunk_bytes["dense"], result.nbytes
+                    )
+                elif isinstance(result, SparseArray):
+                    observed_chunk_bytes["sparse"] = max(
+                        observed_chunk_bytes["sparse"], result.nbytes
+                    )
+
+            native_started = time.perf_counter()
+            with dask.callbacks.Callback(
+                pretask=lambda key, _graph, _state: native_tasks.add(key),
+                posttask=record_chunk,
+            ):
+                native_output = _sensitivity_native(
+                    basis_functions, fp_x_flux, fillna=fillna
                 )
-                coordinates_identical = True
-            except AssertionError:
-                coordinates_identical = False
-            comparison = {
-                "coordinates_identical": coordinates_identical,
-                "max_absolute_difference": float(difference.max(initial=0.0)),
-                "max_relative_difference": float(
-                    (difference / denominator).max(initial=0.0)
-                ),
+            native_candidate = {
+                "wall_seconds": time.perf_counter() - native_started,
+                "dask_tasks": len(native_tasks),
+                "max_observed_dense_chunk_mib": observed_chunk_bytes["dense"] / 1024**2,
+                "max_observed_sparse_chunk_mib": observed_chunk_bytes["sparse"] / 1024**2,
+                "process_peak_rss_mib": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024,
+                "comparison_to_helper": _compare(native_output, output),
             }
 
         payload = {
@@ -126,6 +184,7 @@ def main() -> None:
             "wall_seconds": wall_seconds,
             "process_peak_rss_mib": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024,
             "comparison_to_pr651": comparison,
+            "native_candidate": native_candidate,
         }
         print("OPE121_SENSITIVITY_PROFILE=" + json.dumps(payload, sort_keys=True), flush=True)
         if os.environ.get("OPE121_STOP_AFTER_FIRST") == "1":

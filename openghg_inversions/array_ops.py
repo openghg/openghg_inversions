@@ -620,6 +620,9 @@ def _resolve_shared_data_vars(
 # Align to multi-index
 # ----------------------------------------
 
+_MULTI_INDEX_BROADCAST_WARN_BYTES = 1024**3
+_MULTI_INDEX_BROADCAST_WARN_RATIO = 10
+
 
 def iter_multi_index_level_slices(
     da: xr.DataArray,
@@ -766,6 +769,24 @@ def align_to_multi_index_level_values(
             UserWarning,
             stacklevel=2,
         )
+
+    source_size = da.sizes[other_dim]
+    target_size = multi_index.sizes[multi_dim]
+    if source_size:
+        expansion_ratio = target_size / source_size
+        projected_bytes = da.nbytes // source_size * target_size
+        if (
+            expansion_ratio >= _MULTI_INDEX_BROADCAST_WARN_RATIO
+            and projected_bytes >= _MULTI_INDEX_BROADCAST_WARN_BYTES
+        ):
+            warnings.warn(
+                f"Aligning {other_dim!r} to {multi_dim!r} expands {source_size} values to "
+                f"{target_size} ({expansion_ratio:.1f}x) with a projected logical size of "
+                f"{projected_bytes / 1024**3:.1f} GiB. This explicit broadcast may exhaust "
+                "memory; use iter_multi_index_level_slices for split-operate-combine work.",
+                UserWarning,
+                stacklevel=2,
+            )
 
     # Vectorized selection in the order of the level values (dim becomes multi_dim)
     level_values = multi_index[level]

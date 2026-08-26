@@ -1,5 +1,6 @@
 import warnings
 
+import dask.array as da
 import numpy as np
 import pandas as pd
 import pytest
@@ -253,6 +254,32 @@ def test_align_to_multi_index_level_values_with_other_level_as_dim_warns():
         )
 
     xr.testing.assert_equal(da_stack.a, da_aligned.a)
+
+
+def test_align_to_multi_index_level_values_warns_before_large_broadcast() -> None:
+    """Logical metadata exposes an unsafe broadcast without computing lazy data."""
+    values = xr.DataArray(
+        da.zeros((2, 1024, 1024), chunks=(1, 256, 256), dtype=np.float32),
+        dims=("source", "x", "y"),
+        coords={"source": ["A", "B"]},
+    )
+    index = pd.MultiIndex.from_arrays(
+        [np.tile(["A", "B"], 512), np.repeat(np.arange(512), 2)],
+        names=("source", "region_in_source"),
+    )
+    state = xr.Coordinates.from_pandas_multiindex(index, "state")["state"]
+
+    with pytest.warns(UserWarning, match=r"512\.0x.*4\.0 GiB.*may exhaust memory"):
+        aligned = align_to_multi_index_level_values(
+            values,
+            multi_index=state,
+            multi_dim="state",
+            level="source",
+            other_dim="source",
+        )
+
+    assert aligned.shape == (1024, 1024, 1024)
+    assert aligned.chunks is not None
 
 
 def test_select_gathered_data_array_restores_ragged_labels_and_values() -> None:
