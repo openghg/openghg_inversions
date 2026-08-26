@@ -73,8 +73,13 @@ mean of the observed distribution is therefore
 
 where omitted components are left out of the sum.
 
-The ordinary model preserves the pollution-event fractional-error equation
-used by ``run_hbmcmc.py``. Aggregation error is disabled by default. Let
+The default ``mismatch_model="pollution_event"`` preserves the fractional-error
+equation used by ``run_hbmcmc.py``. Select
+``mismatch_model="additive_sigma"`` for an absolute concentration-scale
+mismatch instead; this is a resolved model option and does not use the custom
+``likelihood_builder`` extension point. Additive sigma does not select the
+prepared ``min_error`` input unless ``use_minimum_error_floor=True`` is also
+set. Aggregation error is disabled by default. Let
 :math:`P` be the pollution event and let ``sigma`` be the observation-aligned
 fractional model-error parameter. With the default
 ``pollution_events_from_obs=False``,

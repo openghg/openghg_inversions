@@ -117,9 +117,19 @@ Built-in mismatch equations are direct model components, not examples of this
 custom-callback contract. In particular,
 ``models.additive_sigma.add_additive_sigma_likelihood`` adds an absolute
 concentration-scale variance, while ``models.pollution_event`` owns the
-pollution-enhancement-scaled equation. The frozen ``run_hbmcmc`` additive
-spelling is translated at the RHIME compatibility seam before either standard
-recipe constructs the graph.
+pollution-enhancement-scaled equation. Select the absolute additive equation
+directly with ``mismatch_model="additive_sigma"`` in ``run_rhime`` or
+``run_rhime_multisector``; ``sigma_prior``, ``sigma_freq``, and
+``sigma_per_site`` then configure its scale. Additive sigma does not load the
+historical ``min_error`` floor unless
+``use_minimum_error_floor=True`` is selected explicitly. A custom likelihood
+loads only ``mf`` and ``mf_error`` from the universal observation inputs and
+does not require ``min_error``.
+
+The frozen ``run_hbmcmc`` additive callback spelling is translated once at the
+public RHIME compatibility boundary into the same resolved mismatch-model
+fields. The standard and multisector recipes select built-in mismatch science
+only from ``RhimeModelSpec``.
 
 Built-in aggregation covariance relies on the guarantees of its construction
 pipeline. A custom pipeline that assembles its own covariance may optionally

@@ -1,4 +1,4 @@
-"""Custom-likelihood validation and frozen RHIME compatibility translation."""
+"""RHIME likelihood wiring, custom validation, and frozen compatibility translation."""
 
 from __future__ import annotations
 
@@ -114,7 +114,7 @@ def _resolve_site_additive_scale_prior(
     return resolved
 
 
-def prepare_legacy_additive_sigma(
+def prepare_additive_sigma_inputs(
     observations: xr.DataArray,
     *,
     output_dim: str,
@@ -125,13 +125,13 @@ def prepare_legacy_additive_sigma(
     sigma_freq_anchor: DatetimeLike | None = None,
     no_model_error: bool = False,
 ) -> tuple[SigmaAlignment | None, dict[str, Any] | None]:
-    """Translate legacy RHIME additive settings into direct component inputs."""
+    """Resolve RHIME additive-scale settings into direct component inputs."""
     if no_model_error:
         return None, None
     site = observations.coords.get("site")
     if site is None or site.dims != (output_dim,):
         raise ValueError(
-            "The legacy additive-sigma adapter requires an observation-aligned "
+            "Additive-sigma mismatch requires an observation-aligned "
             "'site' coordinate when model error is enabled."
         )
     indicator = make_site_indicator(site) if site_indicator is None else site_indicator
@@ -164,7 +164,7 @@ def additive_sigma_likelihood_builder(
     no_model_error: bool = False,
 ) -> TensorVariable:
     """Preserve the legacy additive callback spelling outside model ownership."""
-    alignment, prior = prepare_legacy_additive_sigma(
+    alignment, prior = prepare_additive_sigma_inputs(
         observations,
         output_dim=output_dim,
         sigma_prior=sigma_prior,
@@ -194,7 +194,7 @@ _LEGACY_ADDITIVE_OPTION_NAMES = {
 }
 
 
-def legacy_additive_sigma_options(
+def _legacy_additive_sigma_options(
     likelihood_builder: object | None,
     likelihood_kwargs: Mapping[str, Any] | None,
 ) -> dict[str, Any] | None:
@@ -206,6 +206,34 @@ def legacy_additive_sigma_options(
     if unknown:
         raise TypeError(f"Unsupported legacy additive-sigma option(s): {unknown!r}.")
     return options
+
+
+def translate_legacy_likelihood_selection(
+    likelihood_builder: RhimeLikelihoodBuilder | None,
+    likelihood_kwargs: Mapping[str, Any] | None,
+) -> tuple[dict[str, Any], RhimeLikelihoodBuilder | None, dict[str, Any] | None]:
+    """Translate the frozen additive callback into explicit model settings.
+
+    Public runner boundaries call this once before resolving a model spec. The
+    concrete recipes therefore select built-in mismatch components only from
+    :class:`RhimeModelSpec`, never from a callback's object identity.
+    """
+    options = _legacy_additive_sigma_options(likelihood_builder, likelihood_kwargs)
+    if options is None:
+        return (
+            {},
+            likelihood_builder,
+            dict(likelihood_kwargs) if likelihood_kwargs is not None else None,
+        )
+
+    model_options: dict[str, Any] = {
+        "mismatch_model": "additive_sigma",
+        "use_minimum_error_floor": True,
+    }
+    for name in _LEGACY_ADDITIVE_OPTION_NAMES:
+        if name in options:
+            model_options[name] = options[name]
+    return model_options, None, None
 
 
 __all__ = ["RhimeLikelihoodBuilder"]

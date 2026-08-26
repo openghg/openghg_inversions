@@ -26,6 +26,7 @@ from openghg_inversions.observation_error import AggregationErrorMode
 from openghg_inversions.rhime.sampling import RhimeSampler
 from openghg_inversions.rhime.specs import (
     DEFAULT_X_PRIOR,
+    MismatchModel,
     RhimeModelSpec,
     RhimeRunSpec,
     SectorSpec,
@@ -516,6 +517,9 @@ def validate_supported_params(params: Mapping[str, Any]) -> None:
         "add_offset",
         "sigma_per_site",
         "sigma_freq",
+        "sigma_freq_anchor",
+        "mismatch_model",
+        "use_minimum_error_floor",
         "aggregation_error_mode",
     }
     supported = RHIME_PREPARATION_OPTION_NAMES | runner_params | required_run_params()
@@ -579,6 +583,8 @@ def _make_model_spec(
     sigma_prior: dict[str, Any] | None,
     offset_prior: dict[str, Any] | None,
     use_bc: bool,
+    mismatch_model: MismatchModel,
+    use_minimum_error_floor: bool,
     sigma_per_site: bool,
     sigma_freq: str | None,
     sigma_freq_anchor: str | None,
@@ -632,6 +638,8 @@ def _make_model_spec(
         domain=domain,
         sectors=tuple(sectors),
         use_bc=use_bc,
+        mismatch_model=mismatch_model,
+        use_minimum_error_floor=use_minimum_error_floor,
         sigma_per_site=sigma_per_site,
         sigma_freq=sigma_freq,
         sigma_freq_anchor=sigma_freq_anchor,
@@ -703,8 +711,14 @@ def make_rhime_runner_setup(
     offset_args = normalise_optional_mapping(remaining.get("offset_args"))
 
     use_bc = remaining.get("use_bc", True)
+    mismatch_model = cast(
+        MismatchModel,
+        remaining.pop("mismatch_model", "pollution_event"),
+    )
+    use_minimum_error_floor = remaining.pop("use_minimum_error_floor", False)
     sigma_per_site = remaining.get("sigma_per_site", True)
     sigma_freq = remaining.pop("sigma_freq", None)
+    sigma_freq_anchor = remaining.pop("sigma_freq_anchor", start_date)
     add_offset = remaining.get("add_offset", False)
     pollution_events_from_obs = remaining.pop("pollution_events_from_obs", False)
     no_model_error = remaining.pop("no_model_error", False)
@@ -752,9 +766,11 @@ def make_rhime_runner_setup(
         sigma_prior=sigma_prior,
         offset_prior=offset_prior,
         use_bc=use_bc,
+        mismatch_model=mismatch_model,
+        use_minimum_error_floor=use_minimum_error_floor,
         sigma_per_site=sigma_per_site,
         sigma_freq=sigma_freq,
-        sigma_freq_anchor=start_date,
+        sigma_freq_anchor=sigma_freq_anchor,
         add_offset=add_offset,
         pollution_events_from_obs=pollution_events_from_obs,
         no_model_error=no_model_error,

@@ -38,10 +38,11 @@ def builtin_model_build_result(
     roles = {
         "observation": "mf",
         "observation_error": "mf_error",
-        "minimum_error": "min_error",
         "concentration": "y",
         "model_error": "epsilon",
     }
+    if "min_error" in input_names:
+        roles["minimum_error"] = "min_error"
     if "mf_repeatability" in input_names:
         roles["observation_repeatability"] = "mf_repeatability"
     if "mf_variability" in input_names:
