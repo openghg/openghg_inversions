@@ -18,10 +18,8 @@ Prerequisites and data
 Install the package as described in :doc:`installation`, then populate the
 companion OpenGHG store from the versioned `v1.0.0 data release
 <https://github.com/openghg/openghg_inversions_tutorial_data/tree/v1.0.0>`_.
-The repository is currently private, so the release is available only to
-collaborators with repository access. The following direct-download command
-will work without Git LFS after the repository is made public; publication will
-change access, not the pinned release used by this tutorial:
+The release is public and the direct-download command needs neither GitHub
+credentials nor Git LFS:
 
 .. code-block:: console
 
