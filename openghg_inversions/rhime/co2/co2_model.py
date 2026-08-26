@@ -12,7 +12,10 @@ import pymc as pm
 import xarray as xr
 
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
-from openghg_inversions.models.additive_sigma import add_additive_sigma_gaussian_likelihood
+from openghg_inversions.models.additive_sigma import (
+    DEFAULT_ADDITIVE_SIGMA_PRIOR,
+    add_additive_sigma_gaussian_likelihood,
+)
 from openghg_inversions.models.components import (
     add_coherent_affine_component,
     add_correlated_lognormal_state_with_activity,
@@ -28,7 +31,7 @@ from openghg_inversions.models.state_activity import (
     resolve_state_activity,
 )
 from openghg_inversions.observation_error import AggregationError
-from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR, DEFAULT_SIGMA_PRIOR
+from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR
 from openghg_inversions.sigma import SigmaAlignment
 
 from .outer_regions import (
@@ -78,7 +81,6 @@ def build_co2_model(
     boundary_sensitivity: xr.DataArray | None = None,
     bc_prior: PriorArgs | None = None,
     bc_state_activity: StateActivity | None = None,
-    no_model_error: bool = False,
 ) -> pm.Model:
     """Build the CO2 coherent-reduction model from explicit scientific arrays.
 
@@ -137,7 +139,6 @@ def build_co2_model(
         bc_prior: Optional prior arguments for boundary-condition scaling.
         bc_state_activity: Optional labelled activity policy for boundary
             states.
-        no_model_error: If true, omit inferred additive model error.
 
     Returns:
         A registered PyMC model containing the complete affine concentration
@@ -147,7 +148,10 @@ def build_co2_model(
         ValueError: If shared preparation, prior construction, or registered
             coordinate alignment fails.
     """
-    sigma_prior = dict(DEFAULT_SIGMA_PRIOR if sigma_prior is None else sigma_prior)
+    if sigma_alignment is not None:
+        sigma_prior = dict(DEFAULT_ADDITIVE_SIGMA_PRIOR if sigma_prior is None else sigma_prior)
+    else:
+        sigma_prior = None
     bc_prior = dict(DEFAULT_BC_PRIOR if bc_prior is None else bc_prior)
     fixed_mismatch = _fixed_mismatch_array(observations, fixed_model_mismatch)
     prepared_flux = prepare_linear_sensitivity(flux_sensitivity, output_dim="nmeasure")
@@ -219,7 +223,6 @@ def build_co2_model(
             mean=modelled_mean,
             sigma_alignment=sigma_alignment,
             sigma_prior=sigma_prior,
-            no_model_error=no_model_error,
             output_dim="nmeasure",
         )
     return model

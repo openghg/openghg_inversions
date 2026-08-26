@@ -94,7 +94,6 @@ def _build_model(inputs: xr.Dataset, **kwargs: Any) -> pm.Model:
         observation_error=inputs["mf_error"],
         minimum_error=inputs["min_error"],
         aggregation_error=resolve_aggregation_error(inputs, "dense"),
-        no_model_error=True,
         **kwargs,
     )
 
@@ -109,10 +108,9 @@ def test_co2_model_exposes_affine_correlated_dense_covariance_graph() -> None:
         "co2_flux_contribution",
         "fixed_prior_contribution",
         "modelled_concentration",
-        "Y",
         "error",
-        "fixed_model_mismatch",
         "min_error",
+        "fixed_model_mismatch",
         "epsilon",
         "y",
     } <= set(model.named_vars)
@@ -253,6 +251,7 @@ def test_public_co2_runner_persists_fixed_mismatch_manifest(
         no_model_error=True,
     )
 
+    assert "sigma" not in sampled_models[0].named_vars
     np.testing.assert_allclose(sampled_models[0]["fixed_model_mismatch"].eval(), 1.0)
     roles = json.loads(result.attrs["rhime_variable_roles"])
     metadata = json.loads(result.attrs["rhime_model_metadata"])

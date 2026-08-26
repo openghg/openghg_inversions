@@ -6,10 +6,7 @@ import pytest
 import xarray as xr
 from scipy.stats import multivariate_normal
 
-from openghg_inversions.models.additive_sigma import (
-    add_additive_sigma_gaussian_likelihood,
-    build_additive_sigma_error,
-)
+from openghg_inversions.models.additive_sigma import add_additive_sigma_gaussian_likelihood
 from openghg_inversions.models.coords import registered_model
 from openghg_inversions.models.likelihoods import (
     add_aggregation_error_data,
@@ -17,7 +14,10 @@ from openghg_inversions.models.likelihoods import (
 )
 from openghg_inversions.models.pollution_event import build_pollution_event_error
 from openghg_inversions.observation_error import resolve_aggregation_error
-from openghg_inversions.rhime.likelihoods import additive_sigma_likelihood_builder
+from openghg_inversions.rhime.likelihoods import (
+    _resolve_site_sigma_prior,
+    additive_sigma_likelihood_builder,
+)
 from openghg_inversions.sigma import SigmaAlignment
 
 
@@ -295,9 +295,9 @@ def test_pollution_event_validation_names_malformed_input_and_owner() -> None:
 
 
 def test_additive_sigma_validation_names_malformed_input_and_owner() -> None:
-    """Malformed minimum error fails before the additive component builds."""
+    """Malformed reported error fails before the additive component builds."""
     data = _base_data()
-    malformed_minimum = data["min_error"].rename(nmeasure="sample")
+    malformed_error = data["mf_error"].rename(nmeasure="sample")
     sigma_alignment = SigmaAlignment.from_frequency(
         data["site_indicator"], frequency=None, per_site=False
     )
@@ -305,16 +305,15 @@ def test_additive_sigma_validation_names_malformed_input_and_owner() -> None:
     with registered_model(coords={"nmeasure": np.arange(3)}):
         with pytest.raises(
             ValueError,
-            match="Additive-sigma likelihood input 'minimum_error'.*dims",
+            match="Additive-sigma likelihood input 'observation_error'.*dims",
         ):
-            build_additive_sigma_error(
+            add_additive_sigma_gaussian_likelihood(
                 observations=data["mf"],
-                observation_error=data["mf_error"],
-                minimum_error=malformed_minimum,
+                observation_error=malformed_error,
                 aggregation_error=resolve_aggregation_error(data, "none"),
+                mean=pm.math.constant(np.ones(3)),
                 sigma_alignment=sigma_alignment,
                 sigma_prior={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
-                no_model_error=False,
             )
 
 
@@ -350,19 +349,18 @@ def test_likelihoods_reject_reordered_observation_error_coordinates(
                     no_model_error=False,
                 )
             else:
-                build_additive_sigma_error(
+                add_additive_sigma_gaussian_likelihood(
                     observations=data["mf"],
                     observation_error=reordered_error,
-                    minimum_error=data["min_error"],
                     aggregation_error=resolve_aggregation_error(data, "none"),
+                    mean=pm.math.constant(np.ones(3)),
                     sigma_alignment=sigma_alignment,
                     sigma_prior={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
-                    no_model_error=False,
                 )
 
 
-def test_additive_sigma_error_adds_mismatch_variance_and_applies_marginal_floor() -> None:
-    """The reusable additive component follows its variance equation."""
+def test_additive_sigma_likelihood_applies_minimum_error_floor() -> None:
+    """The complete additive likelihood floors total marginal error."""
     data = _base_data()
     data["min_error"] = ("nmeasure", np.array([0.0, 1.0, 0.0]))
     data["aggregation_error_sd"] = ("nmeasure", np.array([0.1, 0.2, 0.3]))
@@ -370,14 +368,14 @@ def test_additive_sigma_error_adds_mismatch_variance_and_applies_marginal_floor(
         data["site_indicator"], frequency=None, per_site=False
     )
     with registered_model(coords={"nmeasure": np.arange(3)}) as model:
-        state = build_additive_sigma_error(
+        add_additive_sigma_gaussian_likelihood(
             observations=data["mf"],
             observation_error=data["mf_error"],
             minimum_error=data["min_error"],
             aggregation_error=resolve_aggregation_error(data, "diagonal"),
+            mean=pm.math.constant(np.ones(3)),
             sigma_alignment=sigma_alignment,
             sigma_prior={"pdf": "uniform", "lower": 0.5, "upper": 0.500001},
-            no_model_error=False,
         )
 
     sigma = np.asarray(model.named_vars["sigma"].eval()).item()
@@ -387,28 +385,24 @@ def test_additive_sigma_error_adds_mismatch_variance_and_applies_marginal_floor(
         + data["aggregation_error_sd"].values ** 2
     )
     expected_scale = np.maximum(unconstrained_scale, data["min_error"].values)
-    np.testing.assert_allclose(state.error_scale.eval(), expected_scale)
+    np.testing.assert_allclose(model["epsilon"].eval(), expected_scale)
 
 
-def test_additive_sigma_error_omits_sigma_when_model_error_is_disabled() -> None:
-    """The modern no-mismatch form has no disconnected sigma variable."""
+def test_additive_sigma_likelihood_omits_optional_sigma_and_minimum_error() -> None:
+    """The fixed-error form has no disconnected optional variables."""
     data = _base_data()
-    sigma_alignment = SigmaAlignment.from_frequency(
-        data["site_indicator"], frequency=None, per_site=False
-    )
     with registered_model(coords={"nmeasure": np.arange(3)}) as model:
-        state = build_additive_sigma_error(
+        add_additive_sigma_gaussian_likelihood(
             observations=data["mf"],
             observation_error=data["mf_error"],
-            minimum_error=data["min_error"],
             aggregation_error=resolve_aggregation_error(data, "none"),
-            sigma_alignment=sigma_alignment,
-            sigma_prior={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
-            no_model_error=True,
+            mean=pm.math.constant(np.ones(3)),
         )
 
     assert "sigma" not in model.named_vars
-    np.testing.assert_allclose(state.error_scale.eval(), data["mf_error"].values)
+    assert "min_error" not in model.named_vars
+    assert "Y" not in model.named_vars
+    np.testing.assert_allclose(model["epsilon"].eval(), data["mf_error"].values)
 
 
 def test_additive_sigma_gaussian_likelihood_uses_completed_mean() -> None:
@@ -429,7 +423,6 @@ def test_additive_sigma_gaussian_likelihood_uses_completed_mean() -> None:
             mean=mean,
             sigma_alignment=sigma_alignment,
             sigma_prior={"pdf": "uniform", "lower": 0.2, "upper": 0.200001},
-            no_model_error=False,
         )
 
     assert likelihood is model.named_vars["y"]
@@ -469,6 +462,40 @@ def test_rhime_additive_sigma_adapter_accepts_pollution_event_inputs() -> None:
 
     assert likelihood is model.named_vars["y"]
     np.testing.assert_allclose(model.named_vars["y"].owner.inputs[-2].eval(), np.ones(3))
+
+
+def test_rhime_additive_sigma_adapter_aligns_site_prior_scales() -> None:
+    site = xr.DataArray(["TAC", "MHD", "TAC"], dims="nmeasure")
+
+    resolved = _resolve_site_sigma_prior(
+        {
+            "pdf": "halfnormal",
+            "sigma": {"MHD": 5.0, "unused": 9.0, "TAC": 2.0},
+        },
+        site,
+        per_site=True,
+    )
+
+    assert resolved["pdf"] == "halfnormal"
+    np.testing.assert_array_equal(resolved["sigma"], [[2.0], [5.0]])
+
+
+def test_rhime_additive_sigma_adapter_rejects_incomplete_site_prior_scales() -> None:
+    site = xr.DataArray(["MHD", "TAC"], dims="nmeasure")
+
+    with pytest.raises(ValueError, match="missing retained site.*TAC"):
+        _resolve_site_sigma_prior(
+            {"pdf": "halfnormal", "sigma": {"MHD": 5.0}},
+            site,
+            per_site=True,
+        )
+
+    with pytest.raises(ValueError, match="sigma_per_site=True"):
+        _resolve_site_sigma_prior(
+            {"pdf": "halfnormal", "sigma": {"MHD": 5.0, "TAC": 2.0}},
+            site,
+            per_site=False,
+        )
 
 
 def test_observation_derived_pollution_event_subtracts_complete_baseline() -> None:

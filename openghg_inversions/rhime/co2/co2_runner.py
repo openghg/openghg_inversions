@@ -52,7 +52,6 @@ def _annotate_co2_trace(
     # PyMC data names differ from prepared-array role names. Keep those
     # concrete scientific identities visible on stored constants too.
     concrete_roles = {
-        "Y": ["observation"],
         "error": ["observation_error"],
         "min_error": ["minimum_error"],
         "fixed_model_mismatch": ["fixed_model_mismatch"],
@@ -76,7 +75,6 @@ def _annotate_co2_trace(
         roles_by_variable[name].extend(scientific_roles)
 
     concentration_variables = {
-        "Y",
         "error",
         "min_error",
         "fixed_model_mismatch",
@@ -219,7 +217,10 @@ def run_rhime_co2(
         derive_sigma_alignment=not no_model_error and sigma_alignment is None,
     )
     model_inputs = materialize_pymc_inputs(prepared, variable_names=names)
-    if not no_model_error and sigma_alignment is None:
+    if no_model_error:
+        sigma_alignment = None
+        sigma_prior = None
+    elif sigma_alignment is None:
         sigma_alignment = SigmaAlignment.from_frequency(model_inputs["site_indicator"])
     aggregation_error = resolve_aggregation_error(
         model_inputs,
@@ -241,12 +242,11 @@ def run_rhime_co2(
         sigma_prior=sigma_prior,
         fixed_model_mismatch=prepared_mismatch,
         state_activity=_state_activity_from_inputs(model_inputs),
-        no_model_error=no_model_error,
     )
     built = RhimeModelBuildResult(
         model=model,
         variable_roles={
-            "observation": "mf",
+            "observation": "y",
             "observation_error": "mf_error",
             "minimum_error": "min_error",
             "concentration": "y",

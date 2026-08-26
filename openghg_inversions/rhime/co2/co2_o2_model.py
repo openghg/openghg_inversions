@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import pymc as pm
 import xarray as xr
-from pytensor.tensor.variable import TensorVariable
 
 from openghg_inversions.array_ops import concat_gather_data_arrays
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
@@ -13,15 +12,11 @@ from openghg_inversions.models import (
     add_coherent_affine_component,
     add_correlated_lognormal_state_with_activity,
     add_linked_linear_component,
-    add_model_data,
     prepare_linear_sensitivity,
     registered_model,
     resolve_state_activity,
 )
-from openghg_inversions.models.likelihoods import (
-    add_aggregation_error_data,
-    add_gaussian_observation_likelihood,
-)
+from openghg_inversions.models.additive_sigma import add_additive_sigma_gaussian_likelihood
 from openghg_inversions.observation_error import AggregationError
 
 
@@ -113,35 +108,6 @@ def evaluate_co2_o2_prior_forward_mean(
     )
     return (fixed_prior_contribution + joint_contribution).rename(
         "prior_forward_concentration"
-    )
-
-
-def _add_co2_o2_fixed_error_likelihood(
-    observations: xr.DataArray,
-    modelled_concentration: TensorVariable,
-    /,
-    *,
-    independent_error_sd: xr.DataArray,
-    aggregation_error: AggregationError,
-    output_dim: str,
-) -> None:
-    """Add the registered joint fixed-error likelihood for both species."""
-    observed = add_model_data(observations, "observed_concentration")
-    fixed_error = add_model_data(
-        independent_error_sd,
-        "fixed_independent_error_sd",
-    )
-    registered_aggregation_error = add_aggregation_error_data(
-        aggregation_error,
-        observations,
-        output_dim=output_dim,
-    )
-    add_gaussian_observation_likelihood(
-        observed=observed,
-        mean=modelled_concentration,
-        independent_variance=fixed_error**2,
-        aggregation_error=registered_aggregation_error,
-        output_dim=output_dim,
     )
 
 
@@ -240,11 +206,12 @@ def build_co2_o2_model(
             output_name="modelled_concentration",
         )
 
-        _add_co2_o2_fixed_error_likelihood(
-            observations,
-            modelled,
-            independent_error_sd=independent_error_sd,
+        add_additive_sigma_gaussian_likelihood(
+            observations=observations,
+            observation_error=independent_error_sd,
+            mean=modelled,
             aggregation_error=aggregation_error,
             output_dim=output_dim,
+            observation_error_name="fixed_independent_error_sd",
         )
     return model

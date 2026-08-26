@@ -33,6 +33,7 @@ import inspect
 import json
 import sys
 import warnings
+from collections.abc import Mapping
 from pathlib import Path
 from shutil import copyfile
 from typing import Any
@@ -44,7 +45,9 @@ from openghg_inversions._timing import log_timing, timed, timer_seconds, timer_s
 from openghg_inversions.config import config
 from openghg_inversions.config.paths import Paths
 from openghg_inversions.hbmcmc.hbmcmc import _LEGACY_FIXEDBASIS_OUTPUT_FORMAT, fixedbasisMCMC
+from openghg_inversions.models.additive_sigma import DEFAULT_ADDITIVE_SIGMA_PRIOR
 from openghg_inversions.rhime import resolve_rhime_options, run_rhime
+from openghg_inversions.rhime.likelihoods import additive_sigma_likelihood_builder
 from openghg_inversions.rhime.params import normalise_rhime_params
 
 
@@ -60,6 +63,15 @@ _LEGACY_FIXEDBASIS_PARAM_NAMES = set(inspect.signature(fixedbasisMCMC).parameter
 _LEGACY_INFERPYMC_PARAM_NAMES = set(inspect.signature(inversion_pymc.inferpymc).parameters) - {"inv_inputs"}
 _LEGACY_FIXEDBASIS_EXTRA_PARAM_NAMES = {"flux_non_finite_check"}
 _LEGACY_FIXEDBASIS_OUTPUT_ALIASES = {"hbmcmc", "hbmcmc_postprocessing"}
+_ADDITIVE_SIGMA_LIKELIHOOD = "additive_sigma"
+_ADDITIVE_SIGMA_PRIOR = "additive_sigma_prior"
+_ADDITIVE_SIGMA_OPTION_NAMES = (
+    "sigma_prior",
+    "sigma_freq",
+    "sigma_per_site",
+    "sigma_freq_anchor",
+    "no_model_error",
+)
 
 
 def fixed_basis_expected_param() -> list[str]:
@@ -211,6 +223,8 @@ def fixedbasis_params_to_rhime(params: dict[str, Any]) -> dict[str, Any]:
     API performs its existing validation and spec construction.
     """
     translated = dict(params)
+    translated.pop("likelihood", None)
+    translated.pop(_ADDITIVE_SIGMA_PRIOR, None)
     mcmc_type = translated.pop("mcmc_type", "fixed_basis")
     if mcmc_type != "fixed_basis":
         raise ValueError(f"Unsupported run_hbmcmc mcmc_type {mcmc_type!r}; expected 'fixed_basis'.")
@@ -222,6 +236,54 @@ def fixedbasis_params_to_rhime(params: dict[str, Any]) -> dict[str, Any]:
     if "save_inversion_output" not in translated and translated["output_format"] != "inv_out":
         translated["save_inversion_output"] = False
     return normalise_rhime_params(translated)
+
+
+def _select_additive_sigma_likelihood(
+    raw_params: dict[str, Any],
+    rhime_params: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Return component options when an INI selects additive sigma.
+
+    This compatibility entry point owns the policy that additive sigma never
+    consumes aggregation error. The reusable component remains capable of
+    serving CO2-family recipes which do own fixed aggregation covariance.
+    """
+    likelihood = raw_params.get("likelihood")
+    additive_sigma_prior = raw_params.get(_ADDITIVE_SIGMA_PRIOR)
+    if likelihood is None:
+        if additive_sigma_prior is not None:
+            raise ValueError("`additive_sigma_prior` requires likelihood='additive_sigma'.")
+        return None
+    if not isinstance(likelihood, str) or likelihood.strip().lower() != _ADDITIVE_SIGMA_LIKELIHOOD:
+        raise ValueError(
+            "run_hbmcmc supports only likelihood='additive_sigma'; omit `likelihood` "
+            "to retain the historical pollution-event likelihood."
+        )
+    if rhime_params.get("aggregation_error_mode", "none") != "none":
+        raise ValueError(
+            "run_hbmcmc additive_sigma does not support `aggregation_error_mode`; "
+            "remove it or set it to 'none'."
+        )
+    rhime_params["aggregation_error_mode"] = "none"
+    options = {
+        name: rhime_params[name]
+        for name in _ADDITIVE_SIGMA_OPTION_NAMES
+        if name in rhime_params
+    }
+    if options.get("sigma_freq") not in (None, "monthly"):
+        options.setdefault("sigma_freq_anchor", rhime_params["start_date"])
+    resolved_prior = (
+        rhime_params.get("sigma_prior", DEFAULT_ADDITIVE_SIGMA_PRIOR)
+        if additive_sigma_prior is None
+        else additive_sigma_prior
+    )
+    if not isinstance(resolved_prior, Mapping):
+        name = "sigma_prior" if additive_sigma_prior is None else _ADDITIVE_SIGMA_PRIOR
+        raise ValueError(f"`{name}` must be a mapping/dict.")
+    resolved_prior = dict(resolved_prior)
+    rhime_params["sigma_prior"] = resolved_prior
+    options["sigma_prior"] = resolved_prior
+    return options
 
 
 def validate_rhime_params(params: dict[str, Any]) -> None:
@@ -440,6 +502,7 @@ def main(argv: list[str] | None = None) -> None:
 
     with timed("run_hbmcmc.fixedbasis_to_rhime_translation"):
         rhime_params = fixedbasis_params_to_rhime(param)
+        additive_sigma_options = _select_additive_sigma_likelihood(param, rhime_params)
 
     with timed("run_hbmcmc.validation"):
         validate_rhime_params(rhime_params)
@@ -450,7 +513,15 @@ def main(argv: list[str] | None = None) -> None:
     with timed("run_hbmcmc.config_copy"):
         output.copy_config_file(str(config_file), param=param, **command_line_args)
 
-    run_rhime(preserve_legacy_likelihood=True, **rhime_params)
+    if additive_sigma_options is None:
+        run_rhime(preserve_legacy_likelihood=True, **rhime_params)
+    else:
+        run_rhime(
+            likelihood_builder=additive_sigma_likelihood_builder,
+            likelihood_kwargs=additive_sigma_options,
+            preserve_legacy_likelihood=False,
+            **rhime_params,
+        )
 
 
 if __name__ == "__main__":

@@ -3,19 +3,49 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from numbers import Real
 from typing import Any
 
+import numpy as np
 import xarray as xr
 from pytensor.tensor.variable import TensorVariable
 
-from openghg_inversions.inversion_inputs import DatetimeLike, make_site_indicator
+from openghg_inversions.inversion_inputs import DatetimeLike, make_site_indicator, make_site_names
 from openghg_inversions.models.additive_sigma import (
+    DEFAULT_ADDITIVE_SIGMA_PRIOR,
     add_additive_sigma_gaussian_likelihood,
 )
 from openghg_inversions.observation_error import AggregationError
 from openghg_inversions.sigma import SigmaAlignment
 
-from .specs import DEFAULT_SIGMA_PRIOR
+
+def _resolve_site_sigma_prior(
+    sigma_prior: Mapping[str, Any],
+    site: xr.DataArray,
+    *,
+    per_site: bool,
+) -> dict[str, Any]:
+    """Align an optional site-keyed ``sigma`` parameter to latent site order."""
+    resolved = dict(sigma_prior)
+    sigma = resolved.get("sigma")
+    if not isinstance(sigma, Mapping):
+        return resolved
+    if not per_site:
+        raise ValueError("A site-keyed sigma prior requires `sigma_per_site=True`.")
+
+    site_names = [str(value) for value in make_site_names(site).values]
+    missing = [name for name in site_names if name not in sigma]
+    if missing:
+        raise ValueError(f"Site-keyed sigma prior is missing retained site(s): {missing!r}.")
+
+    values = [sigma[name] for name in site_names]
+    if any(isinstance(value, bool) or not isinstance(value, Real) for value in values):
+        raise ValueError("Site-keyed sigma prior values must be finite positive numbers.")
+    scales = np.asarray(values, dtype=float)
+    if np.any(~np.isfinite(scales)) or np.any(scales <= 0):
+        raise ValueError("Site-keyed sigma prior values must be finite positive numbers.")
+    resolved["sigma"] = scales[:, None]
+    return resolved
 
 
 def additive_sigma_likelihood_builder(
@@ -53,7 +83,9 @@ def additive_sigma_likelihood_builder(
         pollution_event_baseline: Baseline used by pollution-event-scaled
             likelihoods, unused by additive mismatch variance.
         output_dim: Observation dimension used for named PyMC variables.
-        sigma_prior: Optional prior arguments used to construct ``sigma``.
+        sigma_prior: Optional prior arguments used to construct ``sigma``. The
+            distribution's ``sigma`` parameter may map site names to scales
+            when ``sigma_per_site`` is true.
         sigma_freq: Optional frequency for sigma periods.
         sigma_per_site: Whether sigma varies independently by site.
         sigma_freq_anchor: Optional anchor for fixed-duration sigma periods.
@@ -82,6 +114,13 @@ def additive_sigma_likelihood_builder(
             per_site=sigma_per_site,
             anchor_time=sigma_freq_anchor,
         )
+    resolved_sigma_prior = None
+    if not no_model_error:
+        resolved_sigma_prior = _resolve_site_sigma_prior(
+            DEFAULT_ADDITIVE_SIGMA_PRIOR if sigma_prior is None else sigma_prior,
+            site,
+            per_site=sigma_per_site,
+        )
     return add_additive_sigma_gaussian_likelihood(
         observations=observations,
         observation_error=observation_error,
@@ -89,10 +128,9 @@ def additive_sigma_likelihood_builder(
         aggregation_error=aggregation_error,
         mean=mean,
         sigma_alignment=sigma_alignment,
-        sigma_prior=dict(DEFAULT_SIGMA_PRIOR if sigma_prior is None else sigma_prior),
-        no_model_error=no_model_error,
+        sigma_prior=resolved_sigma_prior,
         output_dim=output_dim,
     )
 
 
-__all__ = ["additive_sigma_likelihood_builder"]
+__all__ = ["DEFAULT_ADDITIVE_SIGMA_PRIOR", "additive_sigma_likelihood_builder"]
