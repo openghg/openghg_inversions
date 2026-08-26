@@ -47,6 +47,13 @@ def _run_rhime_multisector_command(args: argparse.Namespace) -> None:
     run_rhime_multisector(config_file=args.config, **_command_kwargs(args))
 
 
+def _merge_paris_outputs_command(args: argparse.Namespace) -> None:
+    """Merge sequential PARIS output files with lazy imports for fast help output."""
+    from openghg_inversions.postprocessing.merge_paris_outputs import merge_paris_outputs
+
+    merge_paris_outputs(args.input_files, args.output, output_type=args.type)
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build the OpenGHG inversions CLI argument parser.
 
@@ -65,6 +72,19 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_run_args(run_multi_parser)
     run_multi_parser.set_defaults(func=_run_rhime_multisector_command)
+
+    merge_parser = subparsers.add_parser(
+        "merge-paris-outputs",
+        help="Merge sequential PARIS flux or concentration NetCDF outputs",
+    )
+    merge_parser.add_argument("input_files", nargs="+", help="PARIS NetCDF files to merge")
+    merge_parser.add_argument("-o", "--output", required=True, help="Merged NetCDF output path")
+    merge_parser.add_argument(
+        "--type",
+        choices=("flux", "concentration"),
+        help="Expected output type (auto-detected when omitted)",
+    )
+    merge_parser.set_defaults(func=_merge_paris_outputs_command)
 
     return parser
 
