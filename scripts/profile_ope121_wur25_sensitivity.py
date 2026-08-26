@@ -16,8 +16,8 @@ import dask
 import numpy as np
 import xarray as xr
 
+from openghg_inversions.array_ops import force_align
 from openghg_inversions.basis.basis_functions import BasisFunctions
-from scripts.profile_ope121_multiindex_operations import sensitivity_pr651
 
 
 class FirstSensitivityComplete(Exception):
@@ -36,6 +36,32 @@ def _script_sha256() -> str:
 
 def _chunks(array: xr.DataArray) -> tuple[tuple[int, ...], ...] | None:
     return getattr(array.data, "chunks", None)
+
+
+def _sensitivity_pr651(
+    basis_functions: BasisFunctions, fp_x_flux: xr.DataArray, *, fillna: bool
+) -> xr.DataArray:
+    """Run PR 651's exact source-wise implementation as a profile reference."""
+    operator = basis_functions.operator
+    matrix = force_align(operator.basis_matrix, fp_x_flux, dims=list(operator.meta.grid_dims))
+    matrix = matrix.transpose(*operator.meta.grid_dims, ...)
+    state_sources = np.asarray(matrix[operator.source_dim].values)
+    pieces = []
+    for source in operator.source_labels:
+        source_flux = fp_x_flux.sel({operator.source_dim: source}, drop=True)
+        if fillna:
+            source_flux = source_flux.fillna(0.0)
+        pieces.append(
+            xr.dot(
+                source_flux,
+                matrix.isel(
+                    {operator.meta.state_dim: np.flatnonzero(state_sources == source)}
+                ),
+                dim=list(operator.meta.grid_dims),
+            )
+        )
+    result = xr.concat(pieces, dim=operator.meta.state_dim).as_numpy()
+    return result.transpose(operator.meta.state_dim, "time", ...)
 
 
 def main() -> None:
@@ -57,7 +83,9 @@ def main() -> None:
 
         comparison: dict[str, object] | None = None
         if os.environ.get("OPE121_COMPARE_PR651") == "1":
-            reference = sensitivity_pr651(basis_functions.operator, fp_x_flux)
+            reference = _sensitivity_pr651(
+                basis_functions, fp_x_flux, fillna=fillna
+            )
             reference = reference.transpose(*output.dims)
             difference = np.abs(np.asarray(output) - np.asarray(reference))
             denominator = np.maximum(
