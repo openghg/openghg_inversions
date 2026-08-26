@@ -1,7 +1,7 @@
 import numpy as np
 import xarray as xr
 
-from openghg_inversions.basis.algorithms._weighted import bucket_split_landsea_basis
+from openghg_inversions.basis.algorithms._weighted import bucket_split_landsea_basis, load_landsea_indices
 
 
 def _assert_labels_do_not_cross_classes(labels: np.ndarray, classes: np.ndarray) -> None:
@@ -10,6 +10,10 @@ def _assert_labels_do_not_cross_classes(labels: np.ndarray, classes: np.ndarray)
             continue
         label_classes = np.unique(classes[labels == label])
         assert len(label_classes) == 1, f"label {label} crosses classes {label_classes}"
+
+
+def test_centralasia_landsea_grid_is_packaged():
+    assert load_landsea_indices("CENTRALASIA").shape == (310, 330)
 
 
 def test_weighted_landsea_basis_labels_do_not_cross_landsea_classes(tmp_path):

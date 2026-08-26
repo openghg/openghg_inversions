@@ -70,9 +70,28 @@ paris_regions_dict = {
         "NW_EU2": ["BEL", "DEU", "FRA", "GBR", "IRL", "LUX", "NLD"],
         "NW_EU_CONTINENT": ["BEL", "DEU", "FRA", "LUX", "NLD"],
     },
-    "eastasia": {"EASTERN_ASIA": ["EChi1", "PRK", "KOR", "JPN"]},
+    "eastasia": {
+        "EASTERN_ASIA": ["EChi1", "PRK", "KOR", "JPN"],
+        "WMC": ["EChi2", "NChina", "WChina"],
+        "WESTERN_JPN": ["WJP", "CJP"],
+        "EASTERN_JPN": ["CJP", "NJP"],
+        "CHN_EC": ["CHN_E", "CHN_C"],
+        "CHN": ["CHN_E", "CHN_C", "CHN_W", "CHN_N"],
+        "JPN_WC": ["JPN_W", "JPN_C"],
+        "JPN": ["JPN_W", "JPN_C", "JPN_N"],
+        "NEA": ["KOR", "PRK", "JPN_W", "JPN_C", "CHN_E", "CHN_C"],
+        "NEA_C": ["KOR", "PRK", "JPN_W", "CHN_E"],
+    },
     "westusa": {},
     "saussie": {},
+    "centralasia": {
+        "INDIA": ["INDIA-SOUTH", "INDIA-NORTH", "INDIA-EAST", "INDIA-WEST", "INDIA-JK", "INDIA-ANDAMAN"],
+        "INDIA-noJK": ["INDIA-SOUTH", "INDIA-NORTH", "INDIA-EAST", "INDIA-WEST", "INDIA-ANDAMAN"],
+        "INDIA-NS": ["INDIA-NORTH", "INDIA-SOUTH"],
+        "INDIA-NSE": ["INDIA-NORTH", "INDIA-SOUTH", "INDIA-EAST"],
+        "INDIA-NSW": ["INDIA-NORTH", "INDIA-SOUTH", "INDIA-WEST"],
+        "INDIA-NSEW": ["INDIA-NORTH", "INDIA-SOUTH", "INDIA-EAST", "INDIA-WEST"],
+    },
 }
 
 
