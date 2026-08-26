@@ -147,3 +147,22 @@ into a multisector configuration. For new batch jobs, start from the RHIME
 template, use ``flux_sources`` for standard runs, and configure the sector
 sources described in :doc:`rhime` before selecting
 ``run-rhime-multisector``.
+
+Merging PARIS outputs
+---------------------
+
+Merge sequential annual or sub-annual PARIS NetCDF files with the installed
+CLI. The command detects legacy and latest PARIS concentration and flux
+templates from their schema:
+
+.. code-block:: console
+
+   $ openghg-inversions merge-paris-outputs \
+       SF6_EUROPE_PARIS_flux_2019-01-01.nc \
+       SF6_EUROPE_PARIS_flux_2020-01-01.nc \
+       --output SF6_EUROPE_PARIS_flux_2019-2020.nc
+
+Use ``--type flux`` or ``--type concentration`` to check the detected output
+type explicitly. Inputs to one invocation must use the same template version;
+run the command separately for legacy and latest products because their
+variable contracts differ.
