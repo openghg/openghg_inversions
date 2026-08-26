@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import Sequence
 from contextlib import ExitStack
 from pathlib import Path
@@ -62,6 +63,11 @@ def _repair_duplicate_dimensions(ds: xr.Dataset) -> xr.Dataset:
         result[name].encoding = encoding
         result = result.assign_coords(repeated_coordinates)
 
+        if name == "covariance_flux_sectors_posterior_country":
+            result[name] = result[name].transpose("sector_2", "sector", "country", "time")
+        elif name.startswith("covariance_flux_") and name.endswith("_country"):
+            result[name] = result[name].transpose("country", "country_2", "time")
+
     return result
 
 
@@ -95,7 +101,7 @@ def _prepare_latest_concentration(ds: xr.Dataset) -> xr.Dataset:
         raise ValueError("number_of_identifier contains an out-of-range platform index.")
 
     identifiers = platforms[indices]
-    return ds.drop_vars(["platform", "number_of_identifier"]).assign_coords(
+    return ds.drop_vars(["platform", "number_of_identifier", "site"], errors="ignore").assign_coords(
         {_PLATFORM_IDENTIFIER: ("index", identifiers)}
     )
 
@@ -127,9 +133,10 @@ def merge_paris_outputs(
 ) -> Path:
     """Merge PARIS files from one template version along their observation time axis.
 
-    The template version is detected from the dataset schema. All inputs must use
-    the same output type and template version; legacy and latest files can both be
-    merged, but their different variable contracts cannot be mixed in one output.
+    The template version is detected from the dataset schema. When ``output_type``
+    is supplied, inputs of the other type are ignored so broad shell globs can be
+    reused. Selected inputs must share one template version; legacy and latest
+    files cannot be mixed in one output because their variable contracts differ.
     """
     paths = [Path(path) for path in input_files]
     if len(paths) < 2:
@@ -137,14 +144,33 @@ def merge_paris_outputs(
 
     output_path = Path(output_file)
     with ExitStack() as stack:
+        stack.enter_context(warnings.catch_warnings())
+        warnings.filterwarnings("ignore", message="Duplicate dimension names present")
         datasets = [stack.enter_context(xr.open_dataset(path)) for path in paths]
-        detected_types = {_output_type(ds) for ds in datasets}
-        if len(detected_types) != 1:
-            raise ValueError("PARIS flux and concentration files cannot be merged together.")
-
-        detected_type = detected_types.pop()
-        if output_type is not None and detected_type != output_type:
-            raise ValueError(f"Inputs are {detected_type} outputs, not {output_type} outputs.")
+        types = [_output_type(ds) for ds in datasets]
+        if output_type is not None:
+            selected = [
+                ds for ds, kind in zip(datasets, types) if kind == output_type
+            ]
+            if not selected:
+                raise ValueError(f"No {output_type} outputs were found in the input files.")
+            if len(selected) < 2:
+                raise ValueError(f"At least two {output_type} output files are required.")
+            datasets = selected
+            detected_type = output_type
+        else:
+            detected_types = set(types)
+            if len(detected_types) != 1:
+                flux_files = [path.name for path, kind in zip(paths, types) if kind == "flux"]
+                concentration_files = [
+                    path.name for path, kind in zip(paths, types) if kind == "concentration"
+                ]
+                raise ValueError(
+                    "PARIS flux and concentration files cannot be merged together. "
+                    f"Flux files: {flux_files}; concentration files: {concentration_files}. "
+                    "Pass --type flux or --type concentration to select one product from a broad glob."
+                )
+            detected_type = detected_types.pop()
 
         versions = {_template_version(ds, detected_type) for ds in datasets}
         if len(versions) != 1:

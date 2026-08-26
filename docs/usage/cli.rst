@@ -162,7 +162,7 @@ templates from their schema:
        SF6_EUROPE_PARIS_flux_2020-01-01.nc \
        --output SF6_EUROPE_PARIS_flux_2019-2020.nc
 
-Use ``--type flux`` or ``--type concentration`` to check the detected output
-type explicitly. Inputs to one invocation must use the same template version;
-run the command separately for legacy and latest products because their
-variable contracts differ.
+Use ``--type flux`` or ``--type concentration`` (also accepted as ``conc``) to
+select one product when a broad input glob matches both. Inputs selected for
+one invocation must use the same template version; run the command separately
+for legacy and latest products because their variable contracts differ.

@@ -51,7 +51,8 @@ def _merge_paris_outputs_command(args: argparse.Namespace) -> None:
     """Merge sequential PARIS output files with lazy imports for fast help output."""
     from openghg_inversions.postprocessing.merge_paris_outputs import merge_paris_outputs
 
-    merge_paris_outputs(args.input_files, args.output, output_type=args.type)
+    output_type = "concentration" if args.type == "conc" else args.type
+    merge_paris_outputs(args.input_files, args.output, output_type=output_type)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -81,8 +82,8 @@ def build_parser() -> argparse.ArgumentParser:
     merge_parser.add_argument("-o", "--output", required=True, help="Merged NetCDF output path")
     merge_parser.add_argument(
         "--type",
-        choices=("flux", "concentration"),
-        help="Expected output type (auto-detected when omitted)",
+        choices=("flux", "concentration", "conc"),
+        help="Output type to select (auto-detected when omitted; 'conc' is an alias)",
     )
     merge_parser.set_defaults(func=_merge_paris_outputs_command)
 
