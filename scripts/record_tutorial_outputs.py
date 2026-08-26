@@ -105,7 +105,7 @@ def _recorded_outputs(notebook: nbformat.NotebookNode) -> list[str]:
             if output_type == "stream":
                 continue
             data = output.get("data", {})
-            if "text/plain" in data:
+            if output_type == "execute_result" and "text/plain" in data:
                 text_outputs.append(str(data["text/plain"]).rstrip())
         if not text_outputs:
             raise RuntimeError("Every tutorial input cell must produce a text/plain result.")

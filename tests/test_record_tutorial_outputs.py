@@ -98,6 +98,7 @@ def test_recorded_outputs_accepts_text_results_and_ignores_stdout() -> None:
                 "value",
                 outputs=[
                     nbformat.v4.new_output("stream", name="stdout", text="sampling log\n"),
+                    nbformat.v4.new_output("display_data", data={"text/plain": "Output()"}),
                     nbformat.v4.new_output(
                         "execute_result",
                         data={"text/plain": "{'done': True}"},
