@@ -398,6 +398,31 @@ def test_make_inv_inputs_infers_sites_only_when_sites_is_none() -> None:
     assert list(result["site_names"].values) == ["AAA", "BBB"]
 
 
+def test_make_inv_inputs_drops_unobserved_boundary_states() -> None:
+    fp_data = {
+        "AAA": _make_minimal_fp_site(mf_base=10.0, include_inlet_height=False),
+        "BBB": _make_minimal_fp_site(mf_base=20.0, include_inlet_height=False),
+    }
+    fp_data["AAA"]["H_bc"] = xr.DataArray(
+        [[0.0, 1.0], [0.0, 0.0], [0.0, 0.0]],
+        dims=("bc_region", "time"),
+        coords={"bc_region": ["north", "unused", "south"]},
+    )
+    fp_data["BBB"]["H_bc"] = xr.DataArray(
+        [[0.0, 0.0], [0.0, 0.0], [2.0, 0.0]],
+        dims=("bc_region", "time"),
+        coords={"bc_region": ["north", "unused", "south"]},
+    )
+
+    result = make_inv_inputs(fp_data=fp_data, sites=["AAA", "BBB"], min_error=0.0)
+
+    assert [region[0] for region in result["bc_region"].values.tolist()] == ["north", "south"]
+    np.testing.assert_array_equal(
+        result["H_bc"].values,
+        [[0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 2.0, 0.0]],
+    )
+
+
 def test_make_inv_inputs_rejects_missing_requested_site() -> None:
     """A missing requested site raises a clear error before dataset gathering."""
     fp_data = {"AAA": _make_minimal_fp_site(mf_base=10.0, include_inlet_height=False)}

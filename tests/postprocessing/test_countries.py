@@ -114,6 +114,29 @@ def test_country_regions_align(country_ds):
     assert list(paris_regions.align(countries_list).to_dict()["BELUX"]) == ["BELGIUM", "LUXEMBOURG"]
 
 
+def test_asia_paris_regions_include_operational_aggregations():
+    assert paris_regions_dict["eastasia"] == {
+        "EASTERN_ASIA": ["EChi1", "PRK", "KOR", "JPN"],
+        "WMC": ["EChi2", "NChina", "WChina"],
+        "WESTERN_JPN": ["WJP", "CJP"],
+        "EASTERN_JPN": ["CJP", "NJP"],
+        "CHN_EC": ["CHN_E", "CHN_C"],
+        "CHN": ["CHN_E", "CHN_C", "CHN_W", "CHN_N"],
+        "JPN_WC": ["JPN_W", "JPN_C"],
+        "JPN": ["JPN_W", "JPN_C", "JPN_N"],
+        "NEA": ["KOR", "PRK", "JPN_W", "JPN_C", "CHN_E", "CHN_C"],
+        "NEA_C": ["KOR", "PRK", "JPN_W", "CHN_E"],
+    }
+    assert paris_regions_dict["centralasia"] == {
+        "INDIA": ["INDIA-SOUTH", "INDIA-NORTH", "INDIA-EAST", "INDIA-WEST", "INDIA-JK", "INDIA-ANDAMAN"],
+        "INDIA-noJK": ["INDIA-SOUTH", "INDIA-NORTH", "INDIA-EAST", "INDIA-WEST", "INDIA-ANDAMAN"],
+        "INDIA-NS": ["INDIA-NORTH", "INDIA-SOUTH"],
+        "INDIA-NSE": ["INDIA-NORTH", "INDIA-SOUTH", "INDIA-EAST"],
+        "INDIA-NSW": ["INDIA-NORTH", "INDIA-SOUTH", "INDIA-WEST"],
+        "INDIA-NSEW": ["INDIA-NORTH", "INDIA-SOUTH", "INDIA-EAST", "INDIA-WEST"],
+    }
+
+
 @pytest.mark.parametrize("country_code", ["alpha2", "alpha3", None])
 def test_countries_matrix_with_regions(country_code, country_ds, europe_country_file):
     """Check that country regions combine with countries correctly in EUROPE domain."""
@@ -126,19 +149,19 @@ def test_countries_matrix_with_regions(country_code, country_ds, europe_country_
 
     assert len(countries.country_selections) == len(country_ds.name) + len(paris_regions_dict["europe"])
 
+
 @pytest.mark.parametrize("country_code", ["alpha2", "alpha3", None])
 def test_countries_matrix_with_regions_EASTASIA(country_code, country_ds_eastasia, eastasia_country_file):
     """Check that country regions combine with countries correctly in EASTASIA domain."""
+    country_regions = {"EASTERN_ASIA": paris_regions_dict["eastasia"]["EASTERN_ASIA"]}
     countries = Countries.from_file(
         domain="EASTASIA",
-        country_regions=paris_regions_dict.get("eastasia"),
+        country_regions=country_regions,
         country_code=country_code,
         country_file=eastasia_country_file,
     )
 
-    assert len(countries.country_selections) == len(country_ds_eastasia.name) + len(
-        paris_regions_dict.get("eastasia", [])
-    )
+    assert len(countries.country_selections) == len(country_ds_eastasia.name) + len(country_regions)
 
 
 @pytest.mark.parametrize("country_code", ["alpha2", "alpha3", None])
