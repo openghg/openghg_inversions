@@ -81,8 +81,8 @@ structurally distinct model receives a distinct named recipe.
 
 Components may be composed at scientifically meaningful scales. In particular:
 
-- a baseline may contain boundary conditions, an offset, and eventually fixed
-  outer-domain flux contributions;
+- a reported baseline may compose separately stored boundary conditions, an
+  offset, and an output-side outer-domain flux projection;
 - a likelihood may combine observation error, aggregation error, model-data
   mismatch, pollution-event treatment, and a distribution; and
 - a pollution or flux component may combine several source-resolved forward
@@ -401,8 +401,10 @@ RHIME behavior intact.
   with prototype preservation
   [OPE-74](https://linear.app/openghg-inversions/issue/OPE-74), CO2-only
   [OPE-75](https://linear.app/openghg-inversions/issue/OPE-75), CO2 with O2
-  tracer [OPE-77](https://linear.app/openghg-inversions/issue/OPE-77),
-  outer-region treatments
+  tracer [OPE-77](https://linear.app/openghg-inversions/issue/OPE-77), one-state
+  grouped inner/outer construction superseding separate treatments
+  [OPE-119](https://linear.app/openghg-inversions/issue/OPE-119), grouped outer
+  reporting and composite baseline
   [OPE-76](https://linear.app/openghg-inversions/issue/OPE-76), and
   outputs/docs [OPE-79](https://linear.app/openghg-inversions/issue/OPE-79).
 - Later promotion of demonstrated shared features:

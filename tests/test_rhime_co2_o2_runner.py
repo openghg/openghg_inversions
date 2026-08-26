@@ -35,6 +35,32 @@ def test_modelled_concentration_is_not_labelled_as_pollution_only() -> None:
     assert _CO2_O2_VARIABLE_ROLES["modelled_concentration"] == "modelled_concentration"
     assert _CO2_O2_VARIABLE_ROLES["emissions_sensitivity"] == "co2_o2_sensitivity"
     assert _CO2_O2_VARIABLE_ROLES["flux_contribution"] == "co2_o2_flux_contribution"
+    assert _CO2_O2_VARIABLE_ROLES["total_marginal_error"] == "epsilon"
+
+
+def test_trace_annotation_labels_total_marginal_error() -> None:
+    posterior = xr.Dataset(
+        {"epsilon": (("chain", "draw", "observation"), np.ones((1, 1, 2)))},
+        coords={
+            "chain": [0],
+            "draw": [0],
+            "observation": [0, 1],
+            "observation_units": ("observation", ["ppm", "per meg"]),
+        },
+    )
+    trace = az.InferenceData(posterior=posterior)
+
+    co2_o2_runner._annotate_co2_o2_trace(
+        trace,
+        built=SimpleNamespace(variable_roles=_CO2_O2_VARIABLE_ROLES, metadata={}),
+    )
+
+    assert json.loads(trace.posterior["epsilon"].attrs["rhime_scientific_roles"]) == [
+        "total_marginal_error"
+    ]
+    assert trace.posterior["epsilon"].attrs["units"] == (
+        "mixed; see observation_units coordinate"
+    )
 
 
 def _prepared_stub(array: xr.DataArray) -> SimpleNamespace:

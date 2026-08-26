@@ -680,6 +680,15 @@ def add_offset_component(
             ``site`` coordinate, or if global-offset options conflict.
     """
     output_dim = str(output_dim)
+    if not per_site:
+        if offset_freq_indicator is not None or offset_freq is not None:
+            raise ValueError("Global offsets do not accept an offset frequency.")
+        if drop_first:
+            raise ValueError("Global offsets do not support `drop_first=True`.")
+        latent = parse_prior(var_name, prior_args)
+        aligned = pt.broadcast_to(latent, (observations.sizes[output_dim],))
+        return pm.Deterministic(output_name, aligned, dims=output_dim)
+
     if "site" not in observations.coords or observations.coords["site"].dims != (output_dim,):
         raise ValueError(
             "Offset observations must have an observation-aligned `site` coordinate."
@@ -687,14 +696,6 @@ def add_offset_component(
     site_indicator = make_site_indicator(observations.coords["site"])
     site_indicator = site_indicator.rename("site_indicator").transpose(output_dim)
     add_model_data(site_indicator, "site_indicator")
-    if not per_site:
-        if offset_freq_indicator is not None or offset_freq is not None:
-            raise ValueError("Global offsets do not accept an offset frequency.")
-        if drop_first:
-            raise ValueError("Global offsets do not support `drop_first=True`.")
-        latent = parse_prior(var_name, prior_args)
-        aligned = pt.broadcast_to(latent, (site_indicator.sizes[output_dim],))
-        return pm.Deterministic(output_name, aligned, dims=output_dim)
 
     indicator = _resolve_freq_indicator(
         explicit_indicator=offset_freq_indicator,
