@@ -602,87 +602,41 @@ deviation. OpenGHG Inversions does not default <code class="docutils literal not
 Verification Games fixed-only policy passes <code class="docutils literal notranslate"><span class="pre">fixed_model_mismatch=1.0</span></code> and
 <code class="docutils literal notranslate"><span class="pre">no_model_error=True</span></code> visibly. A runnable CO2 configuration and resolver are
 tracked in <a class="reference external" href="https://linear.app/openghg-inversions/issue/OPE-79">OPE-79</a>.</p>
-<section id="co2-outer-region-treatment">
-<h3>CO2 outer-region treatment<a class="headerlink" href="#co2-outer-region-treatment" title="Link to this heading">#</a></h3>
-<p>The direct CO2 builder accepts an optional outer-region treatment prepared with
-<a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.prepare_outer_region_treatment" title="openghg_inversions.rhime.co2.prepare_outer_region_treatment"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.prepare_outer_region_treatment()</span></code></a>. The three
-modes are mutually exclusive:</p>
-<div class="pst-scrollable-table-container"><table class="table" id="id1">
-<caption><span class="caption-text">Outer-region modes</span><a class="headerlink" href="#id1" title="Link to this table">#</a></caption>
-<colgroup>
-<col style="width: 22.0%" />
-<col style="width: 39.0%" />
-<col style="width: 39.0%" />
-</colgroup>
-<thead>
-<tr class="row-odd"><th class="head"><p>Mode</p></th>
-<th class="head"><p>Mean contribution</p></th>
-<th class="head"><p>Uncertainty treatment</p></th>
-</tr>
-</thead>
-<tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">fixed</span></code></p></td>
-<td><p><span class="math notranslate nohighlight">\(\mu_{outer}=H_{outer}s\)</span>, with <code class="docutils literal notranslate"><span class="pre">fixed_scale=1</span></code> by default</p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">outer_flux_scaling</span></code> is retained as a fixed state; no outer prior
-uncertainty is added</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">marginalized</span></code></p></td>
-<td><p><span class="math notranslate nohighlight">\(\mu_{outer}=H_{outer}m_{outer}\)</span></p></td>
-<td><p>No <code class="docutils literal notranslate"><span class="pre">outer_flux_scaling</span></code> is sampled and
-<span class="math notranslate nohighlight">\(H_{outer}C_{outer}H_{outer}^{\mathsf T}\)</span> is added to the
-observation covariance</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">inferred</span></code></p></td>
-<td><p><span class="math notranslate nohighlight">\(\mu_{outer}=H_{outer}x_{outer}\)</span></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">outer_flux_scaling</span></code> is inferred with the labelled correlated
-arithmetic-moment LogNormal prior</p></td>
-</tr>
-</tbody>
-</table>
-</div>
-<p>All modes expose <code class="docutils literal notranslate"><span class="pre">outer_flux_contribution</span></code>. Fixed and inferred modes also
-retain <code class="docutils literal notranslate"><span class="pre">outer_flux_scaling</span></code> and model data named <code class="docutils literal notranslate"><span class="pre">outer_sensitivity</span></code>;
-marginalized mode has no outer state vector.</p>
-<p>The marginalized mode is an explicit Gaussian marginalization using the
-supplied arithmetic mean and covariance. It is not an exact marginalization of
-the LogNormal state used by inferred mode. This surface was motivated by
-Verification Games/PARIS experiments: current PARIS evidence selects inferred
-outer states. Marginalized mode is implemented and tested, but is not
-established as a production or non-Verification-Games default. Those
-experiments use synthetic observations from known flux and transport, so the
-posterior flux can be scored against known truth.</p>
-<p>With both optional components present, the current CO2 builder’s complete
-likelihood mean is</p>
+<section id="co2-grouped-inner-and-outer-states">
+<h3>CO2 grouped inner and outer states<a class="headerlink" href="#co2-grouped-inner-and-outer-states" title="Link to this heading">#</a></h3>
+<p>Same-grid inner and outer fluxes use one ordinary retained state and one
+<code class="docutils literal notranslate"><span class="pre">co2_sensitivity</span></code>. Their geography is labelled metadata, not a second model
+component. The state axis retains <code class="docutils literal notranslate"><span class="pre">basis_group</span></code>, <code class="docutils literal notranslate"><span class="pre">basis_partition</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">region_in_partition</span></code> coordinates; select <code class="docutils literal notranslate"><span class="pre">basis_group</span> <span class="pre">==</span> <span class="pre">&quot;outer&quot;</span></code> rather
+than inferring outer entries from integer ranges or positions.</p>
+<p>Fixed versus inferred outer entries use the ordinary
+<a class="reference internal" href="../reference/openghg_inversions.models.html#openghg_inversions.models.StateActivity" title="openghg_inversions.models.StateActivity"><code class="xref py py-class docutils literal notranslate"><span class="pre">StateActivity</span></code></a> contract. To preserve the
+fixed-at-one behavior, pass
+<code class="docutils literal notranslate"><span class="pre">StateActivity(fixed_groups=(&quot;outer&quot;,),</span> <span class="pre">fixed_value=1.0)</span></code>. Leaving the outer
+group active infers those entries with the same correlated LogNormal state as
+the inner entries. Exact-zero sensitivity pruning composes with either policy.</p>
+<p>The builder accepts one prepared
+<a class="reference internal" href="../reference/openghg_inversions.correlated_state.html#openghg_inversions.correlated_state.CorrelatedLognormalPrior" title="openghg_inversions.correlated_state.CorrelatedLognormalPrior"><code class="xref py py-class docutils literal notranslate"><span class="pre">CorrelatedLognormalPrior</span></code></a> over the
+complete ordered state. Group-specific arithmetic moments must be aligned and
+assembled before graph construction. A full prior may contain inner/outer
+cross-covariance; it remains part of that one prior and is not also added to
+the observation covariance.</p>
+<p><code class="docutils literal notranslate"><span class="pre">co2_flux_contribution</span></code> contains the complete flux prediction. The model does
+not construct separate inner or outer terms. Outputs can reconstruct either
+view by selecting the corresponding <code class="docutils literal notranslate"><span class="pre">basis_group</span></code> entries from the stored
+sensitivity and <code class="docutils literal notranslate"><span class="pre">flux_scaling</span></code> state.</p>
+<p>With optional boundary conditions and offset present, the likelihood mean is</p>
 <div class="math notranslate nohighlight">
 \[\mathtt{modelled\_concentration}
 = \mathtt{fixed\_prior\_contribution}
 + \mathtt{co2\_flux\_contribution}
 + \mathtt{mu\_bc}
-+ \mathtt{outer\_flux\_contribution}.\]</div>
-<p><code class="docutils literal notranslate"><span class="pre">modelled_concentration</span></code> is the mean passed to the likelihood, not a
-pollution-only subtotal. Any future declared mean term, such as an offset, must
-also be included in this sum before likelihood construction. The graph and
-reporting names remain separate: atmospheric boundary conditions produce
-<code class="docutils literal notranslate"><span class="pre">mu_bc</span></code>, outer flux produces <code class="docutils literal notranslate"><span class="pre">outer_flux_contribution</span></code>, and the coherent
-affine term remains <code class="docutils literal notranslate"><span class="pre">fixed_prior_contribution</span></code>. Grouping boundary and outer
-concentrations as a baseline is a reporting choice only; it does not create a
-combined model component or alter this composition.</p>
-<p>Outer sensitivity must have exactly one state dimension with unique state
-labels. For the CO2 builder the observation dimension is <code class="docutils literal notranslate"><span class="pre">nmeasure</span></code>. When
-outer sensitivity and observations carry explicit indexes, their labels,
-order, and index-level names must match; the builder rejects conflicting
-indexes. Direct callers remain responsible for the semantics of unlabeled
-arrays. Labelled outer prior means and covariance rows and columns must likewise
-match the outer-state coordinate exactly. Direct custom callers are responsible
-for ensuring that inner and outer sensitivities represent disjoint state
-partitions and do not double count flux.</p>
-<p><a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.collapse_outer_sectors" title="openghg_inversions.rhime.co2.collapse_outer_sectors"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.collapse_outer_sectors()</span></code></a> may be applied
-before any of the three modes. Explicit state-aligned <code class="docutils literal notranslate"><span class="pre">group_labels</span></code> select
-which sensitivity columns are summed into one shared outer scaling state, while
-the returned member table preserves the original source, sector, domain, and
-region metadata. Collapsing is orthogonal to treatment: it does not choose a
-mode or derive collapsed prior moments, so callers supply any collapsed mean
-and covariance to <code class="docutils literal notranslate"><span class="pre">prepare_outer_region_treatment</span></code> afterward.</p>
++ \mathtt{offset}.\]</div>
+<p>An output may report a composite baseline by reconstructing the outer flux view
+and adding it to <code class="docutils literal notranslate"><span class="pre">mu_bc</span> <span class="pre">+</span> <span class="pre">offset</span></code>. This is an output policy only: boundary
+conditions, offsets, and outer flux remain distinct scientific terms. Sector
+combinations are likewise a general state-grouping choice rather than an
+outer-region model option.</p>
 <p>The model builder accepts explicit scientific arrays rather than a dataset.
 For durable prepared artifacts, <a class="reference internal" href="../reference/openghg_inversions.rhime.html#openghg_inversions.rhime.run_rhime_co2" title="openghg_inversions.rhime.run_rhime_co2"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.run_rhime_co2()</span></code></a>
 is the public replay seam: it validates and materializes the selected arrays,
@@ -694,8 +648,9 @@ it. Persist gathered-state traces with
 <a class="reference internal" href="../reference/openghg_inversions.serialization.html#openghg_inversions.serialization.save_inferencedata" title="openghg_inversions.serialization.save_inferencedata"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.serialization.save_inferencedata()</span></code></a>, which uses the
 same MultiIndex-safe boundary as standard and multisector RHIME outputs.
 The current prepared-input runner does not accept or construct an
-<code class="docutils literal notranslate"><span class="pre">outer_treatment</span></code>; outer-region treatment is therefore a direct-builder
-surface until prepared-artifact and runner integration is added.</p>
+outer-specific object. It constructs the complete retained prior from the
+prepared arithmetic mean and covariance, then forwards the prepared activity
+policy to the builder.</p>
 </section>
 </section>
 <section id="co2-o2-shared-state-model">
@@ -796,13 +751,12 @@ before footprint convolution, in which case no unique retained-state
 than inventing scalar values; the supplied effective O2 sensitivity remains the
 scientific input.</p>
 <p>Because this recipe receives the O2 sensitivity with the fixed ratio already
-applied upstream, its builder passes the shared state directly to
-<code class="docutils literal notranslate"><span class="pre">add_linked_linear_component</span></code>. If a fixed or inferred oxidation ratio were
-instead explicit model state, the recipe would visibly form
-<code class="docutils literal notranslate"><span class="pre">o2_state</span> <span class="pre">=</span> <span class="pre">oxidation_ratio</span> <span class="pre">*</span> <span class="pre">co2_state</span></code> and pass <code class="docutils literal notranslate"><span class="pre">o2_state</span></code> to that
-component. The <a class="reference internal" href="../experimental/ramsden2022.html"><span class="doc">Ramsden methane/ethane model</span></a> follows that explicit pattern for its emission
-ratio. The linked component registers and applies a sensitivity; it does not
-own scientific scaling.</p>
+applied upstream, its builder applies the gathered sensitivity directly to the
+unchanged shared state with <code class="docutils literal notranslate"><span class="pre">apply_linear_sensitivity</span></code>. If a fixed or
+inferred oxidation ratio were instead explicit model state, the recipe would
+visibly form <code class="docutils literal notranslate"><span class="pre">o2_state</span> <span class="pre">=</span> <span class="pre">oxidation_ratio</span> <span class="pre">*</span> <span class="pre">co2_state</span></code> before applying the
+ratio-free O2 sensitivity. The <a class="reference internal" href="../experimental/ramsden2022.html"><span class="doc">Ramsden methane/ethane model</span></a> follows that explicit pattern for its emission
+ratio. OPE-118 owns that future CO2/O2 coupling work.</p>
 </section>
 <section id="equivalent-construction-from-public-helpers">
 <h2>Equivalent construction from public helpers<a class="headerlink" href="#equivalent-construction-from-public-helpers" title="Link to this heading">#</a></h2>
@@ -1137,7 +1091,7 @@ component is insufficient.</p>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#stability-contract">Stability contract</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#standard-single-flux-model">Standard single-flux model</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#co2-coherent-reduction-model">CO2 coherent-reduction model</a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#co2-outer-region-treatment">CO2 outer-region treatment</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#co2-grouped-inner-and-outer-states">CO2 grouped inner and outer states</a></li>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#co2-o2-shared-state-model">CO2/O2 shared-state model</a></li>

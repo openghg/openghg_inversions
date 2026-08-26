@@ -51,7 +51,7 @@
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="openghg_inversions.rhime.co2.outer_regions" href="openghg_inversions.rhime.co2.outer_regions.html" />
+    <link rel="next" title="openghg_inversions.rhime.builders" href="openghg_inversions.rhime.builders.html" />
     <link rel="prev" title="openghg_inversions.rhime.co2.co2_o2_runner" href="openghg_inversions.rhime.co2.co2_o2_runner.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
@@ -387,7 +387,6 @@
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_preparation.html">openghg_inversions.rhime.co2.co2_o2_preparation</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_runner.html">openghg_inversions.rhime.co2.co2_o2_runner</a></li>
 <li class="toctree-l4 current active"><a class="current reference internal" href="#">openghg_inversions.rhime.co2.co2_runner</a></li>
-<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.outer_regions.html">openghg_inversions.rhime.co2.outer_regions</a></li>
 </ul>
 </details></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.builders.html">openghg_inversions.rhime.builders</a></li>
@@ -526,7 +525,8 @@ the default mismatch-error grouping.</p></li>
 <dd><p>Materialize, build, and sample the CO2 coherent-reduction model.</p>
 <p>This callable is the public production replay seam for an already
 validated <code class="xref py py-class docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code> artifact. It alone unpacks the
-prepared dataset; the model builder receives named scientific arrays.</p>
+prepared dataset and constructs the complete retained prior; the model
+builder receives named scientific values.</p>
 <p><code class="docutils literal notranslate"><span class="pre">fixed_model_mismatch=None</span></code> preserves a prepared fixed-mismatch field if
 present, otherwise omits the term. An explicit scalar or labelled vector
 overrides prepared data. By default, inferred model error varies by site
@@ -556,8 +556,9 @@ use in the likelihood.</p></li>
 manifests.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If prepared inputs are missing, inconsistent, or fail
-    model construction.</p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If model-error options contradict <code class="docutils literal notranslate"><span class="pre">no_model_error</span></code>, or
+    prepared inputs are missing, inconsistent, or fail model
+    construction.</p>
 </dd>
 </dl>
 </dd></dl>
@@ -584,11 +585,11 @@ manifests.</p>
       </div>
     </a>
     <a class="right-next"
-       href="openghg_inversions.rhime.co2.outer_regions.html"
+       href="openghg_inversions.rhime.builders.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">openghg_inversions.rhime.co2.outer_regions</p>
+        <p class="prev-next-title">openghg_inversions.rhime.builders</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
