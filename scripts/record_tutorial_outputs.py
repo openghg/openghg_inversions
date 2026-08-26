@@ -20,6 +20,7 @@ _DATA_TAG = "v1.0.0"
 _DEFAULT_DATA_DIRECTORY = _ROOT / "build" / f"tutorial-data-{_DATA_TAG}"
 _NOTEBOOK_DIRECTORY = _ROOT / "docs" / "_build" / "jupyter_execute" / "usage"
 _RUN_DIRECTORY = _ROOT / "docs" / "_build" / "tutorial-runs"
+_RECORDER_HOME = _RUN_DIRECTORY / "home"
 _TUTORIALS = {
     "rhime_standard_tutorial": _ROOT / "docs" / "usage" / "rhime_standard_tutorial.rst",
     "rhime_multisector_tutorial": _ROOT / "docs" / "usage" / "rhime_multisector_tutorial.rst",
@@ -35,9 +36,9 @@ class _Directive:
     body: str
 
 
-def _run(command: Sequence[str], *, cwd: Path = _ROOT) -> str:
+def _run(command: Sequence[str], *, cwd: Path = _ROOT, env: dict[str, str] | None = None) -> str:
     """Run one required command and return stripped standard output."""
-    result = subprocess.run(command, cwd=cwd, text=True, capture_output=True)
+    result = subprocess.run(command, cwd=cwd, env=env, text=True, capture_output=True)
     if result.returncode:
         details = "\n".join(part.strip() for part in (result.stdout, result.stderr) if part.strip())
         raise RuntimeError(f"Command failed ({result.returncode}): {' '.join(command)}\n{details}")
@@ -141,13 +142,16 @@ def _prepare_data(directory: Path) -> None:
     if head != tag:
         raise RuntimeError(f"{directory} is not checked out at {_DATA_TAG} ({tag}).")
     _run(["git", "lfs", "pull"], cwd=directory)
-    _run([sys.executable, "scripts/populate_store.py"], cwd=directory)
+    _RECORDER_HOME.mkdir(parents=True, exist_ok=True)
+    env = {**os.environ, "HOME": str(_RECORDER_HOME)}
+    _run([sys.executable, "scripts/populate_store.py"], cwd=directory, env=env)
 
 
 @contextmanager
 def _recording_environment(code_ref: str, output_path: Path) -> Iterator[None]:
     """Expose stable recording metadata and an isolated output directory."""
     values = {
+        "HOME": str(_RECORDER_HOME),
         "OPENGHG_TUTORIAL_CODE_REF": code_ref,
         "OPENGHG_TUTORIAL_DATA_TAG": _DATA_TAG,
         "OPENGHG_TUTORIAL_OUTPUT_PATH": str(output_path),
