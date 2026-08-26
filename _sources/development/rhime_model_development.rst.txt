@@ -203,7 +203,8 @@ arrays together, and pass them to components as honest named arguments.
    * - ``min_error``
      - Reusable error-model product
      - Currently calculated by preparation
-     - Passed as ``minimum_error`` to the likelihood
+     - Passed as ``minimum_error`` to likelihoods which support the historical
+       total-error floor
    * - ``aggregation_error_covariance``, ``low_rank_factor``,
        ``diagonal_residual_variance``, ``aggregation_error_sd``
      - Optional reusable fixed-error products

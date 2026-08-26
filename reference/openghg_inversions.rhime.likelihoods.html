@@ -513,7 +513,9 @@ mismatch variance.</p></li>
 <li><p><strong>pollution_event_baseline</strong> – Baseline used by pollution-event-scaled
 likelihoods, unused by additive mismatch variance.</p></li>
 <li><p><strong>output_dim</strong> – Observation dimension used for named PyMC variables.</p></li>
-<li><p><strong>sigma_prior</strong> – Optional prior arguments used to construct <code class="docutils literal notranslate"><span class="pre">sigma</span></code>.</p></li>
+<li><p><strong>sigma_prior</strong> – Optional prior arguments used to construct <code class="docutils literal notranslate"><span class="pre">sigma</span></code>. The
+distribution’s <code class="docutils literal notranslate"><span class="pre">sigma</span></code> parameter may map site names to scales
+when <code class="docutils literal notranslate"><span class="pre">sigma_per_site</span></code> is true.</p></li>
 <li><p><strong>sigma_freq</strong> – Optional frequency for sigma periods.</p></li>
 <li><p><strong>sigma_per_site</strong> – Whether sigma varies independently by site.</p></li>
 <li><p><strong>sigma_freq_anchor</strong> – Optional anchor for fixed-duration sigma periods.</p></li>

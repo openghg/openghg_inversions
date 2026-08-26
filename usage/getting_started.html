@@ -754,7 +754,8 @@ well.)</p></li>
 <span class="c1">; Definitions of PDF shape and parameters for inputs</span>
 <span class="c1">; - xprior (dict) - emissions</span>
 <span class="c1">; - bcprior (dict) - boundary conditions</span>
-<span class="c1">; - sigprior (dict) - model error</span>
+<span class="c1">; - sigprior (dict) - historical fractional model error</span>
+<span class="c1">; - additive_sigma_prior (dict) - additive model error in observation units</span>
 
 <span class="c1">; Each of these inputs should be dictionary with the name of probability distribution and shape parameters.</span>
 <span class="c1">; See https://docs.pymc.io/api/distributions/continuous.html</span>
@@ -762,7 +763,8 @@ well.)</p></li>
 
 <span class="na">xprior   = {"pdf"</span><span class="o">:</span><span class="s">"lognormal"</span><span class="na">, "stdev"</span><span class="o">:</span><span class="s">1}</span><span class="w">  </span><span class="c1">; lognormal with mean = 1, stdev = 1</span>
 <span class="na">bcprior  = {"pdf"</span><span class="o">:</span><span class="s">"truncatednormal"</span><span class="na">, "mu"</span><span class="o">:</span><span class="s">1.0, "sigma":0.02}</span><span class="w">  </span><span class="c1">; truncated normal with mean = 1, stdev 0.02</span>
-<span class="na">sigprior = {"pdf"</span><span class="o">:</span><span class="s">"uniform"</span><span class="na">, "lower"</span><span class="o">:</span><span class="s">0.5, "upper":10}</span>
+<span class="na">sigprior = {"pdf"</span><span class="o">:</span><span class="s">"uniform"</span><span class="na">, "lower"</span><span class="o">:</span><span class="s">0.0, "upper":0.2}</span>
+<span class="na">additive_sigma_prior = {"pdf"</span><span class="o">:</span><span class="s">"halfnormal"</span><span class="na">, "sigma"</span><span class="o">:</span><span class="s">5.0}</span><span class="w">  </span><span class="c1">; observation units</span>
 <span class="c1">;add_offset = False</span>
 <span class="c1">;offsetprior = {"pdf": "normal"}</span>
 <span class="c1">;offset_args = {"drop_first": False}  ;; set to True if you want first site to have offset 0.0</span>
@@ -796,6 +798,9 @@ well.)</p></li>
 <span class="na">nchain</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">4</span>
 
 <span class="k">[MCMC.OPTIONS]</span>
+<span class="c1">; Select response-independent absolute model error. Omit this option to use</span>
+<span class="c1">; the historical pollution-event likelihood.</span>
+<span class="na">likelihood</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"additive_sigma"</span>
 <span class="c1">; averaging_error (bool): Add variability in averaging period to the measurement error (Note: currently this</span>
 <span class="c1">;                         doesn't work correctly)</span>
 <span class="c1">; min_error: numeric lower bound for model-measurement mismatch, or "residual"/"percentile"</span>
@@ -821,12 +826,12 @@ well.)</p></li>
 <span class="c1">; sampler_kwargs (dict): Kwargs to pass to the sampler (e.g. sampler_kwargs = {'target_accept': 0.99})</span>
 
 <span class="na">averaging_error</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">True</span>
-<span class="na">min_error</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"residual"</span>
+<span class="na">min_error</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">0.0</span>
 <span class="na">fix_basis_outer_regions</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">False</span>
 <span class="na">use_bc</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">True</span>
 <span class="na">nuts_sampler</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"numpyro"</span>
 <span class="na">save_trace</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">True</span>
-<span class="na">min_error_options</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">{"by_site": True}</span><span class="w">  </span><span class="c1">; mapping; only supported key is boolean by_site (residual only)</span>
+<span class="c1">;min_error_options = {"by_site": True}  ; mapping; only supported key is boolean by_site (residual only)</span>
 <span class="na">pollution_events_from_obs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">True</span>
 <span class="na">no_model_error</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">False</span>
 <span class="na">reparameterise_log_normal</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">False</span>
@@ -845,6 +850,49 @@ well.)</p></li>
 <span class="na">outputname</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">'ch4_TAC_test'</span><span class="w">  </span><span class="c1">; (required)</span>
 </pre></div>
 </div>
+</section>
+<section id="additive-sigma-likelihood">
+<h2>Additive-sigma likelihood<a class="headerlink" href="#additive-sigma-likelihood" title="Link to this heading">#</a></h2>
+<p>The <code class="docutils literal notranslate"><span class="pre">run_hbmcmc.py</span></code> INI route can select a response-independent additive
+Gaussian model-error term with:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">[</span><span class="n">MCMC</span><span class="o">.</span><span class="n">PDF</span><span class="p">]</span>
+<span class="n">additive_sigma_prior</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"pdf"</span><span class="p">:</span> <span class="s2">"halfnormal"</span><span class="p">,</span> <span class="s2">"sigma"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"MHD"</span><span class="p">:</span> <span class="mf">5.0</span><span class="p">,</span> <span class="s2">"TAC"</span><span class="p">:</span> <span class="mf">2.0</span><span class="p">}}</span>
+
+<span class="p">[</span><span class="n">MCMC</span><span class="o">.</span><span class="n">BC_SPLIT</span><span class="p">]</span>
+<span class="n">sigma_freq</span> <span class="o">=</span> <span class="s2">"monthly"</span>
+<span class="n">sigma_per_site</span> <span class="o">=</span> <span class="kc">True</span>
+
+<span class="p">[</span><span class="n">MCMC</span><span class="o">.</span><span class="n">OPTIONS</span><span class="p">]</span>
+<span class="n">likelihood</span> <span class="o">=</span> <span class="s2">"additive_sigma"</span>
+<span class="n">min_error</span> <span class="o">=</span> <span class="mf">0.0</span>
+</pre></div>
+</div>
+<p>This gives the independent likelihood variance
+<span class="math notranslate nohighlight">\(s_y^2 + \sigma_{site,period}^2\)</span>. It does not use the pollution
+enhancement and does not add aggregation error. <code class="docutils literal notranslate"><span class="pre">min_error</span></code> works as before
+as an optional floor on the total standard deviation; it defaults to <code class="docutils literal notranslate"><span class="pre">0.0</span></code>.
+We recommend first trying the half-normal model with <code class="docutils literal notranslate"><span class="pre">min_error</span> <span class="pre">=</span> <span class="pre">0.0</span></code>.
+<code class="docutils literal notranslate"><span class="pre">aggregation_error_mode</span></code> is unavailable for this <code class="docutils literal notranslate"><span class="pre">run_hbmcmc.py</span></code> option.
+<code class="docutils literal notranslate"><span class="pre">additive_sigma_prior</span></code> takes precedence for this likelihood; when it is
+omitted, the compatibility entry point falls back to <code class="docutils literal notranslate"><span class="pre">sigprior</span></code>. A mapping
+from site name to scale gives each retained site its own half-normal prior
+scale. Every retained site must be present; entries for sites removed during
+preparation are ignored. Site mappings require <code class="docutils literal notranslate"><span class="pre">sigma_per_site</span> <span class="pre">=</span> <span class="pre">True</span></code>.</p>
+<p>A half-normal prior is the recommended starting family. Its <code class="docutils literal notranslate"><span class="pre">sigma</span></code> input is
+the half-normal <em>scale</em>, and</p>
+<div class="math notranslate nohighlight">
+\[E[\sigma_{site,period}] = \sigma_{prior}\sqrt{2/\pi},
+\qquad
+\sigma_{prior} = E[\sigma_{site,period}]\sqrt{\pi/2}.\]</div>
+<p>Thus the scale which exactly matches a desired prior mean is about 1.25 times
+that mean. If the empirical “average model error” is only a rough upper
+starting point, choosing a somewhat smaller scale gives a correspondingly
+smaller prior mean. This scale is in the same physical units and on the same
+numerical scale as the observations (for example, ppt). It is not the
+dimensionless fractional <code class="docutils literal notranslate"><span class="pre">sigma</span></code> used by the pollution-event scaling
+options. <code class="docutils literal notranslate"><span class="pre">additive_sigma_prior</span></code> avoids overloading the historical,
+dimensionless <code class="docutils literal notranslate"><span class="pre">sigprior</span></code>; the latter remains available as a compatibility
+fallback for additive-sigma configurations.</p>
 </section>
 <section id="description-of-hbmcmc-output-file">
 <h2>Description of HBMCMC output file<a class="headerlink" href="#description-of-hbmcmc-output-file" title="Link to this heading">#</a></h2>
@@ -969,6 +1017,7 @@ Gelman-Rubin diagnostic &lt; 1.05</p></li>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#sample-ini-file">Sample .ini file</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#additive-sigma-likelihood">Additive-sigma likelihood</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#description-of-hbmcmc-output-file">Description of HBMCMC output file</a></li>
 </ul>
   </nav></div>

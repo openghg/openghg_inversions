@@ -470,97 +470,118 @@ rejected when no <code class="docutils literal notranslate"><span class="pre">li
 <p>The following example replaces RHIME’s Gaussian observation distribution with
 a Student-t distribution while reusing RHIME’s current mean and error
 construction:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos"> 1</span><span class="sd">"""Editable likelihoods using RHIME's explicit scientific inputs.</span>
-<span class="linenos"> 2</span>
-<span class="linenos"> 3</span><span class="sd">This project-owned function changes RHIME's observation distribution while</span>
-<span class="linenos"> 4</span><span class="sd">reusing its current mean and fixed-error construction.</span>
-<span class="linenos"> 5</span>
-<span class="linenos"> 6</span><span class="sd">``likelihood_builder`` is the exported runner seam. Importing this module does</span>
-<span class="linenos"> 7</span><span class="sd">not build a model, retrieve data, sample, or write outputs.</span>
-<span class="linenos"> 8</span><span class="sd">"""</span>
-<span class="linenos"> 9</span>
-<span class="linenos">10</span><span class="kn">import</span><span class="w"> </span><span class="nn">pymc</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pm</span>
-<span class="linenos">11</span><span class="kn">import</span><span class="w"> </span><span class="nn">xarray</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">xr</span>
-<span class="linenos">12</span><span class="kn">from</span><span class="w"> </span><span class="nn">pytensor.tensor.variable</span><span class="w"> </span><span class="kn">import</span> <span class="n">TensorVariable</span>
-<span class="linenos">13</span>
-<span class="linenos">14</span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.models.additive_sigma</span><span class="w"> </span><span class="kn">import</span> <span class="n">build_additive_sigma_error</span>
-<span class="linenos">15</span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.observation_error</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
-<span class="linenos">16</span>    <span class="n">AggregationError</span><span class="p">,</span>
-<span class="linenos">17</span><span class="p">)</span>
-<span class="linenos">18</span>
-<span class="linenos">19</span>
-<span class="linenos">20</span><span class="k">def</span><span class="w"> </span><span class="nf">likelihood_builder</span><span class="p">(</span>
-<span class="linenos">21</span>    <span class="o">*</span><span class="p">,</span>
-<span class="linenos">22</span>    <span class="n">observations</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">,</span>
-<span class="linenos">23</span>    <span class="n">observation_error</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">,</span>
-<span class="linenos">24</span>    <span class="n">minimum_error</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">,</span>
-<span class="linenos">25</span>    <span class="n">aggregation_error</span><span class="p">:</span> <span class="n">AggregationError</span><span class="p">,</span>
-<span class="linenos">26</span>    <span class="n">mean</span><span class="p">:</span> <span class="n">TensorVariable</span><span class="p">,</span>
-<span class="linenos">27</span>    <span class="n">pollution_mean</span><span class="p">:</span> <span class="n">TensorVariable</span><span class="p">,</span>
-<span class="linenos">28</span>    <span class="n">pollution_event_baseline</span><span class="p">:</span> <span class="n">TensorVariable</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
-<span class="linenos">29</span>    <span class="n">output_dim</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-<span class="linenos">30</span>    <span class="n">degrees_of_freedom</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">4.0</span><span class="p">,</span>
-<span class="linenos">31</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">TensorVariable</span><span class="p">:</span>
-<span class="linenos">32</span><span class="w">    </span><span class="sd">"""Build a fixed-error Student-t model from RHIME's common inputs.</span>
-<span class="linenos">33</span>
-<span class="linenos">34</span><span class="sd">    Degrees of freedom default to 4.0. RHIME's ``epsilon`` is passed as the</span>
-<span class="linenos">35</span><span class="sd">    Student-t scale, not its marginal standard deviation; at the default the</span>
-<span class="linenos">36</span><span class="sd">    marginal standard deviation is ``epsilon * sqrt(2)``.</span>
-<span class="linenos">37</span>
-<span class="linenos">38</span><span class="sd">    Args:</span>
-<span class="linenos">39</span><span class="sd">        observations: Observed mole fractions.</span>
-<span class="linenos">40</span><span class="sd">        observation_error: Reported observation-error standard deviations.</span>
-<span class="linenos">41</span><span class="sd">        minimum_error: Minimum total-error standard deviations.</span>
-<span class="linenos">42</span><span class="sd">        aggregation_error: Validated fixed aggregation-error representation.</span>
-<span class="linenos">43</span><span class="sd">        mean: Completed forward-model concentration.</span>
-<span class="linenos">44</span><span class="sd">        pollution_mean: Modelled pollution contribution, unused by this</span>
-<span class="linenos">45</span><span class="sd">            fixed-error likelihood.</span>
-<span class="linenos">46</span><span class="sd">        pollution_event_baseline: Modelled baseline, unused by this</span>
-<span class="linenos">47</span><span class="sd">            fixed-error likelihood.</span>
-<span class="linenos">48</span><span class="sd">        output_dim: Observation dimension used by named PyMC variables.</span>
-<span class="linenos">49</span><span class="sd">        degrees_of_freedom: Positive Student-t degrees of freedom supplied as</span>
-<span class="linenos">50</span><span class="sd">            a custom likelihood option.</span>
-<span class="linenos">51</span>
-<span class="linenos">52</span><span class="sd">    Returns:</span>
-<span class="linenos">53</span><span class="sd">        The observed Student-t variable, named ``y``.</span>
-<span class="linenos">54</span>
-<span class="linenos">55</span><span class="sd">    Raises:</span>
-<span class="linenos">56</span><span class="sd">        ValueError: If dense or low-rank aggregation error would require a</span>
-<span class="linenos">57</span><span class="sd">            multivariate Student-t likelihood.</span>
-<span class="linenos">58</span>
-<span class="linenos">59</span><span class="sd">    Notes:</span>
-<span class="linenos">60</span><span class="sd">        On success, this adds RHIME's canonical observation-state nodes and</span>
-<span class="linenos">61</span><span class="sd">        ``y`` to the active PyMC model. It performs no sampling or output</span>
-<span class="linenos">62</span><span class="sd">        writes. Unsupported aggregation modes are rejected before any nodes</span>
-<span class="linenos">63</span><span class="sd">        are added.</span>
-<span class="linenos">64</span><span class="sd">    """</span>
-<span class="linenos">65</span>    <span class="k">if</span> <span class="n">aggregation_error</span><span class="o">.</span><span class="n">mode</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">{</span><span class="s2">"none"</span><span class="p">,</span> <span class="s2">"diagonal"</span><span class="p">}:</span>
-<span class="linenos">66</span>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"This Student-t model assumes independent observations."</span><span class="p">)</span>
-<span class="linenos">67</span>    <span class="k">if</span> <span class="n">degrees_of_freedom</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
-<span class="linenos">68</span>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"Student-t degrees of freedom must be positive."</span><span class="p">)</span>
-<span class="linenos">69</span>    <span class="k">del</span> <span class="n">pollution_mean</span><span class="p">,</span> <span class="n">pollution_event_baseline</span>
-<span class="linenos">70</span>    <span class="n">state</span> <span class="o">=</span> <span class="n">build_additive_sigma_error</span><span class="p">(</span>
-<span class="linenos">71</span>        <span class="n">observations</span><span class="o">=</span><span class="n">observations</span><span class="p">,</span>
-<span class="linenos">72</span>        <span class="n">observation_error</span><span class="o">=</span><span class="n">observation_error</span><span class="p">,</span>
-<span class="linenos">73</span>        <span class="n">minimum_error</span><span class="o">=</span><span class="n">minimum_error</span><span class="p">,</span>
-<span class="linenos">74</span>        <span class="n">aggregation_error</span><span class="o">=</span><span class="n">aggregation_error</span><span class="p">,</span>
-<span class="linenos">75</span>        <span class="n">sigma_alignment</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
-<span class="linenos">76</span>        <span class="n">sigma_prior</span><span class="o">=</span><span class="p">{},</span>
-<span class="linenos">77</span>        <span class="n">no_model_error</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-<span class="linenos">78</span>        <span class="n">output_dim</span><span class="o">=</span><span class="n">output_dim</span><span class="p">,</span>
-<span class="linenos">79</span>    <span class="p">)</span>
-<span class="linenos">80</span>    <span class="n">observed</span> <span class="o">=</span> <span class="n">pm</span><span class="o">.</span><span class="n">StudentT</span><span class="p">(</span>
-<span class="linenos">81</span>        <span class="s2">"y"</span><span class="p">,</span>
-<span class="linenos">82</span>        <span class="n">nu</span><span class="o">=</span><span class="n">degrees_of_freedom</span><span class="p">,</span>
-<span class="linenos">83</span>        <span class="n">mu</span><span class="o">=</span><span class="n">mean</span><span class="p">,</span>
-<span class="linenos">84</span>        <span class="n">sigma</span><span class="o">=</span><span class="n">state</span><span class="o">.</span><span class="n">error_scale</span><span class="p">,</span>
-<span class="linenos">85</span>        <span class="n">observed</span><span class="o">=</span><span class="n">state</span><span class="o">.</span><span class="n">observed</span><span class="p">,</span>
-<span class="linenos">86</span>        <span class="n">dims</span><span class="o">=</span><span class="n">output_dim</span><span class="p">,</span>
-<span class="linenos">87</span>    <span class="p">)</span>
-<span class="linenos">88</span>    <span class="k">return</span> <span class="n">observed</span>
-<span class="linenos">89</span>
-<span class="linenos">90</span>
-<span class="linenos">91</span><span class="n">__all__</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"likelihood_builder"</span><span class="p">]</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos">  1</span><span class="sd">"""Editable likelihoods using RHIME's explicit scientific inputs.</span>
+<span class="linenos">  2</span>
+<span class="linenos">  3</span><span class="sd">This project-owned function changes RHIME's observation distribution while</span>
+<span class="linenos">  4</span><span class="sd">reusing its current mean and fixed-error construction.</span>
+<span class="linenos">  5</span>
+<span class="linenos">  6</span><span class="sd">``likelihood_builder`` is the exported runner seam. Importing this module does</span>
+<span class="linenos">  7</span><span class="sd">not build a model, retrieve data, sample, or write outputs.</span>
+<span class="linenos">  8</span><span class="sd">"""</span>
+<span class="linenos">  9</span>
+<span class="linenos"> 10</span><span class="kn">import</span><span class="w"> </span><span class="nn">pymc</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pm</span>
+<span class="linenos"> 11</span><span class="kn">import</span><span class="w"> </span><span class="nn">pytensor.tensor</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pt</span>
+<span class="linenos"> 12</span><span class="kn">import</span><span class="w"> </span><span class="nn">xarray</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">xr</span>
+<span class="linenos"> 13</span><span class="kn">from</span><span class="w"> </span><span class="nn">pytensor.tensor.variable</span><span class="w"> </span><span class="kn">import</span> <span class="n">TensorVariable</span>
+<span class="linenos"> 14</span>
+<span class="linenos"> 15</span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.observation_error</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+<span class="linenos"> 16</span>    <span class="n">AggregationError</span><span class="p">,</span>
+<span class="linenos"> 17</span>    <span class="n">validate_observation_error_arrays</span><span class="p">,</span>
+<span class="linenos"> 18</span><span class="p">)</span>
+<span class="linenos"> 19</span>
+<span class="linenos"> 20</span>
+<span class="linenos"> 21</span><span class="k">def</span><span class="w"> </span><span class="nf">likelihood_builder</span><span class="p">(</span>
+<span class="linenos"> 22</span>    <span class="o">*</span><span class="p">,</span>
+<span class="linenos"> 23</span>    <span class="n">observations</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">,</span>
+<span class="linenos"> 24</span>    <span class="n">observation_error</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">,</span>
+<span class="linenos"> 25</span>    <span class="n">minimum_error</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">,</span>
+<span class="linenos"> 26</span>    <span class="n">aggregation_error</span><span class="p">:</span> <span class="n">AggregationError</span><span class="p">,</span>
+<span class="linenos"> 27</span>    <span class="n">mean</span><span class="p">:</span> <span class="n">TensorVariable</span><span class="p">,</span>
+<span class="linenos"> 28</span>    <span class="n">pollution_mean</span><span class="p">:</span> <span class="n">TensorVariable</span><span class="p">,</span>
+<span class="linenos"> 29</span>    <span class="n">pollution_event_baseline</span><span class="p">:</span> <span class="n">TensorVariable</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+<span class="linenos"> 30</span>    <span class="n">output_dim</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<span class="linenos"> 31</span>    <span class="n">degrees_of_freedom</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">4.0</span><span class="p">,</span>
+<span class="linenos"> 32</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">TensorVariable</span><span class="p">:</span>
+<span class="linenos"> 33</span><span class="w">    </span><span class="sd">"""Build a fixed-error Student-t model from RHIME's common inputs.</span>
+<span class="linenos"> 34</span>
+<span class="linenos"> 35</span><span class="sd">    Degrees of freedom default to 4.0. RHIME's ``epsilon`` is passed as the</span>
+<span class="linenos"> 36</span><span class="sd">    Student-t scale, not its marginal standard deviation; at the default the</span>
+<span class="linenos"> 37</span><span class="sd">    marginal standard deviation is ``epsilon * sqrt(2)``.</span>
+<span class="linenos"> 38</span>
+<span class="linenos"> 39</span><span class="sd">    Args:</span>
+<span class="linenos"> 40</span><span class="sd">        observations: Observed mole fractions.</span>
+<span class="linenos"> 41</span><span class="sd">        observation_error: Reported observation-error standard deviations.</span>
+<span class="linenos"> 42</span><span class="sd">        minimum_error: Minimum total-error standard deviations.</span>
+<span class="linenos"> 43</span><span class="sd">        aggregation_error: Validated fixed aggregation-error representation.</span>
+<span class="linenos"> 44</span><span class="sd">        mean: Completed forward-model concentration.</span>
+<span class="linenos"> 45</span><span class="sd">        pollution_mean: Modelled pollution contribution, unused by this</span>
+<span class="linenos"> 46</span><span class="sd">            fixed-error likelihood.</span>
+<span class="linenos"> 47</span><span class="sd">        pollution_event_baseline: Modelled baseline, unused by this</span>
+<span class="linenos"> 48</span><span class="sd">            fixed-error likelihood.</span>
+<span class="linenos"> 49</span><span class="sd">        output_dim: Observation dimension used by named PyMC variables.</span>
+<span class="linenos"> 50</span><span class="sd">        degrees_of_freedom: Positive Student-t degrees of freedom supplied as</span>
+<span class="linenos"> 51</span><span class="sd">            a custom likelihood option.</span>
+<span class="linenos"> 52</span>
+<span class="linenos"> 53</span><span class="sd">    Returns:</span>
+<span class="linenos"> 54</span><span class="sd">        The observed Student-t variable, named ``y``.</span>
+<span class="linenos"> 55</span>
+<span class="linenos"> 56</span><span class="sd">    Raises:</span>
+<span class="linenos"> 57</span><span class="sd">        ValueError: If dense or low-rank aggregation error would require a</span>
+<span class="linenos"> 58</span><span class="sd">            multivariate Student-t likelihood.</span>
+<span class="linenos"> 59</span>
+<span class="linenos"> 60</span><span class="sd">    Notes:</span>
+<span class="linenos"> 61</span><span class="sd">        On success, this adds RHIME's canonical observation-state nodes and</span>
+<span class="linenos"> 62</span><span class="sd">        ``y`` to the active PyMC model. It performs no sampling or output</span>
+<span class="linenos"> 63</span><span class="sd">        writes. Unsupported aggregation modes are rejected before any nodes</span>
+<span class="linenos"> 64</span><span class="sd">        are added.</span>
+<span class="linenos"> 65</span><span class="sd">    """</span>
+<span class="linenos"> 66</span>    <span class="k">if</span> <span class="n">aggregation_error</span><span class="o">.</span><span class="n">mode</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">{</span><span class="s2">"none"</span><span class="p">,</span> <span class="s2">"diagonal"</span><span class="p">}:</span>
+<span class="linenos"> 67</span>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"This Student-t model assumes independent observations."</span><span class="p">)</span>
+<span class="linenos"> 68</span>    <span class="k">if</span> <span class="n">degrees_of_freedom</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+<span class="linenos"> 69</span>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"Student-t degrees of freedom must be positive."</span><span class="p">)</span>
+<span class="linenos"> 70</span>    <span class="k">del</span> <span class="n">pollution_mean</span><span class="p">,</span> <span class="n">pollution_event_baseline</span>
+<span class="linenos"> 71</span>    <span class="n">validate_observation_error_arrays</span><span class="p">(</span>
+<span class="linenos"> 72</span>        <span class="n">observations</span><span class="p">,</span>
+<span class="linenos"> 73</span>        <span class="n">observation_error</span><span class="p">,</span>
+<span class="linenos"> 74</span>        <span class="n">minimum_error</span><span class="p">,</span>
+<span class="linenos"> 75</span>        <span class="n">owner</span><span class="o">=</span><span class="s2">"Custom Student-t likelihood"</span><span class="p">,</span>
+<span class="linenos"> 76</span>        <span class="n">output_dim</span><span class="o">=</span><span class="n">output_dim</span><span class="p">,</span>
+<span class="linenos"> 77</span>    <span class="p">)</span>
+<span class="linenos"> 78</span>    <span class="n">reported_error</span> <span class="o">=</span> <span class="n">pm</span><span class="o">.</span><span class="n">Data</span><span class="p">(</span>
+<span class="linenos"> 79</span>        <span class="s2">"error"</span><span class="p">,</span>
+<span class="linenos"> 80</span>        <span class="n">pm</span><span class="o">.</span><span class="n">floatX</span><span class="p">(</span><span class="n">observation_error</span><span class="o">.</span><span class="n">transpose</span><span class="p">(</span><span class="n">output_dim</span><span class="p">)</span><span class="o">.</span><span class="n">compute</span><span class="p">()</span><span class="o">.</span><span class="n">values</span><span class="p">),</span>
+<span class="linenos"> 81</span>        <span class="n">dims</span><span class="o">=</span><span class="n">output_dim</span><span class="p">,</span>
+<span class="linenos"> 82</span>    <span class="p">)</span>
+<span class="linenos"> 83</span>    <span class="n">minimum_error_data</span> <span class="o">=</span> <span class="n">pm</span><span class="o">.</span><span class="n">Data</span><span class="p">(</span>
+<span class="linenos"> 84</span>        <span class="s2">"min_error"</span><span class="p">,</span>
+<span class="linenos"> 85</span>        <span class="n">pm</span><span class="o">.</span><span class="n">floatX</span><span class="p">(</span><span class="n">minimum_error</span><span class="o">.</span><span class="n">transpose</span><span class="p">(</span><span class="n">output_dim</span><span class="p">)</span><span class="o">.</span><span class="n">compute</span><span class="p">()</span><span class="o">.</span><span class="n">values</span><span class="p">),</span>
+<span class="linenos"> 86</span>        <span class="n">dims</span><span class="o">=</span><span class="n">output_dim</span><span class="p">,</span>
+<span class="linenos"> 87</span>    <span class="p">)</span>
+<span class="linenos"> 88</span>    <span class="n">aggregation_variance</span> <span class="o">=</span> <span class="n">pm</span><span class="o">.</span><span class="n">Data</span><span class="p">(</span>
+<span class="linenos"> 89</span>        <span class="s2">"aggregation_error_marginal_variance"</span><span class="p">,</span>
+<span class="linenos"> 90</span>        <span class="n">pm</span><span class="o">.</span><span class="n">floatX</span><span class="p">(</span><span class="n">aggregation_error</span><span class="o">.</span><span class="n">marginal_variance</span><span class="p">),</span>
+<span class="linenos"> 91</span>        <span class="n">dims</span><span class="o">=</span><span class="n">output_dim</span><span class="p">,</span>
+<span class="linenos"> 92</span>    <span class="p">)</span>
+<span class="linenos"> 93</span>    <span class="n">epsilon</span> <span class="o">=</span> <span class="n">pm</span><span class="o">.</span><span class="n">Deterministic</span><span class="p">(</span>
+<span class="linenos"> 94</span>        <span class="s2">"epsilon"</span><span class="p">,</span>
+<span class="linenos"> 95</span>        <span class="n">pt</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span>
+<span class="linenos"> 96</span>            <span class="n">pt</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">reported_error</span><span class="o">**</span><span class="mi">2</span> <span class="o">+</span> <span class="n">aggregation_variance</span><span class="p">),</span>
+<span class="linenos"> 97</span>            <span class="n">minimum_error_data</span><span class="p">,</span>
+<span class="linenos"> 98</span>        <span class="p">),</span>
+<span class="linenos"> 99</span>        <span class="n">dims</span><span class="o">=</span><span class="n">output_dim</span><span class="p">,</span>
+<span class="linenos">100</span>    <span class="p">)</span>
+<span class="linenos">101</span>    <span class="n">observed</span> <span class="o">=</span> <span class="n">pm</span><span class="o">.</span><span class="n">StudentT</span><span class="p">(</span>
+<span class="linenos">102</span>        <span class="s2">"y"</span><span class="p">,</span>
+<span class="linenos">103</span>        <span class="n">nu</span><span class="o">=</span><span class="n">degrees_of_freedom</span><span class="p">,</span>
+<span class="linenos">104</span>        <span class="n">mu</span><span class="o">=</span><span class="n">mean</span><span class="p">,</span>
+<span class="linenos">105</span>        <span class="n">sigma</span><span class="o">=</span><span class="n">epsilon</span><span class="p">,</span>
+<span class="linenos">106</span>        <span class="n">observed</span><span class="o">=</span><span class="n">pm</span><span class="o">.</span><span class="n">floatX</span><span class="p">(</span><span class="n">observations</span><span class="o">.</span><span class="n">transpose</span><span class="p">(</span><span class="n">output_dim</span><span class="p">)</span><span class="o">.</span><span class="n">compute</span><span class="p">()</span><span class="o">.</span><span class="n">values</span><span class="p">),</span>
+<span class="linenos">107</span>        <span class="n">dims</span><span class="o">=</span><span class="n">output_dim</span><span class="p">,</span>
+<span class="linenos">108</span>    <span class="p">)</span>
+<span class="linenos">109</span>    <span class="k">return</span> <span class="n">observed</span>
+<span class="linenos">110</span>
+<span class="linenos">111</span>
+<span class="linenos">112</span><span class="n">__all__</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"likelihood_builder"</span><span class="p">]</span>
 </pre></div>
 </div>
 <p>RHIME records the function’s module and name, together with its explicit
@@ -577,7 +598,9 @@ drop-in ordinary likelihood builder. It derives sigma alignment from the
 labelled observation <code class="docutils literal notranslate"><span class="pre">site</span></code> and <code class="docutils literal notranslate"><span class="pre">time</span></code> coordinates. Optional
 <code class="docutils literal notranslate"><span class="pre">sigma_prior</span></code>, <code class="docutils literal notranslate"><span class="pre">sigma_freq</span></code>, <code class="docutils literal notranslate"><span class="pre">sigma_per_site</span></code>, <code class="docutils literal notranslate"><span class="pre">sigma_freq_anchor</span></code>, and
 <code class="docutils literal notranslate"><span class="pre">no_model_error</span></code> settings belong to that component and can be supplied in
-<code class="docutils literal notranslate"><span class="pre">likelihood_kwargs</span></code>.</p>
+<code class="docutils literal notranslate"><span class="pre">likelihood_kwargs</span></code>. This model adds absolute <code class="docutils literal notranslate"><span class="pre">sigma**2</span></code> directly to the
+independent variance. The prepared <code class="docutils literal notranslate"><span class="pre">minimum_error</span></code> retains its historical
+meaning as an optional floor on total standard deviation.</p>
 <p>Built-in aggregation covariance relies on the guarantees of its construction
 pipeline. A custom pipeline that assembles its own covariance may optionally
 call
@@ -734,77 +757,98 @@ Inversions implementation:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos"> 1</span><span class="sd">"""Project-owned scientific variation for a cookiecutter-generated package."""</span>
 <span class="linenos"> 2</span>
 <span class="linenos"> 3</span><span class="kn">import</span><span class="w"> </span><span class="nn">pymc</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pm</span>
-<span class="linenos"> 4</span><span class="kn">import</span><span class="w"> </span><span class="nn">xarray</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">xr</span>
-<span class="linenos"> 5</span><span class="kn">from</span><span class="w"> </span><span class="nn">pytensor.tensor.variable</span><span class="w"> </span><span class="kn">import</span> <span class="n">TensorVariable</span>
-<span class="linenos"> 6</span>
-<span class="linenos"> 7</span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.models.additive_sigma</span><span class="w"> </span><span class="kn">import</span> <span class="n">build_additive_sigma_error</span>
+<span class="linenos"> 4</span><span class="kn">import</span><span class="w"> </span><span class="nn">pytensor.tensor</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pt</span>
+<span class="linenos"> 5</span><span class="kn">import</span><span class="w"> </span><span class="nn">xarray</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">xr</span>
+<span class="linenos"> 6</span><span class="kn">from</span><span class="w"> </span><span class="nn">pytensor.tensor.variable</span><span class="w"> </span><span class="kn">import</span> <span class="n">TensorVariable</span>
+<span class="linenos"> 7</span>
 <span class="linenos"> 8</span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.observation_error</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
 <span class="linenos"> 9</span>    <span class="n">AggregationError</span><span class="p">,</span>
-<span class="linenos">10</span><span class="p">)</span>
-<span class="linenos">11</span>
+<span class="linenos">10</span>    <span class="n">validate_observation_error_arrays</span><span class="p">,</span>
+<span class="linenos">11</span><span class="p">)</span>
 <span class="linenos">12</span>
-<span class="linenos">13</span><span class="k">def</span><span class="w"> </span><span class="nf">likelihood_builder</span><span class="p">(</span>
-<span class="linenos">14</span>    <span class="o">*</span><span class="p">,</span>
-<span class="linenos">15</span>    <span class="n">observations</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">,</span>
-<span class="linenos">16</span>    <span class="n">observation_error</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">,</span>
-<span class="linenos">17</span>    <span class="n">minimum_error</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">,</span>
-<span class="linenos">18</span>    <span class="n">aggregation_error</span><span class="p">:</span> <span class="n">AggregationError</span><span class="p">,</span>
-<span class="linenos">19</span>    <span class="n">mean</span><span class="p">:</span> <span class="n">TensorVariable</span><span class="p">,</span>
-<span class="linenos">20</span>    <span class="n">pollution_mean</span><span class="p">:</span> <span class="n">TensorVariable</span><span class="p">,</span>
-<span class="linenos">21</span>    <span class="n">pollution_event_baseline</span><span class="p">:</span> <span class="n">TensorVariable</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
-<span class="linenos">22</span>    <span class="n">output_dim</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-<span class="linenos">23</span>    <span class="n">degrees_of_freedom</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">4.0</span><span class="p">,</span>
-<span class="linenos">24</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">TensorVariable</span><span class="p">:</span>
-<span class="linenos">25</span><span class="w">    </span><span class="sd">"""Build an independent Student-t observation likelihood for RHIME.</span>
-<span class="linenos">26</span>
-<span class="linenos">27</span><span class="sd">    Args:</span>
-<span class="linenos">28</span><span class="sd">        observations: Observed mole fractions.</span>
-<span class="linenos">29</span><span class="sd">        observation_error: Reported observation-error standard deviations.</span>
-<span class="linenos">30</span><span class="sd">        minimum_error: Minimum total-error standard deviations.</span>
-<span class="linenos">31</span><span class="sd">        aggregation_error: Validated fixed aggregation-error representation.</span>
-<span class="linenos">32</span><span class="sd">        mean: Completed forward-model concentration.</span>
-<span class="linenos">33</span><span class="sd">        pollution_mean: Modelled pollution contribution, unused by this</span>
-<span class="linenos">34</span><span class="sd">            fixed-error likelihood.</span>
-<span class="linenos">35</span><span class="sd">        pollution_event_baseline: Modelled baseline, unused by this</span>
-<span class="linenos">36</span><span class="sd">            fixed-error likelihood.</span>
-<span class="linenos">37</span><span class="sd">        output_dim: Observation dimension used by named PyMC variables.</span>
-<span class="linenos">38</span><span class="sd">        degrees_of_freedom: Positive Student-t degrees of freedom supplied as</span>
-<span class="linenos">39</span><span class="sd">            a custom likelihood option.</span>
-<span class="linenos">40</span>
-<span class="linenos">41</span><span class="sd">    Returns:</span>
-<span class="linenos">42</span><span class="sd">        The observed Student-t variable, named ``y``.</span>
-<span class="linenos">43</span>
-<span class="linenos">44</span><span class="sd">    Raises:</span>
-<span class="linenos">45</span><span class="sd">        ValueError: If aggregation error requires a multivariate likelihood.</span>
-<span class="linenos">46</span><span class="sd">    """</span>
-<span class="linenos">47</span>    <span class="k">if</span> <span class="n">aggregation_error</span><span class="o">.</span><span class="n">mode</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">{</span><span class="s2">"none"</span><span class="p">,</span> <span class="s2">"diagonal"</span><span class="p">}:</span>
-<span class="linenos">48</span>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"This Student-t model assumes independent observations."</span><span class="p">)</span>
-<span class="linenos">49</span>    <span class="k">if</span> <span class="n">degrees_of_freedom</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
-<span class="linenos">50</span>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"Student-t degrees of freedom must be positive."</span><span class="p">)</span>
-<span class="linenos">51</span>
-<span class="linenos">52</span>    <span class="k">del</span> <span class="n">pollution_mean</span><span class="p">,</span> <span class="n">pollution_event_baseline</span>
-<span class="linenos">53</span>    <span class="n">state</span> <span class="o">=</span> <span class="n">build_additive_sigma_error</span><span class="p">(</span>
-<span class="linenos">54</span>        <span class="n">observations</span><span class="o">=</span><span class="n">observations</span><span class="p">,</span>
-<span class="linenos">55</span>        <span class="n">observation_error</span><span class="o">=</span><span class="n">observation_error</span><span class="p">,</span>
-<span class="linenos">56</span>        <span class="n">minimum_error</span><span class="o">=</span><span class="n">minimum_error</span><span class="p">,</span>
-<span class="linenos">57</span>        <span class="n">aggregation_error</span><span class="o">=</span><span class="n">aggregation_error</span><span class="p">,</span>
-<span class="linenos">58</span>        <span class="n">sigma_alignment</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
-<span class="linenos">59</span>        <span class="n">sigma_prior</span><span class="o">=</span><span class="p">{},</span>
-<span class="linenos">60</span>        <span class="n">no_model_error</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-<span class="linenos">61</span>        <span class="n">output_dim</span><span class="o">=</span><span class="n">output_dim</span><span class="p">,</span>
-<span class="linenos">62</span>    <span class="p">)</span>
-<span class="linenos">63</span>    <span class="n">observed</span> <span class="o">=</span> <span class="n">pm</span><span class="o">.</span><span class="n">StudentT</span><span class="p">(</span>
-<span class="linenos">64</span>        <span class="s2">"y"</span><span class="p">,</span>
-<span class="linenos">65</span>        <span class="n">nu</span><span class="o">=</span><span class="n">degrees_of_freedom</span><span class="p">,</span>
-<span class="linenos">66</span>        <span class="n">mu</span><span class="o">=</span><span class="n">mean</span><span class="p">,</span>
-<span class="linenos">67</span>        <span class="n">sigma</span><span class="o">=</span><span class="n">state</span><span class="o">.</span><span class="n">error_scale</span><span class="p">,</span>
-<span class="linenos">68</span>        <span class="n">observed</span><span class="o">=</span><span class="n">state</span><span class="o">.</span><span class="n">observed</span><span class="p">,</span>
+<span class="linenos">13</span>
+<span class="linenos">14</span><span class="k">def</span><span class="w"> </span><span class="nf">likelihood_builder</span><span class="p">(</span>
+<span class="linenos">15</span>    <span class="o">*</span><span class="p">,</span>
+<span class="linenos">16</span>    <span class="n">observations</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">,</span>
+<span class="linenos">17</span>    <span class="n">observation_error</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">,</span>
+<span class="linenos">18</span>    <span class="n">minimum_error</span><span class="p">:</span> <span class="n">xr</span><span class="o">.</span><span class="n">DataArray</span><span class="p">,</span>
+<span class="linenos">19</span>    <span class="n">aggregation_error</span><span class="p">:</span> <span class="n">AggregationError</span><span class="p">,</span>
+<span class="linenos">20</span>    <span class="n">mean</span><span class="p">:</span> <span class="n">TensorVariable</span><span class="p">,</span>
+<span class="linenos">21</span>    <span class="n">pollution_mean</span><span class="p">:</span> <span class="n">TensorVariable</span><span class="p">,</span>
+<span class="linenos">22</span>    <span class="n">pollution_event_baseline</span><span class="p">:</span> <span class="n">TensorVariable</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+<span class="linenos">23</span>    <span class="n">output_dim</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<span class="linenos">24</span>    <span class="n">degrees_of_freedom</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">4.0</span><span class="p">,</span>
+<span class="linenos">25</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">TensorVariable</span><span class="p">:</span>
+<span class="linenos">26</span><span class="w">    </span><span class="sd">"""Build an independent Student-t observation likelihood for RHIME.</span>
+<span class="linenos">27</span>
+<span class="linenos">28</span><span class="sd">    Args:</span>
+<span class="linenos">29</span><span class="sd">        observations: Observed mole fractions.</span>
+<span class="linenos">30</span><span class="sd">        observation_error: Reported observation-error standard deviations.</span>
+<span class="linenos">31</span><span class="sd">        minimum_error: Minimum total-error standard deviations.</span>
+<span class="linenos">32</span><span class="sd">        aggregation_error: Validated fixed aggregation-error representation.</span>
+<span class="linenos">33</span><span class="sd">        mean: Completed forward-model concentration.</span>
+<span class="linenos">34</span><span class="sd">        pollution_mean: Modelled pollution contribution, unused by this</span>
+<span class="linenos">35</span><span class="sd">            fixed-error likelihood.</span>
+<span class="linenos">36</span><span class="sd">        pollution_event_baseline: Modelled baseline, unused by this</span>
+<span class="linenos">37</span><span class="sd">            fixed-error likelihood.</span>
+<span class="linenos">38</span><span class="sd">        output_dim: Observation dimension used by named PyMC variables.</span>
+<span class="linenos">39</span><span class="sd">        degrees_of_freedom: Positive Student-t degrees of freedom supplied as</span>
+<span class="linenos">40</span><span class="sd">            a custom likelihood option.</span>
+<span class="linenos">41</span>
+<span class="linenos">42</span><span class="sd">    Returns:</span>
+<span class="linenos">43</span><span class="sd">        The observed Student-t variable, named ``y``.</span>
+<span class="linenos">44</span>
+<span class="linenos">45</span><span class="sd">    Raises:</span>
+<span class="linenos">46</span><span class="sd">        ValueError: If aggregation error requires a multivariate likelihood.</span>
+<span class="linenos">47</span><span class="sd">    """</span>
+<span class="linenos">48</span>    <span class="k">if</span> <span class="n">aggregation_error</span><span class="o">.</span><span class="n">mode</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">{</span><span class="s2">"none"</span><span class="p">,</span> <span class="s2">"diagonal"</span><span class="p">}:</span>
+<span class="linenos">49</span>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"This Student-t model assumes independent observations."</span><span class="p">)</span>
+<span class="linenos">50</span>    <span class="k">if</span> <span class="n">degrees_of_freedom</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+<span class="linenos">51</span>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"Student-t degrees of freedom must be positive."</span><span class="p">)</span>
+<span class="linenos">52</span>
+<span class="linenos">53</span>    <span class="k">del</span> <span class="n">pollution_mean</span><span class="p">,</span> <span class="n">pollution_event_baseline</span>
+<span class="linenos">54</span>    <span class="n">validate_observation_error_arrays</span><span class="p">(</span>
+<span class="linenos">55</span>        <span class="n">observations</span><span class="p">,</span>
+<span class="linenos">56</span>        <span class="n">observation_error</span><span class="p">,</span>
+<span class="linenos">57</span>        <span class="n">minimum_error</span><span class="p">,</span>
+<span class="linenos">58</span>        <span class="n">owner</span><span class="o">=</span><span class="s2">"Custom Student-t likelihood"</span><span class="p">,</span>
+<span class="linenos">59</span>        <span class="n">output_dim</span><span class="o">=</span><span class="n">output_dim</span><span class="p">,</span>
+<span class="linenos">60</span>    <span class="p">)</span>
+<span class="linenos">61</span>    <span class="n">reported_error</span> <span class="o">=</span> <span class="n">pm</span><span class="o">.</span><span class="n">Data</span><span class="p">(</span>
+<span class="linenos">62</span>        <span class="s2">"error"</span><span class="p">,</span>
+<span class="linenos">63</span>        <span class="n">pm</span><span class="o">.</span><span class="n">floatX</span><span class="p">(</span><span class="n">observation_error</span><span class="o">.</span><span class="n">transpose</span><span class="p">(</span><span class="n">output_dim</span><span class="p">)</span><span class="o">.</span><span class="n">compute</span><span class="p">()</span><span class="o">.</span><span class="n">values</span><span class="p">),</span>
+<span class="linenos">64</span>        <span class="n">dims</span><span class="o">=</span><span class="n">output_dim</span><span class="p">,</span>
+<span class="linenos">65</span>    <span class="p">)</span>
+<span class="linenos">66</span>    <span class="n">minimum_error_data</span> <span class="o">=</span> <span class="n">pm</span><span class="o">.</span><span class="n">Data</span><span class="p">(</span>
+<span class="linenos">67</span>        <span class="s2">"min_error"</span><span class="p">,</span>
+<span class="linenos">68</span>        <span class="n">pm</span><span class="o">.</span><span class="n">floatX</span><span class="p">(</span><span class="n">minimum_error</span><span class="o">.</span><span class="n">transpose</span><span class="p">(</span><span class="n">output_dim</span><span class="p">)</span><span class="o">.</span><span class="n">compute</span><span class="p">()</span><span class="o">.</span><span class="n">values</span><span class="p">),</span>
 <span class="linenos">69</span>        <span class="n">dims</span><span class="o">=</span><span class="n">output_dim</span><span class="p">,</span>
 <span class="linenos">70</span>    <span class="p">)</span>
-<span class="linenos">71</span>    <span class="k">return</span> <span class="n">observed</span>
-<span class="linenos">72</span>
-<span class="linenos">73</span>
-<span class="linenos">74</span><span class="n">__all__</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"likelihood_builder"</span><span class="p">]</span>
+<span class="linenos">71</span>    <span class="n">aggregation_variance</span> <span class="o">=</span> <span class="n">pm</span><span class="o">.</span><span class="n">Data</span><span class="p">(</span>
+<span class="linenos">72</span>        <span class="s2">"aggregation_error_marginal_variance"</span><span class="p">,</span>
+<span class="linenos">73</span>        <span class="n">pm</span><span class="o">.</span><span class="n">floatX</span><span class="p">(</span><span class="n">aggregation_error</span><span class="o">.</span><span class="n">marginal_variance</span><span class="p">),</span>
+<span class="linenos">74</span>        <span class="n">dims</span><span class="o">=</span><span class="n">output_dim</span><span class="p">,</span>
+<span class="linenos">75</span>    <span class="p">)</span>
+<span class="linenos">76</span>    <span class="n">epsilon</span> <span class="o">=</span> <span class="n">pm</span><span class="o">.</span><span class="n">Deterministic</span><span class="p">(</span>
+<span class="linenos">77</span>        <span class="s2">"epsilon"</span><span class="p">,</span>
+<span class="linenos">78</span>        <span class="n">pt</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span>
+<span class="linenos">79</span>            <span class="n">pt</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">reported_error</span><span class="o">**</span><span class="mi">2</span> <span class="o">+</span> <span class="n">aggregation_variance</span><span class="p">),</span>
+<span class="linenos">80</span>            <span class="n">minimum_error_data</span><span class="p">,</span>
+<span class="linenos">81</span>        <span class="p">),</span>
+<span class="linenos">82</span>        <span class="n">dims</span><span class="o">=</span><span class="n">output_dim</span><span class="p">,</span>
+<span class="linenos">83</span>    <span class="p">)</span>
+<span class="linenos">84</span>    <span class="n">observed</span> <span class="o">=</span> <span class="n">pm</span><span class="o">.</span><span class="n">StudentT</span><span class="p">(</span>
+<span class="linenos">85</span>        <span class="s2">"y"</span><span class="p">,</span>
+<span class="linenos">86</span>        <span class="n">nu</span><span class="o">=</span><span class="n">degrees_of_freedom</span><span class="p">,</span>
+<span class="linenos">87</span>        <span class="n">mu</span><span class="o">=</span><span class="n">mean</span><span class="p">,</span>
+<span class="linenos">88</span>        <span class="n">sigma</span><span class="o">=</span><span class="n">epsilon</span><span class="p">,</span>
+<span class="linenos">89</span>        <span class="n">observed</span><span class="o">=</span><span class="n">pm</span><span class="o">.</span><span class="n">floatX</span><span class="p">(</span><span class="n">observations</span><span class="o">.</span><span class="n">transpose</span><span class="p">(</span><span class="n">output_dim</span><span class="p">)</span><span class="o">.</span><span class="n">compute</span><span class="p">()</span><span class="o">.</span><span class="n">values</span><span class="p">),</span>
+<span class="linenos">90</span>        <span class="n">dims</span><span class="o">=</span><span class="n">output_dim</span><span class="p">,</span>
+<span class="linenos">91</span>    <span class="p">)</span>
+<span class="linenos">92</span>    <span class="k">return</span> <span class="n">observed</span>
+<span class="linenos">93</span>
+<span class="linenos">94</span>
+<span class="linenos">95</span><span class="n">__all__</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"likelihood_builder"</span><span class="p">]</span>
 </pre></div>
 </div>
 <p>Keep project-level invocation in <code class="docutils literal notranslate"><span class="pre">runner.py</span></code>. Its one library call owns no
