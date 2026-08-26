@@ -1845,7 +1845,8 @@ def test_multisector_ragged_new_matches_old_after_conversion(openghg_test_store)
     )
 
     H_new_gathered = multisector_bf.sensitivity(fp_all_sectoral[site].fp_x_flux_sectoral)
-    xr.testing.assert_allclose(H_new_gathered, H_old_gathered)
+    # Source-wise projection changes the float32 summation order over the grid.
+    xr.testing.assert_allclose(H_new_gathered, H_old_gathered, atol=2e-5)
 
 
 def _make_simple_state_trace(
@@ -2210,6 +2211,30 @@ def test_multisource_sensitivity_matches_legacy_padded_conversion_smoke():
     H_old_gathered = H_old_gathered.transpose("region", "time")
 
     xr.testing.assert_allclose(H_new, H_old_gathered)
+
+
+def test_multisource_sensitivity_projects_each_source_before_gathering(monkeypatch):
+    """Spatial caches must not be broadcast across the gathered state axis."""
+    sources = ["A", "B"]
+    basis = make_basis_flat_from_blocks([[1, 1], [2, 2]])
+    basis_functions = BasisFunctions.from_multi_source_flat_basis(
+        basis_flat={source: basis for source in sources},
+        flux=xr.ones_like(basis, dtype=float),
+        operator_kwargs={"state_dim": "region"},
+    )
+    fp_x_flux = make_fp_x_flux_sectoral(sources=sources, nlat=2, nlon=2, ntime=3)
+    original_dot = xr.dot
+    projected_dims = []
+
+    def checked_dot(left, right, *args, **kwargs):
+        projected_dims.append(left.dims)
+        return original_dot(left, right, *args, **kwargs)
+
+    monkeypatch.setattr(xr, "dot", checked_dot)
+    basis_functions.sensitivity(fp_x_flux)
+
+    assert len(projected_dims) == len(sources)
+    assert all("region" not in dims and "source" not in dims for dims in projected_dims)
 
 
 def test_basis_functions_from_fp_all_flat_basis(tac_ch4_data_args):

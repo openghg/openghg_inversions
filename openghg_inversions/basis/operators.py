@@ -1009,17 +1009,33 @@ class MultiSourceBucketBasisOperator(BasisOperator):
     def sensitivity(self, fp_x_flux: xr.DataArray, fillna: bool = True) -> xr.DataArray:
         """Compute sensitivity for multisource fp_x_flux.
 
-        Overrides base method to broadcast the fp_x_flux `source` dim onto the gathered `state` dim.
+        Project each source separately before gathering the state axis. This
+        avoids broadcasting the full spatial cache across every retained state.
         """
         mat_aligned = force_align(self.basis_matrix, fp_x_flux, dims=list(self.meta.grid_dims))
         mat_aligned = mat_aligned.transpose(*self.meta.grid_dims, ...)
 
-        fp_on_state = self._align_source_like_state(fp_x_flux)
-
-        if fillna:
-            h = xr.dot(fp_on_state.fillna(0.0), mat_aligned, dim=list(self.meta.grid_dims)).as_numpy()
+        if self.source_dim in fp_x_flux.dims:
+            state_sources = np.asarray(mat_aligned[self.source_dim].values)
+            pieces = []
+            for source in self.source_labels:
+                source_flux = fp_x_flux.sel({self.source_dim: source}, drop=True)
+                if fillna:
+                    source_flux = source_flux.fillna(0.0)
+                pieces.append(
+                    xr.dot(
+                        source_flux,
+                        mat_aligned.isel(
+                            {self.meta.state_dim: np.flatnonzero(state_sources == source)}
+                        ),
+                        dim=list(self.meta.grid_dims),
+                    )
+                )
+            h = xr.concat(pieces, dim=self.meta.state_dim).as_numpy()
+        elif fillna:
+            h = xr.dot(fp_x_flux.fillna(0.0), mat_aligned, dim=list(self.meta.grid_dims)).as_numpy()
         else:
-            h = xr.dot(fp_on_state, mat_aligned, dim=list(self.meta.grid_dims)).as_numpy()
+            h = xr.dot(fp_x_flux, mat_aligned, dim=list(self.meta.grid_dims)).as_numpy()
 
         if self.meta.state_dim in h.dims:
             if "time" in h.dims:
