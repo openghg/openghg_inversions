@@ -42,18 +42,24 @@ pixi run -e dev docs-preview
 The `tox` Pixi task runs the fast default tox set (current OpenGHG plus Ruff)
 in parallel without an interactive spinner.
 
-The `docs-preview` task builds the Sphinx documentation with `tox -e docs`,
-serves it at `http://127.0.0.1:8765/`, and opens it in Safari on macOS. Keep the
-command running while reading the docs and press Ctrl-C to stop the server. To
-use another port or avoid opening Safari, run, for example:
+The `docs-preview` task incrementally builds the Sphinx documentation with
+`tox -e docs`, serves it at `http://127.0.0.1:8765/`, and opens it in Safari on
+macOS. Keep the command running while reading the docs and press Ctrl-C to stop
+the server. Each invocation builds once before starting the static server, so
+stop and rerun it after changing a source file. To use another port, avoid
+opening Safari, or discard Sphinx's cached doctrees before building, run, for
+example:
 
 ```bash
 pixi run -e dev docs-preview --port 8766 --no-open
+pixi run -e dev docs-preview --fresh
 ```
 
-Preview output is built in a temporary directory and removed when the server
-stops. `uv run python scripts/preview_docs.py clean` removes any legacy
-`docs/_build` output.
+Preview output and cached doctrees remain in the ignored `docs/_build`
+directory so later builds only rebuild changed pages. Regenerate the checked-in
+API reference pages separately with `pixi run -e dev tox -e docs-api` after
+changing the package layout. `uv run python scripts/preview_docs.py clean`
+removes all preview output without rebuilding it.
 
 The default uv group is intentionally limited to pytest and Ruff. To opt into
 the larger development group for documentation work, use:
@@ -61,6 +67,7 @@ the larger development group for documentation work, use:
 ```bash
 uv run --group uv_dev python scripts/preview_docs.py
 uv run --group uv_dev python scripts/preview_docs.py --port 8766 --no-open
+uv run --group uv_dev python scripts/preview_docs.py --fresh
 uv run python scripts/preview_docs.py clean
 ```
 
