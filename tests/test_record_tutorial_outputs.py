@@ -71,6 +71,16 @@ def test_recorded_outputs_rejects_stderr() -> None:
         record_tutorial_outputs._recorded_outputs(notebook)
 
 
+def test_recorder_accepts_externally_verified_batch_inputs() -> None:
+    args = record_tutorial_outputs.parse_args(
+        ["--data-directory", "/shared/tutorial-data", "--prepared-data", "--code-ref", "abc123"]
+    )
+
+    assert str(args.data_directory) == "/shared/tutorial-data"
+    assert args.prepared_data is True
+    assert args.code_ref == "abc123"
+
+
 @pytest.mark.parametrize(
     ("name", "inputs"),
     [("rhime_standard_tutorial", 4), ("rhime_multisector_tutorial", 3)],
