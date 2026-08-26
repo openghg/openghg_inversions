@@ -141,11 +141,6 @@ def _prepare_data(directory: Path) -> None:
     _run([sys.executable, "scripts/populate_store.py"], cwd=directory)
 
 
-def _populate_prepared_data(directory: Path) -> None:
-    """Verify and populate an externally pinned, fully materialized checkout."""
-    _run([sys.executable, "scripts/populate_store.py"], cwd=directory)
-
-
 @contextmanager
 def _recording_environment(code_ref: str, output_path: Path) -> Iterator[None]:
     """Expose stable recording metadata and an isolated output directory."""
@@ -191,27 +186,14 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     """Parse the explicit recorder command line."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data-directory", type=Path, default=_DEFAULT_DATA_DIRECTORY)
-    parser.add_argument(
-        "--prepared-data",
-        action="store_true",
-        help="use an externally pinned checkout whose LFS files are already materialized",
-    )
-    parser.add_argument(
-        "--code-ref",
-        help="exact externally verified clean commit (defaults to checking the current checkout)",
-    )
     return parser.parse_args(argv)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Refresh both tutorials from one clean code commit and data release."""
     args = parse_args(argv)
-    code_ref = args.code_ref or _require_clean_checkout()
-    data_directory = args.data_directory.resolve()
-    if args.prepared_data:
-        _populate_prepared_data(data_directory)
-    else:
-        _prepare_data(data_directory)
+    code_ref = _require_clean_checkout()
+    _prepare_data(args.data_directory.resolve())
     _build_docs()
     refreshed: dict[Path, str] = {}
     for name, document_path in _TUTORIALS.items():
