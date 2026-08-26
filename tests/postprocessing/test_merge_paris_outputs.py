@@ -126,8 +126,8 @@ def test_merge_repairs_repeated_latest_covariance_dimensions(tmp_path: Path) -> 
                 {
                     "flux_total_prior": (("time", "latitude", "longitude"), [[[1.0]]]),
                     "covariance_flux_total_posterior_country": (
-                        ("country", "country", "time"),
-                        np.ones((2, 2, 1)),
+                        ("time", "country", "country"),
+                        np.ones((1, 2, 2)),
                     ),
                 },
                 coords={
@@ -159,3 +159,21 @@ def test_merge_rejects_mixed_template_versions(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="different template versions"):
         merge_paris_outputs([legacy, latest], tmp_path / "merged.nc")
+
+
+def test_output_type_selects_concentrations_from_broad_inputs(tmp_path: Path) -> None:
+    first = tmp_path / "first-conc.nc"
+    second = tmp_path / "second-conc.nc"
+    flux = tmp_path / "flux.nc"
+    _write_legacy_concentration(first, "2020-01-01", ["MHD"], [1.0])
+    _write_legacy_concentration(second, "2021-01-01", ["MHD"], [2.0])
+    xr.Dataset(
+        {"flux_total_prior": (("time", "latitude", "longitude"), [[[3.0]]])},
+        coords={"time": [0], "latitude": [50.0], "longitude": [0.0]},
+    ).to_netcdf(flux)
+
+    output = tmp_path / "merged.nc"
+    merge_paris_outputs([first, flux, second], output, output_type="concentration")
+
+    with xr.open_dataset(output) as result:
+        assert result.Yobs.values[:, 0].tolist() == [1.0, 2.0]
