@@ -2,8 +2,22 @@
 
 import nbformat
 import pytest
+import subprocess
 
 from scripts import record_tutorial_outputs
+
+
+def test_run_reports_captured_subprocess_output(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(
+            args[0], returncode=2, stdout="preparation started\n", stderr="store conflict\n"
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match=r"(?s)preparation started.*store conflict"):
+        record_tutorial_outputs._run(["example", "command"])
 
 
 def test_replace_outputs_preserves_inputs_and_updates_adjacent_results() -> None:

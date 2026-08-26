@@ -37,7 +37,10 @@ class _Directive:
 
 def _run(command: Sequence[str], *, cwd: Path = _ROOT) -> str:
     """Run one required command and return stripped standard output."""
-    result = subprocess.run(command, cwd=cwd, check=True, text=True, capture_output=True)
+    result = subprocess.run(command, cwd=cwd, text=True, capture_output=True)
+    if result.returncode:
+        details = "\n".join(part.strip() for part in (result.stdout, result.stderr) if part.strip())
+        raise RuntimeError(f"Command failed ({result.returncode}): {' '.join(command)}\n{details}")
     return result.stdout.strip()
 
 
