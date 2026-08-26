@@ -8,6 +8,7 @@ import json
 import arviz as az
 import xarray as xr
 
+from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.inversion_data import RhimePreparedInputs
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.models.state_activity import StateActivity
@@ -61,13 +62,10 @@ def _annotate_co2_trace(
         "co2_flux_contribution": ["pollution_concentration"],
         "flux_scaling": ["flux_scale"],
         "flux_scaling_active": ["active_flux_scale"],
-        "outer_sensitivity": ["outer_emissions_sensitivity"],
-        "outer_flux_contribution": ["outer_pollution_concentration"],
-        "outer_flux_scaling": ["outer_flux_scale"],
-        "outer_flux_scaling_active": ["active_outer_flux_scale"],
         "hbc": ["boundary_sensitivity"],
         "bc": ["boundary_scale"],
         "mu_bc": ["boundary_concentration"],
+        "offset": ["offset_concentration"],
         "epsilon": ["model_error"],
         "y": ["concentration"],
     }
@@ -81,8 +79,8 @@ def _annotate_co2_trace(
         "fixed_prior_contribution",
         "modelled_concentration",
         "co2_flux_contribution",
-        "outer_flux_contribution",
         "mu_bc",
+        "offset",
         "epsilon",
         "y",
     }
@@ -99,8 +97,6 @@ def _annotate_co2_trace(
                 "bc",
                 "flux_scaling",
                 "flux_scaling_active",
-                "outer_flux_scaling",
-                "outer_flux_scaling_active",
             }:
                 variable.attrs["units"] = "1"
             elif concentration_units is not None and name in concentration_variables:
@@ -177,7 +173,8 @@ def run_rhime_co2(
 
     This callable is the public production replay seam for an already
     validated :class:`RhimePreparedInputs` artifact. It alone unpacks the
-    prepared dataset; the model builder receives named scientific arrays.
+    prepared dataset and constructs the complete retained prior; the model
+    builder receives named scientific values.
 
     ``fixed_model_mismatch=None`` preserves a prepared fixed-mismatch field if
     present, otherwise omits the term. An explicit scalar or labelled vector
@@ -206,9 +203,14 @@ def run_rhime_co2(
         manifests.
 
     Raises:
-        ValueError: If prepared inputs are missing, inconsistent, or fail
-            model construction.
+        ValueError: If model-error options contradict ``no_model_error``, or
+            prepared inputs are missing, inconsistent, or fail model
+            construction.
     """
+    if no_model_error and (sigma_alignment is not None or sigma_prior is not None):
+        raise ValueError(
+            "`no_model_error=True` cannot be combined with `sigma_alignment` or `sigma_prior`."
+        )
     prepared = prepared_inputs.validated()
     names = co2_model_input_names(
         prepared,
@@ -217,10 +219,7 @@ def run_rhime_co2(
         derive_sigma_alignment=not no_model_error and sigma_alignment is None,
     )
     model_inputs = materialize_pymc_inputs(prepared, variable_names=names)
-    if no_model_error:
-        sigma_alignment = None
-        sigma_prior = None
-    elif sigma_alignment is None:
+    if not no_model_error and sigma_alignment is None:
         sigma_alignment = SigmaAlignment.from_frequency(model_inputs["site_indicator"])
     aggregation_error = resolve_aggregation_error(
         model_inputs,
@@ -229,10 +228,15 @@ def run_rhime_co2(
     prepared_mismatch = (
         model_inputs.get("fixed_model_mismatch") if fixed_model_mismatch is None else fixed_model_mismatch
     )
+    prior_covariance = model_inputs["alpha_prior_covariance"]
+    retained_prior = CorrelatedLognormalPrior(
+        model_inputs["alpha_prior_mean"],
+        prior_covariance,
+        covariance_dim=str(prior_covariance.dims[-1]),
+    )
     model = build_co2_model(
         model_inputs["H"],
-        prior_mean=model_inputs["alpha_prior_mean"],
-        prior_covariance=model_inputs["alpha_prior_covariance"],
+        retained_prior=retained_prior,
         fixed_prior_contribution=model_inputs["fixed_prior_contribution"],
         observations=model_inputs["mf"],
         observation_error=model_inputs["mf_error"],
@@ -247,7 +251,7 @@ def run_rhime_co2(
         model=model,
         variable_roles={
             "observation": "y",
-            "observation_error": "mf_error",
+            "observation_error": "error",
             "minimum_error": "min_error",
             "concentration": "y",
             "model_error": "epsilon",

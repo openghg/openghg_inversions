@@ -164,7 +164,6 @@ def build_inferpymc_model(
         aggregation_error=resolve_aggregation_error(inv_inputs, "none"),
         sigma_alignment=sigma_alignment,
         boundary_sensitivity=inv_inputs.get("H_bc"),
-        site_indicator=inv_inputs.get("site_indicator"),
         x_prior=xprior,
         bc_prior=bcprior,
         sigma_prior=sigprior,

@@ -36,7 +36,7 @@ import xarray as xr
 from pytensor.tensor.variable import TensorVariable
 
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
-from openghg_inversions.inversion_inputs import make_freq_indicator
+from openghg_inversions.inversion_inputs import make_freq_indicator, make_site_indicator
 from openghg_inversions.models.coords import add_coords
 from openghg_inversions.models.priors import parse_prior
 from openghg_inversions.models.state_activity import (
@@ -644,7 +644,7 @@ def add_sigma_component(
 
 
 def add_offset_component(
-    site_indicator: xr.DataArray,
+    observations: xr.DataArray,
     /,
     prior_args: dict,
     offset_freq_indicator: xr.DataArray | np.ndarray | None = None,
@@ -658,7 +658,8 @@ def add_offset_component(
     """Add a global, site-only, or site-by-period offset component.
 
     Args:
-        site_indicator: Observation-aligned site indicator.
+        observations: Observation data carrying an observation-aligned
+            ``site`` coordinate.
         prior_args: Prior specification for the offset latent variable.
         offset_freq_indicator: Optional explicit observation-aligned offset
             frequency indicator.
@@ -673,18 +674,28 @@ def add_offset_component(
 
     Returns:
         The aligned offset deterministic variable.
+
+    Raises:
+        ValueError: If ``observations`` does not have an observation-aligned
+            ``site`` coordinate, or if global-offset options conflict.
     """
     output_dim = str(output_dim)
-    site_indicator = site_indicator.rename("site_indicator").transpose(output_dim)
-    add_model_data(site_indicator, "site_indicator")
     if not per_site:
         if offset_freq_indicator is not None or offset_freq is not None:
             raise ValueError("Global offsets do not accept an offset frequency.")
         if drop_first:
             raise ValueError("Global offsets do not support `drop_first=True`.")
         latent = parse_prior(var_name, prior_args)
-        aligned = pt.broadcast_to(latent, (site_indicator.sizes[output_dim],))
+        aligned = pt.broadcast_to(latent, (observations.sizes[output_dim],))
         return pm.Deterministic(output_name, aligned, dims=output_dim)
+
+    if "site" not in observations.coords or observations.coords["site"].dims != (output_dim,):
+        raise ValueError(
+            "Offset observations must have an observation-aligned `site` coordinate."
+        )
+    site_indicator = make_site_indicator(observations.coords["site"])
+    site_indicator = site_indicator.rename("site_indicator").transpose(output_dim)
+    add_model_data(site_indicator, "site_indicator")
 
     indicator = _resolve_freq_indicator(
         explicit_indicator=offset_freq_indicator,

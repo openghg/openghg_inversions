@@ -10,8 +10,10 @@ import numpy as np
 import pandas as pd
 import pymc as pm
 import arviz as az
+import pytest
 import xarray as xr
 
+from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.models.coords import get_coord_registry
 from openghg_inversions.models.state_activity import StateActivity
 from openghg_inversions.observation_error import resolve_aggregation_error
@@ -67,6 +69,8 @@ def _empty_sampled_trace(inputs: xr.Dataset) -> az.InferenceData:
         },
         posterior_predictive={"y": np.ones((1, 2, inputs.sizes["nmeasure"]))},
         constant_data={
+            "error": inputs["mf_error"].values,
+            "min_error": inputs["min_error"].values,
             "fixed_model_mismatch": np.ones(inputs.sizes["nmeasure"]),
             "fixed_prior_contribution": inputs["fixed_prior_contribution"].values,
             "co2_sensitivity": inputs["H"].values,
@@ -77,6 +81,8 @@ def _empty_sampled_trace(inputs: xr.Dataset) -> az.InferenceData:
             "modelled_concentration": ["nmeasure"],
             "epsilon": ["nmeasure"],
             "y": ["nmeasure"],
+            "error": ["nmeasure"],
+            "min_error": ["nmeasure"],
             "fixed_model_mismatch": ["nmeasure"],
             "fixed_prior_contribution": ["nmeasure"],
             "co2_sensitivity": ["nmeasure", "region"],
@@ -85,10 +91,14 @@ def _empty_sampled_trace(inputs: xr.Dataset) -> az.InferenceData:
 
 
 def _build_model(inputs: xr.Dataset, **kwargs: Any) -> pm.Model:
+    retained_prior = CorrelatedLognormalPrior(
+        inputs["alpha_prior_mean"],
+        inputs["alpha_prior_covariance"],
+        covariance_dim="region_cov",
+    )
     return build_co2_model(
         inputs["H"],
-        prior_mean=inputs["alpha_prior_mean"],
-        prior_covariance=inputs["alpha_prior_covariance"],
+        retained_prior=retained_prior,
         fixed_prior_contribution=inputs["fixed_prior_contribution"],
         observations=inputs["mf"],
         observation_error=inputs["mf_error"],
@@ -114,9 +124,36 @@ def test_co2_model_exposes_affine_correlated_dense_covariance_graph() -> None:
         "epsilon",
         "y",
     } <= set(model.named_vars)
+    assert "outer_flux_contribution" not in model.named_vars
     assert model.named_vars_to_dims["flux_scaling"] == ("region",)
     assert model.named_vars_to_dims["modelled_concentration"] == ("nmeasure",)
     assert isinstance(model["y"].owner.op, pm.MvNormal.rv_op.__class__)
+
+
+def test_co2_model_rejects_sigma_prior_without_alignment() -> None:
+    with pytest.raises(ValueError, match="requires `sigma_alignment`"):
+        _build_model(
+            _golden_inputs(),
+            sigma_prior={"pdf": "halfnormal", "sigma": 1.0},
+        )
+
+
+@pytest.mark.parametrize(
+    "model_error_option",
+    [
+        {"sigma_alignment": cast(Any, object())},
+        {"sigma_prior": {"pdf": "halfnormal", "sigma": 1.0}},
+    ],
+)
+def test_public_co2_runner_rejects_model_error_options_when_disabled(
+    model_error_option: dict[str, Any],
+) -> None:
+    with pytest.raises(ValueError, match="cannot be combined"):
+        run_rhime_co2(
+            prepared_inputs=cast(Any, object()),
+            no_model_error=True,
+            **model_error_option,
+        )
 
 
 def test_co2_structural_zero_is_fixed_at_one_and_pruned_only_from_operator() -> None:
@@ -238,6 +275,14 @@ def test_public_co2_runner_persists_fixed_mismatch_manifest(
             return self
 
     monkeypatch.setattr(co2_runner, "materialize_pymc_inputs", lambda *_args, **_kwargs: inputs)
+    builder_kwargs: dict[str, Any] = {}
+    original_builder = co2_runner.build_co2_model
+
+    def build_model(flux_sensitivity: xr.DataArray, **kwargs: Any) -> pm.Model:
+        builder_kwargs.update(kwargs)
+        return original_builder(flux_sensitivity, **kwargs)
+
+    monkeypatch.setattr(co2_runner, "build_co2_model", build_model)
     sampled_models: list[pm.Model] = []
 
     def sample_model(built: Any, _sampler: Any) -> az.InferenceData:
@@ -252,6 +297,22 @@ def test_public_co2_runner_persists_fixed_mismatch_manifest(
     )
 
     assert "sigma" not in sampled_models[0].named_vars
+    assert builder_kwargs["sigma_alignment"] is None
+    assert builder_kwargs["sigma_prior"] is None
+    assert isinstance(builder_kwargs["retained_prior"], CorrelatedLognormalPrior)
+    expected_prior = CorrelatedLognormalPrior(
+        inputs["alpha_prior_mean"],
+        inputs["alpha_prior_covariance"],
+        covariance_dim="region_cov",
+    )
+    xr.testing.assert_equal(
+        builder_kwargs["retained_prior"].mean,
+        expected_prior.mean,
+    )
+    xr.testing.assert_equal(
+        builder_kwargs["retained_prior"].arithmetic_covariance,
+        expected_prior.arithmetic_covariance,
+    )
     np.testing.assert_allclose(sampled_models[0]["fixed_model_mismatch"].eval(), 1.0)
     roles = json.loads(result.attrs["rhime_variable_roles"])
     metadata = json.loads(result.attrs["rhime_model_metadata"])
@@ -260,6 +321,13 @@ def test_public_co2_runner_persists_fixed_mismatch_manifest(
     assert roles["flux_scale"] == "flux_scaling"
     assert roles["model_mean"] == "modelled_concentration"
     assert roles["pollution_concentration"] == "co2_flux_contribution"
+    assert roles["observation_error"] == "error"
+    trace_variables = {
+        name
+        for group_name in result.groups()
+        for name in getattr(result, group_name).data_vars
+    }
+    assert set(roles.values()) <= trace_variables
     assert metadata["recipe"] == "co2"
     assert metadata["basis_artifact_source"] == "unknown"
     assert result.posterior["flux_scaling"].attrs["units"] == "1"

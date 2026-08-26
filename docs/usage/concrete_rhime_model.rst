@@ -227,49 +227,35 @@ Verification Games fixed-only policy passes ``fixed_model_mismatch=1.0`` and
 ``no_model_error=True`` visibly. A runnable CO2 configuration and resolver are
 tracked in `OPE-79 <https://linear.app/openghg-inversions/issue/OPE-79>`_.
 
-CO2 outer-region treatment
-^^^^^^^^^^^^^^^^^^^^^^^^^^
+CO2 grouped inner and outer states
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-The direct CO2 builder accepts an optional outer-region treatment prepared with
-:func:`openghg_inversions.rhime.co2.prepare_outer_region_treatment`. The three
-modes are mutually exclusive:
+Same-grid inner and outer fluxes use one ordinary retained state and one
+``co2_sensitivity``. Their geography is labelled metadata, not a second model
+component. The state axis retains ``basis_group``, ``basis_partition``, and
+``region_in_partition`` coordinates; select ``basis_group == "outer"`` rather
+than inferring outer entries from integer ranges or positions.
 
-.. list-table:: Outer-region modes
-   :header-rows: 1
-   :widths: 18 32 32
+Fixed versus inferred outer entries use the ordinary
+:class:`~openghg_inversions.models.StateActivity` contract. To preserve the
+fixed-at-one behavior, pass
+``StateActivity(fixed_groups=("outer",), fixed_value=1.0)``. Leaving the outer
+group active infers those entries with the same correlated LogNormal state as
+the inner entries. Exact-zero sensitivity pruning composes with either policy.
 
-   * - Mode
-     - Mean contribution
-     - Uncertainty treatment
-   * - ``fixed``
-     - :math:`\mu_{outer}=H_{outer}s`, with ``fixed_scale=1`` by default
-     - ``outer_flux_scaling`` is retained as a fixed state; no outer prior
-       uncertainty is added
-   * - ``marginalized``
-     - :math:`\mu_{outer}=H_{outer}m_{outer}`
-     - No ``outer_flux_scaling`` is sampled and
-       :math:`H_{outer}C_{outer}H_{outer}^{\mathsf T}` is added to the
-       observation covariance
-   * - ``inferred``
-     - :math:`\mu_{outer}=H_{outer}x_{outer}`
-     - ``outer_flux_scaling`` is inferred with the labelled correlated
-       arithmetic-moment LogNormal prior
+The builder accepts one prepared
+:class:`~openghg_inversions.correlated_state.CorrelatedLognormalPrior` over the
+complete ordered state. Group-specific arithmetic moments must be aligned and
+assembled before graph construction. A full prior may contain inner/outer
+cross-covariance; it remains part of that one prior and is not also added to
+the observation covariance.
 
-All modes expose ``outer_flux_contribution``. Fixed and inferred modes also
-retain ``outer_flux_scaling`` and model data named ``outer_sensitivity``;
-marginalized mode has no outer state vector.
+``co2_flux_contribution`` contains the complete flux prediction. The model does
+not construct separate inner or outer terms. Outputs can reconstruct either
+view by selecting the corresponding ``basis_group`` entries from the stored
+sensitivity and ``flux_scaling`` state.
 
-The marginalized mode is an explicit Gaussian marginalization using the
-supplied arithmetic mean and covariance. It is not an exact marginalization of
-the LogNormal state used by inferred mode. This surface was motivated by
-Verification Games/PARIS experiments: current PARIS evidence selects inferred
-outer states. Marginalized mode is implemented and tested, but is not
-established as a production or non-Verification-Games default. Those
-experiments use synthetic observations from known flux and transport, so the
-posterior flux can be scored against known truth.
-
-With both optional components present, the current CO2 builder's complete
-likelihood mean is
+With optional boundary conditions and offset present, the likelihood mean is
 
 .. math::
 
@@ -277,34 +263,13 @@ likelihood mean is
    = \mathtt{fixed\_prior\_contribution}
    + \mathtt{co2\_flux\_contribution}
    + \mathtt{mu\_bc}
-   + \mathtt{outer\_flux\_contribution}.
+   + \mathtt{offset}.
 
-``modelled_concentration`` is the mean passed to the likelihood, not a
-pollution-only subtotal. Any future declared mean term, such as an offset, must
-also be included in this sum before likelihood construction. The graph and
-reporting names remain separate: atmospheric boundary conditions produce
-``mu_bc``, outer flux produces ``outer_flux_contribution``, and the coherent
-affine term remains ``fixed_prior_contribution``. Grouping boundary and outer
-concentrations as a baseline is a reporting choice only; it does not create a
-combined model component or alter this composition.
-
-Outer sensitivity must have exactly one state dimension with unique state
-labels. For the CO2 builder the observation dimension is ``nmeasure``. When
-outer sensitivity and observations carry explicit indexes, their labels,
-order, and index-level names must match; the builder rejects conflicting
-indexes. Direct callers remain responsible for the semantics of unlabeled
-arrays. Labelled outer prior means and covariance rows and columns must likewise
-match the outer-state coordinate exactly. Direct custom callers are responsible
-for ensuring that inner and outer sensitivities represent disjoint state
-partitions and do not double count flux.
-
-:func:`openghg_inversions.rhime.co2.collapse_outer_sectors` may be applied
-before any of the three modes. Explicit state-aligned ``group_labels`` select
-which sensitivity columns are summed into one shared outer scaling state, while
-the returned member table preserves the original source, sector, domain, and
-region metadata. Collapsing is orthogonal to treatment: it does not choose a
-mode or derive collapsed prior moments, so callers supply any collapsed mean
-and covariance to ``prepare_outer_region_treatment`` afterward.
+An output may report a composite baseline by reconstructing the outer flux view
+and adding it to ``mu_bc + offset``. This is an output policy only: boundary
+conditions, offsets, and outer flux remain distinct scientific terms. Sector
+combinations are likewise a general state-grouping choice rather than an
+outer-region model option.
 
 The model builder accepts explicit scientific arrays rather than a dataset.
 For durable prepared artifacts, :func:`openghg_inversions.rhime.run_rhime_co2`
@@ -317,8 +282,9 @@ it. Persist gathered-state traces with
 :func:`openghg_inversions.serialization.save_inferencedata`, which uses the
 same MultiIndex-safe boundary as standard and multisector RHIME outputs.
 The current prepared-input runner does not accept or construct an
-``outer_treatment``; outer-region treatment is therefore a direct-builder
-surface until prepared-artifact and runner integration is added.
+outer-specific object. It constructs the complete retained prior from the
+prepared arithmetic mean and covariance, then forwards the prepared activity
+policy to the builder.
 
 CO2/O2 shared-state model
 -------------------------
@@ -447,14 +413,13 @@ than inventing scalar values; the supplied effective O2 sensitivity remains the
 scientific input.
 
 Because this recipe receives the O2 sensitivity with the fixed ratio already
-applied upstream, its builder passes the shared state directly to
-``add_linked_linear_component``. If a fixed or inferred oxidation ratio were
-instead explicit model state, the recipe would visibly form
-``o2_state = oxidation_ratio * co2_state`` and pass ``o2_state`` to that
-component. The :doc:`Ramsden methane/ethane model
+applied upstream, its builder applies the gathered sensitivity directly to the
+unchanged shared state with ``apply_linear_sensitivity``. If a fixed or
+inferred oxidation ratio were instead explicit model state, the recipe would
+visibly form ``o2_state = oxidation_ratio * co2_state`` before applying the
+ratio-free O2 sensitivity. The :doc:`Ramsden methane/ethane model
 <../experimental/ramsden2022>` follows that explicit pattern for its emission
-ratio. The linked component registers and applies a sensitivity; it does not
-own scientific scaling.
+ratio. OPE-118 owns that future CO2/O2 coupling work.
 
 Equivalent construction from public helpers
 -------------------------------------------
