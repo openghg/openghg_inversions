@@ -133,13 +133,6 @@ def standard_model_input_names(
             owner="Model-error alignment component",
         )
         names.extend(_MODEL_ERROR_ALIGNMENT_INPUT_NAMES)
-    elif model_spec.add_offset:
-        _require_component_inputs(
-            prepared,
-            _MODEL_ERROR_ALIGNMENT_INPUT_NAMES,
-            owner="Standard offset component selected by `add_offset=True`",
-        )
-        names.extend(_MODEL_ERROR_ALIGNMENT_INPUT_NAMES)
     if model_spec.use_bc:
         _require_component_inputs(
             prepared,
@@ -172,7 +165,6 @@ def build_standard_rhime_model(
     aggregation_error: AggregationError,
     sigma_alignment: SigmaAlignment | None = None,
     boundary_sensitivity: xr.DataArray | None = None,
-    site_indicator: xr.DataArray | None = None,
     x_prior: PriorArgs | None = None,
     bc_prior: PriorArgs | None = None,
     sigma_prior: PriorArgs | None = None,
@@ -200,7 +192,6 @@ def build_standard_rhime_model(
         sigma_alignment: Observation alignment for mismatch parameters when
             model error is enabled or the legacy graph retains sigma.
         boundary_sensitivity: Optional labelled boundary sensitivity matrix.
-        site_indicator: Optional observation-to-site index used by offsets.
         x_prior: Prior specification for flux scaling factors.
         bc_prior: Prior specification for boundary-condition scaling factors.
         sigma_prior: Prior specification for mismatch-error terms.
@@ -276,12 +267,8 @@ def build_standard_rhime_model(
 
         offset = None
         if add_offset:
-            if site_indicator is None:
-                raise ValueError(
-                    "Standard offset component requires `site_indicator` when `add_offset` is true."
-                )
             offset = add_offset_component(
-                site_indicator,
+                observations,
                 prior_args=offset_prior,
                 output_name="offset",
                 output_dim="nmeasure",
@@ -404,7 +391,6 @@ def build_standard_rhime_model_result(
             aggregation_error=aggregation_error,
             sigma_alignment=sigma_alignment,
             boundary_sensitivity=model_inputs.get("H_bc"),
-            site_indicator=model_inputs.get("site_indicator"),
             x_prior=dict(sector.x_prior),
             state_activity=state_activity,
             bc_prior=model_spec.bc_prior,

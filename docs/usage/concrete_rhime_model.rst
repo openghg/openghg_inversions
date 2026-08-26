@@ -250,13 +250,10 @@ assembled before graph construction. A full prior may contain inner/outer
 cross-covariance; it remains part of that one prior and is not also added to
 the observation covariance.
 
-``co2_flux_contribution`` contains the complete flux prediction. When
-``basis_group`` includes ``outer``, the builder also exposes
-``outer_flux_contribution`` as a projection of the same sensitivity and
-``flux_scaling`` state for transitional reporting. It is not a separate state
-and is not added to the model mean again. The inner contribution can be
-reconstructed by selecting the inner columns or subtracting the outer view
-from the complete flux contribution.
+``co2_flux_contribution`` contains the complete flux prediction. The model does
+not construct separate inner or outer terms. Outputs can reconstruct either
+view by selecting the corresponding ``basis_group`` entries from the stored
+sensitivity and ``flux_scaling`` state.
 
 With optional boundary conditions and offset present, the likelihood mean is
 
@@ -268,11 +265,11 @@ With optional boundary conditions and offset present, the likelihood mean is
    + \mathtt{mu\_bc}
    + \mathtt{offset}.
 
-An output may report the composite baseline
-``mu_bc + offset + outer_flux_contribution``. This is an output policy only:
-boundary conditions, offsets, and outer flux remain distinct scientific terms.
-Sector combinations are likewise a general state-grouping choice rather than
-an outer-region model option.
+An output may report a composite baseline by reconstructing the outer flux view
+and adding it to ``mu_bc + offset``. This is an output policy only: boundary
+conditions, offsets, and outer flux remain distinct scientific terms. Sector
+combinations are likewise a general state-grouping choice rather than an
+outer-region model option.
 
 The model builder accepts explicit scientific arrays rather than a dataset.
 For durable prepared artifacts, :func:`openghg_inversions.rhime.run_rhime_co2`

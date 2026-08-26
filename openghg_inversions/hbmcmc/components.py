@@ -10,7 +10,7 @@ from openghg_inversions.models.components import add_offset_component
 
 
 def make_offset(
-    site_indicator: np.ndarray,
+    observations: xr.DataArray,
     prior_args: dict,
     name: str = "offset",
     output_dim: str = "nmeasure",
@@ -23,15 +23,13 @@ def make_offset(
     This compatibility wrapper keeps the historical import path while delegating
     to the new shared component implementation.
     """
-    site_indicator_da = xr.DataArray(site_indicator, dims=(output_dim,), name="site_indicator")
-
     # Previously `offset_freq` was ignored, and without adding another argument to this function,
     # we cannot make use of it
     if offset_freq_indicator is None:
         offset_freq = None
 
     return add_offset_component(
-        site_indicator_da,
+        observations,
         prior_args=prior_args,
         offset_freq_indicator=offset_freq_indicator,
         offset_freq=offset_freq,

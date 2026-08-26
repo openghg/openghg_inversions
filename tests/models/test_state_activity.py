@@ -81,7 +81,6 @@ def build_rhime_model(inputs: xr.Dataset, **kwargs: Any) -> pm.Model:
         minimum_error=inputs["min_error"],
         aggregation_error=resolve_aggregation_error(inputs, "none"),
         boundary_sensitivity=inputs.get("H_bc"),
-        site_indicator=inputs.get("site_indicator"),
         **kwargs,
     )
 
@@ -95,7 +94,6 @@ def build_rhime_multisector_model(inputs: xr.Dataset, **kwargs: Any) -> pm.Model
         minimum_error=inputs["min_error"],
         aggregation_error=resolve_aggregation_error(inputs, "none"),
         boundary_sensitivity=inputs.get("H_bc"),
-        site_indicator=inputs.get("site_indicator"),
         **kwargs,
     )
 

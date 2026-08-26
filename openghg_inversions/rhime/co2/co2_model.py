@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import numpy as np
 import pymc as pm
-import pytensor.tensor as pt
 import xarray as xr
 
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
@@ -27,7 +26,6 @@ from openghg_inversions.models.components import (
 from openghg_inversions.models.coords import registered_model
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.models.state_activity import (
-    PreparedLinearSensitivity,
     StateActivity,
     prepare_linear_sensitivity,
     resolve_state_activity,
@@ -59,52 +57,6 @@ def _fixed_mismatch_array(
     ).rename("fixed_model_mismatch")
 
 
-def _retained_group_indices(
-    prepared_flux: PreparedLinearSensitivity,
-    *,
-    group: str,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Locate one group's retained sensitivity columns and full-state entries.
-
-    Sensitivity preparation removes exact-zero columns while preserving the
-    complete scientific state in ``prepared_flux.removed``. A reporting
-    projection therefore needs both the compact column positions used by the
-    registered sensitivity and the corresponding positions in the complete
-    flux state.
-
-    Args:
-        prepared_flux: Prepared sensitivity with the retained-to-full-state
-            mapping and state-aligned ``basis_group`` metadata.
-        group: ``basis_group`` label to select.
-
-    Returns:
-        A pair containing the selected column positions in the retained
-        sensitivity and their corresponding positions in the complete state.
-        Both arrays are empty when ``basis_group`` is absent or the requested
-        group has no retained sensitivity columns.
-
-    Raises:
-        ValueError: If ``basis_group`` is not indexed solely by the complete
-            flux-state dimension.
-
-    Notes:
-        This function only resolves labelled positions. It neither constructs
-        PyMC variables nor creates a separate state for the selected group.
-    """
-    state_dim = prepared_flux.state_dim
-    if "basis_group" not in prepared_flux.removed.coords:
-        empty = np.empty(0, dtype=int)
-        return empty, empty
-    basis_group = prepared_flux.removed["basis_group"]
-    if basis_group.dims != (state_dim,):
-        raise ValueError("`basis_group` must be indexed only by the flux state dimension.")
-
-    group_values = np.asarray(basis_group.compute().values).astype(str)
-    retained_indices = prepared_flux.retained_indices
-    group_columns = np.flatnonzero(group_values[retained_indices] == group)
-    return group_columns, retained_indices[group_columns]
-
-
 def build_co2_model(
     flux_sensitivity: xr.DataArray,
     *,
@@ -121,7 +73,6 @@ def build_co2_model(
     boundary_sensitivity: xr.DataArray | None = None,
     bc_prior: PriorArgs | None = None,
     bc_state_activity: StateActivity | None = None,
-    site_indicator: xr.DataArray | None = None,
     offset_prior: PriorArgs | None = None,
     offset_args: dict | None = None,
 ) -> pm.Model:
@@ -143,11 +94,10 @@ def build_co2_model(
     an optional known concentration standard deviation. ``openghg_inversions``
     leaves this policy unset by default; the Verification Games fixed likelihood
     passes 1 ppm explicitly. Inner and outer same-grid states remain in this one
-    flux state and are distinguished by ``basis_group`` metadata. When that
-    metadata includes ``"outer"``, ``outer_flux_contribution`` is exposed as a
-    reporting projection of ``co2_sensitivity @ flux_scaling``; it is never
-    added to the mean a second time. Optional boundary and offset terms remain
-    scientifically distinct components named ``mu_bc`` and ``offset``.
+    flux state and are distinguished by ``basis_group`` metadata retained for
+    output-side selection. The model builds only their complete shared flux
+    contribution. Optional boundary and offset terms remain scientifically
+    distinct components named ``mu_bc`` and ``offset``.
 
     Direct custom callers are responsible for supplying scientifically
     coherent arrays from one preparation and for their positional semantics
@@ -174,13 +124,14 @@ def build_co2_model(
         state_activity: Optional labelled activity policy for retained flux
             states.
         boundary_sensitivity: Optional atmospheric boundary-condition
-            sensitivity.
+            sensitivity already resolved for the model, for example
+            :attr:`~openghg_inversions.boundary_sensitivity.BoundaryAlignment.data`.
         bc_prior: Optional prior arguments for boundary-condition scaling.
         bc_state_activity: Optional labelled activity policy for boundary
             states.
-        site_indicator: Optional observation-to-site index used by an offset.
         offset_prior: Optional prior for an offset component. When omitted, no
-            offset is added.
+            offset is added. Site codes are derived from the ``site`` coordinate
+            on ``observations``.
         offset_args: Extra keyword arguments for the offset component.
 
     Returns:
@@ -201,7 +152,6 @@ def build_co2_model(
     fixed_mismatch = _fixed_mismatch_array(observations, fixed_model_mismatch)
     prepared_flux = prepare_linear_sensitivity(flux_sensitivity, output_dim="nmeasure")
     activity = resolve_state_activity(prepared_flux.removed, state_activity)
-    outer_columns, outer_states = _retained_group_indices(prepared_flux, group="outer")
 
     with registered_model() as model:
         flux_scaling = add_correlated_lognormal_state_with_activity(
@@ -215,16 +165,6 @@ def build_co2_model(
             data_name="co2_sensitivity",
             output_name="co2_flux_contribution",
         )
-        if outer_columns.size:
-            outer_flux_contribution = pt.dot(
-                model["co2_sensitivity"][:, outer_columns],
-                flux_scaling[outer_states],
-            )
-            pm.Deterministic(
-                "outer_flux_contribution",
-                outer_flux_contribution,
-                dims=prepared_flux.output_dim,
-            )
         modelled_linear_signal = co2_flux_contribution
         if boundary_sensitivity is not None:
             boundary_contribution = add_linear_component(
@@ -240,10 +180,8 @@ def build_co2_model(
             modelled_linear_signal = modelled_linear_signal + boundary_contribution
 
         if offset_prior is not None:
-            if site_indicator is None:
-                raise ValueError("CO2 offset component requires `site_indicator`.")
             offset = add_offset_component(
-                site_indicator,
+                observations,
                 prior_args=offset_prior,
                 output_name="offset",
                 output_dim="nmeasure",

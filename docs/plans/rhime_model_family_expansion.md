@@ -316,11 +316,10 @@ their sensitivity columns. The historical behavior is distributed across
 `src/verification_games/rhime_calibration/analytic.py`. Relevant provenance is
 recorded in Verification Games commits `c840a2d`, `25931e1`, and `df1c704`.
 
-The CO2 recipe keeps enough state and sensitivity metadata to project the
-single full flux contribution into inner and outer reporting views. A
-transitional ``outer_flux_contribution`` deterministic may expose that
-projection, but it is not a separate prior, latent state, or likelihood term.
-Atmospheric ``mu_bc``, ``offset``, the coherent affine prior term, and outer
+The CO2 recipe keeps enough state and sensitivity metadata for outputs to
+project the single full flux contribution into inner and outer reporting
+views. It does not construct separate group terms in the model. Atmospheric
+``mu_bc``, ``offset``, the coherent affine prior term, and reconstructed outer
 flux remain scientifically distinct. Reporting may compose boundary, offset,
 and outer flux as a baseline without changing model construction or stored
 provenance.

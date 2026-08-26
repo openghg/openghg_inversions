@@ -37,16 +37,6 @@ def _obs_coords() -> xr.Coordinates:
     return xr.Coordinates.from_pandas_multiindex(_obs_index(), "nmeasure")
 
 
-def _site_indicator() -> xr.DataArray:
-    """Create a simple site-indicator DataArray aligned to the test index."""
-    return xr.DataArray(
-        np.array([0, 0, 1, 1]),
-        dims=("nmeasure",),
-        coords=_obs_coords(),
-        name="site_indicator",
-    )
-
-
 def _likelihood_dataset() -> xr.Dataset:
     """Create a minimal canonical-style dataset for likelihood tests."""
     return xr.Dataset(
@@ -255,13 +245,13 @@ def test_add_sigma_component_uses_prepared_alignment() -> None:
 
 def test_add_offset_component_supports_manual_and_derived_freq() -> None:
     """Check offsets accept explicit or internally derived frequency indicators."""
-    site_indicator = _site_indicator()
-    manual_freq = xr.DataArray([0, 0, 1, 1], dims=("nmeasure",), coords=site_indicator.coords)
+    observations = _likelihood_dataset()["mf"]
+    manual_freq = xr.DataArray([0, 0, 1, 1], dims=("nmeasure",), coords=observations.coords)
 
     with pm.Model(coords={"nmeasure": np.arange(4)}) as model:
         attach_coord_registry(model, CoordRegistry())
         add_offset_component(
-            site_indicator,
+            observations,
             prior_args={"pdf": "normal", "mu": 0.0, "sigma": 1.0},
             offset_freq_indicator=manual_freq,
             output_name="offset",
@@ -272,7 +262,7 @@ def test_add_offset_component_supports_manual_and_derived_freq() -> None:
     with pm.Model(coords={"nmeasure": np.arange(4)}) as model:
         attach_coord_registry(model, CoordRegistry())
         add_offset_component(
-            site_indicator,
+            observations,
             prior_args={"pdf": "normal", "mu": 0.0, "sigma": 1.0},
             offset_freq="monthly",
             output_name="offset",
@@ -281,14 +271,46 @@ def test_add_offset_component_supports_manual_and_derived_freq() -> None:
         assert "offset_freq_indicator" in model.named_vars
 
 
+def test_add_offset_component_derives_site_indicator_from_observations() -> None:
+    """Check the offset owns site coding from labelled observations."""
+    observations = xr.DataArray(
+        np.ones(4),
+        dims="nmeasure",
+        coords=_obs_coords(),
+        name="mf",
+    )
+
+    with pm.Model(coords={"nmeasure": np.arange(4)}) as model:
+        attach_coord_registry(model, CoordRegistry())
+        add_offset_component(
+            observations,
+            prior_args={"pdf": "normal", "mu": 0.0, "sigma": 1.0},
+        )
+
+    np.testing.assert_array_equal(model["site_indicator"].eval(), [0, 0, 1, 1])
+
+
+def test_add_offset_component_requires_observation_sites() -> None:
+    """Reject offset inputs without labelled observation sites."""
+    observations = xr.DataArray(np.ones(4), dims="nmeasure", name="mf")
+
+    with pm.Model(coords={"nmeasure": np.arange(4)}) as model:
+        attach_coord_registry(model, CoordRegistry())
+        with pytest.raises(ValueError, match="observation-aligned `site`"):
+            add_offset_component(
+                observations,
+                prior_args={"pdf": "normal", "mu": 0.0, "sigma": 1.0},
+            )
+
+
 def test_add_offset_component_supports_one_global_scalar() -> None:
     """A global offset has one latent value broadcast over observations."""
-    site_indicator = _site_indicator()
+    observations = _likelihood_dataset()["mf"]
 
     with pm.Model(coords={"nmeasure": np.arange(4)}) as model:
         attach_coord_registry(model, CoordRegistry())
         offset = add_offset_component(
-            site_indicator,
+            observations,
             prior_args={"pdf": "normal", "mu": 0.0, "sigma": 1.0},
             per_site=False,
         )
@@ -305,7 +327,7 @@ def test_global_offset_rejects_site_period_options(invalid_args: dict[str, objec
         attach_coord_registry(model, CoordRegistry())
         with pytest.raises(ValueError, match="Global offsets"):
             add_offset_component(
-                _site_indicator(),
+                _likelihood_dataset()["mf"],
                 prior_args={"pdf": "normal", "mu": 0.0, "sigma": 1.0},
                 per_site=False,
                 **invalid_args,
@@ -314,12 +336,12 @@ def test_global_offset_rejects_site_period_options(invalid_args: dict[str, objec
 
 def test_add_offset_component_drop_first_and_freq_builds_expected_design() -> None:
     """Check drop-first offsets still build the expected site-period design."""
-    site_indicator = _site_indicator()
+    observations = _likelihood_dataset()["mf"]
 
     with pm.Model(coords={"nmeasure": np.arange(4)}) as model:
         attach_coord_registry(model, CoordRegistry())
         add_offset_component(
-            site_indicator,
+            observations,
             prior_args={"pdf": "normal", "mu": 0.0, "sigma": 1.0},
             offset_freq="monthly",
             output_name="offset",
@@ -406,7 +428,7 @@ def test_likelihood_samples_prior_predictive_with_shared_sigma_and_registered_si
         mu = pm.Data("mu_input", np.ones(4), dims="nmeasure")
         mu_bc = pm.Data("mu_bc_input", np.zeros(4), dims="nmeasure")
         offset = add_offset_component(
-            ds["site_indicator"],
+            ds["mf"],
             prior_args={"pdf": "normal", "mu": 0.0, "sigma": 1.0},
             output_name="offset",
         )

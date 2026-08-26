@@ -139,13 +139,6 @@ def multisector_model_input_names(
             owner="Model-error alignment component",
         )
         names.extend(_MODEL_ERROR_ALIGNMENT_INPUT_NAMES)
-    elif model_spec.add_offset:
-        _require_component_inputs(
-            prepared,
-            _MODEL_ERROR_ALIGNMENT_INPUT_NAMES,
-            owner="Multisector offset component selected by `add_offset=True`",
-        )
-        names.extend(_MODEL_ERROR_ALIGNMENT_INPUT_NAMES)
     if model_spec.use_bc:
         _require_component_inputs(
             prepared,
@@ -302,7 +295,6 @@ def build_multisector_rhime_model(
     sigma_alignment: SigmaAlignment | None = None,
     sectors: Sequence[SectorSpec],
     boundary_sensitivity: xr.DataArray | None = None,
-    site_indicator: xr.DataArray | None = None,
     bc_prior: PriorArgs | None = None,
     sigma_prior: PriorArgs | None = None,
     offset_prior: PriorArgs | None = None,
@@ -336,7 +328,6 @@ def build_multisector_rhime_model(
         sectors: Ordered sector specifications containing each scientific name,
             OpenGHG source, PyMC suffix, prior, and optional activity override.
         boundary_sensitivity: Optional labelled boundary sensitivity matrix.
-        site_indicator: Optional observation-to-site index used by offsets.
         bc_prior: Prior for boundary-condition scaling factors.
         sigma_prior: Prior for mismatch-error parameters.
         offset_prior: Prior for optional offsets.
@@ -415,12 +406,8 @@ def build_multisector_rhime_model(
 
         offset = None
         if add_offset:
-            if site_indicator is None:
-                raise ValueError(
-                    "Multisector offset component requires `site_indicator` when `add_offset` is true."
-                )
             offset = add_offset_component(
-                site_indicator,
+                observations,
                 prior_args=offset_prior,
                 output_name="offset",
                 output_dim="nmeasure",
@@ -596,7 +583,6 @@ def build_multisector_rhime_model_result(
             sigma_alignment=sigma_alignment,
             sectors=model_spec.sectors,
             boundary_sensitivity=model_inputs.get("H_bc"),
-            site_indicator=model_inputs.get("site_indicator"),
             bc_prior=model_spec.bc_prior,
             bc_state_activity=model_spec.bc_state_activity,
             sigma_prior=model_spec.sigma_prior,

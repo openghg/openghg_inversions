@@ -176,7 +176,6 @@ def build_rhime_model(inv_inputs: xr.Dataset, **kwargs: Any) -> pm.Model:
         minimum_error=inv_inputs["min_error"],
         aggregation_error=resolve_aggregation_error(inv_inputs, aggregation_mode),
         boundary_sensitivity=inv_inputs.get("H_bc"),
-        site_indicator=inv_inputs.get("site_indicator"),
         **kwargs,
     )
 
@@ -191,7 +190,6 @@ def build_rhime_multisector_model(inv_inputs: xr.Dataset, **kwargs: Any) -> pm.M
         minimum_error=inv_inputs["min_error"],
         aggregation_error=resolve_aggregation_error(inv_inputs, aggregation_mode),
         boundary_sensitivity=inv_inputs.get("H_bc"),
-        site_indicator=inv_inputs.get("site_indicator"),
         **kwargs,
     )
 
@@ -1309,22 +1307,22 @@ def test_standard_input_declaration_names_missing_component_owner(
 
 
 @pytest.mark.parametrize(
-    ("multisector", "add_offset", "preserve_legacy", "expects_site_indicator"),
+    ("multisector", "add_offset", "preserve_legacy", "expects_sigma_site_indicator"),
     [
         (False, False, False, False),
-        (False, True, False, True),
+        (False, True, False, False),
         (False, False, True, True),
         (True, False, False, False),
-        (True, True, False, True),
+        (True, True, False, False),
     ],
 )
 def test_fixed_error_input_declarations_select_site_indicator_only_for_owners(
     multisector: bool,
     add_offset: bool,
     preserve_legacy: bool,
-    expects_site_indicator: bool,
+    expects_sigma_site_indicator: bool,
 ) -> None:
-    """Disabled sigma wiring does not select site indices unless another owner needs them."""
+    """Only enabled sigma wiring selects the prepared site indicator."""
     inv_inputs = _minimal_output_inv_inputs()
     model_spec, _, _ = _minimal_output_specs(output_format="none")
     sectors = model_spec.sectors
@@ -1352,7 +1350,7 @@ def test_fixed_error_input_declarations_select_site_indicator_only_for_owners(
             preserve_legacy_likelihood=preserve_legacy,
         )
 
-    assert ("site_indicator" in names) is expects_site_indicator
+    assert ("site_indicator" in names) is expects_sigma_site_indicator
 
 
 @pytest.mark.parametrize("multisector", [False, True])
