@@ -1010,40 +1010,46 @@ class MultiSourceBucketBasisOperator(BasisOperator):
     def sensitivity(self, fp_x_flux: xr.DataArray, fillna: bool = True) -> xr.DataArray:
         """Compute sensitivity for multisource fp_x_flux.
 
-        Project each source separately before gathering the state axis. This
-        avoids broadcasting the full spatial cache across every retained state.
+        Fuse source selection with the sparse spatial prolongation before
+        contracting. This avoids broadcasting the full spatial cache across
+        every retained state while keeping the source pairing sparse.
         """
-        mat_aligned = force_align(self.basis_matrix, fp_x_flux, dims=list(self.meta.grid_dims))
-        mat_aligned = mat_aligned.transpose(*self.meta.grid_dims, ...)
-
         if self.source_dim in fp_x_flux.dims:
-            pieces = []
-            positions = []
-            for _, source_positions, source_flux in iter_multi_index_level_slices(
-                fp_x_flux,
-                multi_index=mat_aligned[self.meta.state_dim],
-                multi_dim=self.meta.state_dim,
-                level=self.source_dim,
-                array_dim=self.source_dim,
-            ):
-                if fillna:
-                    source_flux = source_flux.fillna(0.0)
-                positions.append(source_positions)
-                pieces.append(
-                    xr.dot(
-                        source_flux,
-                        mat_aligned.isel({self.meta.state_dim: source_positions}),
-                        dim=list(self.meta.grid_dims),
-                    )
+            source_order = [
+                source
+                for source, _, _ in iter_multi_index_level_slices(
+                    fp_x_flux,
+                    multi_index=self.basis_matrix[self.meta.state_dim],
+                    multi_dim=self.meta.state_dim,
+                    level=self.source_dim,
+                    array_dim=self.source_dim,
                 )
-            gathered_positions = np.concatenate(positions)
-            h = xr.concat(pieces, dim=self.meta.state_dim)
-            if not np.array_equal(gathered_positions, np.arange(mat_aligned.sizes[self.meta.state_dim])):
-                h = h.isel({self.meta.state_dim: np.argsort(gathered_positions)})
-            h = h.as_numpy()
-        elif fillna:
-            h = xr.dot(fp_x_flux.fillna(0.0), mat_aligned, dim=list(self.meta.grid_dims)).as_numpy()
+            ]
+            native_source_dim = f"native_{self.source_dim}"
+            fp_native = fp_x_flux.sel({self.source_dim: source_order}).rename(
+                {self.source_dim: native_source_dim}
+            )
+            fp_native = force_align(
+                fp_native,
+                self.basis_matrix,
+                dims=list(self.meta.grid_dims),
+            )
+            if fillna:
+                fp_native = fp_native.fillna(0.0)
+            prolongation = self.native_prolongation(
+                fp_native,
+                native_dims=(native_source_dim, *self.meta.grid_dims),
+            )
+            h = xr.dot(
+                fp_native,
+                prolongation,
+                dim=(native_source_dim, *self.meta.grid_dims),
+            ).as_numpy()
         else:
+            mat_aligned = force_align(self.basis_matrix, fp_x_flux, dims=list(self.meta.grid_dims))
+            mat_aligned = mat_aligned.transpose(*self.meta.grid_dims, ...)
+            if fillna:
+                fp_x_flux = fp_x_flux.fillna(0.0)
             h = xr.dot(fp_x_flux, mat_aligned, dim=list(self.meta.grid_dims)).as_numpy()
 
         if self.meta.state_dim in h.dims:

@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 import pytest
 import xarray as xr
+from sparse import SparseArray
 
 import openghg_inversions.basis as basis_package
 import openghg_inversions.basis._functions as basis_module
@@ -2213,8 +2214,8 @@ def test_multisource_sensitivity_matches_legacy_padded_conversion_smoke():
     xr.testing.assert_allclose(H_new, H_old_gathered)
 
 
-def test_multisource_sensitivity_projects_each_source_before_gathering(monkeypatch):
-    """Spatial caches must not be broadcast across the gathered state axis."""
+def test_multisource_sensitivity_contracts_sparse_native_prolongation(monkeypatch):
+    """Source pairing stays sparse until the spatial contraction produces H."""
     sources = ["A", "B"]
     basis = make_basis_flat_from_blocks([[1, 1], [2, 2]])
     basis_functions = BasisFunctions.from_multi_source_flat_basis(
@@ -2224,17 +2225,20 @@ def test_multisource_sensitivity_projects_each_source_before_gathering(monkeypat
     )
     fp_x_flux = make_fp_x_flux_sectoral(sources=sources, nlat=2, nlon=2, ntime=3)
     original_dot = xr.dot
-    projected_dims = []
+    projected = []
 
     def checked_dot(left, right, *args, **kwargs):
-        projected_dims.append(left.dims)
+        projected.append((left, right))
         return original_dot(left, right, *args, **kwargs)
 
     monkeypatch.setattr(xr, "dot", checked_dot)
     basis_functions.sensitivity(fp_x_flux)
 
-    assert len(projected_dims) == len(sources)
-    assert all("region" not in dims and "source" not in dims for dims in projected_dims)
+    assert len(projected) == 1
+    left, right = projected[0]
+    assert left.dims == ("native_source", "lat", "lon", "time")
+    assert right.dims == ("native_source", "lat", "lon", "region")
+    assert isinstance(right.data._meta, SparseArray)
 
 
 def test_multisource_sensitivity_accepts_reordered_exact_sources() -> None:
@@ -2252,6 +2256,21 @@ def test_multisource_sensitivity_accepts_reordered_exact_sources() -> None:
     actual = basis_functions.sensitivity(fp_x_flux.sel(source=["B", "A"]))
 
     xr.testing.assert_identical(actual, expected)
+
+
+def test_multisource_sensitivity_rejects_reordered_grid() -> None:
+    """The native contraction keeps the existing exact grid-order contract."""
+    sources = ["A", "B"]
+    basis = make_basis_flat_from_blocks([[1, 1], [2, 2]])
+    basis_functions = BasisFunctions.from_multi_source_flat_basis(
+        basis_flat={source: basis for source in sources},
+        flux=xr.ones_like(basis, dtype=float),
+        operator_kwargs={"state_dim": "region"},
+    )
+    fp_x_flux = make_fp_x_flux_sectoral(sources=sources, nlat=2, nlon=2, ntime=3)
+
+    with pytest.raises(ValueError, match="Coordinate mismatch along 'lat'"):
+        basis_functions.sensitivity(fp_x_flux.isel(lat=[1, 0], lon=[1, 0]))
 
 
 def test_multisource_sensitivity_source_independent_control() -> None:

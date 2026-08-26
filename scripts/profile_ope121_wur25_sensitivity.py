@@ -99,8 +99,24 @@ def _compare(actual: xr.DataArray, reference: xr.DataArray) -> dict[str, object]
         coordinates_identical = True
     except AssertionError:
         coordinates_identical = False
+    coordinate_names = sorted(set(actual.coords) | set(reference.coords))
+    coordinate_identity = {}
+    for name in coordinate_names:
+        if name not in actual.coords or name not in reference.coords:
+            coordinate_identity[name] = False
+            continue
+        try:
+            xr.testing.assert_identical(actual.coords[name], reference.coords[name])
+            coordinate_identity[name] = True
+        except AssertionError:
+            coordinate_identity[name] = False
     return {
         "coordinates_identical": coordinates_identical,
+        "coordinate_identity": coordinate_identity,
+        "dimension_index_identity": {
+            dim: actual.get_index(dim).equals(reference.get_index(dim))
+            for dim in actual.dims
+        },
         "max_absolute_difference": float(difference.max(initial=0.0)),
         "max_relative_difference": float(
             (difference / denominator).max(initial=0.0)
