@@ -70,7 +70,7 @@ The complete integration is one named argument:
 
 RHIME calls the function with explicit keyword arguments while constructing
 the PyMC model: the prepared observations, completed forward-model mean,
-reported and minimum errors, selected aggregation error, and output dimension.
+reported observation error, selected aggregation error, and output dimension.
 Pollution-event-only terms remain inside the built-in pollution-event
 component. The function adds ``epsilon`` and the canonical observed variable
 ``y`` to the active model and returns ``y``. There is no framework context or
@@ -113,16 +113,13 @@ The example rejects dense and low-rank aggregation covariance because it uses
 an independent Student-t distribution. Supporting those aggregation-error
 modes would require a multivariate likelihood.
 
-The model-owned
-``models.additive_sigma.additive_sigma_likelihood_builder`` is a drop-in
-ordinary likelihood builder. It derives sigma alignment from the labelled
-observation ``site`` and ``time`` coordinates and constructs the PyMC graph in
-the same module as the additive-sigma equations. Optional
-``sigma_prior``, ``sigma_freq``, ``sigma_per_site``, ``sigma_freq_anchor``, and
-``no_model_error`` settings belong to that component and can be supplied in
-``likelihood_kwargs``. This model adds absolute ``sigma**2`` directly to the
-independent variance. The prepared ``minimum_error`` retains its historical
-meaning as an optional floor on total standard deviation.
+Built-in mismatch equations are direct model components, not examples of this
+custom-callback contract. In particular,
+``models.additive_sigma.add_additive_sigma_likelihood`` adds an absolute
+concentration-scale variance, while ``models.pollution_event`` owns the
+pollution-enhancement-scaled equation. The frozen ``run_hbmcmc`` additive
+spelling is translated at the RHIME compatibility seam before either standard
+recipe constructs the graph.
 
 Built-in aggregation covariance relies on the guarantees of its construction
 pipeline. A custom pipeline that assembles its own covariance may optionally

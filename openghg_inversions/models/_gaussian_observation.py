@@ -1,10 +1,11 @@
-"""Model-owned Gaussian observation-distribution construction.
+"""Private PyMC mechanics for Gaussian observation distributions.
 
 This module owns the PyMC graph mechanics shared by concrete Gaussian
 likelihood components. Error models such as additive sigma and pollution-event
 scaling prepare their independent variance and fixed aggregation covariance,
 then call :func:`add_gaussian_observation_likelihood` inside the active model.
-RHIME runner seams do not construct or adapt these PyMC variables.
+Concrete model components own the scientific covariance and call these private
+helpers only after that choice has been made.
 """
 
 from __future__ import annotations

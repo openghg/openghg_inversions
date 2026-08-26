@@ -15,7 +15,6 @@ def likelihood_builder(
     *,
     observations: xr.DataArray,
     observation_error: xr.DataArray,
-    minimum_error: xr.DataArray,
     aggregation_error: AggregationError,
     mean: TensorVariable,
     output_dim: str,
@@ -26,7 +25,6 @@ def likelihood_builder(
     Args:
         observations: Observed mole fractions.
         observation_error: Reported observation-error standard deviations.
-        minimum_error: Minimum total-error standard deviations.
         aggregation_error: Validated fixed aggregation-error representation.
         mean: Completed forward-model concentration.
         output_dim: Observation dimension used by named PyMC variables.
@@ -47,18 +45,13 @@ def likelihood_builder(
     validate_observation_error_arrays(
         observations,
         observation_error,
-        minimum_error,
+        None,
         owner="Custom Student-t likelihood",
         output_dim=output_dim,
     )
     reported_error = pm.Data(
         "error",
         pm.floatX(observation_error.transpose(output_dim).compute().values),
-        dims=output_dim,
-    )
-    minimum_error_data = pm.Data(
-        "min_error",
-        pm.floatX(minimum_error.transpose(output_dim).compute().values),
         dims=output_dim,
     )
     aggregation_variance = pm.Data(
@@ -68,10 +61,7 @@ def likelihood_builder(
     )
     epsilon = pm.Deterministic(
         "epsilon",
-        pt.maximum(
-            pt.sqrt(reported_error**2 + aggregation_variance),
-            minimum_error_data,
-        ),
+        pt.sqrt(reported_error**2 + aggregation_variance),
         dims=output_dim,
     )
     observed = pm.StudentT(

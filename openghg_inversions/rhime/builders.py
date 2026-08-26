@@ -1,8 +1,4 @@
-"""Public model-build contracts and validation for RHIME customizations.
-
-The validation applies both to complete-model builders and to built-in model
-results that wrap a custom likelihood builder.
-"""
+"""Public whole-model build contracts and validation for RHIME customizations."""
 
 from __future__ import annotations
 
@@ -12,33 +8,12 @@ import json
 from typing import Any, Protocol
 
 import pymc as pm
-import xarray as xr
-from pytensor.tensor.variable import TensorVariable
-
 from openghg_inversions.inversion_data import RhimePreparedInputs
 from openghg_inversions.models.coords import get_coord_registry
-from openghg_inversions.observation_error import AggregationError
 from openghg_inversions.rhime.specs import OutputFormat, RhimeRunSpec
 
 
 _OUTPUT_FORMATS: frozenset[OutputFormat] = frozenset({"none", "inv_out", "basic", "paris", "legacy"})
-
-
-class RhimeLikelihoodBuilder(Protocol):
-    """Explicit callable contract for a complete RHIME likelihood component."""
-
-    def __call__(
-        self,
-        *,
-        observations: xr.DataArray,
-        observation_error: xr.DataArray,
-        minimum_error: xr.DataArray,
-        aggregation_error: AggregationError,
-        mean: TensorVariable,
-        output_dim: str,
-    ) -> TensorVariable:
-        """Add canonical ``y`` and ``epsilon`` variables to the active model."""
-        ...
 
 
 @dataclass(frozen=True)

@@ -2,12 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Collection, Mapping
-import json
-from typing import Any
+from collections.abc import Collection
 
 import pymc as pm
-from pytensor.tensor.variable import TensorVariable
 
 from .builders import (
     RhimeModelBuilder,
@@ -15,43 +12,6 @@ from .builders import (
     RhimeModelBuildResult,
 )
 from .specs import RhimeModelSpec
-
-
-def validate_custom_likelihood_result(
-    model: pm.Model,
-    likelihood: object,
-) -> TensorVariable:
-    """Validate the result returned by a caller-supplied likelihood.
-
-    Args:
-        model: Active model after custom likelihood construction.
-        likelihood: Value returned by the caller-supplied callable.
-
-    Returns:
-        Validated observed concentration variable named ``y``.
-
-    Raises:
-        TypeError: If the callable did not return a PyTensor variable.
-        ValueError: If canonical ``y`` or ``epsilon`` variables are absent.
-    """
-    if not isinstance(likelihood, TensorVariable):
-        raise TypeError(
-            "A RHIME likelihood builder must return a PyTensor variable; "
-            f"got {type(likelihood).__name__}."
-        )
-    if likelihood.name != "y":
-        raise ValueError(
-            "A RHIME likelihood builder must name its observed concentration variable `y`; "
-            f"got {likelihood.name!r}."
-        )
-    missing_names = sorted({"y", "epsilon"} - set(model.named_vars))
-    if missing_names:
-        raise ValueError(
-            "A RHIME likelihood builder did not create the canonical variables required by "
-            "sampling and outputs: "
-            f"{missing_names!r}."
-        )
-    return likelihood
 
 
 def builtin_model_build_result(
@@ -147,42 +107,3 @@ def validated_custom_model_build(
             f"got {type(result).__name__}."
         )
     return result
-
-
-def validate_likelihood_kwargs(
-    likelihood_builder: object | None,
-    likelihood_kwargs: object | None,
-) -> dict[str, Any] | None:
-    """Copy and validate options owned by a custom likelihood.
-
-    Args:
-        likelihood_builder: Active custom likelihood callable, if any.
-        likelihood_kwargs: Candidate JSON-compatible option mapping.
-
-    Returns:
-        A detached JSON-compatible mapping, or ``None`` when omitted.
-
-    Raises:
-        TypeError: If the builder is not callable or the options are not a
-            string-keyed, JSON-compatible mapping.
-        ValueError: If non-empty options are supplied without a custom
-            likelihood builder.
-    """
-    if likelihood_builder is not None and not callable(likelihood_builder):
-        raise TypeError(
-            f"`likelihood_builder` must be callable or None; got {type(likelihood_builder).__name__}."
-        )
-    if likelihood_kwargs is None:
-        return None
-    if not isinstance(likelihood_kwargs, Mapping):
-        raise TypeError("`likelihood_kwargs` must be a mapping or None.")
-    if any(not isinstance(key, str) for key in likelihood_kwargs):
-        raise TypeError("`likelihood_kwargs` keys must be strings.")
-    try:
-        encoded = json.dumps(dict(likelihood_kwargs), allow_nan=False)
-        options = json.loads(encoded)
-    except (TypeError, ValueError) as exc:
-        raise TypeError("`likelihood_kwargs` must contain only JSON-compatible values.") from exc
-    if options and likelihood_builder is None:
-        raise ValueError("Non-empty `likelihood_kwargs` require an active `likelihood_builder`.")
-    return options
