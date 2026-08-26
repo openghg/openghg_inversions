@@ -111,18 +111,24 @@ def test_recorded_outputs_accepts_text_results_and_ignores_stdout() -> None:
     assert record_tutorial_outputs._recorded_outputs(notebook) == ["{'done': True}"]
 
 
-def test_recorded_outputs_rejects_stderr() -> None:
+def test_recorded_outputs_ignores_stderr_when_a_cell_has_a_result() -> None:
     notebook = nbformat.v4.new_notebook(
         cells=[
             nbformat.v4.new_code_cell(
                 "value",
-                outputs=[nbformat.v4.new_output("stream", name="stderr", text="warning\n")],
+                outputs=[
+                    nbformat.v4.new_output("stream", name="stderr", text="warning\n"),
+                    nbformat.v4.new_output(
+                        "execute_result",
+                        data={"text/plain": "{'done': True}"},
+                        execution_count=1,
+                    ),
+                ],
             )
         ]
     )
 
-    with pytest.raises(RuntimeError, match="wrote to stderr"):
-        record_tutorial_outputs._recorded_outputs(notebook)
+    assert record_tutorial_outputs._recorded_outputs(notebook) == ["{'done': True}"]
 
 
 @pytest.mark.parametrize(

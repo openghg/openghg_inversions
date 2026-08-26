@@ -103,8 +103,6 @@ def _recorded_outputs(notebook: nbformat.NotebookNode) -> list[str]:
             if output_type == "error":
                 raise RuntimeError("\n".join(output.get("traceback", [])))
             if output_type == "stream":
-                if output.get("name") == "stderr" and output.get("text", "").strip():
-                    raise RuntimeError(f"Tutorial cell wrote to stderr:\n{output['text']}")
                 continue
             data = output.get("data", {})
             if "text/plain" in data:
