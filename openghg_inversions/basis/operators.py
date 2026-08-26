@@ -60,6 +60,7 @@ from openghg_inversions.array_ops import (
     concat_gather_data_arrays,
     force_align,
     get_xr_dummies,
+    iter_multi_index_level_slices,
 )
 from openghg_inversions.basis.layout import (
     BasisStateMetadata,
@@ -1009,32 +1010,76 @@ class MultiSourceBucketBasisOperator(BasisOperator):
     def sensitivity(self, fp_x_flux: xr.DataArray, fillna: bool = True) -> xr.DataArray:
         """Compute sensitivity for multisource fp_x_flux.
 
-        Project each source separately before gathering the state axis. This
-        avoids broadcasting the full spatial cache across every retained state.
+        Fuse source selection with the sparse spatial prolongation before
+        contracting. This avoids broadcasting the full spatial cache across
+        every retained state while keeping the source pairing sparse.
         """
-        mat_aligned = force_align(self.basis_matrix, fp_x_flux, dims=list(self.meta.grid_dims))
-        mat_aligned = mat_aligned.transpose(*self.meta.grid_dims, ...)
-
         if self.source_dim in fp_x_flux.dims:
-            state_sources = np.asarray(mat_aligned[self.source_dim].values)
-            pieces = []
-            for source in self.source_labels:
-                source_flux = fp_x_flux.sel({self.source_dim: source}, drop=True)
-                if fillna:
-                    source_flux = source_flux.fillna(0.0)
-                pieces.append(
-                    xr.dot(
-                        source_flux,
-                        mat_aligned.isel(
-                            {self.meta.state_dim: np.flatnonzero(state_sources == source)}
-                        ),
-                        dim=list(self.meta.grid_dims),
-                    )
+            state_coordinate = self.basis_matrix[self.meta.state_dim]
+            source_order = [
+                source
+                for source, _, _ in iter_multi_index_level_slices(
+                    fp_x_flux,
+                    multi_index=state_coordinate,
+                    multi_dim=self.meta.state_dim,
+                    level=self.source_dim,
+                    array_dim=self.source_dim,
                 )
-            h = xr.concat(pieces, dim=self.meta.state_dim).as_numpy()
-        elif fillna:
-            h = xr.dot(fp_x_flux.fillna(0.0), mat_aligned, dim=list(self.meta.grid_dims)).as_numpy()
+            ]
+            surviving_source_coordinates = {
+                name: align_to_multi_index_level_values(
+                    coordinate,
+                    multi_index=state_coordinate,
+                    multi_dim=self.meta.state_dim,
+                    level=self.source_dim,
+                    other_dim=self.source_dim,
+                )
+                for name, coordinate in fp_x_flux.coords.items()
+                if name != self.source_dim
+                and self.source_dim in coordinate.dims
+                and not set(coordinate.dims).intersection(self.meta.grid_dims)
+            }
+            occupied_names = {
+                name
+                for name in (
+                    *fp_x_flux.dims,
+                    *fp_x_flux.coords,
+                    *self.basis_matrix.dims,
+                    *self.basis_matrix.coords,
+                )
+            }
+            native_source_base = f"native_{self.source_dim}"
+            native_source_dim = native_source_base
+            suffix = 2
+            while native_source_dim in occupied_names:
+                native_source_dim = f"{native_source_base}_{suffix}"
+                suffix += 1
+            fp_native = fp_x_flux.sel({self.source_dim: source_order}).rename(
+                {self.source_dim: native_source_dim}
+            )
+            fp_native = force_align(
+                fp_native,
+                self.basis_matrix,
+                dims=list(self.meta.grid_dims),
+            )
+            if fillna:
+                fp_native = fp_native.fillna(0.0)
+            prolongation = self.native_prolongation(
+                fp_native,
+                native_dims=(native_source_dim, *self.meta.grid_dims),
+            )
+            h = xr.dot(
+                fp_native,
+                prolongation,
+                dim=(native_source_dim, *self.meta.grid_dims),
+            ).as_numpy()
+            if surviving_source_coordinates:
+                h = h.assign_coords(surviving_source_coordinates)
         else:
+            mat_aligned = force_align(self.basis_matrix, fp_x_flux, dims=list(self.meta.grid_dims))
+            mat_aligned = mat_aligned.transpose(*self.meta.grid_dims, ...)
+            if fillna:
+                fp_x_flux = fp_x_flux.fillna(0.0)
             h = xr.dot(fp_x_flux, mat_aligned, dim=list(self.meta.grid_dims)).as_numpy()
 
         if self.meta.state_dim in h.dims:

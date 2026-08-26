@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 import pytest
 import xarray as xr
+from sparse import SparseArray
 
 import openghg_inversions.basis as basis_package
 import openghg_inversions.basis._functions as basis_module
@@ -2213,8 +2214,8 @@ def test_multisource_sensitivity_matches_legacy_padded_conversion_smoke():
     xr.testing.assert_allclose(H_new, H_old_gathered)
 
 
-def test_multisource_sensitivity_projects_each_source_before_gathering(monkeypatch):
-    """Spatial caches must not be broadcast across the gathered state axis."""
+def test_multisource_sensitivity_contracts_sparse_native_prolongation(monkeypatch):
+    """Source pairing stays sparse until the spatial contraction produces H."""
     sources = ["A", "B"]
     basis = make_basis_flat_from_blocks([[1, 1], [2, 2]])
     basis_functions = BasisFunctions.from_multi_source_flat_basis(
@@ -2224,17 +2225,147 @@ def test_multisource_sensitivity_projects_each_source_before_gathering(monkeypat
     )
     fp_x_flux = make_fp_x_flux_sectoral(sources=sources, nlat=2, nlon=2, ntime=3)
     original_dot = xr.dot
-    projected_dims = []
+    projected = []
 
     def checked_dot(left, right, *args, **kwargs):
-        projected_dims.append(left.dims)
+        projected.append((left, right))
         return original_dot(left, right, *args, **kwargs)
 
     monkeypatch.setattr(xr, "dot", checked_dot)
     basis_functions.sensitivity(fp_x_flux)
 
-    assert len(projected_dims) == len(sources)
-    assert all("region" not in dims and "source" not in dims for dims in projected_dims)
+    assert len(projected) == 1
+    left, right = projected[0]
+    assert left.dims == ("native_source", "lat", "lon", "time")
+    assert right.dims == ("native_source", "lat", "lon", "region")
+    assert isinstance(right.data._meta, SparseArray)
+
+
+def test_multisource_sensitivity_accepts_reordered_exact_sources() -> None:
+    """Source labels, rather than input position, select each gathered state block."""
+    sources = ["A", "B"]
+    basis = make_basis_flat_from_blocks([[1, 1], [2, 2]])
+    basis_functions = BasisFunctions.from_multi_source_flat_basis(
+        basis_flat={source: basis for source in sources},
+        flux=xr.ones_like(basis, dtype=float),
+        operator_kwargs={"state_dim": "region"},
+    )
+    fp_x_flux = make_fp_x_flux_sectoral(sources=sources, nlat=2, nlon=2, ntime=3)
+
+    expected = basis_functions.sensitivity(fp_x_flux)
+    actual = basis_functions.sensitivity(fp_x_flux.sel(source=["B", "A"]))
+
+    xr.testing.assert_identical(actual, expected)
+
+
+def test_multisource_sensitivity_avoids_configured_state_dimension_collision() -> None:
+    """The temporary native source axis must not collide with the retained state axis."""
+    sources = ["A", "B"]
+    basis = make_basis_flat_from_blocks([[1, 1], [2, 2]])
+    colliding = BasisFunctions.from_multi_source_flat_basis(
+        basis_flat={source: basis for source in sources},
+        flux=xr.ones_like(basis, dtype=float),
+        operator_kwargs={"state_dim": "native_source"},
+    )
+    reference = BasisFunctions.from_multi_source_flat_basis(
+        basis_flat={source: basis for source in sources},
+        flux=xr.ones_like(basis, dtype=float),
+        operator_kwargs={"state_dim": "region"},
+    )
+    fp_x_flux = make_fp_x_flux_sectoral(sources=sources, nlat=2, nlon=2, ntime=3)
+
+    actual = colliding.sensitivity(fp_x_flux)
+    expected = reference.sensitivity(fp_x_flux)
+
+    assert actual.dims == ("native_source", "time")
+    assert actual.get_index("native_source").equals(expected.get_index("region"))
+    np.testing.assert_allclose(actual.values, expected.values)
+
+
+def test_multisource_sensitivity_avoids_extra_dimension_collision() -> None:
+    """A valid surviving ``native_source`` dimension remains distinct from the temporary axis."""
+    sources = ["A", "B"]
+    basis = make_basis_flat_from_blocks([[1, 1], [2, 2]])
+    basis_functions = BasisFunctions.from_multi_source_flat_basis(
+        basis_flat={source: basis for source in sources},
+        flux=xr.ones_like(basis, dtype=float),
+        operator_kwargs={"state_dim": "region"},
+    )
+    fp_x_flux = make_fp_x_flux_sectoral(sources=sources, nlat=2, nlon=2, ntime=3)
+    factor = xr.DataArray(
+        [1.0, 2.0],
+        dims="native_source",
+        coords={"native_source": ["first", "second"]},
+    )
+
+    actual = basis_functions.sensitivity(fp_x_flux.expand_dims(native_source=factor.native_source) * factor)
+    expected = (basis_functions.sensitivity(fp_x_flux) * factor).transpose(
+        "region", "time", "native_source"
+    )
+
+    xr.testing.assert_identical(actual, expected)
+
+
+def test_multisource_sensitivity_preserves_source_dependent_auxiliary_coordinate() -> None:
+    """Source coordinates on surviving dimensions are gathered onto retained state."""
+    sources = ["A", "B"]
+    basis = make_basis_flat_from_blocks([[1, 1], [2, 2]])
+    basis_functions = BasisFunctions.from_multi_source_flat_basis(
+        basis_flat={source: basis for source in sources},
+        flux=xr.ones_like(basis, dtype=float),
+        operator_kwargs={"state_dim": "region"},
+    )
+    fp_x_flux = make_fp_x_flux_sectoral(sources=sources, nlat=2, nlon=2, ntime=3)
+    calibration = xr.DataArray(
+        np.arange(6).reshape(2, 3),
+        dims=("source", "time"),
+        coords={"source": sources, "time": fp_x_flux.time},
+        name="calibration",
+        attrs={"units": "1"},
+    )
+    fp_x_flux = fp_x_flux.assign_coords(calibration=calibration)
+
+    actual = basis_functions.sensitivity(fp_x_flux).coords["calibration"]
+    expected_values = calibration.sel(source=["A", "A", "B", "B"]).values
+
+    assert actual.dims == ("region", "time")
+    assert actual.get_index("region").equals(basis_functions.operator.basis_matrix.get_index("region"))
+    assert actual.attrs == calibration.attrs
+    np.testing.assert_array_equal(actual.values, expected_values)
+
+
+def test_multisource_sensitivity_rejects_reordered_grid() -> None:
+    """The native contraction keeps the existing exact grid-order contract."""
+    sources = ["A", "B"]
+    basis = make_basis_flat_from_blocks([[1, 1], [2, 2]])
+    basis_functions = BasisFunctions.from_multi_source_flat_basis(
+        basis_flat={source: basis for source in sources},
+        flux=xr.ones_like(basis, dtype=float),
+        operator_kwargs={"state_dim": "region"},
+    )
+    fp_x_flux = make_fp_x_flux_sectoral(sources=sources, nlat=2, nlon=2, ntime=3)
+
+    with pytest.raises(ValueError, match="Coordinate mismatch along 'lat'"):
+        basis_functions.sensitivity(fp_x_flux.isel(lat=[1, 0], lon=[1, 0]))
+
+
+def test_multisource_sensitivity_source_independent_control() -> None:
+    """A shared spatial input retains the ordinary single-dot path."""
+    basis = make_basis_flat_from_blocks([[1, 1], [2, 2]])
+    basis_functions = BasisFunctions.from_multi_source_flat_basis(
+        basis_flat={"A": basis, "B": basis},
+        flux=xr.ones_like(basis, dtype=float),
+        operator_kwargs={"state_dim": "region"},
+    )
+    fp_x_flux = make_fp_x_flux(nlat=2, nlon=2, ntime=3)
+
+    sensitivity = basis_functions.sensitivity(fp_x_flux)
+
+    assert sensitivity.dims == ("region", "time")
+    xr.testing.assert_identical(
+        sensitivity.sel(source="A", drop=True),
+        sensitivity.sel(source="B", drop=True),
+    )
 
 
 def test_basis_functions_from_fp_all_flat_basis(tac_ch4_data_args):
