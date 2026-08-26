@@ -37,18 +37,24 @@ tools used by the repository:
    pixi run -e dev tox
    pixi run -e dev docs-preview
 
-The ``docs-preview`` task builds the Sphinx documentation with ``tox -e docs``,
-serves it at ``http://127.0.0.1:8765/``, and opens it in Safari on macOS. Keep
-the task running while reading the docs and press Ctrl-C to stop the server.
-Use a different port or disable automatic browser opening if needed:
+The ``docs-preview`` task incrementally builds the Sphinx documentation with
+``tox -e docs``, serves it at ``http://127.0.0.1:8765/``, and opens it in Safari
+on macOS. Keep the task running while reading the docs and press Ctrl-C to stop
+the server. Each invocation builds once before starting the static server, so
+stop and rerun it after changing a source file. Use a different port, disable
+automatic browser opening, or discard Sphinx's cached doctrees before building
+if needed:
 
 .. code:: bash
 
    pixi run -e dev docs-preview --port 8766 --no-open
+   pixi run -e dev docs-preview --fresh
 
-Preview output is built in a temporary directory and removed when the server
-stops. ``uv run python scripts/preview_docs.py clean`` removes any legacy
-``docs/_build`` output.
+Preview output and cached doctrees remain in the ignored ``docs/_build``
+directory so later builds only rebuild changed pages. Regenerate the checked-in
+API reference pages separately with ``pixi run -e dev tox -e docs-api`` after
+changing the package layout. ``uv run python scripts/preview_docs.py clean``
+removes all preview output without rebuilding it.
 
 The default uv group is intentionally limited to pytest and Ruff. To opt into
 the larger development group for documentation work, use:
@@ -57,6 +63,7 @@ the larger development group for documentation work, use:
 
    uv run --group uv_dev python scripts/preview_docs.py
    uv run --group uv_dev python scripts/preview_docs.py --port 8766 --no-open
+   uv run --group uv_dev python scripts/preview_docs.py --fresh
    uv run python scripts/preview_docs.py clean
 
 To run the optional real country-file HDF5 smoke check on a machine that

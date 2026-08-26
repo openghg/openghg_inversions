@@ -27,8 +27,8 @@
   </noscript>
   
   <!-- Loaded before other Sphinx assets -->
-  <link href="../_static/styles/theme.css?digest=90905a2f556bf617f1a9" rel="stylesheet" />
-<link href="../_static/styles/pydata-sphinx-theme.css?digest=90905a2f556bf617f1a9" rel="stylesheet" />
+  <link href="../_static/styles/theme.css?digest=cb8930eaaf36d9849b67" rel="stylesheet" />
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=cb8930eaaf36d9849b67" rel="stylesheet" />
 
     <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
     <link rel="stylesheet" type="text/css" href="../_static/jupyter-sphinx.css" />
@@ -36,10 +36,10 @@
     <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=f8ac5af1" />
   
   <!-- So that users can add custom icons -->
-  <script defer src="../_static/scripts/fontawesome.js?digest=90905a2f556bf617f1a9"></script>
+  <script defer src="../_static/scripts/fontawesome.js?digest=cb8930eaaf36d9849b67"></script>
   <!-- Pre-loaded scripts that we'll load fully later -->
-  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=90905a2f556bf617f1a9" />
-<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=90905a2f556bf617f1a9" />
+  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=cb8930eaaf36d9849b67" />
+<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=cb8930eaaf36d9849b67" />
 
     <script src="../_static/documentation_options.js?v=5929fcd5"></script>
     <script src="../_static/doctools.js?v=fd6eb6e6"></script>
@@ -415,20 +415,27 @@ pixi<span class="w"> </span>run<span class="w"> </span>-e<span class="w"> </span
 pixi<span class="w"> </span>run<span class="w"> </span>-e<span class="w"> </span>dev<span class="w"> </span>docs-preview
 </pre></div>
 </div>
-<p>The <code class="docutils literal notranslate"><span class="pre">docs-preview</span></code> task builds the Sphinx documentation with <code class="docutils literal notranslate"><span class="pre">tox</span> <span class="pre">-e</span> <span class="pre">docs</span></code>,
-serves it at <code class="docutils literal notranslate"><span class="pre">http://127.0.0.1:8765/</span></code>, and opens it in Safari on macOS. Keep
-the task running while reading the docs and press Ctrl-C to stop the server.
-Use a different port or disable automatic browser opening if needed:</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">docs-preview</span></code> task incrementally builds the Sphinx documentation with
+<code class="docutils literal notranslate"><span class="pre">tox</span> <span class="pre">-e</span> <span class="pre">docs</span></code>, serves it at <code class="docutils literal notranslate"><span class="pre">http://127.0.0.1:8765/</span></code>, and opens it in Safari
+on macOS. Keep the task running while reading the docs and press Ctrl-C to stop
+the server. Each invocation builds once before starting the static server, so
+stop and rerun it after changing a source file. Use a different port, disable
+automatic browser opening, or discard Sphinx’s cached doctrees before building
+if needed:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pixi<span class="w"> </span>run<span class="w"> </span>-e<span class="w"> </span>dev<span class="w"> </span>docs-preview<span class="w"> </span>--port<span class="w"> </span><span class="m">8766</span><span class="w"> </span>--no-open
+pixi<span class="w"> </span>run<span class="w"> </span>-e<span class="w"> </span>dev<span class="w"> </span>docs-preview<span class="w"> </span>--fresh
 </pre></div>
 </div>
-<p>Preview output is built in a temporary directory and removed when the server
-stops. <code class="docutils literal notranslate"><span class="pre">uv</span> <span class="pre">run</span> <span class="pre">python</span> <span class="pre">scripts/preview_docs.py</span> <span class="pre">clean</span></code> removes any legacy
-<code class="docutils literal notranslate"><span class="pre">docs/_build</span></code> output.</p>
+<p>Preview output and cached doctrees remain in the ignored <code class="docutils literal notranslate"><span class="pre">docs/_build</span></code>
+directory so later builds only rebuild changed pages. Regenerate the checked-in
+API reference pages separately with <code class="docutils literal notranslate"><span class="pre">pixi</span> <span class="pre">run</span> <span class="pre">-e</span> <span class="pre">dev</span> <span class="pre">tox</span> <span class="pre">-e</span> <span class="pre">docs-api</span></code> after
+changing the package layout. <code class="docutils literal notranslate"><span class="pre">uv</span> <span class="pre">run</span> <span class="pre">python</span> <span class="pre">scripts/preview_docs.py</span> <span class="pre">clean</span></code>
+removes all preview output without rebuilding it.</p>
 <p>The default uv group is intentionally limited to pytest and Ruff. To opt into
 the larger development group for documentation work, use:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>run<span class="w"> </span>--group<span class="w"> </span>uv_dev<span class="w"> </span>python<span class="w"> </span>scripts/preview_docs.py
 uv<span class="w"> </span>run<span class="w"> </span>--group<span class="w"> </span>uv_dev<span class="w"> </span>python<span class="w"> </span>scripts/preview_docs.py<span class="w"> </span>--port<span class="w"> </span><span class="m">8766</span><span class="w"> </span>--no-open
+uv<span class="w"> </span>run<span class="w"> </span>--group<span class="w"> </span>uv_dev<span class="w"> </span>python<span class="w"> </span>scripts/preview_docs.py<span class="w"> </span>--fresh
 uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>scripts/preview_docs.py<span class="w"> </span>clean
 </pre></div>
 </div>
@@ -594,8 +601,8 @@ and the NetCDF/HDF5 stack from conda-forge.</p></li>
   </div>
   
   <!-- Scripts loaded after <body> so the DOM is not blocked -->
-  <script defer src="../_static/scripts/bootstrap.js?digest=90905a2f556bf617f1a9"></script>
-<script defer src="../_static/scripts/pydata-sphinx-theme.js?digest=90905a2f556bf617f1a9"></script>
+  <script defer src="../_static/scripts/bootstrap.js?digest=cb8930eaaf36d9849b67"></script>
+<script defer src="../_static/scripts/pydata-sphinx-theme.js?digest=cb8930eaaf36d9849b67"></script>
 
   <footer class="bd-footer">
 <div class="bd-footer__inner bd-page-width">
@@ -629,7 +636,7 @@ and the NetCDF/HDF5 stack from conda-forge.</p></li>
         <div class="footer-item">
 <p class="theme-version">
   <!-- # L10n: Setting the PST URL as an argument as this does not need to be localized -->
-  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.20.0.
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.21.0.
 </p></div>
       
     </div>
