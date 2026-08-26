@@ -1033,8 +1033,8 @@ def test_build_rhime_model_accepts_global_scalar_offset(
     assert set(model.named_vars) - set(base_model.named_vars) == {
         "offset",
         "offset_latent",
-        "site_indicator",
     }
+    assert "site_indicator" not in model.named_vars
     assert "mu_baseline" not in model.named_vars
     assert "offset_latent" not in model.named_vars_to_dims
     assert model.named_vars_to_dims["offset"] == ("nmeasure",)
