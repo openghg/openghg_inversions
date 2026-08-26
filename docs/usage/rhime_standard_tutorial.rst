@@ -3,7 +3,14 @@ Standard RHIME tutorial
 
 This tutorial runs the supported one-sector :func:`openghg_inversions.rhime.run_rhime`
 recipe, inspects its labelled result, and reloads its durable inversion-output
-product. It is a basic production workflow, not a Verification Games adapter.
+product.
+
+The code and recorded outputs form one stateful session. You can
+:jupyter-download-notebook:`download it as a Jupyter notebook <rhime_standard_tutorial>`
+to rerun or modify locally.
+
+.. jupyter-kernel:: python3
+   :id: rhime_standard_tutorial
 
 Prerequisites and data
 ----------------------
@@ -43,9 +50,7 @@ The configured quick run covers the first week, from ``2020-01-01`` inclusive
 to ``2020-01-08`` exclusive, and averages both sites to four hours. Change only
 ``end_date`` to ``2020-02-01`` to use the supplied full month. The ``NESW``
 boundary-condition basis is constructed by OpenGHG Inversions and is not part
-of the companion data bundle. The boundary term is important for an absolute
-atmospheric CH4 inversion: without it, the emissions contribution would be
-asked to explain the background concentration as well as enhancements.
+of the companion data bundle.
 
 Configuration
 -------------
@@ -77,16 +82,34 @@ an existing compatible uv environment.
 
 The equivalent supported Python entry point is:
 
-.. code-block:: python
+.. jupyter-input::
 
    from importlib.resources import as_file, files
+   import os
    from pathlib import Path
 
    from openghg_inversions.rhime import run_rhime
 
+   tutorial_output_path = Path(os.environ.get("OPENGHG_TUTORIAL_OUTPUT_PATH", "outputs"))
    resource = files("openghg_inversions.rhime").joinpath("config/standard_tutorial.ini")
    with as_file(resource) as config:
-       result = run_rhime(config_file=config, output_path="outputs")
+       result = run_rhime(config_file=config, output_path=tutorial_output_path)
+
+   {
+       "OpenGHG Inversions commit": os.environ.get(
+           "OPENGHG_TUTORIAL_CODE_REF", "local checkout"
+       ),
+       "tutorial data": os.environ.get("OPENGHG_TUTORIAL_DATA_TAG", "v1.0.0"),
+       "sites": list(result.run_spec.sites),
+       "observations": result.inv_inputs.sizes["nmeasure"],
+       "posterior samples": {
+           name: result.idata.posterior.sizes[name] for name in ("chain", "draw")
+       },
+   }
+
+.. jupyter-output::
+
+   Run ``docs-tutorials-record`` to refresh this output.
 
 Configuration is resolved once at the runner boundary. Explicit Python or CLI
 values such as ``output_path`` override the INI file.
@@ -97,16 +120,25 @@ Inspect and interpret the result
 ``RhimeResult`` keeps the resolved scientific and output specifications,
 canonical labelled arrays, the ArviZ trace, and generated products together:
 
-.. code-block:: python
+.. jupyter-input::
 
-   print(result.run_spec)
-   print(result.model_spec.sectors)
-   print(result.inv_inputs[["mf", "mf_error", "H"]])
-   print(result.inv_inputs["H"].dims)
-   print(result.inv_inputs.indexes["nmeasure"])
-   print(result.idata.posterior["x"].mean(("chain", "draw")))
-   print(result.model_build_result.variable_roles)
-   print(result.output_metadata)
+   measurement_index = result.inv_inputs.indexes["nmeasure"]
+   {
+       "period": (result.run_spec.start_date, result.run_spec.end_date),
+       "sectors": [
+           (sector.name, sector.flux_source) for sector in result.model_spec.sectors
+       ],
+       "H dimensions": result.inv_inputs["H"].dims,
+       "input sizes": dict(result.inv_inputs.sizes),
+       "measurement sites": measurement_index.get_level_values("site").unique().tolist(),
+       "x dimensions": result.idata.posterior["x"].dims,
+       "variable roles": result.model_build_result.variable_roles,
+       "output products": sorted(result.outputs),
+   }
+
+.. jupyter-output::
+
+   Run ``docs-tutorials-record`` to refresh this output.
 
 ``mf(nmeasure)`` is the observed mole fraction and ``mf_error(nmeasure)`` is
 its supplied observation uncertainty. ``H(region, nmeasure)`` is the labelled
@@ -119,13 +151,21 @@ array position. The complete role and model-variable contract is described in
 
 Inspect diagnostics before interpreting any posterior quantity:
 
-.. code-block:: python
+.. jupyter-input::
 
    import arviz as az
 
-   print(az.summary(result.idata, var_names=["x", "bc", "sigma"])))
-   if "sample_stats" in result.idata.groups():
-       print("divergences:", int(result.idata.sample_stats["diverging"].sum()))
+   summary = az.summary(
+       result.idata,
+       var_names=["x", "bc", "sigma"],
+       kind="diagnostics",
+   )
+   summary["divergences"] = int(result.idata.sample_stats["diverging"].sum())
+   summary.round(2)
+
+.. jupyter-output::
+
+   Run ``docs-tutorials-record`` to refresh this output.
 
 The 50-draw tutorial result is too short for scientific interpretation.
 Increase chains, tuning, and retained draws; require acceptable R-hat,
@@ -134,16 +174,26 @@ fit before drawing conclusions.
 
 The configured ``inv_out`` product is available in memory and on disk:
 
-.. code-block:: python
+.. jupyter-input::
 
    from openghg_inversions.postprocessing.inversion_output import InversionOutput
 
    inv_out = result.outputs["inversion_output"]
-   print(inv_out.provenance)
-   print(inv_out.run_metadata)
    saved = Path(result.output_metadata["inversion_output_path"])
    reloaded = InversionOutput.load(saved)
-   print(reloaded.trace.posterior["x"])
+   {
+       "provenance contract": reloaded.provenance["contract"],
+       "basis artifact source": reloaded.run_metadata["basis_artifact_source"],
+       "split by sectors": reloaded.run_metadata["split_by_sectors"],
+       "saved file": saved.name,
+       "posterior variables": sorted(reloaded.trace.posterior.data_vars),
+       "posterior sizes": dict(reloaded.trace.posterior.sizes),
+       "sampler fields": sorted(reloaded.output_metadata["sampler"]),
+   }
+
+.. jupyter-output::
+
+   Run ``docs-tutorials-record`` to refresh this output.
 
 The file retains the trace, canonical inputs, basis functions, run/model/output
 metadata, and provenance needed by supported postprocessing. It is not a
@@ -155,6 +205,26 @@ guarantee that the original acquisition query can be replayed unchanged.
 The companion-data tag is likewise not added to this output automatically:
 record ``v1.0.0`` with the run so the file-level manifest can be matched to the
 inversion.
+
+Refreshing the recorded outputs
+-------------------------------
+
+Maintainers intentionally refresh the committed ``jupyter-output`` blocks
+after changing either tutorial, its dependencies, or the companion data. From
+a clean source checkout, run:
+
+.. code-block:: console
+
+   $ pixi run -e dev docs-tutorials-record
+
+This opt-in command clones the pinned ``v1.0.0`` companion release under the
+ignored ``build`` directory, verifies its Git LFS files against the manifest,
+populates the named OpenGHG store, executes both downloadable notebooks, and
+updates only their paired output blocks. It records the current clean
+OpenGHG Inversions commit and the data tag, then rebuilds the rendered pages.
+Review and commit the resulting RST changes. Ordinary previews, documentation
+CI, and ``tox -e docs`` never acquire data or execute these tutorial inputs;
+they render the committed outputs offline.
 
 Controlled clean-checkout task test
 -----------------------------------

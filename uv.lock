@@ -3004,6 +3004,8 @@ dev = [
 jupyter = [
     { name = "ipykernel" },
     { name = "jupyterlab" },
+    { name = "nbconvert" },
+    { name = "nbformat" },
 ]
 
 [package.dev-dependencies]
@@ -3026,6 +3028,8 @@ requires-dist = [
     { name = "jupyterlab", marker = "extra == 'jupyter'" },
     { name = "matplotlib" },
     { name = "mypy", marker = "extra == 'dev'" },
+    { name = "nbconvert", marker = "extra == 'jupyter'" },
+    { name = "nbformat", marker = "extra == 'jupyter'" },
     { name = "numba", specifier = ">=0.59" },
     { name = "numpy", specifier = ">=2.0" },
     { name = "numpyro", extras = ["cpu"] },

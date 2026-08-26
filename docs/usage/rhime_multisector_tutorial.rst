@@ -4,8 +4,14 @@ Multisector RHIME tutorial
 This tutorial runs the supported
 :func:`openghg_inversions.rhime.run_rhime_multisector` recipe and inspects its
 sector-labelled state and persisted sector/source diagnostics. It uses the
-current production multisector runner, not a transitional Verification Games
-adapter.
+current production multisector runner.
+
+The code and recorded outputs form one stateful session. You can
+:jupyter-download-notebook:`download it as a Jupyter notebook <rhime_multisector_tutorial>`
+to rerun or modify locally.
+
+.. jupyter-kernel:: python3
+   :id: rhime_multisector_tutorial
 
 Prerequisites and sector inputs
 -------------------------------
@@ -49,28 +55,57 @@ an existing compatible uv environment.
 
 The supported Python route is:
 
-.. code-block:: python
+.. jupyter-input::
 
    from importlib.resources import as_file, files
+   import os
+   from pathlib import Path
 
    from openghg_inversions.rhime import run_rhime_multisector
 
+   tutorial_output_path = Path(os.environ.get("OPENGHG_TUTORIAL_OUTPUT_PATH", "outputs"))
    resource = files("openghg_inversions.rhime").joinpath("config/multisector_tutorial.ini")
    with as_file(resource) as config:
-       result = run_rhime_multisector(config_file=config, output_path="outputs")
+       result = run_rhime_multisector(config_file=config, output_path=tutorial_output_path)
+
+   {
+       "OpenGHG Inversions commit": os.environ.get(
+           "OPENGHG_TUTORIAL_CODE_REF", "local checkout"
+       ),
+       "tutorial data": os.environ.get("OPENGHG_TUTORIAL_DATA_TAG", "v1.0.0"),
+       "sites": list(result.run_spec.sites),
+       "observations": result.inv_inputs.sizes["nmeasure"],
+       "posterior samples": {
+           name: result.idata.posterior.sizes[name] for name in ("chain", "draw")
+       },
+   }
+
+.. jupyter-output::
+
+   Run ``docs-tutorials-record`` to refresh this output.
 
 Inspect labelled state and provenance
 -------------------------------------
 
-.. code-block:: python
+.. jupyter-input::
 
-   print([(sector.name, sector.flux_source) for sector in result.model_spec.sectors])
-   print(result.inv_inputs["H"].dims)
-   print(result.inv_inputs["H"].coords)
-   print(result.inv_inputs["H"].sel(source="edgar-v80-anthropogenic"))
-   print(result.model_build_result.variable_roles)
-   print(result.idata.posterior[["x_anthropogenic", "x_wetlands"]])
-   print(result.inv_out.provenance)
+   inversion_output = result.outputs["inversion_output"]
+   {
+       "sectors": [
+           (sector.name, sector.flux_source) for sector in result.model_spec.sectors
+       ],
+       "H dimensions": result.inv_inputs["H"].dims,
+       "source labels": result.inv_inputs["H"].source.values.tolist(),
+       "scale variables": sorted(
+           name for name in result.idata.posterior.data_vars if name.startswith("x_")
+       ),
+       "variable roles": result.model_build_result.variable_roles,
+       "provenance contract": inversion_output.provenance["contract"],
+   }
+
+.. jupyter-output::
+
+   Run ``docs-tutorials-record`` to refresh this output.
 
 Shared-basis preparation represents sensitivity as
 ``H(region, nmeasure, source)``. Source-specific bases may instead use one
@@ -93,16 +128,26 @@ Inspect the sector/source output
 Every multisector run constructs labelled sector diagnostics. With the
 configured ``inv_out`` output they are also persisted:
 
-.. code-block:: python
+.. jupyter-input::
 
    diagnostics = result.outputs["sector_flux_diagnostics"]
-   print(diagnostics[[
-       "flux_anthropogenic_posterior_mean",
-       "flux_wetlands_posterior_mean",
-       "flux_total_posterior_mean",
-   ]])
-   print(result.output_metadata["sector_flux_diagnostics_path"])
-   print(result.output_metadata["inversion_output_path"])
+   {
+       "diagnostic variables": sorted(diagnostics.data_vars),
+       "diagnostic sizes": dict(diagnostics.sizes),
+       "variable dimensions": {
+           name: diagnostics[name].dims for name in sorted(diagnostics.data_vars)
+       },
+       "sector diagnostics file": Path(
+           result.output_metadata["sector_flux_diagnostics_path"]
+       ).name,
+       "inversion output file": Path(
+           result.output_metadata["inversion_output_path"]
+       ).name,
+   }
+
+.. jupyter-output::
+
+   Run ``docs-tutorials-record`` to refresh this output.
 
 Sector posterior flux is the retained prior flux multiplied by that sector's
 posterior scaling. ``flux_total_posterior_mean`` is the sum of sector fluxes,
