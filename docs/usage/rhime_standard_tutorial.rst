@@ -9,17 +9,17 @@ Prerequisites and data
 ----------------------
 
 Install the package as described in :doc:`installation`, then populate the
-companion OpenGHG store from the `immutable private prototype commit
-<https://github.com/openghg/openghg_inversions_tutorial_data/tree/b69acd1483160fb022813cc011108a7dd7d4d760>`_
-``b69acd1483160fb022813cc011108a7dd7d4d760``. Public redistribution approval
-is still pending, so this commit is available only to collaborators with
-access to the private repository:
+companion OpenGHG store from the versioned `v1.0.0 data release
+<https://github.com/openghg/openghg_inversions_tutorial_data/tree/v1.0.0>`_.
+The repository is currently private, so the release is available only to
+collaborators with repository access. Making the repository public will change
+who can clone it, not the pinned release used by this tutorial:
 
 .. code-block:: console
 
    $ git clone https://github.com/openghg/openghg_inversions_tutorial_data.git
    $ cd openghg_inversions_tutorial_data
-   $ git checkout b69acd1483160fb022813cc011108a7dd7d4d760
+   $ git checkout v1.0.0
    $ git lfs pull
    $ python scripts/populate_store.py
 
@@ -29,6 +29,15 @@ for Mace Head (``MHD``) and Tacolneston (``TAC``): observations, matching NAME
 footprints, EDGAR v8 anthropogenic flux, WetCHARTs v1.3.1 wetlands flux, and
 CAMS v22r2 daily boundary conditions. MHD's observation inlet is ``24m`` and
 its footprint release height is ``10m``; TAC uses ``185m`` for both.
+
+The release's `manifest.toml
+<https://github.com/openghg/openghg_inversions_tutorial_data/blob/v1.0.0/manifest.toml>`_
+records each file's hash, source record, transformations, and expected OpenGHG
+search. `DATA_LICENSES.md
+<https://github.com/openghg/openghg_inversions_tutorial_data/blob/v1.0.0/DATA_LICENSES.md>`_
+records the upstream licences, attribution, and scientific citations. The
+bundle's MIT licence covers only repository-authored software and
+documentation; cite the upstream scientific datasets when publishing results.
 
 The configured quick run covers the first week, from ``2020-01-01`` inclusive
 to ``2020-01-08`` exclusive, and averages both sites to four hours. Change only
@@ -143,6 +152,9 @@ modern product, while ``run_metadata["basis_artifact_source"]`` records how the
 basis entered preparation and ``output_metadata["sampler"]`` records the
 resolved sampling options. It does not snapshot the OpenGHG object store or
 guarantee that the original acquisition query can be replayed unchanged.
+The companion-data tag is likewise not added to this output automatically:
+record ``v1.0.0`` with the run so the file-level manifest can be matched to the
+inversion.
 
 Controlled clean-checkout task test
 -----------------------------------
