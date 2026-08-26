@@ -1,1 +1,1 @@
-Add grouped inner/outer basis metadata and retain outer flux as a distinct reporting contribution in the CO2 model family.
+Add grouped inner/outer basis metadata so outputs can reconstruct distinct flux-group contributions in the CO2 model family.

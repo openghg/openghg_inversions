@@ -682,7 +682,6 @@ containing the value ``"outer"``:
        minimum_error=inv_inputs["min_error"],
        aggregation_error=resolve_aggregation_error(inv_inputs, "none"),
        boundary_sensitivity=inv_inputs.get("H_bc"),
-       site_indicator=inv_inputs["site_indicator"],
        sigma_alignment=sigma_alignment,
        x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.5},
        state_activity=state_policy,
@@ -843,7 +842,6 @@ retain their gathered ``(source, region_in_source)`` state coordinate.
        minimum_error=inv_inputs["min_error"],
        aggregation_error=resolve_aggregation_error(inv_inputs, "none"),
        boundary_sensitivity=inv_inputs.get("H_bc"),
-       site_indicator=inv_inputs["site_indicator"],
        sigma_alignment=SigmaAlignment.from_frequency(inv_inputs["site_indicator"]),
        x_prior={"pdf": "normal", "mu": 1.0, "sigma": x_prior_stdev},
    )

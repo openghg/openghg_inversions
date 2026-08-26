@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
 import pymc as pm
 import xarray as xr
 
@@ -18,12 +19,24 @@ def _grouped_inputs() -> tuple[xr.Dataset, CorrelatedLognormalPrior]:
     basis_group = ["inner", "outer", "inner", "outer"]
     basis_partition = ["inner-grid", "outer-grid", "inner-grid", "outer-grid"]
     region_in_partition = [1, 1, 2, 2]
+    observation_index = pd.MultiIndex.from_arrays(
+        [
+            ["MHD", "TAC"],
+            pd.to_datetime(["2020-01-01", "2020-01-02"]),
+        ],
+        names=("site", "time"),
+    )
+    observation_coords = xr.Coordinates.from_pandas_multiindex(
+        observation_index,
+        "nmeasure",
+    )
     sensitivity = xr.DataArray(
         [[1.0, 3.0, 0.0, 4.0], [2.0, 5.0, 0.0, 6.0]],
         dims=("nmeasure", "state"),
-        coords={"nmeasure": [0, 1], "state": state},
+        coords={"state": state},
         name="H",
-    ).assign_coords(
+    ).assign_coords(observation_coords)
+    sensitivity = sensitivity.assign_coords(
         basis_group=("state", basis_group),
         basis_partition=("state", basis_partition),
         region_in_partition=("state", region_in_partition),
@@ -49,7 +62,7 @@ def _grouped_inputs() -> tuple[xr.Dataset, CorrelatedLognormalPrior]:
     observations = xr.DataArray(
         [400.0, 401.0],
         dims="nmeasure",
-        coords={"nmeasure": [0, 1]},
+        coords=observation_coords,
         name="mf",
     )
     error = xr.zeros_like(observations)
@@ -89,6 +102,23 @@ def _build(
     )
 
 
+def _reported_group_contribution(
+    dataset: xr.Dataset,
+    state: np.ndarray,
+    *,
+    group: str,
+) -> np.ndarray:
+    """Reconstruct one labelled flux-group contribution outside the model."""
+    state_array = xr.DataArray(
+        state,
+        dims="state",
+        coords={"state": dataset["state"]},
+    )
+    selected_state = state_array.where(dataset["H"]["basis_group"] == group, drop=True)
+    selected_sensitivity = dataset["H"].sel(state=selected_state["state"])
+    return xr.dot(selected_sensitivity, selected_state, dim="state").values
+
+
 def test_fixed_outer_parity_uses_one_full_state_and_group_labels() -> None:
     dataset, retained_prior = _grouped_inputs()
     model = _build(
@@ -96,15 +126,15 @@ def test_fixed_outer_parity_uses_one_full_state_and_group_labels() -> None:
         retained_prior,
         state_activity=StateActivity(fixed_groups=("outer",), fixed_value=1.0),
     )
-    state, flux, outer, modelled = pm.draw(
+    state, flux, modelled = pm.draw(
         [
             model["flux_scaling"],
             model["co2_flux_contribution"],
-            model["outer_flux_contribution"],
             model["modelled_concentration"],
         ],
         random_seed=42,
     )
+    outer = _reported_group_contribution(dataset, state, group="outer")
 
     inner = np.array([0, 2])
     outer_indices = np.array([1, 3])
@@ -119,6 +149,7 @@ def test_fixed_outer_parity_uses_one_full_state_and_group_labels() -> None:
         outer,
         dataset["H"].values[:, outer_indices] @ np.ones(2),
     )
+    assert "outer_flux_contribution" not in model.named_vars
     assert "outer_flux_scaling" not in model.named_vars
 
     registry = get_coord_registry(model)
@@ -171,7 +202,7 @@ def test_inferred_group_prior_keeps_order_moments_and_cross_covariance() -> None
     )
 
     model = _build(dataset, retained_prior)
-    assert "outer_flux_contribution" in model.named_vars
+    assert "outer_flux_contribution" not in model.named_vars
     assert "outer_flux_scaling" not in model.named_vars
     assert "outer_observation_factor" not in model.named_vars
     assert "low_rank_factor" not in model.named_vars
@@ -206,9 +237,11 @@ def test_grouped_state_order_is_label_invariant() -> None:
         pm.draw(original["modelled_concentration"]),
         pm.draw(permuted["modelled_concentration"]),
     )
+    original_state = pm.draw(original["flux_scaling"])
+    permuted_state = pm.draw(permuted["flux_scaling"])
     np.testing.assert_allclose(
-        pm.draw(original["outer_flux_contribution"]),
-        pm.draw(permuted["outer_flux_contribution"]),
+        _reported_group_contribution(dataset, original_state, group="outer"),
+        _reported_group_contribution(permuted_dataset, permuted_state, group="outer"),
     )
 
 
@@ -241,33 +274,34 @@ def test_reporting_views_close_with_boundary_and_offset() -> None:
     boundary_sensitivity = xr.DataArray(
         [[0.5], [0.25]],
         dims=("nmeasure", "bc_state"),
-        coords={"nmeasure": dataset["nmeasure"], "bc_state": ["monthly"]},
-    )
-    site_indicator = xr.DataArray(
-        [0, 0],
-        dims="nmeasure",
-        coords={"nmeasure": dataset["nmeasure"]},
+        coords={"bc_state": ["monthly"]},
+    ).assign_coords(
+        xr.Coordinates.from_pandas_multiindex(
+            dataset.indexes["nmeasure"],
+            "nmeasure",
+        )
     )
     model = _build(
         dataset,
         retained_prior,
         boundary_sensitivity=boundary_sensitivity,
         bc_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.1},
-        site_indicator=site_indicator,
         offset_prior={"pdf": "normal", "mu": 0.0, "sigma": 0.1},
     )
-    total, flux, outer, boundary, offset = pm.draw(
+    total, flux, boundary, offset, state = pm.draw(
         [
             model["modelled_concentration"],
             model["co2_flux_contribution"],
-            model["outer_flux_contribution"],
             model["mu_bc"],
             model["offset"],
+            model["flux_scaling"],
         ],
         random_seed=42,
     )
+    outer = _reported_group_contribution(dataset, state, group="outer")
 
     inner = flux - outer
     composite_baseline = boundary + offset + outer
     np.testing.assert_allclose(total, inner + outer + boundary + offset)
     np.testing.assert_allclose(composite_baseline, boundary + offset + outer)
+    np.testing.assert_array_equal(model["site_indicator"].eval(), [0, 1])
