@@ -18,8 +18,6 @@ def likelihood_builder(
     minimum_error: xr.DataArray,
     aggregation_error: AggregationError,
     mean: TensorVariable,
-    pollution_mean: TensorVariable,
-    pollution_event_baseline: TensorVariable | None,
     output_dim: str,
     degrees_of_freedom: float = 4.0,
 ) -> TensorVariable:
@@ -31,10 +29,6 @@ def likelihood_builder(
         minimum_error: Minimum total-error standard deviations.
         aggregation_error: Validated fixed aggregation-error representation.
         mean: Completed forward-model concentration.
-        pollution_mean: Modelled pollution contribution, unused by this
-            fixed-error likelihood.
-        pollution_event_baseline: Modelled baseline, unused by this
-            fixed-error likelihood.
         output_dim: Observation dimension used by named PyMC variables.
         degrees_of_freedom: Positive Student-t degrees of freedom supplied as
             a custom likelihood option.
@@ -50,7 +44,6 @@ def likelihood_builder(
     if degrees_of_freedom <= 0:
         raise ValueError("Student-t degrees of freedom must be positive.")
 
-    del pollution_mean, pollution_event_baseline
     validate_observation_error_arrays(
         observations,
         observation_error,

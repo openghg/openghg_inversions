@@ -8,6 +8,10 @@ historical model uses
 The pollution event is either the modelled pollution contribution or the
 observation after removing an explicitly supplied modelled baseline. Fixed
 aggregation covariance is an optional, explicitly selected addition.
+
+This module owns the pollution-event PyMC graph and therefore requires an
+active model context. Its PEFO-only pollution and baseline inputs do not cross
+RHIME's general likelihood-builder seam.
 """
 
 from __future__ import annotations
@@ -23,7 +27,7 @@ import xarray as xr
 from pytensor.tensor.variable import TensorVariable
 
 from openghg_inversions.models.components import add_model_data, add_sigma_component
-from openghg_inversions.models.likelihoods import (
+from openghg_inversions.models.gaussian_likelihood import (
     RegisteredAggregationError,
     add_aggregation_error_data,
     add_gaussian_observation_likelihood,

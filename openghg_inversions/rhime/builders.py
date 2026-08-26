@@ -35,8 +35,6 @@ class RhimeLikelihoodBuilder(Protocol):
         minimum_error: xr.DataArray,
         aggregation_error: AggregationError,
         mean: TensorVariable,
-        pollution_mean: TensorVariable,
-        pollution_event_baseline: TensorVariable | None,
         output_dim: str,
     ) -> TensorVariable:
         """Add canonical ``y`` and ``epsilon`` variables to the active model."""

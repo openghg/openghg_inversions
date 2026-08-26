@@ -436,7 +436,7 @@ helpers:
        prepare_linear_sensitivity,
        registered_model,
    )
-   from openghg_inversions.models.likelihoods import add_gaussian_observation_likelihood
+   from openghg_inversions.models.gaussian_likelihood import add_gaussian_observation_likelihood
    from openghg_inversions.models.pollution_event import build_pollution_event_error
    from openghg_inversions.observation_error import resolve_aggregation_error
    from openghg_inversions.sigma import SigmaAlignment
@@ -572,10 +572,11 @@ entry-point or config-file plugin registry.
 A concrete recipe owns the complete forward-model mean: pollution, baseline,
 and optional offset contributions are composed visibly before the likelihood
 seam. A likelihood builder owns error construction and the observed
-distribution. RHIME passes the completed concentration, pollution contribution,
-pollution-event baseline, prepared observations and errors, a validated
-``AggregationError``, and output dimension as explicit arguments. Options
-specific to that likelihood travel separately in ``likelihood_kwargs``.
+distribution. RHIME passes the completed concentration, prepared observations
+and errors, a validated ``AggregationError``, and output dimension as explicit
+arguments. Pollution contribution and pollution-event baseline remain private
+to the built-in pollution-event equations. Options specific to a custom
+likelihood travel separately in ``likelihood_kwargs``.
 The builder adds and returns the canonical observed variable ``y`` and also
 adds the canonical marginal error scale ``epsilon``.
 
