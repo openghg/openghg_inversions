@@ -354,8 +354,10 @@ def concat_gather_data_arrays(
     then the stacked dimension is the usual ``nmeasure`` coordinate with
     ``(site, time)`` levels. The same operation can gather source-specific
     state blocks into ``(source, region_in_source)`` without rectangular
-    padding. Any alignment policy for dimensions other than ``ragged_dim``
-    should be passed explicitly through ``concat_kwargs``.
+    padding. A native MultiIndex on ``ragged_dim`` is flattened after the key
+    level rather than stored as tuple-valued labels. Any alignment policy for
+    dimensions other than ``ragged_dim`` should be passed explicitly through
+    ``concat_kwargs``.
 
     Args:
         da_dict: DataArrays keyed by the values to record in ``key_dim``.
@@ -369,31 +371,59 @@ def concat_gather_data_arrays(
 
     """
     stack_dim = stack_dim or (key_dim + "_" + ragged_dim)
+    if not da_dict:
+        raise ValueError("At least one DataArray is required for gather concatenation.")
 
     pieces: list[xr.DataArray] = []
     key_vals: list[np.ndarray] = []
-    ragged_vals: list[np.ndarray] = []
+    level_values: list[list[np.ndarray]] = []
+    native_level_names: tuple[str, ...] | None = None
 
     for k, v in da_dict.items():
-        piece = v.rename({ragged_dim: stack_dim})
+        index = v.indexes.get(ragged_dim)
+        if index is None:
+            raise ValueError(f"DataArray requires an indexed {ragged_dim!r} dimension.")
+        if isinstance(index, pd.MultiIndex):
+            level_names = tuple(index.names)
+            if any(not isinstance(name, str) or not name for name in level_names):
+                raise ValueError(f"MultiIndex on {ragged_dim!r} requires named levels.")
+            values = [index.get_level_values(name).to_numpy() for name in level_names]
+            piece = v.reset_index(ragged_dim).drop_vars(level_names)
+        else:
+            level_names = (ragged_dim,)
+            values = [index.to_numpy()]
+            piece = v.drop_indexes(ragged_dim).drop_vars(ragged_dim)
+
+        if native_level_names is None:
+            native_level_names = level_names
+            if len({key_dim, *level_names}) != len(level_names) + 1:
+                raise ValueError("Gathered MultiIndex level names must be unique.")
+            level_values = [[] for _ in level_names]
+        elif level_names != native_level_names:
+            raise ValueError(
+                f"All {ragged_dim!r} indexes must have the same level names; "
+                f"expected {native_level_names!r}, got {level_names!r}."
+            )
+
+        piece = piece.rename({ragged_dim: stack_dim})
         pieces.append(piece)
-
         n = piece.sizes[stack_dim]
+        for gathered, native in zip(level_values, values, strict=True):
+            gathered.append(native)
 
-        # make site indicator
-        key_val = np.full(n, k)
-        key_vals.append(key_val)
+        key_vals.append(np.full(n, k))
 
-        # record times
-        ragged_vals.append(v[ragged_dim].values)
-
-    # concat pieces
+    # Preserve xarray's current coordinate policy across its pending default change.
+    concat_kwargs.setdefault("coords", "different")
+    concat_kwargs.setdefault("compat", "equals")
     da = xr.concat(pieces, dim=stack_dim, **concat_kwargs)
 
     # now create and assign multi-index
-    key_indicator = np.concatenate(key_vals)
-    concat_ragged = np.concatenate(ragged_vals)
-    multiindex = pd.MultiIndex.from_arrays([key_indicator, concat_ragged], names=[key_dim, ragged_dim])
+    assert native_level_names is not None
+    multiindex = pd.MultiIndex.from_arrays(
+        [np.concatenate(key_vals), *(np.concatenate(values) for values in level_values)],
+        names=[key_dim, *native_level_names],
+    )
     xr_multiindex = xr.Coordinates.from_pandas_multiindex(multiindex, stack_dim)
 
     da = da.assign_coords(xr_multiindex)
@@ -413,14 +443,15 @@ def select_gathered_data_array(
 
     This is the labelled inverse of one branch of
     :func:`concat_gather_data_arrays`. The gathered dimension remains named
-    ``stack_dim``, but its ``(key_dim, ragged_dim)`` MultiIndex is reduced to
-    the selected ``ragged_dim`` labels.
+    ``stack_dim``, but its key level is removed. An ordinary ragged index is
+    restored directly; flattened native MultiIndex levels are restored as a
+    MultiIndex.
 
     Args:
         da: DataArray containing a gathered MultiIndex dimension.
         key: Key value to select from the gathered index.
         key_dim: Name of the key level in the gathered MultiIndex.
-        ragged_dim: Name of the ragged level in the gathered MultiIndex.
+        ragged_dim: Name of the original ragged dimension.
         stack_dim: Name of the gathered dimension.
 
     Returns:
@@ -433,18 +464,28 @@ def select_gathered_data_array(
     index = da.indexes.get(stack_dim)
     if not isinstance(index, pd.MultiIndex):
         raise TypeError(f"Dimension {stack_dim!r} must have a pandas MultiIndex.")
-    if list(index.names) != [key_dim, ragged_dim]:
+    if not index.names or index.names[0] != key_dim:
         raise ValueError(
-            f"Dimension {stack_dim!r} must gather ({key_dim!r}, {ragged_dim!r}); "
+            f"Dimension {stack_dim!r} must gather {key_dim!r} first; "
             f"found levels {list(index.names)!r}."
+        )
+    native_level_names = list(index.names[1:])
+    if not native_level_names or (
+        len(native_level_names) == 1 and native_level_names[0] != ragged_dim
+    ):
+        raise ValueError(
+            f"Dimension {stack_dim!r} does not contain ragged labels for {ragged_dim!r}."
         )
     if key not in index.get_level_values(key_dim):
         raise ValueError(f"Gathered dimension {stack_dim!r} does not contain {key_dim} value {key!r}.")
 
+    # Prefer an explicit rebuild to ``da.sel`` here: xarray's MultiIndex
+    # selection can retain or drop level coordinates differently across
+    # versions, while this restores both ordinary and native ragged indexes.
     positions = np.flatnonzero(index.get_level_values(key_dim) == key)
     selected = da.isel({stack_dim: positions}).reset_index(stack_dim)
     selected = selected.drop_vars(key_dim)
-    return selected.set_index({stack_dim: ragged_dim})
+    return selected.set_index({stack_dim: native_level_names})
 
 
 def concat_gather_datasets(
@@ -478,13 +519,12 @@ def concat_gather_datasets(
             not recognised.
     """
     dvs = _resolve_shared_data_vars(ds_dict, missing_data_vars=missing_data_vars)
-
     gathered_dvs = {}
-
     for dv in dvs:
         da_dict = {k: v[dv] for k, v in ds_dict.items()}
-        gathered_dvs[dv] = concat_gather_data_arrays(da_dict, key_dim, ragged_dim, stack_dim, **concat_kwargs)
-
+        gathered_dvs[dv] = concat_gather_data_arrays(
+            da_dict, key_dim, ragged_dim, stack_dim, **concat_kwargs
+        )
     return xr.Dataset(gathered_dvs)
 
 
@@ -511,15 +551,14 @@ def concat_gather_datatree(
         Dataset containing gathered versions of the selected data variables.
     """
     ds_dict = {str(k): v.to_dataset() for k, v in dt.items()}
-    dvs = _resolve_shared_data_vars(ds_dict, missing_data_vars=missing_data_vars)
-
-    gathered_dvs = {}
-
-    for dv in dvs:
-        da_dict = {k: v[dv] for k, v in ds_dict.items()}
-        gathered_dvs[dv] = concat_gather_data_arrays(da_dict, key_dim, ragged_dim, stack_dim, **concat_kwargs)
-
-    return xr.Dataset(gathered_dvs)
+    return concat_gather_datasets(
+        ds_dict,
+        key_dim,
+        ragged_dim,
+        stack_dim,
+        missing_data_vars=missing_data_vars,
+        **concat_kwargs,
+    )
 
 
 def _resolve_shared_data_vars(

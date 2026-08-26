@@ -1,3 +1,5 @@
+import warnings
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -229,6 +231,55 @@ def test_select_gathered_data_array_restores_ragged_labels_and_values() -> None:
         coords={"state": [10, 11], "time": time},
     )
     xr.testing.assert_identical(selected, expected)
+
+
+def test_concat_gather_flattens_and_restores_native_multiindex() -> None:
+    """Native MultiIndex levels remain typed instead of becoming tuple labels."""
+    co2_index = pd.MultiIndex.from_tuples(
+        [("TAC", pd.Timestamp("2021-01-01")), ("MHD", pd.Timestamp("2021-01-03"))],
+        names=("site", "time"),
+    )
+    o2_index = pd.MultiIndex.from_tuples(
+        [("TAC", pd.Timestamp("2021-01-02"))],
+        names=("site", "time"),
+    )
+    channels = {
+        "co2": xr.DataArray(
+            [1.0, 2.0],
+            dims="channel_observation",
+            coords=xr.Coordinates.from_pandas_multiindex(co2_index, "channel_observation"),
+        ),
+        "o2": xr.DataArray(
+            [3.0],
+            dims="channel_observation",
+            coords=xr.Coordinates.from_pandas_multiindex(o2_index, "channel_observation"),
+        ),
+    }
+    originals = {key: value.copy(deep=True) for key, value in channels.items()}
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", FutureWarning)
+        warnings.simplefilter("error", DeprecationWarning)
+        gathered = concat_gather_data_arrays(
+            channels,
+            key_dim="species",
+            ragged_dim="channel_observation",
+            stack_dim="observation",
+            join="exact",
+        )
+        selected = select_gathered_data_array(
+            gathered,
+            key="co2",
+            key_dim="species",
+            ragged_dim="channel_observation",
+            stack_dim="observation",
+        )
+    assert gathered.indexes["observation"].names == ["species", "site", "time"]
+    assert selected.indexes["observation"].names == ["site", "time"]
+    assert selected.indexes["observation"].equals(co2_index)
+    np.testing.assert_allclose(selected, channels["co2"])
+    for key in channels:
+        xr.testing.assert_identical(channels[key], originals[key])
 
 
 @pytest.mark.parametrize("use_datatree", [False, True], ids=["datasets", "datatree"])

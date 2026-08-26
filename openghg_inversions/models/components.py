@@ -283,6 +283,75 @@ def apply_linear_sensitivity(
     return cast(TensorVariable, output)
 
 
+def add_linked_linear_component(
+    prepared: PreparedLinearSensitivity,
+    linked_state: TensorVariable,
+    /,
+    *,
+    data_name: str,
+    output_name: str,
+) -> TensorVariable:
+    """Apply a prepared sensitivity to an already constructed linked state.
+
+    Args:
+        prepared: Sensitivity prepared by :func:`prepare_linear_sensitivity`.
+            It owns retained-state selection and the output dimension.
+        linked_state: Existing full state expression in the state order owned
+            by ``prepared``. The caller owns any ratio or other transformation
+            used to construct this expression.
+        data_name: Name used to register the prepared sensitivity as
+            ``pm.Data``.
+        output_name: Name for the output-dimension-aligned deterministic.
+
+    Returns:
+        The linked linear signal registered as ``output_name``.
+
+    Notes:
+        This helper creates neither a state nor a multiplier. It only registers
+        the prepared sensitivity and owns the resulting deterministic output.
+    """
+    return apply_linear_sensitivity(
+        prepared,
+        linked_state,
+        data_name=data_name,
+        output_name=output_name,
+    )
+
+
+def add_coherent_affine_component(
+    fixed_contribution: xr.DataArray,
+    linear_signal: TensorVariable,
+    /,
+    *,
+    output_name: str,
+) -> TensorVariable:
+    """Add a labelled fixed contribution to an already composed linear signal.
+
+    Args:
+        fixed_contribution: Labelled affine intercept
+            ``mu_prior - H_alpha @ m_alpha``, not the full prior-forward mean.
+            Its name owns the registered ``pm.Data`` name and its coordinates
+            own the output axis labels.
+        linear_signal: Existing linear signal composed by the calling model
+            recipe.
+        output_name: Name for the affine deterministic output.
+
+    Returns:
+        The deterministic sum of the registered fixed contribution and linear
+        signal.
+
+    Notes:
+        This component uses the equivalent coherent-reduction identity
+        ``mu = mu_prior + H_alpha @ (x - m_alpha) =``
+        ``(mu_prior - H_alpha @ m_alpha) + H_alpha @ x``.
+
+        This helper does not construct states, sensitivities, ratios, or
+        channel signals. The calling recipe owns those scientific choices.
+    """
+    fixed = add_model_data(fixed_contribution)
+    return pm.Deterministic(output_name, fixed + linear_signal, dims=fixed_contribution.dims)
+
+
 def add_state_vector(
     activity: ResolvedStateActivity,
     /,

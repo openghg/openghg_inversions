@@ -10,18 +10,16 @@ import numpy as np
 import pandas as pd
 import pymc as pm
 import arviz as az
-import pytest
 import xarray as xr
 
 from openghg_inversions.models.coords import get_coord_registry
 from openghg_inversions.models.state_activity import StateActivity
 from openghg_inversions.observation_error import resolve_aggregation_error
 from openghg_inversions.rhime.co2 import (
-    build_co2_rhime_model,
-    co2_prior_forward_mean,
+    build_co2_model,
     run_rhime_co2,
 )
-from openghg_inversions.rhime.co2 import runner as co2_runner
+from openghg_inversions.rhime.co2 import co2_runner
 from openghg_inversions.serialization import load_inferencedata, save_inferencedata
 
 
@@ -62,30 +60,32 @@ def _empty_sampled_trace(inputs: xr.Dataset) -> az.InferenceData:
     """Return a small trace with representative CO2 sample groups."""
     return az.from_dict(
         posterior={
-            "x": np.ones((1, 2, inputs.sizes["region"])),
-            "mu": np.ones((1, 2, inputs.sizes["nmeasure"])),
+            "flux_scaling": np.ones((1, 2, inputs.sizes["region"])),
+            "co2_flux_contribution": np.ones((1, 2, inputs.sizes["nmeasure"])),
+            "modelled_concentration": np.ones((1, 2, inputs.sizes["nmeasure"])),
             "epsilon": np.ones((1, 2, inputs.sizes["nmeasure"])),
         },
         posterior_predictive={"y": np.ones((1, 2, inputs.sizes["nmeasure"]))},
         constant_data={
             "fixed_model_mismatch": np.ones(inputs.sizes["nmeasure"]),
             "fixed_prior_contribution": inputs["fixed_prior_contribution"].values,
-            "hx": inputs["H"].values,
+            "co2_sensitivity": inputs["H"].values,
         },
         dims={
-            "x": ["region"],
-            "mu": ["nmeasure"],
+            "flux_scaling": ["region"],
+            "co2_flux_contribution": ["nmeasure"],
+            "modelled_concentration": ["nmeasure"],
             "epsilon": ["nmeasure"],
             "y": ["nmeasure"],
             "fixed_model_mismatch": ["nmeasure"],
             "fixed_prior_contribution": ["nmeasure"],
-            "hx": ["nmeasure", "region"],
+            "co2_sensitivity": ["nmeasure", "region"],
         },
     )
 
 
 def _build_model(inputs: xr.Dataset, **kwargs: Any) -> pm.Model:
-    return build_co2_rhime_model(
+    return build_co2_model(
         inputs["H"],
         prior_mean=inputs["alpha_prior_mean"],
         prior_covariance=inputs["alpha_prior_covariance"],
@@ -99,85 +99,16 @@ def _build_model(inputs: xr.Dataset, **kwargs: Any) -> pm.Model:
     )
 
 
-def test_co2_prior_forward_mean_matches_ope74_golden_contract() -> None:
-    inputs = _golden_inputs()
-    fixture = json.loads(FIXTURE.read_text())
-    xr.testing.assert_allclose(
-        co2_prior_forward_mean(
-            inputs["H"],
-            prior_mean=inputs["alpha_prior_mean"],
-            fixed_prior_contribution=inputs["fixed_prior_contribution"],
-        ),
-        xr.DataArray(
-            fixture["prior_forward_mf"],
-            dims="nmeasure",
-            coords={"nmeasure": inputs["nmeasure"]},
-            name="prior_forward_mean",
-        ),
-    )
-
-
-def test_co2_prior_forward_mean_uses_fixed_values_for_inactive_states() -> None:
-    inputs = _golden_inputs()
-    nstate = inputs.sizes["region"]
-    prior_mean = xr.DataArray(
-        np.arange(nstate, dtype=float) + 2.0,
-        dims="region",
-        coords={"region": inputs["region"]},
-    )
-    is_active = xr.DataArray(
-        [True, False, True, True],
-        dims="region",
-        coords={"region": inputs["region"]},
-    )
-    fixed_value = xr.DataArray(
-        np.full(nstate, 9.0),
-        dims="region",
-        coords={"region": inputs["region"]},
-    )
-    activity = StateActivity(active=is_active, fixed_value=fixed_value)
-
-    expected_state = np.where(is_active, prior_mean, fixed_value)
-    expected = inputs["fixed_prior_contribution"].values + inputs["H"].values @ expected_state
-    actual = co2_prior_forward_mean(
-        inputs["H"],
-        prior_mean=prior_mean,
-        fixed_prior_contribution=inputs["fixed_prior_contribution"],
-        state_activity=activity,
-    )
-
-    np.testing.assert_allclose(actual, expected)
-
-
-def test_co2_prior_forward_mean_rejects_mismatched_labels() -> None:
-    inputs = _golden_inputs()
-    reordered_state = inputs["alpha_prior_mean"].isel(region=[1, 0, 2, 3])
-    reordered_observations = inputs["fixed_prior_contribution"].isel(nmeasure=slice(None, None, -1))
-
-    with pytest.raises(ValueError, match="cannot align.*region"):
-        co2_prior_forward_mean(
-            inputs["H"],
-            prior_mean=reordered_state,
-            fixed_prior_contribution=inputs["fixed_prior_contribution"],
-        )
-    with pytest.raises(ValueError, match="cannot align.*nmeasure"):
-        co2_prior_forward_mean(
-            inputs["H"],
-            prior_mean=inputs["alpha_prior_mean"],
-            fixed_prior_contribution=reordered_observations,
-        )
-
-
 def test_co2_model_exposes_affine_correlated_dense_covariance_graph() -> None:
     model = _build_model(_golden_inputs(), fixed_model_mismatch=1.0)
 
     assert {
-        "hx",
-        "x_latent",
-        "x",
-        "mu_pollution",
+        "co2_sensitivity",
+        "flux_scaling_latent",
+        "flux_scaling",
+        "co2_flux_contribution",
         "fixed_prior_contribution",
-        "mu",
+        "modelled_concentration",
         "Y",
         "error",
         "fixed_model_mismatch",
@@ -185,9 +116,32 @@ def test_co2_model_exposes_affine_correlated_dense_covariance_graph() -> None:
         "epsilon",
         "y",
     } <= set(model.named_vars)
-    assert model.named_vars_to_dims["x"] == ("region",)
-    assert model.named_vars_to_dims["mu"] == ("nmeasure",)
+    assert model.named_vars_to_dims["flux_scaling"] == ("region",)
+    assert model.named_vars_to_dims["modelled_concentration"] == ("nmeasure",)
     assert isinstance(model["y"].owner.op, pm.MvNormal.rv_op.__class__)
+
+
+def test_co2_structural_zero_is_fixed_at_one_and_pruned_only_from_operator() -> None:
+    inputs = _golden_inputs()
+    inputs["H"][:, 1] = 0.0
+
+    model = _build_model(inputs)
+    full_state, active_state, forward = pm.draw(
+        [
+            model["flux_scaling"],
+            model["flux_scaling_active"],
+            model["co2_flux_contribution"],
+        ],
+        random_seed=42,
+    )
+
+    assert model.named_vars_to_dims["flux_scaling"] == ("region",)
+    assert model.named_vars_to_dims["co2_sensitivity"] == ("nmeasure", "region_retained")
+    assert full_state.shape == (inputs.sizes["region"],)
+    assert active_state.shape == (inputs.sizes["region"] - 1,)
+    assert full_state[1] == 1.0
+    np.testing.assert_allclose(model["co2_sensitivity"].eval(), inputs["H"].values[:, [0, 2, 3]])
+    np.testing.assert_allclose(forward, inputs["H"].values @ full_state)
 
 
 def test_co2_fixed_mismatch_completes_dense_observation_covariance() -> None:
@@ -246,7 +200,11 @@ def test_co2_partial_activity_preserves_full_gathered_multiindex_state() -> None
         ),
     )
     full_state, active_state, forward = pm.draw(
-        [model["x"], model["x_active"], model["mu_pollution"]],
+        [
+            model["flux_scaling"],
+            model["flux_scaling_active"],
+            model["co2_flux_contribution"],
+        ],
         random_seed=42,
     )
     registry = get_coord_registry(model)
@@ -257,7 +215,7 @@ def test_co2_partial_activity_preserves_full_gathered_multiindex_state() -> None
     np.testing.assert_array_equal(full_state[~is_active.values], fixed_value.values[~is_active.values])
     np.testing.assert_allclose(forward, inputs["H"].values @ full_state)
     assert registry.original_coords["region"].equals(state_index)
-    assert registry.original_coords["region_x_active"].tolist() == [
+    assert registry.original_coords["region_flux_scaling_active"].tolist() == [
         ("ff", "north"),
         ("ocean", "atlantic"),
     ]
@@ -299,9 +257,14 @@ def test_public_co2_runner_persists_fixed_mismatch_manifest(
     roles = json.loads(result.attrs["rhime_variable_roles"])
     metadata = json.loads(result.attrs["rhime_model_metadata"])
     assert roles["coherent_prior_contribution"] == "fixed_prior_contribution"
+    assert roles["emissions_sensitivity"] == "co2_sensitivity"
+    assert roles["flux_scale"] == "flux_scaling"
+    assert roles["model_mean"] == "modelled_concentration"
+    assert roles["pollution_concentration"] == "co2_flux_contribution"
     assert metadata["recipe"] == "co2"
     assert metadata["basis_artifact_source"] == "unknown"
-    assert result.posterior["x"].attrs["units"] == "1"
+    assert result.posterior["flux_scaling"].attrs["units"] == "1"
+    assert result.posterior["modelled_concentration"].attrs["units"] == "ppm"
     assert result.posterior_predictive["y"].attrs["units"] == "ppm"
     assert json.loads(result.constant_data["fixed_model_mismatch"].attrs["rhime_scientific_roles"]) == [
         "fixed_model_mismatch"
@@ -311,7 +274,7 @@ def test_public_co2_runner_persists_fixed_mismatch_manifest(
     save_inferencedata(result, path)
     restored = load_inferencedata(path)
     assert json.loads(restored.attrs["rhime_model_metadata"])["recipe"] == "co2"
-    assert restored.posterior["x"].attrs["units"] == "1"
+    assert restored.posterior["flux_scaling"].attrs["units"] == "1"
     assert restored.constant_data["fixed_prior_contribution"].attrs["units"] == "ppm"
 
 

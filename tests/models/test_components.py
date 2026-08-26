@@ -5,9 +5,11 @@ import pytest
 import xarray as xr
 from pytensor.compile.mode import Mode
 
+from openghg_inversions.models import add_coherent_affine_component
 from openghg_inversions.models.components import (
     LinearComponentResult,
     add_inferpymc_likelihood_component,
+    add_linked_linear_component,
     add_linear_component,
     add_model_data,
     add_offset_component,
@@ -133,6 +135,70 @@ def test_add_linear_component_returns_effective_reparameterised_latent() -> None
     assert "x_latent" in model.named_vars
     assert "x" in model.named_vars
     assert result.latent is model.named_vars["x_latent"]
+
+
+def test_add_linked_linear_component_applies_an_already_constructed_state() -> None:
+    """A linked component applies only the state expression supplied by its caller."""
+    sensitivity = xr.DataArray(
+        [[1.0, 2.0], [3.0, 4.0]],
+        dims=("nmeasure", "state"),
+        coords={"nmeasure": [0, 1], "state": ["a", "b"]},
+    )
+    prepared = prepare_linear_sensitivity(sensitivity)
+
+    with pm.Model() as model:
+        attach_coord_registry(model, CoordRegistry())
+        state = add_model_data(
+            xr.DataArray([2.0, 3.0], dims="state", coords={"state": ["a", "b"]}),
+            "linked_state",
+        )
+        multiplier = add_model_data(
+            xr.DataArray([0.5, 2.0], dims="state", coords={"state": ["a", "b"]}),
+            "emission_ratio",
+        )
+        linked_state = state * multiplier
+        output = add_linked_linear_component(
+            prepared,
+            linked_state,
+            data_name="linked_sensitivity",
+            output_name="linked_signal",
+        )
+        unscaled_output = add_linked_linear_component(
+            prepared,
+            state,
+            data_name="linked_sensitivity",
+            output_name="unscaled_linked_signal",
+        )
+
+    assert output is model["linked_signal"]
+    np.testing.assert_allclose(output.eval(), [13.0, 27.0])
+    np.testing.assert_allclose(unscaled_output.eval(), [8.0, 18.0])
+
+
+def test_add_coherent_affine_component_registers_fixed_data_and_output() -> None:
+    """The affine component owns only fixed data and the summed deterministic."""
+    fixed = xr.DataArray(
+        [10.0, 20.0],
+        dims="observation",
+        coords={"observation": ["co2", "o2"]},
+        name="fixed_prior_contribution",
+    )
+
+    with pm.Model() as model:
+        attach_coord_registry(model, CoordRegistry())
+        linear_signal = add_model_data(
+            fixed.copy(data=[1.5, -2.0]),
+            "linear_signal",
+        )
+        output = add_coherent_affine_component(
+            fixed,
+            linear_signal,
+            output_name="modelled_concentration",
+        )
+
+    assert output is model["modelled_concentration"]
+    assert "fixed_prior_contribution" in model.named_vars
+    np.testing.assert_allclose(output.eval(), [11.5, 18.0])
 
 
 def test_resolve_model_variable_prefers_latent() -> None:
