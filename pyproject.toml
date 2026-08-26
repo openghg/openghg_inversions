@@ -68,6 +68,9 @@ local = [
 ]
 uv_dev = [
   "openghg_inversions[jupyter,dev]",
+  "sphinx>=4",
+  "pydata-sphinx-theme",
+  "jupyter-sphinx>=0.5.3",
   "tox>=4.24",
   "tox-uv",
 ]
@@ -128,6 +131,9 @@ docs-preview = "python scripts/preview_docs.py"
 docs-tutorials-record = "python scripts/record_tutorial_outputs.py"
 
 [tool.pixi.feature.dev.pypi-dependencies]
+jupyter-sphinx = ">=0.5.3"
+pydata-sphinx-theme = "*"
+sphinx = ">=4"
 tox = ">=4.24"
 tox-uv = "*"
 

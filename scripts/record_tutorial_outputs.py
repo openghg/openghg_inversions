@@ -186,7 +186,11 @@ def _execute_notebook(name: str, code_ref: str) -> list[str]:
 
 def _build_docs() -> None:
     """Build manual-cell notebooks and rendered pages without executing inputs."""
-    subprocess.run(["tox", "-e", "docs"], cwd=_ROOT, check=True)
+    subprocess.run(
+        ["sphinx-build", "-M", "html", "docs", "docs/_build", "--keep-going"],
+        cwd=_ROOT,
+        check=True,
+    )
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:

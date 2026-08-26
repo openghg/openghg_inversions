@@ -43,6 +43,23 @@ def test_prepare_data_uses_an_isolated_openghg_home(
     assert populate_env["HOME"] == str(recorder_home)
 
 
+def test_build_docs_invokes_sphinx_directly(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = []
+    monkeypatch.setattr(subprocess, "run", lambda command, **kwargs: calls.append((command, kwargs)))
+
+    record_tutorial_outputs._build_docs()
+
+    assert calls[0][0] == [
+        "sphinx-build",
+        "-M",
+        "html",
+        "docs",
+        "docs/_build",
+        "--keep-going",
+    ]
+    assert "tox" not in calls[0][0]
+
+
 def test_replace_outputs_preserves_inputs_and_updates_adjacent_results() -> None:
     document = """.. jupyter-input::
 
