@@ -10,7 +10,7 @@ from openghg_inversions.models.components import add_offset_component
 
 
 def make_offset(
-    observations: xr.DataArray,
+    site_indicator: np.ndarray,
     prior_args: dict,
     name: str = "offset",
     output_dim: str = "nmeasure",
@@ -27,6 +27,12 @@ def make_offset(
     # we cannot make use of it
     if offset_freq_indicator is None:
         offset_freq = None
+
+    observations = xr.DataArray(
+        np.empty(site_indicator.size),
+        dims=(output_dim,),
+        coords={"site": (output_dim, site_indicator)},
+    )
 
     return add_offset_component(
         observations,

@@ -203,9 +203,14 @@ def run_rhime_co2(
         manifests.
 
     Raises:
-        ValueError: If prepared inputs are missing, inconsistent, or fail
-            model construction.
+        ValueError: If model-error options contradict ``no_model_error``, or
+            prepared inputs are missing, inconsistent, or fail model
+            construction.
     """
+    if no_model_error and (sigma_alignment is not None or sigma_prior is not None):
+        raise ValueError(
+            "`no_model_error=True` cannot be combined with `sigma_alignment` or `sigma_prior`."
+        )
     prepared = prepared_inputs.validated()
     names = co2_model_input_names(
         prepared,
@@ -214,10 +219,7 @@ def run_rhime_co2(
         derive_sigma_alignment=not no_model_error and sigma_alignment is None,
     )
     model_inputs = materialize_pymc_inputs(prepared, variable_names=names)
-    if no_model_error:
-        sigma_alignment = None
-        sigma_prior = None
-    elif sigma_alignment is None:
+    if not no_model_error and sigma_alignment is None:
         sigma_alignment = SigmaAlignment.from_frequency(model_inputs["site_indicator"])
     aggregation_error = resolve_aggregation_error(
         model_inputs,
@@ -249,7 +251,7 @@ def run_rhime_co2(
         model=model,
         variable_roles={
             "observation": "y",
-            "observation_error": "mf_error",
+            "observation_error": "error",
             "minimum_error": "min_error",
             "concentration": "y",
             "model_error": "epsilon",

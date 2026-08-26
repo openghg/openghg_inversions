@@ -5,6 +5,7 @@ import pytest
 import xarray as xr
 from pytensor.compile.mode import Mode
 
+from openghg_inversions.hbmcmc.components import make_offset
 from openghg_inversions.models import add_coherent_affine_component
 from openghg_inversions.models.components import (
     LinearComponentResult,
@@ -290,6 +291,19 @@ def test_add_offset_component_derives_site_indicator_from_observations() -> None
     np.testing.assert_array_equal(model["site_indicator"].eval(), [0, 0, 1, 1])
 
 
+def test_hbmcmc_make_offset_preserves_site_indicator_call() -> None:
+    """Keep the released HBMCMC wrapper accepting a numeric site indicator."""
+    with pm.Model(coords={"nmeasure": np.arange(3)}) as model:
+        attach_coord_registry(model, CoordRegistry())
+        offset = make_offset(
+            np.array([0, 0, 1]),
+            {"pdf": "normal", "mu": 0.0, "sigma": 1.0},
+        )
+
+    np.testing.assert_array_equal(model["site_indicator"].eval(), [0, 0, 1])
+    assert offset.eval().shape == (3,)
+
+
 def test_add_offset_component_requires_observation_sites() -> None:
     """Reject offset inputs without labelled observation sites."""
     observations = xr.DataArray(np.ones(4), dims="nmeasure", name="mf")
@@ -304,8 +318,8 @@ def test_add_offset_component_requires_observation_sites() -> None:
 
 
 def test_add_offset_component_supports_one_global_scalar() -> None:
-    """A global offset has one latent value broadcast over observations."""
-    observations = _likelihood_dataset()["mf"]
+    """A global offset needs only observation length, not site metadata."""
+    observations = xr.DataArray(np.ones(4), dims="nmeasure", name="mf")
 
     with pm.Model(coords={"nmeasure": np.arange(4)}) as model:
         attach_coord_registry(model, CoordRegistry())
@@ -318,6 +332,7 @@ def test_add_offset_component_supports_one_global_scalar() -> None:
     assert model.named_vars["offset_latent"].ndim == 0
     assert offset.eval().shape == (4,)
     assert "offset_design" not in model.named_vars
+    assert "site_indicator" not in model.named_vars
 
 
 @pytest.mark.parametrize("invalid_args", [{"offset_freq": "monthly"}, {"drop_first": True}])

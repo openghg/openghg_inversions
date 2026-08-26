@@ -140,12 +140,13 @@ def build_co2_model(
 
     Raises:
         ValueError: If shared preparation, prior construction, or registered
-            coordinate alignment fails.
+            coordinate alignment fails, or if ``sigma_prior`` is supplied
+            without ``sigma_alignment``.
     """
+    if sigma_alignment is None and sigma_prior is not None:
+        raise ValueError("`sigma_prior` requires `sigma_alignment`.")
     if sigma_alignment is not None:
         sigma_prior = dict(DEFAULT_ADDITIVE_SIGMA_PRIOR if sigma_prior is None else sigma_prior)
-    else:
-        sigma_prior = None
     bc_prior = dict(DEFAULT_BC_PRIOR if bc_prior is None else bc_prior)
     if offset_prior is not None:
         offset_prior = dict(offset_prior)
