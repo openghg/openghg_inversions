@@ -30,7 +30,7 @@ from openghg_inversions.rhime.multisector import (
     _prepare_multisector_flux_components,
     build_multisector_rhime_model as _build_multisector_model,
 )
-from openghg_inversions.rhime.specs import PollutionEventSettings, SectorSpec
+from openghg_inversions.rhime.specs import FixedErrorSettings, PollutionEventSettings, SectorSpec
 from openghg_inversions.rhime.standard import build_standard_rhime_model as _build_standard_model
 from openghg_inversions.sigma import SigmaAlignment
 
@@ -80,7 +80,7 @@ def build_rhime_model(inputs: xr.Dataset, **kwargs: Any) -> pm.Model:
         observations=inputs["mf"],
         observation_error=inputs["mf_error"],
         aggregation_error=resolve_aggregation_error(inputs, "none"),
-        model_inputs=inputs,
+        minimum_error=inputs.get("min_error"),
         boundary_sensitivity=inputs.get("H_bc"),
         **kwargs,
     )
@@ -94,7 +94,7 @@ def build_rhime_multisector_model(inputs: xr.Dataset, **kwargs: Any) -> pm.Model
         observations=inputs["mf"],
         observation_error=inputs["mf_error"],
         aggregation_error=resolve_aggregation_error(inputs, "none"),
-        model_inputs=inputs,
+        minimum_error=inputs.get("min_error"),
         boundary_sensitivity=inputs.get("H_bc"),
         **kwargs,
     )
@@ -103,14 +103,14 @@ def build_rhime_multisector_model(inputs: xr.Dataset, **kwargs: Any) -> pm.Model
 def _select_pollution_event_likelihood(inputs: xr.Dataset, kwargs: dict[str, Any]) -> None:
     """Supply the explicit PEFO component used by these direct-recipe tests."""
     kwargs["sigma_alignment"] = kwargs.pop("sigma_alignment")
-    kwargs["likelihood_settings"] = PollutionEventSettings(
+    no_model_error = kwargs.pop("no_model_error", False)
+    kwargs["likelihood_settings"] = FixedErrorSettings() if no_model_error else PollutionEventSettings(
         sigma_prior=kwargs.pop(
             "sigma_prior",
             {"pdf": "uniform", "lower": 0.1, "upper": 3.0},
         ),
         power=kwargs.pop("power", 1.99),
         pollution_events_from_obs=kwargs.pop("pollution_events_from_obs", False),
-        no_model_error=kwargs.pop("no_model_error", False),
     )
 
 

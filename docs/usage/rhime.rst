@@ -139,7 +139,11 @@ model, output, and sampler specifications:
 
 .. code-block:: python
 
-   from openghg_inversions.rhime import RhimeModelSpec, SectorSpec
+   from openghg_inversions.rhime import (
+       PollutionEventSettings,
+       RhimeModelSpec,
+       SectorSpec,
+   )
    from openghg_inversions.inversion_data import RhimePreparedInputs
    from openghg_inversions.rhime import (
        RhimeOutputSpec,
@@ -156,7 +160,7 @@ model, output, and sampler specifications:
    model_spec = RhimeModelSpec(
        species="ch4",
        domain="EUROPE",
-       mismatch_model="pollution_event",
+       likelihood=PollutionEventSettings(),
        sectors=(
            SectorSpec(
                name="total",
@@ -678,7 +682,7 @@ containing the value ``"outer"``:
        observations=inv_inputs["mf"],
        observation_error=inv_inputs["mf_error"],
        aggregation_error=resolve_aggregation_error(inv_inputs, "none"),
-       model_inputs=inv_inputs,
+       minimum_error=inv_inputs["min_error"],
        likelihood_settings=PollutionEventSettings(
            sigma_prior={"pdf": "uniform", "lower": 0.1, "upper": 3.0},
        ),
@@ -840,7 +844,7 @@ retain their gathered ``(source, region_in_source)`` state coordinate.
        observations=inv_inputs["mf"],
        observation_error=inv_inputs["mf_error"],
        aggregation_error=resolve_aggregation_error(inv_inputs, "none"),
-       model_inputs=inv_inputs,
+       minimum_error=inv_inputs["min_error"],
        likelihood_settings=PollutionEventSettings(
            sigma_prior={"pdf": "uniform", "lower": 0.1, "upper": 3.0},
        ),

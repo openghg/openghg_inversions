@@ -55,6 +55,7 @@ from .standard import (
 )
 from .specs import (
     AdditiveSigmaSettings,
+    FixedErrorSettings,
     PollutionEventSettings,
     RhimeModelSpec,
     RhimeOutputSpec,
@@ -65,6 +66,7 @@ from .specs import (
 __all__ = [
     "SectorSpec",
     "AdditiveSigmaSettings",
+    "FixedErrorSettings",
     "PollutionEventSettings",
     "RhimeModelSpec",
     "RhimeLikelihoodBuilder",

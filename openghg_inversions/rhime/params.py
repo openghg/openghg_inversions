@@ -27,6 +27,7 @@ from openghg_inversions.rhime.sampling import RhimeSampler
 from openghg_inversions.rhime.specs import (
     DEFAULT_X_PRIOR,
     AdditiveSigmaSettings,
+    FixedErrorSettings,
     LikelihoodSettings,
     MismatchModel,
     PollutionEventSettings,
@@ -36,17 +37,16 @@ from openghg_inversions.rhime.specs import (
     make_output_spec,
 )
 
-_COMMON_LIKELIHOOD_OPTIONS = {
+_SIGMA_OPTIONS = {
     "sigma_prior",
     "sigma_freq",
     "sigma_per_site",
     "sigma_freq_anchor",
-    "no_model_error",
 }
 _POLLUTION_EVENT_OPTIONS = {"pollution_events_from_obs", "power"}
-_ADDITIVE_SIGMA_OPTIONS = {"use_minimum_error_floor"}
+_MINIMUM_ERROR_FLOOR_OPTIONS = {"use_minimum_error_floor"}
 _LIKELIHOOD_OPTIONS = (
-    _COMMON_LIKELIHOOD_OPTIONS | _POLLUTION_EVENT_OPTIONS | _ADDITIVE_SIGMA_OPTIONS
+    _SIGMA_OPTIONS | _POLLUTION_EVENT_OPTIONS | _MINIMUM_ERROR_FLOOR_OPTIONS
 )
 
 _ALIASES = {
@@ -512,7 +512,6 @@ def validate_supported_params(params: Mapping[str, Any]) -> None:
         "sector_priors",
         "sector_sources",
         "pollution_events_from_obs",
-        "no_model_error",
         "power",
         "draws",
         "burn",
@@ -662,9 +661,10 @@ def _make_likelihood_settings(
     start_date: str,
 ) -> LikelihoodSettings | None:
     """Consume only options owned by the selected built-in likelihood."""
-    if mismatch_model not in (None, "pollution_event", "additive_sigma"):
+    if mismatch_model not in (None, "pollution_event", "additive_sigma", "fixed_error"):
         raise ValueError(
-            "`mismatch_model` must be None, 'pollution_event', or 'additive_sigma'; "
+            "`mismatch_model` must be None, 'pollution_event', 'additive_sigma', or "
+            "'fixed_error'; "
             f"got {mismatch_model!r}."
         )
     if mismatch_model is None:
@@ -676,14 +676,20 @@ def _make_likelihood_settings(
             )
         return None
 
-    invalid = (
-        _ADDITIVE_SIGMA_OPTIONS
-        if mismatch_model == "pollution_event"
-        else _POLLUTION_EVENT_OPTIONS
-    ) & remaining.keys()
+    if mismatch_model == "pollution_event":
+        invalid = _MINIMUM_ERROR_FLOOR_OPTIONS & remaining.keys()
+    elif mismatch_model == "additive_sigma":
+        invalid = _POLLUTION_EVENT_OPTIONS & remaining.keys()
+    else:
+        invalid = (_SIGMA_OPTIONS | _POLLUTION_EVENT_OPTIONS) & remaining.keys()
     if invalid:
         raise ValueError(
             f"`mismatch_model={mismatch_model!r}` does not accept option(s) {sorted(invalid)!r}."
+        )
+
+    if mismatch_model == "fixed_error":
+        return FixedErrorSettings(
+            use_minimum_error_floor=remaining.pop("use_minimum_error_floor", False),
         )
 
     common = {
@@ -691,7 +697,6 @@ def _make_likelihood_settings(
         "sigma_freq": remaining.pop("sigma_freq", None),
         "sigma_per_site": remaining.pop("sigma_per_site", True),
         "sigma_freq_anchor": remaining.pop("sigma_freq_anchor", start_date),
-        "no_model_error": remaining.pop("no_model_error", False),
     }
     if mismatch_model == "pollution_event":
         return PollutionEventSettings(
@@ -762,7 +767,7 @@ def make_rhime_runner_setup(
     use_bc = remaining.get("use_bc", True)
     mismatch_model = cast(
         MismatchModel | None,
-        remaining.pop("mismatch_model", "pollution_event"),
+        remaining.pop("mismatch_model", None),
     )
     likelihood = _make_likelihood_settings(
         remaining,
