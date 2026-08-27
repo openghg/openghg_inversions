@@ -583,7 +583,7 @@ def _make_model_spec(
     sigma_prior: dict[str, Any] | None,
     offset_prior: dict[str, Any] | None,
     use_bc: bool,
-    mismatch_model: MismatchModel,
+    mismatch_model: MismatchModel | None,
     use_minimum_error_floor: bool,
     sigma_per_site: bool,
     sigma_freq: str | None,
@@ -712,7 +712,7 @@ def make_rhime_runner_setup(
 
     use_bc = remaining.get("use_bc", True)
     mismatch_model = cast(
-        MismatchModel,
+        MismatchModel | None,
         remaining.pop("mismatch_model", "pollution_event"),
     )
     use_minimum_error_floor = remaining.pop("use_minimum_error_floor", False)

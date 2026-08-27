@@ -73,8 +73,11 @@ mean of the observed distribution is therefore
 
 where omitted components are left out of the sum.
 
-The default ``mismatch_model="pollution_event"`` preserves the fractional-error
-equation used by ``run_hbmcmc.py``. Select
+By default, the runner and configuration template select
+``mismatch_model="pollution_event"``. This preserves the fractional-error
+equation used by ``run_hbmcmc.py``. The concrete model recipe has no mismatch default:
+the runner resolves this setting to an ordinary likelihood callable before
+construction. Select
 ``mismatch_model="additive_sigma"`` for an absolute concentration-scale
 mismatch instead; this is a resolved model option and does not use the custom
 ``likelihood_builder`` extension point. Additive sigma does not select the
@@ -568,19 +571,20 @@ Callables are never read from configuration or stored on ``RhimeModelSpec`` or
 entry-point or config-file plugin registry.
 
 A concrete recipe owns the complete forward-model mean: pollution, baseline,
-and optional offset contributions are composed visibly before a custom
-likelihood is called. A likelihood builder owns error construction and the
-observed distribution. RHIME passes the completed concentration, prepared observations
+and optional offset contributions are composed visibly before its one supplied
+likelihood callable is invoked. The runner resolves built-in mismatch settings
+to that callable and its options; custom callers supply their own callable.
+Every likelihood receives the completed concentration, prepared observations
 and reported observation error, a validated ``AggregationError``, and output
-dimension as explicit arguments. Minimum-error floors, pollution contribution,
-and pollution-event baseline remain private to built-in equations. Options
-specific to a custom likelihood travel separately in ``likelihood_kwargs``.
+dimension. Built-in components may explicitly declare additional forward
+terms such as the pollution contribution or baseline. Options specific to a
+likelihood travel separately in ``likelihood_kwargs``.
 The builder adds and returns the canonical observed variable ``y`` and also
 adds the canonical marginal error scale ``epsilon``.
 
-``likelihood_kwargs`` must be a string-keyed, JSON-compatible mapping and is
-valid only when a likelihood builder is active. The runner copies and records
-the mapping with the callable identity in result and saved builder metadata.
+``likelihood_kwargs`` is valid only when a custom likelihood builder is active.
+The runner expands the mapping into that callable and records it with the
+callable identity in result and saved builder metadata.
 
 The editable example in :doc:`customising_rhime` implements a fixed-error
 Student-t likelihood using only those common inputs. Pass it directly to the
@@ -593,6 +597,7 @@ ordinary runner:
 
    result = run_rhime(
        config_file="config.ini",
+       mismatch_model=None,
        likelihood_builder=likelihood_builder,
    )
 

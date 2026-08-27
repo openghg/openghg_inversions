@@ -305,8 +305,8 @@ def test_additive_sigma_validation_names_malformed_input_and_owner() -> None:
                 observation_error=malformed_error,
                 aggregation_error=resolve_aggregation_error(data, "none"),
                 mean=pm.math.constant(np.ones(3)),
-                additive_scale_alignment=sigma_alignment,
-                additive_scale_prior={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
+                additive_sigma_alignment=sigma_alignment,
+                additive_sigma_prior={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
             )
 
 
@@ -348,8 +348,8 @@ def test_likelihoods_reject_reordered_observation_error_coordinates(
                     observation_error=reordered_error,
                     aggregation_error=resolve_aggregation_error(data, "none"),
                     mean=pm.math.constant(np.ones(3)),
-                    additive_scale_alignment=sigma_alignment,
-                    additive_scale_prior={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
+                    additive_sigma_alignment=sigma_alignment,
+                    additive_sigma_prior={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
                 )
 
 
@@ -368,8 +368,8 @@ def test_additive_sigma_likelihood_applies_minimum_error_floor() -> None:
             minimum_error_floor=data["min_error"],
             aggregation_error=resolve_aggregation_error(data, "diagonal"),
             mean=pm.math.constant(np.ones(3)),
-            additive_scale_alignment=sigma_alignment,
-            additive_scale_prior={"pdf": "uniform", "lower": 0.5, "upper": 0.500001},
+            additive_sigma_alignment=sigma_alignment,
+            additive_sigma_prior={"pdf": "uniform", "lower": 0.5, "upper": 0.500001},
         )
 
     sigma = np.asarray(model.named_vars["sigma"].eval()).item()
@@ -415,8 +415,8 @@ def test_additive_sigma_likelihood_uses_completed_mean() -> None:
             minimum_error_floor=data["min_error"],
             aggregation_error=resolve_aggregation_error(data, "none"),
             mean=mean,
-            additive_scale_alignment=sigma_alignment,
-            additive_scale_prior={"pdf": "uniform", "lower": 0.2, "upper": 0.200001},
+            additive_sigma_alignment=sigma_alignment,
+            additive_sigma_prior={"pdf": "uniform", "lower": 0.2, "upper": 0.200001},
         )
 
     assert likelihood is model.named_vars["y"]

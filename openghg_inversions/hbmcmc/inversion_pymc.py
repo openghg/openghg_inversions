@@ -27,6 +27,7 @@ from openghg_inversions.config.version import code_version  # noqa: E402
 from openghg_inversions.rhime.standard import build_standard_rhime_model  # noqa: E402
 from openghg_inversions.models.components import resolve_model_variable  # noqa: E402
 from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords  # noqa: E402
+from openghg_inversions.models.pollution_event import add_pollution_event_likelihood  # noqa: E402
 from openghg_inversions.models.priors import PriorArgs  # noqa: E402
 from openghg_inversions.inversion_inputs import _compact_integer_index  # noqa: E402
 from openghg_inversions.observation_error import resolve_aggregation_error  # noqa: E402
@@ -160,20 +161,24 @@ def build_inferpymc_model(
         flux_sensitivity,
         observations=inv_inputs["mf"],
         observation_error=inv_inputs["mf_error"],
-        minimum_error=inv_inputs["min_error"],
         aggregation_error=resolve_aggregation_error(inv_inputs, "none"),
-        sigma_alignment=sigma_alignment,
+        likelihood_builder=add_pollution_event_likelihood,
+        likelihood_kwargs={
+            "minimum_error": inv_inputs["min_error"],
+            "sigma_alignment": sigma_alignment,
+            "sigma_prior": sigprior,
+            "power": power,
+            "pollution_events_from_obs": pollution_events_from_obs,
+            "no_model_error": no_model_error,
+            "retain_unused_sigma": True,
+        },
         boundary_sensitivity=inv_inputs.get("H_bc"),
         x_prior=xprior,
         bc_prior=bcprior,
-        sigma_prior=sigprior,
         offset_prior=offsetprior,
         add_offset=add_offset,
         use_bc=use_bc,
-        pollution_events_from_obs=pollution_events_from_obs,
-        no_model_error=no_model_error,
         offset_args=offset_args,
-        power=power,
         preserve_legacy_likelihood=True,
     )
 

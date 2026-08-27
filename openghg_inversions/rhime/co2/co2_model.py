@@ -201,8 +201,8 @@ def build_co2_model(
             aggregation_error=aggregation_error,
             fixed_model_mismatch=fixed_mismatch,
             mean=modelled_mean,
-            additive_scale_alignment=sigma_alignment,
-            additive_scale_prior=sigma_prior,
+            additive_sigma_alignment=sigma_alignment,
+            additive_sigma_prior=sigma_prior,
             output_dim="nmeasure",
         )
     return model

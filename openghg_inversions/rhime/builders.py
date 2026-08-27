@@ -8,12 +8,15 @@ import json
 from typing import Any, Protocol
 
 import pymc as pm
+from pytensor.tensor.variable import TensorVariable
 from openghg_inversions.inversion_data import RhimePreparedInputs
 from openghg_inversions.models.coords import get_coord_registry
 from openghg_inversions.rhime.specs import OutputFormat, RhimeRunSpec
 
 
 _OUTPUT_FORMATS: frozenset[OutputFormat] = frozenset({"none", "inv_out", "basic", "paris", "legacy"})
+
+RhimeLikelihoodBuilder = Callable[..., TensorVariable]
 
 
 @dataclass(frozen=True)
