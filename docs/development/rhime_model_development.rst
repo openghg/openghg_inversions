@@ -218,18 +218,18 @@ arrays together, and pass them to components as honest named arguments.
      - Their scientific producer
      - Not materialized unless a concrete recipe explicitly selects them
    * - ``site_indicator``
-     - Model-only derived wiring
+     - Legacy output/compatibility wiring
      - ``RhimePreparedInputs`` derives and validates it from labelled
        ``(site, time)`` observations
-     - The model-error recipe derives ``SigmaAlignment``; the offset component
-       may also select it
+     - Built-in likelihoods do not materialize it; the offset component may
+       still register its own model data
    * - ``site_names``
      - Output/compatibility wiring
      - ``RhimePreparedInputs`` regenerates it from site metadata
      - Not a PyMC input
    * - ``SigmaAlignment``
      - Cohesive model-only value
-     - The standard or multisector recipe derives it from ``site_indicator``,
+     - The shared likelihood dispatcher derives it from ``mf.coords["site"]``,
        time, and resolved model-error options
      - Passed explicitly to the likelihood
    * - Source/sector selection and state grouping

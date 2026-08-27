@@ -206,7 +206,7 @@ def test_custom_runner_uses_supported_stages_for_acquisition_and_reload(
     monkeypatch.setattr(
         custom_runner,
         "standard_model_input_names",
-        lambda _actual, _model, *, likelihood_builder: ("H", "mf", "mf_error"),
+        lambda _actual, _model: ("H", "mf", "mf_error"),
     )
     monkeypatch.setattr(custom_runner, "materialize_pymc_inputs", materialize)
     monkeypatch.setattr(custom_runner, "build_standard_rhime_model_result", build)

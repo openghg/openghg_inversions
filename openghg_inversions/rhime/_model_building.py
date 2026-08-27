@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Collection, Mapping
-import inspect
+from dataclasses import dataclass
 from numbers import Real
 from typing import Any
 
@@ -12,8 +12,12 @@ import pymc as pm
 import xarray as xr
 from pytensor.tensor.variable import TensorVariable
 
-from openghg_inversions.inversion_inputs import DatetimeLike, make_site_indicator, make_site_names
-from openghg_inversions.models.additive_sigma import DEFAULT_ADDITIVE_SIGMA_PRIOR
+from openghg_inversions.inversion_inputs import DatetimeLike, make_site_names
+from openghg_inversions.models.additive_sigma import (
+    DEFAULT_ADDITIVE_SIGMA_PRIOR,
+    add_additive_sigma_likelihood,
+)
+from openghg_inversions.models.pollution_event import add_pollution_event_likelihood
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.observation_error import AggregationError
 from openghg_inversions.sigma import SigmaAlignment
@@ -24,7 +28,22 @@ from .builders import (
     RhimeModelBuildResult,
     RhimeLikelihoodBuilder,
 )
-from .specs import RhimeModelSpec
+from .specs import (
+    DEFAULT_SIGMA_PRIOR,
+    AdditiveSigmaSettings,
+    LikelihoodSettings,
+    PollutionEventSettings,
+    RhimeModelSpec,
+)
+
+
+@dataclass(frozen=True)
+class ForwardModelTerms:
+    """Named concentration terms produced by a concrete model recipe."""
+
+    total: TensorVariable
+    pollution: TensorVariable
+    baseline: TensorVariable | None
 
 
 def _resolve_site_additive_sigma_prior(
@@ -58,8 +77,7 @@ def _resolve_site_additive_sigma_prior(
 def prepare_additive_sigma_inputs(
     observations: xr.DataArray,
     *,
-    output_dim: str,
-    site_indicator: xr.DataArray | None = None,
+    sigma_alignment: SigmaAlignment | None = None,
     sigma_prior: PriorArgs | None = None,
     sigma_freq: str | None = None,
     sigma_per_site: bool = True,
@@ -70,17 +88,20 @@ def prepare_additive_sigma_inputs(
     if no_model_error:
         return None, None
     site = observations.coords.get("site")
-    if site is None or site.dims != (output_dim,):
+    if site is None or site.dims != ("nmeasure",):
         raise ValueError(
             "Additive-sigma mismatch requires an observation-aligned "
             "'site' coordinate when model error is enabled."
         )
-    indicator = make_site_indicator(site) if site_indicator is None else site_indicator
-    alignment = SigmaAlignment.from_frequency(
-        indicator,
-        frequency=sigma_freq,
-        per_site=sigma_per_site,
-        anchor_time=sigma_freq_anchor,
+    alignment = (
+        SigmaAlignment.from_observations(
+            observations,
+            frequency=sigma_freq,
+            per_site=sigma_per_site,
+            anchor_time=sigma_freq_anchor,
+        )
+        if sigma_alignment is None
+        else sigma_alignment
     )
     prior = _resolve_site_additive_sigma_prior(
         DEFAULT_ADDITIVE_SIGMA_PRIOR if sigma_prior is None else sigma_prior,
@@ -90,7 +111,7 @@ def prepare_additive_sigma_inputs(
     return alignment, prior
 
 
-def _call_likelihood_builder(
+def _call_custom_likelihood(
     model: pm.Model,
     likelihood_builder: RhimeLikelihoodBuilder,
     *,
@@ -99,27 +120,17 @@ def _call_likelihood_builder(
     aggregation_error: AggregationError,
     mean: TensorVariable,
     output_dim: str,
-    forward_inputs: Mapping[str, object],
     likelihood_kwargs: Mapping[str, Any] | None = None,
 ) -> TensorVariable:
-    """Call one likelihood component with common and explicitly requested inputs."""
-    parameters = inspect.signature(likelihood_builder).parameters
-    inputs: dict[str, Any] = {
-        "observations": observations,
-        "observation_error": observation_error,
-        "aggregation_error": aggregation_error,
-        "mean": mean,
-        "output_dim": output_dim,
-    }
-    inputs.update({name: value for name, value in forward_inputs.items() if name in parameters})
-    duplicate_inputs = inputs.keys() & (likelihood_kwargs or {}).keys()
-    if duplicate_inputs:
-        raise TypeError(
-            "`likelihood_kwargs` duplicates recipe-owned input(s): "
-            f"{sorted(duplicate_inputs)!r}."
-        )
-    inputs.update(likelihood_kwargs or {})
-    likelihood = likelihood_builder(**inputs)
+    """Call a custom likelihood with the stable mean-only contract."""
+    likelihood = likelihood_builder(
+        observations=observations,
+        observation_error=observation_error,
+        aggregation_error=aggregation_error,
+        mean=mean,
+        output_dim=output_dim,
+        **(likelihood_kwargs or {}),
+    )
     if not isinstance(likelihood, TensorVariable):
         raise TypeError(
             f"A RHIME likelihood builder must return a PyTensor variable; got {type(likelihood).__name__}."
@@ -136,6 +147,126 @@ def _call_likelihood_builder(
             f"sampling and outputs: {missing_names!r}."
         )
     return likelihood
+
+
+def add_builtin_likelihood(
+    settings: LikelihoodSettings,
+    *,
+    forward: ForwardModelTerms,
+    observations: xr.DataArray,
+    observation_error: xr.DataArray,
+    aggregation_error: AggregationError,
+    model_inputs: xr.Dataset,
+    output_dim: str,
+    sigma_alignment: SigmaAlignment | None = None,
+    legacy_pollution_event_baseline: TensorVariable | None = None,
+    preserve_legacy_pollution_event: bool = False,
+) -> TensorVariable:
+    """Dispatch one resolved built-in likelihood with explicit scientific inputs."""
+    if isinstance(settings, PollutionEventSettings):
+        needs_sigma = not settings.no_model_error or preserve_legacy_pollution_event
+        resolved_alignment = sigma_alignment
+        if needs_sigma and resolved_alignment is None:
+            resolved_alignment = SigmaAlignment.from_observations(
+                observations,
+                frequency=settings.sigma_freq,
+                per_site=settings.sigma_per_site,
+                anchor_time=settings.sigma_freq_anchor,
+            )
+        baseline = (
+            legacy_pollution_event_baseline
+            if preserve_legacy_pollution_event
+            else forward.baseline
+        )
+        return add_pollution_event_likelihood(
+            observations=observations,
+            observation_error=observation_error,
+            minimum_error=model_inputs["min_error"],
+            aggregation_error=aggregation_error,
+            mean=forward.total,
+            pollution_mean=forward.pollution,
+            pollution_event_baseline=baseline,
+            sigma_alignment=resolved_alignment,
+            sigma_prior=dict(
+                DEFAULT_SIGMA_PRIOR if settings.sigma_prior is None else settings.sigma_prior
+            ),
+            power=settings.power,
+            pollution_events_from_obs=settings.pollution_events_from_obs,
+            no_model_error=settings.no_model_error,
+            retain_unused_sigma=preserve_legacy_pollution_event,
+            output_dim=output_dim,
+        )
+
+    if isinstance(settings, AdditiveSigmaSettings):
+        alignment, prior = prepare_additive_sigma_inputs(
+            observations,
+            sigma_alignment=sigma_alignment,
+            sigma_prior=settings.sigma_prior,
+            sigma_freq=settings.sigma_freq,
+            sigma_per_site=settings.sigma_per_site,
+            sigma_freq_anchor=settings.sigma_freq_anchor,
+            no_model_error=settings.no_model_error,
+        )
+        return add_additive_sigma_likelihood(
+            observations=observations,
+            observation_error=observation_error,
+            aggregation_error=aggregation_error,
+            mean=forward.total,
+            minimum_error_floor=(
+                model_inputs["min_error"] if settings.use_minimum_error_floor else None
+            ),
+            additive_sigma_alignment=alignment,
+            additive_sigma_prior=prior,
+            output_dim=output_dim,
+        )
+
+    raise TypeError(f"Unsupported built-in likelihood settings: {type(settings).__name__}.")
+
+
+def add_rhime_likelihood(
+    model: pm.Model,
+    *,
+    settings: LikelihoodSettings | None,
+    likelihood_builder: RhimeLikelihoodBuilder | None,
+    likelihood_kwargs: Mapping[str, Any] | None,
+    forward: ForwardModelTerms,
+    observations: xr.DataArray,
+    observation_error: xr.DataArray,
+    aggregation_error: AggregationError,
+    model_inputs: xr.Dataset,
+    output_dim: str,
+    sigma_alignment: SigmaAlignment | None = None,
+    legacy_pollution_event_baseline: TensorVariable | None = None,
+    preserve_legacy_pollution_event: bool = False,
+) -> TensorVariable:
+    """Add exactly one built-in or custom likelihood to a concrete recipe."""
+    if settings is None:
+        if likelihood_builder is None:
+            raise ValueError("A RHIME model requires built-in settings or a custom likelihood.")
+        return _call_custom_likelihood(
+            model,
+            likelihood_builder,
+            observations=observations,
+            observation_error=observation_error,
+            aggregation_error=aggregation_error,
+            mean=forward.total,
+            output_dim=output_dim,
+            likelihood_kwargs=likelihood_kwargs,
+        )
+    if likelihood_builder is not None:
+        raise ValueError("A custom likelihood cannot be combined with built-in likelihood settings.")
+    return add_builtin_likelihood(
+        settings,
+        forward=forward,
+        observations=observations,
+        observation_error=observation_error,
+        aggregation_error=aggregation_error,
+        model_inputs=model_inputs,
+        output_dim=output_dim,
+        sigma_alignment=sigma_alignment,
+        legacy_pollution_event_baseline=legacy_pollution_event_baseline,
+        preserve_legacy_pollution_event=preserve_legacy_pollution_event,
+    )
 
 
 def builtin_model_build_result(

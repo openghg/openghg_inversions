@@ -26,11 +26,27 @@ from openghg_inversions.observation_error import AggregationErrorMode
 from openghg_inversions.rhime.sampling import RhimeSampler
 from openghg_inversions.rhime.specs import (
     DEFAULT_X_PRIOR,
+    AdditiveSigmaSettings,
+    LikelihoodSettings,
     MismatchModel,
+    PollutionEventSettings,
     RhimeModelSpec,
     RhimeRunSpec,
     SectorSpec,
     make_output_spec,
+)
+
+_COMMON_LIKELIHOOD_OPTIONS = {
+    "sigma_prior",
+    "sigma_freq",
+    "sigma_per_site",
+    "sigma_freq_anchor",
+    "no_model_error",
+}
+_POLLUTION_EVENT_OPTIONS = {"pollution_events_from_obs", "power"}
+_ADDITIVE_SIGMA_OPTIONS = {"use_minimum_error_floor"}
+_LIKELIHOOD_OPTIONS = (
+    _COMMON_LIKELIHOOD_OPTIONS | _POLLUTION_EVENT_OPTIONS | _ADDITIVE_SIGMA_OPTIONS
 )
 
 _ALIASES = {
@@ -580,18 +596,10 @@ def _make_model_spec(
     sector_priors: Mapping[str, dict[str, Any]] | None,
     sector_sources: Mapping[str, str] | None,
     bc_prior: dict[str, Any] | None,
-    sigma_prior: dict[str, Any] | None,
     offset_prior: dict[str, Any] | None,
     use_bc: bool,
-    mismatch_model: MismatchModel | None,
-    use_minimum_error_floor: bool,
-    sigma_per_site: bool,
-    sigma_freq: str | None,
-    sigma_freq_anchor: str | None,
+    likelihood: LikelihoodSettings | None,
     add_offset: bool,
-    pollution_events_from_obs: bool,
-    no_model_error: bool,
-    power: dict[str, Any] | float,
     offset_args: dict[str, Any] | None,
     aggregation_error_mode: AggregationErrorMode,
 ) -> RhimeModelSpec:
@@ -638,20 +646,62 @@ def _make_model_spec(
         domain=domain,
         sectors=tuple(sectors),
         use_bc=use_bc,
-        mismatch_model=mismatch_model,
-        use_minimum_error_floor=use_minimum_error_floor,
-        sigma_per_site=sigma_per_site,
-        sigma_freq=sigma_freq,
-        sigma_freq_anchor=sigma_freq_anchor,
+        likelihood=likelihood,
         add_offset=add_offset,
-        pollution_events_from_obs=pollution_events_from_obs,
-        no_model_error=no_model_error,
-        power=power,
         bc_prior=bc_prior,
-        sigma_prior=sigma_prior,
         offset_prior=offset_prior,
         offset_args=offset_args,
         aggregation_error_mode=aggregation_error_mode,
+    )
+
+
+def _make_likelihood_settings(
+    remaining: dict[str, Any],
+    *,
+    mismatch_model: MismatchModel | None,
+    start_date: str,
+) -> LikelihoodSettings | None:
+    """Consume only options owned by the selected built-in likelihood."""
+    if mismatch_model not in (None, "pollution_event", "additive_sigma"):
+        raise ValueError(
+            "`mismatch_model` must be None, 'pollution_event', or 'additive_sigma'; "
+            f"got {mismatch_model!r}."
+        )
+    if mismatch_model is None:
+        unused = sorted(_LIKELIHOOD_OPTIONS & remaining.keys())
+        if unused:
+            raise ValueError(
+                "Built-in likelihood option(s) cannot be used with `mismatch_model=None`: "
+                f"{unused!r}. Pass custom options through `likelihood_kwargs`."
+            )
+        return None
+
+    invalid = (
+        _ADDITIVE_SIGMA_OPTIONS
+        if mismatch_model == "pollution_event"
+        else _POLLUTION_EVENT_OPTIONS
+    ) & remaining.keys()
+    if invalid:
+        raise ValueError(
+            f"`mismatch_model={mismatch_model!r}` does not accept option(s) {sorted(invalid)!r}."
+        )
+
+    common = {
+        "sigma_prior": normalise_optional_mapping(remaining.pop("sigma_prior", None)),
+        "sigma_freq": remaining.pop("sigma_freq", None),
+        "sigma_per_site": remaining.pop("sigma_per_site", True),
+        "sigma_freq_anchor": remaining.pop("sigma_freq_anchor", start_date),
+        "no_model_error": remaining.pop("no_model_error", False),
+    }
+    if mismatch_model == "pollution_event":
+        return PollutionEventSettings(
+            **common,
+            pollution_events_from_obs=remaining.pop("pollution_events_from_obs", False),
+            power=remaining.pop("power", 1.99),
+        )
+    return AdditiveSigmaSettings(
+        **common,
+        use_minimum_error_floor=remaining.pop("use_minimum_error_floor", False),
     )
 
 
@@ -703,7 +753,6 @@ def make_rhime_runner_setup(
 
     x_prior = normalise_optional_mapping(remaining.pop("x_prior", None))
     bc_prior = normalise_optional_mapping(remaining.pop("bc_prior", None))
-    sigma_prior = normalise_optional_mapping(remaining.pop("sigma_prior", None))
     offset_prior = normalise_optional_mapping(remaining.pop("offset_prior", None))
     sector_priors = normalise_sector_priors(remaining.pop("sector_priors", None))
     if multisector:
@@ -715,14 +764,12 @@ def make_rhime_runner_setup(
         MismatchModel | None,
         remaining.pop("mismatch_model", "pollution_event"),
     )
-    use_minimum_error_floor = remaining.pop("use_minimum_error_floor", False)
-    sigma_per_site = remaining.get("sigma_per_site", True)
-    sigma_freq = remaining.pop("sigma_freq", None)
-    sigma_freq_anchor = remaining.pop("sigma_freq_anchor", start_date)
+    likelihood = _make_likelihood_settings(
+        remaining,
+        mismatch_model=mismatch_model,
+        start_date=start_date,
+    )
     add_offset = remaining.get("add_offset", False)
-    pollution_events_from_obs = remaining.pop("pollution_events_from_obs", False)
-    no_model_error = remaining.pop("no_model_error", False)
-    power = remaining.pop("power", 1.99)
     aggregation_error_mode = cast(
         AggregationErrorMode,
         remaining.pop("aggregation_error_mode", "none"),
@@ -763,18 +810,10 @@ def make_rhime_runner_setup(
         sector_priors=sector_priors,
         sector_sources=sector_sources,
         bc_prior=bc_prior,
-        sigma_prior=sigma_prior,
         offset_prior=offset_prior,
         use_bc=use_bc,
-        mismatch_model=mismatch_model,
-        use_minimum_error_floor=use_minimum_error_floor,
-        sigma_per_site=sigma_per_site,
-        sigma_freq=sigma_freq,
-        sigma_freq_anchor=sigma_freq_anchor,
+        likelihood=likelihood,
         add_offset=add_offset,
-        pollution_events_from_obs=pollution_events_from_obs,
-        no_model_error=no_model_error,
-        power=power,
         offset_args=offset_args,
         aggregation_error_mode=aggregation_error_mode,
     )

@@ -75,9 +75,9 @@ where omitted components are left out of the sum.
 
 By default, the runner and configuration template select
 ``mismatch_model="pollution_event"``. This preserves the fractional-error
-equation used by ``run_hbmcmc.py``. The concrete model recipe has no mismatch default:
-the runner resolves this setting to an ordinary likelihood callable before
-construction. Select
+equation used by ``run_hbmcmc.py``. The concrete model recipe has no mismatch
+default: the runner resolves this selector to ``PollutionEventSettings`` in
+the serializable model specification before construction. Select
 ``mismatch_model="additive_sigma"`` for an absolute concentration-scale
 mismatch instead; this is a resolved model option and does not use the custom
 ``likelihood_builder`` extension point. Additive sigma does not select the
@@ -462,8 +462,8 @@ helpers:
    }
    sigma_prior = {"pdf": "uniform", "lower": 0.1, "upper": 3.0}
 
-   sigma_alignment = SigmaAlignment.from_frequency(
-       inv_inputs["site_indicator"],
+   sigma_alignment = SigmaAlignment.from_observations(
+       inv_inputs["mf"],
        frequency=None,
        per_site=True,
    )
@@ -571,14 +571,15 @@ Callables are never read from configuration or stored on ``RhimeModelSpec`` or
 entry-point or config-file plugin registry.
 
 A concrete recipe owns the complete forward-model mean: pollution, baseline,
-and optional offset contributions are composed visibly before its one supplied
-likelihood callable is invoked. The runner resolves built-in mismatch settings
-to that callable and its options; custom callers supply their own callable.
-Every likelihood receives the completed concentration, prepared observations
-and reported observation error, a validated ``AggregationError``, and output
-dimension. Built-in components may explicitly declare additional forward
-terms such as the pollution contribution or baseline. Options specific to a
-likelihood travel separately in ``likelihood_kwargs``.
+and optional offset contributions are composed visibly and packaged as named
+forward terms before the shared built-in dispatcher is invoked. The runner
+stores one typed settings value on ``RhimeModelSpec``; the dispatcher calls the
+ordinary built-in equation with only that likelihood's inputs. A custom caller
+instead supplies a mean-only callable. Every likelihood receives the completed
+concentration, prepared observations and reported observation error, a
+validated ``AggregationError``, and output dimension. Built-in pollution-event
+scaling additionally receives the named pollution and baseline terms.
+``likelihood_kwargs`` is reserved for custom callables.
 The builder adds and returns the canonical observed variable ``y`` and also
 adds the canonical marginal error scale ``epsilon``.
 

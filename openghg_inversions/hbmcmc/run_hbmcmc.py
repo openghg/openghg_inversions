@@ -272,6 +272,8 @@ def _select_additive_sigma_model_options(
         "use_minimum_error_floor": True,
         "aggregation_error_mode": "none",
     }
+    rhime_params.pop("pollution_events_from_obs", None)
+    rhime_params.pop("power", None)
     options.update(
         {name: rhime_params[name] for name in _ADDITIVE_SIGMA_OPTION_NAMES if name in rhime_params}
     )
@@ -509,6 +511,8 @@ def main(argv: list[str] | None = None) -> None:
         additive_sigma_options = _select_additive_sigma_model_options(param, rhime_params)
         if additive_sigma_options is not None:
             rhime_params.update(additive_sigma_options)
+        else:
+            rhime_params["mismatch_model"] = "pollution_event"
 
     with timed("run_hbmcmc.validation"):
         validate_rhime_params(rhime_params)
