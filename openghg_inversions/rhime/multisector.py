@@ -284,7 +284,7 @@ def build_multisector_rhime_model(
     observations: xr.DataArray,
     observation_error: xr.DataArray,
     aggregation_error: AggregationError,
-    model_inputs: xr.Dataset,
+    minimum_error: xr.DataArray | None = None,
     likelihood_settings: LikelihoodSettings | None = None,
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
     likelihood_kwargs: Mapping[str, Any] | None = None,
@@ -312,8 +312,7 @@ def build_multisector_rhime_model(
         observations: Observed mole fractions.
         observation_error: Reported observation-error standard deviations.
         aggregation_error: Validated fixed aggregation-error representation.
-        model_inputs: Materialized prepared arrays available to the selected
-            built-in likelihood.
+        minimum_error: Optional prepared minimum total-error floor.
         likelihood_settings: Resolved built-in likelihood settings.
         likelihood_builder: Optional Python-only custom likelihood.
         likelihood_kwargs: Options for the custom likelihood.
@@ -408,7 +407,6 @@ def build_multisector_rhime_model(
             baseline=baseline_mean,
         )
         add_rhime_likelihood(
-            model,
             settings=likelihood_settings,
             likelihood_builder=likelihood_builder,
             likelihood_kwargs=likelihood_kwargs,
@@ -416,7 +414,7 @@ def build_multisector_rhime_model(
             observations=observations,
             observation_error=observation_error,
             aggregation_error=aggregation_error,
-            model_inputs=model_inputs,
+            minimum_error=minimum_error,
             output_dim="nmeasure",
             sigma_alignment=sigma_alignment,
         )
@@ -543,7 +541,7 @@ def build_multisector_rhime_model_result(
             observations=model_inputs["mf"],
             observation_error=model_inputs["mf_error"],
             aggregation_error=aggregation_error,
-            model_inputs=model_inputs,
+            minimum_error=model_inputs.get("min_error"),
             likelihood_settings=model_spec.likelihood,
             likelihood_builder=likelihood_builder,
             likelihood_kwargs=likelihood_kwargs,

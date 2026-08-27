@@ -13,7 +13,7 @@ from openghg_inversions.observation_error import AggregationErrorMode
 
 OutputFormat = Literal["none", "inv_out", "basic", "paris", "legacy"]
 OutputFilenameConvention = Literal["rhime", "legacy"]
-MismatchModel = Literal["pollution_event", "additive_sigma"]
+MismatchModel = Literal["pollution_event", "additive_sigma", "fixed_error"]
 
 DEFAULT_X_PRIOR: PriorArgs = {
     "pdf": "lognormal",
@@ -43,7 +43,6 @@ class PollutionEventSettings:
         sigma_freq_anchor: Optional anchor for fixed-duration periods.
         pollution_events_from_obs: Derive pollution events from observations
             after removing the baseline instead of from modelled pollution.
-        no_model_error: Omit inferred fractional model error.
         power: Exponent or prior used in pollution-event error scaling.
     """
 
@@ -52,7 +51,6 @@ class PollutionEventSettings:
     sigma_per_site: bool = True
     sigma_freq_anchor: DatetimeLike | None = None
     pollution_events_from_obs: bool = False
-    no_model_error: bool = False
     power: PriorArgs | float = 1.99
 
     @property
@@ -71,7 +69,6 @@ class AdditiveSigmaSettings:
             one period.
         sigma_per_site: Whether model error varies by observation site.
         sigma_freq_anchor: Optional anchor for fixed-duration periods.
-        no_model_error: Omit inferred additive model error.
         use_minimum_error_floor: Apply the prepared historical minimum total-
             error floor.
     """
@@ -80,7 +77,6 @@ class AdditiveSigmaSettings:
     sigma_freq: str | None = None
     sigma_per_site: bool = True
     sigma_freq_anchor: DatetimeLike | None = None
-    no_model_error: bool = False
     use_minimum_error_floor: bool = False
 
     @property
@@ -89,7 +85,24 @@ class AdditiveSigmaSettings:
         return ("min_error",) if self.use_minimum_error_floor else ()
 
 
-LikelihoodSettings = PollutionEventSettings | AdditiveSigmaSettings
+@dataclass(frozen=True)
+class FixedErrorSettings:
+    """Serializable settings for reported observation error only.
+
+    Args:
+        use_minimum_error_floor: Apply the prepared historical minimum total-
+            error floor.
+    """
+
+    use_minimum_error_floor: bool = False
+
+    @property
+    def required_prepared_inputs(self) -> tuple[str, ...]:
+        """Return prepared arrays owned by this likelihood."""
+        return ("min_error",) if self.use_minimum_error_floor else ()
+
+
+LikelihoodSettings = PollutionEventSettings | AdditiveSigmaSettings | FixedErrorSettings
 
 
 @dataclass(frozen=True)

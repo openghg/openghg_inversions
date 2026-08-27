@@ -17,6 +17,7 @@ from openghg_inversions.models.additive_sigma import (
     DEFAULT_ADDITIVE_SIGMA_PRIOR,
     add_additive_sigma_likelihood,
 )
+from openghg_inversions.models.components import add_sigma_component
 from openghg_inversions.models.pollution_event import add_pollution_event_likelihood
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.observation_error import AggregationError
@@ -31,6 +32,7 @@ from .builders import (
 from .specs import (
     DEFAULT_SIGMA_PRIOR,
     AdditiveSigmaSettings,
+    FixedErrorSettings,
     LikelihoodSettings,
     PollutionEventSettings,
     RhimeModelSpec,
@@ -82,11 +84,8 @@ def prepare_additive_sigma_inputs(
     sigma_freq: str | None = None,
     sigma_per_site: bool = True,
     sigma_freq_anchor: DatetimeLike | None = None,
-    no_model_error: bool = False,
-) -> tuple[SigmaAlignment | None, PriorArgs | None]:
+) -> tuple[SigmaAlignment, PriorArgs]:
     """Resolve additive-sigma settings into direct component inputs."""
-    if no_model_error:
-        return None, None
     site = observations.coords.get("site")
     if site is None or site.dims != ("nmeasure",):
         raise ValueError(
@@ -112,7 +111,6 @@ def prepare_additive_sigma_inputs(
 
 
 def _call_custom_likelihood(
-    model: pm.Model,
     likelihood_builder: RhimeLikelihoodBuilder,
     *,
     observations: xr.DataArray,
@@ -140,6 +138,7 @@ def _call_custom_likelihood(
             "A RHIME likelihood builder must name its observed concentration variable `y`; "
             f"got {likelihood.name!r}."
         )
+    model = pm.modelcontext(None)
     missing_names = sorted({"y", "epsilon"} - set(model.named_vars))
     if missing_names:
         raise ValueError(
@@ -149,6 +148,130 @@ def _call_custom_likelihood(
     return likelihood
 
 
+def add_configured_pollution_event_likelihood(
+    settings: PollutionEventSettings,
+    *,
+    forward: ForwardModelTerms,
+    observations: xr.DataArray,
+    observation_error: xr.DataArray,
+    aggregation_error: AggregationError,
+    minimum_error: xr.DataArray | None,
+    output_dim: str,
+    sigma_alignment: SigmaAlignment | None = None,
+    legacy_pollution_event_baseline: TensorVariable | None = None,
+    preserve_legacy_pollution_event: bool = False,
+) -> TensorVariable:
+    """Resolve pollution-event settings into the direct PyMC component."""
+    if minimum_error is None:
+        raise ValueError("Pollution-event likelihood requires `minimum_error`.")
+    resolved_alignment = sigma_alignment
+    if resolved_alignment is None:
+        resolved_alignment = SigmaAlignment.from_observations(
+            observations,
+            frequency=settings.sigma_freq,
+            per_site=settings.sigma_per_site,
+            anchor_time=settings.sigma_freq_anchor,
+        )
+    baseline = (
+        legacy_pollution_event_baseline
+        if preserve_legacy_pollution_event
+        else forward.baseline
+    )
+    return add_pollution_event_likelihood(
+        observations=observations,
+        observation_error=observation_error,
+        minimum_error=minimum_error,
+        aggregation_error=aggregation_error,
+        mean=forward.total,
+        pollution_mean=forward.pollution,
+        pollution_event_baseline=baseline,
+        sigma_alignment=resolved_alignment,
+        sigma_prior=dict(
+            DEFAULT_SIGMA_PRIOR if settings.sigma_prior is None else settings.sigma_prior
+        ),
+        power=settings.power,
+        pollution_events_from_obs=settings.pollution_events_from_obs,
+        no_model_error=False,
+        output_dim=output_dim,
+    )
+
+
+def add_configured_additive_sigma_likelihood(
+    settings: AdditiveSigmaSettings,
+    *,
+    mean: TensorVariable,
+    observations: xr.DataArray,
+    observation_error: xr.DataArray,
+    aggregation_error: AggregationError,
+    minimum_error: xr.DataArray | None,
+    output_dim: str,
+    sigma_alignment: SigmaAlignment | None = None,
+) -> TensorVariable:
+    """Resolve additive-sigma settings into the direct PyMC component."""
+    if settings.use_minimum_error_floor and minimum_error is None:
+        raise ValueError("Additive-sigma likelihood requires `minimum_error` when its floor is enabled.")
+    alignment, prior = prepare_additive_sigma_inputs(
+        observations,
+        sigma_alignment=sigma_alignment,
+        sigma_prior=settings.sigma_prior,
+        sigma_freq=settings.sigma_freq,
+        sigma_per_site=settings.sigma_per_site,
+        sigma_freq_anchor=settings.sigma_freq_anchor,
+    )
+    return add_additive_sigma_likelihood(
+        observations=observations,
+        observation_error=observation_error,
+        aggregation_error=aggregation_error,
+        mean=mean,
+        minimum_error_floor=minimum_error if settings.use_minimum_error_floor else None,
+        additive_sigma_alignment=alignment,
+        additive_sigma_prior=prior,
+        output_dim=output_dim,
+    )
+
+
+def add_configured_fixed_error_likelihood(
+    settings: FixedErrorSettings,
+    *,
+    mean: TensorVariable,
+    observations: xr.DataArray,
+    observation_error: xr.DataArray,
+    aggregation_error: AggregationError,
+    minimum_error: xr.DataArray | None,
+    output_dim: str,
+    sigma_alignment: SigmaAlignment | None = None,
+    legacy_unused_sigma_settings: PollutionEventSettings | None = None,
+) -> TensorVariable:
+    """Resolve fixed-error settings into the direct Gaussian component."""
+    if settings.use_minimum_error_floor and minimum_error is None:
+        raise ValueError("Fixed-error likelihood requires `minimum_error` when its floor is enabled.")
+    if legacy_unused_sigma_settings is not None:
+        alignment = sigma_alignment
+        if alignment is None:
+            alignment = SigmaAlignment.from_observations(
+                observations,
+                frequency=legacy_unused_sigma_settings.sigma_freq,
+                per_site=legacy_unused_sigma_settings.sigma_per_site,
+                anchor_time=legacy_unused_sigma_settings.sigma_freq_anchor,
+            )
+        add_sigma_component(
+            alignment,
+            prior_args=dict(
+                DEFAULT_SIGMA_PRIOR
+                if legacy_unused_sigma_settings.sigma_prior is None
+                else legacy_unused_sigma_settings.sigma_prior
+            ),
+        )
+    return add_additive_sigma_likelihood(
+        observations=observations,
+        observation_error=observation_error,
+        aggregation_error=aggregation_error,
+        mean=mean,
+        minimum_error_floor=minimum_error if settings.use_minimum_error_floor else None,
+        output_dim=output_dim,
+    )
+
+
 def add_builtin_likelihood(
     settings: LikelihoodSettings,
     *,
@@ -156,75 +279,55 @@ def add_builtin_likelihood(
     observations: xr.DataArray,
     observation_error: xr.DataArray,
     aggregation_error: AggregationError,
-    model_inputs: xr.Dataset,
+    minimum_error: xr.DataArray | None,
     output_dim: str,
     sigma_alignment: SigmaAlignment | None = None,
     legacy_pollution_event_baseline: TensorVariable | None = None,
     preserve_legacy_pollution_event: bool = False,
+    legacy_unused_sigma_settings: PollutionEventSettings | None = None,
 ) -> TensorVariable:
     """Dispatch one resolved built-in likelihood with explicit scientific inputs."""
     if isinstance(settings, PollutionEventSettings):
-        needs_sigma = not settings.no_model_error or preserve_legacy_pollution_event
-        resolved_alignment = sigma_alignment
-        if needs_sigma and resolved_alignment is None:
-            resolved_alignment = SigmaAlignment.from_observations(
-                observations,
-                frequency=settings.sigma_freq,
-                per_site=settings.sigma_per_site,
-                anchor_time=settings.sigma_freq_anchor,
-            )
-        baseline = (
-            legacy_pollution_event_baseline
-            if preserve_legacy_pollution_event
-            else forward.baseline
-        )
-        return add_pollution_event_likelihood(
+        return add_configured_pollution_event_likelihood(
+            settings,
+            forward=forward,
             observations=observations,
             observation_error=observation_error,
-            minimum_error=model_inputs["min_error"],
             aggregation_error=aggregation_error,
-            mean=forward.total,
-            pollution_mean=forward.pollution,
-            pollution_event_baseline=baseline,
-            sigma_alignment=resolved_alignment,
-            sigma_prior=dict(
-                DEFAULT_SIGMA_PRIOR if settings.sigma_prior is None else settings.sigma_prior
-            ),
-            power=settings.power,
-            pollution_events_from_obs=settings.pollution_events_from_obs,
-            no_model_error=settings.no_model_error,
-            retain_unused_sigma=preserve_legacy_pollution_event,
+            minimum_error=minimum_error,
             output_dim=output_dim,
-        )
-
-    if isinstance(settings, AdditiveSigmaSettings):
-        alignment, prior = prepare_additive_sigma_inputs(
-            observations,
             sigma_alignment=sigma_alignment,
-            sigma_prior=settings.sigma_prior,
-            sigma_freq=settings.sigma_freq,
-            sigma_per_site=settings.sigma_per_site,
-            sigma_freq_anchor=settings.sigma_freq_anchor,
-            no_model_error=settings.no_model_error,
+            legacy_pollution_event_baseline=legacy_pollution_event_baseline,
+            preserve_legacy_pollution_event=preserve_legacy_pollution_event,
         )
-        return add_additive_sigma_likelihood(
+    if isinstance(settings, AdditiveSigmaSettings):
+        return add_configured_additive_sigma_likelihood(
+            settings,
+            mean=forward.total,
             observations=observations,
             observation_error=observation_error,
             aggregation_error=aggregation_error,
-            mean=forward.total,
-            minimum_error_floor=(
-                model_inputs["min_error"] if settings.use_minimum_error_floor else None
-            ),
-            additive_sigma_alignment=alignment,
-            additive_sigma_prior=prior,
+            minimum_error=minimum_error,
             output_dim=output_dim,
+            sigma_alignment=sigma_alignment,
+        )
+    if isinstance(settings, FixedErrorSettings):
+        return add_configured_fixed_error_likelihood(
+            settings,
+            mean=forward.total,
+            observations=observations,
+            observation_error=observation_error,
+            aggregation_error=aggregation_error,
+            minimum_error=minimum_error,
+            output_dim=output_dim,
+            sigma_alignment=sigma_alignment,
+            legacy_unused_sigma_settings=legacy_unused_sigma_settings,
         )
 
     raise TypeError(f"Unsupported built-in likelihood settings: {type(settings).__name__}.")
 
 
 def add_rhime_likelihood(
-    model: pm.Model,
     *,
     settings: LikelihoodSettings | None,
     likelihood_builder: RhimeLikelihoodBuilder | None,
@@ -233,18 +336,18 @@ def add_rhime_likelihood(
     observations: xr.DataArray,
     observation_error: xr.DataArray,
     aggregation_error: AggregationError,
-    model_inputs: xr.Dataset,
+    minimum_error: xr.DataArray | None,
     output_dim: str,
     sigma_alignment: SigmaAlignment | None = None,
     legacy_pollution_event_baseline: TensorVariable | None = None,
     preserve_legacy_pollution_event: bool = False,
+    legacy_unused_sigma_settings: PollutionEventSettings | None = None,
 ) -> TensorVariable:
     """Add exactly one built-in or custom likelihood to a concrete recipe."""
     if settings is None:
         if likelihood_builder is None:
             raise ValueError("A RHIME model requires built-in settings or a custom likelihood.")
         return _call_custom_likelihood(
-            model,
             likelihood_builder,
             observations=observations,
             observation_error=observation_error,
@@ -261,11 +364,12 @@ def add_rhime_likelihood(
         observations=observations,
         observation_error=observation_error,
         aggregation_error=aggregation_error,
-        model_inputs=model_inputs,
+        minimum_error=minimum_error,
         output_dim=output_dim,
         sigma_alignment=sigma_alignment,
         legacy_pollution_event_baseline=legacy_pollution_event_baseline,
         preserve_legacy_pollution_event=preserve_legacy_pollution_event,
+        legacy_unused_sigma_settings=legacy_unused_sigma_settings,
     )
 
 

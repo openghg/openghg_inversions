@@ -73,11 +73,13 @@ mean of the observed distribution is therefore
 
 where omitted components are left out of the sum.
 
-By default, the runner and configuration template select
+The configuration template explicitly selects
 ``mismatch_model="pollution_event"``. This preserves the fractional-error
-equation used by ``run_hbmcmc.py``. The concrete model recipe has no mismatch
-default: the runner resolves this selector to ``PollutionEventSettings`` in
-the serializable model specification before construction. Select
+equation used by ``run_hbmcmc.py`` for users who start from that template.
+Direct runner calls must make a likelihood selection explicitly. The concrete
+model recipe has no mismatch default: parameter resolution converts the
+selector to ``PollutionEventSettings`` in the serializable model specification
+before construction. Select
 ``mismatch_model="additive_sigma"`` for an absolute concentration-scale
 mismatch instead; this is a resolved model option and does not use the custom
 ``likelihood_builder`` extension point. Additive sigma does not select the
@@ -107,10 +109,11 @@ variant: :math:`P=|Y-\mu_{bc}|`, even when an offset is also included in
 :math:`\mu_{\mathrm{obs}}`. That exception preserves existing configurations;
 it is not the scientific default for new RHIME recipes.
 
-With ``no_model_error=True``, the sampled fractional-error contribution is
-omitted and the likelihood scale is the observation error, protected only by
-the historical very-small numerical floor. ``min_error`` is not applied in
-that branch.
+Select ``mismatch_model="fixed_error"`` to omit inferred mismatch error. Its
+likelihood scale uses the reported observation error, and it does not select
+``min_error`` unless ``use_minimum_error_floor=True`` is also explicit.
+``run_hbmcmc.py`` privately preserves the different historical floor and
+unused-variable details of its two ``no_model_error`` routes.
 
 Aggregation covariance is an explicit advanced opt-in. If a caller selects a
 prepared covariance :math:`C_{agg}` with marginal variance

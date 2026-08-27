@@ -132,8 +132,8 @@ loads only ``mf`` and ``mf_error`` from the universal observation inputs and
 does not require ``min_error``.
 
 Legacy ``run_hbmcmc`` additive configuration is translated at that script's
-entry point into the same explicit mismatch-model fields. The runner resolves
-built-in mismatch science from ``RhimeModelSpec`` before the standard or
+entry point into the same explicit likelihood settings. Parameter resolution
+stores built-in mismatch science in ``RhimeModelSpec`` before the standard or
 multisector recipe is called; the recipes themselves select no default.
 
 Built-in aggregation covariance relies on the guarantees of its construction
