@@ -65,6 +65,7 @@ The complete integration is one named argument:
 
    result = run_rhime(
        config_file="config.ini",
+       mismatch_model=None,
        likelihood_builder=likelihood_builder,
    )
 
@@ -82,14 +83,18 @@ hiding the common scientific arrays in an opaque object::
 
    result = run_rhime(
        config_file="config.ini",
+       mismatch_model=None,
        likelihood_builder=likelihood_builder,
        likelihood_kwargs={"degrees_of_freedom": 4.0},
    )
 
-These options must be a string-keyed, JSON-compatible mapping. RHIME copies
-the mapping before use and records the copy beside the likelihood identity in
-the result metadata and any saved inversion output. A non-empty mapping is
-rejected when no ``likelihood_builder`` is active.
+``mismatch_model=None`` explicitly opts out of the built-in selected by the
+configuration template. Passing both a custom callable and either built-in
+selection is rejected as ambiguous.
+
+RHIME passes these options directly and records them beside the likelihood
+identity in result metadata and any saved inversion output. A non-empty
+mapping is rejected when no ``likelihood_builder`` is active.
 
 Editable likelihood
 ~~~~~~~~~~~~~~~~~~~
@@ -127,9 +132,9 @@ loads only ``mf`` and ``mf_error`` from the universal observation inputs and
 does not require ``min_error``.
 
 Legacy ``run_hbmcmc`` additive configuration is translated at that script's
-entry point into the same explicit mismatch-model fields. The standard and
-multisector recipes do not recognize compatibility callback identities; they
-select built-in mismatch science only from ``RhimeModelSpec``.
+entry point into the same explicit mismatch-model fields. The runner resolves
+built-in mismatch science from ``RhimeModelSpec`` before the standard or
+multisector recipe is called; the recipes themselves select no default.
 
 Built-in aggregation covariance relies on the guarantees of its construction
 pipeline. A custom pipeline that assembles its own covariance may optionally

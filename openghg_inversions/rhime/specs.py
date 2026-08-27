@@ -64,8 +64,8 @@ class RhimeModelSpec:
         sectors: Flux sectors included in the model. Each sector is optimized
             separately and is normally backed by one OpenGHG flux ``source``.
         use_bc: Whether boundary-condition scaling is included.
-        mismatch_model: Built-in model-data mismatch equation. Custom
-            likelihoods remain a separate Python-only extension point.
+        mismatch_model: Runner-selected built-in model-data mismatch equation,
+            or ``None`` when a Python-only custom likelihood owns that step.
         use_minimum_error_floor: Whether a built-in mismatch component other
             than pollution-event scaling opts into the historical minimum
             total-error floor. Pollution-event scaling always owns this floor.
@@ -100,7 +100,7 @@ class RhimeModelSpec:
     domain: str
     sectors: tuple[SectorSpec, ...]
     use_bc: bool = True
-    mismatch_model: MismatchModel = field(default="pollution_event", kw_only=True)
+    mismatch_model: MismatchModel | None = field(default=None, kw_only=True)
     use_minimum_error_floor: bool = field(default=False, kw_only=True)
     sigma_per_site: bool = True
     sigma_freq: str | None = None
@@ -119,9 +119,9 @@ class RhimeModelSpec:
 
     def __post_init__(self) -> None:
         """Validate model options resolved before graph construction."""
-        if self.mismatch_model not in ("pollution_event", "additive_sigma"):
+        if self.mismatch_model not in (None, "pollution_event", "additive_sigma"):
             raise ValueError(
-                "`mismatch_model` must be 'pollution_event' or 'additive_sigma'; "
+                "`mismatch_model` must be None, 'pollution_event', or 'additive_sigma'; "
                 f"got {self.mismatch_model!r}."
             )
         if self.aggregation_error_mode not in ("auto", "none", "dense", "low_rank", "diagonal"):

@@ -1076,8 +1076,8 @@ linked-observation-model implementations.
 - `openghg_inversions/basis/prior_uncertainty.py` documents and implements the
   independent-grid-cell special case.
 - `openghg_inversions/observation_error.py` and
-  `openghg_inversions/models/_gaussian_observation.py` contain the current fixed
-  dense, diagonal, and LRPD covariance consumers.
+  `openghg_inversions/models/likelihoods.py` contain the current fixed dense,
+  diagonal, and LRPD covariance consumers.
 - Active work is tracked in
   [#493](https://github.com/openghg/openghg_inversions/issues/493),
   [#565](https://github.com/openghg/openghg_inversions/issues/565),

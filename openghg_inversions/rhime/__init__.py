@@ -20,11 +20,11 @@ from openghg_inversions._pymc_config import configure_pytensor
 configure_pytensor()
 
 from .builders import (
+    RhimeLikelihoodBuilder,
     RhimeModelBuilder,
     RhimeModelBuilderContext,
     RhimeModelBuildResult,
 )
-from ._custom_likelihood_seam import RhimeLikelihoodBuilder
 from .co2 import build_co2_model, co2_model_input_names, run_rhime_co2
 from .materialization import materialize_pymc_inputs
 from .params import params_from_config, resolve_flux_sources, resolve_rhime_options

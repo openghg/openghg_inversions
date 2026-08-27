@@ -40,6 +40,7 @@ def test_short_and_full_examples_share_likelihood_and_supported_output(
     assert seen == {
         "config_file": config_file,
         "likelihood_builder": custom_runner.likelihood_builder,
+        "mismatch_model": None,
         "output_format": "none",
     }
 
@@ -91,6 +92,7 @@ def test_custom_runner_uses_supported_stages_for_acquisition_and_reload(
     def resolve(*, params: dict[str, Any], multisector: bool) -> Any:
         """Record public option resolution."""
         assert params is parsed_params
+        assert params["mismatch_model"] is None
         assert multisector is False
         calls.append("resolve")
         return setup
@@ -156,7 +158,8 @@ def test_custom_runner_uses_supported_stages_for_acquisition_and_reload(
     def materialize(actual: Any, *, variable_names: tuple[str, ...]) -> xr.Dataset:
         """Record the explicit eager model-input boundary."""
         assert actual is prepared
-        assert set(variable_names) >= {"H", "mf", "mf_error", "min_error"}
+        assert set(variable_names) >= {"H", "mf", "mf_error"}
+        assert "min_error" not in variable_names
         calls.append("materialize")
         return model_inputs
 
@@ -203,7 +206,7 @@ def test_custom_runner_uses_supported_stages_for_acquisition_and_reload(
     monkeypatch.setattr(
         custom_runner,
         "standard_model_input_names",
-        lambda _actual, _model: ("H", "mf", "mf_error", "min_error"),
+        lambda _actual, _model, *, likelihood_builder: ("H", "mf", "mf_error"),
     )
     monkeypatch.setattr(custom_runner, "materialize_pymc_inputs", materialize)
     monkeypatch.setattr(custom_runner, "build_standard_rhime_model_result", build)

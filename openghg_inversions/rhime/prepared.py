@@ -13,11 +13,7 @@ from openghg_inversions.observation_error import (
     select_aggregation_error_mode,
 )
 
-from .builders import RhimeModelBuilder
-from ._custom_likelihood_seam import (
-    RhimeLikelihoodBuilder,
-    validate_likelihood_kwargs,
-)
+from .builders import RhimeLikelihoodBuilder, RhimeModelBuilder
 from .materialization import materialize_pymc_inputs
 from .multisector import build_multisector_rhime_model_result, make_multisector_rhime_result
 from .multisector import multisector_model_input_names
@@ -71,9 +67,12 @@ def run_rhime_from_prepared_inputs(
             settings are inconsistent.
         TypeError: If an extension point has an invalid callable contract.
     """
-    likelihood_kwargs = validate_likelihood_kwargs(likelihood_builder, likelihood_kwargs)
     if model_builder is not None and likelihood_builder is not None:
         raise ValueError("Pass either `model_builder` or `likelihood_builder`, not both.")
+    if likelihood_kwargs and likelihood_builder is None:
+        raise ValueError("Non-empty `likelihood_kwargs` require an active `likelihood_builder`.")
+    if likelihood_builder is not None and run_spec.model.mismatch_model is not None:
+        raise ValueError("A custom likelihood cannot be combined with a built-in mismatch model.")
     prepared_inputs = prepared_inputs.validated()
     sector_count = len(run_spec.model.sectors)
     if sector_count < 1:

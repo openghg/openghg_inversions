@@ -16,7 +16,6 @@ component: RHIME-specific site/frequency translation lives outside this module.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from typing import Any, cast
 
 import numpy as np
@@ -26,6 +25,7 @@ import xarray as xr
 from pytensor.tensor.variable import TensorVariable
 
 from openghg_inversions.models.components import add_model_data, add_sigma_component
+from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.models._gaussian_observation import (
     add_aggregation_error_data,
     add_gaussian_observation_likelihood,
@@ -38,7 +38,7 @@ from openghg_inversions.sigma import SigmaAlignment
 
 
 FIXED_MODEL_MISMATCH = "fixed_model_mismatch"
-DEFAULT_ADDITIVE_SIGMA_PRIOR = {"pdf": "halfnormal", "sigma": 1.0}
+DEFAULT_ADDITIVE_SIGMA_PRIOR: PriorArgs = {"pdf": "halfnormal", "sigma": 1.0}
 
 
 def add_additive_sigma_likelihood(
@@ -49,8 +49,8 @@ def add_additive_sigma_likelihood(
     mean: TensorVariable,
     minimum_error_floor: xr.DataArray | None = None,
     fixed_model_mismatch: xr.DataArray | None = None,
-    additive_scale_alignment: SigmaAlignment | None = None,
-    additive_scale_prior: Mapping[str, Any] | None = None,
+    additive_sigma_alignment: SigmaAlignment | None = None,
+    additive_sigma_prior: PriorArgs | None = None,
     output_dim: str = "nmeasure",
     observation_error_name: str = "error",
 ) -> TensorVariable:
@@ -58,7 +58,7 @@ def add_additive_sigma_likelihood(
 
     ``fixed_model_mismatch`` is a known observation-aligned standard deviation.
     The inferred absolute mismatch scale is observation-aligned through
-    ``additive_scale_alignment`` and enters as a separate variance term. When
+    ``additive_sigma_alignment`` and enters as a separate variance term. When
     no alignment is supplied, no inferred scale is constructed. Fixed
     diagonal, dense, or low-rank aggregation error is included only when
     explicitly selected. If supplied, ``minimum_error_floor`` floors the total
@@ -74,10 +74,10 @@ def add_additive_sigma_likelihood(
         fixed_model_mismatch: Optional known model-data mismatch standard
             deviation, in the same units and observation order as
             ``observations``.
-        additive_scale_alignment: Mapping from observations to absolute
+        additive_sigma_alignment: Mapping from observations to absolute
             additive mismatch-scale parameters. Omit it for a fixed-error
             likelihood.
-        additive_scale_prior: Prior arguments used to construct the absolute
+        additive_sigma_prior: Prior arguments used to construct the absolute
             additive mismatch scale.
         output_dim: Observation dimension used for named PyMC variables.
         observation_error_name: PyMC data name for the reported error.
@@ -97,11 +97,6 @@ def add_additive_sigma_likelihood(
         owner="Additive-sigma likelihood",
         output_dim=output_dim,
     )
-    if additive_scale_alignment is not None and additive_scale_prior is None:
-        raise ValueError(
-            "Additive-sigma likelihood requires `additive_scale_prior` with "
-            "`additive_scale_alignment`."
-        )
     reported_error = add_model_data(
         observation_error.transpose(output_dim),
         observation_error_name,
@@ -129,13 +124,17 @@ def add_additive_sigma_likelihood(
             FIXED_MODEL_MISMATCH,
         )
         independent_variance = independent_variance + fixed_mismatch_data**2
-    if additive_scale_alignment is not None:
-        assert additive_scale_prior is not None
-        additive_scale = add_sigma_component(
-            additive_scale_alignment,
-            prior_args=dict(additive_scale_prior),
+    if additive_sigma_alignment is not None:
+        if additive_sigma_prior is None:
+            raise ValueError(
+                "Additive-sigma likelihood requires `additive_sigma_prior` with "
+                "`additive_sigma_alignment`."
+            )
+        additive_sigma = add_sigma_component(
+            additive_sigma_alignment,
+            prior_args=dict(additive_sigma_prior),
         )
-        independent_variance = independent_variance + additive_scale**2
+        independent_variance = independent_variance + additive_sigma**2
 
     aggregation_marginal_variance = registered_aggregation_error.marginal_variance
     if minimum_error_floor is not None:
