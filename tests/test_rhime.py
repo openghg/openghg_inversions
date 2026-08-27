@@ -26,7 +26,7 @@ import openghg_inversions.models as models
 import openghg_inversions.postprocessing.inversion_output as inversion_output_module
 import openghg_inversions.rhime as rhime_public
 import openghg_inversions.rhime._model_building as rhime_model_building
-import openghg_inversions.rhime.likelihood_seam as rhime_likelihood_seam
+import openghg_inversions.rhime._custom_likelihood_seam as rhime_custom_likelihood_seam
 import openghg_inversions.rhime.outputs as rhime_outputs
 import openghg_inversions.rhime.params as rhime_params
 import openghg_inversions.rhime.preparation as rhime_preparation
@@ -84,7 +84,6 @@ from openghg_inversions.rhime import (
 from openghg_inversions.rhime.multisector import (
     build_multisector_rhime_model as _build_rhime_multisector_model,
 )
-from openghg_inversions.rhime.likelihoods import additive_sigma_likelihood_builder
 from openghg_inversions.rhime.standard import (
     build_standard_rhime_model as _build_rhime_model,
 )
@@ -897,11 +896,7 @@ def test_recipe_passes_completed_forward_mean_to_custom_likelihood(
         calls.append(kwargs)
         return example_likelihoods.likelihood_builder(**kwargs)
 
-    kwargs = {
-        key: value
-        for key, value in builder_args.items()
-        if key != "minimum_error"
-    }
+    kwargs = {key: value for key, value in builder_args.items() if key != "minimum_error"}
     kwargs.update(add_offset=True, likelihood_builder=capture_inputs)
     if multisector:
         model = build_rhime_multisector_model(
@@ -960,11 +955,7 @@ def test_builtin_additive_peer_uses_completed_forward_mean(
     """Both recipes compose their full mean before the additive component."""
     inv_inputs = multisector_inv_inputs if multisector else rhime_inv_inputs
     kwargs = {
-        **{
-            key: value
-            for key, value in builder_args.items()
-            if key != "minimum_error"
-        },
+        **{key: value for key, value in builder_args.items() if key != "minimum_error"},
         "add_offset": True,
         "mismatch_model": "additive_sigma",
         "additive_scale_alignment": SigmaAlignment.from_frequency(
@@ -1029,8 +1020,8 @@ def test_custom_likelihood_builders_use_the_common_contract() -> None:
         assert model_specific_inputs.isdisjoint(inspect.signature(builder).parameters)
 
 
-def test_legacy_additive_adapter_aligns_site_keyed_scales() -> None:
-    """Legacy site spellings become the direct additive component's prior."""
+def test_additive_sigma_inputs_align_site_keyed_scales() -> None:
+    """Site-keyed scales follow the direct additive component's retained order."""
     data = xr.Dataset(
         {
             "mf": ("nmeasure", [1.0, 2.0, 3.0]),
@@ -1046,43 +1037,31 @@ def test_legacy_additive_adapter_aligns_site_keyed_scales() -> None:
             ),
         },
     )
-    with models.registered_model(coords={"nmeasure": np.arange(3)}) as model:
-        additive_sigma_likelihood_builder(
-            observations=data["mf"],
-            observation_error=data["mf_error"],
-            minimum_error=data["min_error"],
-            aggregation_error=resolve_aggregation_error(data, "none"),
-            mean=pm.math.constant(np.ones(3)),
-            output_dim="nmeasure",
-            sigma_prior={
-                "pdf": "halfnormal",
-                "sigma": {"MHD": 5.0, "unused": 9.0, "TAC": 2.0},
-            },
-        )
+    _, prior = rhime_model_building.prepare_additive_sigma_inputs(
+        data["mf"],
+        output_dim="nmeasure",
+        sigma_prior={
+            "pdf": "halfnormal",
+            "sigma": {"MHD": 5.0, "unused": 9.0, "TAC": 2.0},
+        },
+    )
 
-    np.testing.assert_array_equal(model["sigma"].owner.inputs[-1].eval(), [[2.0], [5.0]])
+    assert prior is not None
+    np.testing.assert_array_equal(prior["sigma"], [[2.0], [5.0]])
 
 
-def test_legacy_additive_adapter_rejects_incomplete_site_scales() -> None:
+def test_additive_sigma_inputs_reject_incomplete_site_scales() -> None:
     observations = xr.DataArray(
         [1.0, 2.0],
         dims="nmeasure",
         coords={"site": ("nmeasure", ["MHD", "TAC"])},
     )
-    with models.registered_model(coords={"nmeasure": np.arange(2)}):
-        with pytest.raises(ValueError, match="missing retained site.*TAC"):
-            additive_sigma_likelihood_builder(
-                observations=observations,
-                observation_error=xr.ones_like(observations),
-                minimum_error=xr.zeros_like(observations),
-                aggregation_error=resolve_aggregation_error(
-                    xr.Dataset({"mf": observations}),
-                    "none",
-                ),
-                mean=pm.math.constant(np.ones(2)),
-                output_dim="nmeasure",
-                sigma_prior={"pdf": "halfnormal", "sigma": {"MHD": 5.0}},
-            )
+    with pytest.raises(ValueError, match="missing retained site.*TAC"):
+        rhime_model_building.prepare_additive_sigma_inputs(
+            observations,
+            output_dim="nmeasure",
+            sigma_prior={"pdf": "halfnormal", "sigma": {"MHD": 5.0}},
+        )
 
 
 def test_recipe_expands_only_explicit_custom_likelihood_options(
@@ -2345,12 +2324,6 @@ def test_concrete_multisector_model_rejects_reparameterized_name_collisions(
         )
 
 
-
-
-
-
-
-
 def test_standard_model_preserves_reparameterized_prior_and_forward_equation(
     rhime_inv_inputs: xr.Dataset,
     builder_args: dict,
@@ -2473,8 +2446,6 @@ def test_bc_zero_columns_are_structurally_removed_by_default(
     expected = model["hbc"].get_value() @ state[1:]
     tolerance = 100 * max(np.finfo(actual.dtype).eps, np.finfo(expected.dtype).eps)
     np.testing.assert_allclose(actual, expected, rtol=tolerance, atol=tolerance)
-
-
 
 
 def test_multisector_model_preserves_additive_semantics(
@@ -3090,14 +3061,14 @@ def test_likelihood_options_are_detached_and_json_compatible() -> None:
     """Likelihood provenance uses an immutable-by-convention JSON copy."""
     supplied = {"degrees_of_freedom": 7.0, "labels": ["background"]}
 
-    copied = rhime_likelihood_seam.validate_likelihood_kwargs(lambda **kwargs: kwargs, supplied)
+    copied = rhime_custom_likelihood_seam.validate_likelihood_kwargs(lambda **kwargs: kwargs, supplied)
 
     assert copied == supplied
     assert copied is not supplied
     assert copied is not None
     assert copied["labels"] is not supplied["labels"]
     with pytest.raises(TypeError, match="JSON-compatible"):
-        rhime_likelihood_seam.validate_likelihood_kwargs(
+        rhime_custom_likelihood_seam.validate_likelihood_kwargs(
             lambda **kwargs: kwargs,
             {"opaque": object()},
         )
@@ -3501,7 +3472,10 @@ def test_complete_model_builder_owns_lazy_aggregation_error_inputs(
 
 @pytest.mark.parametrize(
     "build_stage",
-    [rhime_standard.build_standard_rhime_model_result, rhime_multisector.build_multisector_rhime_model_result],
+    [
+        rhime_standard.build_standard_rhime_model_result,
+        rhime_multisector.build_multisector_rhime_model_result,
+    ],
 )
 def test_public_build_stages_reject_simultaneous_model_and_likelihood_builders(
     build_stage: Callable[..., RhimeModelBuildResult],
@@ -3530,60 +3504,6 @@ def test_public_build_stages_reject_simultaneous_model_and_likelihood_builders(
         )
 
     assert builder_calls == []
-
-
-def test_legacy_additive_adapter_selects_direct_builtin_component(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """The frozen callback spelling selects the recipe's additive peer branch."""
-    _, _, run_spec = _minimal_output_specs(output_format="none")
-    run_spec = replace(run_spec, model=replace(run_spec.model, use_bc=False))
-    prepared = RhimePreparedInputs(
-        inv_inputs=_minimal_output_inv_inputs(),
-        basis_functions=_fake_basis_functions(),
-        site_metadata=_prepared_site_metadata(),
-    )
-    sampled_models: list[pm.Model] = []
-    direct_calls: list[dict[str, Any]] = []
-    direct_additive = rhime_standard.add_additive_sigma_likelihood
-
-    def capture_direct_additive(**kwargs: Any) -> Any:
-        direct_calls.append(kwargs)
-        return direct_additive(**kwargs)
-
-    def fake_sample(
-        self: RhimeSampler,
-        model: pm.Model,
-        *,
-        variable_roles: dict[str, str],
-    ) -> az.InferenceData:
-        sampled_models.append(model)
-        assert variable_roles["concentration"] == "y"
-        assert variable_roles["model_error"] == "epsilon"
-        return _minimal_output_idata()
-
-    monkeypatch.setattr(RhimeSampler, "sample", fake_sample)
-    monkeypatch.setattr(
-        rhime_standard,
-        "add_additive_sigma_likelihood",
-        capture_direct_additive,
-    )
-    result = run_rhime_from_prepared_inputs(
-        prepared_inputs=prepared,
-        run_spec=run_spec,
-        likelihood_builder=additive_sigma_likelihood_builder,
-    )
-
-    assert len(sampled_models) == 1
-    assert len(direct_calls) == 1
-    xr.testing.assert_identical(
-        direct_calls[0]["minimum_error_floor"],
-        prepared.inv_inputs["min_error"],
-    )
-    assert {"sigma", "epsilon", "y"} <= set(sampled_models[0].named_vars)
-    assert result.model_spec.mismatch_model == "additive_sigma"
-    assert result.model_spec.use_minimum_error_floor is True
-    assert result.outputs == {}
 
 
 def test_modern_additive_mismatch_uses_model_spec_without_minimum_error(
@@ -3664,7 +3584,10 @@ def test_custom_likelihood_prepared_run_does_not_require_minimum_error(
 
 @pytest.mark.parametrize(
     "build_stage",
-    [rhime_standard.build_standard_rhime_model_result, rhime_multisector.build_multisector_rhime_model_result],
+    [
+        rhime_standard.build_standard_rhime_model_result,
+        rhime_multisector.build_multisector_rhime_model_result,
+    ],
 )
 def test_public_build_stages_reject_orphaned_likelihood_options(
     build_stage: Callable[..., RhimeModelBuildResult],
@@ -3741,9 +3664,51 @@ def test_likelihood_builder_provenance_is_saved_with_result_metadata(
     output_path = tmp_path / "custom-likelihood.nc"
     result.inv_out.save(output_path)
     reloaded = InversionOutput.load(output_path)
-    assert reloaded.model_metadata["builder"]["likelihood_kwargs"] == {
-        "degrees_of_freedom": 7.0
+    assert reloaded.model_metadata["builder"]["likelihood_kwargs"] == {"degrees_of_freedom": 7.0}
+
+
+def test_legacy_additive_provenance_is_saved_with_builtin_model() -> None:
+    """Compatibility provenance survives after model selection stops using a callback."""
+    model_spec, _, run_spec = _minimal_output_specs(output_format="inv_out")
+    model_spec = replace(model_spec, use_bc=False)
+    run_spec = replace(run_spec, model=model_spec)
+    inv_inputs = _minimal_output_inv_inputs()
+    inv_inputs["H"] = inv_inputs["H"].assign_coords(source=model_spec.sectors[0].flux_source)
+    prepared = RhimePreparedInputs(
+        inv_inputs=inv_inputs,
+        basis_functions=_fake_basis_functions(),
+        site_metadata=_prepared_site_metadata(),
+    )
+    build_result = rhime_standard.build_standard_rhime_model_result(
+        prepared=prepared,
+        model_inputs=prepared.inv_inputs,
+        run_spec=run_spec,
+    )
+    provenance = {
+        "likelihood_builder": {
+            "module": "openghg_inversions.rhime.likelihoods",
+            "qualname": "additive_sigma_likelihood_builder",
+        },
+        "likelihood_kwargs": {"sigma_prior": {"pdf": "halfnormal", "sigma": 5.0}},
     }
+
+    result = rhime_standard.make_standard_rhime_result(
+        prepared=prepared,
+        run_spec=run_spec,
+        sampler=RhimeSampler(),
+        model_build_result=build_result,
+        idata=_minimal_output_idata(),
+        build_and_sample_seconds=0.0,
+        _compatibility_likelihood_provenance=provenance,
+    )
+    rhime_public.make_standard_rhime_outputs(result=result, prepared=prepared)
+
+    assert result.output_metadata["likelihood_builder"] == provenance["likelihood_builder"]
+    assert result.output_metadata["likelihood_kwargs"] == provenance["likelihood_kwargs"]
+    assert result.inv_out is not None
+    saved_builder = result.inv_out.model_metadata["builder"]
+    assert saved_builder["likelihood_builder"] == provenance["likelihood_builder"]
+    assert saved_builder["likelihood_kwargs"] == provenance["likelihood_kwargs"]
 
 
 def test_custom_model_builder_rejects_undeclared_output_before_sampling(
@@ -4421,7 +4386,6 @@ def test_multisector_model_result_resolves_explicit_inputs_from_spec(
     assert seen["kwargs"]["state_activity"] is shared_activity
     assert seen["kwargs"]["bc_state_activity"] is bc_activity
     assert isinstance(seen["kwargs"]["sigma_alignment"], SigmaAlignment)
-
 
 
 @pytest.mark.rhime_contract

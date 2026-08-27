@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import replace
 from typing import Any
 
 import pandas as pd
@@ -15,9 +14,8 @@ from openghg_inversions.observation_error import (
 )
 
 from .builders import RhimeModelBuilder
-from .likelihood_seam import (
+from ._custom_likelihood_seam import (
     RhimeLikelihoodBuilder,
-    translate_legacy_likelihood_selection,
     validate_likelihood_kwargs,
 )
 from .materialization import materialize_pymc_inputs
@@ -76,12 +74,6 @@ def run_rhime_from_prepared_inputs(
     likelihood_kwargs = validate_likelihood_kwargs(likelihood_builder, likelihood_kwargs)
     if model_builder is not None and likelihood_builder is not None:
         raise ValueError("Pass either `model_builder` or `likelihood_builder`, not both.")
-    model_options, likelihood_builder, likelihood_kwargs = translate_legacy_likelihood_selection(
-        likelihood_builder,
-        likelihood_kwargs,
-    )
-    if model_options:
-        run_spec = replace(run_spec, model=replace(run_spec.model, **model_options))
     prepared_inputs = prepared_inputs.validated()
     sector_count = len(run_spec.model.sectors)
     if sector_count < 1:

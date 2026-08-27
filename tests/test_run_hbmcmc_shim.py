@@ -104,11 +104,13 @@ def test_additive_sigma_selection_forces_no_aggregation_error(tmp_path: Path) ->
     params["sigma_freq"] = "monthly"
 
     translated = run_hbmcmc.fixedbasis_params_to_rhime(params)
-    options = run_hbmcmc._select_additive_sigma_likelihood(params, translated)
+    options = run_hbmcmc._select_additive_sigma_model_options(params, translated)
 
     assert "likelihood" not in translated
-    assert translated["aggregation_error_mode"] == "none"
     assert options == {
+        "mismatch_model": "additive_sigma",
+        "use_minimum_error_floor": True,
+        "aggregation_error_mode": "none",
         "sigma_prior": {"pdf": "halfnormal", "sigma": 5.0},
         "sigma_freq": "monthly",
     }
@@ -121,7 +123,7 @@ def test_additive_sigma_fixed_periods_keep_inversion_start_anchor(tmp_path: Path
     params.update(likelihood="additive_sigma", sigma_freq="8D")
 
     translated = run_hbmcmc.fixedbasis_params_to_rhime(params)
-    options = run_hbmcmc._select_additive_sigma_likelihood(params, translated)
+    options = run_hbmcmc._select_additive_sigma_model_options(params, translated)
     site_index = xr.DataArray(
         [0, 0],
         dims="nmeasure",
@@ -154,18 +156,17 @@ def test_additive_sigma_prior_takes_precedence_over_sigprior(tmp_path: Path) -> 
     }
 
     translated = run_hbmcmc.fixedbasis_params_to_rhime(params)
-    options = run_hbmcmc._select_additive_sigma_likelihood(params, translated)
+    options = run_hbmcmc._select_additive_sigma_model_options(params, translated)
 
     assert "additive_sigma_prior" not in translated
-    assert translated["sigma_prior"] == {
-        "pdf": "halfnormal",
-        "sigma": {"MHD": 5.0, "TAC": 2.0},
-    }
     assert options == {
+        "mismatch_model": "additive_sigma",
+        "use_minimum_error_floor": True,
+        "aggregation_error_mode": "none",
         "sigma_prior": {
             "pdf": "halfnormal",
             "sigma": {"MHD": 5.0, "TAC": 2.0},
-        }
+        },
     }
 
 
@@ -177,10 +178,14 @@ def test_additive_sigma_selection_defaults_to_half_normal(tmp_path: Path) -> Non
     del params["sigprior"]
 
     translated = run_hbmcmc.fixedbasis_params_to_rhime(params)
-    options = run_hbmcmc._select_additive_sigma_likelihood(params, translated)
+    options = run_hbmcmc._select_additive_sigma_model_options(params, translated)
 
-    assert translated["sigma_prior"] == run_hbmcmc.DEFAULT_ADDITIVE_SIGMA_PRIOR
-    assert options == {"sigma_prior": run_hbmcmc.DEFAULT_ADDITIVE_SIGMA_PRIOR}
+    assert options == {
+        "mismatch_model": "additive_sigma",
+        "use_minimum_error_floor": True,
+        "aggregation_error_mode": "none",
+        "sigma_prior": run_hbmcmc.DEFAULT_ADDITIVE_SIGMA_PRIOR,
+    }
 
 
 def test_additive_sigma_prior_requires_additive_likelihood(tmp_path: Path) -> None:
@@ -192,7 +197,7 @@ def test_additive_sigma_prior_requires_additive_likelihood(tmp_path: Path) -> No
     translated = run_hbmcmc.fixedbasis_params_to_rhime(params)
 
     with pytest.raises(ValueError, match="requires likelihood='additive_sigma'"):
-        run_hbmcmc._select_additive_sigma_likelihood(params, translated)
+        run_hbmcmc._select_additive_sigma_model_options(params, translated)
 
 
 def test_additive_sigma_selection_rejects_aggregation_error(tmp_path: Path) -> None:
@@ -204,7 +209,7 @@ def test_additive_sigma_selection_rejects_aggregation_error(tmp_path: Path) -> N
     translated = run_hbmcmc.fixedbasis_params_to_rhime(params)
 
     with pytest.raises(ValueError, match="does not support.*aggregation_error_mode"):
-        run_hbmcmc._select_additive_sigma_likelihood(params, translated)
+        run_hbmcmc._select_additive_sigma_model_options(params, translated)
 
 
 def test_fixedbasis_params_to_rhime_translates_reparameterise_log_normal(tmp_path: Path) -> None:
@@ -372,13 +377,22 @@ def test_run_hbmcmc_main_selects_additive_sigma_from_ini(
 
     run_hbmcmc.main(["-c", str(config_file)])
 
-    assert seen["likelihood_builder"] is run_hbmcmc.additive_sigma_likelihood_builder
-    assert seen["likelihood_kwargs"] == {
-        "sigma_prior": {"pdf": "halfnormal", "sigma": {"TAC": 2.0}},
-    }
+    assert "likelihood_builder" not in seen
+    assert "likelihood_kwargs" not in seen
+    assert seen["mismatch_model"] == "additive_sigma"
+    assert seen["use_minimum_error_floor"] is True
     assert seen["sigma_prior"] == {"pdf": "halfnormal", "sigma": {"TAC": 2.0}}
     assert seen["aggregation_error_mode"] == "none"
     assert seen["preserve_legacy_likelihood"] is False
+    assert seen["_compatibility_likelihood_provenance"] == {
+        "likelihood_builder": {
+            "module": "openghg_inversions.rhime.likelihoods",
+            "qualname": "additive_sigma_likelihood_builder",
+        },
+        "likelihood_kwargs": {
+            "sigma_prior": {"pdf": "halfnormal", "sigma": {"TAC": 2.0}},
+        },
+    }
 
 
 def test_run_hbmcmc_legacy_fixedbasis_parser_is_explicit(tmp_path: Path) -> None:
