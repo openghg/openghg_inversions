@@ -15,6 +15,7 @@ import openghg_inversions.rhime.prepared as rhime_prepared
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.inversion_data import prepare_rhime_inputs_from_xarray
 from openghg_inversions.rhime import (
+    PollutionEventSettings,
     RhimeModelSpec,
     RhimeOutputSpec,
     RhimeRunSpec,
@@ -810,7 +811,9 @@ def test_adapter_output_executes_through_prepared_runner_without_openghg(
             ),
         ),
         use_bc=False,
-        sigma_prior={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
+        likelihood=PollutionEventSettings(
+            sigma_prior={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
+        ),
     )
     run_spec = RhimeRunSpec(
         start_date="2021-01-01",
@@ -901,7 +904,9 @@ def test_unequal_source_regions_round_trip_and_execute(
         ),
         use_bc=True,
         bc_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.1},
-        sigma_prior={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
+        likelihood=PollutionEventSettings(
+            sigma_prior={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
+        ),
     )
     run_spec = RhimeRunSpec(
         start_date="2021-01-01",
