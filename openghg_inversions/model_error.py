@@ -97,8 +97,10 @@ class MinimumError:
             raise ValueError(f"Option '{value}' is not valid.")
 
         source = np.asarray(source, dtype=float)
-        if not np.isfinite(source).all() or (source < 0).any():
-            raise ValueError("Minimum-error values must be finite and non-negative.")
+        if not np.isfinite(source).all():
+            raise ValueError("Minimum-error values contain NaN or infinite values.")
+        if (source < 0).any():
+            raise ValueError("Minimum-error values must be non-negative.")
 
         if varies_by_site:
             if site_coord is None:
@@ -260,15 +262,13 @@ def percentile_error_method(ds_dict: dict[str, xr.Dataset]) -> np.ndarray:
     Returns:
         np.ndarray: estimated value(s) for model error.
     """
-    # Combine mf data from each site into a single dataset with a site dimension
-    ds = xr.concat(
-        [v[["mf"]].expand_dims({"site": [k]}) for k, v in ds_dict.items() if not k.startswith(".")],
-        dim="site",
-    )
+    result = []
+    for site, dataset in ds_dict.items():
+        if site.startswith("."):
+            continue
+        mf = dataset.mf.as_numpy()
+        monthly_50pc = mf.resample(time="MS").quantile(0.5)
+        monthly_5pc = mf.resample(time="MS").quantile(0.05)
+        result.append((monthly_50pc - monthly_5pc).mean().item())
 
-    # Calculate monthly percentiles, then take the annual mean difference for each site
-    monthly_50pc = ds.mf.as_numpy().resample(time="MS").quantile(0.5)
-    monthly_5pc = ds.mf.as_numpy().resample(time="MS").quantile(0.05)
-    res_err = (monthly_50pc - monthly_5pc).groupby("site").mean(dim="time")
-
-    return res_err.values
+    return np.asarray(result)
