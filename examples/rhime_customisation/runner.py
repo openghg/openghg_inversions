@@ -91,7 +91,6 @@ def run_custom_rhime(
         variable_names=standard_model_input_names(
             prepared,
             run_spec.model,
-            likelihood_builder=likelihood_builder,
         ),
     )
     build_and_sample_start = perf_counter()

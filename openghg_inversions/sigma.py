@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from openghg_inversions.inversion_inputs import DatetimeLike, make_sigma_freq
+from openghg_inversions.inversion_inputs import DatetimeLike, make_sigma_freq, make_site_indicator
 
 _OBS_DIM = "nmeasure"
 _SITE_INDEX_NAME = "sigma_site_index"
@@ -135,6 +135,43 @@ class SigmaAlignment:
                 raise ValueError("Sigma frequencies require complete observation timestamps.")
             period = make_sigma_freq(time, freq=frequency, anchor_time=anchor_time)
         return cls.from_indices(site, period, per_site=per_site)
+
+    @classmethod
+    def from_observations(
+        cls,
+        observations: xr.DataArray,
+        frequency: str | None = None,
+        *,
+        per_site: bool = True,
+        anchor_time: DatetimeLike | None = None,
+    ) -> SigmaAlignment:
+        """Derive sigma alignment from observation site and time coordinates.
+
+        Args:
+            observations: Observation vector with an aligned ``site``
+                coordinate and, when ``frequency`` is set, observation times.
+            frequency: Sigma period frequency. ``None`` creates one period.
+            per_site: Whether sigma varies by site.
+            anchor_time: Optional fixed-duration period anchor.
+
+        Returns:
+            Canonical sigma alignment.
+
+        Raises:
+            ValueError: If the required observation coordinates are absent or
+                invalid.
+        """
+        site = observations.coords.get("site")
+        if site is None or site.dims != (_OBS_DIM,):
+            raise ValueError(
+                "Sigma alignment requires an observation-aligned 'site' coordinate."
+            )
+        return cls.from_frequency(
+            make_site_indicator(site),
+            frequency=frequency,
+            per_site=per_site,
+            anchor_time=anchor_time,
+        )
 
     @classmethod
     def from_indices(

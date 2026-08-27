@@ -25,13 +25,12 @@ from openghg_inversions.models import (
 )
 from openghg_inversions.models.components import add_linear_component, resolve_model_variable
 from openghg_inversions.models.components import add_state_vector
-from openghg_inversions.models.pollution_event import add_pollution_event_likelihood
 from openghg_inversions.observation_error import resolve_aggregation_error
 from openghg_inversions.rhime.multisector import (
     _prepare_multisector_flux_components,
     build_multisector_rhime_model as _build_multisector_model,
 )
-from openghg_inversions.rhime.specs import SectorSpec
+from openghg_inversions.rhime.specs import PollutionEventSettings, SectorSpec
 from openghg_inversions.rhime.standard import build_standard_rhime_model as _build_standard_model
 from openghg_inversions.sigma import SigmaAlignment
 
@@ -81,6 +80,7 @@ def build_rhime_model(inputs: xr.Dataset, **kwargs: Any) -> pm.Model:
         observations=inputs["mf"],
         observation_error=inputs["mf_error"],
         aggregation_error=resolve_aggregation_error(inputs, "none"),
+        model_inputs=inputs,
         boundary_sensitivity=inputs.get("H_bc"),
         **kwargs,
     )
@@ -94,6 +94,7 @@ def build_rhime_multisector_model(inputs: xr.Dataset, **kwargs: Any) -> pm.Model
         observations=inputs["mf"],
         observation_error=inputs["mf_error"],
         aggregation_error=resolve_aggregation_error(inputs, "none"),
+        model_inputs=inputs,
         boundary_sensitivity=inputs.get("H_bc"),
         **kwargs,
     )
@@ -101,18 +102,16 @@ def build_rhime_multisector_model(inputs: xr.Dataset, **kwargs: Any) -> pm.Model
 
 def _select_pollution_event_likelihood(inputs: xr.Dataset, kwargs: dict[str, Any]) -> None:
     """Supply the explicit PEFO component used by these direct-recipe tests."""
-    kwargs["likelihood_builder"] = add_pollution_event_likelihood
-    kwargs["likelihood_kwargs"] = {
-        "minimum_error": inputs["min_error"],
-        "sigma_alignment": kwargs.pop("sigma_alignment"),
-        "sigma_prior": kwargs.pop(
+    kwargs["sigma_alignment"] = kwargs.pop("sigma_alignment")
+    kwargs["likelihood_settings"] = PollutionEventSettings(
+        sigma_prior=kwargs.pop(
             "sigma_prior",
             {"pdf": "uniform", "lower": 0.1, "upper": 3.0},
         ),
-        "power": kwargs.pop("power", 1.99),
-        "pollution_events_from_obs": kwargs.pop("pollution_events_from_obs", False),
-        "no_model_error": kwargs.pop("no_model_error", False),
-    }
+        power=kwargs.pop("power", 1.99),
+        pollution_events_from_obs=kwargs.pop("pollution_events_from_obs", False),
+        no_model_error=kwargs.pop("no_model_error", False),
+    )
 
 
 def test_detect_zero_sensitivity_validates_and_retains_state_metadata() -> None:

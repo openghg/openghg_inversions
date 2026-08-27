@@ -122,7 +122,6 @@ def co2_model_input_names(
     *,
     aggregation_error_mode: AggregationErrorMode,
     preserve_prepared_fixed_mismatch: bool,
-    derive_sigma_alignment: bool = False,
 ) -> tuple[str, ...]:
     """Declare prepared arrays consumed by the selected CO2 components.
 
@@ -133,8 +132,6 @@ def co2_model_input_names(
             the likelihood.
         preserve_prepared_fixed_mismatch: Include a prepared fixed mismatch
             field when present.
-        derive_sigma_alignment: Include the site indicator needed to derive
-            the default mismatch-error grouping.
 
     Returns:
         Names of the arrays to materialize for model construction.
@@ -145,8 +142,6 @@ def co2_model_input_names(
     inputs = prepared_inputs.inv_inputs
     names = list(_CO2_SCIENTIFIC_INPUT_NAMES)
     names.extend(aggregation_error_input_names(inputs, aggregation_error_mode))
-    if derive_sigma_alignment:
-        names.append("site_indicator")
     if "state_is_active" in inputs:
         names.append("state_is_active")
         if "state_fixed_value" in inputs:
@@ -216,11 +211,10 @@ def run_rhime_co2(
         prepared,
         aggregation_error_mode=aggregation_error_mode,
         preserve_prepared_fixed_mismatch=fixed_model_mismatch is None,
-        derive_sigma_alignment=not no_model_error and sigma_alignment is None,
     )
     model_inputs = materialize_pymc_inputs(prepared, variable_names=names)
     if not no_model_error and sigma_alignment is None:
-        sigma_alignment = SigmaAlignment.from_frequency(model_inputs["site_indicator"])
+        sigma_alignment = SigmaAlignment.from_observations(model_inputs["mf"])
     aggregation_error = resolve_aggregation_error(
         model_inputs,
         aggregation_error_mode,
