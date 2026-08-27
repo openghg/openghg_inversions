@@ -27,7 +27,7 @@ from openghg_inversions.inversion_inputs import (
     concat_gather_datasets,
     make_inv_inputs,
 )
-from openghg_inversions.model_error import MinimumError
+from openghg_inversions.model_error import MinimumError, percentile_error_method
 from openghg_inversions.sigma import SigmaAlignment
 
 
@@ -612,12 +612,36 @@ def test_minimum_error_uses_declared_site_order_and_records_provenance(tmp_path:
     result.values.to_netcdf(tmp_path / "minimum_error.nc")
 
 
-@pytest.mark.parametrize("value", [-1.0, np.inf, np.nan])
-def test_minimum_error_rejects_invalid_values(value: float):
+@pytest.mark.parametrize(
+    ("value", "message"),
+    [
+        pytest.param(-1.0, "must be non-negative", id="negative"),
+        pytest.param(np.inf, "contain NaN or infinite", id="infinite"),
+        pytest.param(np.nan, "contain NaN or infinite", id="nan"),
+    ],
+)
+def test_minimum_error_rejects_invalid_values(value: float, message: str):
     observations = xr.Dataset({"mf": ("nmeasure", [1.0])})
 
-    with pytest.raises(ValueError, match="finite and non-negative"):
+    with pytest.raises(ValueError, match=message):
         MinimumError.prepare(observations, {}, value)
+
+
+def test_percentile_error_resamples_each_site_independently():
+    sites = {
+        "AAA": xr.Dataset(
+            {"mf": ("time", [1.0, 3.0, 5.0])},
+            coords={"time": pd.to_datetime(["2024-01-01", "2024-01-02", "2024-03-01"])},
+        ),
+        "BBB": xr.Dataset(
+            {"mf": ("time", [10.0, 20.0, 30.0])},
+            coords={"time": pd.to_datetime(["2024-01-01", "2024-02-01", "2024-03-01"])},
+        ),
+    }
+
+    result = percentile_error_method(sites)
+
+    np.testing.assert_allclose(result, [0.45, 0.0])
 
 
 def test_scalar_minimum_error_preserves_lazy_borrowed_observations():
