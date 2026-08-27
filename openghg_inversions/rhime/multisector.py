@@ -54,6 +54,7 @@ from .specs import (
 
 from ._model_building import (
     builtin_model_build_result,
+    prepare_additive_sigma_inputs,
     validated_custom_model_build,
 )
 from .builders import (
@@ -63,10 +64,8 @@ from .builders import (
     callable_metadata,
     validate_model_build_result,
 )
-from .likelihood_seam import (
+from ._custom_likelihood_seam import (
     RhimeLikelihoodBuilder,
-    prepare_additive_sigma_inputs,
-    translate_legacy_likelihood_selection,
     validate_custom_likelihood_result,
     validate_likelihood_kwargs,
 )
@@ -147,8 +146,7 @@ def multisector_model_input_names(
         )
         names.extend(_MODEL_ERROR_ALIGNMENT_INPUT_NAMES)
     needs_minimum_error = builtin_mismatch and (
-        model_spec.mismatch_model == "pollution_event"
-        or model_spec.use_minimum_error_floor
+        model_spec.mismatch_model == "pollution_event" or model_spec.use_minimum_error_floor
     )
     if needs_minimum_error:
         _require_component_inputs(
@@ -278,9 +276,7 @@ def _prepare_multisector_flux_components(
         )
         semantic_state_dim = resolved_activity.state_dim
         backend_state_dim = (
-            f"{semantic_state_dim}_{sector.variable_suffix}"
-            if gathered_layout
-            else semantic_state_dim
+            f"{semantic_state_dim}_{sector.variable_suffix}" if gathered_layout else semantic_state_dim
         )
         rename_state = (
             {semantic_state_dim: backend_state_dim} if semantic_state_dim != backend_state_dim else {}
@@ -473,9 +469,7 @@ def build_multisector_rhime_model(
             )
         else:
             if minimum_error is None:
-                raise ValueError(
-                    "Pollution-event mismatch requires the prepared `min_error` input."
-                )
+                raise ValueError("Pollution-event mismatch requires the prepared `min_error` input.")
             add_pollution_event_likelihood(
                 observations=observations,
                 observation_error=observation_error,
@@ -778,11 +772,6 @@ def run_rhime_multisector(
         if config_file is not None
         else dict(kwargs)
     )
-    model_options, likelihood_builder, likelihood_kwargs = translate_legacy_likelihood_selection(
-        likelihood_builder,
-        likelihood_kwargs,
-    )
-    params.update(model_options)
     setup = resolve_rhime_options(params=params, multisector=True)
 
     preparation_start = timer_start()

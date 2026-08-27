@@ -1,10 +1,18 @@
-"""Small validation helpers shared by concrete RHIME model recipes."""
+"""Small helpers shared by concrete RHIME model recipes."""
 
 from __future__ import annotations
 
-from collections.abc import Collection
+from collections.abc import Collection, Mapping
+from numbers import Real
+from typing import Any
 
+import numpy as np
 import pymc as pm
+import xarray as xr
+
+from openghg_inversions.inversion_inputs import DatetimeLike, make_site_indicator, make_site_names
+from openghg_inversions.models.additive_sigma import DEFAULT_ADDITIVE_SIGMA_PRIOR
+from openghg_inversions.sigma import SigmaAlignment
 
 from .builders import (
     RhimeModelBuilder,
@@ -12,6 +20,69 @@ from .builders import (
     RhimeModelBuildResult,
 )
 from .specs import RhimeModelSpec
+
+
+def _resolve_site_additive_scale_prior(
+    prior: Mapping[str, Any],
+    site: xr.DataArray,
+    *,
+    per_site: bool,
+) -> dict[str, Any]:
+    """Translate site-keyed prior scales to retained-site order."""
+    resolved = dict(prior)
+    scale = resolved.get("sigma")
+    if not isinstance(scale, Mapping):
+        return resolved
+    if not per_site:
+        raise ValueError("A site-keyed additive scale prior requires `sigma_per_site=True`.")
+
+    site_names = [str(value) for value in make_site_names(site).values]
+    missing = [name for name in site_names if name not in scale]
+    if missing:
+        raise ValueError(f"Site-keyed additive scale prior is missing retained site(s): {missing!r}.")
+    values = [scale[name] for name in site_names]
+    if any(isinstance(value, bool) or not isinstance(value, Real) for value in values):
+        raise ValueError("Site-keyed additive scale prior values must be finite positive numbers.")
+    scales = np.asarray(values, dtype=float)
+    if np.any(~np.isfinite(scales)) or np.any(scales <= 0):
+        raise ValueError("Site-keyed additive scale prior values must be finite positive numbers.")
+    resolved["sigma"] = scales[:, None]
+    return resolved
+
+
+def prepare_additive_sigma_inputs(
+    observations: xr.DataArray,
+    *,
+    output_dim: str,
+    site_indicator: xr.DataArray | None = None,
+    sigma_prior: Mapping[str, Any] | None = None,
+    sigma_freq: str | None = None,
+    sigma_per_site: bool = True,
+    sigma_freq_anchor: DatetimeLike | None = None,
+    no_model_error: bool = False,
+) -> tuple[SigmaAlignment | None, dict[str, Any] | None]:
+    """Resolve additive-scale settings into direct component inputs."""
+    if no_model_error:
+        return None, None
+    site = observations.coords.get("site")
+    if site is None or site.dims != (output_dim,):
+        raise ValueError(
+            "Additive-sigma mismatch requires an observation-aligned "
+            "'site' coordinate when model error is enabled."
+        )
+    indicator = make_site_indicator(site) if site_indicator is None else site_indicator
+    alignment = SigmaAlignment.from_frequency(
+        indicator,
+        frequency=sigma_freq,
+        per_site=sigma_per_site,
+        anchor_time=sigma_freq_anchor,
+    )
+    prior = _resolve_site_additive_scale_prior(
+        DEFAULT_ADDITIVE_SIGMA_PRIOR if sigma_prior is None else sigma_prior,
+        site,
+        per_site=sigma_per_site,
+    )
+    return alignment, prior
 
 
 def builtin_model_build_result(
@@ -72,9 +143,7 @@ def builtin_model_build_result(
         roles["baseline"] = "offset"
 
     supported_output_formats = (
-        ("none", "inv_out", "paris")
-        if multisector
-        else ("none", "inv_out", "basic", "paris", "legacy")
+        ("none", "inv_out", "paris") if multisector else ("none", "inv_out", "basic", "paris", "legacy")
     )
     return RhimeModelBuildResult(
         model=model,
@@ -104,7 +173,6 @@ def validated_custom_model_build(
     result = model_builder(context)
     if not isinstance(result, RhimeModelBuildResult):
         raise TypeError(
-            "A RHIME model builder must return `RhimeModelBuildResult`; "
-            f"got {type(result).__name__}."
+            f"A RHIME model builder must return `RhimeModelBuildResult`; got {type(result).__name__}."
         )
     return result

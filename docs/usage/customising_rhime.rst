@@ -126,10 +126,10 @@ historical ``min_error`` floor unless
 loads only ``mf`` and ``mf_error`` from the universal observation inputs and
 does not require ``min_error``.
 
-The frozen ``run_hbmcmc`` additive callback spelling is translated once at the
-public RHIME compatibility boundary into the same resolved mismatch-model
-fields. The standard and multisector recipes select built-in mismatch science
-only from ``RhimeModelSpec``.
+Legacy ``run_hbmcmc`` additive configuration is translated at that script's
+entry point into the same explicit mismatch-model fields. The standard and
+multisector recipes do not recognize compatibility callback identities; they
+select built-in mismatch science only from ``RhimeModelSpec``.
 
 Built-in aggregation covariance relies on the guarantees of its construction
 pipeline. A custom pipeline that assembles its own covariance may optionally

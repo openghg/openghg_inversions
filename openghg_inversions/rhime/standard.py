@@ -35,6 +35,7 @@ from openghg_inversions.sigma import SigmaAlignment
 
 from ._model_building import (
     builtin_model_build_result,
+    prepare_additive_sigma_inputs,
     validated_custom_model_build,
 )
 from .builders import (
@@ -44,10 +45,8 @@ from .builders import (
     callable_metadata,
     validate_model_build_result,
 )
-from .likelihood_seam import (
+from ._custom_likelihood_seam import (
     RhimeLikelihoodBuilder,
-    prepare_additive_sigma_inputs,
-    translate_legacy_likelihood_selection,
     validate_custom_likelihood_result,
     validate_likelihood_kwargs,
 )
@@ -136,10 +135,7 @@ def standard_model_input_names(
             model_spec.mismatch_model == "pollution_event"
             and (not model_spec.no_model_error or preserve_legacy_likelihood)
         )
-        or (
-            model_spec.mismatch_model == "additive_sigma"
-            and not model_spec.no_model_error
-        )
+        or (model_spec.mismatch_model == "additive_sigma" and not model_spec.no_model_error)
     )
     if needs_model_error_alignment:
         _require_component_inputs(
@@ -149,8 +145,7 @@ def standard_model_input_names(
         )
         names.extend(_MODEL_ERROR_ALIGNMENT_INPUT_NAMES)
     needs_minimum_error = builtin_mismatch and (
-        model_spec.mismatch_model == "pollution_event"
-        or model_spec.use_minimum_error_floor
+        model_spec.mismatch_model == "pollution_event" or model_spec.use_minimum_error_floor
     )
     if needs_minimum_error:
         _require_component_inputs(
@@ -342,12 +337,8 @@ def build_standard_rhime_model(
             )
         else:
             if minimum_error is None:
-                raise ValueError(
-                    "Pollution-event mismatch requires the prepared `min_error` input."
-                )
-            pollution_event_baseline = (
-                boundary_mean if preserve_legacy_likelihood else baseline_mean
-            )
+                raise ValueError("Pollution-event mismatch requires the prepared `min_error` input.")
+            pollution_event_baseline = boundary_mean if preserve_legacy_likelihood else baseline_mean
             add_pollution_event_likelihood(
                 observations=observations,
                 observation_error=observation_error,
@@ -445,9 +436,7 @@ def build_standard_rhime_model_result(
             model_spec.aggregation_error_mode,
         )
         state_activity = (
-            sector.state_activity
-            if sector.state_activity is not None
-            else model_spec.state_activity
+            sector.state_activity if sector.state_activity is not None else model_spec.state_activity
         )
         model = build_standard_rhime_model(
             model_inputs["H"],
@@ -498,6 +487,7 @@ def make_standard_rhime_result(
     model_builder: RhimeModelBuilder | None = None,
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
     likelihood_kwargs: Mapping[str, Any] | None = None,
+    _compatibility_likelihood_provenance: Mapping[str, Any] | None = None,
 ) -> RhimeResult:
     """Construct a sampled standard result before output side effects.
 
@@ -511,6 +501,7 @@ def make_standard_rhime_result(
         model_builder: Optional complete-model callable used for provenance.
         likelihood_builder: Optional likelihood callable used for provenance.
         likelihood_kwargs: Serializable options owned by the likelihood.
+        _compatibility_likelihood_provenance: Pre-resolved private compatibility provenance.
 
     Returns:
         Standard-run result ready for requested output construction.
@@ -535,6 +526,8 @@ def make_standard_rhime_result(
         result.output_metadata["likelihood_builder"] = identity
     if likelihood_kwargs is not None:
         result.output_metadata["likelihood_kwargs"] = likelihood_kwargs
+    if _compatibility_likelihood_provenance is not None:
+        result.output_metadata.update(dict(_compatibility_likelihood_provenance))
     return result
 
 
@@ -545,6 +538,7 @@ def run_rhime(
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
     likelihood_kwargs: Mapping[str, Any] | None = None,
     preserve_legacy_likelihood: bool = False,
+    _compatibility_likelihood_provenance: Mapping[str, Any] | None = None,
     **kwargs: Any,
 ) -> RhimeResult:
     """Run a standard single-sector RHIME inversion.
@@ -570,6 +564,8 @@ def run_rhime(
             scientific arrays are passed explicitly by the recipe.
         preserve_legacy_likelihood: Private ``run_hbmcmc`` compatibility
             switch. Ordinary RHIME callers should leave it false.
+        _compatibility_likelihood_provenance: Private ``run_hbmcmc`` record of
+            the historical additive callback spelling and options.
         **kwargs: RHIME run parameters using snake-case names, such as
             ``output_path``, ``output_name``, ``flux_sources``, and
             ``x_prior``. ``species`` names the primary gas or tracer used for
@@ -594,16 +590,13 @@ def run_rhime(
         parsed or data is acquired, prepared, or materialized.
     """
     likelihood_kwargs = validate_likelihood_kwargs(likelihood_builder, likelihood_kwargs)
+    if _compatibility_likelihood_provenance is not None and likelihood_builder is not None:
+        raise ValueError("Compatibility likelihood provenance cannot accompany a custom likelihood builder.")
     params = (
         params_from_config(config_file, extra_kwargs=kwargs, normalise=False)
         if config_file is not None
         else dict(kwargs)
     )
-    model_options, likelihood_builder, likelihood_kwargs = translate_legacy_likelihood_selection(
-        likelihood_builder,
-        likelihood_kwargs,
-    )
-    params.update(model_options)
     setup = resolve_rhime_options(params=params, multisector=False)
 
     preparation_start = timer_start()
@@ -664,6 +657,7 @@ def run_rhime(
         build_and_sample_seconds=timer_seconds(build_and_sample_start),
         likelihood_builder=likelihood_builder,
         likelihood_kwargs=likelihood_kwargs,
+        _compatibility_likelihood_provenance=_compatibility_likelihood_provenance,
     )
     output_start = timer_start()
     make_standard_rhime_outputs(result=result, prepared=prepared)
