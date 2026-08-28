@@ -211,9 +211,7 @@ def _select_test_likelihood(inv_inputs: xr.Dataset, kwargs: dict[str, Any]) -> N
     if "likelihood_builder" in kwargs:
         return
     if no_model_error:
-        kwargs["likelihood_settings"] = FixedErrorSettings(
-            use_minimum_error_floor=mismatch_model == "additive_sigma",
-        )
+        kwargs["likelihood_settings"] = FixedErrorSettings()
         return
     if mismatch_model == "additive_sigma":
         kwargs["likelihood_settings"] = AdditiveSigmaSettings(
@@ -4251,6 +4249,11 @@ def test_rhime_runner_setup_builds_specs_before_preparation(tmp_path: Path) -> N
             {"sigma_prior": {"pdf": "halfnormal", "sigma": 1.0}},
             "does not accept.*sigma_prior",
         ),
+        (
+            "fixed_error",
+            {"use_minimum_error_floor": True},
+            "does not accept.*use_minimum_error_floor",
+        ),
     ],
 )
 def test_likelihood_settings_reject_options_without_their_owner(
@@ -4275,9 +4278,15 @@ def test_likelihood_settings_declare_only_owned_prepared_inputs() -> None:
         "min_error",
     )
     assert FixedErrorSettings().required_prepared_inputs == ()
-    assert FixedErrorSettings(use_minimum_error_floor=True).required_prepared_inputs == (
-        "min_error",
-    )
+
+
+def test_pollution_event_default_sigma_prior_is_fractional() -> None:
+    """The modern pollution-event fallback has narrow fractional support."""
+    assert rhime_specs.DEFAULT_POLLUTION_EVENT_SIGMA_PRIOR == {
+        "pdf": "uniform",
+        "lower": 0.0,
+        "upper": 0.1,
+    }
 
 
 def test_runner_setup_requires_explicit_likelihood_selection() -> None:

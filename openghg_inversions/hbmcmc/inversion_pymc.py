@@ -162,7 +162,7 @@ def build_inferpymc_model(
         observations=inv_inputs["mf"],
         observation_error=inv_inputs["mf_error"],
         aggregation_error=resolve_aggregation_error(inv_inputs, "none"),
-        minimum_error=None if no_model_error else inv_inputs["min_error"],
+        minimum_error=inv_inputs["min_error"],
         likelihood_settings=(
             FixedErrorSettings()
             if no_model_error

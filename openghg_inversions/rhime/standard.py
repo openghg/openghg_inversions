@@ -171,6 +171,7 @@ def build_standard_rhime_model(
     preserve_legacy_likelihood: bool = False,
     sigma_alignment: SigmaAlignment | None = None,
     legacy_unused_sigma_settings: PollutionEventSettings | None = None,
+    legacy_minimum_error_floor: bool = False,
 ) -> pm.Model:
     """Build the concrete standard single-sector RHIME model.
 
@@ -198,6 +199,8 @@ def build_standard_rhime_model(
             runners derive it from observations.
         legacy_unused_sigma_settings: Private ``run_hbmcmc`` settings for its
             historical disconnected sigma variable.
+        legacy_minimum_error_floor: Preserve the historical additive callback's
+            minimum-error floor when inferred model error was disabled.
 
     Returns:
         Built PyMC model.
@@ -284,6 +287,7 @@ def build_standard_rhime_model(
             legacy_pollution_event_baseline=boundary_mean,
             preserve_legacy_pollution_event=preserve_legacy_likelihood,
             legacy_unused_sigma_settings=legacy_unused_sigma_settings,
+            legacy_minimum_error_floor=legacy_minimum_error_floor,
         )
     return model
 
@@ -298,6 +302,7 @@ def build_standard_rhime_model_result(
     likelihood_kwargs: Mapping[str, Any] | None = None,
     preserve_legacy_likelihood: bool = False,
     legacy_unused_sigma_settings: PollutionEventSettings | None = None,
+    legacy_minimum_error_floor: bool = False,
 ) -> RhimeModelBuildResult:
     """Build the standard graph and describe its output roles.
 
@@ -314,6 +319,8 @@ def build_standard_rhime_model_result(
             ``run_hbmcmc`` likelihood graph and pollution-event definition.
         legacy_unused_sigma_settings: Private compatibility settings for a
             disconnected historical sigma variable.
+        legacy_minimum_error_floor: Preserve the historical additive callback's
+            minimum-error floor when inferred model error was disabled.
 
     Returns:
         Model plus variable roles, supported outputs, and build metadata.
@@ -369,6 +376,7 @@ def build_standard_rhime_model_result(
             offset_args=model_spec.offset_args,
             preserve_legacy_likelihood=preserve_legacy_likelihood,
             legacy_unused_sigma_settings=legacy_unused_sigma_settings,
+            legacy_minimum_error_floor=legacy_minimum_error_floor,
         )
         result = builtin_model_build_result(
             model,
@@ -445,6 +453,7 @@ def run_rhime(
     preserve_legacy_likelihood: bool = False,
     _compatibility_likelihood_provenance: Mapping[str, Any] | None = None,
     _compatibility_unused_sigma_settings: PollutionEventSettings | None = None,
+    _compatibility_minimum_error_floor: bool = False,
     **kwargs: Any,
 ) -> RhimeResult:
     """Run a standard single-sector RHIME inversion.
@@ -474,6 +483,8 @@ def run_rhime(
             the historical additive callback spelling and options.
         _compatibility_unused_sigma_settings: Private ``run_hbmcmc`` settings
             for its historical disconnected sigma variable.
+        _compatibility_minimum_error_floor: Private ``run_hbmcmc`` switch for
+            the historical additive callback's minimum-error floor.
         **kwargs: RHIME run parameters using snake-case names, such as
             ``output_path``, ``output_name``, ``flux_sources``, and
             ``x_prior``. ``species`` names the primary gas or tracer used for
@@ -538,12 +549,17 @@ def run_rhime(
     )
     run_spec = with_prepared_rhime_sites(setup.run_spec, prepared)
 
+    model_input_names = list(standard_model_input_names(prepared, run_spec.model))
+    if _compatibility_unused_sigma_settings is not None or _compatibility_minimum_error_floor:
+        _require_component_inputs(
+            prepared,
+            ("min_error",),
+            owner="Legacy run_hbmcmc likelihood compatibility",
+        )
+        model_input_names.append("min_error")
     model_inputs = materialize_pymc_inputs(
         prepared,
-        variable_names=standard_model_input_names(
-            prepared,
-            run_spec.model,
-        ),
+        variable_names=tuple(dict.fromkeys(model_input_names)),
     )
     build_and_sample_start = timer_start()
     model_build_result = build_standard_rhime_model_result(
@@ -554,6 +570,7 @@ def run_rhime(
         likelihood_kwargs=likelihood_kwargs,
         preserve_legacy_likelihood=preserve_legacy_likelihood,
         legacy_unused_sigma_settings=_compatibility_unused_sigma_settings,
+        legacy_minimum_error_floor=_compatibility_minimum_error_floor,
     )
     idata = sample_rhime_model(
         model_build_result,

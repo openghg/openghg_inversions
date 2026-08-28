@@ -542,6 +542,24 @@ def test_build_inferpymc_model_contains_expected_variables(inv_inputs: xr.Datase
     assert expected_named_vars.issubset(model.named_vars)
 
 
+def test_build_inferpymc_no_model_error_preserves_legacy_scale_guard(
+    inv_inputs: xr.Dataset,
+    model_args: dict,
+) -> None:
+    """The compatibility graph keeps its unused sigma and positive error scale."""
+    inputs = inv_inputs.copy()
+    inputs["mf_error"] = xr.zeros_like(inputs["mf_error"])
+    inputs["min_error"] = xr.full_like(inputs["min_error"], 20.0)
+    args = dict(model_args)
+    args["no_model_error"] = True
+
+    model = build_inferpymc_model(inputs, **args)
+
+    expected = 1e-12 * np.nanmean(inputs["mf"].values)
+    np.testing.assert_allclose(model["epsilon"].eval(), expected)
+    assert {"Y", "error", "min_error", "sigma", "epsilon", "y"}.issubset(model.named_vars)
+
+
 def test_build_inferpymc_model_prunes_zero_h_states_in_single_sector_graph(
     inv_inputs: xr.Dataset,
     model_args: dict,

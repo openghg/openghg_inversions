@@ -378,6 +378,7 @@ def test_run_hbmcmc_no_model_error_retains_legacy_unused_sigma(
     assert seen["mismatch_model"] == "fixed_error"
     assert seen["preserve_legacy_likelihood"] is True
     assert "use_minimum_error_floor" not in seen
+    assert seen["_compatibility_minimum_error_floor"] is False
     assert isinstance(seen["_compatibility_unused_sigma_settings"], PollutionEventSettings)
     assert seen["_compatibility_unused_sigma_settings"].sigma_prior == {
         "pdf": "uniform",
@@ -407,7 +408,8 @@ def test_run_hbmcmc_additive_no_model_error_uses_fixed_error_with_floor(
     run_hbmcmc.main(["-c", str(config_file)])
 
     assert seen["mismatch_model"] == "fixed_error"
-    assert seen["use_minimum_error_floor"] is True
+    assert "use_minimum_error_floor" not in seen
+    assert seen["_compatibility_minimum_error_floor"] is True
     assert seen["preserve_legacy_likelihood"] is False
     assert seen["_compatibility_unused_sigma_settings"] is None
     assert seen["_compatibility_likelihood_provenance"]["likelihood_kwargs"]["no_model_error"] is True
