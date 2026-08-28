@@ -8,6 +8,8 @@ Using OpenGHG Inversions
    installation
    getting_started
    cli
+   rhime_standard_tutorial
+   rhime_multisector_tutorial
    grouped_basis_layout
    rhime
    customising_rhime
