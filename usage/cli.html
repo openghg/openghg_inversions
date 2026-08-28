@@ -512,6 +512,22 @@ sources described in <a class="reference internal" href="rhime.html"><span class
 <code class="docutils literal notranslate"><span class="pre">run-rhime-multisector</span></code>.</p>
 </section>
 </section>
+<section id="merging-paris-outputs">
+<h2>Merging PARIS outputs<a class="headerlink" href="#merging-paris-outputs" title="Link to this heading">#</a></h2>
+<p>Merge sequential annual or sub-annual PARIS NetCDF files with the installed
+CLI. The command detects legacy and latest PARIS concentration and flux
+templates from their schema:</p>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>openghg-inversions<span class="w"> </span>merge-paris-outputs<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>SF6_EUROPE_PARIS_flux_2019-01-01.nc<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>SF6_EUROPE_PARIS_flux_2020-01-01.nc<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--output<span class="w"> </span>SF6_EUROPE_PARIS_flux_2019-2020.nc
+</pre></div>
+</div>
+<p>Use <code class="docutils literal notranslate"><span class="pre">--type</span> <span class="pre">flux</span></code> or <code class="docutils literal notranslate"><span class="pre">--type</span> <span class="pre">concentration</span></code> (also accepted as <code class="docutils literal notranslate"><span class="pre">conc</span></code>) to
+select one product when a broad input glob matches both. Inputs selected for
+one invocation must use the same template version; run the command separately
+for legacy and latest products because their variable contracts differ.</p>
+</section>
 </section>
 
 
@@ -566,6 +582,7 @@ sources described in <a class="reference internal" href="rhime.html"><span class
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#alternative-environment-blocks">Alternative environment blocks</a></li>
 </ul>
 </li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#merging-paris-outputs">Merging PARIS outputs</a></li>
 </ul>
   </nav></div>
 
