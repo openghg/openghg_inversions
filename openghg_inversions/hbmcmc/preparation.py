@@ -251,6 +251,8 @@ def prepare_fixedbasis_inversion_data(
         inv_inputs,
         sites=prepared_sites,
         platform=prepared_site_options.platform,
+        observation_max_level=prepared_site_options.max_level,
+        footprint_max_level=tuple(fp_data[site].attrs.get("max_level") for site in prepared_sites),
     )
     sigma_alignment = SigmaAlignment.from_frequency(
         inv_inputs["site_indicator"],

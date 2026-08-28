@@ -213,8 +213,9 @@ def assemble_rhime_inputs(
     """Construct and validate durable, backend-neutral RHIME model inputs.
 
     The stage attaches domain metadata to shallow per-site copies, assembles
-    observation-aligned arrays, applies the satellite boundary-condition
-    scaling, and retains basis and site metadata. It also preserves the legacy
+    observation-aligned arrays, conditionally applies the legacy satellite
+    boundary scaling for inconsistent vertical extents, and retains basis and
+    site metadata. It also preserves the legacy
     construction of the minimum-error floor and boundary-condition temporal
     parameterization. Those are inverse-model settings, not properties of the
     acquired data; moving them to their model components is a later semantic
@@ -239,6 +240,8 @@ def assemble_rhime_inputs(
         inv_inputs,
         sites=merged.sites,
         platform=merged.platform,
+        observation_max_level=merged.site_options.max_level,
+        footprint_max_level=tuple(owned_site_data[site].attrs.get("max_level") for site in merged.sites),
     )
     inversion_preparation._warn_for_nan_inputs(inv_inputs, use_bc=data_args["use_bc"])
     basis_source = basis_functions.basis_artifact_source or "generated"

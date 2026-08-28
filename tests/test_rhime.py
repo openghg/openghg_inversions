@@ -5299,14 +5299,15 @@ def test_fixedbasis_preparation_adds_anchored_legacy_sigma_index(
 def test_fixedbasis_preparation_uses_platform_for_sites_retained_after_filtering(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Satellite BC scaling receives platform metadata after a surface site is dropped."""
-    fp_data = {"OCO2-EASTASIA": _site_dataset([2.0])}
+    """Satellite BC scaling receives aligned level metadata after filtering."""
+    fp_data = {"OCO2-EASTASIA": _site_dataset([2.0]).assign_attrs(max_level=17)}
     merged = prep_module.RhimeMergedData(
         fp_all={"TAC": _site_dataset([]), **fp_data},
         site_options=_site_options(
             ["TAC", "OCO2-EASTASIA"],
             averaging_period=["1H", "1H"],
             platform=["surface", "satellite"],
+            max_level=[None, 17],
         ),
     )
     retained_options = merged.site_options.select_indices([1])
@@ -5353,23 +5354,30 @@ def test_fixedbasis_preparation_uses_platform_for_sites_retained_after_filtering
         use_bc=False,
     )
 
-    assert captured == {"sites": ["OCO2-EASTASIA"], "platform": ("satellite",)}
+    assert captured == {
+        "sites": ["OCO2-EASTASIA"],
+        "platform": ("satellite",),
+        "observation_max_level": (17,),
+        "footprint_max_level": (17,),
+    }
 
 
 def test_rhime_preparation_uses_platform_for_sites_retained_after_filtering(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """RHIME satellite BC scaling receives the filtered mixed-platform metadata."""
+    """RHIME satellite BC scaling receives filtered platform and level metadata."""
+    satellite_data = _site_dataset([2.0]).assign_attrs(max_level=17)
     merged = prep_module.RhimeMergedData(
-        fp_all={"TAC": _site_dataset([]), "OCO2-EASTASIA": _site_dataset([2.0])},
+        fp_all={"TAC": _site_dataset([]), "OCO2-EASTASIA": satellite_data},
         site_options=_site_options(
             ["TAC", "OCO2-EASTASIA"],
             averaging_period=["1H", "1H"],
             platform=["surface", "satellite"],
+            max_level=[None, 17],
         ),
     )
     filtered_merged = prep_module.RhimeMergedData(
-        fp_all={"OCO2-EASTASIA": _site_dataset([2.0])},
+        fp_all={"OCO2-EASTASIA": satellite_data},
         site_options=merged.site_options.select_indices([1]),
     )
     captured: dict[str, object] = {}
@@ -5380,7 +5388,7 @@ def test_rhime_preparation_uses_platform_for_sites_retained_after_filtering(
     monkeypatch.setattr(
         prep_module,
         "_rhime_site_data_from_basis_functions",
-        lambda **kwargs: {"OCO2-EASTASIA": _site_dataset([2.0])},
+        lambda **kwargs: {"OCO2-EASTASIA": satellite_data},
     )
     monkeypatch.setattr(
         prep_module,
@@ -5407,7 +5415,12 @@ def test_rhime_preparation_uses_platform_for_sites_retained_after_filtering(
         use_bc=False,
     )
 
-    assert captured == {"sites": ("OCO2-EASTASIA",), "platform": ("satellite",)}
+    assert captured == {
+        "sites": ("OCO2-EASTASIA",),
+        "platform": ("satellite",),
+        "observation_max_level": (17,),
+        "footprint_max_level": (17,),
+    }
 
 
 def test_prepare_rhime_inputs_uses_basis_sensitivity_without_legacy_side_channels(
@@ -6189,8 +6202,8 @@ def test_prepare_rhime_inputs_filters_sites_before_basis_generation(
     assert filtering_calls == 1
 
 
-def test_satellite_bc_sensitivity_is_scaled_to_corrected_column_signal() -> None:
-    """Satellite H_bc is reduced into the same OCO corrected-column space as mf."""
+def test_satellite_bc_sensitivity_is_scaled_for_inconsistent_max_levels() -> None:
+    """Satellite H_bc retains the legacy scaling when vertical extents differ."""
     inv_inputs = xr.Dataset(
         {
             "H_bc": (
@@ -6208,6 +6221,8 @@ def test_satellite_bc_sensitivity_is_scaled_to_corrected_column_signal() -> None
         inv_inputs,
         sites=["OCO2-EASTASIA"],
         platform=["satellite"],
+        observation_max_level=[3],
+        footprint_max_level=[17],
     )
 
     np.testing.assert_allclose(
@@ -6215,6 +6230,32 @@ def test_satellite_bc_sensitivity_is_scaled_to_corrected_column_signal() -> None
         np.array([[12.5, 50.0], [37.5, 100.0]]),
     )
     assert "satellite_column_bc_scale" in result["H_bc"].attrs
+
+
+def test_satellite_bc_sensitivity_is_not_scaled_for_matching_max_levels() -> None:
+    """Satellite H_bc is already in the corrected-column space when levels match."""
+    inv_inputs = xr.Dataset(
+        {
+            "H_bc": (
+                ("bc_region", "nmeasure"),
+                np.array([[100.0, 200.0], [300.0, 400.0]], dtype=float),
+            ),
+            "mf": ("nmeasure", np.array([50.0, 100.0], dtype=float)),
+            "mf_prior_factor": ("nmeasure", np.array([0.0, 0.0], dtype=float)),
+            "mf_prior_upper_level_factor": ("nmeasure", np.array([350.0, 300.0], dtype=float)),
+            "site": ("nmeasure", np.array(["GOSAT-BRAZIL", "GOSAT-BRAZIL"])),
+        }
+    )
+
+    result = prep_module._scale_satellite_bc_sensitivity_to_column_signal(
+        inv_inputs,
+        sites=["GOSAT-BRAZIL"],
+        platform=["satellite"],
+        observation_max_level=[17],
+        footprint_max_level=[17],
+    )
+
+    xr.testing.assert_identical(result, inv_inputs)
 
 
 def test_surface_bc_sensitivity_is_not_scaled_by_column_factors() -> None:
@@ -6236,6 +6277,8 @@ def test_surface_bc_sensitivity_is_not_scaled_by_column_factors() -> None:
         inv_inputs,
         sites=["TAC"],
         platform=[None],
+        observation_max_level=[None],
+        footprint_max_level=[None],
     )
 
     xr.testing.assert_identical(result["H_bc"], inv_inputs["H_bc"])

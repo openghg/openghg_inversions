@@ -1469,6 +1469,8 @@ def prepare_rhime_inputs(
         inv_inputs,
         sites=filtered_merged.sites,
         platform=filtered_merged.site_options.platform,
+        observation_max_level=filtered_merged.site_options.max_level,
+        footprint_max_level=tuple(fp_data[site].attrs.get("max_level") for site in filtered_merged.sites),
     )
     _warn_for_nan_inputs(inv_inputs, use_bc=use_bc)
     log_timing(
