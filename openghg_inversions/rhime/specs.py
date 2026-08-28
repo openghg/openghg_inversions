@@ -27,7 +27,11 @@ DEFAULT_BC_PRIOR: PriorArgs = {
     "sigma": 0.05,
     "lower": 0.0,
 }
-DEFAULT_SIGMA_PRIOR: PriorArgs = {"pdf": "uniform", "lower": 0.1, "upper": 3.0}
+DEFAULT_POLLUTION_EVENT_SIGMA_PRIOR: PriorArgs = {
+    "pdf": "uniform",
+    "lower": 0.0,
+    "upper": 0.1,
+}
 DEFAULT_OFFSET_PRIOR: PriorArgs = {"pdf": "normal", "mu": 0, "sigma": 1}
 
 
@@ -87,19 +91,12 @@ class AdditiveSigmaSettings:
 
 @dataclass(frozen=True)
 class FixedErrorSettings:
-    """Serializable settings for reported observation error only.
-
-    Args:
-        use_minimum_error_floor: Apply the prepared historical minimum total-
-            error floor.
-    """
-
-    use_minimum_error_floor: bool = False
+    """Serializable selection of reported observation error only."""
 
     @property
     def required_prepared_inputs(self) -> tuple[str, ...]:
         """Return prepared arrays owned by this likelihood."""
-        return ("min_error",) if self.use_minimum_error_floor else ()
+        return ()
 
 
 LikelihoodSettings = PollutionEventSettings | AdditiveSigmaSettings | FixedErrorSettings
@@ -154,8 +151,6 @@ class RhimeModelSpec:
         state_activity: Optional labelled active/fixed state policy shared by
             flux sectors. The default retains exact-zero pruning.
 
-    Raises:
-        ValueError: If ``aggregation_error_mode`` is unsupported.
     """
 
     species: str
@@ -170,15 +165,6 @@ class RhimeModelSpec:
     offset_args: dict[str, Any] | None = None
     bc_state_activity: StateActivity | None = field(default=None, kw_only=True)
     state_activity: StateActivity | None = field(default=None, kw_only=True)
-
-    def __post_init__(self) -> None:
-        """Validate model options resolved before graph construction."""
-        if self.aggregation_error_mode not in ("auto", "none", "dense", "low_rank", "diagonal"):
-            raise ValueError(
-                "`aggregation_error_mode` must be one of 'auto', 'none', 'dense', "
-                f"'low_rank', or 'diagonal'; got {self.aggregation_error_mode!r}."
-            )
-
 
 @dataclass(frozen=True)
 class RhimeOutputSpec:

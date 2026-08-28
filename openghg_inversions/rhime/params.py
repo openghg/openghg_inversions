@@ -681,16 +681,16 @@ def _make_likelihood_settings(
     elif mismatch_model == "additive_sigma":
         invalid = _POLLUTION_EVENT_OPTIONS & remaining.keys()
     else:
-        invalid = (_SIGMA_OPTIONS | _POLLUTION_EVENT_OPTIONS) & remaining.keys()
+        invalid = (
+            _SIGMA_OPTIONS | _POLLUTION_EVENT_OPTIONS | _MINIMUM_ERROR_FLOOR_OPTIONS
+        ) & remaining.keys()
     if invalid:
         raise ValueError(
             f"`mismatch_model={mismatch_model!r}` does not accept option(s) {sorted(invalid)!r}."
         )
 
     if mismatch_model == "fixed_error":
-        return FixedErrorSettings(
-            use_minimum_error_floor=remaining.pop("use_minimum_error_floor", False),
-        )
+        return FixedErrorSettings()
 
     common = {
         "sigma_prior": normalise_optional_mapping(remaining.pop("sigma_prior", None)),

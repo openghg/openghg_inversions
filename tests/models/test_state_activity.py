@@ -107,7 +107,7 @@ def _select_pollution_event_likelihood(inputs: xr.Dataset, kwargs: dict[str, Any
     kwargs["likelihood_settings"] = FixedErrorSettings() if no_model_error else PollutionEventSettings(
         sigma_prior=kwargs.pop(
             "sigma_prior",
-            {"pdf": "uniform", "lower": 0.1, "upper": 3.0},
+            {"pdf": "uniform", "lower": 0.0, "upper": 0.1},
         ),
         power=kwargs.pop("power", 1.99),
         pollution_events_from_obs=kwargs.pop("pollution_events_from_obs", False),

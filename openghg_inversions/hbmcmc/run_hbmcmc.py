@@ -511,6 +511,7 @@ def main(argv: list[str] | None = None) -> None:
         additive_sigma_options = _select_additive_sigma_model_options(param, rhime_params)
         no_model_error = bool(rhime_params.pop("no_model_error", False))
         legacy_unused_sigma_settings: PollutionEventSettings | None = None
+        legacy_minimum_error_floor = False
         if additive_sigma_options is not None:
             no_model_error = bool(additive_sigma_options.get("no_model_error", no_model_error))
             if no_model_error:
@@ -518,9 +519,9 @@ def main(argv: list[str] | None = None) -> None:
                     rhime_params.pop(name, None)
                 rhime_params.update(
                     mismatch_model="fixed_error",
-                    use_minimum_error_floor=True,
                     aggregation_error_mode="none",
                 )
+                legacy_minimum_error_floor = True
             else:
                 rhime_params.update(additive_sigma_options)
                 rhime_params.pop("no_model_error", None)
@@ -560,6 +561,7 @@ def main(argv: list[str] | None = None) -> None:
         preserve_legacy_likelihood=additive_sigma_options is None,
         _compatibility_likelihood_provenance=compatibility_provenance,
         _compatibility_unused_sigma_settings=legacy_unused_sigma_settings,
+        _compatibility_minimum_error_floor=legacy_minimum_error_floor,
         **rhime_params,
     )
 

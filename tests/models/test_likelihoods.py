@@ -10,10 +10,7 @@ from openghg_inversions.models.additive_sigma import (
     add_additive_sigma_likelihood,
 )
 from openghg_inversions.models.coords import registered_model
-from openghg_inversions.models._gaussian_observation import (
-    add_aggregation_error_data,
-    add_gaussian_observation_likelihood,
-)
+from openghg_inversions.models.fixed_error import add_fixed_error_likelihood
 from openghg_inversions.models.pollution_event import add_pollution_event_likelihood
 from openghg_inversions.observation_error import resolve_aggregation_error
 from openghg_inversions.sigma import SigmaAlignment
@@ -79,25 +76,13 @@ def _low_rank_data() -> tuple[xr.Dataset, np.ndarray]:
 
 def _fixed_likelihood_model(data: xr.Dataset) -> pm.Model:
     aggregation_error = resolve_aggregation_error(data)
-    with registered_model() as model:
-        registered_aggregation_error = add_aggregation_error_data(
-            aggregation_error,
-            data["mf"],
-            output_dim="nmeasure",
-        )
-        observed = pm.Data("Y", pm.floatX(data["mf"].values), dims="nmeasure")
+    with registered_model(coords={"nmeasure": data.coords["nmeasure"]}) as model:
         mean = pm.Data("mean", pm.floatX(np.array([0.8, 1.7, 2.9])), dims="nmeasure")
-        independent_variance = pm.Data(
-            "independent_variance",
-            pm.floatX(data["mf_error"].values**2),
-            dims="nmeasure",
-        )
-        add_gaussian_observation_likelihood(
-            observed=observed,
+        add_fixed_error_likelihood(
+            observations=data["mf"],
+            observation_error=data["mf_error"],
+            aggregation_error=aggregation_error,
             mean=mean,
-            independent_variance=independent_variance,
-            aggregation_error=registered_aggregation_error,
-            output_dim="nmeasure",
         )
     return model
 
@@ -133,6 +118,30 @@ def test_low_rank_likelihood_retains_observed_y_and_predictive_sampling() -> Non
 
     assert [rv.name for rv in model.observed_RVs] == ["y"]
     assert predictive.prior_predictive["y"].shape == (1, 2, 3)
+
+
+def test_fixed_error_likelihood_uses_reported_and_aggregation_error_only() -> None:
+    """The direct fixed-error component has no sigma or minimum-error floor."""
+    data = _base_data()
+    data["mf_error"] = ("nmeasure", np.array([0.0, 0.3, 0.4]))
+    data["min_error"] = ("nmeasure", np.full(3, 20.0))
+    data["aggregation_error_sd"] = ("nmeasure", np.array([0.1, 0.2, 0.3]))
+
+    with registered_model(coords={"nmeasure": data.coords["nmeasure"]}) as model:
+        likelihood = add_fixed_error_likelihood(
+            observations=data["mf"],
+            observation_error=data["mf_error"],
+            aggregation_error=resolve_aggregation_error(data, "diagonal"),
+            mean=pm.math.constant(np.ones(3)),
+        )
+
+    small_amount = 1e-12 * np.nanmean(data["mf"].values)
+    independent_scale = np.maximum(np.abs(data["mf_error"].values), small_amount)
+    expected = np.sqrt(independent_scale**2 + data["aggregation_error_sd"].values ** 2)
+    assert likelihood is model.named_vars["y"]
+    assert "sigma" not in model.named_vars
+    assert "min_error" not in model.named_vars
+    np.testing.assert_allclose(model["epsilon"].eval(), expected)
 
 
 @pytest.mark.parametrize(

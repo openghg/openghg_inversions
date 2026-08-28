@@ -684,7 +684,7 @@ containing the value ``"outer"``:
        aggregation_error=resolve_aggregation_error(inv_inputs, "none"),
        minimum_error=inv_inputs["min_error"],
        likelihood_settings=PollutionEventSettings(
-           sigma_prior={"pdf": "uniform", "lower": 0.1, "upper": 3.0},
+           sigma_prior={"pdf": "uniform", "lower": 0.0, "upper": 0.1},
        ),
        boundary_sensitivity=inv_inputs.get("H_bc"),
        x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.5},
@@ -846,7 +846,7 @@ retain their gathered ``(source, region_in_source)`` state coordinate.
        aggregation_error=resolve_aggregation_error(inv_inputs, "none"),
        minimum_error=inv_inputs["min_error"],
        likelihood_settings=PollutionEventSettings(
-           sigma_prior={"pdf": "uniform", "lower": 0.1, "upper": 3.0},
+           sigma_prior={"pdf": "uniform", "lower": 0.0, "upper": 0.1},
        ),
        boundary_sensitivity=inv_inputs.get("H_bc"),
        x_prior={"pdf": "normal", "mu": 1.0, "sigma": x_prior_stdev},

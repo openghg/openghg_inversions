@@ -17,7 +17,7 @@ from openghg_inversions.models.additive_sigma import (
     DEFAULT_ADDITIVE_SIGMA_PRIOR,
     add_additive_sigma_likelihood,
 )
-from openghg_inversions.models.components import add_sigma_component
+from openghg_inversions.models.fixed_error import add_fixed_error_likelihood
 from openghg_inversions.models.pollution_event import add_pollution_event_likelihood
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.observation_error import AggregationError
@@ -30,7 +30,7 @@ from .builders import (
     RhimeLikelihoodBuilder,
 )
 from .specs import (
-    DEFAULT_SIGMA_PRIOR,
+    DEFAULT_POLLUTION_EVENT_SIGMA_PRIOR,
     AdditiveSigmaSettings,
     FixedErrorSettings,
     LikelihoodSettings,
@@ -187,7 +187,9 @@ def add_configured_pollution_event_likelihood(
         pollution_event_baseline=baseline,
         sigma_alignment=resolved_alignment,
         sigma_prior=dict(
-            DEFAULT_SIGMA_PRIOR if settings.sigma_prior is None else settings.sigma_prior
+            DEFAULT_POLLUTION_EVENT_SIGMA_PRIOR
+            if settings.sigma_prior is None
+            else settings.sigma_prior
         ),
         power=settings.power,
         pollution_events_from_obs=settings.pollution_events_from_obs,
@@ -231,9 +233,8 @@ def add_configured_additive_sigma_likelihood(
 
 
 def add_configured_fixed_error_likelihood(
-    settings: FixedErrorSettings,
     *,
-    mean: TensorVariable,
+    forward: ForwardModelTerms,
     observations: xr.DataArray,
     observation_error: xr.DataArray,
     aggregation_error: AggregationError,
@@ -241,11 +242,12 @@ def add_configured_fixed_error_likelihood(
     output_dim: str,
     sigma_alignment: SigmaAlignment | None = None,
     legacy_unused_sigma_settings: PollutionEventSettings | None = None,
+    legacy_minimum_error_floor: bool = False,
 ) -> TensorVariable:
     """Resolve fixed-error settings into the direct Gaussian component."""
-    if settings.use_minimum_error_floor and minimum_error is None:
-        raise ValueError("Fixed-error likelihood requires `minimum_error` when its floor is enabled.")
     if legacy_unused_sigma_settings is not None:
+        if minimum_error is None:
+            raise ValueError("Legacy no-model-error compatibility requires `minimum_error`.")
         alignment = sigma_alignment
         if alignment is None:
             alignment = SigmaAlignment.from_observations(
@@ -254,25 +256,47 @@ def add_configured_fixed_error_likelihood(
                 per_site=legacy_unused_sigma_settings.sigma_per_site,
                 anchor_time=legacy_unused_sigma_settings.sigma_freq_anchor,
             )
-        add_sigma_component(
-            alignment,
-            prior_args=dict(
-                DEFAULT_SIGMA_PRIOR
+        return add_pollution_event_likelihood(
+            observations=observations,
+            observation_error=observation_error,
+            minimum_error=minimum_error,
+            aggregation_error=aggregation_error,
+            mean=forward.total,
+            pollution_mean=forward.pollution,
+            pollution_event_baseline=forward.baseline,
+            sigma_alignment=alignment,
+            sigma_prior=dict(
+                DEFAULT_POLLUTION_EVENT_SIGMA_PRIOR
                 if legacy_unused_sigma_settings.sigma_prior is None
                 else legacy_unused_sigma_settings.sigma_prior
             ),
+            power=1.99,
+            pollution_events_from_obs=False,
+            no_model_error=True,
+            retain_unused_sigma=True,
+            output_dim=output_dim,
         )
-    return add_additive_sigma_likelihood(
+    if legacy_minimum_error_floor:
+        if minimum_error is None:
+            raise ValueError("Legacy additive compatibility requires `minimum_error`.")
+        return add_additive_sigma_likelihood(
+            observations=observations,
+            observation_error=observation_error,
+            aggregation_error=aggregation_error,
+            mean=forward.total,
+            minimum_error_floor=minimum_error,
+            output_dim=output_dim,
+        )
+    return add_fixed_error_likelihood(
         observations=observations,
         observation_error=observation_error,
         aggregation_error=aggregation_error,
-        mean=mean,
-        minimum_error_floor=minimum_error if settings.use_minimum_error_floor else None,
+        mean=forward.total,
         output_dim=output_dim,
     )
 
 
-def add_builtin_likelihood(
+def _add_builtin_likelihood(
     settings: LikelihoodSettings,
     *,
     forward: ForwardModelTerms,
@@ -285,6 +309,7 @@ def add_builtin_likelihood(
     legacy_pollution_event_baseline: TensorVariable | None = None,
     preserve_legacy_pollution_event: bool = False,
     legacy_unused_sigma_settings: PollutionEventSettings | None = None,
+    legacy_minimum_error_floor: bool = False,
 ) -> TensorVariable:
     """Dispatch one resolved built-in likelihood with explicit scientific inputs."""
     if isinstance(settings, PollutionEventSettings):
@@ -313,8 +338,7 @@ def add_builtin_likelihood(
         )
     if isinstance(settings, FixedErrorSettings):
         return add_configured_fixed_error_likelihood(
-            settings,
-            mean=forward.total,
+            forward=forward,
             observations=observations,
             observation_error=observation_error,
             aggregation_error=aggregation_error,
@@ -322,6 +346,7 @@ def add_builtin_likelihood(
             output_dim=output_dim,
             sigma_alignment=sigma_alignment,
             legacy_unused_sigma_settings=legacy_unused_sigma_settings,
+            legacy_minimum_error_floor=legacy_minimum_error_floor,
         )
 
     raise TypeError(f"Unsupported built-in likelihood settings: {type(settings).__name__}.")
@@ -342,6 +367,7 @@ def add_rhime_likelihood(
     legacy_pollution_event_baseline: TensorVariable | None = None,
     preserve_legacy_pollution_event: bool = False,
     legacy_unused_sigma_settings: PollutionEventSettings | None = None,
+    legacy_minimum_error_floor: bool = False,
 ) -> TensorVariable:
     """Add exactly one built-in or custom likelihood to a concrete recipe."""
     if settings is None:
@@ -358,7 +384,7 @@ def add_rhime_likelihood(
         )
     if likelihood_builder is not None:
         raise ValueError("A custom likelihood cannot be combined with built-in likelihood settings.")
-    return add_builtin_likelihood(
+    return _add_builtin_likelihood(
         settings,
         forward=forward,
         observations=observations,
@@ -370,6 +396,7 @@ def add_rhime_likelihood(
         legacy_pollution_event_baseline=legacy_pollution_event_baseline,
         preserve_legacy_pollution_event=preserve_legacy_pollution_event,
         legacy_unused_sigma_settings=legacy_unused_sigma_settings,
+        legacy_minimum_error_floor=legacy_minimum_error_floor,
     )
 
 

@@ -110,8 +110,8 @@ variant: :math:`P=|Y-\mu_{bc}|`, even when an offset is also included in
 it is not the scientific default for new RHIME recipes.
 
 Select ``mismatch_model="fixed_error"`` to omit inferred mismatch error. Its
-likelihood scale uses the reported observation error, and it does not select
-``min_error`` unless ``use_minimum_error_floor=True`` is also explicit.
+likelihood scale uses the reported observation error and does not select
+``min_error``.
 ``run_hbmcmc.py`` privately preserves the different historical floor and
 unused-variable details of its two ``no_model_error`` routes.
 
@@ -463,7 +463,7 @@ helpers:
        "sigma": 0.05,
        "lower": 0.0,
    }
-   sigma_prior = {"pdf": "uniform", "lower": 0.1, "upper": 3.0}
+   sigma_prior = {"pdf": "uniform", "lower": 0.0, "upper": 0.1}
 
    sigma_alignment = SigmaAlignment.from_observations(
        inv_inputs["mf"],
