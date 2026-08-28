@@ -508,7 +508,11 @@ metadata.</p>
 acquisition and run them without repeating OpenGHG-backed preparation. Supply
 the retained <code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code> together with the existing public run,
 model, output, and sampler specifications:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="n">RhimeModelSpec</span><span class="p">,</span> <span class="n">SectorSpec</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">PollutionEventSettings</span><span class="p">,</span>
+    <span class="n">RhimeModelSpec</span><span class="p">,</span>
+    <span class="n">SectorSpec</span><span class="p">,</span>
+<span class="p">)</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.inversion_data</span><span class="w"> </span><span class="kn">import</span> <span class="n">RhimePreparedInputs</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
     <span class="n">RhimeOutputSpec</span><span class="p">,</span>
@@ -525,6 +529,7 @@ model, output, and sampler specifications:</p>
 <span class="n">model_spec</span> <span class="o">=</span> <span class="n">RhimeModelSpec</span><span class="p">(</span>
     <span class="n">species</span><span class="o">=</span><span class="s2">"ch4"</span><span class="p">,</span>
     <span class="n">domain</span><span class="o">=</span><span class="s2">"EUROPE"</span><span class="p">,</span>
+    <span class="n">likelihood</span><span class="o">=</span><span class="n">PollutionEventSettings</span><span class="p">(),</span>
     <span class="n">sectors</span><span class="o">=</span><span class="p">(</span>
         <span class="n">SectorSpec</span><span class="p">(</span>
             <span class="n">name</span><span class="o">=</span><span class="s2">"total"</span><span class="p">,</span>
@@ -1003,24 +1008,23 @@ removed rather than transferred into aggregation error.</p>
 containing the value <code class="docutils literal notranslate"><span class="pre">&quot;outer&quot;</span></code>:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">StateActivity</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.observation_error</span><span class="w"> </span><span class="kn">import</span> <span class="n">resolve_aggregation_error</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="n">PollutionEventSettings</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.standard</span><span class="w"> </span><span class="kn">import</span> <span class="n">build_standard_rhime_model</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.sigma</span><span class="w"> </span><span class="kn">import</span> <span class="n">SigmaAlignment</span>
 
 <span class="n">state_policy</span> <span class="o">=</span> <span class="n">StateActivity</span><span class="p">(</span>
     <span class="n">fixed_groups</span><span class="o">=</span><span class="p">(</span><span class="s2">"outer"</span><span class="p">,),</span>
     <span class="n">fixed_value</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span>
 <span class="p">)</span>
-<span class="n">sigma_alignment</span> <span class="o">=</span> <span class="n">SigmaAlignment</span><span class="o">.</span><span class="n">from_frequency</span><span class="p">(</span>
-    <span class="n">inv_inputs</span><span class="p">[</span><span class="s2">"site_indicator"</span><span class="p">],</span>
-<span class="p">)</span>
 <span class="n">model</span> <span class="o">=</span> <span class="n">build_standard_rhime_model</span><span class="p">(</span>
     <span class="n">inv_inputs</span><span class="p">[</span><span class="s2">"H"</span><span class="p">],</span>
     <span class="n">observations</span><span class="o">=</span><span class="n">inv_inputs</span><span class="p">[</span><span class="s2">"mf"</span><span class="p">],</span>
     <span class="n">observation_error</span><span class="o">=</span><span class="n">inv_inputs</span><span class="p">[</span><span class="s2">"mf_error"</span><span class="p">],</span>
-    <span class="n">minimum_error</span><span class="o">=</span><span class="n">inv_inputs</span><span class="p">[</span><span class="s2">"min_error"</span><span class="p">],</span>
     <span class="n">aggregation_error</span><span class="o">=</span><span class="n">resolve_aggregation_error</span><span class="p">(</span><span class="n">inv_inputs</span><span class="p">,</span> <span class="s2">"none"</span><span class="p">),</span>
+    <span class="n">minimum_error</span><span class="o">=</span><span class="n">inv_inputs</span><span class="p">[</span><span class="s2">"min_error"</span><span class="p">],</span>
+    <span class="n">likelihood_settings</span><span class="o">=</span><span class="n">PollutionEventSettings</span><span class="p">(</span>
+        <span class="n">sigma_prior</span><span class="o">=</span><span class="p">{</span><span class="s2">"pdf"</span><span class="p">:</span> <span class="s2">"uniform"</span><span class="p">,</span> <span class="s2">"lower"</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">,</span> <span class="s2">"upper"</span><span class="p">:</span> <span class="mf">0.1</span><span class="p">},</span>
+    <span class="p">),</span>
     <span class="n">boundary_sensitivity</span><span class="o">=</span><span class="n">inv_inputs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"H_bc"</span><span class="p">),</span>
-    <span class="n">sigma_alignment</span><span class="o">=</span><span class="n">sigma_alignment</span><span class="p">,</span>
     <span class="n">x_prior</span><span class="o">=</span><span class="p">{</span><span class="s2">"pdf"</span><span class="p">:</span> <span class="s2">"normal"</span><span class="p">,</span> <span class="s2">"mu"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> <span class="s2">"sigma"</span><span class="p">:</span> <span class="mf">0.5</span><span class="p">},</span>
     <span class="n">state_activity</span><span class="o">=</span><span class="n">state_policy</span><span class="p">,</span>
 <span class="p">)</span>
@@ -1143,9 +1147,9 @@ retain their gathered <code class="docutils literal notranslate"><span class="pr
     <span class="n">calibrate_basis_prior_stdev</span><span class="p">,</span>
     <span class="n">project_basis_prior_stdev</span><span class="p">,</span>
 <span class="p">)</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.standard</span><span class="w"> </span><span class="kn">import</span> <span class="n">build_standard_rhime_model</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.observation_error</span><span class="w"> </span><span class="kn">import</span> <span class="n">resolve_aggregation_error</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.sigma</span><span class="w"> </span><span class="kn">import</span> <span class="n">SigmaAlignment</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="n">PollutionEventSettings</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.standard</span><span class="w"> </span><span class="kn">import</span> <span class="n">build_standard_rhime_model</span>
 
 <span class="n">x_prior_stdev</span> <span class="o">=</span> <span class="n">project_basis_prior_stdev</span><span class="p">(</span>
     <span class="n">basis_functions</span><span class="p">,</span>
@@ -1156,10 +1160,12 @@ retain their gathered <code class="docutils literal notranslate"><span class="pr
     <span class="n">inv_inputs</span><span class="p">[</span><span class="s2">"H"</span><span class="p">],</span>
     <span class="n">observations</span><span class="o">=</span><span class="n">inv_inputs</span><span class="p">[</span><span class="s2">"mf"</span><span class="p">],</span>
     <span class="n">observation_error</span><span class="o">=</span><span class="n">inv_inputs</span><span class="p">[</span><span class="s2">"mf_error"</span><span class="p">],</span>
-    <span class="n">minimum_error</span><span class="o">=</span><span class="n">inv_inputs</span><span class="p">[</span><span class="s2">"min_error"</span><span class="p">],</span>
     <span class="n">aggregation_error</span><span class="o">=</span><span class="n">resolve_aggregation_error</span><span class="p">(</span><span class="n">inv_inputs</span><span class="p">,</span> <span class="s2">"none"</span><span class="p">),</span>
+    <span class="n">minimum_error</span><span class="o">=</span><span class="n">inv_inputs</span><span class="p">[</span><span class="s2">"min_error"</span><span class="p">],</span>
+    <span class="n">likelihood_settings</span><span class="o">=</span><span class="n">PollutionEventSettings</span><span class="p">(</span>
+        <span class="n">sigma_prior</span><span class="o">=</span><span class="p">{</span><span class="s2">"pdf"</span><span class="p">:</span> <span class="s2">"uniform"</span><span class="p">,</span> <span class="s2">"lower"</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">,</span> <span class="s2">"upper"</span><span class="p">:</span> <span class="mf">0.1</span><span class="p">},</span>
+    <span class="p">),</span>
     <span class="n">boundary_sensitivity</span><span class="o">=</span><span class="n">inv_inputs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"H_bc"</span><span class="p">),</span>
-    <span class="n">sigma_alignment</span><span class="o">=</span><span class="n">SigmaAlignment</span><span class="o">.</span><span class="n">from_frequency</span><span class="p">(</span><span class="n">inv_inputs</span><span class="p">[</span><span class="s2">"site_indicator"</span><span class="p">]),</span>
     <span class="n">x_prior</span><span class="o">=</span><span class="p">{</span><span class="s2">"pdf"</span><span class="p">:</span> <span class="s2">"normal"</span><span class="p">,</span> <span class="s2">"mu"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> <span class="s2">"sigma"</span><span class="p">:</span> <span class="n">x_prior_stdev</span><span class="p">},</span>
 <span class="p">)</span>
 </pre></div>

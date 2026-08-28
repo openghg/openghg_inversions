@@ -440,8 +440,18 @@ mean of the observed distribution is therefore</p>
 <div class="math notranslate nohighlight">
 \[\mu_{\mathrm{obs}} = \mu + \mu_{bc} + \mathrm{offset},\]</div>
 <p>where omitted components are left out of the sum.</p>
-<p>The ordinary model preserves the pollution-event fractional-error equation
-used by <code class="docutils literal notranslate"><span class="pre">run_hbmcmc.py</span></code>. Aggregation error is disabled by default. Let
+<p>The configuration template explicitly selects
+<code class="docutils literal notranslate"><span class="pre">mismatch_model=&quot;pollution_event&quot;</span></code>. This preserves the fractional-error
+equation used by <code class="docutils literal notranslate"><span class="pre">run_hbmcmc.py</span></code> for users who start from that template.
+Direct runner calls must make a likelihood selection explicitly. The concrete
+model recipe has no mismatch default: parameter resolution converts the
+selector to <code class="docutils literal notranslate"><span class="pre">PollutionEventSettings</span></code> in the serializable model specification
+before construction. Select
+<code class="docutils literal notranslate"><span class="pre">mismatch_model=&quot;additive_sigma&quot;</span></code> for an absolute concentration-scale
+mismatch instead; this is a resolved model option and does not use the custom
+<code class="docutils literal notranslate"><span class="pre">likelihood_builder</span></code> extension point. Additive sigma does not select the
+prepared <code class="docutils literal notranslate"><span class="pre">min_error</span></code> input unless <code class="docutils literal notranslate"><span class="pre">use_minimum_error_floor=True</span></code> is also
+set. Aggregation error is disabled by default. Let
 <span class="math notranslate nohighlight">\(P\)</span> be the pollution event and let <code class="docutils literal notranslate"><span class="pre">sigma</span></code> be the observation-aligned
 fractional model-error parameter. With the default
 <code class="docutils literal notranslate"><span class="pre">pollution_events_from_obs=False</span></code>,</p>
@@ -461,10 +471,11 @@ it uses <span class="math notranslate nohighlight">\(P=|Y|+10^{-6}\operatorname{
 variant: <span class="math notranslate nohighlight">\(P=|Y-\mu_{bc}|\)</span>, even when an offset is also included in
 <span class="math notranslate nohighlight">\(\mu_{\mathrm{obs}}\)</span>. That exception preserves existing configurations;
 it is not the scientific default for new RHIME recipes.</p>
-<p>With <code class="docutils literal notranslate"><span class="pre">no_model_error=True</span></code>, the sampled fractional-error contribution is
-omitted and the likelihood scale is the observation error, protected only by
-the historical very-small numerical floor. <code class="docutils literal notranslate"><span class="pre">min_error</span></code> is not applied in
-that branch.</p>
+<p>Select <code class="docutils literal notranslate"><span class="pre">mismatch_model=&quot;fixed_error&quot;</span></code> to omit inferred mismatch error. Its
+likelihood scale uses the reported observation error and does not select
+<code class="docutils literal notranslate"><span class="pre">min_error</span></code>.
+<code class="docutils literal notranslate"><span class="pre">run_hbmcmc.py</span></code> privately preserves the different historical floor and
+unused-variable details of its two <code class="docutils literal notranslate"><span class="pre">no_model_error</span></code> routes.</p>
 <p>Aggregation covariance is an explicit advanced opt-in. If a caller selects a
 prepared covariance <span class="math notranslate nohighlight">\(C_{agg}\)</span> with marginal variance
 <span class="math notranslate nohighlight">\(v_{agg}=\operatorname{diag}(C_{agg})\)</span>, the marginal floor and observed
@@ -769,8 +780,7 @@ helpers:</p>
     <span class="n">prepare_linear_sensitivity</span><span class="p">,</span>
     <span class="n">registered_model</span><span class="p">,</span>
 <span class="p">)</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.models.likelihoods</span><span class="w"> </span><span class="kn">import</span> <span class="n">add_gaussian_observation_likelihood</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.models.pollution_event</span><span class="w"> </span><span class="kn">import</span> <span class="n">build_pollution_event_error</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.models.pollution_event</span><span class="w"> </span><span class="kn">import</span> <span class="n">add_pollution_event_likelihood</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.observation_error</span><span class="w"> </span><span class="kn">import</span> <span class="n">resolve_aggregation_error</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.sigma</span><span class="w"> </span><span class="kn">import</span> <span class="n">SigmaAlignment</span>
 
@@ -786,10 +796,10 @@ helpers:</p>
     <span class="s2">"sigma"</span><span class="p">:</span> <span class="mf">0.05</span><span class="p">,</span>
     <span class="s2">"lower"</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">,</span>
 <span class="p">}</span>
-<span class="n">sigma_prior</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"pdf"</span><span class="p">:</span> <span class="s2">"uniform"</span><span class="p">,</span> <span class="s2">"lower"</span><span class="p">:</span> <span class="mf">0.1</span><span class="p">,</span> <span class="s2">"upper"</span><span class="p">:</span> <span class="mf">3.0</span><span class="p">}</span>
+<span class="n">sigma_prior</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"pdf"</span><span class="p">:</span> <span class="s2">"uniform"</span><span class="p">,</span> <span class="s2">"lower"</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">,</span> <span class="s2">"upper"</span><span class="p">:</span> <span class="mf">0.1</span><span class="p">}</span>
 
-<span class="n">sigma_alignment</span> <span class="o">=</span> <span class="n">SigmaAlignment</span><span class="o">.</span><span class="n">from_frequency</span><span class="p">(</span>
-    <span class="n">inv_inputs</span><span class="p">[</span><span class="s2">"site_indicator"</span><span class="p">],</span>
+<span class="n">sigma_alignment</span> <span class="o">=</span> <span class="n">SigmaAlignment</span><span class="o">.</span><span class="n">from_observations</span><span class="p">(</span>
+    <span class="n">inv_inputs</span><span class="p">[</span><span class="s2">"mf"</span><span class="p">],</span>
     <span class="n">frequency</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
     <span class="n">per_site</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
 <span class="p">)</span>
@@ -817,11 +827,12 @@ helpers:</p>
     <span class="n">baseline_mean</span> <span class="o">=</span> <span class="n">boundary</span><span class="o">.</span><span class="n">output</span>
     <span class="n">modelled_mean</span> <span class="o">=</span> <span class="n">pollution_mean</span> <span class="o">+</span> <span class="n">baseline_mean</span>
 
-    <span class="n">error_state</span> <span class="o">=</span> <span class="n">build_pollution_event_error</span><span class="p">(</span>
+    <span class="n">add_pollution_event_likelihood</span><span class="p">(</span>
         <span class="n">observations</span><span class="o">=</span><span class="n">inv_inputs</span><span class="p">[</span><span class="s2">"mf"</span><span class="p">],</span>
         <span class="n">observation_error</span><span class="o">=</span><span class="n">inv_inputs</span><span class="p">[</span><span class="s2">"mf_error"</span><span class="p">],</span>
         <span class="n">minimum_error</span><span class="o">=</span><span class="n">inv_inputs</span><span class="p">[</span><span class="s2">"min_error"</span><span class="p">],</span>
         <span class="n">aggregation_error</span><span class="o">=</span><span class="n">resolve_aggregation_error</span><span class="p">(</span><span class="n">inv_inputs</span><span class="p">,</span> <span class="s2">"none"</span><span class="p">),</span>
+        <span class="n">mean</span><span class="o">=</span><span class="n">modelled_mean</span><span class="p">,</span>
         <span class="n">pollution_mean</span><span class="o">=</span><span class="n">pollution_mean</span><span class="p">,</span>
         <span class="n">pollution_event_baseline</span><span class="o">=</span><span class="n">baseline_mean</span><span class="p">,</span>
         <span class="n">sigma_alignment</span><span class="o">=</span><span class="n">sigma_alignment</span><span class="p">,</span>
@@ -829,13 +840,6 @@ helpers:</p>
         <span class="n">power</span><span class="o">=</span><span class="mf">1.99</span><span class="p">,</span>
         <span class="n">pollution_events_from_obs</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
         <span class="n">no_model_error</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
-        <span class="n">output_dim</span><span class="o">=</span><span class="s2">"nmeasure"</span><span class="p">,</span>
-    <span class="p">)</span>
-    <span class="n">add_gaussian_observation_likelihood</span><span class="p">(</span>
-        <span class="n">observed</span><span class="o">=</span><span class="n">error_state</span><span class="o">.</span><span class="n">observed</span><span class="p">,</span>
-        <span class="n">mean</span><span class="o">=</span><span class="n">modelled_mean</span><span class="p">,</span>
-        <span class="n">independent_variance</span><span class="o">=</span><span class="n">error_state</span><span class="o">.</span><span class="n">independent_variance</span><span class="p">,</span>
-        <span class="n">aggregation_error</span><span class="o">=</span><span class="n">error_state</span><span class="o">.</span><span class="n">aggregation_error</span><span class="p">,</span>
         <span class="n">output_dim</span><span class="o">=</span><span class="s2">"nmeasure"</span><span class="p">,</span>
     <span class="p">)</span>
 </pre></div>
@@ -893,17 +897,20 @@ Callables are never read from configuration or stored on <code class="docutils l
 <code class="docutils literal notranslate"><span class="pre">RhimeRunSpec</span></code>, so model and run specs remain serializable. There is no
 entry-point or config-file plugin registry.</p>
 <p>A concrete recipe owns the complete forward-model mean: pollution, baseline,
-and optional offset contributions are composed visibly before the likelihood
-seam. A likelihood builder owns error construction and the observed
-distribution. RHIME passes the completed concentration, pollution contribution,
-pollution-event baseline, prepared observations and errors, a validated
-<code class="docutils literal notranslate"><span class="pre">AggregationError</span></code>, and output dimension as explicit arguments. Options
-specific to that likelihood travel separately in <code class="docutils literal notranslate"><span class="pre">likelihood_kwargs</span></code>.
+and optional offset contributions are composed visibly and packaged as named
+forward terms before the shared built-in dispatcher is invoked. The runner
+stores one typed settings value on <code class="docutils literal notranslate"><span class="pre">RhimeModelSpec</span></code>; the dispatcher calls the
+ordinary built-in equation with only that likelihood’s inputs. A custom caller
+instead supplies a mean-only callable. Every likelihood receives the completed
+concentration, prepared observations and reported observation error, a
+validated <code class="docutils literal notranslate"><span class="pre">AggregationError</span></code>, and output dimension. Built-in pollution-event
+scaling additionally receives the named pollution and baseline terms.
+<code class="docutils literal notranslate"><span class="pre">likelihood_kwargs</span></code> is reserved for custom callables.
 The builder adds and returns the canonical observed variable <code class="docutils literal notranslate"><span class="pre">y</span></code> and also
 adds the canonical marginal error scale <code class="docutils literal notranslate"><span class="pre">epsilon</span></code>.</p>
-<p><code class="docutils literal notranslate"><span class="pre">likelihood_kwargs</span></code> must be a string-keyed, JSON-compatible mapping and is
-valid only when a likelihood builder is active. The runner copies and records
-the mapping with the callable identity in result and saved builder metadata.</p>
+<p><code class="docutils literal notranslate"><span class="pre">likelihood_kwargs</span></code> is valid only when a custom likelihood builder is active.
+The runner expands the mapping into that callable and records it with the
+callable identity in result and saved builder metadata.</p>
 <p>The editable example in <a class="reference internal" href="customising_rhime.html"><span class="doc">Customising RHIME</span></a> implements a fixed-error
 Student-t likelihood using only those common inputs. Pass it directly to the
 ordinary runner:</p>
@@ -912,6 +919,7 @@ ordinary runner:</p>
 
 <span class="n">result</span> <span class="o">=</span> <span class="n">run_rhime</span><span class="p">(</span>
     <span class="n">config_file</span><span class="o">=</span><span class="s2">"config.ini"</span><span class="p">,</span>
+    <span class="n">mismatch_model</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
     <span class="n">likelihood_builder</span><span class="o">=</span><span class="n">likelihood_builder</span><span class="p">,</span>
 <span class="p">)</span>
 </pre></div>

@@ -139,7 +139,11 @@ model, output, and sampler specifications:
 
 .. code-block:: python
 
-   from openghg_inversions.rhime import RhimeModelSpec, SectorSpec
+   from openghg_inversions.rhime import (
+       PollutionEventSettings,
+       RhimeModelSpec,
+       SectorSpec,
+   )
    from openghg_inversions.inversion_data import RhimePreparedInputs
    from openghg_inversions.rhime import (
        RhimeOutputSpec,
@@ -156,6 +160,7 @@ model, output, and sampler specifications:
    model_spec = RhimeModelSpec(
        species="ch4",
        domain="EUROPE",
+       likelihood=PollutionEventSettings(),
        sectors=(
            SectorSpec(
                name="total",
@@ -665,24 +670,23 @@ containing the value ``"outer"``:
 
    from openghg_inversions.models import StateActivity
    from openghg_inversions.observation_error import resolve_aggregation_error
+   from openghg_inversions.rhime import PollutionEventSettings
    from openghg_inversions.rhime.standard import build_standard_rhime_model
-   from openghg_inversions.sigma import SigmaAlignment
 
    state_policy = StateActivity(
        fixed_groups=("outer",),
        fixed_value=1.0,
    )
-   sigma_alignment = SigmaAlignment.from_frequency(
-       inv_inputs["site_indicator"],
-   )
    model = build_standard_rhime_model(
        inv_inputs["H"],
        observations=inv_inputs["mf"],
        observation_error=inv_inputs["mf_error"],
-       minimum_error=inv_inputs["min_error"],
        aggregation_error=resolve_aggregation_error(inv_inputs, "none"),
+       minimum_error=inv_inputs["min_error"],
+       likelihood_settings=PollutionEventSettings(
+           sigma_prior={"pdf": "uniform", "lower": 0.0, "upper": 0.1},
+       ),
        boundary_sensitivity=inv_inputs.get("H_bc"),
-       sigma_alignment=sigma_alignment,
        x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.5},
        state_activity=state_policy,
    )
@@ -826,9 +830,9 @@ retain their gathered ``(source, region_in_source)`` state coordinate.
        calibrate_basis_prior_stdev,
        project_basis_prior_stdev,
    )
-   from openghg_inversions.rhime.standard import build_standard_rhime_model
    from openghg_inversions.observation_error import resolve_aggregation_error
-   from openghg_inversions.sigma import SigmaAlignment
+   from openghg_inversions.rhime import PollutionEventSettings
+   from openghg_inversions.rhime.standard import build_standard_rhime_model
 
    x_prior_stdev = project_basis_prior_stdev(
        basis_functions,
@@ -839,10 +843,12 @@ retain their gathered ``(source, region_in_source)`` state coordinate.
        inv_inputs["H"],
        observations=inv_inputs["mf"],
        observation_error=inv_inputs["mf_error"],
-       minimum_error=inv_inputs["min_error"],
        aggregation_error=resolve_aggregation_error(inv_inputs, "none"),
+       minimum_error=inv_inputs["min_error"],
+       likelihood_settings=PollutionEventSettings(
+           sigma_prior={"pdf": "uniform", "lower": 0.0, "upper": 0.1},
+       ),
        boundary_sensitivity=inv_inputs.get("H_bc"),
-       sigma_alignment=SigmaAlignment.from_frequency(inv_inputs["site_indicator"]),
        x_prior={"pdf": "normal", "mu": 1.0, "sigma": x_prior_stdev},
    )
 

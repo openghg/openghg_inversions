@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>openghg_inversions.models.likelihoods &#8212; openghg_inversions  documentation</title>
+    <title>openghg_inversions.models.fixed_error &#8212; openghg_inversions  documentation</title>
   
   
   
@@ -47,7 +47,8 @@
     <script src="../_static/thebelab-helper.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
-    <script>DOCUMENTATION_OPTIONS.pagename = 'reference/openghg_inversions.models.likelihoods';</script>
+    <script defer="defer" src="https://cdn.jsdelivr.net/npm/mathjax@4/tex-mml-chtml.js"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'reference/openghg_inversions.models.fixed_error';</script>
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
@@ -362,7 +363,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.additive_sigma.html">openghg_inversions.models.additive_sigma</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.components.html">openghg_inversions.models.components</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.coords.html">openghg_inversions.models.coords</a></li>
-<li class="toctree-l3 current active"><a class="current reference internal" href="#">openghg_inversions.models.likelihoods</a></li>
+<li class="toctree-l3 current active"><a class="current reference internal" href="#">openghg_inversions.models.fixed_error</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.pollution_event.html">openghg_inversions.models.pollution_event</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.priors.html">openghg_inversions.models.priors</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.state_activity.html">openghg_inversions.models.state_activity</a></li>
@@ -391,7 +392,6 @@
 </ul>
 </details></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.builders.html">openghg_inversions.rhime.builders</a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.likelihoods.html">openghg_inversions.rhime.likelihoods</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.materialization.html">openghg_inversions.rhime.materialization</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.multisector.html">openghg_inversions.rhime.multisector</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.outputs.html">openghg_inversions.rhime.outputs</a></li>
@@ -471,7 +471,7 @@
     
     <li class="breadcrumb-item"><a href="openghg_inversions.models.html" class="nav-link">openghg_inversions.models</a></li>
     
-    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">openghg_inversions.models.likelihoods</span></li>
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">openghg_inversions.models.fixed_error</span></li>
   </ul>
 </nav>
 </div>
@@ -488,78 +488,40 @@
 <div id="searchbox"></div>
                 <article class="bd-article">
                   
-  <section id="module-openghg_inversions.models.likelihoods">
-<span id="openghg-inversions-models-likelihoods"></span><h1>openghg_inversions.models.likelihoods<a class="headerlink" href="#module-openghg_inversions.models.likelihoods" title="Link to this heading">#</a></h1>
-<p>Observation likelihoods for diagonal and structured covariance.</p>
-<dl class="py class">
-<dt class="sig sig-object py" id="openghg_inversions.models.likelihoods.RegisteredAggregationError">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">openghg_inversions.models.likelihoods.</span></span><span class="sig-name descname"><span class="pre">RegisteredAggregationError</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mode</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">marginal_variance</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">TensorVariable</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">covariance</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">TensorVariable</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">factor</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">TensorVariable</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">diagonal_variance</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">TensorVariable</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.likelihoods.RegisteredAggregationError" title="Link to this definition">#</a></dt>
-<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
-<p>Aggregation-error tensors registered with the active PyMC model.</p>
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.models.likelihoods.RegisteredAggregationError.covariance">
-<span class="sig-name descname"><span class="pre">covariance</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">TensorVariable</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#openghg_inversions.models.likelihoods.RegisteredAggregationError.covariance" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.models.likelihoods.RegisteredAggregationError.diagonal_variance">
-<span class="sig-name descname"><span class="pre">diagonal_variance</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">TensorVariable</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#openghg_inversions.models.likelihoods.RegisteredAggregationError.diagonal_variance" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.models.likelihoods.RegisteredAggregationError.factor">
-<span class="sig-name descname"><span class="pre">factor</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">TensorVariable</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#openghg_inversions.models.likelihoods.RegisteredAggregationError.factor" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.models.likelihoods.RegisteredAggregationError.marginal_variance">
-<span class="sig-name descname"><span class="pre">marginal_variance</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">TensorVariable</span></span><a class="headerlink" href="#openghg_inversions.models.likelihoods.RegisteredAggregationError.marginal_variance" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="openghg_inversions.models.likelihoods.RegisteredAggregationError.mode">
-<span class="sig-name descname"><span class="pre">mode</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><a class="headerlink" href="#openghg_inversions.models.likelihoods.RegisteredAggregationError.mode" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
-
-</dd></dl>
-
+  <section id="module-openghg_inversions.models.fixed_error">
+<span id="openghg-inversions-models-fixed-error"></span><h1>openghg_inversions.models.fixed_error<a class="headerlink" href="#module-openghg_inversions.models.fixed_error" title="Link to this heading">#</a></h1>
+<p>Gaussian observations without inferred model-data mismatch.</p>
+<p>For reported observation-error variance <span class="math notranslate nohighlight">\(s_y^2\)</span> and optional fixed
+aggregation covariance <span class="math notranslate nohighlight">\(C_{agg}\)</span>, this component constructs the
+independent variance</p>
+<div class="math notranslate nohighlight">
+\[v = \max\left(|s_y|, 10^{-12}\bar{y}\right)^2.\]</div>
+<p>The tiny scale guard preserves the historical no-model-error behaviour for
+zero reported errors. No inferred <code class="docutils literal notranslate"><span class="pre">sigma</span></code> or prepared minimum-error floor is
+part of this model.</p>
 <dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.models.likelihoods.add_aggregation_error_data">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.models.likelihoods.</span></span><span class="sig-name descname"><span class="pre">add_aggregation_error_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">aggregation_error</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.AggregationError" title="openghg_inversions.observation_error.AggregationError"><span class="pre">AggregationError</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">observations</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_dim</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#openghg_inversions.models.likelihoods.RegisteredAggregationError" title="openghg_inversions.models.likelihoods.RegisteredAggregationError"><span class="pre">RegisteredAggregationError</span></a></span></span><a class="headerlink" href="#openghg_inversions.models.likelihoods.add_aggregation_error_data" title="Link to this definition">#</a></dt>
-<dd><p>Register labelled fixed aggregation-error data with the active model.</p>
+<dt class="sig sig-object py" id="openghg_inversions.models.fixed_error.add_fixed_error_likelihood">
+<span class="sig-prename descclassname"><span class="pre">openghg_inversions.models.fixed_error.</span></span><span class="sig-name descname"><span class="pre">add_fixed_error_likelihood</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">observations</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">observation_error</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">aggregation_error</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.AggregationError" title="openghg_inversions.observation_error.AggregationError"><span class="pre">AggregationError</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">mean</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">TensorVariable</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_dim</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'nmeasure'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">observation_error_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'error'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">TensorVariable</span></span></span><a class="headerlink" href="#openghg_inversions.models.fixed_error.add_fixed_error_likelihood" title="Link to this definition">#</a></dt>
+<dd><p>Add a Gaussian likelihood without inferred model-data mismatch.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>aggregation_error</strong> – Validated backend-neutral covariance representation.</p></li>
-<li><p><strong>observations</strong> – Observation vector supplying labels for the marginal
-variance.</p></li>
-<li><p><strong>output_dim</strong> – Observation dimension.</p></li>
+<li><p><strong>observations</strong> – Observed mole fractions.</p></li>
+<li><p><strong>observation_error</strong> – Reported observation-error standard deviations.</p></li>
+<li><p><strong>aggregation_error</strong> – Validated fixed aggregation-error representation.</p></li>
+<li><p><strong>mean</strong> – Completed forward-model concentration aligned with
+<code class="docutils literal notranslate"><span class="pre">output_dim</span></code>.</p></li>
+<li><p><strong>output_dim</strong> – Observation dimension used for named PyMC variables.</p></li>
+<li><p><strong>observation_error_name</strong> – PyMC data name for the reported error.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Registered tensors used by the error scale and likelihood graph.</p>
+<dd class="field-even"><p>The observed Gaussian variable, named <code class="docutils literal notranslate"><span class="pre">y</span></code>. The total marginal error
+scale is also recorded in the active model as <code class="docutils literal notranslate"><span class="pre">epsilon</span></code>.</p>
 </dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.models.likelihoods.add_gaussian_observation_likelihood">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.models.likelihoods.</span></span><span class="sig-name descname"><span class="pre">add_gaussian_observation_likelihood</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">observed</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">TensorVariable</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mean</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">TensorVariable</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">independent_variance</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">TensorVariable</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">aggregation_error</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#openghg_inversions.models.likelihoods.RegisteredAggregationError" title="openghg_inversions.models.likelihoods.RegisteredAggregationError"><span class="pre">RegisteredAggregationError</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_dim</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">TensorVariable</span></span></span><a class="headerlink" href="#openghg_inversions.models.likelihoods.add_gaussian_observation_likelihood" title="Link to this definition">#</a></dt>
-<dd><p>Add the canonical Gaussian observation variable <code class="docutils literal notranslate"><span class="pre">y</span></code>.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>observed</strong> – Observed concentration vector.</p></li>
-<li><p><strong>mean</strong> – Completed forward-model concentration.</p></li>
-<li><p><strong>independent_variance</strong> – Observation-aligned variance independent of the
-fixed aggregation error.</p></li>
-<li><p><strong>aggregation_error</strong> – Selected diagonal, dense, or low-rank fixed
-aggregation covariance.</p></li>
-<li><p><strong>output_dim</strong> – Named observation dimension for the PyMC variable.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Observed PyMC variable named <code class="docutils literal notranslate"><span class="pre">y</span></code>.</p>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If the observation or aggregation-error inputs are
+    inconsistent with <code class="docutils literal notranslate"><span class="pre">output_dim</span></code>.</p>
 </dd>
 </dl>
 </dd></dl>
@@ -613,23 +575,14 @@ aggregation covariance.</p></li>
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.likelihoods.RegisteredAggregationError"><code class="docutils literal notranslate"><span class="pre">RegisteredAggregationError</span></code></a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.likelihoods.RegisteredAggregationError.covariance"><code class="docutils literal notranslate"><span class="pre">RegisteredAggregationError.covariance</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.likelihoods.RegisteredAggregationError.diagonal_variance"><code class="docutils literal notranslate"><span class="pre">RegisteredAggregationError.diagonal_variance</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.likelihoods.RegisteredAggregationError.factor"><code class="docutils literal notranslate"><span class="pre">RegisteredAggregationError.factor</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.likelihoods.RegisteredAggregationError.marginal_variance"><code class="docutils literal notranslate"><span class="pre">RegisteredAggregationError.marginal_variance</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.likelihoods.RegisteredAggregationError.mode"><code class="docutils literal notranslate"><span class="pre">RegisteredAggregationError.mode</span></code></a></li>
-</ul>
-</li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.likelihoods.add_aggregation_error_data"><code class="docutils literal notranslate"><span class="pre">add_aggregation_error_data()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.likelihoods.add_gaussian_observation_likelihood"><code class="docutils literal notranslate"><span class="pre">add_gaussian_observation_likelihood()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.fixed_error.add_fixed_error_likelihood"><code class="docutils literal notranslate"><span class="pre">add_fixed_error_likelihood()</span></code></a></li>
 </ul>
   </nav></div>
 
   <div class="sidebar-secondary-item">
 
   <div class="tocsection sourcelink">
-    <a href="../_sources/reference/openghg_inversions.models.likelihoods.rst.txt">
+    <a href="../_sources/reference/openghg_inversions.models.fixed_error.rst.txt">
       <i class="fa-solid fa-file-lines"></i> Show Source
     </a>
   </div>

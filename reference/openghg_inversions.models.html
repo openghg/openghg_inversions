@@ -362,7 +362,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.additive_sigma.html">openghg_inversions.models.additive_sigma</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.components.html">openghg_inversions.models.components</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.coords.html">openghg_inversions.models.coords</a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.likelihoods.html">openghg_inversions.models.likelihoods</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.fixed_error.html">openghg_inversions.models.fixed_error</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.pollution_event.html">openghg_inversions.models.pollution_event</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.priors.html">openghg_inversions.models.priors</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.state_activity.html">openghg_inversions.models.state_activity</a></li>
@@ -391,7 +391,6 @@
 </ul>
 </details></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.builders.html">openghg_inversions.rhime.builders</a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.likelihoods.html">openghg_inversions.rhime.likelihoods</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.materialization.html">openghg_inversions.rhime.materialization</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.multisector.html">openghg_inversions.rhime.multisector</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.outputs.html">openghg_inversions.rhime.outputs</a></li>
@@ -1335,7 +1334,7 @@ and auxiliary coordinates restored onto its xarray groups.</p>
 <div class="toctree-wrapper compound">
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="openghg_inversions.models.additive_sigma.html">openghg_inversions.models.additive_sigma</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.additive_sigma.html#openghg_inversions.models.additive_sigma.add_additive_sigma_gaussian_likelihood"><code class="docutils literal notranslate"><span class="pre">add_additive_sigma_gaussian_likelihood()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.additive_sigma.html#openghg_inversions.models.additive_sigma.add_additive_sigma_likelihood"><code class="docutils literal notranslate"><span class="pre">add_additive_sigma_likelihood()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="openghg_inversions.models.components.html">openghg_inversions.models.components</a><ul>
@@ -1390,29 +1389,12 @@ and auxiliary coordinates restored onto its xarray groups.</p>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.coords.html#openghg_inversions.models.coords.sanitize_coords_for_pymc"><code class="docutils literal notranslate"><span class="pre">sanitize_coords_for_pymc()</span></code></a></li>
 </ul>
 </li>
-<li class="toctree-l1"><a class="reference internal" href="openghg_inversions.models.likelihoods.html">openghg_inversions.models.likelihoods</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.likelihoods.html#openghg_inversions.models.likelihoods.RegisteredAggregationError"><code class="docutils literal notranslate"><span class="pre">RegisteredAggregationError</span></code></a><ul>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.likelihoods.html#openghg_inversions.models.likelihoods.RegisteredAggregationError.covariance"><code class="docutils literal notranslate"><span class="pre">RegisteredAggregationError.covariance</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.likelihoods.html#openghg_inversions.models.likelihoods.RegisteredAggregationError.diagonal_variance"><code class="docutils literal notranslate"><span class="pre">RegisteredAggregationError.diagonal_variance</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.likelihoods.html#openghg_inversions.models.likelihoods.RegisteredAggregationError.factor"><code class="docutils literal notranslate"><span class="pre">RegisteredAggregationError.factor</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.likelihoods.html#openghg_inversions.models.likelihoods.RegisteredAggregationError.marginal_variance"><code class="docutils literal notranslate"><span class="pre">RegisteredAggregationError.marginal_variance</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.likelihoods.html#openghg_inversions.models.likelihoods.RegisteredAggregationError.mode"><code class="docutils literal notranslate"><span class="pre">RegisteredAggregationError.mode</span></code></a></li>
-</ul>
-</li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.likelihoods.html#openghg_inversions.models.likelihoods.add_aggregation_error_data"><code class="docutils literal notranslate"><span class="pre">add_aggregation_error_data()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.likelihoods.html#openghg_inversions.models.likelihoods.add_gaussian_observation_likelihood"><code class="docutils literal notranslate"><span class="pre">add_gaussian_observation_likelihood()</span></code></a></li>
+<li class="toctree-l1"><a class="reference internal" href="openghg_inversions.models.fixed_error.html">openghg_inversions.models.fixed_error</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.fixed_error.html#openghg_inversions.models.fixed_error.add_fixed_error_likelihood"><code class="docutils literal notranslate"><span class="pre">add_fixed_error_likelihood()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="openghg_inversions.models.pollution_event.html">openghg_inversions.models.pollution_event</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.pollution_event.html#openghg_inversions.models.pollution_event.PollutionEventErrorState"><code class="docutils literal notranslate"><span class="pre">PollutionEventErrorState</span></code></a><ul>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.pollution_event.html#openghg_inversions.models.pollution_event.PollutionEventErrorState.aggregation_error"><code class="docutils literal notranslate"><span class="pre">PollutionEventErrorState.aggregation_error</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.pollution_event.html#openghg_inversions.models.pollution_event.PollutionEventErrorState.error_scale"><code class="docutils literal notranslate"><span class="pre">PollutionEventErrorState.error_scale</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.pollution_event.html#openghg_inversions.models.pollution_event.PollutionEventErrorState.independent_variance"><code class="docutils literal notranslate"><span class="pre">PollutionEventErrorState.independent_variance</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.pollution_event.html#openghg_inversions.models.pollution_event.PollutionEventErrorState.observed"><code class="docutils literal notranslate"><span class="pre">PollutionEventErrorState.observed</span></code></a></li>
-</ul>
-</li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.pollution_event.html#openghg_inversions.models.pollution_event.build_pollution_event_error"><code class="docutils literal notranslate"><span class="pre">build_pollution_event_error()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.pollution_event.html#openghg_inversions.models.pollution_event.build_pollution_event_gaussian_likelihood"><code class="docutils literal notranslate"><span class="pre">build_pollution_event_gaussian_likelihood()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.pollution_event.html#openghg_inversions.models.pollution_event.add_pollution_event_likelihood"><code class="docutils literal notranslate"><span class="pre">add_pollution_event_likelihood()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="openghg_inversions.models.priors.html">openghg_inversions.models.priors</a><ul>

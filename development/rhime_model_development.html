@@ -574,8 +574,9 @@ arrays together, and pass them to components as honest named arguments.</p>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">min_error</span></code></p></td>
 <td><p>Reusable error-model product</p></td>
 <td><p>Currently calculated by preparation</p></td>
-<td><p>Passed as <code class="docutils literal notranslate"><span class="pre">minimum_error</span></code> to likelihoods which support the historical
-total-error floor</p></td>
+<td><p>Selected as <code class="docutils literal notranslate"><span class="pre">minimum_error</span></code> by pollution-event mismatch or by another
+built-in component which explicitly opts into the historical total-error
+floor; custom likelihoods do not require it</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">aggregation_error_covariance</span></code>, <code class="docutils literal notranslate"><span class="pre">low_rank_factor</span></code>,
 <code class="docutils literal notranslate"><span class="pre">diagonal_residual_variance</span></code>, <code class="docutils literal notranslate"><span class="pre">aggregation_error_sd</span></code></p></td>
@@ -591,11 +592,11 @@ column-prior factors, and arbitrary labelled extensions</p></td>
 <td><p>Not materialized unless a concrete recipe explicitly selects them</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">site_indicator</span></code></p></td>
-<td><p>Model-only derived wiring</p></td>
+<td><p>Legacy output/compatibility wiring</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code> derives and validates it from labelled
 <code class="docutils literal notranslate"><span class="pre">(site,</span> <span class="pre">time)</span></code> observations</p></td>
-<td><p>The model-error recipe derives <code class="docutils literal notranslate"><span class="pre">SigmaAlignment</span></code>; the offset component
-may also select it</p></td>
+<td><p>Built-in likelihoods do not materialize it; the offset component may
+still register its own model data</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">site_names</span></code></p></td>
 <td><p>Output/compatibility wiring</p></td>
@@ -604,7 +605,7 @@ may also select it</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">SigmaAlignment</span></code></p></td>
 <td><p>Cohesive model-only value</p></td>
-<td><p>The standard or multisector recipe derives it from <code class="docutils literal notranslate"><span class="pre">site_indicator</span></code>,
+<td><p>The shared likelihood dispatcher derives it from <code class="docutils literal notranslate"><span class="pre">mf.coords[&quot;site&quot;]</span></code>,
 time, and resolved model-error options</p></td>
 <td><p>Passed explicitly to the likelihood</p></td>
 </tr>
@@ -618,8 +619,10 @@ state names beside the consuming recipe</p></td>
 </table>
 </div>
 <p>The current preparation ownership of <code class="docutils literal notranslate"><span class="pre">min_error</span></code> calculation and boundary
-period expansion is explicit rather than accidental; moving either equation
-requires its own scientific parity change. An externally cached sensitivity,
+period expansion is explicit rather than accidental. A concrete recipe does
+not materialize <code class="docutils literal notranslate"><span class="pre">min_error</span></code> unless its selected mismatch component owns the
+floor. Moving either preparation equation requires its own scientific parity
+change. An externally cached sensitivity,
 including a Verification Games <code class="docutils literal notranslate"><span class="pre">fp_x_flux</span></code> projection, can be installed as
 labelled <code class="docutils literal notranslate"><span class="pre">H</span></code> at this durable handoff. Its Dask graph and provenance remain
 borrowed until a selected flux recipe reaches the named PyMC materialization
