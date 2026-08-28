@@ -30,7 +30,7 @@ from openghg_inversions.rhime.multisector import (
     _prepare_multisector_flux_components,
     build_multisector_rhime_model as _build_multisector_model,
 )
-from openghg_inversions.rhime.specs import SectorSpec
+from openghg_inversions.rhime.specs import FixedErrorSettings, PollutionEventSettings, SectorSpec
 from openghg_inversions.rhime.standard import build_standard_rhime_model as _build_standard_model
 from openghg_inversions.sigma import SigmaAlignment
 
@@ -74,12 +74,13 @@ def _sigma_alignment(inputs: xr.Dataset) -> SigmaAlignment:
 
 def build_rhime_model(inputs: xr.Dataset, **kwargs: Any) -> pm.Model:
     """Adapt test datasets to the standard builder's named-array contract."""
+    _select_pollution_event_likelihood(inputs, kwargs)
     return _build_standard_model(
         inputs["H"],
         observations=inputs["mf"],
         observation_error=inputs["mf_error"],
-        minimum_error=inputs["min_error"],
         aggregation_error=resolve_aggregation_error(inputs, "none"),
+        minimum_error=inputs.get("min_error"),
         boundary_sensitivity=inputs.get("H_bc"),
         **kwargs,
     )
@@ -87,14 +88,29 @@ def build_rhime_model(inputs: xr.Dataset, **kwargs: Any) -> pm.Model:
 
 def build_rhime_multisector_model(inputs: xr.Dataset, **kwargs: Any) -> pm.Model:
     """Adapt test datasets to the multisector builder's named-array contract."""
+    _select_pollution_event_likelihood(inputs, kwargs)
     return _build_multisector_model(
         inputs["H"],
         observations=inputs["mf"],
         observation_error=inputs["mf_error"],
-        minimum_error=inputs["min_error"],
         aggregation_error=resolve_aggregation_error(inputs, "none"),
+        minimum_error=inputs.get("min_error"),
         boundary_sensitivity=inputs.get("H_bc"),
         **kwargs,
+    )
+
+
+def _select_pollution_event_likelihood(inputs: xr.Dataset, kwargs: dict[str, Any]) -> None:
+    """Supply the explicit PEFO component used by these direct-recipe tests."""
+    kwargs["sigma_alignment"] = kwargs.pop("sigma_alignment")
+    no_model_error = kwargs.pop("no_model_error", False)
+    kwargs["likelihood_settings"] = FixedErrorSettings() if no_model_error else PollutionEventSettings(
+        sigma_prior=kwargs.pop(
+            "sigma_prior",
+            {"pdf": "uniform", "lower": 0.0, "upper": 0.1},
+        ),
+        power=kwargs.pop("power", 1.99),
+        pollution_events_from_obs=kwargs.pop("pollution_events_from_obs", False),
     )
 
 

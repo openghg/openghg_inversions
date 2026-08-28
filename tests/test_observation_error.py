@@ -4,7 +4,6 @@ from dask import delayed
 import pytest
 import xarray as xr
 
-from openghg_inversions.rhime.specs import RhimeModelSpec
 from openghg_inversions.observation_error import (
     resolve_aggregation_error,
     validate_complete_observation_covariance,
@@ -208,13 +207,3 @@ def test_explicit_none_ignores_available_diagnostic() -> None:
 
     assert result.mode == "none"
     np.testing.assert_array_equal(result.marginal_variance, np.zeros(3))
-
-
-def test_model_spec_rejects_unknown_aggregation_error_mode() -> None:
-    with pytest.raises(ValueError, match="aggregation_error_mode.*dense.*low_rank"):
-        RhimeModelSpec(
-            species="ch4",
-            domain="EUROPE",
-            sectors=(),
-            aggregation_error_mode="factorized",  # type: ignore[arg-type]
-        )

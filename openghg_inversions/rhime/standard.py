@@ -22,21 +22,19 @@ from openghg_inversions.models.components import (
     add_offset_component,
 )
 from openghg_inversions.models.coords import registered_model
-from openghg_inversions.models.pollution_event import build_pollution_event_gaussian_likelihood
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.models.state_activity import StateActivity, prepare_linear_sensitivity
 from openghg_inversions.observation_error import (
     AggregationError,
-    OBSERVATION_ERROR_INPUT_NAMES,
     aggregation_error_input_names,
     resolve_aggregation_error,
 )
 from openghg_inversions.sigma import SigmaAlignment
 
 from ._model_building import (
+    ForwardModelTerms,
+    add_rhime_likelihood,
     builtin_model_build_result,
-    validate_custom_likelihood_result,
-    validate_likelihood_kwargs,
     validated_custom_model_build,
 )
 from .builders import (
@@ -62,15 +60,16 @@ from .sampling import RhimeSampler, sample_rhime_model
 from .specs import (
     DEFAULT_BC_PRIOR,
     DEFAULT_OFFSET_PRIOR,
-    DEFAULT_SIGMA_PRIOR,
     DEFAULT_X_PRIOR,
+    LikelihoodSettings,
+    PollutionEventSettings,
     RhimeModelSpec,
     RhimeRunSpec,
 )
 
 
 _STANDARD_FLUX_INPUT_NAMES = ("H",)
-_MODEL_ERROR_ALIGNMENT_INPUT_NAMES = ("site_indicator",)
+_OBSERVATION_INPUT_NAMES = ("mf", "mf_error")
 _BASELINE_INPUT_NAMES = ("H_bc",)
 
 
@@ -89,19 +88,12 @@ def _require_component_inputs(
 def standard_model_input_names(
     prepared: RhimePreparedInputs,
     model_spec: RhimeModelSpec,
-    *,
-    likelihood_builder: RhimeLikelihoodBuilder | None = None,
-    preserve_legacy_likelihood: bool = False,
 ) -> tuple[str, ...]:
     """Declare arrays required by selected standard-model components.
 
     Args:
         prepared: Backend-neutral prepared inputs.
         model_spec: Resolved standard-model component options.
-        likelihood_builder: Custom likelihood which owns any additional error
-            inputs itself.
-        preserve_legacy_likelihood: Whether the historical compatibility graph
-            retains its disconnected sigma variable.
 
     Returns:
         Prepared variable names selected for coordinated materialization.
@@ -117,22 +109,23 @@ def standard_model_input_names(
     )
     _require_component_inputs(
         prepared,
-        OBSERVATION_ERROR_INPUT_NAMES,
+        _OBSERVATION_INPUT_NAMES,
         owner="Observation-error component",
     )
     names = [
         *_STANDARD_FLUX_INPUT_NAMES,
-        *OBSERVATION_ERROR_INPUT_NAMES,
+        *_OBSERVATION_INPUT_NAMES,
     ]
-    if likelihood_builder is None and (
-        not model_spec.no_model_error or preserve_legacy_likelihood
-    ):
+    likelihood_inputs = (
+        () if model_spec.likelihood is None else model_spec.likelihood.required_prepared_inputs
+    )
+    if likelihood_inputs:
         _require_component_inputs(
             prepared,
-            _MODEL_ERROR_ALIGNMENT_INPUT_NAMES,
-            owner="Model-error alignment component",
+            likelihood_inputs,
+            owner="Selected built-in likelihood",
         )
-        names.extend(_MODEL_ERROR_ALIGNMENT_INPUT_NAMES)
+        names.extend(likelihood_inputs)
     if model_spec.use_bc:
         _require_component_inputs(
             prepared,
@@ -161,25 +154,24 @@ def build_standard_rhime_model(
     *,
     observations: xr.DataArray,
     observation_error: xr.DataArray,
-    minimum_error: xr.DataArray,
     aggregation_error: AggregationError,
-    sigma_alignment: SigmaAlignment | None = None,
+    minimum_error: xr.DataArray | None = None,
+    likelihood_settings: LikelihoodSettings | None = None,
+    likelihood_builder: RhimeLikelihoodBuilder | None = None,
+    likelihood_kwargs: Mapping[str, Any] | None = None,
     boundary_sensitivity: xr.DataArray | None = None,
     x_prior: PriorArgs | None = None,
     bc_prior: PriorArgs | None = None,
-    sigma_prior: PriorArgs | None = None,
     offset_prior: PriorArgs | None = None,
     add_offset: bool = False,
     use_bc: bool = True,
-    pollution_events_from_obs: bool = False,
-    no_model_error: bool = False,
     offset_args: dict | None = None,
-    power: PriorArgs | float = 1.99,
     state_activity: StateActivity | None = None,
     bc_state_activity: StateActivity | None = None,
-    likelihood_builder: RhimeLikelihoodBuilder | None = None,
-    likelihood_kwargs: Mapping[str, Any] | None = None,
     preserve_legacy_likelihood: bool = False,
+    sigma_alignment: SigmaAlignment | None = None,
+    legacy_unused_sigma_settings: PollutionEventSettings | None = None,
+    legacy_minimum_error_floor: bool = False,
 ) -> pm.Model:
     """Build the concrete standard single-sector RHIME model.
 
@@ -187,30 +179,28 @@ def build_standard_rhime_model(
         flux_sensitivity: Labelled flux sensitivity matrix.
         observations: Observed mole fractions.
         observation_error: Reported observation-error standard deviations.
-        minimum_error: Minimum total-error standard deviations.
         aggregation_error: Validated fixed aggregation-error representation.
-        sigma_alignment: Observation alignment for mismatch parameters when
-            model error is enabled or the legacy graph retains sigma.
+        minimum_error: Optional prepared minimum total-error floor.
+        likelihood_settings: Resolved built-in likelihood settings.
+        likelihood_builder: Optional Python-only custom likelihood.
+        likelihood_kwargs: Options for the custom likelihood.
         boundary_sensitivity: Optional labelled boundary sensitivity matrix.
         x_prior: Prior specification for flux scaling factors.
         bc_prior: Prior specification for boundary-condition scaling factors.
-        sigma_prior: Prior specification for mismatch-error terms.
         offset_prior: Prior specification for optional offsets.
         add_offset: Whether to include an offset term.
         use_bc: Whether to include boundary-condition terms.
-        pollution_events_from_obs: Whether mismatch scaling uses observed
-            rather than modelled pollution enhancements.
-        no_model_error: Whether to suppress inferred mismatch error.
         offset_args: Extra keyword arguments for the offset component.
-        power: Exponent or prior used in mismatch-error scaling.
         state_activity: Optional active/fixed flux-state policy.
         bc_state_activity: Optional active/fixed boundary-state policy.
-        likelihood_builder: Optional observation-error and distribution builder.
-            It receives the completed model mean from this recipe.
-        likelihood_kwargs: Options specific to a custom likelihood. Common
-            scientific arrays remain explicit and are not included here.
         preserve_legacy_likelihood: Whether to preserve ``run_hbmcmc``'s
             boundary-only pollution event and unused ``sigma`` variable.
+        sigma_alignment: Optional precomputed mismatch alignment. Ordinary
+            runners derive it from observations.
+        legacy_unused_sigma_settings: Private ``run_hbmcmc`` settings for its
+            historical disconnected sigma variable.
+        legacy_minimum_error_floor: Preserve the historical additive callback's
+            minimum-error floor when inferred model error was disabled.
 
     Returns:
         Built PyMC model.
@@ -219,12 +209,10 @@ def build_standard_rhime_model(
         KeyError: If required sensitivity inputs are absent.
         ValueError: If labels, state policies, priors, or canonical likelihood
             variables are invalid.
-        TypeError: If a custom likelihood returns the wrong result type.
+        TypeError: If the likelihood returns the wrong result type.
     """
-    likelihood_kwargs = validate_likelihood_kwargs(likelihood_builder, likelihood_kwargs)
     x_prior = dict(DEFAULT_X_PRIOR if x_prior is None else x_prior)
     bc_prior = dict(DEFAULT_BC_PRIOR if bc_prior is None else bc_prior)
-    sigma_prior = dict(DEFAULT_SIGMA_PRIOR if sigma_prior is None else sigma_prior)
     offset_prior = dict(DEFAULT_OFFSET_PRIOR if offset_prior is None else offset_prior)
 
     prepared_flux = prepare_linear_sensitivity(flux_sensitivity)
@@ -279,39 +267,28 @@ def build_standard_rhime_model(
         if offset is not None:
             baseline_mean = offset if baseline_mean is None else baseline_mean + offset
         modelled_mean = pollution_mean if baseline_mean is None else pollution_mean + baseline_mean
-        pollution_event_baseline = boundary_mean if preserve_legacy_likelihood else baseline_mean
 
-        if likelihood_builder is None:
-            build_pollution_event_gaussian_likelihood(
-                observations=observations,
-                observation_error=observation_error,
-                minimum_error=minimum_error,
-                aggregation_error=aggregation_error,
-                mean=modelled_mean,
-                pollution_mean=pollution_mean,
-                pollution_event_baseline=pollution_event_baseline,
-                sigma_alignment=sigma_alignment,
-                sigma_prior=sigma_prior,
-                power=power,
-                pollution_events_from_obs=pollution_events_from_obs,
-                no_model_error=no_model_error,
-                retain_unused_sigma=preserve_legacy_likelihood,
-                output_dim="nmeasure",
-            )
-        else:
-            likelihood = likelihood_builder(
-                observations=observations,
-                observation_error=observation_error,
-                minimum_error=minimum_error,
-                aggregation_error=aggregation_error,
-                mean=modelled_mean,
-                pollution_mean=pollution_mean,
-                pollution_event_baseline=pollution_event_baseline,
-                output_dim="nmeasure",
-                **(likelihood_kwargs or {}),
-            )
-            validate_custom_likelihood_result(model, likelihood)
-
+        forward = ForwardModelTerms(
+            total=modelled_mean,
+            pollution=pollution_mean,
+            baseline=baseline_mean,
+        )
+        add_rhime_likelihood(
+            settings=likelihood_settings,
+            likelihood_builder=likelihood_builder,
+            likelihood_kwargs=likelihood_kwargs,
+            forward=forward,
+            observations=observations,
+            observation_error=observation_error,
+            aggregation_error=aggregation_error,
+            minimum_error=minimum_error,
+            output_dim="nmeasure",
+            sigma_alignment=sigma_alignment,
+            legacy_pollution_event_baseline=boundary_mean,
+            preserve_legacy_pollution_event=preserve_legacy_likelihood,
+            legacy_unused_sigma_settings=legacy_unused_sigma_settings,
+            legacy_minimum_error_floor=legacy_minimum_error_floor,
+        )
     return model
 
 
@@ -324,6 +301,8 @@ def build_standard_rhime_model_result(
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
     likelihood_kwargs: Mapping[str, Any] | None = None,
     preserve_legacy_likelihood: bool = False,
+    legacy_unused_sigma_settings: PollutionEventSettings | None = None,
+    legacy_minimum_error_floor: bool = False,
 ) -> RhimeModelBuildResult:
     """Build the standard graph and describe its output roles.
 
@@ -338,6 +317,10 @@ def build_standard_rhime_model_result(
         likelihood_kwargs: Options expanded only into the custom likelihood.
         preserve_legacy_likelihood: Whether to preserve the historical
             ``run_hbmcmc`` likelihood graph and pollution-event definition.
+        legacy_unused_sigma_settings: Private compatibility settings for a
+            disconnected historical sigma variable.
+        legacy_minimum_error_floor: Preserve the historical additive callback's
+            minimum-error floor when inferred model error was disabled.
 
     Returns:
         Model plus variable roles, supported outputs, and build metadata.
@@ -346,9 +329,10 @@ def build_standard_rhime_model_result(
         ValueError: If both builder extension points are supplied or the built
             result is inconsistent with the run specification.
     """
-    likelihood_kwargs = validate_likelihood_kwargs(likelihood_builder, likelihood_kwargs)
     if model_builder is not None and likelihood_builder is not None:
         raise ValueError("Pass either `model_builder` or `likelihood_builder`, not both.")
+    if likelihood_kwargs and likelihood_builder is None:
+        raise ValueError("Non-empty `likelihood_kwargs` require an active `likelihood_builder`.")
     timing_start = timer_start()
     if model_builder is not None:
         builder_context = RhimeModelBuilderContext(
@@ -363,55 +347,42 @@ def build_standard_rhime_model_result(
         if len(model_spec.sectors) != 1:
             raise ValueError("Standard RHIME model specs must include exactly one sector.")
         sector = model_spec.sectors[0]
-        sigma_alignment = (
-            SigmaAlignment.from_frequency(
-                model_inputs["site_indicator"],
-                frequency=model_spec.sigma_freq,
-                per_site=model_spec.sigma_per_site,
-                anchor_time=model_spec.sigma_freq_anchor,
-            )
-            if likelihood_builder is None
-            and (not model_spec.no_model_error or preserve_legacy_likelihood)
-            else None
-        )
+        if likelihood_builder is not None and model_spec.likelihood is not None:
+            raise ValueError("A custom likelihood cannot be combined with built-in likelihood settings.")
         aggregation_error = resolve_aggregation_error(
             model_inputs,
             model_spec.aggregation_error_mode,
         )
         state_activity = (
-            sector.state_activity
-            if sector.state_activity is not None
-            else model_spec.state_activity
+            sector.state_activity if sector.state_activity is not None else model_spec.state_activity
         )
         model = build_standard_rhime_model(
             model_inputs["H"],
             observations=model_inputs["mf"],
             observation_error=model_inputs["mf_error"],
-            minimum_error=model_inputs["min_error"],
             aggregation_error=aggregation_error,
-            sigma_alignment=sigma_alignment,
+            minimum_error=model_inputs.get("min_error"),
+            likelihood_settings=model_spec.likelihood,
+            likelihood_builder=likelihood_builder,
+            likelihood_kwargs=likelihood_kwargs,
             boundary_sensitivity=model_inputs.get("H_bc"),
             x_prior=dict(sector.x_prior),
             state_activity=state_activity,
             bc_prior=model_spec.bc_prior,
             bc_state_activity=model_spec.bc_state_activity,
-            sigma_prior=model_spec.sigma_prior,
             offset_prior=model_spec.offset_prior,
             add_offset=model_spec.add_offset,
             use_bc=model_spec.use_bc,
-            pollution_events_from_obs=model_spec.pollution_events_from_obs,
-            no_model_error=model_spec.no_model_error,
             offset_args=model_spec.offset_args,
-            power=model_spec.power,
-            likelihood_builder=likelihood_builder,
-            likelihood_kwargs=likelihood_kwargs,
             preserve_legacy_likelihood=preserve_legacy_likelihood,
+            legacy_unused_sigma_settings=legacy_unused_sigma_settings,
+            legacy_minimum_error_floor=legacy_minimum_error_floor,
         )
         result = builtin_model_build_result(
             model,
             model_spec=run_spec.model,
             multisector=False,
-            input_names=tuple(str(name) for name in prepared.inv_inputs.data_vars),
+            input_names=tuple(str(name) for name in model_inputs.data_vars),
             preserve_legacy_baseline=preserve_legacy_likelihood,
         )
     log_timing("rhime.model_build", timer_seconds(timing_start), multisector=False)
@@ -429,6 +400,7 @@ def make_standard_rhime_result(
     model_builder: RhimeModelBuilder | None = None,
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
     likelihood_kwargs: Mapping[str, Any] | None = None,
+    _compatibility_likelihood_provenance: Mapping[str, Any] | None = None,
 ) -> RhimeResult:
     """Construct a sampled standard result before output side effects.
 
@@ -442,6 +414,7 @@ def make_standard_rhime_result(
         model_builder: Optional complete-model callable used for provenance.
         likelihood_builder: Optional likelihood callable used for provenance.
         likelihood_kwargs: Serializable options owned by the likelihood.
+        _compatibility_likelihood_provenance: Pre-resolved private compatibility provenance.
 
     Returns:
         Standard-run result ready for requested output construction.
@@ -466,6 +439,8 @@ def make_standard_rhime_result(
         result.output_metadata["likelihood_builder"] = identity
     if likelihood_kwargs is not None:
         result.output_metadata["likelihood_kwargs"] = likelihood_kwargs
+    if _compatibility_likelihood_provenance is not None:
+        result.output_metadata.update(dict(_compatibility_likelihood_provenance))
     return result
 
 
@@ -476,6 +451,9 @@ def run_rhime(
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
     likelihood_kwargs: Mapping[str, Any] | None = None,
     preserve_legacy_likelihood: bool = False,
+    _compatibility_likelihood_provenance: Mapping[str, Any] | None = None,
+    _compatibility_unused_sigma_settings: PollutionEventSettings | None = None,
+    _compatibility_minimum_error_floor: bool = False,
     **kwargs: Any,
 ) -> RhimeResult:
     """Run a standard single-sector RHIME inversion.
@@ -501,6 +479,12 @@ def run_rhime(
             scientific arrays are passed explicitly by the recipe.
         preserve_legacy_likelihood: Private ``run_hbmcmc`` compatibility
             switch. Ordinary RHIME callers should leave it false.
+        _compatibility_likelihood_provenance: Private ``run_hbmcmc`` record of
+            the historical additive callback spelling and options.
+        _compatibility_unused_sigma_settings: Private ``run_hbmcmc`` settings
+            for its historical disconnected sigma variable.
+        _compatibility_minimum_error_floor: Private ``run_hbmcmc`` switch for
+            the historical additive callback's minimum-error floor.
         **kwargs: RHIME run parameters using snake-case names, such as
             ``output_path``, ``output_name``, ``flux_sources``, and
             ``x_prior``. ``species`` names the primary gas or tracer used for
@@ -520,17 +504,23 @@ def run_rhime(
             are supplied, the flux-source count is invalid, or likelihood
             variables or requested-output compatibility are invalid.
 
-    Notes:
-        A non-callable likelihood builder is rejected before configuration is
-        parsed or data is acquired, prepared, or materialized.
     """
-    likelihood_kwargs = validate_likelihood_kwargs(likelihood_builder, likelihood_kwargs)
+    if likelihood_kwargs and likelihood_builder is None:
+        raise ValueError("Non-empty `likelihood_kwargs` require an active `likelihood_builder`.")
+    if _compatibility_likelihood_provenance is not None and likelihood_builder is not None:
+        raise ValueError("Compatibility likelihood provenance cannot accompany a custom likelihood builder.")
     params = (
         params_from_config(config_file, extra_kwargs=kwargs, normalise=False)
         if config_file is not None
         else dict(kwargs)
     )
+    if likelihood_builder is not None:
+        if params.get("mismatch_model") is not None:
+            raise ValueError("A custom likelihood cannot be combined with a built-in mismatch model.")
+        params["mismatch_model"] = None
     setup = resolve_rhime_options(params=params, multisector=False)
+    if likelihood_builder is None and setup.run_spec.model.likelihood is None:
+        raise ValueError("A standard RHIME run requires a built-in or custom likelihood.")
 
     preparation_start = timer_start()
     merged = retrieve_or_reload_rhime_data(
@@ -559,16 +549,22 @@ def run_rhime(
     )
     run_spec = with_prepared_rhime_sites(setup.run_spec, prepared)
 
+    model_input_names = list(standard_model_input_names(prepared, run_spec.model))
+    if _compatibility_unused_sigma_settings is not None or _compatibility_minimum_error_floor:
+        _require_component_inputs(
+            prepared,
+            ("min_error",),
+            owner="Legacy run_hbmcmc likelihood compatibility",
+        )
+        model_input_names.append("min_error")
     model_inputs = materialize_pymc_inputs(
         prepared,
-        variable_names=standard_model_input_names(
-            prepared,
-            run_spec.model,
-            likelihood_builder=likelihood_builder,
-            preserve_legacy_likelihood=preserve_legacy_likelihood,
-        ),
+        variable_names=tuple(dict.fromkeys(model_input_names)),
     )
     build_and_sample_start = timer_start()
+    legacy_additive_kwargs = (
+        {"legacy_minimum_error_floor": True} if _compatibility_minimum_error_floor else {}
+    )
     model_build_result = build_standard_rhime_model_result(
         prepared=prepared,
         model_inputs=model_inputs,
@@ -576,6 +572,8 @@ def run_rhime(
         likelihood_builder=likelihood_builder,
         likelihood_kwargs=likelihood_kwargs,
         preserve_legacy_likelihood=preserve_legacy_likelihood,
+        legacy_unused_sigma_settings=_compatibility_unused_sigma_settings,
+        **legacy_additive_kwargs,
     )
     idata = sample_rhime_model(
         model_build_result,
@@ -590,6 +588,7 @@ def run_rhime(
         build_and_sample_seconds=timer_seconds(build_and_sample_start),
         likelihood_builder=likelihood_builder,
         likelihood_kwargs=likelihood_kwargs,
+        _compatibility_likelihood_provenance=_compatibility_likelihood_provenance,
     )
     output_start = timer_start()
     make_standard_rhime_outputs(result=result, prepared=prepared)

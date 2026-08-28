@@ -13,7 +13,6 @@ from openghg_inversions.observation_error import (
     select_aggregation_error_mode,
 )
 
-from ._model_building import validate_likelihood_kwargs
 from .builders import RhimeLikelihoodBuilder, RhimeModelBuilder
 from .materialization import materialize_pymc_inputs
 from .multisector import build_multisector_rhime_model_result, make_multisector_rhime_result
@@ -68,9 +67,12 @@ def run_rhime_from_prepared_inputs(
             settings are inconsistent.
         TypeError: If an extension point has an invalid callable contract.
     """
-    likelihood_kwargs = validate_likelihood_kwargs(likelihood_builder, likelihood_kwargs)
     if model_builder is not None and likelihood_builder is not None:
         raise ValueError("Pass either `model_builder` or `likelihood_builder`, not both.")
+    if likelihood_kwargs and likelihood_builder is None:
+        raise ValueError("Non-empty `likelihood_kwargs` require an active `likelihood_builder`.")
+    if likelihood_builder is not None and run_spec.model.likelihood is not None:
+        raise ValueError("A custom likelihood cannot be combined with built-in likelihood settings.")
     prepared_inputs = prepared_inputs.validated()
     sector_count = len(run_spec.model.sectors)
     if sector_count < 1:
@@ -122,6 +124,8 @@ def run_rhime_from_prepared_inputs(
         save_inversion_output=output_spec.save_inversion_output,
         multisector=multisector,
     )
+    if model_builder is None and likelihood_builder is None and run_spec.model.likelihood is None:
+        raise ValueError("A prepared RHIME run requires a model builder or likelihood.")
 
     run_spec = with_prepared_rhime_sites(run_spec, prepared_inputs)
     # Complete-model builders historically own canonical, potentially lazy
@@ -135,13 +139,11 @@ def run_rhime_from_prepared_inputs(
                 multisector_model_input_names(
                     prepared_inputs,
                     run_spec.model,
-                    likelihood_builder=likelihood_builder,
                 )
                 if multisector
                 else standard_model_input_names(
                     prepared_inputs,
                     run_spec.model,
-                    likelihood_builder=likelihood_builder,
                 )
             ),
         )

@@ -65,15 +65,17 @@ The complete integration is one named argument:
 
    result = run_rhime(
        config_file="config.ini",
+       mismatch_model=None,
        likelihood_builder=likelihood_builder,
    )
 
 RHIME calls the function with explicit keyword arguments while constructing
 the PyMC model: the prepared observations, completed forward-model mean,
-pollution contribution, pollution-event baseline, selected aggregation error,
-and output dimension. The function adds ``epsilon`` and the canonical observed
-variable ``y`` to the active model and returns ``y``. There is no framework
-context or likelihood-result record to construct.
+reported observation error, selected aggregation error, and output dimension.
+Pollution-event-only terms remain inside the built-in pollution-event
+component. The function adds ``epsilon`` and the canonical observed variable
+``y`` to the active model and returns ``y``. There is no framework context or
+likelihood-result record to construct.
 
 Options owned only by a custom likelihood can be supplied separately with
 ``likelihood_kwargs``. RHIME expands that mapping into the callable without
@@ -81,14 +83,18 @@ hiding the common scientific arrays in an opaque object::
 
    result = run_rhime(
        config_file="config.ini",
+       mismatch_model=None,
        likelihood_builder=likelihood_builder,
        likelihood_kwargs={"degrees_of_freedom": 4.0},
    )
 
-These options must be a string-keyed, JSON-compatible mapping. RHIME copies
-the mapping before use and records the copy beside the likelihood identity in
-the result metadata and any saved inversion output. A non-empty mapping is
-rejected when no ``likelihood_builder`` is active.
+``mismatch_model=None`` explicitly opts out of the built-in selected by the
+configuration template. Passing both a custom callable and either built-in
+selection is rejected as ambiguous.
+
+RHIME passes these options directly and records them beside the likelihood
+identity in result metadata and any saved inversion output. A non-empty
+mapping is rejected when no ``likelihood_builder`` is active.
 
 Editable likelihood
 ~~~~~~~~~~~~~~~~~~~
@@ -112,14 +118,23 @@ The example rejects dense and low-rank aggregation covariance because it uses
 an independent Student-t distribution. Supporting those aggregation-error
 modes would require a multivariate likelihood.
 
-The installed ``rhime.likelihoods.additive_sigma_likelihood_builder`` is a
-drop-in ordinary likelihood builder. It derives sigma alignment from the
-labelled observation ``site`` and ``time`` coordinates. Optional
-``sigma_prior``, ``sigma_freq``, ``sigma_per_site``, ``sigma_freq_anchor``, and
-``no_model_error`` settings belong to that component and can be supplied in
-``likelihood_kwargs``. This model adds absolute ``sigma**2`` directly to the
-independent variance. The prepared ``minimum_error`` retains its historical
-meaning as an optional floor on total standard deviation.
+Built-in mismatch equations are direct model components, not examples of this
+custom-callback contract. In particular,
+``models.additive_sigma.add_additive_sigma_likelihood`` adds an absolute
+concentration-scale variance, while ``models.pollution_event`` owns the
+pollution-enhancement-scaled equation. Select the absolute additive equation
+directly with ``mismatch_model="additive_sigma"`` in ``run_rhime`` or
+``run_rhime_multisector``; ``sigma_prior``, ``sigma_freq``, and
+``sigma_per_site`` then configure its scale. Additive sigma does not load the
+historical ``min_error`` floor unless
+``use_minimum_error_floor=True`` is selected explicitly. A custom likelihood
+loads only ``mf`` and ``mf_error`` from the universal observation inputs and
+does not require ``min_error``.
+
+Legacy ``run_hbmcmc`` additive configuration is translated at that script's
+entry point into the same explicit likelihood settings. Parameter resolution
+stores built-in mismatch science in ``RhimeModelSpec`` before the standard or
+multisector recipe is called; the recipes themselves select no default.
 
 Built-in aggregation covariance relies on the guarantees of its construction
 pipeline. A custom pipeline that assembles its own covariance may optionally

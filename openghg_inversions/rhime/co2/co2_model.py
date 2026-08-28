@@ -14,7 +14,7 @@ import xarray as xr
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.models.additive_sigma import (
     DEFAULT_ADDITIVE_SIGMA_PRIOR,
-    add_additive_sigma_gaussian_likelihood,
+    add_additive_sigma_likelihood,
 )
 from openghg_inversions.models.components import (
     add_coherent_affine_component,
@@ -194,15 +194,15 @@ def build_co2_model(
             modelled_linear_signal,
             output_name="modelled_concentration",
         )
-        add_additive_sigma_gaussian_likelihood(
+        add_additive_sigma_likelihood(
             observations=observations,
             observation_error=observation_error,
-            minimum_error=minimum_error,
+            minimum_error_floor=minimum_error,
             aggregation_error=aggregation_error,
             fixed_model_mismatch=fixed_mismatch,
             mean=modelled_mean,
-            sigma_alignment=sigma_alignment,
-            sigma_prior=sigma_prior,
+            additive_sigma_alignment=sigma_alignment,
+            additive_sigma_prior=sigma_prior,
             output_dim="nmeasure",
         )
     return model

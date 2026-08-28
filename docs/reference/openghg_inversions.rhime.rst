@@ -12,7 +12,6 @@ openghg\_inversions.rhime
 
    openghg_inversions.rhime.builders
    openghg_inversions.rhime.co2
-   openghg_inversions.rhime.likelihoods
    openghg_inversions.rhime.multisector
    openghg_inversions.rhime.specs
    openghg_inversions.rhime.standard

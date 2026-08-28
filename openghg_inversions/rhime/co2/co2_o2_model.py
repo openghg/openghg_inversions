@@ -16,7 +16,7 @@ from openghg_inversions.models import (
     registered_model,
     resolve_state_activity,
 )
-from openghg_inversions.models.additive_sigma import add_additive_sigma_gaussian_likelihood
+from openghg_inversions.models.additive_sigma import add_additive_sigma_likelihood
 from openghg_inversions.observation_error import AggregationError
 
 
@@ -206,7 +206,7 @@ def build_co2_o2_model(
             output_name="modelled_concentration",
         )
 
-        add_additive_sigma_gaussian_likelihood(
+        add_additive_sigma_likelihood(
             observations=observations,
             observation_error=independent_error_sd,
             mean=modelled,

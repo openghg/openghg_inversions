@@ -48,7 +48,11 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
     calls: list[str] = []
 
     def resolve(*, params: dict[str, Any], multisector: bool) -> Any:
-        assert params == {"species": "ch4", "output_format": "inv_out"}
+        assert params == {
+            "species": "ch4",
+            "output_format": "inv_out",
+            "mismatch_model": None,
+        }
         assert multisector is False
         calls.append("resolve")
         return setup
@@ -109,7 +113,7 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
 
     def materialize(actual: Any, *, variable_names: tuple[str, ...]) -> Any:
         assert actual is prepared
-        assert set(variable_names) >= {"H", "mf", "mf_error", "min_error"}
+        assert set(variable_names) == {"H", "mf", "mf_error"}
         calls.append("materialize")
         return model_inputs
 
@@ -121,6 +125,7 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
             "likelihood_builder": likelihoods.likelihood_builder,
             "likelihood_kwargs": None,
             "preserve_legacy_likelihood": False,
+            "legacy_unused_sigma_settings": None,
         }
         calls.append("build")
         return build_result
@@ -153,7 +158,7 @@ def test_consumer_runs_public_acquisition_to_supported_output(  # noqa: C901, PL
     monkeypatch.setattr(
         rhime_runner,
         "standard_model_input_names",
-        lambda _actual, _model, **_kwargs: ("H", "mf", "mf_error", "min_error"),
+        lambda _actual, _model, **_kwargs: ("H", "mf", "mf_error"),
     )
     monkeypatch.setattr(rhime_runner, "materialize_pymc_inputs", materialize)
     monkeypatch.setattr(rhime_runner, "build_standard_rhime_model_result", build)

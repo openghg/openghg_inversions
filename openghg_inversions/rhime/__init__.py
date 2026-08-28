@@ -53,10 +53,21 @@ from .standard import (
     run_rhime,
     standard_model_input_names,
 )
-from .specs import RhimeModelSpec, RhimeOutputSpec, RhimeRunSpec, SectorSpec
+from .specs import (
+    AdditiveSigmaSettings,
+    FixedErrorSettings,
+    PollutionEventSettings,
+    RhimeModelSpec,
+    RhimeOutputSpec,
+    RhimeRunSpec,
+    SectorSpec,
+)
 
 __all__ = [
     "SectorSpec",
+    "AdditiveSigmaSettings",
+    "FixedErrorSettings",
+    "PollutionEventSettings",
     "RhimeModelSpec",
     "RhimeLikelihoodBuilder",
     "RhimeModelBuilder",

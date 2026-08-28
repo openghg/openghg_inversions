@@ -73,8 +73,18 @@ mean of the observed distribution is therefore
 
 where omitted components are left out of the sum.
 
-The ordinary model preserves the pollution-event fractional-error equation
-used by ``run_hbmcmc.py``. Aggregation error is disabled by default. Let
+The configuration template explicitly selects
+``mismatch_model="pollution_event"``. This preserves the fractional-error
+equation used by ``run_hbmcmc.py`` for users who start from that template.
+Direct runner calls must make a likelihood selection explicitly. The concrete
+model recipe has no mismatch default: parameter resolution converts the
+selector to ``PollutionEventSettings`` in the serializable model specification
+before construction. Select
+``mismatch_model="additive_sigma"`` for an absolute concentration-scale
+mismatch instead; this is a resolved model option and does not use the custom
+``likelihood_builder`` extension point. Additive sigma does not select the
+prepared ``min_error`` input unless ``use_minimum_error_floor=True`` is also
+set. Aggregation error is disabled by default. Let
 :math:`P` be the pollution event and let ``sigma`` be the observation-aligned
 fractional model-error parameter. With the default
 ``pollution_events_from_obs=False``,
@@ -99,10 +109,11 @@ variant: :math:`P=|Y-\mu_{bc}|`, even when an offset is also included in
 :math:`\mu_{\mathrm{obs}}`. That exception preserves existing configurations;
 it is not the scientific default for new RHIME recipes.
 
-With ``no_model_error=True``, the sampled fractional-error contribution is
-omitted and the likelihood scale is the observation error, protected only by
-the historical very-small numerical floor. ``min_error`` is not applied in
-that branch.
+Select ``mismatch_model="fixed_error"`` to omit inferred mismatch error. Its
+likelihood scale uses the reported observation error and does not select
+``min_error``.
+``run_hbmcmc.py`` privately preserves the different historical floor and
+unused-variable details of its two ``no_model_error`` routes.
 
 Aggregation covariance is an explicit advanced opt-in. If a caller selects a
 prepared covariance :math:`C_{agg}` with marginal variance
@@ -436,8 +447,7 @@ helpers:
        prepare_linear_sensitivity,
        registered_model,
    )
-   from openghg_inversions.models.likelihoods import add_gaussian_observation_likelihood
-   from openghg_inversions.models.pollution_event import build_pollution_event_error
+   from openghg_inversions.models.pollution_event import add_pollution_event_likelihood
    from openghg_inversions.observation_error import resolve_aggregation_error
    from openghg_inversions.sigma import SigmaAlignment
 
@@ -453,10 +463,10 @@ helpers:
        "sigma": 0.05,
        "lower": 0.0,
    }
-   sigma_prior = {"pdf": "uniform", "lower": 0.1, "upper": 3.0}
+   sigma_prior = {"pdf": "uniform", "lower": 0.0, "upper": 0.1}
 
-   sigma_alignment = SigmaAlignment.from_frequency(
-       inv_inputs["site_indicator"],
+   sigma_alignment = SigmaAlignment.from_observations(
+       inv_inputs["mf"],
        frequency=None,
        per_site=True,
    )
@@ -484,11 +494,12 @@ helpers:
        baseline_mean = boundary.output
        modelled_mean = pollution_mean + baseline_mean
 
-       error_state = build_pollution_event_error(
+       add_pollution_event_likelihood(
            observations=inv_inputs["mf"],
            observation_error=inv_inputs["mf_error"],
            minimum_error=inv_inputs["min_error"],
            aggregation_error=resolve_aggregation_error(inv_inputs, "none"),
+           mean=modelled_mean,
            pollution_mean=pollution_mean,
            pollution_event_baseline=baseline_mean,
            sigma_alignment=sigma_alignment,
@@ -496,13 +507,6 @@ helpers:
            power=1.99,
            pollution_events_from_obs=False,
            no_model_error=False,
-           output_dim="nmeasure",
-       )
-       add_gaussian_observation_likelihood(
-           observed=error_state.observed,
-           mean=modelled_mean,
-           independent_variance=error_state.independent_variance,
-           aggregation_error=error_state.aggregation_error,
            output_dim="nmeasure",
        )
 
@@ -570,18 +574,21 @@ Callables are never read from configuration or stored on ``RhimeModelSpec`` or
 entry-point or config-file plugin registry.
 
 A concrete recipe owns the complete forward-model mean: pollution, baseline,
-and optional offset contributions are composed visibly before the likelihood
-seam. A likelihood builder owns error construction and the observed
-distribution. RHIME passes the completed concentration, pollution contribution,
-pollution-event baseline, prepared observations and errors, a validated
-``AggregationError``, and output dimension as explicit arguments. Options
-specific to that likelihood travel separately in ``likelihood_kwargs``.
+and optional offset contributions are composed visibly and packaged as named
+forward terms before the shared built-in dispatcher is invoked. The runner
+stores one typed settings value on ``RhimeModelSpec``; the dispatcher calls the
+ordinary built-in equation with only that likelihood's inputs. A custom caller
+instead supplies a mean-only callable. Every likelihood receives the completed
+concentration, prepared observations and reported observation error, a
+validated ``AggregationError``, and output dimension. Built-in pollution-event
+scaling additionally receives the named pollution and baseline terms.
+``likelihood_kwargs`` is reserved for custom callables.
 The builder adds and returns the canonical observed variable ``y`` and also
 adds the canonical marginal error scale ``epsilon``.
 
-``likelihood_kwargs`` must be a string-keyed, JSON-compatible mapping and is
-valid only when a likelihood builder is active. The runner copies and records
-the mapping with the callable identity in result and saved builder metadata.
+``likelihood_kwargs`` is valid only when a custom likelihood builder is active.
+The runner expands the mapping into that callable and records it with the
+callable identity in result and saved builder metadata.
 
 The editable example in :doc:`customising_rhime` implements a fixed-error
 Student-t likelihood using only those common inputs. Pass it directly to the
@@ -594,6 +601,7 @@ ordinary runner:
 
    result = run_rhime(
        config_file="config.ini",
+       mismatch_model=None,
        likelihood_builder=likelihood_builder,
    )
 

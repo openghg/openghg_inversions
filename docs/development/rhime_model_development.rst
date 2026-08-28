@@ -203,8 +203,9 @@ arrays together, and pass them to components as honest named arguments.
    * - ``min_error``
      - Reusable error-model product
      - Currently calculated by preparation
-     - Passed as ``minimum_error`` to likelihoods which support the historical
-       total-error floor
+     - Selected as ``minimum_error`` by pollution-event mismatch or by another
+       built-in component which explicitly opts into the historical total-error
+       floor; custom likelihoods do not require it
    * - ``aggregation_error_covariance``, ``low_rank_factor``,
        ``diagonal_residual_variance``, ``aggregation_error_sd``
      - Optional reusable fixed-error products
@@ -217,18 +218,18 @@ arrays together, and pass them to components as honest named arguments.
      - Their scientific producer
      - Not materialized unless a concrete recipe explicitly selects them
    * - ``site_indicator``
-     - Model-only derived wiring
+     - Legacy output/compatibility wiring
      - ``RhimePreparedInputs`` derives and validates it from labelled
        ``(site, time)`` observations
-     - The model-error recipe derives ``SigmaAlignment``; the offset component
-       may also select it
+     - Built-in likelihoods do not materialize it; the offset component may
+       still register its own model data
    * - ``site_names``
      - Output/compatibility wiring
      - ``RhimePreparedInputs`` regenerates it from site metadata
      - Not a PyMC input
    * - ``SigmaAlignment``
      - Cohesive model-only value
-     - The standard or multisector recipe derives it from ``site_indicator``,
+     - The shared likelihood dispatcher derives it from ``mf.coords["site"]``,
        time, and resolved model-error options
      - Passed explicitly to the likelihood
    * - Source/sector selection and state grouping
@@ -238,8 +239,10 @@ arrays together, and pass them to components as honest named arguments.
      - Never stored in a generic model-input context
 
 The current preparation ownership of ``min_error`` calculation and boundary
-period expansion is explicit rather than accidental; moving either equation
-requires its own scientific parity change. An externally cached sensitivity,
+period expansion is explicit rather than accidental. A concrete recipe does
+not materialize ``min_error`` unless its selected mismatch component owns the
+floor. Moving either preparation equation requires its own scientific parity
+change. An externally cached sensitivity,
 including a Verification Games ``fp_x_flux`` projection, can be installed as
 labelled ``H`` at this durable handoff. Its Dask graph and provenance remain
 borrowed until a selected flux recipe reaches the named PyMC materialization

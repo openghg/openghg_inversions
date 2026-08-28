@@ -71,6 +71,7 @@ def run_custom_rhime(
         if config_file is not None
         else dict(kwargs)
     )
+    params["mismatch_model"] = None
     setup = resolve_rhime_options(params=params, multisector=False)
 
     merged = retrieve_or_reload_rhime_data(setup.data_args, multisector=False)
@@ -87,7 +88,10 @@ def run_custom_rhime(
 
     model_inputs = materialize_pymc_inputs(
         prepared,
-        variable_names=standard_model_input_names(prepared, run_spec.model),
+        variable_names=standard_model_input_names(
+            prepared,
+            run_spec.model,
+        ),
     )
     build_and_sample_start = perf_counter()
     model_build_result = build_standard_rhime_model_result(

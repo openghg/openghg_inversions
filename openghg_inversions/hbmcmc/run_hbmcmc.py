@@ -46,8 +46,7 @@ from openghg_inversions.config import config
 from openghg_inversions.config.paths import Paths
 from openghg_inversions.hbmcmc.hbmcmc import _LEGACY_FIXEDBASIS_OUTPUT_FORMAT, fixedbasisMCMC
 from openghg_inversions.models.additive_sigma import DEFAULT_ADDITIVE_SIGMA_PRIOR
-from openghg_inversions.rhime import resolve_rhime_options, run_rhime
-from openghg_inversions.rhime.likelihoods import additive_sigma_likelihood_builder
+from openghg_inversions.rhime import PollutionEventSettings, resolve_rhime_options, run_rhime
 from openghg_inversions.rhime.params import normalise_rhime_params
 
 
@@ -72,6 +71,10 @@ _ADDITIVE_SIGMA_OPTION_NAMES = (
     "sigma_freq_anchor",
     "no_model_error",
 )
+_LEGACY_ADDITIVE_LIKELIHOOD_METADATA = {
+    "module": "openghg_inversions.rhime.likelihoods",
+    "qualname": "additive_sigma_likelihood_builder",
+}
 
 
 def fixed_basis_expected_param() -> list[str]:
@@ -238,11 +241,11 @@ def fixedbasis_params_to_rhime(params: dict[str, Any]) -> dict[str, Any]:
     return normalise_rhime_params(translated)
 
 
-def _select_additive_sigma_likelihood(
+def _select_additive_sigma_model_options(
     raw_params: dict[str, Any],
     rhime_params: dict[str, Any],
 ) -> dict[str, Any] | None:
-    """Return component options when an INI selects additive sigma.
+    """Resolve an INI additive selection into explicit model options.
 
     This compatibility entry point owns the policy that additive sigma never
     consumes aggregation error. The reusable component remains capable of
@@ -264,12 +267,16 @@ def _select_additive_sigma_likelihood(
             "run_hbmcmc additive_sigma does not support `aggregation_error_mode`; "
             "remove it or set it to 'none'."
         )
-    rhime_params["aggregation_error_mode"] = "none"
-    options = {
-        name: rhime_params[name]
-        for name in _ADDITIVE_SIGMA_OPTION_NAMES
-        if name in rhime_params
+    options: dict[str, Any] = {
+        "mismatch_model": "additive_sigma",
+        "use_minimum_error_floor": True,
+        "aggregation_error_mode": "none",
     }
+    rhime_params.pop("pollution_events_from_obs", None)
+    rhime_params.pop("power", None)
+    options.update(
+        {name: rhime_params[name] for name in _ADDITIVE_SIGMA_OPTION_NAMES if name in rhime_params}
+    )
     if options.get("sigma_freq") not in (None, "monthly"):
         options.setdefault("sigma_freq_anchor", rhime_params["start_date"])
     resolved_prior = (
@@ -281,7 +288,6 @@ def _select_additive_sigma_likelihood(
         name = "sigma_prior" if additive_sigma_prior is None else _ADDITIVE_SIGMA_PRIOR
         raise ValueError(f"`{name}` must be a mapping/dict.")
     resolved_prior = dict(resolved_prior)
-    rhime_params["sigma_prior"] = resolved_prior
     options["sigma_prior"] = resolved_prior
     return options
 
@@ -502,7 +508,35 @@ def main(argv: list[str] | None = None) -> None:
 
     with timed("run_hbmcmc.fixedbasis_to_rhime_translation"):
         rhime_params = fixedbasis_params_to_rhime(param)
-        additive_sigma_options = _select_additive_sigma_likelihood(param, rhime_params)
+        additive_sigma_options = _select_additive_sigma_model_options(param, rhime_params)
+        no_model_error = bool(rhime_params.pop("no_model_error", False))
+        legacy_unused_sigma_settings: PollutionEventSettings | None = None
+        legacy_minimum_error_floor = False
+        if additive_sigma_options is not None:
+            no_model_error = bool(additive_sigma_options.get("no_model_error", no_model_error))
+            if no_model_error:
+                for name in _ADDITIVE_SIGMA_OPTION_NAMES:
+                    rhime_params.pop(name, None)
+                rhime_params.update(
+                    mismatch_model="fixed_error",
+                    aggregation_error_mode="none",
+                )
+                legacy_minimum_error_floor = True
+            else:
+                rhime_params.update(additive_sigma_options)
+                rhime_params.pop("no_model_error", None)
+        elif no_model_error:
+            legacy_unused_sigma_settings = PollutionEventSettings(
+                sigma_prior=rhime_params.pop("sigma_prior", None),
+                sigma_freq=rhime_params.pop("sigma_freq", None),
+                sigma_per_site=rhime_params.pop("sigma_per_site", True),
+                sigma_freq_anchor=rhime_params.pop("sigma_freq_anchor", None),
+            )
+            rhime_params.pop("pollution_events_from_obs", None)
+            rhime_params.pop("power", None)
+            rhime_params["mismatch_model"] = "fixed_error"
+        else:
+            rhime_params["mismatch_model"] = "pollution_event"
 
     with timed("run_hbmcmc.validation"):
         validate_rhime_params(rhime_params)
@@ -513,15 +547,23 @@ def main(argv: list[str] | None = None) -> None:
     with timed("run_hbmcmc.config_copy"):
         output.copy_config_file(str(config_file), param=param, **command_line_args)
 
-    if additive_sigma_options is None:
-        run_rhime(preserve_legacy_likelihood=True, **rhime_params)
-    else:
-        run_rhime(
-            likelihood_builder=additive_sigma_likelihood_builder,
-            likelihood_kwargs=additive_sigma_options,
-            preserve_legacy_likelihood=False,
-            **rhime_params,
-        )
+    compatibility_provenance = None
+    if additive_sigma_options is not None:
+        compatibility_provenance = {
+            "likelihood_builder": dict(_LEGACY_ADDITIVE_LIKELIHOOD_METADATA),
+            "likelihood_kwargs": {
+                name: additive_sigma_options[name]
+                for name in _ADDITIVE_SIGMA_OPTION_NAMES
+                if name in additive_sigma_options
+            },
+        }
+    run_rhime(
+        preserve_legacy_likelihood=additive_sigma_options is None,
+        _compatibility_likelihood_provenance=compatibility_provenance,
+        _compatibility_unused_sigma_settings=legacy_unused_sigma_settings,
+        _compatibility_minimum_error_floor=legacy_minimum_error_floor,
+        **rhime_params,
+    )
 
 
 if __name__ == "__main__":

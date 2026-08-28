@@ -13,6 +13,7 @@ from openghg_inversions.observation_error import AggregationErrorMode
 
 OutputFormat = Literal["none", "inv_out", "basic", "paris", "legacy"]
 OutputFilenameConvention = Literal["rhime", "legacy"]
+MismatchModel = Literal["pollution_event", "additive_sigma", "fixed_error"]
 
 DEFAULT_X_PRIOR: PriorArgs = {
     "pdf": "lognormal",
@@ -26,8 +27,79 @@ DEFAULT_BC_PRIOR: PriorArgs = {
     "sigma": 0.05,
     "lower": 0.0,
 }
-DEFAULT_SIGMA_PRIOR: PriorArgs = {"pdf": "uniform", "lower": 0.1, "upper": 3.0}
+DEFAULT_POLLUTION_EVENT_SIGMA_PRIOR: PriorArgs = {
+    "pdf": "uniform",
+    "lower": 0.0,
+    "upper": 0.1,
+}
 DEFAULT_OFFSET_PRIOR: PriorArgs = {"pdf": "normal", "mu": 0, "sigma": 1}
+
+
+@dataclass(frozen=True)
+class PollutionEventSettings:
+    """Serializable settings for pollution-event-scaled model error.
+
+    Args:
+        sigma_prior: Prior for the observation-aligned fractional model error.
+        sigma_freq: Frequency of the latent model-error periods. ``None`` uses
+            one period.
+        sigma_per_site: Whether model error varies by observation site.
+        sigma_freq_anchor: Optional anchor for fixed-duration periods.
+        pollution_events_from_obs: Derive pollution events from observations
+            after removing the baseline instead of from modelled pollution.
+        power: Exponent or prior used in pollution-event error scaling.
+    """
+
+    sigma_prior: PriorArgs | None = None
+    sigma_freq: str | None = None
+    sigma_per_site: bool = True
+    sigma_freq_anchor: DatetimeLike | None = None
+    pollution_events_from_obs: bool = False
+    power: PriorArgs | float = 1.99
+
+    @property
+    def required_prepared_inputs(self) -> tuple[str, ...]:
+        """Return prepared arrays owned by this likelihood."""
+        return ("min_error",)
+
+
+@dataclass(frozen=True)
+class AdditiveSigmaSettings:
+    """Serializable settings for additive model-data-mismatch error.
+
+    Args:
+        sigma_prior: Prior for the additive model-error standard deviation.
+        sigma_freq: Frequency of the latent model-error periods. ``None`` uses
+            one period.
+        sigma_per_site: Whether model error varies by observation site.
+        sigma_freq_anchor: Optional anchor for fixed-duration periods.
+        use_minimum_error_floor: Apply the prepared historical minimum total-
+            error floor.
+    """
+
+    sigma_prior: PriorArgs | None = None
+    sigma_freq: str | None = None
+    sigma_per_site: bool = True
+    sigma_freq_anchor: DatetimeLike | None = None
+    use_minimum_error_floor: bool = False
+
+    @property
+    def required_prepared_inputs(self) -> tuple[str, ...]:
+        """Return prepared arrays owned by this likelihood."""
+        return ("min_error",) if self.use_minimum_error_floor else ()
+
+
+@dataclass(frozen=True)
+class FixedErrorSettings:
+    """Serializable selection of reported observation error only."""
+
+    @property
+    def required_prepared_inputs(self) -> tuple[str, ...]:
+        """Return prepared arrays owned by this likelihood."""
+        return ()
+
+
+LikelihoodSettings = PollutionEventSettings | AdditiveSigmaSettings | FixedErrorSettings
 
 
 @dataclass(frozen=True)
@@ -63,20 +135,13 @@ class RhimeModelSpec:
         sectors: Flux sectors included in the model. Each sector is optimized
             separately and is normally backed by one OpenGHG flux ``source``.
         use_bc: Whether boundary-condition scaling is included.
-        sigma_per_site: Whether model-error terms vary by site.
-        sigma_freq: Frequency used to derive observation-aligned sigma periods.
-            ``None`` uses one shared period.
-        sigma_freq_anchor: Optional anchor for fixed-duration sigma periods.
+        likelihood: Resolved built-in likelihood settings, or ``None`` when a
+            Python-only custom likelihood owns that step.
         add_offset: Whether model-data offsets are included.
-        pollution_events_from_obs: Whether model error scales with observed
-            enhancements instead of modelled enhancements.
-        no_model_error: Whether explicit model-error terms are disabled.
         aggregation_error_mode: Fixed aggregation-error covariance
             representation. The default ``"none"`` preserves the ordinary
             model; other modes are an explicit opt-in.
-        power: Exponent or prior specification used in likelihood error scaling.
         bc_prior: Prior specification for boundary-condition scaling factors.
-        sigma_prior: Prior specification for model-error terms.
         offset_prior: Prior specification for optional offsets.
         offset_args: Extra keyword arguments forwarded to the offset component.
         bc_state_activity: Optional active/fixed policy for the boundary-
@@ -86,37 +151,20 @@ class RhimeModelSpec:
         state_activity: Optional labelled active/fixed state policy shared by
             flux sectors. The default retains exact-zero pruning.
 
-    Raises:
-        ValueError: If ``aggregation_error_mode`` is unsupported.
     """
 
     species: str
     domain: str
     sectors: tuple[SectorSpec, ...]
     use_bc: bool = True
-    sigma_per_site: bool = True
-    sigma_freq: str | None = None
-    sigma_freq_anchor: DatetimeLike | None = None
+    likelihood: LikelihoodSettings | None = field(default=None, kw_only=True)
     add_offset: bool = False
-    pollution_events_from_obs: bool = False
-    no_model_error: bool = False
     aggregation_error_mode: AggregationErrorMode = field(default="none", kw_only=True)
-    power: PriorArgs | float = 1.99
     bc_prior: PriorArgs | None = None
-    sigma_prior: PriorArgs | None = None
     offset_prior: PriorArgs | None = None
     offset_args: dict[str, Any] | None = None
     bc_state_activity: StateActivity | None = field(default=None, kw_only=True)
     state_activity: StateActivity | None = field(default=None, kw_only=True)
-
-    def __post_init__(self) -> None:
-        """Validate model options resolved before graph construction."""
-        if self.aggregation_error_mode not in ("auto", "none", "dense", "low_rank", "diagonal"):
-            raise ValueError(
-                "`aggregation_error_mode` must be one of 'auto', 'none', 'dense', "
-                f"'low_rank', or 'diagonal'; got {self.aggregation_error_mode!r}."
-            )
-
 
 @dataclass(frozen=True)
 class RhimeOutputSpec:

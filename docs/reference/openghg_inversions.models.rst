@@ -12,6 +12,5 @@ openghg\_inversions.models
    :maxdepth: 4
 
    openghg_inversions.models.additive_sigma
-   openghg_inversions.models.likelihoods
    openghg_inversions.models.pollution_event
    openghg_inversions.models.state_activity

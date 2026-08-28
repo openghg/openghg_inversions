@@ -347,10 +347,8 @@ def test_public_co2_runner_persists_fixed_mismatch_manifest(
 
 def test_public_co2_runner_derives_default_model_error_alignment(monkeypatch: Any) -> None:
     inputs = _golden_inputs()
-    inputs["site_indicator"] = xr.DataArray(
-        np.arange(inputs.sizes["nmeasure"]),
-        dims="nmeasure",
-        coords={"nmeasure": inputs["nmeasure"]},
+    inputs = inputs.assign_coords(
+        site=("nmeasure", [f"site-{index}" for index in range(inputs.sizes["nmeasure"])])
     )
 
     class PreparedInputsStub:
@@ -376,7 +374,7 @@ def test_public_co2_runner_derives_default_model_error_alignment(monkeypatch: An
 
     run_rhime_co2(prepared_inputs=cast(Any, PreparedInputsStub()))
 
-    assert "site_indicator" in materialized_names[0]
+    assert "site_indicator" not in materialized_names[0]
     np.testing.assert_array_equal(
         sampled_models[0]["sigma_site_index"].eval(),
         np.arange(inputs.sizes["nmeasure"]),
