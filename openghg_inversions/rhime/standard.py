@@ -562,6 +562,9 @@ def run_rhime(
         variable_names=tuple(dict.fromkeys(model_input_names)),
     )
     build_and_sample_start = timer_start()
+    legacy_additive_kwargs = (
+        {"legacy_minimum_error_floor": True} if _compatibility_minimum_error_floor else {}
+    )
     model_build_result = build_standard_rhime_model_result(
         prepared=prepared,
         model_inputs=model_inputs,
@@ -570,7 +573,7 @@ def run_rhime(
         likelihood_kwargs=likelihood_kwargs,
         preserve_legacy_likelihood=preserve_legacy_likelihood,
         legacy_unused_sigma_settings=_compatibility_unused_sigma_settings,
-        legacy_minimum_error_floor=_compatibility_minimum_error_floor,
+        **legacy_additive_kwargs,
     )
     idata = sample_rhime_model(
         model_build_result,
