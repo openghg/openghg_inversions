@@ -165,6 +165,7 @@ def build_rhime_basis(
             fp_basis_case=fp_basis_case,
             basis_directory=data_args["basis_directory"],
             country_directory=data_args["country_directory"],
+            outer_regions_path=data_args["outer_regions_path"],
             fp_all=merged.fp_all,
             species=data_args["species"],
             domain=data_args["domain"],
