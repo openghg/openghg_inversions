@@ -45,7 +45,7 @@ RHIME arguments plus the inner-domain options:
        basis_algorithm="weighted",
        nbasis=100,
        fix_basis_outer_regions=True,
-       outer_regions_path="/path/to/outer_region_definition_EUHROB.nc",
+       outer_regions_path="intem_region_definition_EUHROB.nc",
        # Quadtree is the safe default for a grid without a matching land/sea file.
        inner_basis_algorithm="quadtree",
        inner_nbasis=80,
@@ -61,11 +61,17 @@ RHIME arguments plus the inner-domain options:
 ``inner_domain`` may instead contain the complete OpenGHG domain name, such as
 ``"EUROPE-EUHROB"``. A suffix is prefixed with the outer domain exactly once.
 The outer boundary-condition contribution is retained; an independent inner
-boundary condition is not added. ``outer_regions_path`` is optional; use it
-when the fixed outer-region map for the nested footprint extent differs from
-the ordinary packaged map for the outer domain. Migrated legacy configs may
-still use ``outer_region_definition_file``; RHIME warns and normalizes it to
+boundary condition is not added. ``outer_regions_path`` is optional; use the
+bundled ``intem_region_definition_EUHROB.nc`` for the EUROPE 6 km nest, whose
+metadata marks label 6 as the inner rectangle. Bare filenames are resolved
+against the packaged basis assets. Migrated legacy configs may still use
+``outer_region_definition_file``; RHIME warns and normalizes it to
 ``outer_regions_path``.
+
+The EUHROB asset is a coarse-grid fixed-region map: its marked rectangle tells
+the outer-basis algorithm where the nested area lies, while all other labels
+remain fixed outer regions. It does not replace the independent basis built on
+the native 6 km grid.
 
 When both bases are generated and ``inner_nbasis`` is omitted, ``nbasis`` is
 treated as the total outer-plus-inner budget. RHIME splits it using the
