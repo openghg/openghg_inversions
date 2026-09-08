@@ -14,6 +14,7 @@ set -euo pipefail
 workspace=/user/home/vq21425/openghg_inversions
 run_dir=${workspace}/inversion_outputs/PARISNID2026_EUROPE_6km
 
+module load git
 cd "${workspace}"
 unset PYTHONPATH
 export PYTHONNOUSERSITE=1
