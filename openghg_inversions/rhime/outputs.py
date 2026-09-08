@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, cast
@@ -219,19 +220,29 @@ def _make_inversion_output(
     *,
     result: RhimeResult,
     prepared: RhimePreparedInputs,
+    variable_roles: Mapping[str, str] | None = None,
 ) -> InversionOutput:
     """Create a modern InversionOutput without fixedbasis legacy adapters.
 
     Args:
         result: Sampled recipe result and model-owned output contract.
         prepared: Retained canonical inputs and basis functions.
+        variable_roles: Optional override for the semantic role-to-variable
+            mapping. Defaults to ``result.model_build_result.variable_roles``.
+            Nested RHIME passes a per-domain override here: its builder
+            declares tagged roles (``"flux_scale:outer"``, ``"flux_scale:inner"``,
+            etc.) so one shared trace can be viewed as two ordinary,
+            single-grid ``InversionOutput`` contracts -- see
+            ``openghg_inversions.postprocessing.nested_paris_outputs``.
 
     Returns:
         Complete modern inversion-output artifact.
     """
     model_build_result = cast(RhimeModelBuildResult, result.model_build_result)
     model_metadata = cast(dict[str, Any], _structured_metadata(asdict(result.model_spec)))
-    model_metadata["variable_roles"] = dict(model_build_result.variable_roles)
+    model_metadata["variable_roles"] = (
+        dict(model_build_result.variable_roles) if variable_roles is None else dict(variable_roles)
+    )
     builder_metadata = dict(model_build_result.metadata)
     for key in ("model_builder", "likelihood_builder", "likelihood_kwargs"):
         if key in result.output_metadata:
