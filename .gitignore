@@ -159,3 +159,6 @@ dmypy.json
 cython_debug/
 
 *.DS_Store
+
+# Do not track inversion outputs (local run artifacts)
+inversion_outputs/
