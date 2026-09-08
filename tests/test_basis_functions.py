@@ -1142,6 +1142,100 @@ def test_fixed_outer_regions_accepts_direct_outer_map_path(tmp_path):
     assert bool((retained.flat_basis() > 0).all())
 
 
+def test_fixed_outer_regions_uses_explicit_non_maximum_inner_label(monkeypatch, tmp_path):
+    """An asset's inner-region metadata takes precedence over the legacy max-label rule."""
+    fp_all, region_classes = _tiny_region_constrained_fp_all()
+    outer_values = np.array(
+        [
+            [0, 0, 2, 2],
+            [0, 1, 1, 2],
+            [0, 1, 1, 2],
+            [0, 0, 2, 2],
+        ],
+        dtype=int,
+    )
+    outer_path = tmp_path / "explicit-inner-label.nc"
+    outer_regions = xr.Dataset(
+        {"region": (("lat", "lon"), outer_values)},
+        coords=region_classes.coords,
+        attrs={"inner_region_label": 1},
+    )
+    outer_regions.to_netcdf(outer_path)
+    seen: dict[str, xr.DataArray] = {}
+
+    def fake_quadtree_basis(
+        fp_all,
+        start_date,
+        domain,
+        emissions_name=None,
+        nbasis=100,
+        country_directory=None,
+        abs_flux=False,
+        mask=None,
+    ):
+        del fp_all, domain, emissions_name, nbasis, country_directory, abs_flux
+        assert mask is not None
+        seen["mask"] = mask
+        inner = xr.ones_like(mask.where(mask, drop=True), dtype=int)
+        return inner.expand_dims(time=[pd.Timestamp(start_date)], axis=-1)
+
+    monkeypatch.setitem(
+        basis_functions,
+        "quadtree",
+        basis_functions["quadtree"]._replace(algorithm=fake_quadtree_basis),
+    )
+
+    fixed_outer_regions_basis(
+        fp_all=fp_all,
+        start_date="2020-01-01",
+        basis_algorithm="quadtree",
+        domain="TEST",
+        emissions_name=["total"],
+        outer_regions_path=outer_path,
+    )
+
+    xr.testing.assert_equal(seen["mask"], outer_regions["region"] == 1)
+
+
+def test_packaged_euhrob_map_marks_the_6km_inner_rectangle():
+    """The bundled EUHROB map distinguishes its non-maximum inner label from all outer labels."""
+    regions = load_intem_outer_regions(
+        "EUROPE",
+        outer_regions_path="intem_region_definition_EUHROB.nc",
+    )
+
+    assert regions.attrs["inner_region_label"] == 6
+    assert regions.attrs["inner_domain"] == "EUROPE-6km"
+    assert regions.attrs["outer_domain"] == "EUROPE"
+    assert regions.sizes == {"lat": 293, "lon": 391}
+    assert set(np.unique(regions)) == set(range(15))
+
+    inner = regions == regions.attrs["inner_region_label"]
+    inner_lat = inner.any("lon")
+    inner_lon = inner.any("lat")
+    assert int(inner.sum()) == int(inner_lat.sum()) * int(inner_lon.sum()) == 14_560
+    assert float(regions.lat.where(inner_lat, drop=True).min()) == pytest.approx(34.597)
+    assert float(regions.lat.where(inner_lat, drop=True).max()) == pytest.approx(64.783)
+    assert float(regions.lon.where(inner_lon, drop=True).min()) == pytest.approx(-10.956)
+    assert float(regions.lon.where(inner_lon, drop=True).max()) == pytest.approx(28.116)
+    assert set(np.unique(regions.values[~inner.values])) == {
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+    }
+
+
 def test_fixed_outer_weighted_basis_crops_landsea_mask_to_inner_region(monkeypatch, tmp_path):
     """Fixed-outer weighted generation aligns land/sea classes before cropping."""
     fp_all, region_classes = _tiny_region_constrained_fp_all()

@@ -36,6 +36,7 @@ logger = logging.getLogger(__name__)
 
 
 openghginv_path = Paths.openghginv
+_INNER_REGION_LABEL_ATTR = "inner_region_label"
 
 
 def basis(domain: str, basis_case: str, basis_directory: str | None = None) -> xr.Dataset:
@@ -364,8 +365,9 @@ def load_intem_outer_regions(
             ``outer_region_definition_{domain}.nc`` when
             ``outer_regions_path`` is omitted.
         outer_regions_path: Optional direct path to an outer-region NetCDF
-            file. When omitted, the packaged file for ``domain`` in
-            :mod:`openghg_inversions.basis` is used.
+            file. A bare relative filename may name a packaged file in
+            :mod:`openghg_inversions.basis`. When omitted, the packaged file
+            for ``domain`` is used.
 
     Returns:
         Loaded two-dimensional ``region`` field, including its spatial
@@ -380,10 +382,34 @@ def load_intem_outer_regions(
         outer_regions_path = Path(__file__).parent / f"outer_region_definition_{domain}.nc"
     else:
         outer_regions_path = Path(outer_regions_path)
+        if not outer_regions_path.is_absolute() and not outer_regions_path.exists():
+            packaged_path = Path(__file__).parent / outer_regions_path
+            if packaged_path.exists():
+                outer_regions_path = packaged_path
         logger.info(f"Loading InTEM outer region file for domain {domain} from {outer_regions_path}.")
 
     with xr.open_dataset(outer_regions_path, decode_coords="all") as dataset:
-        return dataset["region"].load()
+        regions = dataset["region"].load()
+        for name, value in dataset.attrs.items():
+            regions.attrs.setdefault(name, value)
+        return regions
+
+
+def _fixed_outer_inner_region_label(regions: xr.DataArray) -> int:
+    """Return the explicitly marked inner label, with legacy max-label fallback."""
+    configured_label = regions.attrs.get(_INNER_REGION_LABEL_ATTR)
+    if configured_label is None:
+        return int(regions.max().item())
+    if isinstance(configured_label, bool) or not isinstance(configured_label, Integral):
+        raise ValueError(
+            f"Fixed outer-region map attribute {_INNER_REGION_LABEL_ATTR!r} must be an integer."
+        )
+    inner_label = int(configured_label)
+    if not bool((regions == inner_label).any().item()):
+        raise ValueError(
+            f"Fixed outer-region map marks inner label {inner_label}, but that label is absent."
+        )
+    return inner_label
 
 
 def load_country_region_classes(
@@ -1216,9 +1242,11 @@ def fixed_outer_regions_basis(
 ) -> xr.DataArray:
     """Use fixed InTEM outer regions and fit inner regions with an algorithm.
 
-    The InTEM outer-region file defines known outer labels. The largest region
-    value is treated as the inner inversion region; this inner mask is passed to
-    ``basis_algorithm`` and then inserted back into the fixed outer map.
+    The InTEM outer-region file defines known outer labels. Its optional
+    ``inner_region_label`` attribute identifies the inner inversion region;
+    legacy files without that metadata continue to use their largest label.
+    This inner mask is passed to ``basis_algorithm`` and then inserted back
+    into the fixed outer map.
 
     Args:
         fp_all: Legacy merged-data dictionary produced by the data preparation
@@ -1262,21 +1290,25 @@ def fixed_outer_regions_basis(
         Basis field with fixed outer labels and generated inner labels.
     """
     if outer_regions_path is not None:
-        intem_regions_path = Path(outer_regions_path)
-        logger.info(f"Loading InTEM outer region file for domain {domain} from {intem_regions_path}.")
+        selected_outer_regions_path = Path(outer_regions_path)
+        if not selected_outer_regions_path.is_absolute() and country_directory is not None:
+            country_path = Path(country_directory) / selected_outer_regions_path
+            if country_path.exists():
+                selected_outer_regions_path = country_path
+        intem_regions = load_intem_outer_regions(domain, selected_outer_regions_path)
     elif country_directory is None:
-        logger.info(f"Loading default InTEM outer region file for domain {domain}.")
-        intem_regions_path = Path(__file__).parent / f"outer_region_definition_{domain}.nc"
+        intem_regions = load_intem_outer_regions(domain)
     else:
-        logger.info(f"Loading InTEM outer region file for domain {domain} from {country_directory}.")
-        intem_regions_path = Path(country_directory) / f"outer_region_definition_{domain}.nc"
-    intem_regions = xr.open_dataset(intem_regions_path).region
+        intem_regions = load_intem_outer_regions(
+            domain,
+            Path(country_directory) / f"outer_region_definition_{domain}.nc",
+        )
 
     # force intem_regions to use flux coordinates
     flux, _ = _flux_fp_from_fp_all(fp_all, emissions_name)
     _, intem_regions = xr.align(flux, intem_regions, join="override")
 
-    inner_index = intem_regions.values.max()
+    inner_index = _fixed_outer_inner_region_label(intem_regions)
 
     mask = intem_regions == inner_index
 
