@@ -13,10 +13,16 @@ from openghg_inversions.rhime.params import params_from_config
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("config", type=Path)
+    parser.add_argument("--start-date")
+    parser.add_argument("--end-date")
     args = parser.parse_args()
 
     config_path = args.config.resolve()
-    params = params_from_config(config_path)
+    params = params_from_config(
+        config_path,
+        start_date=args.start_date,
+        end_date=args.end_date,
+    )
     output_path = params.get("output_path")
     if output_path is None:
         raise ValueError("The nested run configuration must define output_path.")
@@ -37,7 +43,15 @@ def main() -> None:
         paths = "\n".join(str(path) for path in existing)
         raise FileExistsError(f"Refusing to overwrite existing local run artifacts:\n{paths}")
 
-    result = run_rhime_nested(config_file=config_path)
+    overrides = {
+        name: value
+        for name, value in {
+            "start_date": args.start_date,
+            "end_date": args.end_date,
+        }.items()
+        if value is not None
+    }
+    result = run_rhime_nested(config_file=config_path, **overrides)
     output_dir.mkdir(parents=True, exist_ok=True)
     _save_inferencedata(result.idata, artifacts["trace"])
     result.prepared_inputs.outer.save(artifacts["outer"])
