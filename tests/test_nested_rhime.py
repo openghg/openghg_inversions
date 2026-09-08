@@ -383,6 +383,7 @@ def test_nested_preparation_uses_native_inner_domain_and_safe_basis_default(monk
         inner_domain="6km",
         inner_footprint_store="inner-fp",
         inner_emissions_store="inner-flux",
+        inner_emissions_domain="EUROPE",
         inner_nbasis=40,
     )
 
@@ -391,6 +392,7 @@ def test_nested_preparation_uses_native_inner_domain_and_safe_basis_default(monk
     assert inner_args["domain"] == "EUROPE-6km"
     assert inner_args["footprint_store"] == "inner-fp"
     assert inner_args["emissions_store"] == "inner-flux"
+    assert inner_args["emissions_domain"] == "EUROPE"
     assert inner_args["use_bc"] is False
     assert inner_args["basis_algorithm"] == "quadtree"
     assert inner_args["nbasis"] == 40

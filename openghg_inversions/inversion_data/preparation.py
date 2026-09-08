@@ -952,6 +952,7 @@ def _prepare_merged_data(
     obs_store: str = "user",
     footprint_store: str = "user",
     emissions_store: str = "user",
+    emissions_domain: str | None = None,
     met_model: SiteStringOption = None,
     fp_model: str | None = None,
     fp_height: SiteStringOption = None,
@@ -1052,6 +1053,7 @@ def _prepare_merged_data(
             obs_store=obs_store,
             footprint_store=footprint_store,
             emissions_store=emissions_store,
+            emissions_domain=emissions_domain,
             split_by_sectors=split_by_sectors,
             averagingerror=averaging_error,
             save_merged_data=save_merged_data,
@@ -1295,6 +1297,7 @@ def prepare_rhime_inputs(
     obs_store: str = "user",
     footprint_store: str = "user",
     emissions_store: str = "user",
+    emissions_domain: str | None = None,
     met_model: SiteStringOption = None,
     fp_model: str | None = None,
     fp_height: SiteStringOption = None,
@@ -1364,6 +1367,8 @@ def prepare_rhime_inputs(
             Entries must be integers or ``None``.
         outer_regions_path: Optional direct path to the fixed outer-region map
             used when ``fix_basis_outer_regions`` is true.
+        emissions_domain: Optional flux-domain metadata selector. If it differs
+            from ``domain``, flux is interpolated onto the footprint grid.
         min_error: Numeric minimum error or ``"residual"``/``"percentile"``
             calculation method.
         min_error_options: Calculated minimum-error options. The only supported
@@ -1399,6 +1404,7 @@ def prepare_rhime_inputs(
             obs_store=obs_store,
             footprint_store=footprint_store,
             emissions_store=emissions_store,
+            emissions_domain=emissions_domain,
             met_model=met_model,
             fp_model=fp_model,
             fp_height=fp_height,
