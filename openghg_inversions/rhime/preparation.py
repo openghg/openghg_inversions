@@ -99,6 +99,7 @@ def retrieve_or_reload_rhime_data(
             obs_store=data_args["obs_store"],
             footprint_store=data_args["footprint_store"],
             emissions_store=data_args["emissions_store"],
+            emissions_domain=data_args["emissions_domain"],
             met_model=data_args["met_model"],
             fp_model=data_args["fp_model"],
             fp_height=data_args["fp_height"],

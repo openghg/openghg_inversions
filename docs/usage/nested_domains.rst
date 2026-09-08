@@ -68,6 +68,12 @@ against the packaged basis assets. Migrated legacy configs may still use
 ``outer_region_definition_file``; RHIME warns and normalizes it to
 ``outer_regions_path``.
 
+When a store contains fine-grid footprints but only a coarser flux product,
+set ``inner_emissions_domain`` to that flux product's domain. RHIME then
+interpolates the flux density with nearest neighbours onto the inner footprint
+grid explicitly. For example, the PARIS 6 km footprints use
+``inner_emissions_domain="EUROPE"`` with the shared EUROPE emissions product.
+
 The EUHROB asset is a coarse-grid fixed-region map: its marked rectangle tells
 the outer-basis algorithm where the nested area lies, while all other labels
 remain fixed outer regions. It does not replace the independent basis built on
@@ -100,6 +106,7 @@ the installed CLI. The remaining sections use the normal RHIME schema.
    inner_domain = "6km"
    inner_footprint_store = "inner-footprints"
    inner_emissions_store = "inner-emissions"
+   inner_emissions_domain = None
    inner_basis_algorithm = "quadtree"
    inner_nbasis = 80
    inner_time_tolerance = None
