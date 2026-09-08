@@ -631,6 +631,14 @@ def prepare_nested_rhime_inputs(
         raise ValueError("Nested RHIME preparation currently requires a standard one-source setup.")
 
     outer_args = dict(setup.data_args)
+    # Nested masking (`mask_outer_merged_for_inner_domain`, below) always zeroes the outer
+    # footprint response and prior flux over the inner domain's extent. When the outer basis
+    # also uses `fix_basis_outer_regions` with an inner-region map covering that same extent
+    # (e.g. EUHROB), there is genuinely nothing left to subdivide there -- that is expected,
+    # not a data error, so the outer basis keeps that marked region as one fixed label instead
+    # of raising. `inner_args` (below) forces `fix_basis_outer_regions=False`, so this has no
+    # effect on inner-domain basis preparation.
+    outer_args["allow_empty_inner_region"] = True
     inner_domain_name = _inner_domain_name(outer_args["domain"], inner_domain)
     inner_args = dict(outer_args)
     inner_args.update(

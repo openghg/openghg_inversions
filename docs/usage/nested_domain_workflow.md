@@ -188,6 +188,20 @@ result.outer_basis_functions
 result.inner_basis_functions
 ```
 
-Nested runs currently require `output_format="none"`, because existing
-inversion-output writers assume a single spatial grid. The complete posterior
-and both basis objects remain available for custom dual-grid post-processing.
+Nested runs support `output_format="none"` or `output_format="paris"`; other
+formats (`"basic"`, `"legacy"`, ...) are still rejected because their writers
+assume a single spatial grid.
+
+`output_format="paris"` does not merge the two grids onto one either. It
+builds two ordinary, single-grid `InversionOutput` views of the shared
+posterior (see `openghg_inversions.postprocessing.nested_paris_outputs`) --
+one reading `x_outer`/`hx_outer` against the outer basis, one reading
+`x_inner`/`hx_inner` against the inner basis -- and runs the existing
+single-grid PARIS writer against each unmodified. The result is three
+products: an outer PARIS flux file (zero inside the inner extent, so it never
+double-counts against the inner domain), a separate native-resolution inner
+PARIS flux file (including its own country totals, computed against a
+nearest-neighbour-resampled country map when no inner-resolution one is
+supplied), and one shared PARIS concentration file. The complete posterior
+and both basis objects remain available for custom dual-grid post-processing
+regardless of `output_format`.
