@@ -1239,6 +1239,7 @@ def fixed_outer_regions_basis(
     contrast_tau: float | None = None,
     contrast_sigma_design: float | None = None,
     contrast_s_diag: xr.DataArray | None = None,
+    allow_empty_inner_region: bool = False,
 ) -> xr.DataArray:
     """Use fixed InTEM outer regions and fit inner regions with an algorithm.
 
@@ -1247,6 +1248,18 @@ def fixed_outer_regions_basis(
     legacy files without that metadata continue to use their largest label.
     This inner mask is passed to ``basis_algorithm`` and then inserted back
     into the fixed outer map.
+
+    By default (``allow_empty_inner_region=False``), a marked inner region
+    with no non-zero footprint*flux response raises, exactly as it always
+    has: this normally means the map or footprint/flux data are mismatched.
+    A modern nested-domain run is a legitimate exception -- its outer
+    footprint response and prior flux are deliberately zeroed over the same
+    extent the fine inner grid already covers (see
+    ``openghg_inversions.rhime.nested.mask_outer_merged_for_inner_domain``),
+    so an inner-region map built to mark that same extent will correctly find
+    nothing left to subdivide there. Only nested outer-domain preparation
+    should pass ``allow_empty_inner_region=True``; every other caller keeps
+    the strict default.
 
     Args:
         fp_all: Legacy merged-data dictionary produced by the data preparation
@@ -1285,9 +1298,15 @@ def fixed_outer_regions_basis(
             coefficient. If omitted, ``tau=1`` is uncalibrated.
         contrast_sigma_design: Optional scalar design standard deviation.
         contrast_s_diag: Optional diagonal design covariance entries.
+        allow_empty_inner_region: If true, a marked inner region with no
+            non-zero footprint*flux response is kept as a single fixed label
+            (like the other outer regions) instead of raising. Intended only
+            for nested outer-domain preparation.
 
     Returns:
-        Basis field with fixed outer labels and generated inner labels.
+        Basis field with fixed outer labels and generated inner labels. When
+        ``allow_empty_inner_region`` is true and the inner region has no
+        residual response, its label is kept unsplit.
     """
     if outer_regions_path is not None:
         selected_outer_regions_path = Path(outer_regions_path)
@@ -1311,6 +1330,21 @@ def fixed_outer_regions_basis(
     inner_index = _fixed_outer_inner_region_label(intem_regions)
 
     mask = intem_regions == inner_index
+
+    if allow_empty_inner_region:
+        inner_weights = basis_weights_from_fp_all(fp_all, emissions_name, abs_flux=abs_flux, mask=mask)
+        finite_inner_weights = inner_weights.to_numpy()
+        finite_inner_weights = finite_inner_weights[np.isfinite(finite_inner_weights)]
+        if finite_inner_weights.size and not bool((finite_inner_weights != 0.0).any()):
+            logger.warning(
+                f"Fixed outer-region map's inner label {inner_index} has no non-zero footprint*flux "
+                "response; keeping it as a single fixed region instead of subdividing it further "
+                "(allow_empty_inner_region=True)."
+            )
+            basis = intem_regions.rename("basis")
+            basis += 1  # intem_region_definitions.nc regions start at 0, not 1
+            basis = basis.expand_dims({"time": [pd.to_datetime(start_date)]})
+            return basis
 
     basis_function = basis_functions[basis_algorithm].algorithm
     algorithm_kwargs = {"country_directory": country_directory, "abs_flux": abs_flux, "mask": mask}

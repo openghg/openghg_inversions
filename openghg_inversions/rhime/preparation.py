@@ -175,6 +175,7 @@ def build_rhime_basis(
             emissions_name=data_args["flux_sources"],
             outputname=data_args["output_name"],
             output_path=data_args["basis_output_path"],
+            allow_empty_inner_region=data_args.get("allow_empty_inner_region", False),
         )
 
 

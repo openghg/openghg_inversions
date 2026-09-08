@@ -11,18 +11,26 @@ import pandas as pd
 import pytest
 import xarray as xr
 
+import arviz as az
+
 import openghg_inversions.rhime.nested as nested_module
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.cli import main
 from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs
 from openghg_inversions.inversion_data.preparation import _SiteOptions
+from openghg_inversions.postprocessing.nested_paris_outputs import (
+    _domain_variable_roles,
+    make_nested_inversion_outputs,
+)
 from openghg_inversions.rhime.nested import (
+    NestedRhimeResult,
     align_inner_merged_to_outer_observations,
     build_nested_rhime_model_result,
     combine_nested_rhime_inputs,
     mask_outer_merged_for_inner_domain,
 )
 from openghg_inversions.rhime.materialization import materialize_pymc_inputs
+from openghg_inversions.rhime.outputs import RhimeResult
 from openghg_inversions.rhime.params import RhimeRunnerSetup
 from openghg_inversions.rhime import params as rhime_params
 from openghg_inversions.rhime.sampling import RhimeSampler
@@ -276,7 +284,7 @@ def test_nested_model_uses_two_labelled_state_blocks_and_shared_likelihood() -> 
     assert result.variable_roles["flux_scale:outer"] == "x_outer"
     assert result.variable_roles["flux_scale:inner"] == "x_inner"
     assert result.variable_roles["concentration"] == "y"
-    assert result.supported_output_formats == ("none",)
+    assert result.supported_output_formats == ("none", "paris")
 
 
 def test_nested_materialization_computes_both_sensitivities_at_named_boundary() -> None:
@@ -516,3 +524,88 @@ def test_outer_regions_path_routes_through_modern_rhime_setup() -> None:
     )
 
     assert setup.data_args["outer_regions_path"] == "/data/EUHROB.nc"
+
+
+def test_domain_variable_roles_strips_tag_and_keeps_shared_roles() -> None:
+    all_roles = {
+        "observation": "mf",
+        "concentration": "y",
+        "flux_scale:outer": "x_outer",
+        "emissions_sensitivity:outer": "hx_outer",
+        "flux_scale:inner": "x_inner",
+        "emissions_sensitivity:inner": "hx_inner",
+    }
+
+    outer_roles = _domain_variable_roles(all_roles, tag="outer")
+    inner_roles = _domain_variable_roles(all_roles, tag="inner")
+
+    assert outer_roles == {
+        "observation": "mf",
+        "concentration": "y",
+        "flux_scale": "x_outer",
+        "emissions_sensitivity": "hx_outer",
+    }
+    assert inner_roles == {
+        "observation": "mf",
+        "concentration": "y",
+        "flux_scale": "x_inner",
+        "emissions_sensitivity": "hx_inner",
+    }
+
+
+def test_make_nested_inversion_outputs_builds_per_domain_views() -> None:
+    """Outer/inner InversionOutput views must read distinct bases and trace variables.
+
+    The two views exist so ordinary, single-grid PARIS/flux/country postprocessing
+    (which expects one basis and one bare "flux_scale" role) can run unmodified
+    against each nested domain -- see `nested_paris_outputs`.
+    """
+    outer_basis = _basis([50.0], [-2.0, -1.0], np.array([[1, 2]]))
+    inner_basis = _basis([51.0, 51.5], [-1.5], np.array([[1], [2]]))
+    outer = _prepared(
+        times=["2019-01-01T00:00", "2019-01-01T01:00"],
+        sensitivity=np.array([[1.0, 2.0], [3.0, 4.0]]),
+        basis=outer_basis,
+    )
+    inner = _prepared(
+        times=["2019-01-01T00:00", "2019-01-01T01:00"],
+        sensitivity=np.array([[5.0, 6.0], [7.0, 8.0]]),
+        basis=inner_basis,
+    )
+    prepared = combine_nested_rhime_inputs(outer, inner, inner_domain_label="europe-6km")
+    run_spec = _run_spec()
+
+    build_result = build_nested_rhime_model_result(
+        prepared=prepared,
+        model_inputs=prepared.combined.inv_inputs,
+        run_spec=run_spec,
+    )
+
+    result = RhimeResult(
+        run_spec=run_spec,
+        model_spec=run_spec.model,
+        output_spec=run_spec.output,
+        inv_inputs=prepared.combined.inv_inputs,
+        idata=az.InferenceData(),
+        basis_functions=prepared.combined.basis_functions,
+        model=build_result.model,
+        model_build_result=build_result,
+        sampler=RhimeSampler(),
+    )
+    nested_result = NestedRhimeResult(rhime_result=result, prepared_inputs=prepared)
+
+    outer_inv_out, inner_inv_out = make_nested_inversion_outputs(nested_result)
+
+    assert outer_inv_out.variable_name("flux_scale") == "x_outer"
+    assert inner_inv_out.variable_name("flux_scale") == "x_inner"
+    assert outer_inv_out.variable_name("emissions_sensitivity") == "hx_outer"
+    assert inner_inv_out.variable_name("emissions_sensitivity") == "hx_inner"
+    assert outer_inv_out.basis_functions is prepared.outer.basis_functions
+    assert inner_inv_out.basis_functions is prepared.inner.basis_functions
+    assert outer_inv_out.inv_inputs is prepared.outer.inv_inputs
+    assert inner_inv_out.inv_inputs is prepared.inner.inv_inputs
+    # Both views resolve to the *outer* domain name, so `country_regions="paris"`
+    # lookups and default country-file resolution behave identically for both;
+    # the inner grid's own resolution is carried separately.
+    assert outer_inv_out.domain == inner_inv_out.domain == "EUROPE"
+    assert nested_result.prepared_inputs.inner_domain_label == "europe-6km"

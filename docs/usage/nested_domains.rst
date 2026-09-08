@@ -79,6 +79,16 @@ the outer-basis algorithm where the nested area lies, while all other labels
 remain fixed outer regions. It does not replace the independent basis built on
 the native 6 km grid.
 
+Because the marked rectangle covers the same extent as the real inner domain,
+nested-domain outer masking (below) always zeroes the outer footprint response
+and prior flux there before the outer basis is built -- there is nothing left
+for the outer algorithm to subdivide inside that label. ``prepare_nested_rhime_inputs``
+handles this by passing ``allow_empty_inner_region=True`` to
+``fixed_outer_regions_basis`` for the outer domain only: the marked label is
+kept as a single fixed region (like every other outer label) instead of
+raising. Outside nested preparation, an empty marked region still raises,
+since it normally signals a mismatched map or missing footprint/flux data.
+
 When both bases are generated and ``inner_nbasis`` is omitted, ``nbasis`` is
 treated as the total outer-plus-inner budget. RHIME splits it using the
 square-root ratio of the retained absolute ``fp_x_flux`` sensitivities, with
@@ -202,9 +212,31 @@ For cached or externally prepared data, combine two ordinary
 Current output boundary
 -----------------------
 
-Nested runs currently require ``output_format="none"``. The returned
-``InferenceData`` and both retained basis objects are complete for analysis,
-but the existing ``InversionOutput``, basic, PARIS, and legacy writers each
-assume one output grid. Rejecting those formats prevents the inner posterior
-from being discarded or written on the outer grid. A future dual-grid output
-schema can add those formats without changing the nested model contract.
+Nested runs support ``output_format="none"`` or ``output_format="paris"``.
+The existing single-grid ``InversionOutput``, basic, and legacy writers each
+assume one output grid, so those formats are still rejected: using them would
+either discard the inner posterior or mis-grid it onto the outer domain.
+
+PARIS output does not merge the two grids either. Instead,
+``openghg_inversions.postprocessing.nested_paris_outputs.make_nested_paris_outputs``
+builds two ordinary, single-grid ``InversionOutput`` *views* of the shared
+trace -- one per domain, each with its variable roles pointed at that
+domain's tagged posterior (``x_outer``/``hx_outer`` or ``x_inner``/``hx_inner``)
+-- and runs the existing single-grid PARIS/flux/country postprocessing against
+each view unmodified. This produces three products:
+
+- an outer PARIS flux file, matching the ordinary single-grid schema exactly,
+  with zero emissions inside the inner extent (the outer prior flux and
+  footprint response are already masked there by
+  ``mask_outer_merged_for_inner_domain``), so it never double-counts against
+  the inner file;
+- an inner PARIS flux file at the inner domain's own native resolution,
+  including its own country totals (a coarse country-definition file is
+  nearest-neighbour resampled onto the inner grid and cached, since a fine
+  domain rarely has a matching country file at its native resolution);
+- one shared PARIS concentration file, since the combined forward model
+  (``mu = mu_outer + mu_inner + baseline``) already reports one concentration
+  per observation -- there is no separate "inner concentration" product.
+
+``run_rhime_nested`` writes all three when ``output_path`` is set, using the
+inner domain's label (e.g. ``EUROPE-6km``) in the inner flux file's name.

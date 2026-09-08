@@ -4,7 +4,12 @@ import pytest
 import xarray as xr
 
 import openghg_inversions._country_file as country_file_loader
-from openghg_inversions.postprocessing.countries import Countries, CountryRegions, paris_regions_dict
+from openghg_inversions.postprocessing.countries import (
+    Countries,
+    CountryRegions,
+    paris_regions_dict,
+    regrid_country_dataset,
+)
 from openghg_inversions.postprocessing._country_codes import CountryInfoList
 
 
@@ -215,3 +220,37 @@ def test_countries_matrix_raises_on_missing_regions_by_default(country_code, eas
             country_code=country_code,
             country_file=eastasia_country_file,
         )
+
+
+def test_regrid_country_dataset_nearest_neighbour_resamples_categorical_map():
+    """Nested-domain flux/country totals need a country map on their own (fine) grid.
+
+    Regridding must stay categorical (nearest-neighbour): interpolating country
+    codes would invent fractional, meaningless "country" values at boundaries.
+    """
+    coarse = xr.Dataset(
+        {
+            "country": (("lat", "lon"), np.array([[0, 1], [1, 0]])),
+            "name": ("ncountries", np.array(["OCEAN", "FRANCE"])),
+        },
+        coords={"lat": [1.0, 3.0], "lon": [10.0, 12.0]},
+    )
+
+    fine_lat = xr.DataArray([1.0, 1.6, 3.0], dims="lat", name="lat")
+    fine_lon = xr.DataArray([10.0, 10.6, 12.0], dims="lon", name="lon")
+
+    regridded = regrid_country_dataset(coarse, lat=fine_lat, lon=fine_lon)
+
+    assert regridded["country"].dtype == coarse["country"].dtype
+    assert list(regridded["name"].values) == ["OCEAN", "FRANCE"]
+    # Every regridded value must be one of the original category codes: nearest-neighbour
+    # resampling never invents an intermediate/fractional country code.
+    assert set(np.unique(regridded["country"].values)) <= set(np.unique(coarse["country"].values))
+    # Corners map back exactly onto their source cell.
+    assert regridded["country"].sel(lat=1.0, lon=10.0).item() == coarse["country"].sel(lat=1.0, lon=10.0).item()
+    assert regridded["country"].sel(lat=3.0, lon=12.0).item() == coarse["country"].sel(lat=3.0, lon=12.0).item()
+
+
+def test_regrid_country_dataset_requires_country_variable():
+    with pytest.raises(ValueError, match="must contain a `country` variable"):
+        regrid_country_dataset(xr.Dataset(), lat=xr.DataArray([1.0]), lon=xr.DataArray([1.0]))

@@ -1142,6 +1142,106 @@ def test_fixed_outer_regions_accepts_direct_outer_map_path(tmp_path):
     assert bool((retained.flat_basis() > 0).all())
 
 
+def _zeroed_inner_response_fp_all(fp_all: dict, region_classes: xr.DataArray, inner_mask: np.ndarray) -> dict:
+    """Return a copy of ``fp_all`` with its fp/flux response zeroed under ``inner_mask``.
+
+    Mimics ``mask_outer_merged_for_inner_domain`` zeroing the outer footprint response
+    and prior flux over the nested inner domain's extent.
+    """
+    mask = xr.DataArray(inner_mask, dims=("lat", "lon"), coords=region_classes.coords)
+    fp = fp_all["SITE"]["fp"].where(~mask, 0.0)
+    flux = fp_all[".flux"]["total"].data["flux"].where(~mask, 0.0)
+    return {
+        "SITE": xr.Dataset({"fp": fp}),
+        ".flux": {"total": SimpleNamespace(data=xr.Dataset({"flux": flux}))},
+    }
+
+
+def test_fixed_outer_regions_empty_inner_raises_by_default(tmp_path):
+    """A marked inner region with no residual footprint*flux response still raises by default."""
+    fp_all, region_classes = _tiny_region_constrained_fp_all()
+    outer_values = np.array(
+        [
+            [0, 0, 1, 1],
+            [0, 2, 2, 1],
+            [0, 2, 2, 1],
+            [0, 0, 1, 1],
+        ],
+        dtype=int,
+    )
+    outer_path = tmp_path / "outer_region_definition_EMPTYINNER.nc"
+    xr.Dataset(
+        {"region": (("lat", "lon"), outer_values)},
+        coords=region_classes.coords,
+    ).to_netcdf(outer_path)
+    zeroed_fp_all = _zeroed_inner_response_fp_all(fp_all, region_classes, outer_values == 2)
+
+    with pytest.raises(ValueError, match="no non-zero finite values"):
+        fixed_outer_regions_basis(
+            fp_all=zeroed_fp_all,
+            start_date="2020-01-01",
+            basis_algorithm="quadtree",
+            domain="TEST",
+            emissions_name=["total"],
+            nbasis=2,
+            outer_regions_path=outer_path,
+        )
+
+
+def test_fixed_outer_regions_keeps_empty_inner_region_fixed_when_allowed(tmp_path):
+    """Nested outer-domain preparation may opt into an expected-empty marked inner region.
+
+    Instead of raising, the marked region is kept as one fixed label -- like the
+    surrounding fixed outer labels -- rather than being subdivided into `nbasis`
+    sub-regions that would have no real footprint*flux signal to distinguish them.
+    """
+    fp_all, region_classes = _tiny_region_constrained_fp_all()
+    outer_values = np.array(
+        [
+            [0, 0, 1, 1],
+            [0, 2, 2, 1],
+            [0, 2, 2, 1],
+            [0, 0, 1, 1],
+        ],
+        dtype=int,
+    )
+    outer_path = tmp_path / "outer_region_definition_EMPTYINNER.nc"
+    xr.Dataset(
+        {"region": (("lat", "lon"), outer_values)},
+        coords=region_classes.coords,
+    ).to_netcdf(outer_path)
+    zeroed_fp_all = _zeroed_inner_response_fp_all(fp_all, region_classes, outer_values == 2)
+
+    basis_func = fixed_outer_regions_basis(
+        fp_all=zeroed_fp_all,
+        start_date="2020-01-01",
+        basis_algorithm="quadtree",
+        domain="TEST",
+        emissions_name=["total"],
+        nbasis=2,
+        outer_regions_path=outer_path,
+        allow_empty_inner_region=True,
+    )
+
+    labels = basis_func.squeeze("time", drop=True)
+    inner_labels = set(np.unique(labels.values[outer_values == 2]))
+    assert len(inner_labels) == 1
+
+    retained = make_basis_functions(
+        fp_all=zeroed_fp_all,
+        species="ch4",
+        domain="TEST",
+        start_date="2020-01-01",
+        emissions_name=["total"],
+        nbasis=2,
+        basis_algorithm="quadtree",
+        fix_outer_regions=True,
+        outer_regions_path=outer_path,
+        allow_empty_inner_region=True,
+    )
+    assert isinstance(retained, BasisFunctions)
+
+
 def test_fixed_outer_regions_uses_explicit_non_maximum_inner_label(monkeypatch, tmp_path):
     """An asset's inner-region metadata takes precedence over the legacy max-label rule."""
     fp_all, region_classes = _tiny_region_constrained_fp_all()
