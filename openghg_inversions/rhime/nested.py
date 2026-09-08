@@ -94,6 +94,7 @@ class NestedRhimePreparedInputs:
     combined: RhimePreparedInputs
     time_tolerance: str | pd.Timedelta | None = None
     inner_state_dim: str = "inner_region"
+    inner_domain_label: str | None = None
 
     def validated(self) -> NestedRhimePreparedInputs:
         """Revalidate both native preparations and rebuild their combination."""
@@ -102,6 +103,7 @@ class NestedRhimePreparedInputs:
             self.inner,
             time_tolerance=self.time_tolerance,
             inner_state_dim=self.inner_state_dim,
+            inner_domain_label=self.inner_domain_label,
         )
 
 
@@ -247,6 +249,7 @@ def combine_nested_rhime_inputs(
     *,
     time_tolerance: str | pd.Timedelta | None = None,
     inner_state_dim: str = "inner_region",
+    inner_domain_label: str | None = None,
 ) -> NestedRhimePreparedInputs:
     """Combine independently prepared native grids at the sensitivity boundary.
 
@@ -326,6 +329,7 @@ def combine_nested_rhime_inputs(
         combined=combined,
         time_tolerance=time_tolerance,
         inner_state_dim=inner_state_dim,
+        inner_domain_label=inner_domain_label,
     )
 
 
@@ -627,10 +631,11 @@ def prepare_nested_rhime_inputs(
         raise ValueError("Nested RHIME preparation currently requires a standard one-source setup.")
 
     outer_args = dict(setup.data_args)
+    inner_domain_name = _inner_domain_name(outer_args["domain"], inner_domain)
     inner_args = dict(outer_args)
     inner_args.update(
         {
-            "domain": _inner_domain_name(outer_args["domain"], inner_domain),
+            "domain": inner_domain_name,
             "footprint_store": inner_footprint_store or outer_args.get("footprint_store", "user"),
             "emissions_store": inner_emissions_store or outer_args.get("emissions_store", "user"),
             "emissions_domain": inner_emissions_domain,
@@ -688,6 +693,7 @@ def prepare_nested_rhime_inputs(
         outer_prepared,
         inner_prepared,
         time_tolerance=time_tolerance,
+        inner_domain_label=inner_domain_name,
     )
     log_timing(
         "rhime.prepare_nested_inputs",
@@ -911,7 +917,7 @@ def build_nested_rhime_model_result(
     result = RhimeModelBuildResult(
         model=model,
         variable_roles=roles,
-        supported_output_formats=("none",),
+        supported_output_formats=("none", "paris"),
         metadata={
             "kind": "builtin_nested",
             "outer_state_dimension": _state_dimension(
@@ -935,6 +941,96 @@ def build_nested_rhime_model_result(
     return result
 
 
+def _write_nested_paris_outputs(nested_result: NestedRhimeResult) -> None:
+    """Create and persist PARIS outputs (outer flux, inner flux, concentration).
+
+    Nested RHIME never builds a single combined ``InversionOutput``: the
+    outer and inner domains keep distinct grids, so
+    :func:`openghg_inversions.postprocessing.nested_paris_outputs.make_nested_paris_outputs`
+    builds two single-grid views of the shared trace instead. This mirrors
+    :func:`openghg_inversions.rhime.outputs.make_standard_rhime_outputs`, but
+    writes an additional ``*_flux_inner`` product for the native-resolution
+    inner domain alongside the ordinary flux and concentration products.
+    """
+    from openghg_inversions.postprocessing.nested_paris_outputs import (
+        make_nested_inversion_outputs,
+        make_nested_paris_outputs,
+    )
+    from openghg_inversions.utils import write_netcdf_preserving_bounds_attrs
+
+    from .outputs import _define_derived_output_filename, _resolve_output_path, _save_requested_trace
+
+    result = nested_result.rhime_result
+    output_spec = result.output_spec
+    model_spec = result.model_spec
+    run_spec = result.run_spec
+    prepared = nested_result.prepared_inputs
+    inner_domain_label = prepared.inner_domain_label or f"{model_spec.domain}-inner"
+
+    obs_avg_period = prepared.outer.averaging_period[0] or "0h"
+    paris_kwargs = dict(output_spec.paris_postprocessing_kwargs or {})
+    flux_outer, flux_inner, conc_outs = make_nested_paris_outputs(
+        nested_result,
+        country_file=output_spec.country_file,
+        obs_avg_period=obs_avg_period,
+        **paris_kwargs,
+    )
+    result.outputs["paris_flux"] = flux_outer
+    result.outputs["paris_flux_inner"] = flux_inner
+    result.outputs["paris_concentration"] = conc_outs
+    result.output_metadata["postprocessing_input_contract"] = "nested_inversion_output"
+
+    if output_spec.output_path is not None:
+        Path(output_spec.output_path).mkdir(parents=True, exist_ok=True)
+        conc_file = _define_derived_output_filename(
+            output_spec,
+            species=model_spec.species,
+            domain=model_spec.domain,
+            output_name=output_spec.output_name + "_conc",
+            start_date=run_spec.start_date,
+            ext=".nc",
+        )
+        flux_file = _define_derived_output_filename(
+            output_spec,
+            species=model_spec.species,
+            domain=model_spec.domain,
+            output_name=output_spec.output_name + "_flux",
+            start_date=run_spec.start_date,
+            ext=".nc",
+        )
+        flux_inner_file = _define_derived_output_filename(
+            output_spec,
+            species=model_spec.species,
+            domain=inner_domain_label,
+            output_name=output_spec.output_name + "_flux",
+            start_date=run_spec.start_date,
+            ext=".nc",
+        )
+        write_netcdf_preserving_bounds_attrs(conc_outs, conc_file, unlimited_dims=["time"])
+        write_netcdf_preserving_bounds_attrs(flux_outer, flux_file, unlimited_dims=["time"])
+        write_netcdf_preserving_bounds_attrs(flux_inner, flux_inner_file, unlimited_dims=["time"])
+        result.output_metadata["paris_concentration_path"] = str(conc_file)
+        result.output_metadata["paris_flux_path"] = str(flux_file)
+        result.output_metadata["paris_flux_inner_path"] = str(flux_inner_file)
+
+    outer_inv_out, inner_inv_out = make_nested_inversion_outputs(nested_result)
+    result.inv_out = outer_inv_out
+    inv_out_path = _resolve_output_path(
+        output_spec.save_inversion_output,
+        output_spec.output_path,
+        f"{output_spec.output_name}{run_spec.start_date}_inversion_output.nc",
+    )
+    if inv_out_path is not None:
+        inv_out_path.parent.mkdir(parents=True, exist_ok=True)
+        inner_inv_out_path = inv_out_path.with_name(f"{inv_out_path.stem}_inner{inv_out_path.suffix}")
+        outer_inv_out.save(inv_out_path)
+        inner_inv_out.save(inner_inv_out_path)
+        result.output_metadata["inversion_output_path"] = str(inv_out_path)
+        result.output_metadata["inversion_output_inner_path"] = str(inner_inv_out_path)
+
+    _save_requested_trace(result)
+
+
 def run_rhime_nested_from_prepared_inputs(
     *,
     prepared_inputs: NestedRhimePreparedInputs,
@@ -952,11 +1048,14 @@ def run_rhime_nested_from_prepared_inputs(
         )
     if likelihood_kwargs and likelihood_builder is None:
         raise ValueError("Non-empty `likelihood_kwargs` require an active `likelihood_builder`.")
-    if run_spec.output.output_format != "none":
+    if run_spec.output.output_format not in ("none", "paris"):
         raise ValueError(
-            "Nested RHIME currently supports output_format='none' only. The result retains both "
-            "native bases and labelled posterior blocks; single-grid InversionOutput/PARIS writers "
-            "must not be used because they would discard or mis-grid the inner posterior."
+            "Nested RHIME currently supports output_format='none' or 'paris' only. The result "
+            "retains both native bases and labelled posterior blocks; other single-grid "
+            "InversionOutput writers must not be used because they would discard or mis-grid the "
+            "inner posterior. PARIS output is supported via two single-grid `InversionOutput` "
+            "views built by `openghg_inversions.postprocessing.nested_paris_outputs` -- see "
+            "`make_nested_paris_outputs`."
         )
     if run_spec.split_by_sectors or len(run_spec.model.sectors) != 1:
         raise ValueError("Nested RHIME currently requires a standard one-sector run specification.")
@@ -992,8 +1091,12 @@ def run_rhime_nested_from_prepared_inputs(
     result.output_metadata["nested_domains"] = {
         "outer_state_dimension": build_result.metadata["outer_state_dimension"],
         "inner_state_dimension": build_result.metadata["inner_state_dimension"],
+        "inner_domain_label": prepared_inputs.inner_domain_label,
     }
-    return NestedRhimeResult(rhime_result=result, prepared_inputs=prepared_inputs)
+    nested_result = NestedRhimeResult(rhime_result=result, prepared_inputs=prepared_inputs)
+    if run_spec.output.output_format == "paris":
+        _write_nested_paris_outputs(nested_result)
+    return nested_result
 
 
 _NESTED_PARAMETER_NAMES = frozenset(
@@ -1059,8 +1162,8 @@ def run_rhime_nested(
     setup = resolve_rhime_options(params=params, multisector=False)
     if likelihood_builder is None and setup.run_spec.model.likelihood is None:
         raise ValueError("A nested RHIME run requires a built-in or custom likelihood.")
-    if setup.run_spec.output.output_format != "none":
-        raise ValueError("`run_rhime_nested` currently requires output_format='none'.")
+    if setup.run_spec.output.output_format not in ("none", "paris"):
+        raise ValueError("`run_rhime_nested` currently requires output_format='none' or 'paris'.")
     prepared = prepare_nested_rhime_inputs(
         setup,
         inner_domain=str(inner_domain),
