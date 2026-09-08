@@ -167,6 +167,7 @@ RHIME_PREPARATION_DEFAULTS: dict[str, Any] = {
     "bc_basis_case": "NESW",
     "bc_basis_directory": None,
     "country_directory": None,
+    "outer_regions_path": None,
     "bc_input": None,
     "basis_algorithm": "weighted",
     "nbasis": 100,
