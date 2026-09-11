@@ -128,6 +128,7 @@ def test_mixed_platforms_keep_surface_calibration_scale_per_site(
 ) -> None:
     """Mixed surface and satellite data use each site's platform for scales."""
     observed_platforms: list[tuple[str, str | None, int | None]] = []
+    footprint_selectors: list[bool | None] = []
     scenario_platforms: list[str | None] = []
 
     def fake_get_obs_data(**kwargs: object) -> object:
@@ -151,7 +152,13 @@ def test_mixed_platforms_keep_surface_calibration_scale_per_site(
 
     monkeypatch.setattr(get_data_module, "get_flux_data", lambda **kwargs: {})
     monkeypatch.setattr(get_data_module, "get_obs_data", fake_get_obs_data)
-    monkeypatch.setattr(get_data_module, "get_footprint_data", lambda **kwargs: object())
+
+    def fake_get_footprint_data(**kwargs: object) -> object:
+        """Record the aligned footprint-resolution selector."""
+        footprint_selectors.append(kwargs["time_resolved"])
+        return object()
+
+    monkeypatch.setattr(get_data_module, "get_footprint_data", fake_get_footprint_data)
     monkeypatch.setattr(get_data_module, "merged_scenario_data", fake_merged_scenario_data)
     monkeypatch.setattr(get_data_module, "add_obs_error", lambda *args, **kwargs: None)
 
@@ -164,6 +171,7 @@ def test_mixed_platforms_keep_surface_calibration_scale_per_site(
         end_date="2019-01-02",
         platform=["surface", "satellite"],
         max_level=[None, 17],
+        time_resolved=[False, True],
         emissions_name=["inventory"],
         use_bc=False,
     )
@@ -173,9 +181,48 @@ def test_mixed_platforms_keep_surface_calibration_scale_per_site(
         ("GOSAT-BRAZIL", "satellite", 17),
     ]
     assert scenario_platforms == ["surface", "satellite"]
+    assert footprint_selectors == [False, True]
+    assert result[0]["TAC"].attrs["openghg_inversions_time_resolved"] == "false"
+    assert result[0]["GOSAT-BRAZIL"].attrs["openghg_inversions_time_resolved"] == "true"
     assert result[0][".scales"] == {"TAC": "surface-scale"}
     assert result[0][".units"] == pytest.approx(1e-9)
     assert len(result) == 6
+
+
+@pytest.mark.parametrize("time_resolved", [False, True, None])
+def test_satellite_footprint_retrieval_forwards_temporal_mode(
+    monkeypatch: pytest.MonkeyPatch,
+    time_resolved: bool | None,
+) -> None:
+    """Satellite searches preserve an explicit footprint-resolution selector."""
+    captured: dict[str, object] = {}
+    expected = SimpleNamespace(data=xr.Dataset(coords={"time": [np.datetime64("2019-01-01")]}))
+
+    def fake_get_footprint(**kwargs: object) -> object:
+        """Record the OpenGHG retrieval query."""
+        captured.update(kwargs)
+        return expected
+
+    monkeypatch.setattr(getters_module, "get_footprint", fake_get_footprint)
+
+    result = getters_module.get_footprint_data(
+        site="GOSAT-BRAZIL",
+        domain="SOUTHAMERICA",
+        platform="satellite",
+        fp_height="column",
+        start_date="2019-01-01",
+        end_date="2019-01-02",
+        model="NAME",
+        met_model=None,
+        fp_species="inert",
+        time_resolved=time_resolved,
+        stores="test",
+    )
+
+    assert result is expected
+    assert captured["time_resolved"] is time_resolved
+    assert captured["satellite"] == "GOSAT"
+    assert captured["obs_region"] == "BRAZIL"
 
 
 def test_get_obs_data_routes_site_column_platform_to_column_retrieval(

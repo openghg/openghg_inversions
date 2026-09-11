@@ -472,6 +472,7 @@ def _site_options(
     obs_data_level: list[str | None] | str | None = None,
     met_model: list[str | None] | str | None = None,
     max_level: list[int | None] | int | None = None,
+    time_resolved: list[bool | None] | bool | None = None,
 ) -> prep_module._SiteOptions:
     """Build normalized site-aligned options for private preparation tests."""
     return prep_module._SiteOptions.from_inputs(
@@ -484,6 +485,7 @@ def _site_options(
         obs_data_level=obs_data_level,
         met_model=met_model,
         max_level=max_level,
+        time_resolved=time_resolved,
     )
 
 
@@ -4184,6 +4186,7 @@ def test_rhime_runner_setup_builds_specs_before_preparation(tmp_path: Path) -> N
         "chains": "3",
         "sample_kwargs": {"random_seed": 42},
         "posterior_predictive_kwargs": {"random_seed": 43},
+        "time_resolved": True,
     }
 
     setup = rhime_params.make_rhime_runner_setup(
@@ -4193,6 +4196,7 @@ def test_rhime_runner_setup_builds_specs_before_preparation(tmp_path: Path) -> N
 
     assert setup.data_args["flux_sources"] == ["ff-source", "gpp-source", "ter-source", "ocean-source"]
     assert setup.data_args["split_by_sectors"] is True
+    assert setup.data_args["time_resolved"] is True
     assert setup.data_args["basis_algorithm"] == "weighted"
     assert setup.data_args["nbasis"] == 100
     assert setup.data_args["bc_basis_case"] == "NESW"
@@ -5986,7 +5990,7 @@ def test_prepare_merged_data_reload_keeps_all_options_aligned(
         prep_module,
         "load_merged_data",
         lambda *args, **kwargs: {
-            "MHD": _site_dataset([3.0]),
+            "MHD": _site_dataset([3.0]).assign_attrs(openghg_inversions_time_resolved="false"),
             ".species": "CH4",
             ".units": 1e-9,
         },
@@ -6008,6 +6012,7 @@ def test_prepare_merged_data_reload_keeps_all_options_aligned(
         obs_data_level=["level-tac", "level-mhd", "level-rgl"],
         met_model=["met-tac", "met-mhd", "met-rgl"],
         max_level=[10, 20, 30],
+        time_resolved=[True, False, None],
         reload_merged_data=True,
         merged_data_dir=str(tmp_path),
         use_bc=False,
@@ -6023,6 +6028,7 @@ def test_prepare_merged_data_reload_keeps_all_options_aligned(
         obs_data_level=["level-mhd"],
         met_model=["met-mhd"],
         max_level=[20],
+        time_resolved=[False],
     )
     assert set(merged.fp_all) == {"MHD", ".species", ".split_by_sectors", ".units"}
 
@@ -6040,6 +6046,7 @@ def test_site_options_direct_construction_enforces_immutable_alignment() -> None
             obs_data_level=(None, None),
             met_model=(None, None),
             max_level=(None, None),
+            time_resolved=(None, None),
         )
 
     options = _site_options(["TAC"], averaging_period=["1H"])
@@ -6106,6 +6113,35 @@ def test_prepare_merged_data_retrieval_keeps_requested_metadata_authoritative(
         met_model=["met-tac", "met-rgl"],
         max_level=[10, 30],
     )
+
+
+def test_prepare_merged_data_reload_rejects_time_resolved_selector_mismatch(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Reloaded data cannot satisfy the opposite footprint-resolution selector."""
+    cached_site = _site_dataset([3.0])
+    cached_site.attrs["openghg_inversions_time_resolved"] = "false"
+    monkeypatch.setattr(
+        prep_module,
+        "load_merged_data",
+        lambda *args, **kwargs: {"TAC": cached_site, ".species": "CH4", ".units": 1e-9},
+    )
+
+    with pytest.raises(ValueError, match="does not match the requested `time_resolved` selector"):
+        prep_module._prepare_merged_data(
+            species="ch4",
+            sites=["TAC"],
+            domain="EUROPE",
+            averaging_period=["1H"],
+            start_date="2019-01-01",
+            end_date="2019-02-01",
+            output_name="reload_resolution",
+            flux_sources=["inventory"],
+            time_resolved=True,
+            reload_merged_data=True,
+            merged_data_dir=str(tmp_path),
+            use_bc=False,
+        )
 
 
 def test_prepare_merged_data_ignores_redundant_retrieval_metadata(

@@ -103,6 +103,7 @@ def retrieve_or_reload_rhime_data(
             fp_model=data_args["fp_model"],
             fp_height=data_args["fp_height"],
             fp_species=data_args["fp_species"],
+            time_resolved=data_args["time_resolved"],
             inlet=data_args["inlet"],
             instrument=data_args["instrument"],
             max_level=data_args["max_level"],
