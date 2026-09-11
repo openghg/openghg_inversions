@@ -7,7 +7,10 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-from openghg_inversions.boundary_sensitivity import BoundaryAlignment
+from openghg_inversions.boundary_sensitivity import (
+    BoundaryAlignment,
+    scale_satellite_boundary_sensitivity_to_column_signal,
+)
 from openghg_inversions.inversion_inputs import make_inv_inputs
 
 
@@ -124,3 +127,70 @@ def test_make_inv_inputs_drops_nan_boundary_rows_for_eager_and_lazy_data(lazy: b
 
     assert result.sizes["nmeasure"] == 2
     assert np.isfinite(result["H_bc"]).all()
+
+
+def test_satellite_boundary_scaling_uses_footprint_level_provenance() -> None:
+    """Different verified footprint and observation levels retain the workaround."""
+    inputs = xr.Dataset(
+        {
+            "H_bc": (("bc_region", "nmeasure"), [[100.0, 200.0], [300.0, 400.0]]),
+            "mf": ("nmeasure", [50.0, 100.0]),
+            "mf_prior_factor": ("nmeasure", [0.0, 0.0]),
+            "mf_prior_upper_level_factor": ("nmeasure", [350.0, 300.0]),
+            "site": ("nmeasure", ["OCO2-EASTASIA", "OCO2-EASTASIA"]),
+        }
+    )
+
+    result = scale_satellite_boundary_sensitivity_to_column_signal(
+        inputs,
+        sites=["OCO2-EASTASIA"],
+        platform=["satellite"],
+        observation_max_level=[3],
+        footprint_max_level=[17],
+    )
+
+    np.testing.assert_allclose(result["H_bc"], [[12.5, 50.0], [37.5, 100.0]])
+
+
+def test_satellite_boundary_scaling_skips_matching_provenance_levels() -> None:
+    """The exported scaler retains its call signature and skips matching levels."""
+    inputs = xr.Dataset(
+        {
+            "H_bc": (("bc_region", "nmeasure"), [[100.0, 200.0], [300.0, 400.0]]),
+            "mf": ("nmeasure", [50.0, 100.0]),
+            "mf_prior_factor": ("nmeasure", [0.0, 0.0]),
+            "mf_prior_upper_level_factor": ("nmeasure", [350.0, 300.0]),
+            "site": ("nmeasure", ["OCO2-EASTASIA", "OCO2-EASTASIA"]),
+        }
+    )
+
+    result = scale_satellite_boundary_sensitivity_to_column_signal(
+        inputs,
+        sites=["OCO2-EASTASIA"],
+        platform=["satellite"],
+        observation_max_level=[17],
+        footprint_max_level=[17],
+    )
+
+    xr.testing.assert_identical(result, inputs)
+
+
+def test_satellite_boundary_scaling_keeps_legacy_call_signature() -> None:
+    """Callers without vertical-level provenance retain the legacy scaling."""
+    inputs = xr.Dataset(
+        {
+            "H_bc": (("bc_region", "nmeasure"), [[100.0]]),
+            "mf": ("nmeasure", [50.0]),
+            "mf_prior_factor": ("nmeasure", [0.0]),
+            "mf_prior_upper_level_factor": ("nmeasure", [350.0]),
+            "site": ("nmeasure", ["OCO2-EASTASIA"]),
+        }
+    )
+
+    result = scale_satellite_boundary_sensitivity_to_column_signal(
+        inputs,
+        sites=["OCO2-EASTASIA"],
+        platform=["satellite"],
+    )
+
+    np.testing.assert_allclose(result["H_bc"], [[12.5]])
