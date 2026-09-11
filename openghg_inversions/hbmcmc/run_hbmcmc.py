@@ -11,7 +11,11 @@ e.g.
 
 start - Start of date range to use for MCMC inversion (YYYY-MM-DD)
 end - End of date range to use for MCMC inversion (YYYY-MM-DD) (must be after start)
--c / --config - existing fixedbasis-style configuration file.
+-c / --config - configuration file. See config/ folder for templates and examples of this input file.
+--legacy-fixedbasis - explicitly run the deprecated fixedbasisMCMC/inferpymc
+compatibility path with untranslated legacy parameters. The default is run_rhime.
+--all-chains - opt into using every sampled chain in derived outputs. By default,
+this compatibility entry point warns and continues to use chain 0.
 
 If start and end are specified these will supersede the values within the configuration file, if present.
 """
@@ -371,6 +375,19 @@ def build_parser() -> argparse.ArgumentParser:
         "--output-path",
         help="Path to write ini file and results to.",
     )
+    parser.add_argument(
+        "--all-chains",
+        action="store_true",
+        help="Use every sampled chain in derived outputs (recommended).",
+    )
+    parser.add_argument(
+        "--legacy-fixedbasis",
+        action="store_true",
+        help=(
+            "Run the deprecated fixedbasisMCMC/inferpymc workflow with untranslated legacy "
+            "parameters. This is an explicit compatibility opt-in; no RHIME fallback is attempted."
+        ),
+    )
     return parser
 
 
@@ -411,8 +428,14 @@ def _copy_config_file(config_file: str | Path, param: dict[str, Any], **command_
 
 
 def main(argv: list[str] | None = None) -> None:
-    """Run a fixedbasis-style config through RHIME."""
-    args = build_parser().parse_args(argv)
+    """Run a fixedbasis-style config through RHIME or the explicit legacy opt-in."""
+    openghginv_path = Paths.openghginv
+    config_file = openghginv_path / "hbmcmc" / "hbmcmc_input.ini"
+
+    parser = build_parser(config_file)
+    args = parser.parse_args(argv)
+    if args.legacy_fixedbasis and args.all_chains:
+        parser.error("--all-chains cannot be combined with --legacy-fixedbasis")
 
     config_file = Path(args.config)
     command_line_args = {}
@@ -477,6 +500,15 @@ def main(argv: list[str] | None = None) -> None:
 
     _validate_country_file(rhime_params)
 
+    if not args.all_chains:
+        warnings.warn(
+            "run_hbmcmc.py is preserving historical chain-0-only derived outputs. "
+            "Pass --all-chains to use every sampled chain (recommended). Pooling chains "
+            "does not establish convergence.",
+            UserWarning,
+            stacklevel=2,
+        )
+
     # TODO(#423): Validate BC and saved fp-basis files, including glob matches and readability.
     with timed("run_hbmcmc.config_copy"):
         _copy_config_file(config_file, param=param, **command_line_args)
@@ -496,6 +528,7 @@ def main(argv: list[str] | None = None) -> None:
         _compatibility_likelihood_provenance=compatibility_provenance,
         _compatibility_unused_sigma_settings=legacy_unused_sigma_settings,
         _compatibility_minimum_error_floor=legacy_minimum_error_floor,
+        compatibility_output_chain=None if args.all_chains else 0,
         **rhime_params,
     )
 

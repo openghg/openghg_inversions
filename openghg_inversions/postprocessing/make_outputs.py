@@ -189,7 +189,7 @@ def total_error_output(inv_out: InversionOutput, take_mean: bool = True) -> xr.D
     result = trace.epsilon_posterior
 
     if take_mean:
-        result = result.mean("draw")
+        result = result.mean([dim for dim in ("chain", "draw") if dim in result.dims])
 
     obs_inputs = observation_inputs_for_outputs(inv_out)
     result.attrs["units"] = obs_inputs["y_obs"].attrs.get("units", "")
@@ -204,7 +204,8 @@ def model_error_output(inv_out: InversionOutput) -> xr.DataArray:
     obs = observation_inputs_for_outputs(inv_out)
     total_obs_err = obs["y_obs_error"]
 
-    result = np.sqrt(np.maximum(total_err**2 - total_obs_err**2, 0)).mean("draw")  # type: ignore
+    result = np.sqrt(np.maximum(total_err**2 - total_obs_err**2, 0))  # type: ignore
+    result = result.mean([dim for dim in ("chain", "draw") if dim in result.dims])
     result.attrs["units"] = obs["y_obs"].attrs.get("units", "")
     result.attrs["long_name"] = "inferred model error"
     return result.rename("model_error")
