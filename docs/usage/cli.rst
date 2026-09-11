@@ -6,11 +6,12 @@ RHIME from a terminal or a batch scheduler. It is installed with
 ``openghg_inversions``, so a run does not need to know where the package source
 code is located.
 
-Standard and multisector runs
------------------------------
+Standard, multisector, and nested runs
+--------------------------------------
 
 Use ``run-rhime`` for a standard inversion and
-``run-rhime-multisector`` for a shared-basis multisector inversion:
+``run-rhime-multisector`` for a shared-basis multisector inversion.
+``run-rhime-nested`` combines independent outer and inner spatial grids:
 
 .. code-block:: console
 
@@ -21,6 +22,9 @@ Use ``run-rhime`` for a standard inversion and
    $ openghg-inversions run-rhime-multisector 2019-01-01 2019-02-01 \
        --config /path/to/rhime_multisector.ini \
        --output-path /path/to/outputs
+
+   $ openghg-inversions run-rhime-nested 2019-01-01 2019-02-01 \
+       --config /path/to/rhime_nested.ini
 
 ``--config`` (or ``-c``) is required. The start and end dates are optional
 positional arguments; when supplied, they override ``start_date`` and
@@ -35,8 +39,9 @@ with a JSON object passed to ``--kwargs``:
 
 Keep the JSON in single quotes so the shell passes it as one argument. Run
 ``openghg-inversions run-rhime --help`` or
-``openghg-inversions run-rhime-multisector --help`` for the complete command
-syntax. New configuration files should use the RHIME vocabulary documented in
+``openghg-inversions run-rhime-multisector --help`` for the complete ordinary
+command syntax. See :doc:`nested_domains` for nested configuration and current
+output constraints. New configuration files should use the RHIME vocabulary documented in
 :doc:`rhime`; the packaged starting point is
 ``openghg_inversions/config/templates/rhime_template.ini``.
 

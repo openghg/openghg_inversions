@@ -10,6 +10,7 @@ import pandas as pd
 import pytest
 import xarray as xr
 from openghg.dataobjects import ObsData
+from openghg.dataobjects import FluxData
 from openghg.retrieve import get_obs_surface
 from openghg.types import SearchError
 
@@ -23,6 +24,7 @@ from openghg_inversions.inversion_data.get_data import (
     add_obs_error,
     convert_to_list,
     data_processing_surface_notracer,
+    interpolate_flux_to_footprint_grid,
 )
 from openghg_inversions.inversion_data.getters import get_flux_data
 from openghg_inversions.inversion_data.serialise import (
@@ -30,6 +32,32 @@ from openghg_inversions.inversion_data.serialise import (
     load_merged_data,
     make_combined_scenario,
 )
+
+
+def test_interpolate_flux_to_footprint_grid_uses_nearest_without_mutation() -> None:
+    flux = xr.DataArray(
+        np.array([[[1.0, 2.0], [3.0, 4.0]]]),
+        name="flux",
+        dims=("time", "lat", "lon"),
+        coords={"time": ["2023-01-01"], "lat": [0.0, 1.0], "lon": [10.0, 11.0]},
+        attrs={"units": "mol m-2 s-1"},
+    )
+    original = FluxData(
+        data=flux.to_dataset(name="flux"),
+        metadata={"domain": "europe"},
+    )
+    footprint = SimpleNamespace(
+        data=xr.Dataset(
+            {"fp": (("time", "lat", "lon"), np.ones((1, 2, 2)))},
+            coords={"time": ["2023-01-01"], "lat": [0.1, 0.9], "lon": [10.1, 10.9]},
+        )
+    )
+
+    result = interpolate_flux_to_footprint_grid({"inventory": original}, footprint)
+
+    xr.testing.assert_equal(result["inventory"].data["flux"], flux.assign_coords(lat=[0.1, 0.9], lon=[10.1, 10.9]))
+    xr.testing.assert_identical(original.data["flux"], flux)
+    assert result["inventory"].metadata == {"domain": "europe"}
 @pytest.mark.parametrize(
     ("raw_units", "expected"),
     [("1", 1.0), ("mol/mol", 1.0), ("ppb", 1e-9), ("1e-09 mol/mol", 1e-9)],

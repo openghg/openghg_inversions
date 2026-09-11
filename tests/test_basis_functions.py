@@ -829,13 +829,8 @@ def test_bucket_basis_function(tac_ch4_data_args, raw_data_path):
     xr.testing.assert_allclose(basis_func, basis_func_reloaded.basis)
 
 
-def test_fixed_outer_region_basis_function(tac_ch4_data_args, raw_data_path):
-    """Check if fixed outer region basis created with seed 42 and TAC CH4 args matches
-    a basis created with the same arguments and saved to file.
-
-    This is to check against changes in the code from when this test was made
-    (2 Sep 2024)
-    """
+def test_fixed_outer_region_basis_function(tac_ch4_data_args):
+    """Fixed outer labels are retained and inner labels respect land/sea classes."""
     fp_all, *_ = data_processing_surface_notracer(**tac_ch4_data_args)
     emissions_name = next(iter(fp_all[".flux"].keys()))
     basis_func = fixed_outer_regions_basis(
@@ -846,15 +841,22 @@ def test_fixed_outer_region_basis_function(tac_ch4_data_args, raw_data_path):
         basis_algorithm="weighted",
     )
 
-    basis_func_reloaded = basis(
-        domain="EUROPE",
-        basis_case="fixed_outer_region_ch4-test_basis",
-        basis_directory=raw_data_path / "basis",
+    labels = basis_func.squeeze("time", drop=True)
+    outer_regions = load_intem_outer_regions("EUROPE")
+    _, outer_regions = xr.align(labels, outer_regions, join="override")
+    inner_mask = outer_regions == outer_regions.max()
+    outer_mask = ~inner_mask
+    np.testing.assert_array_equal(
+        labels.values[outer_mask.values],
+        (outer_regions + 1).values[outer_mask.values],
     )
+    assert labels.values[inner_mask.values].min() > labels.values[outer_mask.values].max()
 
-    # TODO: create new "fixed" basis function file, since we've switched basis functions from
-    # dataset to data array
-    xr.testing.assert_allclose(basis_func, basis_func_reloaded.basis)
+    landsea = load_country_region_classes("EUROPE")
+    _, landsea = xr.align(labels, landsea, join="override")
+    for label in np.unique(labels.values[inner_mask.values]):
+        classes = np.unique(landsea.values[inner_mask.values & (labels.values == label)])
+        assert len(classes) == 1
 
 
 def _tiny_region_constrained_fp_all() -> tuple[dict, xr.DataArray]:
@@ -1090,6 +1092,318 @@ def test_fixed_outer_regions_can_use_region_constrained_algorithm(tmp_path):
         assert len(set(region_classes.values[inner_mask & (labels.values == label)])) == 1
     assert len(np.unique(labels.values[outer_values == 0])) == 1
     assert len(np.unique(labels.values[outer_values == 1])) == 1
+
+
+def test_fixed_outer_regions_accepts_direct_outer_map_path(tmp_path):
+    """A nested-domain outer map need not use the domain-derived filename."""
+    fp_all, region_classes = _tiny_region_constrained_fp_all()
+    outer_values = np.array(
+        [
+            [0, 0, 1, 1],
+            [0, 2, 2, 1],
+            [0, 2, 2, 1],
+            [0, 0, 1, 1],
+        ],
+        dtype=int,
+    )
+    outer_path = tmp_path / "outer_region_definition_EUHROB.nc"
+    xr.Dataset(
+        {"region": (("lat", "lon"), outer_values)},
+        coords=region_classes.coords,
+    ).to_netcdf(outer_path)
+
+    basis_func = fixed_outer_regions_basis(
+        fp_all=fp_all,
+        start_date="2020-01-01",
+        basis_algorithm="region_constrained",
+        domain="TEST",
+        emissions_name=["total"],
+        nbasis=3,
+        outer_regions_path=outer_path,
+        region_classes=region_classes,
+    )
+
+    assert basis_func.sizes["time"] == 1
+    assert bool((basis_func > 0).all())
+
+    retained = make_basis_functions(
+        fp_all=fp_all,
+        species="ch4",
+        domain="TEST",
+        start_date="2020-01-01",
+        emissions_name=["total"],
+        nbasis=3,
+        basis_algorithm="region_constrained",
+        fix_outer_regions=True,
+        outer_regions_path=outer_path,
+        region_classes=region_classes,
+    )
+    assert isinstance(retained, BasisFunctions)
+    assert bool((retained.flat_basis() > 0).all())
+
+
+def _zeroed_inner_response_fp_all(fp_all: dict, region_classes: xr.DataArray, inner_mask: np.ndarray) -> dict:
+    """Return a copy of ``fp_all`` with its fp/flux response zeroed under ``inner_mask``.
+
+    Mimics ``mask_outer_merged_for_inner_domain`` zeroing the outer footprint response
+    and prior flux over the nested inner domain's extent.
+    """
+    mask = xr.DataArray(inner_mask, dims=("lat", "lon"), coords=region_classes.coords)
+    fp = fp_all["SITE"]["fp"].where(~mask, 0.0)
+    flux = fp_all[".flux"]["total"].data["flux"].where(~mask, 0.0)
+    return {
+        "SITE": xr.Dataset({"fp": fp}),
+        ".flux": {"total": SimpleNamespace(data=xr.Dataset({"flux": flux}))},
+    }
+
+
+def test_fixed_outer_regions_empty_inner_raises_by_default(tmp_path):
+    """A marked inner region with no residual footprint*flux response still raises by default."""
+    fp_all, region_classes = _tiny_region_constrained_fp_all()
+    outer_values = np.array(
+        [
+            [0, 0, 1, 1],
+            [0, 2, 2, 1],
+            [0, 2, 2, 1],
+            [0, 0, 1, 1],
+        ],
+        dtype=int,
+    )
+    outer_path = tmp_path / "outer_region_definition_EMPTYINNER.nc"
+    xr.Dataset(
+        {"region": (("lat", "lon"), outer_values)},
+        coords=region_classes.coords,
+    ).to_netcdf(outer_path)
+    zeroed_fp_all = _zeroed_inner_response_fp_all(fp_all, region_classes, outer_values == 2)
+
+    with pytest.raises(ValueError, match="no non-zero finite values"):
+        fixed_outer_regions_basis(
+            fp_all=zeroed_fp_all,
+            start_date="2020-01-01",
+            basis_algorithm="quadtree",
+            domain="TEST",
+            emissions_name=["total"],
+            nbasis=2,
+            outer_regions_path=outer_path,
+        )
+
+
+def test_fixed_outer_regions_keeps_empty_inner_region_fixed_when_allowed(tmp_path):
+    """Nested outer-domain preparation may opt into an expected-empty marked inner region.
+
+    Instead of raising, the marked region is kept as one fixed label -- like the
+    surrounding fixed outer labels -- rather than being subdivided into `nbasis`
+    sub-regions that would have no real footprint*flux signal to distinguish them.
+    """
+    fp_all, region_classes = _tiny_region_constrained_fp_all()
+    outer_values = np.array(
+        [
+            [0, 0, 1, 1],
+            [0, 2, 2, 1],
+            [0, 2, 2, 1],
+            [0, 0, 1, 1],
+        ],
+        dtype=int,
+    )
+    outer_path = tmp_path / "outer_region_definition_EMPTYINNER.nc"
+    xr.Dataset(
+        {"region": (("lat", "lon"), outer_values)},
+        coords=region_classes.coords,
+    ).to_netcdf(outer_path)
+    zeroed_fp_all = _zeroed_inner_response_fp_all(fp_all, region_classes, outer_values == 2)
+
+    basis_func = fixed_outer_regions_basis(
+        fp_all=zeroed_fp_all,
+        start_date="2020-01-01",
+        basis_algorithm="quadtree",
+        domain="TEST",
+        emissions_name=["total"],
+        nbasis=2,
+        outer_regions_path=outer_path,
+        allow_empty_inner_region=True,
+    )
+
+    labels = basis_func.squeeze("time", drop=True)
+    inner_labels = set(np.unique(labels.values[outer_values == 2]))
+    assert len(inner_labels) == 1
+
+    retained = make_basis_functions(
+        fp_all=zeroed_fp_all,
+        species="ch4",
+        domain="TEST",
+        start_date="2020-01-01",
+        emissions_name=["total"],
+        nbasis=2,
+        basis_algorithm="quadtree",
+        fix_outer_regions=True,
+        outer_regions_path=outer_path,
+        allow_empty_inner_region=True,
+    )
+    assert isinstance(retained, BasisFunctions)
+
+
+def test_fixed_outer_regions_uses_explicit_non_maximum_inner_label(monkeypatch, tmp_path):
+    """An asset's inner-region metadata takes precedence over the legacy max-label rule."""
+    fp_all, region_classes = _tiny_region_constrained_fp_all()
+    outer_values = np.array(
+        [
+            [0, 0, 2, 2],
+            [0, 1, 1, 2],
+            [0, 1, 1, 2],
+            [0, 0, 2, 2],
+        ],
+        dtype=int,
+    )
+    outer_path = tmp_path / "explicit-inner-label.nc"
+    outer_regions = xr.Dataset(
+        {"region": (("lat", "lon"), outer_values)},
+        coords=region_classes.coords,
+        attrs={"inner_region_label": 1},
+    )
+    outer_regions.to_netcdf(outer_path)
+    seen: dict[str, xr.DataArray] = {}
+
+    def fake_quadtree_basis(
+        fp_all,
+        start_date,
+        domain,
+        emissions_name=None,
+        nbasis=100,
+        country_directory=None,
+        abs_flux=False,
+        mask=None,
+    ):
+        del fp_all, domain, emissions_name, nbasis, country_directory, abs_flux
+        assert mask is not None
+        seen["mask"] = mask
+        inner = xr.ones_like(mask.where(mask, drop=True), dtype=int)
+        return inner.expand_dims(time=[pd.Timestamp(start_date)], axis=-1)
+
+    monkeypatch.setitem(
+        basis_functions,
+        "quadtree",
+        basis_functions["quadtree"]._replace(algorithm=fake_quadtree_basis),
+    )
+
+    fixed_outer_regions_basis(
+        fp_all=fp_all,
+        start_date="2020-01-01",
+        basis_algorithm="quadtree",
+        domain="TEST",
+        emissions_name=["total"],
+        outer_regions_path=outer_path,
+    )
+
+    xr.testing.assert_equal(seen["mask"], outer_regions["region"] == 1)
+
+
+def test_packaged_euhrob_map_marks_the_6km_inner_rectangle():
+    """The bundled EUHROB map distinguishes its non-maximum inner label from all outer labels."""
+    regions = load_intem_outer_regions(
+        "EUROPE",
+        outer_regions_path="intem_region_definition_EUHROB.nc",
+    )
+
+    assert regions.attrs["inner_region_label"] == 6
+    assert regions.attrs["inner_domain"] == "EUROPE-6km"
+    assert regions.attrs["outer_domain"] == "EUROPE"
+    assert regions.sizes == {"lat": 293, "lon": 391}
+    assert set(np.unique(regions)) == set(range(15))
+
+    inner = regions == regions.attrs["inner_region_label"]
+    inner_lat = inner.any("lon")
+    inner_lon = inner.any("lat")
+    assert int(inner.sum()) == int(inner_lat.sum()) * int(inner_lon.sum()) == 14_560
+    assert float(regions.lat.where(inner_lat, drop=True).min()) == pytest.approx(34.597)
+    assert float(regions.lat.where(inner_lat, drop=True).max()) == pytest.approx(64.783)
+    assert float(regions.lon.where(inner_lon, drop=True).min()) == pytest.approx(-10.956)
+    assert float(regions.lon.where(inner_lon, drop=True).max()) == pytest.approx(28.116)
+    assert set(np.unique(regions.values[~inner.values])) == {
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+    }
+
+
+def test_fixed_outer_weighted_basis_crops_landsea_mask_to_inner_region(monkeypatch, tmp_path):
+    """Fixed-outer weighted generation aligns land/sea classes before cropping."""
+    fp_all, region_classes = _tiny_region_constrained_fp_all()
+    outer_values = np.array(
+        [
+            [0, 0, 1, 1],
+            [0, 2, 2, 1],
+            [0, 2, 2, 1],
+            [0, 0, 1, 1],
+        ],
+        dtype=int,
+    )
+    landsea_values = np.array(
+        [
+            [0, 0, 1, 1],
+            [0, 0, 1, 1],
+            [0, 1, 0, 1],
+            [0, 0, 1, 1],
+        ],
+        dtype=int,
+    )
+    outer_path = tmp_path / "outer_region_definition_TEST.nc"
+    xr.Dataset(
+        {"region": (region_classes.dims, outer_values)},
+        coords=region_classes.coords,
+    ).to_netcdf(outer_path)
+    xr.Dataset(
+        {"country": (region_classes.dims, landsea_values)},
+        coords=region_classes.coords,
+    ).to_netcdf(tmp_path / "country-land-sea_TEST.nc")
+    seen: dict[str, np.ndarray] = {}
+
+    def fake_weighted_basis(
+        fp_all,
+        start_date,
+        domain,
+        emissions_name=None,
+        nbasis=100,
+        country_directory=None,
+        abs_flux=False,
+        mask=None,
+        landsea_indices=None,
+    ):
+        del fp_all, domain, emissions_name, nbasis, country_directory, abs_flux
+        assert mask is not None
+        assert landsea_indices is not None
+        seen["landsea"] = landsea_indices
+        inner = xr.ones_like(mask.where(mask, drop=True), dtype=int)
+        return inner.expand_dims(time=[pd.Timestamp(start_date)], axis=-1)
+
+    monkeypatch.setitem(
+        basis_functions,
+        "weighted",
+        basis_functions["weighted"]._replace(algorithm=fake_weighted_basis),
+    )
+
+    result = fixed_outer_regions_basis(
+        fp_all=fp_all,
+        start_date="2020-01-01",
+        basis_algorithm="weighted",
+        domain="TEST",
+        emissions_name=["total"],
+        country_directory=str(tmp_path),
+        outer_regions_path=outer_path,
+    )
+
+    np.testing.assert_array_equal(seen["landsea"], landsea_values[1:3, 1:3])
+    assert result.shape == (1, 4, 4)
 
 
 def test_region_constrained_fixed_outer_basis_from_weights_allocates_inner_only():
@@ -2299,9 +2613,7 @@ def test_multisource_sensitivity_avoids_extra_dimension_collision() -> None:
     )
 
     actual = basis_functions.sensitivity(fp_x_flux.expand_dims(native_source=factor.native_source) * factor)
-    expected = (basis_functions.sensitivity(fp_x_flux) * factor).transpose(
-        "region", "time", "native_source"
-    )
+    expected = (basis_functions.sensitivity(fp_x_flux) * factor).transpose("region", "time", "native_source")
 
     xr.testing.assert_identical(actual, expected)
 

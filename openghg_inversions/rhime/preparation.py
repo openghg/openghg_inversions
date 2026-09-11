@@ -99,6 +99,7 @@ def retrieve_or_reload_rhime_data(
             obs_store=data_args["obs_store"],
             footprint_store=data_args["footprint_store"],
             emissions_store=data_args["emissions_store"],
+            emissions_domain=data_args["emissions_domain"],
             met_model=data_args["met_model"],
             fp_model=data_args["fp_model"],
             fp_height=data_args["fp_height"],
@@ -165,6 +166,7 @@ def build_rhime_basis(
             fp_basis_case=fp_basis_case,
             basis_directory=data_args["basis_directory"],
             country_directory=data_args["country_directory"],
+            outer_regions_path=data_args["outer_regions_path"],
             fp_all=merged.fp_all,
             species=data_args["species"],
             domain=data_args["domain"],
@@ -173,6 +175,7 @@ def build_rhime_basis(
             emissions_name=data_args["flux_sources"],
             outputname=data_args["output_name"],
             output_path=data_args["basis_output_path"],
+            allow_empty_inner_region=data_args.get("allow_empty_inner_region", False),
         )
 
 

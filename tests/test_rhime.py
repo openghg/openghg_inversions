@@ -3314,6 +3314,39 @@ def test_public_stages_compose_as_complete_external_runner(monkeypatch: pytest.M
     assert result.idata is idata
 
 
+def test_build_rhime_basis_forwards_fixed_outer_region_asset(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The readable RHIME basis stage forwards the resolved fixed-region map."""
+    expected = _fake_basis_functions()
+    captured: dict[str, Any] = {}
+
+    def make_basis(**kwargs: Any) -> BasisFunctions:
+        captured.update(kwargs)
+        return expected
+
+    monkeypatch.setattr(rhime_preparation, "make_basis_functions", make_basis)
+    merged = cast(RhimeMergedData, SimpleNamespace(fp_all={"TAC": xr.Dataset()}))
+    data_args = {
+        "basis_algorithm": "weighted",
+        "nbasis": 40,
+        "fp_basis_case": None,
+        "basis_directory": None,
+        "country_directory": None,
+        "outer_regions_path": "intem_region_definition_EUHROB.nc",
+        "species": "ch4",
+        "domain": "EUROPE",
+        "start_date": "2019-01-01",
+        "fix_basis_outer_regions": True,
+        "flux_sources": ["inventory"],
+        "output_name": "nested",
+        "basis_output_path": None,
+    }
+
+    actual = rhime_public.build_rhime_basis(merged, data_args)
+
+    assert actual is expected
+    assert captured["outer_regions_path"] == "intem_region_definition_EUHROB.nc"
+
+
 def test_run_rhime_from_prepared_inputs_accepts_complete_model_builder(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

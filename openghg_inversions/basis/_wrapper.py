@@ -33,6 +33,7 @@ def make_basis_functions(
     fp_basis_case: str | None = None,
     basis_directory: str | None = None,
     country_directory: str | None = None,
+    outer_regions_path: str | Path | None = None,
     outputname: str | None = None,
     output_path: str | None = None,
     basis_output_format: Literal["legacy", "datatree"] = "legacy",
@@ -47,6 +48,7 @@ def make_basis_functions(
     contrast_tau: float | None = None,
     contrast_sigma_design: float | None = None,
     contrast_s_diag: xr.DataArray | None = None,
+    allow_empty_inner_region: bool = False,
 ) -> BasisFunctions:
     """Create or load retained emissions basis functions.
 
@@ -74,6 +76,9 @@ def make_basis_functions(
             artifacts.
         country_directory: Optional directory containing auxiliary land/sea and
             InTEM outer-region files used by generated basis algorithms.
+        outer_regions_path: Optional direct path to a fixed outer-region map.
+            Used only when ``fix_outer_regions`` is true and takes precedence
+            over the default or ``country_directory`` lookup.
         outputname: Optional output-name component used when saving generated
             basis artifacts.
         output_path: Optional directory where generated basis artifacts should
@@ -101,6 +106,10 @@ def make_basis_functions(
             coefficient. If omitted, ``tau=1`` is uncalibrated.
         contrast_sigma_design: Optional scalar design standard deviation.
         contrast_s_diag: Optional diagonal design covariance entries.
+        allow_empty_inner_region: Forwarded to :func:`fixed_outer_regions_basis`
+            when ``fix_outer_regions`` is true. Intended only for nested
+            outer-domain preparation, where the marked inner region is
+            expected to have no residual response.
 
     Returns:
         Retained emissions basis object ready for sensitivity projection.
@@ -146,6 +155,7 @@ def make_basis_functions(
                 emissions_name,
                 nbasis,
                 country_directory,
+                outer_regions_path=outer_regions_path,
                 region_classes=region_classes,
                 region_allocation=region_allocation,
                 min_regions_per_class=min_regions_per_class,
@@ -157,6 +167,7 @@ def make_basis_functions(
                 contrast_tau=contrast_tau,
                 contrast_sigma_design=contrast_sigma_design,
                 contrast_s_diag=contrast_s_diag,
+                allow_empty_inner_region=allow_empty_inner_region,
             )
         except KeyError as e:
             raise ValueError(

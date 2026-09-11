@@ -45,9 +45,7 @@ _SIGMA_OPTIONS = {
 }
 _POLLUTION_EVENT_OPTIONS = {"pollution_events_from_obs", "power"}
 _MINIMUM_ERROR_FLOOR_OPTIONS = {"use_minimum_error_floor"}
-_LIKELIHOOD_OPTIONS = (
-    _SIGMA_OPTIONS | _POLLUTION_EVENT_OPTIONS | _MINIMUM_ERROR_FLOOR_OPTIONS
-)
+_LIKELIHOOD_OPTIONS = _SIGMA_OPTIONS | _POLLUTION_EVENT_OPTIONS | _MINIMUM_ERROR_FLOOR_OPTIONS
 
 _ALIASES = {
     "outputpath": "output_path",
@@ -57,6 +55,7 @@ _ALIASES = {
     "sigprior": "sigma_prior",
     "offsetprior": "offset_prior",
     "emissions_name": "flux_sources",
+    "outer_region_definition_file": "outer_regions_path",
 }
 _OUTPUT_FORMAT_ALIASES = {
     "hbmcmc": "legacy",
@@ -92,6 +91,7 @@ RHIME_PREPARATION_OPTION_NAMES = frozenset(
         "obs_store",
         "footprint_store",
         "emissions_store",
+        "emissions_domain",
         "met_model",
         "fp_model",
         "fp_height",
@@ -109,6 +109,7 @@ RHIME_PREPARATION_OPTION_NAMES = frozenset(
         "bc_basis_case",
         "bc_basis_directory",
         "country_directory",
+        "outer_regions_path",
         "bc_input",
         "basis_algorithm",
         "nbasis",
@@ -139,6 +140,7 @@ def resolve_rhime_options(
     log_timing("rhime.runner_setup", timer_seconds(timing_start), multisector=multisector)
     return setup
 
+
 # Resolve stage defaults once, before the scientific recipe starts.  Keeping
 # this mapping beside the explicit routing schema makes ``data_args`` a
 # complete, inspectable preparation contract rather than asking individual
@@ -149,6 +151,7 @@ RHIME_PREPARATION_DEFAULTS: dict[str, Any] = {
     "obs_store": "user",
     "footprint_store": "user",
     "emissions_store": "user",
+    "emissions_domain": None,
     "met_model": None,
     "fp_model": None,
     "fp_height": None,
@@ -166,6 +169,7 @@ RHIME_PREPARATION_DEFAULTS: dict[str, Any] = {
     "bc_basis_case": "NESW",
     "bc_basis_directory": None,
     "country_directory": None,
+    "outer_regions_path": None,
     "bc_input": None,
     "basis_algorithm": "weighted",
     "nbasis": 100,
