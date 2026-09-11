@@ -1,0 +1,53 @@
+name: Monthly release reminder
+
+on:
+  schedule:
+    # First Monday of each month at 09:00 UTC.
+    - cron: '0 9 1-7 * 1'
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+concurrency:
+  group: monthly-release-reminder
+  cancel-in-progress: false
+
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create this month's release tracker once
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          MONTH=$(date -u +%Y-%m)
+          TITLE="Release ${MONTH}"
+          EXISTING=$(gh issue list \
+            --repo "$GITHUB_REPOSITORY" \
+            --state open \
+            --search "${TITLE} in:title" \
+            --json title \
+            --jq "map(select(.title == \"${TITLE}\")) | length")
+          if [ "$EXISTING" -gt 0 ]; then
+            echo "$TITLE already has an open tracker." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          {
+            echo "The monthly release window has opened."
+            echo
+            echo "- [ ] Choose the next minor version"
+            echo "- [ ] Run the **Prepare release** workflow from \`devel\`"
+            echo "- [ ] Merge the release PR after CI"
+            echo "- [ ] Run and review real-data HPC \`test_inversions\` for the exact main commit"
+            echo "- [ ] Record \`HPC / test_inversions\`"
+            echo "- [ ] Publish the GitHub release"
+            echo "- [ ] Confirm the automatic main-to-devel forward-port"
+            echo
+            echo "See \`docs/development/releasing.rst\`."
+          } > "$RUNNER_TEMP/release-reminder.md"
+          URL=$(gh issue create \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$TITLE" \
+            --body-file "$RUNNER_TEMP/release-reminder.md")
+          echo "Release tracker: $URL" >> "$GITHUB_STEP_SUMMARY"

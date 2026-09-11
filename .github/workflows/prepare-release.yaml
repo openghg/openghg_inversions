@@ -1,0 +1,159 @@
+name: Prepare release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version without the v prefix (for example, 0.7.0)
+        required: true
+        type: string
+      source:
+        description: devel for a monthly release, main for a current-line hotfix
+        required: true
+        default: devel
+        type: choice
+        options:
+          - devel
+          - main
+
+permissions:
+  actions: write
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: prepare-release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out release source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source }}
+          fetch-depth: 0
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+
+      - name: Validate release request
+        id: release
+        env:
+          SOURCE: ${{ inputs.source }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          python - <<'PY'
+          import os
+          import re
+          import tomllib
+
+          source = os.environ["SOURCE"]
+          version = os.environ["VERSION"]
+          match = re.fullmatch(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", version)
+          if match is None:
+              raise SystemExit("version must be a three-part release such as 0.7.0")
+          patch = int(match.group(3))
+          if source == "devel" and patch != 0:
+              raise SystemExit("monthly releases from devel must have a zero patch component")
+          if source == "main" and patch == 0:
+              raise SystemExit("hotfix releases from main must have a non-zero patch component")
+
+          with open("pyproject.toml", "rb") as stream:
+              current = tomllib.load(stream)["project"]["version"]
+          current_match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", current)
+          if current_match is None:
+              raise SystemExit(f"current project version is not a release: {current}")
+          current_parts = tuple(map(int, current_match.groups()))
+          requested_parts = tuple(map(int, match.groups()))
+          if requested_parts <= current_parts:
+              raise SystemExit(f"requested version {version} must be newer than {current}")
+          if source == "main" and requested_parts[:2] != current_parts[:2]:
+              raise SystemExit("a current-line hotfix must retain the main major and minor version")
+          PY
+          echo "branch=release/v${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Refuse an existing release branch or tag
+        env:
+          BRANCH: ${{ steps.release.outputs.branch }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
+            echo "Branch $BRANCH already exists."
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/v${VERSION}" >/dev/null 2>&1; then
+            echo "Tag v${VERSION} already exists."
+            exit 1
+          fi
+
+      - name: Assemble release commit
+        env:
+          BRANCH: ${{ steps.release.outputs.branch }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          git switch -c "$BRANCH"
+          python - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          path = Path("pyproject.toml")
+          content = path.read_text(encoding="utf-8")
+          updated, count = re.subn(
+              r'(?m)^(version = ")[^"]+("\s*)$',
+              rf'\g<1>{os.environ["VERSION"]}\g<2>',
+              content,
+              count=1,
+          )
+          if count != 1:
+              raise SystemExit("could not update the project version")
+          path.write_text(updated, encoding="utf-8")
+          PY
+          uvx --from 'towncrier>=24.8' towncrier build --version "$VERSION" --yes
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- pyproject.toml CHANGELOG.md newsfragments
+          git commit -m "Prepare release ${VERSION}"
+          git push --set-upstream origin "$BRANCH"
+
+      - name: Open release pull request
+        id: pull-request
+        env:
+          BRANCH: ${{ steps.release.outputs.branch }}
+          GH_TOKEN: ${{ github.token }}
+          SOURCE: ${{ inputs.source }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          {
+            echo "## Release candidate ${VERSION}"
+            echo
+            echo "Prepared automatically from \`${SOURCE}\`."
+            echo
+            echo "- [ ] CI Gate passes for the final main commit"
+            echo "- [ ] HPC / test_inversions is recorded for the final main commit"
+            echo "- [ ] Scientific output review is approved"
+            echo "- [ ] Publish GitHub release \`v${VERSION}\` only after those gates pass"
+          } > "$RUNNER_TEMP/release-pr.md"
+          URL=$(gh pr create \
+            --base main \
+            --head "$BRANCH" \
+            --title "Release ${VERSION}" \
+            --body-file "$RUNNER_TEMP/release-pr.md")
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+
+      # Pull requests created with GITHUB_TOKEN do not emit another workflow run.
+      - name: Dispatch CI for the release commit
+        env:
+          BRANCH: ${{ steps.release.outputs.branch }}
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run workflow.yaml --ref "$BRANCH"
+
+      - name: Summarize
+        env:
+          URL: ${{ steps.pull-request.outputs.url }}
+        run: |
+          echo "Release PR: $URL" >> "$GITHUB_STEP_SUMMARY"
