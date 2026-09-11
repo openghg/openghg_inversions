@@ -687,7 +687,10 @@ def run_rhime_multisector(
             raise ValueError("A custom likelihood cannot be combined with a built-in mismatch model.")
         params["mismatch_model"] = None
     setup = resolve_rhime_options(params=params, multisector=True)
-    validate_likelihood_sampler_backend(likelihood_builder, nuts_sampler=setup.sampler.nuts_sampler)
+    validate_likelihood_sampler_backend(
+        likelihood_builder,
+        nuts_sampler=getattr(setup.sampler, "nuts_sampler", "pymc"),
+    )
     if likelihood_builder is None and setup.run_spec.model.likelihood is None:
         raise ValueError("A multisector RHIME run requires a built-in or custom likelihood.")
 
