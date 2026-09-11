@@ -266,7 +266,7 @@ def percentile_error_method(ds_dict: dict[str, xr.Dataset]) -> np.ndarray:
     for site, dataset in ds_dict.items():
         if site.startswith("."):
             continue
-        mf = dataset.mf.as_numpy()
+        mf = dataset.mf.sortby("time").as_numpy()
         monthly_50pc = mf.resample(time="MS").quantile(0.5)
         monthly_5pc = mf.resample(time="MS").quantile(0.05)
         result.append((monthly_50pc - monthly_5pc).mean().item())

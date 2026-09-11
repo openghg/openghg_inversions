@@ -627,21 +627,27 @@ def test_minimum_error_rejects_invalid_values(value: float, message: str):
         MinimumError.prepare(observations, {}, value)
 
 
-def test_percentile_error_resamples_each_site_independently():
+def test_percentile_error_accepts_nonmonotonic_site_times():
+    """Nonmonotonic inputs match sorted results without losing sparse sites or site order."""
     sites = {
         "AAA": xr.Dataset(
-            {"mf": ("time", [1.0, 3.0, 5.0])},
-            coords={"time": pd.to_datetime(["2024-01-01", "2024-01-02", "2024-03-01"])},
+            {"mf": ("time", [5.0, 1.0, 3.0])},
+            coords={"time": pd.to_datetime(["2024-03-01", "2024-01-01", "2024-01-02"])},
         ),
         "BBB": xr.Dataset(
-            {"mf": ("time", [10.0, 20.0, 30.0])},
-            coords={"time": pd.to_datetime(["2024-01-01", "2024-02-01", "2024-03-01"])},
+            {"mf": ("time", [30.0, 10.0, 20.0])},
+            coords={"time": pd.to_datetime(["2024-03-01", "2024-01-01", "2024-02-01"])},
         ),
     }
+    original_times = {site: dataset.time.copy() for site, dataset in sites.items()}
 
     result = percentile_error_method(sites)
+    sorted_result = percentile_error_method({site: dataset.sortby("time") for site, dataset in sites.items()})
 
     np.testing.assert_allclose(result, [0.45, 0.0])
+    np.testing.assert_allclose(result, sorted_result)
+    for site, dataset in sites.items():
+        xr.testing.assert_identical(dataset.time, original_times[site])
 
 
 def test_scalar_minimum_error_preserves_lazy_borrowed_observations():

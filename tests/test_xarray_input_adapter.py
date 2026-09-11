@@ -308,7 +308,11 @@ def test_nonmonotonic_times_and_mapping_order_are_preserved() -> None:
         "MHD": _site_dataset("MHD", ["2021-01-04", "2021-01-02"]),
     }
 
-    prepared = prepare_rhime_inputs_from_xarray(data, basis_functions=_basis_functions())
+    prepared = prepare_rhime_inputs_from_xarray(
+        data,
+        basis_functions=_basis_functions(),
+        min_error="percentile",
+    )
 
     assert prepared.sites == ("TAC", "MHD")
     assert list(prepared.inv_inputs.coords["site"].values) == ["TAC", "TAC", "MHD", "MHD"]
@@ -319,6 +323,7 @@ def test_nonmonotonic_times_and_mapping_order_are_preserved() -> None:
             dtype="datetime64[ns]",
         ),
     )
+    np.testing.assert_allclose(prepared.inv_inputs["min_error"], 0.45)
 
 
 def test_stationary_release_coordinates_are_broadcast_to_observations() -> None:
