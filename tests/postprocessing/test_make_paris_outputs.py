@@ -452,6 +452,56 @@ def test_multisector_country_covariance_promotes_float32_traces(
     np.testing.assert_allclose(cross_covariance[0, 0].sum(), expected_variance)
 
 
+def test_country_covariances_use_all_chains(
+    multisector_postprocessing_inv_out: Callable[..., InversionOutput],
+) -> None:
+    """PARIS covariance products reduce over both chain and draw."""
+    inv_out = multisector_postprocessing_inv_out()
+    ff = np.asarray([[1.0, 3.0], [11.0, 15.0]])
+    ocean = np.asarray([[2.0, 4.0], [8.0, 12.0]])
+    total = ff + ocean
+    coords = {
+        "flux_time": [np.datetime64("2019-01-01")],
+        "country": ["GBR"],
+        "chain": [0, 1],
+        "draw": [0, 1],
+    }
+    country_trace = xr.Dataset(coords=coords)
+    for sector_name, values in (("ff", ff), ("ocean", ocean)):
+        country_trace[f"country_{sector_name}_posterior"] = (
+            ("flux_time", "country", "chain", "draw"),
+            values[None, None, :, :],
+        )
+    country_trace["country_posterior"] = (
+        ("flux_time", "country", "chain", "draw"),
+        total[None, None, :, :],
+    )
+
+    total_covariance = _country_posterior_covariance_kg(
+        inv_out,
+        countries=cast(Countries, None),
+        flux_frequency="yearly",
+        multisector_country_trace=country_trace,
+    )
+    sector_covariances, cross_covariance = _sector_country_posterior_covariances_kg(
+        inv_out,
+        countries=cast(Countries, None),
+        flux_frequency="yearly",
+        sector_name_by_suffix={"ff": "ff", "ocean": "ocean"},
+        multisector_country_trace=country_trace,
+    )
+
+    np.testing.assert_allclose(total_covariance[0, 0, 0], np.var(total))
+    np.testing.assert_allclose(sector_covariances["ff"][0, 0, 0], np.var(ff))
+    np.testing.assert_allclose(sector_covariances["ocean"][0, 0, 0], np.var(ocean))
+    assert cross_covariance is not None
+    expected_cross_covariance = np.cov(
+        np.stack([ff.ravel(), ocean.ravel()]),
+        bias=True,
+    )
+    np.testing.assert_allclose(cross_covariance[0, 0], expected_cross_covariance)
+
+
 def test_single_sector_country_statistics_promote_before_unit_conversion(
     multisector_postprocessing_inv_out: Callable[..., InversionOutput],
 ) -> None:

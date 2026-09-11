@@ -490,6 +490,7 @@ def run_rhime(
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
     likelihood_kwargs: Mapping[str, Any] | None = None,
     preserve_legacy_likelihood: bool = False,
+    compatibility_output_chain: int | None = None,
     **kwargs: Any,
 ) -> RhimeResult:
     """Run a standard single-sector RHIME inversion.
@@ -515,6 +516,8 @@ def run_rhime(
             scientific arrays are passed explicitly by the recipe.
         preserve_legacy_likelihood: Private ``run_hbmcmc`` compatibility
             switch. Ordinary RHIME callers should leave it false.
+        compatibility_output_chain: Private ``run_hbmcmc`` compatibility
+            selector for derived outputs. ``None`` uses every chain.
         **kwargs: RHIME run parameters using snake-case names, such as
             ``output_path``, ``output_name``, ``flux_sources``, and
             ``x_prior``. ``species`` names the primary gas or tracer used for
@@ -606,7 +609,14 @@ def run_rhime(
         likelihood_kwargs=likelihood_kwargs,
     )
     output_start = timer_start()
-    make_standard_rhime_outputs(result=result, prepared=prepared)
+    if compatibility_output_chain is None:
+        make_standard_rhime_outputs(result=result, prepared=prepared)
+    else:
+        make_standard_rhime_outputs(
+            result=result,
+            prepared=prepared,
+            compatibility_output_chain=compatibility_output_chain,
+        )
     log_timing(
         "rhime.output_total",
         timer_seconds(output_start),

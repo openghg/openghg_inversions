@@ -8,6 +8,7 @@ import xarray as xr
 
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.postprocessing.make_outputs import observation_inputs_for_outputs
+from openghg_inversions.postprocessing.stats import combine_chain_draw
 from openghg_inversions.postprocessing.utils import add_suffix, get_parameters
 
 Diagnostic = namedtuple("Diagnostic", ["func", "params"])
@@ -72,7 +73,7 @@ def _r2_by_site(ds: xr.Dataset, report_prior: bool = False) -> xr.Dataset:
         ds = ds.squeeze("site", drop=True).dropna("time")
 
         y_true = ds.y_obs
-        y_post_pred = ds.y_posterior_predictive.transpose("draw", "time")
+        y_post_pred = ds.y_posterior_predictive.dropna("draw", how="all").transpose("draw", "time")
 
         post_result = xr.apply_ufunc(
             az_r2_func,
@@ -83,7 +84,7 @@ def _r2_by_site(ds: xr.Dataset, report_prior: bool = False) -> xr.Dataset:
         )
 
         if report_prior:
-            y_prior_pred = ds.y_prior_predictive.transpose("draw", "time")
+            y_prior_pred = ds.y_prior_predictive.dropna("draw", how="all").transpose("draw", "time")
 
             prior_result = xr.apply_ufunc(
                 az_r2_func,
@@ -108,13 +109,17 @@ def _concentration_trace(inv_out: InversionOutput) -> xr.Dataset:
     """Return concentration traces using diagnostic product names."""
     trace = inv_out.trace_dataset(var_roles="concentration")
     concentration_name = inv_out.variable_name("concentration")
-    return trace.rename(
+    trace = trace.rename(
         {
             data_var: str(data_var).replace(f"{concentration_name}_", "y_", 1)
             for data_var in trace.data_vars
             if str(data_var).startswith(f"{concentration_name}_")
         }
     )
+    trace, sample_dim = combine_chain_draw(trace)
+    if sample_dim != "draw":
+        trace = trace.rename({sample_dim: "draw"})
+    return trace
 
 
 @register_diagnostic

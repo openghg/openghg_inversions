@@ -8089,6 +8089,45 @@ def test_standard_basic_output_uses_modern_postprocessing_without_legacy_adapter
     assert "basic" in bundle.outputs
 
 
+def test_run_hbmcmc_chain_selection_does_not_truncate_archived_trace(monkeypatch) -> None:
+    """Compatibility selection affects derived products, not the modern artifact."""
+    model_spec, _, run_spec = _minimal_output_specs(output_format="basic")
+    prepared = RhimePreparedInputs(
+        inv_inputs=_minimal_output_inv_inputs(),
+        basis_functions=_fake_basis_functions(),
+        site_metadata=_prepared_site_metadata(),
+    )
+    idata = _minimal_output_idata()
+    groups = {}
+    for group_name in idata.groups():
+        group = idata[group_name]
+        if "chain" in group.dims:
+            groups[group_name] = xr.concat(
+                [group.isel(chain=0, drop=True), group.isel(chain=0, drop=True)],
+                dim=xr.IndexVariable("chain", [0, 1]),
+            )
+        else:
+            groups[group_name] = group
+    bundle = _result_for_outputs(run_spec, az.InferenceData(**groups), model_spec=model_spec)
+    captured: dict[str, InversionOutput] = {}
+
+    def fake_basic_output(inv_out: InversionOutput, country_file: str | None = None) -> xr.Dataset:
+        captured["inv_out"] = inv_out
+        return xr.Dataset({"ok": ((), 1)})
+
+    monkeypatch.setattr("openghg_inversions.postprocessing.make_outputs.basic_output", fake_basic_output)
+
+    rhime_outputs.make_standard_rhime_outputs(
+        result=bundle,
+        prepared=prepared,
+        compatibility_output_chain=0,
+    )
+
+    assert bundle.inv_out is not None
+    assert bundle.inv_out.trace.posterior.sizes["chain"] == 2
+    assert captured["inv_out"].trace.posterior.sizes["chain"] == 1
+
+
 def test_standard_paris_output_uses_modern_postprocessing_without_legacy_adapter(monkeypatch) -> None:
     """RHIME PARIS postprocessing consumes modern output without legacy adapters."""
     model_spec, output_spec, run_spec = _minimal_output_specs(output_format="paris")

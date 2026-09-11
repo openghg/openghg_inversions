@@ -23,7 +23,7 @@ around NetCDF/Zarr limitations.
 from pathlib import Path
 from collections.abc import Iterable, Mapping
 from typing_extensions import Self
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Hashable, Literal, cast
 import json
 
@@ -156,7 +156,7 @@ def convert_idata_to_dataset(
 
     Returns:
         xr.Dataset containing all data variables in the selected groups of the
-        InferenceData
+        InferenceData. Native chain and draw dimensions are retained.
 
     """
     traces = []
@@ -166,8 +166,6 @@ def convert_idata_to_dataset(
             if add_suffix:
                 rename_dict = {dv: f"{dv}_{group}" for dv in trace.data_vars}
                 trace = trace.rename_vars(rename_dict)
-            if "chain" in trace.dims:
-                trace = trace.isel(chain=0, drop=True)
             traces.append(trace)
     return xr.merge(traces, join="outer")
 
@@ -254,6 +252,10 @@ class InversionOutput:
     model_metadata: dict[str, Any] = field(default_factory=dict)
     output_metadata: dict[str, Any] = field(default_factory=dict)
     provenance: dict[str, Any] = field(default_factory=dict)
+
+    def select_chain(self, index: int) -> Self:
+        """Return a derived-output view containing one zero-based chain index."""
+        return replace(self, trace=self.trace.isel(chain=[index]))
 
     @property
     def start_date(self) -> str | None:

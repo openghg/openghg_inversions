@@ -204,6 +204,28 @@ def stub_legacy_product_builders(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
+def test_legacy_derived_chain_selection_keeps_full_trace_metadata(
+    stub_legacy_product_builders: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Compatibility summaries select chain 0 without truncating diagnostics metadata."""
+    inv_out = _legacy_inv_out(model_data=True, chains=2)
+    original = legacy_outputs.make_concentration_outputs
+    captured: dict[str, int] = {}
+
+    def record_concentration(inv_out: InversionOutput, **kwargs: object) -> xr.Dataset:
+        captured["chains"] = inv_out.trace.posterior.sizes["chain"]
+        return original(inv_out, **kwargs)
+
+    monkeypatch.setattr(legacy_outputs, "make_concentration_outputs", record_concentration)
+
+    output = legacy_outputs.make_legacy_hbmcmc_output(inv_out, derived_output_chain=0)
+
+    assert captured["chains"] == 1
+    assert output.attrs["Number of chains"] == "2"
+    assert output.sizes["steps"] == inv_out.trace.posterior.sizes["draw"]
+
+
 def test_compute_apriori_flux_handles_missing_month():
     """Apriori flux weighting handles skipped monthly flux periods."""
     flux = xr.DataArray(

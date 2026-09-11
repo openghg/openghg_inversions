@@ -285,12 +285,15 @@ def make_standard_rhime_outputs(
     *,
     result: RhimeResult,
     prepared: RhimePreparedInputs,
+    compatibility_output_chain: int | None = None,
 ) -> None:
     """Create and attach the requested standard RHIME outputs.
 
     Args:
         result: Sampled standard result receiving requested products.
         prepared: Retained canonical inputs and basis functions.
+        compatibility_output_chain: Optional zero-based chain index used only
+            for ``run_hbmcmc`` derived-output compatibility.
     """
     output_spec = result.output_spec
     run_spec = result.run_spec
@@ -307,6 +310,9 @@ def make_standard_rhime_outputs(
         )
     outputs["inversion_output"] = inv_out
     output_metadata["inversion_output_contract"] = "modern"
+    postprocess_inv_out = inv_out
+    if compatibility_output_chain is not None and output_spec.output_format != "legacy":
+        postprocess_inv_out = inv_out.select_chain(compatibility_output_chain)
 
     inv_out_path = _resolve_output_path(
         output_spec.save_inversion_output,
@@ -318,7 +324,7 @@ def make_standard_rhime_outputs(
 
         output_metadata["postprocessing_input_contract"] = "modern_inversion_output"
         with timed("rhime.output.basic_postprocess"):
-            outputs["basic"] = basic_output(inv_out, country_file=output_spec.country_file)
+            outputs["basic"] = basic_output(postprocess_inv_out, country_file=output_spec.country_file)
     elif output_spec.output_format == "paris":
         from openghg_inversions.postprocessing.make_paris_outputs import make_paris_outputs
 
@@ -327,7 +333,7 @@ def make_standard_rhime_outputs(
         kwargs = output_spec.paris_postprocessing_kwargs or {}
         with timed("rhime.output.paris_postprocess"):
             flux_outs, conc_outs = make_paris_outputs(
-                inv_out,
+                postprocess_inv_out,
                 country_file=output_spec.country_file,
                 domain=model_spec.domain,
                 obs_avg_period=obs_avg_period,
@@ -369,6 +375,7 @@ def make_standard_rhime_outputs(
                 inv_out,
                 country_file=output_spec.country_file,
                 use_bc=model_spec.use_bc,
+                derived_output_chain=compatibility_output_chain,
             )
         outputs["legacy"] = legacy_out
 

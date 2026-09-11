@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
 from typing import Any
 
@@ -200,18 +201,19 @@ def test_run_hbmcmc_main_routes_to_run_rhime(monkeypatch: pytest.MonkeyPatch, tm
 
     monkeypatch.setattr(run_hbmcmc, "run_rhime", fake_run_rhime)
 
-    run_hbmcmc.main(
-        [
-            "2020-01-01",
-            "2020-02-01",
-            "-c",
-            str(config_file),
-            "--output-path",
-            str(output_path),
-            "--kwargs",
-            '{"nchain": 2}',
-        ]
-    )
+    with pytest.warns(UserWarning, match="--all-chains"):
+        run_hbmcmc.main(
+            [
+                "2020-01-01",
+                "2020-02-01",
+                "-c",
+                str(config_file),
+                "--output-path",
+                str(output_path),
+                "--kwargs",
+                '{"nchain": 2}',
+            ]
+        )
 
     copied_config = output_path / "CH4_EUROPE_legacy_run_2020-01-01.ini"
     expected_config = (
@@ -229,6 +231,26 @@ def test_run_hbmcmc_main_routes_to_run_rhime(monkeypatch: pytest.MonkeyPatch, tm
     assert seen["run_rhime_kwargs"]["output_format"] == "legacy"
     assert seen["run_rhime_kwargs"]["output_filename_convention"] == "legacy"
     assert seen["run_rhime_kwargs"]["preserve_legacy_likelihood"] is True
+    assert seen["run_rhime_kwargs"]["compatibility_output_chain"] == 0
+
+
+def test_run_hbmcmc_all_chains_is_explicit_opt_in(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The compatibility CLI opts into modern all-chain derived outputs explicitly."""
+    config_file = tmp_path / "hbmcmc.ini"
+    _fixedbasis_config(config_file)
+    seen: dict[str, Any] = {}
+
+    monkeypatch.setattr(run_hbmcmc.output, "copy_config_file", lambda *args, **kwargs: None)
+    monkeypatch.setattr(run_hbmcmc, "run_rhime", lambda **kwargs: seen.update(kwargs))
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        run_hbmcmc.main(["-c", str(config_file), "--all-chains"])
+
+    assert not [warning for warning in caught if "chain-0-only" in str(warning.message)]
+    assert seen["compatibility_output_chain"] is None
 
 
 def test_run_hbmcmc_legacy_fixedbasis_parser_is_explicit(tmp_path: Path) -> None:
@@ -237,6 +259,17 @@ def test_run_hbmcmc_legacy_fixedbasis_parser_is_explicit(tmp_path: Path) -> None
 
     assert parser.parse_args([]).legacy_fixedbasis is False
     assert parser.parse_args(["--legacy-fixedbasis"]).legacy_fixedbasis is True
+    assert parser.parse_args([]).all_chains is False
+    assert parser.parse_args(["--all-chains"]).all_chains is True
+
+
+def test_run_hbmcmc_rejects_all_chains_with_true_legacy_path(tmp_path: Path) -> None:
+    """The old inferpymc path cannot silently reinterpret all-chain output."""
+    config_file = tmp_path / "hbmcmc.ini"
+    _fixedbasis_config(config_file)
+
+    with pytest.raises(SystemExit):
+        run_hbmcmc.main(["-c", str(config_file), "--legacy-fixedbasis", "--all-chains"])
 
 
 @pytest.mark.parametrize("output_format", [None, "hbmcmc", "hbmcmc_postprocessing"])
