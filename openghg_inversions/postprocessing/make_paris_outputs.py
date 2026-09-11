@@ -28,7 +28,7 @@ from openghg_inversions.postprocessing.make_outputs import (
     make_multisector_flux_trace_outputs,
     observation_and_error_outputs,
 )
-from openghg_inversions.postprocessing.stats import calculate_stats, stats_functions
+from openghg_inversions.postprocessing.stats import calculate_stats, combine_chain_draw, stats_functions
 
 # path to `paris_formatting` submodule
 paris_formatting_path = Path(__file__).parent
@@ -1164,9 +1164,10 @@ def _country_posterior_covariance_kg(
         flux_frequency,
     )
 
-    posterior = posterior.isel(flux_time=valid_indices).dropna("draw", how="all")
+    posterior, sample_dim = combine_chain_draw(posterior.isel(flux_time=valid_indices))
+    posterior = posterior.dropna(sample_dim, how="all")
     values = np.asarray(
-        posterior.transpose("flux_time", "country", "draw").values,
+        posterior.transpose("flux_time", "country", sample_dim).values,
         dtype=np.float64,
     )
     if values.shape[2] == 0:
@@ -1223,13 +1224,16 @@ def _sector_country_posterior_covariances_kg(
         flux_frequency,
     )
 
-    sector_posteriors = [
-        sector_trace[f"country_{sector_name}_posterior"]
-        .isel(flux_time=valid_indices)
-        .dropna("draw", how="all")
-        .transpose("flux_time", "country", "draw")
-        for sector_name in sector_names
-    ]
+    sector_posteriors = []
+    for sector_name in sector_names:
+        posterior, sample_dim = combine_chain_draw(
+            sector_trace[f"country_{sector_name}_posterior"].isel(flux_time=valid_indices)
+        )
+        sector_posteriors.append(
+            posterior.dropna(sample_dim, how="all").rename({sample_dim: "sample"})
+            if sample_dim != "sample"
+            else posterior.dropna(sample_dim, how="all")
+        )
     sector_covariances = {}
     for sector_name, posterior in zip(sector_names, sector_posteriors, strict=True):
         values = np.asarray(posterior.values, dtype=np.float64)
@@ -1252,7 +1256,7 @@ def _sector_country_posterior_covariances_kg(
         dim="sector",
     )
     values = np.asarray(
-        posterior_by_sector.transpose("flux_time", "country", "sector", "draw").values,
+        posterior_by_sector.transpose("flux_time", "country", "sector", "sample").values,
         dtype=np.float64,
     )
     if values.shape[3] == 0:

@@ -8,7 +8,7 @@ NetCDF serialisation.
 
 from collections import namedtuple
 from collections.abc import Callable, Iterable, Sequence
-from typing import cast
+from typing import TypeVar, cast
 
 import arviz as az
 import numpy as np
@@ -28,6 +28,7 @@ extra parameters for each stats function separately.
 
 # this dictionary will be populated by using the decorator `register_stat`
 stats_functions: dict[str, StatsFunction] = {}
+XarrayObject = TypeVar("XarrayObject", xr.Dataset, xr.DataArray)
 
 
 def register_stat(stat: Callable) -> Callable:
@@ -57,6 +58,18 @@ def _consolidate_sample_dimension(ds: xr.Dataset, sample_dim: str) -> xr.Dataset
     if any(data.chunks is not None and sample_dim in data.dims for data in ds.data_vars.values()):
         return ds.chunk({sample_dim: -1})
     return ds
+
+
+def combine_chain_draw(ds: XarrayObject, sample_dim: str = "draw") -> tuple[XarrayObject, str]:
+    """Combine MCMC chains only when samples are about to be reduced."""
+    if "chain" not in ds.dims or sample_dim not in ds.dims:
+        return ds, sample_dim
+
+    combined_dim = "sample"
+    if combined_dim in ds.dims:
+        raise ValueError("Cannot combine chain and draw because a 'sample' dimension already exists.")
+    combined = ds.stack({combined_dim: ("chain", sample_dim)}).reset_index(combined_dim, drop=True)
+    return combined, combined_dim
 
 
 @register_stat
@@ -108,11 +121,19 @@ def mode(ds: xr.Dataset, sample_dim: str = "draw", thin: int = 1) -> xr.Dataset:
         Dataset containing the approximate mode for each input variable.
     """
 
+    def mode_of_row(row, k):
+        row = row[np.isfinite(row)]
+        if row.size == 0:
+            return np.nan
+        if row.size == 1:
+            return float(row[0])
+        k = min(k, row.size - 1)
+        row = np.sort(row)
+        id_med = np.argmin(row[k:] - row[:-k])
+        return (row[id_med] + row[id_med + k]) / 2
+
     def mode_of_arr(arr, k):
-        arr = np.sort(arr, axis=-1)
-        id_med = np.argmin(arr[..., k:] - arr[..., :-k], axis=-1, keepdims=True)
-        mid = (np.take_along_axis(arr, id_med, axis=-1) + np.take_along_axis(arr, id_med + k, axis=-1)) / 2
-        return mid.squeeze(axis=-1)
+        return np.apply_along_axis(mode_of_row, axis=-1, arr=arr, k=k)
 
     if thin > 1:
         ds = ds.isel({sample_dim: slice(None, None, int(thin))})
@@ -219,7 +240,7 @@ def hdi(
     @update_attrs(f"hdi_{int(100 * hdi_prob)}_of")
     def calc(data: xr.Dataset, probability: float) -> xr.Dataset:
         """Call ArviZ and narrow its union return type for Dataset input."""
-        return cast(xr.Dataset, az.hdi(data, hdi_prob=probability))
+        return cast(xr.Dataset, az.hdi(data, hdi_prob=probability, skipna=True))
 
     if "chain" not in ds.dims:
         ds = ds.expand_dims({"chain": [0]})
@@ -279,11 +300,16 @@ def calculate_stats(ds: xr.Dataset, stats: list[str] = ["mean", "quantiles"], **
 
     Returns:
         dataset containing all stats calculated on all variables in input dataset.
+        When both chain and draw dimensions are present, every chain is pooled
+        at this reduction boundary.
 
     Raises:
         ValueError: if a statistic in `stats` is not found in the registry.
 
     """
+    sample_dim = kwargs.get("sample_dim", "draw")
+    ds, sample_dim = combine_chain_draw(ds, sample_dim)
+    kwargs = {**kwargs, "sample_dim": sample_dim}
     stats_datasets = []
 
     for stat in stats:
@@ -299,7 +325,10 @@ def calculate_stats(ds: xr.Dataset, stats: list[str] = ["mean", "quantiles"], **
             if k.startswith(f"{stat}__"):
                 sf_kwargs[k.removeprefix(f"{stat}__")] = v
 
-        sf_result = sf.func(ds, **sf_kwargs)
-        stats_datasets.append(sf_result)
+        variable_stats = []
+        for name in ds.data_vars:
+            samples = ds[[name]]
+            variable_stats.append(sf.func(samples, **sf_kwargs))
+        stats_datasets.append(xr.merge(variable_stats))
 
     return xr.merge(stats_datasets)
