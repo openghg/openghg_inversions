@@ -899,6 +899,30 @@ def _validate_loaded_time_resolved_selector(
         )
 
 
+def _validate_loaded_sector_layout(fp_all: Mapping[str, Any], *, split_by_sectors: bool) -> None:
+    """Reject a cached merged-data artifact with a different sector layout.
+
+    The serialized ``.split_by_sectors`` marker records whether the cache
+    contains source-resolved sensitivities.  Missing provenance is treated as
+    the legacy combined layout, so it cannot be relabelled as sector-resolved.
+
+    Args:
+        fp_all: Loaded merged-data artifact and its serialized metadata.
+        split_by_sectors: Whether the current run requires source-resolved
+            sensitivities.
+
+    Raises:
+        ValueError: If the cached sector layout cannot satisfy this run.
+    """
+    stored_split_by_sectors = bool(fp_all.get(".split_by_sectors", False))
+    if stored_split_by_sectors != split_by_sectors:
+        raise ValueError(
+            "Loaded merged data has an incompatible `split_by_sectors` layout: "
+            f"artifact split_by_sectors={stored_split_by_sectors!r}, "
+            f"requested split_by_sectors={split_by_sectors!r}."
+        )
+
+
 def _select_fp_all_sites(fp_all: dict, sites: Sequence[str]) -> dict:
     """Keep requested sites and prune site-keyed calibration scales."""
     site_names = set(sites)
@@ -1052,6 +1076,7 @@ def _prepare_merged_data(
             print(f"{exc}, re-running data merge.")
         else:
             _validate_loaded_time_resolved_selector(fp_all, site_options)
+            _validate_loaded_sector_layout(fp_all, split_by_sectors=split_by_sectors)
             print("Successfully read in merged data.\n")
             fp_all[".split_by_sectors"] = split_by_sectors
             rerun_merge = False

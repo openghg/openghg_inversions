@@ -6144,6 +6144,45 @@ def test_prepare_merged_data_reload_rejects_time_resolved_selector_mismatch(
         )
 
 
+@pytest.mark.parametrize(
+    ("cached_split_by_sectors", "requested_split_by_sectors"),
+    [(False, True), (True, False)],
+)
+def test_prepare_merged_data_reload_rejects_sector_layout_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    cached_split_by_sectors: bool,
+    requested_split_by_sectors: bool,
+) -> None:
+    """Reloading never relabels a cache as the opposite sector layout."""
+    monkeypatch.setattr(
+        prep_module,
+        "load_merged_data",
+        lambda *args, **kwargs: {
+            "TAC": _site_dataset([3.0]),
+            ".species": "CH4",
+            ".split_by_sectors": cached_split_by_sectors,
+            ".units": 1e-9,
+        },
+    )
+
+    with pytest.raises(ValueError, match="incompatible `split_by_sectors` layout"):
+        prep_module._prepare_merged_data(
+            species="ch4",
+            sites=["TAC"],
+            domain="EUROPE",
+            averaging_period=["1H"],
+            start_date="2019-01-01",
+            end_date="2019-02-01",
+            output_name="reload_sector_layout",
+            flux_sources=["inventory"],
+            split_by_sectors=requested_split_by_sectors,
+            reload_merged_data=True,
+            merged_data_dir=str(tmp_path),
+            use_bc=False,
+        )
+
+
 def test_prepare_merged_data_ignores_redundant_retrieval_metadata(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
