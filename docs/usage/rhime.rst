@@ -67,6 +67,9 @@ whole graph or prepared-data cache to use float64.
 Python API
 ----------
 
+For complete prerequisite-to-output walkthroughs, start with
+:doc:`rhime_standard_tutorial` or :doc:`rhime_multisector_tutorial`.
+
 The stable package imports below are unchanged. Scientists who want to inspect
 or copy a complete implementation can read
 ``openghg_inversions.rhime.standard`` or
