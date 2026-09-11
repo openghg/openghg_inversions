@@ -15,6 +15,7 @@ from openghg_inversions.models.coords import get_coord_registry, registered_mode
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
 from openghg_inversions.observation_error import resolve_aggregation_error
 from openghg_inversions.rhime.multisector import build_multisector_rhime_model
+from openghg_inversions.rhime._model_building import validate_likelihood_sampler_backend
 from openghg_inversions.rhime.outputs import annotate_likelihood_trace
 from openghg_inversions.rhime.specs import SectorSpec
 from openghg_inversions.rhime.standard import build_standard_rhime_model
@@ -147,6 +148,15 @@ def test_fixed_ou_builder_creates_an_inferred_labelled_amplitude() -> None:
     assert model["ou_site_amplitude"] in model.free_RVs
     assert model.named_vars_to_dims["ou_site_amplitude"] == ("ou_site",)
     assert "sigma" not in model.named_vars
+
+
+def test_fixed_ou_rejects_non_pymc_sampler_before_model_building() -> None:
+    """The SciPy-backed component declares PyMC as its only NUTS backend."""
+    with pytest.raises(ValueError, match="nuts_sampler='pymc'"):
+        validate_likelihood_sampler_backend(
+            add_fixed_ou_gaussian_likelihood,
+            nuts_sampler="numpyro",
+        )
 
 
 def test_fixed_ou_builder_samples_state_and_site_amplitudes_together() -> None:
@@ -331,6 +341,7 @@ def test_likelihood_trace_annotation_round_trips_ou_identity_and_units(tmp_path)
         builder_identity=identity,
         likelihood_kwargs=options,
         concentration_units="ppm",
+        component_metadata=add_fixed_ou_gaussian_likelihood.rhime_metadata,
     )
     path = tmp_path / "ou-trace.nc"
     idata.to_netcdf(path)

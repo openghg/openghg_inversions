@@ -25,6 +25,7 @@ from openghg_inversions.models.coords import add_coords
 from openghg_inversions.models.priors import parse_prior
 from openghg_inversions.observation_error import (
     AggregationError,
+    aggregation_error_as_low_rank,
     validate_complete_observation_covariance,
     validate_observation_error_arrays,
 )
@@ -524,27 +525,6 @@ def _site_values(
     return cast(FloatArray, values.copy())
 
 
-def _aggregation_low_rank_factor(aggregation_error: AggregationError) -> tuple[FloatArray, FloatArray]:
-    """Return the fixed aggregation covariance as factor plus diagonal data."""
-    n_observation = aggregation_error.marginal_variance.size
-    if aggregation_error.mode == "dense":
-        assert aggregation_error.covariance is not None
-        covariance = np.asarray(aggregation_error.covariance.values, dtype=np.float64)
-        eigenvalues, eigenvectors = np.linalg.eigh((covariance + covariance.T) * 0.5)
-        tolerance = 1.0e-10 * max(1.0, float(np.max(np.abs(eigenvalues))))
-        if eigenvalues[0] < -tolerance:
-            raise ValueError("Dense aggregation covariance must be positive semidefinite.")
-        positive = eigenvalues > tolerance
-        return cast(FloatArray, eigenvectors[:, positive] * np.sqrt(eigenvalues[positive])), np.zeros(n_observation)
-    if aggregation_error.mode == "low_rank":
-        assert aggregation_error.factor is not None and aggregation_error.diagonal_variance is not None
-        return np.asarray(aggregation_error.factor.values, dtype=np.float64), np.asarray(aggregation_error.diagonal_variance.values, dtype=np.float64)
-    if aggregation_error.mode == "diagonal":
-        assert aggregation_error.diagonal_variance is not None
-        return np.empty((n_observation, 0)), np.asarray(aggregation_error.diagonal_variance.values, dtype=np.float64)
-    return np.empty((n_observation, 0)), np.zeros(n_observation)
-
-
 def add_fixed_ou_gaussian_likelihood(
     *,
     observations: xr.DataArray,
@@ -581,7 +561,7 @@ def add_fixed_ou_gaussian_likelihood(
     add_model_data(site_index.rename("ou_site_index"), "ou_site_index")
     observation_variance = np.square(np.asarray(observation_error.values, dtype=np.float64))
     validate_complete_observation_covariance(aggregation_error, observation_variance)
-    factor, aggregation_diagonal = _aggregation_low_rank_factor(aggregation_error)
+    factor, aggregation_diagonal = aggregation_error_as_low_rank(aggregation_error)
     prepared = prepare_fixed_ou_low_rank(factor, observation_variance + aggregation_diagonal, np.asarray(time.values), site_codes, tau_hours, site_labels=site_labels)
     add_model_data(xr.DataArray(prepared.tau_hours_by_site, dims=("ou_site",), coords={"ou_site": np.asarray(site_labels, dtype=object)}, name="ou_tau_hours"))
     if fixed_site_amplitudes is None:
@@ -598,3 +578,10 @@ def add_fixed_ou_gaussian_likelihood(
         amplitude = add_model_data(xr.DataArray(values, dims=("ou_site",), coords={"ou_site": np.asarray(site_labels, dtype=object)}, name="ou_site_amplitude"))
     pm.Deterministic("epsilon", pt.sqrt(prepared.marginal_variance(amplitude)), dims=output_dim)
     return cast(TensorVariable, pm.CustomDist("y", mean, amplitude, logp=prepared.logp, random=prepared.random, signature="(n),(s)->(n)", observed=observed, dims=output_dim))
+
+
+add_fixed_ou_gaussian_likelihood.rhime_metadata = {
+    "mismatch_component": "fixed_within_site_ou",
+    "residual_covariance": "F F^T + diag(d) + direct_sum_site(a_s^2 T_s(tau_s))",
+    "sampler_backend": "pymc",
+}

@@ -53,17 +53,16 @@ def annotate_likelihood_trace(
     builder_identity: dict[str, str],
     likelihood_kwargs: Mapping[str, Any] | None,
     concentration_units: str | None,
+    component_metadata: Mapping[str, str] | None = None,
 ) -> None:
-    """Persist installed likelihood identity and fixed-OU variable metadata."""
+    """Persist installed likelihood identity and declared component metadata."""
     idata.attrs["rhime_likelihood_builder"] = json.dumps(builder_identity, sort_keys=True)
     idata.attrs["rhime_likelihood_kwargs"] = json.dumps(
         dict(likelihood_kwargs or {}), sort_keys=True
     )
-    is_fixed_ou = builder_identity.get("qualname", "").endswith(
-        "add_fixed_ou_gaussian_likelihood"
-    )
-    if is_fixed_ou:
-        idata.attrs["rhime_mismatch_component"] = "fixed_within_site_ou"
+    metadata = dict(component_metadata or {})
+    for key, value in metadata.items():
+        idata.attrs[f"rhime_{key}"] = value
     for group_name in idata.groups():
         group = getattr(idata, group_name)
         if not isinstance(group, xr.Dataset):
@@ -79,7 +78,7 @@ def annotate_likelihood_trace(
             group["ou_site_amplitude"].attrs["rhime_scientific_role"] = (
                 "within_site_ou_mismatch_amplitude"
             )
-        if is_fixed_ou and concentration_units is not None:
+        if metadata.get("mismatch_component") == "fixed_within_site_ou" and concentration_units is not None:
             for name in ("epsilon", "y"):
                 if name in group:
                     group[name].attrs["units"] = concentration_units

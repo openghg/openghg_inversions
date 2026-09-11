@@ -14,6 +14,7 @@ from openghg_inversions.observation_error import (
 )
 
 from .builders import RhimeLikelihoodBuilder, RhimeModelBuilder
+from ._model_building import validate_likelihood_sampler_backend
 from .materialization import materialize_pymc_inputs
 from .multisector import build_multisector_rhime_model_result, make_multisector_rhime_result
 from .multisector import multisector_model_input_names
@@ -149,6 +150,10 @@ def run_rhime_from_prepared_inputs(
         )
     )
     active_sampler = RhimeSampler() if sampler is None else sampler
+    validate_likelihood_sampler_backend(
+        likelihood_builder,
+        nuts_sampler=active_sampler.nuts_sampler,
+    )
     build_and_sample_start = timer_start()
 
     if multisector:

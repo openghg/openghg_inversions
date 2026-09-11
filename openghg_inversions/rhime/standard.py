@@ -35,6 +35,7 @@ from ._model_building import (
     ForwardModelTerms,
     add_rhime_likelihood,
     builtin_model_build_result,
+    validate_likelihood_sampler_backend,
     validated_custom_model_build,
 )
 from .builders import (
@@ -442,6 +443,7 @@ def make_standard_rhime_result(
             builder_identity=identity,
             likelihood_kwargs=likelihood_kwargs,
             concentration_units=prepared.inv_inputs["mf"].attrs.get("units"),
+            component_metadata=getattr(likelihood_builder, "rhime_metadata", None),
         )
     if likelihood_kwargs is not None:
         result.output_metadata["likelihood_kwargs"] = likelihood_kwargs
@@ -525,6 +527,7 @@ def run_rhime(
             raise ValueError("A custom likelihood cannot be combined with a built-in mismatch model.")
         params["mismatch_model"] = None
     setup = resolve_rhime_options(params=params, multisector=False)
+    validate_likelihood_sampler_backend(likelihood_builder, nuts_sampler=setup.sampler.nuts_sampler)
     if likelihood_builder is None and setup.run_spec.model.likelihood is None:
         raise ValueError("A standard RHIME run requires a built-in or custom likelihood.")
 
