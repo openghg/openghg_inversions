@@ -60,7 +60,7 @@ def annotate_likelihood_trace(
         dict(likelihood_kwargs or {}), sort_keys=True
     )
     is_fixed_ou = builder_identity.get("qualname", "").endswith(
-        "fixed_ou_likelihood_builder"
+        "add_fixed_ou_gaussian_likelihood"
     )
     if is_fixed_ou:
         idata.attrs["rhime_mismatch_component"] = "fixed_within_site_ou"

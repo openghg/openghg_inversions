@@ -113,8 +113,8 @@ def test_low_rank_builder_keeps_the_dynamic_cholesky_rank_sized(
     assert cholesky_shapes == [(1, 1)]
 
 
-def test_fixed_ou_builder_preserves_labels_tau_and_static_base_floor() -> None:
-    """Site mappings follow first occurrence and OU is added above the fixed floor."""
+def test_fixed_ou_builder_preserves_labels_tau_and_fixed_base() -> None:
+    """Site mappings follow first occurrence and OU augments the fixed base."""
     model = _build_fixed_ou_model(
         _ou_inputs(),
         fixed_site_amplitudes={"TAC": 0.7, "MHD": 0.5},
@@ -126,15 +126,14 @@ def test_fixed_ou_builder_preserves_labels_tau_and_static_base_floor() -> None:
     np.testing.assert_allclose(model["ou_tau_hours"].eval(), [5.0, 7.0])
     np.testing.assert_allclose(model["ou_site_amplitude"].eval(), [0.5, 0.7])
     epsilon = np.asarray(model["epsilon"].eval())
-    np.testing.assert_allclose(epsilon[0], np.sqrt(0.5**2 + 0.5**2))
-    assert epsilon[0] > 0.5
+    np.testing.assert_allclose(epsilon[0], np.sqrt(0.2**2 + 0.1**2 + 0.03 + 0.5**2))
 
 
 def test_fixed_ou_builder_rejects_a_singular_fixed_complete_covariance() -> None:
     """A zero base and zero OU amplitude fail rather than gaining hidden jitter."""
     data = _ou_inputs(low_rank=False, zero_base=True)
     data["min_error"][:] = 0.0
-    with pytest.raises(ValueError, match="positive-definite complete observation covariance"):
+    with pytest.raises(ValueError, match="positive definite"):
         _build_fixed_ou_model(data, fixed_site_amplitudes=0.0)
 
 
@@ -159,16 +158,14 @@ def test_fixed_ou_builder_samples_state_and_site_amplitudes_together() -> None:
             np.array([0.8, 1.8, 2.8, 3.8]),
             dims="nmeasure",
         )
-        fixed_ou_likelihood_builder(
+        add_fixed_ou_gaussian_likelihood(
             observations=data["mf"],
             observation_error=data["mf_error"],
-            minimum_error=data["min_error"],
             aggregation_error=resolve_aggregation_error(data, "low_rank"),
             mean=mean,
-            pollution_mean=mean,
-            pollution_event_baseline=None,
             output_dim="nmeasure",
             tau_hours=5.0,
+            site_amplitude_prior={"pdf": "halfnormal", "sigma": 0.75},
         )
         trace = pm.sample(
             draws=10,
@@ -232,15 +229,9 @@ def test_builder_logp_matches_dense_covariance_for_every_aggregation_mode(
     correlation = np.exp(-lag / tau[site_index, None])
     correlation[site_index[:, None] != site_index[None, :]] = 0.0
     observation_variance = np.square(data["mf_error"].values)
-    floor_variance = np.maximum(
-        np.square(data["min_error"].values)
-        - observation_variance
-        - np.diag(aggregation),
-        0.0,
-    )
     covariance = (
         aggregation
-        + np.diag(observation_variance + floor_variance)
+        + np.diag(observation_variance)
         + amplitude[site_index, None]
         * amplitude[site_index[None, :]]
         * correlation
