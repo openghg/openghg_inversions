@@ -310,7 +310,8 @@ def test_fixedbasisMCMC_return_basis_objects_preserves_positional_output_format(
 
     assert params.index("return_basis_objects") > params.index("power")
     assert params.index("return_basis_objects") > params.index("output_format")
-    assert params.index("return_basis_objects") == params.index("kwargs") - 1
+    assert params.index("time_resolved") == params.index("kwargs") - 1
+    assert params.index("return_basis_objects") == params.index("time_resolved") - 1
 
 
 def test_fixedbasisMCMC_can_return_basis_objects_in_mcmc_args(mcmc_args):
@@ -351,6 +352,7 @@ def test_fixedbasisMCMC_uses_fixedbasis_preparation_contract_for_mcmc_args(monke
         outputname="contract",
         output_format="mcmc_args",
         return_basis_objects=True,
+        time_resolved=True,
         flux_non_finite_check="count",
         use_bc=False,
     )
@@ -358,6 +360,7 @@ def test_fixedbasisMCMC_uses_fixedbasis_preparation_contract_for_mcmc_args(monke
     assert captured_kwargs["output_name"] == "contract"
     assert captured_kwargs["split_by_sectors"] is False
     assert captured_kwargs["return_basis_objects"] is True
+    assert captured_kwargs["time_resolved"] is True
     assert captured_kwargs["merged_data_only"] is False
     assert captured_kwargs["flux_non_finite_check"] == "count"
     assert isinstance(result, dict)

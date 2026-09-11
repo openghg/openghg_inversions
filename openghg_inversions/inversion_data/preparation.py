@@ -1368,6 +1368,7 @@ def prepare_rhime_inputs(
     fp_model: str | None = None,
     fp_height: SiteStringOption = None,
     fp_species: str | None = None,
+    time_resolved: SiteBooleanOption = None,
     inlet: SiteInletOption = None,
     instrument: SiteStringOption = None,
     max_level: SiteIntegerOption = None,
@@ -1417,6 +1418,10 @@ def prepare_rhime_inputs(
         split_by_sectors: Whether to keep sector-resolved sensitivity inputs
             with a ``source`` provenance coordinate. Semantic sector names are
             applied later by the model specification.
+        time_resolved: Footprint time-resolution selector, either scalar or
+            aligned to ``sites``. ``True`` requests high-frequency footprints,
+            ``False`` requests integrated footprints, and ``None`` leaves the
+            store selection unspecified.
         inlet: Inlet selector, either scalar or aligned to ``sites``. Entries
             may be strings, legacy ``slice`` selectors, or ``None``.
         fp_height: Footprint inlet height, either scalar or aligned to
@@ -1469,6 +1474,7 @@ def prepare_rhime_inputs(
             fp_model=fp_model,
             fp_height=fp_height,
             fp_species=fp_species,
+            time_resolved=time_resolved,
             inlet=inlet,
             instrument=instrument,
             max_level=max_level,

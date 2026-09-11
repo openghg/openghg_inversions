@@ -5627,7 +5627,7 @@ def test_multisector_site_preparation_keeps_gathered_source_state() -> None:
 def test_fixedbasis_preparation_adds_anchored_legacy_sigma_index(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Legacy preparation retains its anchored component compatibility index."""
+    """Legacy preparation retains its sigma index and forwards time resolution."""
     times = pd.to_datetime(["2019-01-08", "2019-01-09", "2019-01-15"])
     inv_inputs = xr.Dataset(
         {
@@ -5642,8 +5642,14 @@ def test_fixedbasis_preparation_adds_anchored_legacy_sigma_index(
         site_options=_site_options(["TAC"], averaging_period=["1H"]),
     )
     basis_functions = _fake_basis_functions()
+    captured_prepare_kwargs: dict[str, object] = {}
 
-    monkeypatch.setattr(fixedbasis_preparation, "_prepare_merged_data", lambda **kwargs: merged)
+    def fake_prepare_merged_data(**kwargs: object) -> prep_module.RhimeMergedData:
+        """Capture legacy retrieval options without retrieving external data."""
+        captured_prepare_kwargs.update(kwargs)
+        return merged
+
+    monkeypatch.setattr(fixedbasis_preparation, "_prepare_merged_data", fake_prepare_merged_data)
     monkeypatch.setattr(
         fixedbasis_preparation,
         "basis_functions_wrapper",
@@ -5671,11 +5677,13 @@ def test_fixedbasis_preparation_adds_anchored_legacy_sigma_index(
         output_name="fixedbasis_sigma",
         flux_sources=["total-ukghg-edgar7"],
         sigma_freq="8D",
+        time_resolved=True,
         use_bc=False,
     )
 
     assert prepared.inv_inputs is not None
     np.testing.assert_array_equal(prepared.inv_inputs["sigma_freq_index"], [0, 1, 1])
+    assert captured_prepare_kwargs["time_resolved"] is True
 
 
 def test_fixedbasis_preparation_uses_platform_for_sites_retained_after_filtering(

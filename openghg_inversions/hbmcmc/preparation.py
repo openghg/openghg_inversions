@@ -24,6 +24,7 @@ from openghg_inversions.flux_sanitization import FluxNonFiniteCheck
 from openghg_inversions.inversion_data.preparation import (
     MinErrorConfig,
     SiteInletOption,
+    SiteBooleanOption,
     SiteIntegerOption,
     SiteStringOption,
     _apply_filters_and_drop_empty_sites,
@@ -87,6 +88,7 @@ def prepare_fixedbasis_inversion_data(
     fp_model: str | None = None,
     fp_height: SiteStringOption = None,
     fp_species: str | None = None,
+    time_resolved: SiteBooleanOption = None,
     inlet: SiteInletOption = None,
     instrument: SiteStringOption = None,
     max_level: SiteIntegerOption = None,
@@ -142,6 +144,8 @@ def prepare_fixedbasis_inversion_data(
         met_model: Footprint meteorological model, either scalar or aligned to ``sites``.
         max_level: Maximum column level, either scalar or aligned to ``sites``.
             Entries must be integers or ``None``.
+        time_resolved: Footprint time-resolution selector, either scalar or
+            aligned to ``sites``.
         min_error: Numeric minimum error or ``"residual"``/``"percentile"``
             calculation method.
         calculate_min_error: Deprecated calculation-method spelling.
@@ -179,6 +183,7 @@ def prepare_fixedbasis_inversion_data(
         fp_model=fp_model,
         fp_height=fp_height,
         fp_species=fp_species,
+        time_resolved=time_resolved,
         inlet=inlet,
         instrument=instrument,
         max_level=max_level,
