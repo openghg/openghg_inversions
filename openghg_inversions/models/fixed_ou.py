@@ -504,6 +504,8 @@ def prepare_fixed_ou_low_rank(
                 f"OU template for site {labels[site]!r} is not positive semidefinite."
             )
         values = cast(FloatArray, np.maximum(values, 0.0))
+        structural_nullity = int(np.count_nonzero(diagonal[indices] == 0.0))
+        values[:structural_nullity] = 0.0
         transform = cast(FloatArray, vectors.T)
         mode_stop = mode_start + indices.size
         transformed_factor[mode_start:mode_stop] = transform @ factor_value[indices]

@@ -342,6 +342,71 @@ def test_partitioned_zero_mode_matches_complete_dense_covariance() -> None:
     )
 
 
+def test_structural_zero_mode_matches_complete_dense_covariance() -> None:
+    """Preserve exact nullity when the generalized solver returns roundoff."""
+    times = np.array([2.0, 8.0, 11.0, 14.0, 3.0, 13.0])
+    diagonal = np.array(
+        [1.28645194, 0.995956, 0.0, 1.97556496, 1.00336821, 0.8528648]
+    )
+    factor = np.array(
+        [
+            [-2.07347612],
+            [1.48794577],
+            [1.81253488],
+            [0.49944965],
+            [1.04284329],
+            [1.00191735],
+        ]
+    )
+    sites = np.array([0, 0, 0, 0, 1, 1])
+    amplitude = np.array([0.0, 0.56758443])
+    tau_hours = 4.445307225527617
+    residual = np.array(
+        [0.73361495, 0.03580046, -0.72641383, 2.05846804, 1.1322496, 0.24953449]
+    )
+    prepared = prepare_fixed_ou_low_rank(
+        factor,
+        diagonal,
+        times,
+        sites,
+        tau_hours,
+    )
+
+    evaluation = prepared.evaluate(residual, amplitude)
+    lag = np.abs(times[:, None] - times[None, :])
+    correlation = np.exp(-lag / tau_hours)
+    correlation[sites[:, None] != sites[None, :]] = 0.0
+    covariance = (
+        factor @ factor.T
+        + np.diag(diagonal)
+        + amplitude[sites, None] * amplitude[sites[None, :]] * correlation
+    )
+    solved = np.linalg.solve(covariance, residual)
+    covariance_inverse = np.linalg.inv(covariance)
+    expected_amplitude_gradient = np.empty(2)
+    for site in range(2):
+        site_rows = sites == site
+        derivative = np.zeros_like(covariance)
+        derivative[np.ix_(site_rows, site_rows)] = (
+            2.0 * amplitude[site] * correlation[np.ix_(site_rows, site_rows)]
+        )
+        expected_amplitude_gradient[site] = 0.5 * (
+            solved @ derivative @ solved - np.trace(covariance_inverse @ derivative)
+        )
+
+    assert np.count_nonzero(prepared.mode_eigenvalues == 0.0) == 1
+    assert evaluation.log_likelihood == pytest.approx(
+        multivariate_normal.logpdf(residual, mean=np.zeros(6), cov=covariance)
+    )
+    np.testing.assert_allclose(evaluation.gradient_residual, -solved, rtol=1.0e-12)
+    np.testing.assert_allclose(
+        evaluation.gradient_site_amplitude,
+        expected_amplitude_gradient,
+        rtol=1.0e-12,
+        atol=1.0e-12,
+    )
+
+
 def test_overflowing_log_amplitude_rejects_without_nan_gradient() -> None:
     prepared, *_ = _prepared()
     log_amplitude = pt.dvector("log_amplitude")
