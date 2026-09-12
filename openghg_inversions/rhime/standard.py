@@ -35,6 +35,7 @@ from ._model_building import (
     ForwardModelTerms,
     add_rhime_likelihood,
     builtin_model_build_result,
+    validate_likelihood_sampler_backend,
     validated_custom_model_build,
 )
 from .builders import (
@@ -46,7 +47,7 @@ from .builders import (
     validate_model_build_result,
 )
 from .materialization import materialize_pymc_inputs
-from .outputs import RhimeResult, make_standard_rhime_outputs
+from .outputs import RhimeResult, annotate_likelihood_trace, make_standard_rhime_outputs
 from .params import params_from_config, resolve_rhime_options
 from .preparation import (
     assemble_rhime_inputs,
@@ -437,6 +438,13 @@ def make_standard_rhime_result(
     if likelihood_builder is not None:
         identity = callable_metadata(likelihood_builder)
         result.output_metadata["likelihood_builder"] = identity
+        annotate_likelihood_trace(
+            result.idata,
+            builder_identity=identity,
+            likelihood_kwargs=likelihood_kwargs,
+            concentration_units=prepared.inv_inputs["mf"].attrs.get("units"),
+            component_metadata=getattr(likelihood_builder, "rhime_metadata", None),
+        )
     if likelihood_kwargs is not None:
         result.output_metadata["likelihood_kwargs"] = likelihood_kwargs
     if _compatibility_likelihood_provenance is not None:
@@ -519,6 +527,10 @@ def run_rhime(
             raise ValueError("A custom likelihood cannot be combined with a built-in mismatch model.")
         params["mismatch_model"] = None
     setup = resolve_rhime_options(params=params, multisector=False)
+    validate_likelihood_sampler_backend(
+        likelihood_builder,
+        nuts_sampler=getattr(setup.sampler, "nuts_sampler", "pymc"),
+    )
     if likelihood_builder is None and setup.run_spec.model.likelihood is None:
         raise ValueError("A standard RHIME run requires a built-in or custom likelihood.")
 

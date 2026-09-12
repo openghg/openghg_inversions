@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
+import json
 from pathlib import Path
 from typing import Any, cast
 
@@ -45,8 +47,49 @@ class RhimeResult:
     model_build_result: RhimeModelBuildResult | None = None
 
 
+def annotate_likelihood_trace(
+    idata: az.InferenceData,
+    *,
+    builder_identity: dict[str, str],
+    likelihood_kwargs: Mapping[str, Any] | None,
+    concentration_units: str | None,
+    component_metadata: Mapping[str, str] | None = None,
+) -> None:
+    """Persist likelihood provenance and variable metadata in place.
+
+    Array-valued likelihood options are converted to JSON-compatible values;
+    labelled arrays cross an explicit eager serialization boundary.
+    """
+    idata.attrs["rhime_likelihood_builder"] = json.dumps(builder_identity, sort_keys=True)
+    idata.attrs["rhime_likelihood_kwargs"] = json.dumps(
+        _structured_metadata(dict(likelihood_kwargs or {})), sort_keys=True
+    )
+    metadata = dict(component_metadata or {})
+    for key, value in metadata.items():
+        idata.attrs[f"rhime_{key}"] = value
+    for group_name in idata.groups():
+        group = getattr(idata, group_name)
+        if not isinstance(group, xr.Dataset):
+            continue
+        if "ou_tau_hours" in group:
+            group["ou_tau_hours"].attrs["units"] = "h"
+            group["ou_tau_hours"].attrs["rhime_scientific_role"] = (
+                "fixed_within_site_ou_correlation_time"
+            )
+        if "ou_site_amplitude" in group:
+            if concentration_units is not None:
+                group["ou_site_amplitude"].attrs["units"] = concentration_units
+            group["ou_site_amplitude"].attrs["rhime_scientific_role"] = (
+                "within_site_ou_mismatch_amplitude"
+            )
+        if metadata.get("mismatch_component") == "fixed_within_site_ou" and concentration_units is not None:
+            for name in ("epsilon", "y"):
+                if name in group:
+                    group[name].attrs["units"] = concentration_units
+
+
 def _structured_metadata(value: Any) -> Any:
-    """Convert array-backed spec values to lossless JSON-compatible metadata.
+    """Convert array-backed spec values to JSON-compatible metadata.
 
     Args:
         value: Nested metadata value, possibly backed by NumPy or xarray.

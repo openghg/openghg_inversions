@@ -148,6 +148,23 @@ def _call_custom_likelihood(
     return likelihood
 
 
+def validate_likelihood_sampler_backend(
+    likelihood_builder: RhimeLikelihoodBuilder | None,
+    *,
+    nuts_sampler: str,
+) -> None:
+    """Reject a configured sampler backend unsupported by a custom likelihood."""
+    if likelihood_builder is None:
+        return
+    metadata = getattr(likelihood_builder, "rhime_metadata", {})
+    required_backend = metadata.get("sampler_backend")
+    if required_backend is not None and nuts_sampler != required_backend:
+        raise ValueError(
+            f"The selected likelihood requires nuts_sampler={required_backend!r}; "
+            f"got {nuts_sampler!r}."
+        )
+
+
 def add_configured_pollution_event_likelihood(
     settings: PollutionEventSettings,
     *,
