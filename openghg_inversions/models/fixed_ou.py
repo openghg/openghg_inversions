@@ -26,7 +26,6 @@ from openghg_inversions.models.priors import parse_prior
 from openghg_inversions.observation_error import (
     AggregationError,
     aggregation_error_as_low_rank,
-    validate_complete_observation_covariance,
     validate_observation_error_arrays,
 )
 
@@ -181,7 +180,23 @@ class FixedOuLowRank:
         residual: ArrayLike,
         site_amplitude: ArrayLike | float,
     ) -> FixedOuLikelihoodEvaluation:
-        """Evaluate the exact log density and analytic physical gradients."""
+        """Evaluate the exact log density and analytic physical gradients.
+
+        Zero generalized modes are allowed when the low-rank factor makes the
+        complete covariance positive definite. An invalid amplitude, residual,
+        or singular complete covariance returns negative infinity with a safe
+        rejection gradient.
+
+        Args:
+            residual: Observation-minus-mean vector with one value per row.
+            site_amplitude: Non-negative amplitude for each retained site.
+
+        Returns:
+            Log likelihood plus residual and site-amplitude gradients.
+
+        Raises:
+            ValueError: If either input has the wrong shape.
+        """
         residual_value = np.asarray(residual, dtype=np.float64)
         amplitude = np.atleast_1d(np.asarray(site_amplitude, dtype=np.float64))
         if residual_value.shape != (self.n_observation,):
@@ -217,14 +232,111 @@ class FixedOuLowRank:
             )
 
         mode_variance = self.mode_eigenvalues + amplitude_squared[self.mode_site_index]
-        if not np.isfinite(mode_variance).all() or np.any(mode_variance <= 0.0):
+        if not np.isfinite(mode_variance).all():
             return FixedOuLikelihoodEvaluation(
                 log_likelihood=-np.inf,
                 gradient_residual=np.zeros(self.n_observation, dtype=np.float64),
                 gradient_site_amplitude=_rejection_gradient_amplitude(amplitude),
             )
-        weights = np.reciprocal(mode_variance)
         transformed_residual = cast(FloatArray, self.mode_transform @ residual_value)
+        if np.any(mode_variance <= 0.0):
+            if np.any(mode_variance < 0.0):
+                return FixedOuLikelihoodEvaluation(
+                    log_likelihood=-np.inf,
+                    gradient_residual=np.zeros(self.n_observation, dtype=np.float64),
+                    gradient_site_amplitude=_rejection_gradient_amplitude(amplitude),
+                )
+            positive = mode_variance > 0.0
+            zero = ~positive
+            if int(zero.sum()) > self.rank:
+                return FixedOuLikelihoodEvaluation(
+                    log_likelihood=-np.inf,
+                    gradient_residual=np.zeros(self.n_observation, dtype=np.float64),
+                    gradient_site_amplitude=_rejection_gradient_amplitude(amplitude),
+                )
+            inverse_positive = np.reciprocal(mode_variance[positive])
+            positive_factor = self.transformed_factor[positive]
+            zero_factor = self.transformed_factor[zero]
+            weighted_factor = positive_factor * np.sqrt(inverse_positive[:, None])
+            core = np.eye(self.rank, dtype=np.float64) + (weighted_factor.T @ weighted_factor)
+            core = (core + core.T) * 0.5
+            core_cholesky = np.linalg.cholesky(core)
+            whitened_zero_factor = solve_triangular(
+                core_cholesky, zero_factor.T, lower=True, check_finite=False
+            )
+            schur = whitened_zero_factor.T @ whitened_zero_factor
+            schur = (schur + schur.T) * 0.5
+            try:
+                schur_cholesky = np.linalg.cholesky(schur)
+            except np.linalg.LinAlgError:
+                return FixedOuLikelihoodEvaluation(
+                    log_likelihood=-np.inf,
+                    gradient_residual=np.zeros(self.n_observation, dtype=np.float64),
+                    gradient_site_amplitude=_rejection_gradient_amplitude(amplitude),
+                )
+
+            weighted_residual = inverse_positive * transformed_residual[positive]
+            core_projection = cho_solve(
+                (core_cholesky, True),
+                positive_factor.T @ weighted_residual,
+                check_finite=False,
+            )
+            coupling = (inverse_positive[:, None] * positive_factor) @ cho_solve(
+                (core_cholesky, True), zero_factor.T, check_finite=False
+            )
+            solved_zero = cho_solve(
+                (schur_cholesky, True),
+                transformed_residual[zero] - zero_factor @ core_projection,
+                check_finite=False,
+            )
+            solved_transformed = np.empty(self.n_observation, dtype=np.float64)
+            solved_transformed[positive] = (
+                weighted_residual
+                - inverse_positive * (positive_factor @ core_projection)
+                - coupling @ solved_zero
+            )
+            solved_transformed[zero] = solved_zero
+
+            weighted_inverse_factor = solve_triangular(
+                core_cholesky,
+                (inverse_positive[:, None] * positive_factor).T,
+                lower=True,
+                check_finite=False,
+            )
+            inverse_diagonal = np.empty(self.n_observation, dtype=np.float64)
+            inverse_diagonal[positive] = inverse_positive - np.square(weighted_inverse_factor).sum(axis=0)
+            inverse_diagonal[positive] += np.sum(
+                coupling * cho_solve((schur_cholesky, True), coupling.T, check_finite=False).T,
+                axis=1,
+            )
+            inverse_schur_cholesky = solve_triangular(
+                schur_cholesky,
+                np.eye(int(zero.sum()), dtype=np.float64),
+                lower=True,
+                check_finite=False,
+            )
+            inverse_diagonal[zero] = np.square(inverse_schur_cholesky).sum(axis=0)
+            mode_score = np.square(solved_transformed) - inverse_diagonal
+            logdet = self.base_logdet + float(
+                np.log(mode_variance[positive]).sum()
+                + 2.0 * np.log(np.diag(core_cholesky)).sum()
+                + 2.0 * np.log(np.diag(schur_cholesky)).sum()
+            )
+            quadratic = float(transformed_residual @ solved_transformed)
+            gradient_amplitude = amplitude * np.bincount(
+                self.mode_site_index,
+                weights=mode_score,
+                minlength=self.n_site,
+            )
+            gradient_residual = -(self.mode_transform.T @ solved_transformed)
+            return FixedOuLikelihoodEvaluation(
+                log_likelihood=float(
+                    -0.5 * (self.n_observation * math.log(2.0 * math.pi) + logdet + quadratic)
+                ),
+                gradient_residual=cast(FloatArray, np.asarray(gradient_residual)),
+                gradient_site_amplitude=cast(FloatArray, gradient_amplitude),
+            )
+        weights = np.reciprocal(mode_variance)
         square_root_weights = np.sqrt(weights)
         whitened_residual = transformed_residual * square_root_weights
 
@@ -540,7 +652,9 @@ def add_fixed_ou_gaussian_likelihood(
 
     The residual covariance is fixed aggregation error plus reported observation
     variance plus one labelled OU block per site. Inferred amplitudes require
-    an explicit prior in the observations' concentration units.
+    an explicit prior in the observations' concentration units. A positive OU
+    term may make a singular fixed base valid; fixed amplitudes are rejected
+    only when the complete covariance is not positive definite.
     """
     if fixed_site_amplitudes is not None and site_amplitude_prior is not None:
         raise ValueError("Pass either `fixed_site_amplitudes` or `site_amplitude_prior`, not both.")
@@ -560,7 +674,6 @@ def add_fixed_ou_gaussian_likelihood(
     add_model_data(observation_error.transpose(output_dim), "error")
     add_model_data(site_index.rename("ou_site_index"), "ou_site_index")
     observation_variance = np.square(np.asarray(observation_error.values, dtype=np.float64))
-    validate_complete_observation_covariance(aggregation_error, observation_variance)
     factor, aggregation_diagonal = aggregation_error_as_low_rank(aggregation_error)
     prepared = prepare_fixed_ou_low_rank(factor, observation_variance + aggregation_diagonal, np.asarray(time.values), site_codes, tau_hours, site_labels=site_labels)
     add_model_data(xr.DataArray(prepared.tau_hours_by_site, dims=("ou_site",), coords={"ou_site": np.asarray(site_labels, dtype=object)}, name="ou_tau_hours"))
@@ -573,7 +686,9 @@ def add_fixed_ou_gaussian_likelihood(
         )
         if isinstance(fixed_site_amplitudes, Mapping) and set(fixed_site_amplitudes) != set(site_labels):
             raise ValueError("`fixed_site_amplitudes` mapping keys must exactly match the observation sites.")
-        if np.any(prepared.mode_eigenvalues + np.square(values[prepared.mode_site_index]) <= 0.0):
+        if not np.isfinite(
+            prepared.evaluate(np.zeros(prepared.n_observation), values).log_likelihood
+        ):
             raise ValueError("Fixed OU amplitudes and the fixed base must produce a positive-definite complete observation covariance.")
         amplitude = add_model_data(xr.DataArray(values, dims=("ou_site",), coords={"ou_site": np.asarray(site_labels, dtype=object)}, name="ou_site_amplitude"))
     pm.Deterministic("epsilon", pt.sqrt(prepared.marginal_variance(amplitude)), dims=output_dim)

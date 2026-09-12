@@ -251,6 +251,97 @@ def test_singular_zero_amplitude_returns_negative_infinity_without_jitter() -> N
     assert float(expression.eval()) == -np.inf
 
 
+def test_low_rank_factor_rescues_zero_amplitude_covariance() -> None:
+    """A low-rank factor can make the complete zero-amplitude covariance PD."""
+    factor = np.eye(2)
+    prepared = prepare_fixed_ou_low_rank(
+        factor,
+        np.zeros(2),
+        np.array([0.0, 1.0]),
+        np.zeros(2, dtype=int),
+        5.0,
+    )
+    residual = np.array([0.25, -0.5])
+
+    evaluation = prepared.evaluate(residual, np.array([0.0]))
+
+    expected = multivariate_normal.logpdf(
+        residual,
+        mean=np.zeros(2),
+        cov=factor @ factor.T,
+    )
+    assert evaluation.log_likelihood == pytest.approx(expected)
+    assert np.isfinite(evaluation.gradient_residual).all()
+    assert np.isfinite(evaluation.gradient_site_amplitude).all()
+
+
+def test_partitioned_zero_mode_matches_complete_dense_covariance() -> None:
+    """Mixed positive/zero modes retain exact low-rank logp and gradients."""
+    factor = np.array([[0.0], [1.0], [0.0], [0.0]])
+    diagonal = np.array([1.0, 0.0, 0.5, 0.5])
+    times = np.array([0.0, 1.0, 0.0, 2.0])
+    sites = np.array([0, 0, 1, 1])
+    tau_hours = 3.0
+    prepared = prepare_fixed_ou_low_rank(
+        factor,
+        diagonal,
+        times,
+        sites,
+        tau_hours,
+    )
+    residual = np.array([0.25, -0.5, 0.4, -0.1])
+    amplitude = np.array([0.0, 0.4])
+
+    evaluation = prepared.evaluate(residual, amplitude)
+
+    lag = np.abs(times[:, None] - times[None, :])
+    correlation = np.exp(-lag / tau_hours)
+    correlation[sites[:, None] != sites[None, :]] = 0.0
+
+    def dense_logp(value: np.ndarray, scale: np.ndarray) -> float:
+        """Return the dense Gaussian log density used as the gradient oracle."""
+        covariance = (
+            factor @ factor.T
+            + np.diag(diagonal)
+            + scale[sites, None] * scale[sites[None, :]] * correlation
+        )
+        return float(multivariate_normal.logpdf(value, mean=np.zeros(4), cov=covariance))
+
+    step = 1.0e-6
+    expected_residual_gradient = np.empty(4)
+    expected_amplitude_gradient = np.empty(2)
+    for index in range(4):
+        direction = np.zeros(4)
+        direction[index] = step
+        expected_residual_gradient[index] = (
+            dense_logp(residual + direction, amplitude)
+            - dense_logp(residual - direction, amplitude)
+        ) / (2.0 * step)
+    for index in range(2):
+        direction = np.zeros(2)
+        direction[index] = step
+        expected_amplitude_gradient[index] = (
+            dense_logp(residual, amplitude + direction)
+            - dense_logp(residual, amplitude - direction)
+        ) / (2.0 * step)
+
+    assert np.any(prepared.mode_eigenvalues > 0.0)
+    assert np.any(prepared.mode_eigenvalues == 0.0)
+    assert evaluation.log_likelihood == pytest.approx(dense_logp(residual, amplitude))
+    np.testing.assert_allclose(
+        evaluation.gradient_residual,
+        expected_residual_gradient,
+        rtol=1.0e-7,
+        atol=1.0e-7,
+    )
+    np.testing.assert_allclose(
+        evaluation.gradient_site_amplitude,
+        expected_amplitude_gradient,
+        rtol=1.0e-7,
+        atol=1.0e-7,
+    )
+
+
 def test_overflowing_log_amplitude_rejects_without_nan_gradient() -> None:
     prepared, *_ = _prepared()
     log_amplitude = pt.dvector("log_amplitude")

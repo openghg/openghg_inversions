@@ -134,8 +134,18 @@ def test_fixed_ou_builder_rejects_a_singular_fixed_complete_covariance() -> None
     """A zero base and zero OU amplitude fail rather than gaining hidden jitter."""
     data = _ou_inputs(low_rank=False, zero_base=True)
     data["min_error"][:] = 0.0
-    with pytest.raises(ValueError, match="positive definite"):
+    with pytest.raises(ValueError, match=r"positive.?definite"):
         _build_fixed_ou_model(data, fixed_site_amplitudes=0.0)
+
+
+def test_positive_fixed_ou_amplitude_rescues_a_zero_base_covariance() -> None:
+    """Positive OU covariance can make a zero fixed base positive definite."""
+    data = _ou_inputs(low_rank=False, zero_base=True)
+    data["min_error"][:] = 0.0
+
+    model = _build_fixed_ou_model(data, fixed_site_amplitudes=0.5)
+
+    assert np.isfinite(float(model.compile_logp()(model.initial_point())))
 
 
 def test_fixed_ou_builder_creates_an_inferred_labelled_amplitude() -> None:
@@ -354,3 +364,19 @@ def test_likelihood_trace_annotation_round_trips_ou_identity_and_units(tmp_path)
     assert loaded.posterior["ou_site_amplitude"].attrs["units"] == "ppm"
     assert loaded.posterior["epsilon"].attrs["units"] == "ppm"
     assert loaded.constant_data["ou_tau_hours"].attrs["units"] == "h"
+
+
+def test_likelihood_trace_annotation_serializes_array_options() -> None:
+    """Array-valued custom likelihood options remain valid after sampling."""
+    idata = az.InferenceData(posterior=xr.Dataset())
+
+    annotate_likelihood_trace(
+        idata,
+        builder_identity={"module": "consumer.likelihood", "qualname": "build"},
+        likelihood_kwargs={"site_amplitudes": np.array([0.5, 0.7])},
+        concentration_units=None,
+    )
+
+    assert json.loads(idata.attrs["rhime_likelihood_kwargs"]) == {
+        "site_amplitudes": [0.5, 0.7]
+    }

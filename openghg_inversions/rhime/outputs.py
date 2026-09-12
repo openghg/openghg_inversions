@@ -55,10 +55,14 @@ def annotate_likelihood_trace(
     concentration_units: str | None,
     component_metadata: Mapping[str, str] | None = None,
 ) -> None:
-    """Persist installed likelihood identity and declared component metadata."""
+    """Persist likelihood provenance and variable metadata in place.
+
+    Array-valued likelihood options are converted to JSON-compatible values;
+    labelled arrays cross an explicit eager serialization boundary.
+    """
     idata.attrs["rhime_likelihood_builder"] = json.dumps(builder_identity, sort_keys=True)
     idata.attrs["rhime_likelihood_kwargs"] = json.dumps(
-        dict(likelihood_kwargs or {}), sort_keys=True
+        _structured_metadata(dict(likelihood_kwargs or {})), sort_keys=True
     )
     metadata = dict(component_metadata or {})
     for key, value in metadata.items():
@@ -85,7 +89,7 @@ def annotate_likelihood_trace(
 
 
 def _structured_metadata(value: Any) -> Any:
-    """Convert array-backed spec values to lossless JSON-compatible metadata.
+    """Convert array-backed spec values to JSON-compatible metadata.
 
     Args:
         value: Nested metadata value, possibly backed by NumPy or xarray.
