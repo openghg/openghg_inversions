@@ -227,6 +227,42 @@ def test_prior_predictive_failure_writes_gate_compatible_check(
     assert check_path.is_file()
 
 
+def test_preparation_manifest_authenticates_supplied_prepared_inputs(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from openghg_inversions.rhime import stages
+
+    prepared = _prepared()
+    merged = SimpleNamespace(sites=("TAC",), fp_all={})
+    monkeypatch.setattr(stages, "retrieve_or_reload_rhime_data", lambda *args, **kwargs: merged)
+    monkeypatch.setattr(stages, "filter_rhime_observations", lambda *args, **kwargs: merged)
+    monkeypatch.setattr(stages, "build_rhime_basis", lambda *args, **kwargs: prepared.basis_functions)
+    monkeypatch.setattr(stages, "build_rhime_sensitivities", lambda *args, **kwargs: {})
+    monkeypatch.setattr(stages, "assemble_rhime_inputs", lambda *args, **kwargs: prepared)
+    monkeypatch.setattr(stages, "_save_merged_data", _fake_save_merged)
+    setup = resolve_stage_setup(_params(), model="standard")
+    preparation = prepare_rhime_stage(setup=setup, model="standard", output_dir=tmp_path / "prepare")
+
+    unrelated_inputs = prepared.inv_inputs.copy(deep=True)
+    unrelated_inputs["mf"].data[0] = 99.0
+    unrelated = RhimePreparedInputs(
+        inv_inputs=unrelated_inputs,
+        basis_functions=prepared.basis_functions,
+        site_metadata=prepared.site_metadata,
+    )
+    unrelated_path = tmp_path / "unrelated.nc"
+    unrelated.save(unrelated_path)
+
+    with pytest.raises(ValueError, match="content does not match the preparation manifest"):
+        stages._load_prepared(
+            unrelated_path,
+            setup=setup,
+            model="standard",
+            preparation_manifest=preparation["manifest_path"],
+        )
+
+
 def test_diagnostics_emit_issue_667_convergence_signals(tmp_path: Path) -> None:
     rng = np.random.default_rng(42)
     posterior = xr.Dataset(
@@ -257,6 +293,61 @@ def test_diagnostics_emit_issue_667_convergence_signals(tmp_path: Path) -> None:
     assert result["measured_values"]["min_bulk_ess_variable"] is not None
     assert result["measured_values"]["min_tail_ess_variable"] is not None
     assert Path(result["artifact_paths"][0]).is_file()
+
+
+def test_diagnostics_are_unknown_when_one_variable_metric_is_nonfinite(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from openghg_inversions.rhime import stages
+
+    idata = az.InferenceData(
+        posterior=xr.Dataset(
+            {"x": (("chain", "draw", "region"), np.ones((2, 4, 2)))},
+            coords={"chain": range(2), "draw": range(4), "region": ["known", "undefined"]},
+        ),
+        sample_stats=xr.Dataset(
+            {"diverging": (("chain", "draw"), np.zeros((2, 4), dtype=bool))},
+            coords={"chain": range(2), "draw": range(4)},
+        ),
+    )
+    posterior_path = tmp_path / "posterior.nc"
+    save_inferencedata(idata, posterior_path)
+    summary = xr.Dataset(
+        {
+            "x": (
+                ("metric", "region"),
+                [[1.0, np.nan], [800.0, 800.0], [700.0, 700.0]],
+            )
+        },
+        coords={"metric": ["r_hat", "ess_bulk", "ess_tail"], "region": ["known", "undefined"]},
+    )
+    monkeypatch.setattr(stages.az, "summary", lambda *args, **kwargs: summary)
+
+    result = diagnose_rhime_stage(posterior=posterior_path, output_dir=tmp_path / "diagnose")
+
+    assert result["status"] == "unknown"
+    assert result["measured_values"]["max_rhat"] is None
+    assert "max_rhat" in result["message"]
+
+
+@pytest.mark.parametrize("output_name", ["/tmp/outside-", "../outside-"])
+def test_postprocess_rejects_output_name_that_can_escape_output_dir(
+    tmp_path: Path,
+    output_name: str,
+) -> None:
+    prepared_path = tmp_path / "prepared.nc"
+    _prepared().save(prepared_path)
+    setup = resolve_stage_setup(_params(output_name=output_name), model="standard")
+
+    with pytest.raises(ValueError, match="must be a non-empty filename stem without directories"):
+        postprocess_rhime_stage(
+            setup=setup,
+            model="standard",
+            prepared_inputs=prepared_path,
+            posterior=tmp_path / "unused.nc",
+            output_dir=tmp_path / "postprocess",
+        )
 
 
 def test_synthetic_staged_tracer_bullet(

@@ -62,10 +62,10 @@ All resolved choices are written to ``prepare-manifest.json``.  Its
 period, model and prior settings.  Sampling and output-only changes do not
 invalidate reusable prepared inputs.  Consequently a gas, period, site, source,
 transport or prior change produces a different identity.  Downstream commands
-can pass ``--preparation-manifest`` to reject a mismatched configuration before
-model construction.  Preparation also treats every configured site as
-required and fails with the gas and period named if the existing acquisition
-layer could not produce it.
+can pass ``--preparation-manifest`` to reject a mismatched configuration or
+prepared-input content digest before model construction.  Preparation also
+treats every configured site as required and fails with the gas and period
+named if the existing acquisition layer could not produce it.
 
 The manifest also records a content SHA-256 for ``prepared-inputs.nc``.  OGR
 independently verifies the declared stage-output directory and records its own
@@ -109,7 +109,9 @@ All paths are explicit and outputs are written below ``--output-dir`` (or OGR's
   output contract, and invokes the existing RHIME output implementation.  The
   configuration's ``output_format`` controls ``inv_out``, ``basic``, ``paris``
   or ``legacy`` products; explicit save paths in configuration are replaced so
-  every product remains beneath the stage output directory.  Current all-chain
+  every product remains beneath the stage output directory.  For the same
+  reason, staged postprocessing requires ``output_name`` to be a filename stem,
+  not an absolute path or a name containing directories.  Current all-chain
   limitations of derived basic and
   PARIS products remain tracked separately; this stage does not change their
   scientific calculation.  ``postprocess-manifest.json`` is always written;

@@ -241,6 +241,7 @@ def _load_prepared(
     model: ModelKind,
     preparation_manifest: str | Path | None,
 ) -> tuple[RhimePreparedInputs, RhimeRunnerSetup]:
+    prepared_path = Path(path).resolve()
     if preparation_manifest is not None:
         manifest_path = Path(preparation_manifest).resolve()
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -250,7 +251,19 @@ def _load_prepared(
                 "Prepared inputs do not match the effective RHIME configuration: "
                 f"manifest has {manifest.get('configuration_identity')!r}, current configuration has {expected!r}."
             )
-    prepared = RhimePreparedInputs.load(Path(path).resolve())
+        identities = manifest.get("artifact_identities")
+        recorded_identity = identities.get("prepared_inputs") if isinstance(identities, Mapping) else None
+        if not isinstance(recorded_identity, str):
+            raise ValueError(
+                f"Preparation manifest {manifest_path} does not contain a prepared-input content identity."
+            )
+        actual_identity = _file_identity(prepared_path)
+        if actual_identity != recorded_identity:
+            raise ValueError(
+                "Prepared-input content does not match the preparation manifest: "
+                f"manifest has {recorded_identity!r}, supplied artifact has {actual_identity!r}."
+            )
+    prepared = RhimePreparedInputs.load(prepared_path)
     run_spec = with_prepared_rhime_sites(setup.run_spec, prepared)
     return prepared, RhimeRunnerSetup(run_spec=run_spec, sampler=setup.sampler, data_args=setup.data_args)
 
@@ -417,8 +430,8 @@ def diagnose_rhime_stage(
         for variable, values in candidates:
             array = np.asarray(values.values, dtype=float)
             finite = np.isfinite(array)
-            if not finite.any():
-                continue
+            if not finite.all():
+                return None, None
             masked = np.where(finite, array, -np.inf if operation == "max" else np.inf)
             flat_index = int(masked.argmax() if operation == "max" else masked.argmin())
             index = np.unravel_index(flat_index, array.shape)
@@ -470,13 +483,14 @@ def diagnose_rhime_stage(
         or (measured["divergences"] is not None and measured["divergences"] > max_divergences)
     )
     status = "fail" if failed else "unknown" if missing else "pass"
-    message = (
-        f"Convergence metrics unavailable: {', '.join(missing)}."
-        if missing
-        else "Posterior convergence thresholds were exceeded."
-        if failed
-        else "Posterior convergence thresholds were met."
-    )
+    if failed:
+        message = "Posterior convergence thresholds were exceeded."
+        if missing:
+            message += f" Also unavailable: {', '.join(missing)}."
+    elif missing:
+        message = f"Convergence metrics unavailable: {', '.join(missing)}."
+    else:
+        message = "Posterior convergence thresholds were met."
     result = _check_result(
         name=CONVERGENCE_CHECK_NAME,
         status=status,
@@ -509,6 +523,11 @@ def postprocess_rhime_stage(
         preparation_manifest=preparation_manifest,
     )
     configured_output = resolved.run_spec.output
+    output_name = configured_output.output_name
+    if not output_name or Path(output_name).is_absolute() or Path(output_name).name != output_name:
+        raise ValueError(
+            f"Staged RHIME output_name {output_name!r} must be a non-empty filename stem without directories."
+        )
     output_spec = replace(
         configured_output,
         output_path=str(destination),
