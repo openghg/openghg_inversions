@@ -8,6 +8,7 @@ Using OpenGHG Inversions
    installation
    getting_started
    cli
+   staged_workflow
    grouped_basis_layout
    rhime
    customising_rhime
