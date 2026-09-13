@@ -17,6 +17,12 @@ import xarray as xr
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.models.coords import get_coord_registry
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
+from openghg_inversions.models.scalar_sigma import (
+    add_scalar_sigma_eigen_likelihood,
+    load_scalar_sigma_eigenbasis,
+    prepare_scalar_sigma_eigenbasis,
+    save_scalar_sigma_eigenbasis,
+)
 from openghg_inversions.models.site_sigma import add_site_sigma_gaussian_likelihood
 from openghg_inversions.models.state_activity import StateActivity
 from openghg_inversions.observation_error import resolve_aggregation_error
@@ -730,6 +736,95 @@ def test_public_co2_runner_selects_iid_site_sigma_likelihood(monkeypatch: Any) -
     assert json.loads(result.attrs["rhime_likelihood_builder"])["qualname"].endswith(
         "recording_likelihood"
     )
+
+
+def test_public_co2_runner_resolves_scalar_sigma_cache_before_model(
+    monkeypatch: Any,
+    tmp_path: Path,
+) -> None:
+    """The CO2 route loads the cache before graph construction and keeps provenance small."""
+    inputs = _golden_inputs()
+    aggregation_error = resolve_aggregation_error(inputs, "dense")
+    basis = prepare_scalar_sigma_eigenbasis(
+        observations=inputs["mf"],
+        observation_error=inputs["mf_error"],
+        aggregation_error=aggregation_error,
+    )
+    cache_path = save_scalar_sigma_eigenbasis(
+        tmp_path / "scalar-sigma.nc",
+        basis,
+    )
+
+    class PreparedInputsStub:
+        inv_inputs = inputs
+
+        def validated(self) -> "PreparedInputsStub":
+            return self
+
+    monkeypatch.setattr(
+        co2_runner,
+        "materialize_pymc_inputs",
+        lambda *_args, **_kwargs: inputs,
+    )
+    load_contexts: list[pm.Model | None] = []
+
+    def recording_load(path: str, *, observations: xr.DataArray) -> Any:
+        load_contexts.append(pm.Model.get_context(error_if_none=False))
+        return load_scalar_sigma_eigenbasis(path, observations=observations)
+
+    monkeypatch.setattr(co2_runner, "load_scalar_sigma_eigenbasis", recording_load)
+    built_results: list[Any] = []
+
+    def sample_model(built: Any, _sampler: Any) -> az.InferenceData:
+        built_results.append(built)
+        return _empty_sampled_trace(inputs)
+
+    monkeypatch.setattr(co2_runner, "sample_rhime_model", sample_model)
+    likelihood_kwargs = {
+        "eigenbasis_path": str(cache_path),
+        "sigma_prior": {"pdf": "halfnormal", "sigma": 0.75},
+    }
+
+    result = run_rhime_co2(
+        prepared_inputs=cast(Any, PreparedInputsStub()),
+        likelihood_builder=add_scalar_sigma_eigen_likelihood,
+        likelihood_kwargs=likelihood_kwargs,
+    )
+
+    assert load_contexts == [None]
+    model = built_results[0].model
+    assert {"modelled_concentration", "sigma_global", "epsilon", "y"} <= set(
+        model.named_vars
+    )
+    assert model["y"].dtype == str(pm.floatX(0.0).dtype)
+    point = model.initial_point()
+    point["sigma_global_log__"] = np.asarray(np.log(0.5))
+    mean, _ = _initial_mean_and_observed_logp(model)
+    actual_logp = float(model.compile_logp(vars=model.observed_RVs)(point))
+    expected_logp = multivariate_normal.logpdf(
+        inputs["mf"].values,
+        mean=mean,
+        cov=(
+            inputs["aggregation_error_covariance"].values
+            + np.diag(inputs["mf_error"].values**2)
+            + np.eye(inputs.sizes["nmeasure"]) * 0.25
+        ),
+    )
+    assert actual_logp == pytest.approx(expected_logp, rel=1.0e-10)
+    assert json.loads(result.attrs["rhime_likelihood_kwargs"]) == likelihood_kwargs
+    assert json.loads(result.attrs["rhime_likelihood_builder"])["qualname"] == (
+        "add_scalar_sigma_eigen_likelihood"
+    )
+
+    with pytest.raises(TypeError, match="JSON-serializable string"):
+        run_rhime_co2(
+            prepared_inputs=cast(Any, PreparedInputsStub()),
+            likelihood_builder=add_scalar_sigma_eigen_likelihood,
+            likelihood_kwargs={
+                "eigenbasis_path": cache_path,
+                "sigma_prior": {"pdf": "halfnormal", "sigma": 0.75},
+            },
+        )
 
 
 def test_public_co2_runner_preserves_materialized_fixed_mismatch(monkeypatch: Any) -> None:

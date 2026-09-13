@@ -41,6 +41,13 @@ from openghg_inversions.models.coords import (
     restore_inferencedata_coords,
 )
 from openghg_inversions.models.priors import parse_prior
+from openghg_inversions.models.scalar_sigma import (
+    ScalarSigmaEigenbasis,
+    add_scalar_sigma_eigen_likelihood,
+    load_scalar_sigma_eigenbasis,
+    prepare_scalar_sigma_eigenbasis,
+    save_scalar_sigma_eigenbasis,
+)
 from openghg_inversions.models.site_sigma import add_site_sigma_gaussian_likelihood
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.models.state_activity import (
@@ -65,12 +72,17 @@ __all__ = [
     "ResolvedStateActivity",
     "PreparedLinearSensitivity",
     "StateActivity",
+    "ScalarSigmaEigenbasis",
+    "add_scalar_sigma_eigen_likelihood",
     "add_coords",
     "attach_coord_registry",
     "get_coord_registry",
     "registered_model",
     "restore_inferencedata_coords",
     "parse_prior",
+    "prepare_scalar_sigma_eigenbasis",
+    "save_scalar_sigma_eigenbasis",
+    "load_scalar_sigma_eigenbasis",
     "add_model_data",
     "add_correlated_lognormal_state",
     "add_correlated_lognormal_state_with_activity",

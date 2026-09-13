@@ -13,6 +13,12 @@ import xarray as xr
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.inversion_data import RhimePreparedInputs
 from openghg_inversions.models.priors import PriorArgs
+from openghg_inversions.models.scalar_sigma import (
+    ScalarSigmaEigenbasis,
+    add_scalar_sigma_eigen_likelihood,
+    load_scalar_sigma_eigenbasis,
+    prepare_scalar_sigma_eigenbasis,
+)
 from openghg_inversions.models.state_activity import StateActivity
 from openghg_inversions.observation_error import (
     AggregationErrorMode,
@@ -165,6 +171,81 @@ def co2_model_input_names(
     return tuple(names)
 
 
+def prepare_co2_scalar_sigma_eigenbasis(
+    prepared_inputs: RhimePreparedInputs,
+    *,
+    aggregation_error_mode: AggregationErrorMode = "dense",
+) -> ScalarSigmaEigenbasis:
+    """Prepare the scalar-sigma cache value from labelled CO2 inputs.
+
+    This is the visible eager boundary for the cache. The observations,
+    reported error, and selected aggregation-error representation are
+    materialized together before the dense eigendecomposition.
+
+    Args:
+        prepared_inputs: Validated prepared inputs for the CO2-only recipe.
+        aggregation_error_mode: Aggregation-error representation to include in
+            the fixed base covariance.
+
+    Returns:
+        Labelled eigenbasis ready to save or pass to
+        :func:`~openghg_inversions.models.scalar_sigma.add_scalar_sigma_eigen_likelihood`.
+
+    Raises:
+        ValueError: If required CO2 inputs are missing, misaligned, or cannot
+            form a valid scalar-sigma base covariance.
+    """
+    prepared = prepared_inputs.validated()
+    names = (
+        "mf",
+        "mf_error",
+        *aggregation_error_input_names(
+            prepared.inv_inputs,
+            aggregation_error_mode,
+        ),
+    )
+    model_inputs = materialize_pymc_inputs(prepared, variable_names=names)
+    aggregation_error = resolve_aggregation_error(
+        model_inputs,
+        aggregation_error_mode,
+    )
+    return prepare_scalar_sigma_eigenbasis(
+        observations=model_inputs["mf"],
+        observation_error=model_inputs["mf_error"],
+        aggregation_error=aggregation_error,
+    )
+
+
+def _resolve_co2_likelihood_kwargs(
+    likelihood_builder: RhimeLikelihoodBuilder | None,
+    likelihood_kwargs: Mapping[str, Any] | None,
+    *,
+    observations: xr.DataArray,
+) -> Mapping[str, Any] | None:
+    """Resolve file-backed scalar-sigma options before model construction."""
+    if likelihood_builder is not add_scalar_sigma_eigen_likelihood:
+        return likelihood_kwargs
+    options = dict(likelihood_kwargs or {})
+    allowed = {"eigenbasis_path", "sigma_prior"}
+    if unexpected := sorted(options.keys() - allowed):
+        raise ValueError(f"Unexpected scalar-sigma likelihood option(s): {unexpected!r}.")
+    if "eigenbasis_path" not in options or "sigma_prior" not in options:
+        raise ValueError(
+            "Scalar-sigma likelihood selection requires `eigenbasis_path` and `sigma_prior`."
+        )
+    if not isinstance(options["eigenbasis_path"], str):
+        raise TypeError(
+            "Scalar-sigma `eigenbasis_path` must be a JSON-serializable string."
+        )
+    return {
+        "eigenbasis": load_scalar_sigma_eigenbasis(
+            options["eigenbasis_path"],
+            observations=observations,
+        ),
+        "sigma_prior": options["sigma_prior"],
+    }
+
+
 def run_rhime_co2(
     *,
     prepared_inputs: RhimePreparedInputs,
@@ -208,7 +289,10 @@ def run_rhime_co2(
             standard deviation. When omitted, a prepared value is preserved.
         likelihood_builder: Optional ordinary likelihood component replacing
             the default additive-sigma likelihood.
-        likelihood_kwargs: Options passed only to the selected likelihood.
+        likelihood_kwargs: Options passed only to the selected likelihood. For
+            the scalar-sigma eigen likelihood, pass a JSON-serializable
+            ``eigenbasis_path`` and ``sigma_prior``; the cache is loaded before
+            model construction.
         sampler: Optional RHIME sampler configuration.
         aggregation_error_mode: Prepared aggregation-error representation to
             use in the likelihood.
@@ -264,6 +348,11 @@ def run_rhime_co2(
         model_inputs,
         aggregation_error_mode,
     )
+    model_likelihood_kwargs = _resolve_co2_likelihood_kwargs(
+        likelihood_builder,
+        likelihood_kwargs,
+        observations=model_inputs["mf"],
+    )
     prepared_mismatch = (
         model_inputs.get("fixed_model_mismatch")
         if likelihood_builder is None and fixed_model_mismatch is None
@@ -283,7 +372,7 @@ def run_rhime_co2(
         observation_error=model_inputs["mf_error"],
         aggregation_error=aggregation_error,
         likelihood_builder=likelihood_builder,
-        likelihood_kwargs=likelihood_kwargs,
+        likelihood_kwargs=model_likelihood_kwargs,
         sigma_alignment=sigma_alignment,
         sigma_prior=sigma_prior,
         fixed_model_mismatch=prepared_mismatch,
@@ -342,4 +431,8 @@ def run_rhime_co2(
     return trace
 
 
-__all__ = ["co2_model_input_names", "run_rhime_co2"]
+__all__ = [
+    "co2_model_input_names",
+    "prepare_co2_scalar_sigma_eigenbasis",
+    "run_rhime_co2",
+]
