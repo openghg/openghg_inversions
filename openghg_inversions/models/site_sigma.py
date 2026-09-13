@@ -1,0 +1,340 @@
+r"""Labelled run-level site mismatch scales for Gaussian observations.
+
+This component ports the site-sigma likelihood used by Verification Games in
+``src/verification_games/rhime_calibration/site_sigma.py`` at commit
+``41d061aea153ddc56130694bfa18b7e801fcd9df`` (original model commit
+``88f8d4cb21c7eb84b601c26fa51e806ff0bb3ed7``). For fixed aggregation
+covariance :math:`A`, reported
+observation-error covariance :math:`D_{obs}`, and one mismatch amplitude per
+site, it constructs
+
+.. math::
+
+   R = A + D_{obs} + \operatorname{diag}(\sigma_{site(i)}^2).
+
+Site labels retain their stable first-occurrence order. Amplitudes use the same
+units as the observations and reported errors; they are not dimensionless
+multipliers. Verification Games uses an explicit ``HalfNormal(0.75)`` prior in
+ppm for its benchmark, but that scientific choice is deliberately not a
+universal OpenGHG Inversions default. Callers must provide either an exact
+fixed mapping or an explicit positive-support prior.
+
+The concrete component owns only the site-mismatch term. Fixed aggregation
+covariance representation and PyMC likelihood mechanics remain owned by
+:mod:`openghg_inversions.models._gaussian_observation`.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+from typing import Any
+
+import numpy as np
+import pymc as pm
+import pytensor.tensor as pt
+import xarray as xr
+from pytensor.tensor.variable import TensorVariable
+
+from openghg_inversions.models._gaussian_observation import (
+    add_aggregation_error_data,
+    add_gaussian_observation_likelihood,
+)
+from openghg_inversions.models.components import add_model_data
+from openghg_inversions.models.coords import add_coords
+from openghg_inversions.models.priors import PriorArgs, parse_prior
+from openghg_inversions.observation_error import (
+    AggregationError,
+    validate_complete_observation_covariance,
+    validate_observation_error_arrays,
+)
+
+
+SITE_SIGMA_DIM = "sigma_site_dim"
+SITE_SIGMA = "sigma_site"
+SITE_SIGMA_INDEX = "sigma_site_index"
+SIGMA_OBSERVATION = "sigma_observation"
+SIGMA_OBSERVATION_VARIANCE = "sigma_observation_variance"
+_POSITIVE_PRIOR_FAMILIES = {
+    "exponential": "exponential",
+    "gamma": "gamma",
+    "halfnormal": "halfnormal",
+    "halfstudentt": "halfstudentt",
+    "lognormal": "lognormal",
+    "uniform": "uniform",
+}
+
+
+def _site_structure(
+    observations: xr.DataArray,
+    *,
+    output_dim: str,
+) -> tuple[tuple[str, ...], np.ndarray]:
+    """Return stable string site labels and an observation lookup vector.
+
+    Args:
+        observations: One-dimensional observation array carrying site labels.
+        output_dim: Required observation dimension.
+
+    Returns:
+        Stable first-occurrence site labels and an ``int32`` site index aligned
+        with the observations.
+
+    Raises:
+        ValueError: If ``site`` is missing, misaligned, empty, or contains a
+            blank label.
+    """
+    site = observations.coords.get("site")
+    if site is None or site.dims != (output_dim,):
+        raise ValueError("The site-sigma likelihood requires an observation-aligned 'site' coordinate.")
+    values = np.asarray(site.values)
+    if values.ndim != 1 or values.size == 0:
+        raise ValueError("Site labels must be a non-empty one-dimensional coordinate.")
+    text = values.astype(str)
+    if any(not label.strip() for label in text):
+        raise ValueError("Site labels must be non-empty strings.")
+    labels = tuple(dict.fromkeys(text.tolist()))
+    lookup = {label: index for index, label in enumerate(labels)}
+    index = np.asarray([lookup[label] for label in text], dtype=np.int32)
+    return labels, index
+
+
+def _fixed_amplitudes(
+    values: Mapping[str, float],
+    site_labels: tuple[str, ...],
+) -> np.ndarray:
+    """Validate and order one fixed amplitude for every observation site.
+
+    Args:
+        values: Fixed amplitudes keyed by site label.
+        site_labels: Required site labels in stable observation order.
+
+    Returns:
+        Finite non-negative amplitudes ordered like ``site_labels``.
+
+    Raises:
+        ValueError: If keys differ from ``site_labels`` or values are boolean,
+            non-numeric, non-finite, or negative.
+    """
+    if any(isinstance(value, (bool, np.bool_)) for value in values.values()):
+        raise ValueError("Fixed site amplitudes must be numeric, not boolean.")
+    try:
+        supplied = {str(site): float(value) for site, value in values.items()}
+    except (TypeError, ValueError) as error:
+        raise ValueError("Fixed site amplitudes must be numeric.") from error
+    missing = sorted(set(site_labels).difference(supplied))
+    extra = sorted(set(supplied).difference(site_labels))
+    if missing or extra:
+        raise ValueError(
+            "`fixed_site_amplitudes` mapping keys must exactly match the observation "
+            f"sites; missing={missing!r}, extra={extra!r}."
+        )
+    amplitudes = np.asarray([supplied[label] for label in site_labels], dtype=np.float64)
+    if not np.isfinite(amplitudes).all() or (amplitudes < 0.0).any():
+        raise ValueError("`fixed_site_amplitudes` must contain only finite, non-negative values.")
+    return amplitudes
+
+
+def _positive_prior(prior: Mapping[str, Any]) -> PriorArgs:
+    """Validate the Verification Games positive-support prior families.
+
+    Args:
+        prior: Explicit prior family and parameters for the site amplitudes.
+
+    Returns:
+        A copy with the supported family name normalized for ``parse_prior``.
+
+    Raises:
+        ValueError: If no family is named, the family lacks positive support,
+            or a Uniform lower bound is invalid.
+    """
+    if "pdf" not in prior:
+        raise ValueError("`site_amplitude_prior` must explicitly name its `pdf` family.")
+    family = str(prior["pdf"]).casefold().replace("-", "")
+    if family not in _POSITIVE_PRIOR_FAMILIES:
+        raise ValueError(
+            "`site_amplitude_prior` must use a positive-support family: "
+            "halfnormal, halfstudentt, exponential, gamma, lognormal, or uniform."
+        )
+    result = dict(prior)
+    result["pdf"] = _POSITIVE_PRIOR_FAMILIES[family]
+    if family == "uniform":
+        try:
+            lower = float(result.get("lower", 0.0))
+        except (TypeError, ValueError) as error:
+            raise ValueError("A site-sigma Uniform prior must have a scalar lower bound.") from error
+        if not np.isfinite(lower) or lower < 0.0:
+            raise ValueError("A site-sigma Uniform prior must have a finite, non-negative lower bound.")
+    return result
+
+
+def add_site_sigma_gaussian_likelihood(
+    *,
+    observations: xr.DataArray,
+    observation_error: xr.DataArray,
+    aggregation_error: AggregationError,
+    mean: TensorVariable,
+    fixed_site_amplitudes: Mapping[str, float] | None = None,
+    site_amplitude_prior: Mapping[str, Any] | None = None,
+    output_dim: str = "nmeasure",
+    observation_error_name: str = "error",
+) -> TensorVariable:
+    """Add a Gaussian likelihood with one additive mismatch scale per site.
+
+    Exactly one amplitude mode is required. Fixed amplitudes are supplied as a
+    mapping whose keys exactly match the observation sites. Inferred amplitudes
+    require an explicit positive-support prior from the Verification Games set:
+    HalfNormal, HalfStudentT, Exponential, Gamma, LogNormal, or a Uniform with a
+    non-negative lower bound.
+
+    Args:
+        observations: One-dimensional observed mole fractions whose sole
+            dimension is ``output_dim`` and which carry a one-dimensional
+            ``site`` coordinate on that dimension.
+        observation_error: One-dimensional, non-negative reported
+            observation-error standard deviations in the same units and
+            observation order as ``observations``.
+        aggregation_error: Validated fixed aggregation-error representation
+            for the same observation order. Its diagonal, dense, or low-rank
+            covariance is included exactly once.
+        mean: Completed one-dimensional forward-model concentration tensor
+            aligned with ``output_dim`` and ``observations``.
+        fixed_site_amplitudes: Fixed amplitudes keyed exactly by site label, in
+            the same units as ``observations``.
+        site_amplitude_prior: Explicit positive-support prior for inferred site
+            amplitudes, in the same units as ``observations``.
+        output_dim: Observation dimension used by named PyMC variables.
+        observation_error_name: PyMC data name for reported error.
+
+    Returns:
+        The observed Gaussian variable named ``y``. The graph also records the
+        labelled ``sigma_site`` vector, observation lookup, aligned amplitudes,
+        aligned mismatch variance, and total marginal scale ``epsilon``.
+
+    Raises:
+        ValueError: If the observations, site labels, amplitude mode, fixed
+            mapping, prior support, or complete fixed covariance is invalid.
+
+    Notes:
+        Call this function inside
+        :func:`openghg_inversions.models.registered_model` so scientific site
+        labels are retained in the coordinate registry. The observation values
+        are eagerly materialized at the named PyMC graph boundary; the input
+        xarray objects are borrowed and are not mutated.
+    """
+    if (fixed_site_amplitudes is None) == (site_amplitude_prior is None):
+        raise ValueError("Pass exactly one of `fixed_site_amplitudes` or `site_amplitude_prior`.")
+    validate_observation_error_arrays(
+        observations,
+        observation_error,
+        None,
+        owner="Site-sigma likelihood",
+        output_dim=output_dim,
+    )
+    site_labels, site_index = _site_structure(observations, output_dim=output_dim)
+    site_coord = np.asarray(site_labels, dtype=object)
+    add_coords({SITE_SIGMA_DIM: site_coord})
+
+    reported_error = add_model_data(
+        observation_error.transpose(output_dim),
+        observation_error_name,
+    )
+    index_data = add_model_data(
+        xr.DataArray(
+            site_index,
+            dims=(output_dim,),
+            coords={output_dim: observations.coords[output_dim]},
+            name=SITE_SIGMA_INDEX,
+        )
+    )
+    registered_aggregation_error = add_aggregation_error_data(
+        aggregation_error,
+        observations,
+        output_dim=output_dim,
+    )
+
+    if fixed_site_amplitudes is not None:
+        amplitude_values = _fixed_amplitudes(fixed_site_amplitudes, site_labels)
+        aligned_variance = np.square(amplitude_values[site_index])
+        fixed_independent_variance = (
+            np.square(np.asarray(observation_error.values, dtype=np.float64)) + aligned_variance
+        )
+        if aggregation_error.mode == "low_rank":
+            assert aggregation_error.diagonal_variance is not None
+            low_rank_diagonal = fixed_independent_variance + np.asarray(
+                aggregation_error.diagonal_variance.values,
+                dtype=np.float64,
+            )
+            if (low_rank_diagonal <= 0.0).any():
+                raise ValueError(
+                    "The stock low-rank Gaussian likelihood requires strictly "
+                    "positive independent-plus-residual diagonal variance; a "
+                    "low-rank factor cannot rescue a zero diagonal in this backend."
+                )
+        validate_complete_observation_covariance(
+            aggregation_error,
+            fixed_independent_variance,
+        )
+        sigma_site = add_model_data(
+            xr.DataArray(
+                amplitude_values,
+                dims=(SITE_SIGMA_DIM,),
+                coords={SITE_SIGMA_DIM: site_coord},
+                name=SITE_SIGMA,
+            )
+        )
+    else:
+        assert site_amplitude_prior is not None
+        sigma_site = parse_prior(
+            SITE_SIGMA,
+            _positive_prior(site_amplitude_prior),
+            dims=SITE_SIGMA_DIM,
+        )
+
+    sigma_observation = pm.Deterministic(
+        SIGMA_OBSERVATION,
+        sigma_site[index_data],
+        dims=output_dim,
+    )
+    sigma_observation_variance = pm.Deterministic(
+        SIGMA_OBSERVATION_VARIANCE,
+        pt.square(sigma_observation),
+        dims=output_dim,
+    )
+    independent_variance = reported_error**2 + sigma_observation_variance
+    pm.Deterministic(
+        "epsilon",
+        pt.sqrt(independent_variance + registered_aggregation_error.marginal_variance),
+        dims=output_dim,
+    )
+    return add_gaussian_observation_likelihood(
+        observed=pm.floatX(observations.transpose(output_dim).compute().values),
+        mean=mean,
+        independent_variance=independent_variance,
+        aggregation_error=registered_aggregation_error,
+        output_dim=output_dim,
+    )
+
+
+setattr(
+    add_site_sigma_gaussian_likelihood,
+    "rhime_metadata",
+    {
+        "mismatch_component": "iid_site_sigma",
+        "residual_covariance": "A + D_obs + diag(sigma_site[site(i)]^2)",
+        "site_order": "stable_first_occurrence",
+        "verification_games_source": (
+            "src/verification_games/rhime_calibration/site_sigma.py@41d061aea153ddc56130694bfa18b7e801fcd9df"
+        ),
+        "verification_games_original_model_commit": "88f8d4cb21c7eb84b601c26fa51e806ff0bb3ed7",
+    },
+)
+
+
+__all__ = [
+    "SIGMA_OBSERVATION",
+    "SIGMA_OBSERVATION_VARIANCE",
+    "SITE_SIGMA",
+    "SITE_SIGMA_DIM",
+    "SITE_SIGMA_INDEX",
+    "add_site_sigma_gaussian_likelihood",
+]

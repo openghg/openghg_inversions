@@ -37,6 +37,7 @@ from openghg_inversions.models.coords import (
     restore_inferencedata_coords,
 )
 from openghg_inversions.models.priors import parse_prior
+from openghg_inversions.models.site_sigma import add_site_sigma_gaussian_likelihood
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.models.state_activity import (
     PreparedLinearSensitivity,
@@ -72,6 +73,7 @@ __all__ = [
     "add_linear_component",
     "apply_linear_sensitivity",
     "add_sigma_component",
+    "add_site_sigma_gaussian_likelihood",
     "add_offset_component",
     "add_inferpymc_likelihood_component",
     "active_prior_args",

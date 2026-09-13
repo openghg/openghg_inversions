@@ -59,7 +59,22 @@ def annotate_likelihood_trace(
     """Persist likelihood provenance and variable metadata in place.
 
     Array-valued likelihood options are converted to JSON-compatible values;
-    labelled arrays cross an explicit eager serialization boundary.
+    labelled arrays cross an explicit eager serialization boundary. Known
+    mismatch components also receive stable scientific-role and unit metadata.
+
+    Args:
+        idata: Inference data to annotate in place.
+        builder_identity: Importable module and qualified-name provenance for
+            the likelihood builder.
+        likelihood_kwargs: Resolved builder options to preserve as structured
+            JSON metadata.
+        concentration_units: Observation concentration units, when known.
+        component_metadata: Static scientific provenance supplied by the
+            likelihood component.
+
+    Returns:
+        None. The input inference data and matching variable attributes are
+        annotated in place.
     """
     idata.attrs["rhime_likelihood_builder"] = json.dumps(builder_identity, sort_keys=True)
     idata.attrs["rhime_likelihood_kwargs"] = json.dumps(
@@ -68,6 +83,12 @@ def annotate_likelihood_trace(
     metadata = dict(component_metadata or {})
     for key, value in metadata.items():
         idata.attrs[f"rhime_{key}"] = value
+    if metadata.get("mismatch_component") == "iid_site_sigma":
+        options = likelihood_kwargs or {}
+        if options.get("fixed_site_amplitudes") is not None:
+            idata.attrs["rhime_site_sigma_mode"] = "fixed"
+        elif options.get("site_amplitude_prior") is not None:
+            idata.attrs["rhime_site_sigma_mode"] = "inferred"
     for group_name in idata.groups():
         group = getattr(idata, group_name)
         if not isinstance(group, xr.Dataset):
@@ -87,6 +108,27 @@ def annotate_likelihood_trace(
             for name in ("epsilon", "y"):
                 if name in group:
                     group[name].attrs["units"] = concentration_units
+        if metadata.get("mismatch_component") == "iid_site_sigma":
+            scientific_roles = {
+                "sigma_site": "site_iid_mismatch_standard_deviation",
+                "sigma_site_index": "observation_to_site_sigma_index",
+                "sigma_observation": "observation_aligned_site_iid_mismatch_standard_deviation",
+                "sigma_observation_variance": "observation_aligned_site_iid_mismatch_variance",
+                "epsilon": "total_marginal_observation_standard_deviation",
+                "y": "observed_concentration",
+            }
+            for name, role in scientific_roles.items():
+                if name not in group:
+                    continue
+                group[name].attrs["rhime_scientific_role"] = role
+                if name == "sigma_site_index":
+                    group[name].attrs["units"] = "1"
+                elif concentration_units is not None:
+                    group[name].attrs["units"] = (
+                        f"({concentration_units})^2"
+                        if name == "sigma_observation_variance"
+                        else concentration_units
+                    )
 
 
 def _structured_metadata(value: Any) -> Any:
