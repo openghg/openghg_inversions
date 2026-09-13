@@ -467,9 +467,11 @@ hiding the common scientific arrays in an opaque object:</p>
 <p><code class="docutils literal notranslate"><span class="pre">mismatch_model=None</span></code> explicitly opts out of the built-in selected by the
 configuration template. Passing both a custom callable and either built-in
 selection is rejected as ambiguous.</p>
-<p>RHIME passes these options directly and records them beside the likelihood
-identity in result metadata and any saved inversion output. A non-empty
-mapping is rejected when no <code class="docutils literal notranslate"><span class="pre">likelihood_builder</span></code> is active.</p>
+<p>RHIME passes these options directly and records a JSON-compatible
+representation beside the likelihood identity in result metadata and any
+saved inversion output. NumPy and Python dates and times become ISO strings;
+timedeltas become strings. A non-empty mapping is rejected when no
+<code class="docutils literal notranslate"><span class="pre">likelihood_builder</span></code> is active.</p>
 <section id="editable-likelihood">
 <h3>Editable likelihood<a class="headerlink" href="#editable-likelihood" title="Link to this heading">#</a></h3>
 <p>The following example replaces RHIME’s Gaussian observation distribution with
@@ -597,6 +599,45 @@ does not require <code class="docutils literal notranslate"><span class="pre">mi
 entry point into the same explicit likelihood settings. Parameter resolution
 stores built-in mismatch science in <code class="docutils literal notranslate"><span class="pre">RhimeModelSpec</span></code> before the standard or
 multisector recipe is called; the recipes themselves select no default.</p>
+<p>The model-owned
+<code class="docutils literal notranslate"><span class="pre">models.fixed_ou.add_fixed_ou_gaussian_likelihood</span></code> adds a fixed-timescale,
+within-site Ornstein–Uhlenbeck mismatch covariance. For example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.models.fixed_ou</span><span class="w"> </span><span class="kn">import</span> <span class="n">add_fixed_ou_gaussian_likelihood</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="n">run_rhime</span>
+
+<span class="n">result</span> <span class="o">=</span> <span class="n">run_rhime</span><span class="p">(</span>
+    <span class="o">...</span><span class="p">,</span>
+    <span class="n">likelihood_builder</span><span class="o">=</span><span class="n">add_fixed_ou_gaussian_likelihood</span><span class="p">,</span>
+    <span class="n">likelihood_kwargs</span><span class="o">=</span><span class="p">{</span>
+        <span class="s2">"tau_hours"</span><span class="p">:</span> <span class="mf">5.0</span><span class="p">,</span>
+        <span class="s2">"site_amplitude_prior"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"pdf"</span><span class="p">:</span> <span class="s2">"halfnormal"</span><span class="p">,</span> <span class="s2">"sigma"</span><span class="p">:</span> <span class="mf">0.75</span><span class="p">},</span>
+    <span class="p">},</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p>The residual covariance is
+<code class="docutils literal notranslate"><span class="pre">R</span> <span class="pre">=</span> <span class="pre">F</span> <span class="pre">F^T</span> <span class="pre">+</span> <span class="pre">diag(d)</span> <span class="pre">+</span> <span class="pre">direct_sum_s(a_s^2</span> <span class="pre">T_s(tau_s))</span></code>, where
+<code class="docutils literal notranslate"><span class="pre">T_s[i,</span> <span class="pre">j]</span> <span class="pre">=</span> <span class="pre">exp(-abs(t_i</span> <span class="pre">-</span> <span class="pre">t_j)</span> <span class="pre">/</span> <span class="pre">tau_s)</span></code>. The direct sum gives zero
+cross-site OU covariance. <code class="docutils literal notranslate"><span class="pre">F</span> <span class="pre">F^T</span> <span class="pre">+</span> <span class="pre">diag(d)</span></code> is the selected fixed
+aggregation covariance plus reported observation-error variance; this
+component does not apply the historical <code class="docutils literal notranslate"><span class="pre">min_error</span></code> floor.</p>
+<p><code class="docutils literal notranslate"><span class="pre">tau_hours</span></code> may instead be an exact mapping from retained site labels to
+fixed positive timescales. Pass <code class="docutils literal notranslate"><span class="pre">fixed_site_amplitudes</span></code> as a scalar or exact
+site mapping to use known amplitudes instead of the inferred prior. An inferred
+amplitude requires an explicit <code class="docutils literal notranslate"><span class="pre">site_amplitude_prior</span></code> in the same
+concentration units as the observations; no fixed default is assumed. Tau has
+units of hours. Observation rows may be interleaved or nonmonotonic in time;
+the component preserves their order and sets cross-site OU covariance exactly
+to zero.</p>
+<p>The component evaluates low-rank aggregation covariance with a fixed-OU
+generalized-eigen and Woodbury method without forming a dense observation
+covariance. Dense aggregation input is a full-rank fallback. It currently
+requires every generalized base-plus-OU mode variance to be strictly positive.
+An exact zero mode is rejected before applying the low-rank factor, even when
+that factor would make a materialized dense covariance positive definite; a
+positive OU amplitude can lift a zero base mode. The component currently
+requires PyMC’s native NUTS backend; sampled tau and the cached blocked sampler
+are separate extensions.</p>
 <p>Built-in aggregation covariance relies on the guarantees of its construction
 pipeline. A custom pipeline that assembles its own covariance may optionally
 call

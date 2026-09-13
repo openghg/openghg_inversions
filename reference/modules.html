@@ -363,6 +363,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.components.html">openghg_inversions.models.components</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.coords.html">openghg_inversions.models.coords</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.fixed_error.html">openghg_inversions.models.fixed_error</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.fixed_ou.html">openghg_inversions.models.fixed_ou</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.pollution_event.html">openghg_inversions.models.pollution_event</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.priors.html">openghg_inversions.models.priors</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.state_activity.html">openghg_inversions.models.state_activity</a></li>
@@ -911,6 +912,14 @@
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.fixed_error.html#openghg_inversions.models.fixed_error.add_fixed_error_likelihood"><code class="docutils literal notranslate"><span class="pre">add_fixed_error_likelihood()</span></code></a></li>
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.fixed_ou.html">openghg_inversions.models.fixed_ou</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.fixed_ou.html#openghg_inversions.models.fixed_ou.FixedOuLikelihoodEvaluation"><code class="docutils literal notranslate"><span class="pre">FixedOuLikelihoodEvaluation</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.fixed_ou.html#openghg_inversions.models.fixed_ou.FixedOuLowRank"><code class="docutils literal notranslate"><span class="pre">FixedOuLowRank</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.fixed_ou.html#openghg_inversions.models.fixed_ou.FixedOuSiteBlock"><code class="docutils literal notranslate"><span class="pre">FixedOuSiteBlock</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.fixed_ou.html#openghg_inversions.models.fixed_ou.add_fixed_ou_gaussian_likelihood"><code class="docutils literal notranslate"><span class="pre">add_fixed_ou_gaussian_likelihood()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.fixed_ou.html#openghg_inversions.models.fixed_ou.prepare_fixed_ou_low_rank"><code class="docutils literal notranslate"><span class="pre">prepare_fixed_ou_low_rank()</span></code></a></li>
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.pollution_event.html">openghg_inversions.models.pollution_event</a><ul>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.models.pollution_event.html#openghg_inversions.models.pollution_event.add_pollution_event_likelihood"><code class="docutils literal notranslate"><span class="pre">add_pollution_event_likelihood()</span></code></a></li>
 </ul>
@@ -1203,6 +1212,7 @@
 </li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.outputs.html">openghg_inversions.rhime.outputs</a><ul>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.outputs.html#openghg_inversions.rhime.outputs.RhimeResult"><code class="docutils literal notranslate"><span class="pre">RhimeResult</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.outputs.html#openghg_inversions.rhime.outputs.annotate_likelihood_trace"><code class="docutils literal notranslate"><span class="pre">annotate_likelihood_trace()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.outputs.html#openghg_inversions.rhime.outputs.make_multisector_rhime_outputs"><code class="docutils literal notranslate"><span class="pre">make_multisector_rhime_outputs()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.outputs.html#openghg_inversions.rhime.outputs.make_standard_rhime_outputs"><code class="docutils literal notranslate"><span class="pre">make_standard_rhime_outputs()</span></code></a></li>
 </ul>
@@ -1467,6 +1477,7 @@
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.AggregationError.mode"><code class="docutils literal notranslate"><span class="pre">AggregationError.mode</span></code></a></li>
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.aggregation_error_as_low_rank"><code class="docutils literal notranslate"><span class="pre">aggregation_error_as_low_rank()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.aggregation_error_input_names"><code class="docutils literal notranslate"><span class="pre">aggregation_error_input_names()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.resolve_aggregation_error"><code class="docutils literal notranslate"><span class="pre">resolve_aggregation_error()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.select_aggregation_error_mode"><code class="docutils literal notranslate"><span class="pre">select_aggregation_error_mode()</span></code></a></li>
