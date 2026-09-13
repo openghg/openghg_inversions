@@ -177,62 +177,54 @@ requires every generalized base-plus-OU mode variance to be strictly positive.
 An exact zero mode is rejected before applying the low-rank factor, even when
 that factor would make a materialized dense covariance positive definite; a
 positive OU amplitude can lift a zero base mode. The component currently
-requires PyMC's native NUTS backend; sampled tau and the cached blocked sampler
-are separate extensions.
+requires PyMC's native NUTS backend. Sampled tau is a separate extension; the
+production cached sampler is the matched recipe below.
 
-Use a project-owned cached CompoundStep
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Run the production cached-sigma CO2 recipe
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-A cached conditional sampler changes more than the likelihood: its outer PyMC
-graph contains the quadratic for the currently accepted site amplitudes, and
-its sigma step refreshes that quadratic before a separate state NUTS step.
-It therefore belongs in a complete project-owned model builder, not in the
-ordinary ``likelihood_builder`` seam. Verification Games retains its reviewed
-cached-sigma implementation and consumes the public RHIME build and sampling
-contracts::
+``run_rhime_co2_cached_sigma`` is the first-class production route for the
+fixed-tau OU likelihood with independently inferred site amplitudes. It owns
+the matched PyMC graph and sampler: the sigma-only NUTS step runs first against
+the exact conditional likelihood, refreshes the accepted state quadratic, and
+stock state NUTS then reads that cache without refactorizing the observation
+covariance during its trajectory::
 
-   import json
+   from openghg_inversions.rhime import RhimeSampler
+   from openghg_inversions.rhime.co2 import run_rhime_co2_cached_sigma
 
-   from openghg_inversions.rhime import RhimeSampler, sample_rhime_model
-   from my_project.cached_sigma import build_cached_model, build_compound_step
-
-   built = build_cached_model(prepared_inputs, run_spec)
-   step = build_compound_step(built.model, prepared_inputs)
-   sampler = RhimeSampler(
-       draws=1000,
-       tune=1000,
-       chains=4,
-       nuts_sampler="pymc",
-       sample_kwargs={
-           "step": step,
-           "random_seed": 20260913,
-           "mp_ctx": "spawn",
-       },
-       sample_prior_predictive=False,
-   )
-   idata = sample_rhime_model(built, sampler)
-   idata.attrs["rhime_sampler_provenance"] = json.dumps(
-       {
-           "sampler": "verification-games cached sigma CompoundStep",
-           "step_order": ["cached_sigma_nuts", "state_nuts"],
-           "cache_artifact": cache_identity,
-           "eigen_artifact": eigen_identity,
-           "random_seed": 20260913,
-       },
-       sort_keys=True,
+   idata = run_rhime_co2_cached_sigma(
+       prepared_inputs=prepared,
+       tau_hours={"BSD": 24.0, "TAC": 18.0},
+       sigma_prior_scale=0.75,  # concentration units
+       sampler=RhimeSampler(
+           draws=1000,
+           tune=1000,
+           chains=4,
+           nuts_sampler="pymc",
+           sample_kwargs={"random_seed": 20260913},
+           sample_prior_predictive=False,
+       ),
    )
 
-``RhimeModelBuildResult`` carries the concrete model and its serializable model
-provenance. ``sample_rhime_model`` passes the exact object in
-``sample_kwargs["step"]`` to ``pm.sample`` and preserves the step's
-``sample_stats`` variables through burn slicing and coordinate restoration.
-The project must record the sampler implementation, ordered component steps,
-accepted-cache and eigen-artifact identities, and seeds on the returned trace
-before saving it. The cached implementation must update the accepted
-quadratic synchronously before state NUTS; rejected or unchanged sigma
-transitions must leave it untouched.
+The runner constructs the required ``sigma -> state`` ``CompoundStep`` and
+uses process spawning for multiple chains. Do not pass another step method in
+``sample_kwargs``. The accepted quadratic and fixed-OU generalized eigenbasis
+are runtime numerical state derived from the materialized prepared inputs;
+they are not external cache artifacts. The trace records the OGI sampler and
+Verification Games source revisions, fixed site/tau identity, and ordered
+steps automatically.
 
-This route is PyMC-only. An explicit PyMC step method requires
+Because the cached graph uses a normalized joint ``Potential``, it does not
+invent an independent observed distribution. After sampling, the same exact
+fixed-OU target adds ``log_likelihood.y`` as one scalar per complete
+observation vector and, when requested, draws complete correlated vectors in
+``posterior_predictive.y``. The variables carry explicit joint-scope metadata.
+
+This route deliberately supports only the production independent HalfNormal
+site-amplitude prior and fixed positive OU timescales. Hierarchical sigma,
+sampled tau, Slice, custom HMC, and adaptive Metropolis remain Verification
+Games experiments. The route is PyMC-only. An explicit PyMC step method requires
 ``nuts_sampler="pymc"``; NumPyro, BlackJAX, and Nutpie NUTS cannot be combined
 with a PyMC ``CompoundStep``. The ordinary stock-PyMC fixed-OU likelihood above
 remains the log-density/gradient oracle and fallback. A live step object is

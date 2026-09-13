@@ -4673,7 +4673,7 @@ def test_rhime_sampler_runs_pymc_sampling_and_predictive_steps(
 
 
 @pytest.mark.rhime_contract
-def test_rhime_sampler_forwards_project_owned_compound_step_and_stats(
+def test_rhime_sampler_forwards_compound_step_stats_and_log_likelihood_policy(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The public sampling seam preserves an explicit step and its diagnostics."""
@@ -4701,7 +4701,11 @@ def test_rhime_sampler_forwards_project_owned_compound_step_and_stats(
         tune=0,
         chains=1,
         nuts_sampler="pymc",
-        sample_kwargs={"step": step, "compute_convergence_checks": False},
+        sample_kwargs={
+            "step": step,
+            "compute_convergence_checks": False,
+            "idata_kwargs": {"log_likelihood": False},
+        },
         sample_prior_predictive=False,
         sample_posterior_predictive=False,
     )
@@ -4711,6 +4715,7 @@ def test_rhime_sampler_forwards_project_owned_compound_step_and_stats(
     assert seen["step"] is step
     assert seen["nuts_sampler"] == "pymc"
     assert seen["compute_convergence_checks"] is False
+    assert seen["idata_kwargs"] == {"log_likelihood": False}
     np.testing.assert_array_equal(sampled.sample_stats["cache_refreshes"], [[1, 0]])
     np.testing.assert_array_equal(sampled.sample_stats["accepted_sigma_block"], [[1, 0]])
 

@@ -28,6 +28,10 @@ from openghg_inversions.models.components import (
     add_correlated_lognormal_state_with_activity,
     add_sigma_component,
 )
+from openghg_inversions.models.cached_sigma import (
+    FixedOuCachedSigmaTarget,
+    MarginalQuadraticCache,
+)
 from openghg_inversions.models.coords import (
     CoordRegistry,
     add_coords,
@@ -56,6 +60,8 @@ __all__ = [
     "CorrelatedStateResult",
     "LinearComponentResult",
     "AggregationErrorMode",
+    "FixedOuCachedSigmaTarget",
+    "MarginalQuadraticCache",
     "ResolvedStateActivity",
     "PreparedLinearSensitivity",
     "StateActivity",

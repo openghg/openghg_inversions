@@ -246,7 +246,7 @@ class RhimeSampler:
             )
         sample_kwargs.pop("return_inferencedata", None)
         idata_kwargs = dict(sample_kwargs.pop("idata_kwargs", {}))
-        idata_kwargs["log_likelihood"] = True
+        idata_kwargs.setdefault("log_likelihood", True)
         sample_kwargs.setdefault("progressbar", self.progressbar)
         sample_kwargs.setdefault("cores", self.chains)
 
