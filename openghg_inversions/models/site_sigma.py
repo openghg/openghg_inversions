@@ -35,16 +35,16 @@ import pytensor.tensor as pt
 import xarray as xr
 from pytensor.tensor.variable import TensorVariable
 
+from openghg_inversions.inversion_inputs import xr_factorize
 from openghg_inversions.models._gaussian_observation import (
     add_aggregation_error_data,
     add_gaussian_observation_likelihood,
 )
 from openghg_inversions.models.components import add_model_data
 from openghg_inversions.models.coords import add_coords
-from openghg_inversions.models.priors import PriorArgs, parse_prior
+from openghg_inversions.models.priors import parse_prior, positive_prior_args
 from openghg_inversions.observation_error import (
     AggregationError,
-    validate_complete_observation_covariance,
     validate_observation_error_arrays,
 )
 
@@ -53,15 +53,6 @@ SITE_SIGMA_DIM = "sigma_site_dim"
 SITE_SIGMA = "sigma_site"
 SITE_SIGMA_INDEX = "sigma_site_index"
 SIGMA_OBSERVATION = "sigma_observation"
-SIGMA_OBSERVATION_VARIANCE = "sigma_observation_variance"
-_POSITIVE_PRIOR_FAMILIES = {
-    "exponential": "exponential",
-    "gamma": "gamma",
-    "halfnormal": "halfnormal",
-    "halfstudentt": "halfstudentt",
-    "lognormal": "lognormal",
-    "uniform": "uniform",
-}
 
 
 def _site_structure(
@@ -86,16 +77,14 @@ def _site_structure(
     site = observations.coords.get("site")
     if site is None or site.dims != (output_dim,):
         raise ValueError("The site-sigma likelihood requires an observation-aligned 'site' coordinate.")
-    values = np.asarray(site.values)
-    if values.ndim != 1 or values.size == 0:
-        raise ValueError("Site labels must be a non-empty one-dimensional coordinate.")
-    text = values.astype(str)
-    if any(not label.strip() for label in text):
-        raise ValueError("Site labels must be non-empty strings.")
-    labels = tuple(dict.fromkeys(text.tolist()))
-    lookup = {label: index for index, label in enumerate(labels)}
-    index = np.asarray([lookup[label] for label in text], dtype=np.int32)
-    return labels, index
+    structure = xr_factorize(
+        site,
+        indicator_name=SITE_SIGMA_INDEX,
+        label_name=SITE_SIGMA_DIM,
+        label_dim=SITE_SIGMA_DIM,
+    )
+    labels = tuple(str(label) for label in structure[SITE_SIGMA_DIM].values)
+    return labels, np.asarray(structure[SITE_SIGMA_INDEX].values, dtype=np.int32)
 
 
 def _fixed_amplitudes(
@@ -132,39 +121,6 @@ def _fixed_amplitudes(
     if not np.isfinite(amplitudes).all() or (amplitudes < 0.0).any():
         raise ValueError("`fixed_site_amplitudes` must contain only finite, non-negative values.")
     return amplitudes
-
-
-def _positive_prior(prior: Mapping[str, Any]) -> PriorArgs:
-    """Validate the Verification Games positive-support prior families.
-
-    Args:
-        prior: Explicit prior family and parameters for the site amplitudes.
-
-    Returns:
-        A copy with the supported family name normalized for ``parse_prior``.
-
-    Raises:
-        ValueError: If no family is named, the family lacks positive support,
-            or a Uniform lower bound is invalid.
-    """
-    if "pdf" not in prior:
-        raise ValueError("`site_amplitude_prior` must explicitly name its `pdf` family.")
-    family = str(prior["pdf"]).casefold().replace("-", "")
-    if family not in _POSITIVE_PRIOR_FAMILIES:
-        raise ValueError(
-            "`site_amplitude_prior` must use a positive-support family: "
-            "halfnormal, halfstudentt, exponential, gamma, lognormal, or uniform."
-        )
-    result = dict(prior)
-    result["pdf"] = _POSITIVE_PRIOR_FAMILIES[family]
-    if family == "uniform":
-        try:
-            lower = float(result.get("lower", 0.0))
-        except (TypeError, ValueError) as error:
-            raise ValueError("A site-sigma Uniform prior must have a scalar lower bound.") from error
-        if not np.isfinite(lower) or lower < 0.0:
-            raise ValueError("A site-sigma Uniform prior must have a finite, non-negative lower bound.")
-    return result
 
 
 def add_site_sigma_gaussian_likelihood(
@@ -208,7 +164,7 @@ def add_site_sigma_gaussian_likelihood(
     Returns:
         The observed Gaussian variable named ``y``. The graph also records the
         labelled ``sigma_site`` vector, observation lookup, aligned amplitudes,
-        aligned mismatch variance, and total marginal scale ``epsilon``.
+        and total marginal scale ``epsilon``.
 
     Raises:
         ValueError: If the observations, site labels, amplitude mode, fixed
@@ -270,10 +226,6 @@ def add_site_sigma_gaussian_likelihood(
                     "positive independent-plus-residual diagonal variance; a "
                     "low-rank factor cannot rescue a zero diagonal in this backend."
                 )
-        validate_complete_observation_covariance(
-            aggregation_error,
-            fixed_independent_variance,
-        )
         sigma_site = add_model_data(
             xr.DataArray(
                 amplitude_values,
@@ -286,7 +238,7 @@ def add_site_sigma_gaussian_likelihood(
         assert site_amplitude_prior is not None
         sigma_site = parse_prior(
             SITE_SIGMA,
-            _positive_prior(site_amplitude_prior),
+            positive_prior_args(site_amplitude_prior),
             dims=SITE_SIGMA_DIM,
         )
 
@@ -295,12 +247,7 @@ def add_site_sigma_gaussian_likelihood(
         sigma_site[index_data],
         dims=output_dim,
     )
-    sigma_observation_variance = pm.Deterministic(
-        SIGMA_OBSERVATION_VARIANCE,
-        pt.square(sigma_observation),
-        dims=output_dim,
-    )
-    independent_variance = reported_error**2 + sigma_observation_variance
+    independent_variance = reported_error**2 + pt.square(sigma_observation)
     pm.Deterministic(
         "epsilon",
         pt.sqrt(independent_variance + registered_aggregation_error.marginal_variance),
@@ -326,13 +273,20 @@ setattr(
             "src/verification_games/rhime_calibration/site_sigma.py@41d061aea153ddc56130694bfa18b7e801fcd9df"
         ),
         "verification_games_original_model_commit": "88f8d4cb21c7eb84b601c26fa51e806ff0bb3ed7",
+        "variable_roles": {
+            "site_iid_mismatch_standard_deviation": SITE_SIGMA,
+            "observation_to_site_sigma_index": SITE_SIGMA_INDEX,
+            "observation_aligned_site_iid_mismatch_standard_deviation": SIGMA_OBSERVATION,
+            "total_marginal_observation_standard_deviation": "epsilon",
+            "observed_concentration": "y",
+        },
+        "variable_units": {SITE_SIGMA_INDEX: "1"},
     },
 )
 
 
 __all__ = [
     "SIGMA_OBSERVATION",
-    "SIGMA_OBSERVATION_VARIANCE",
     "SITE_SIGMA",
     "SITE_SIGMA_DIM",
     "SITE_SIGMA_INDEX",

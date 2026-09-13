@@ -60,13 +60,12 @@ def _direct_covariance(
     )
 
 
-def test_covariance_preserves_interleaved_rows_and_labelled_tau() -> None:
+def test_preparation_preserves_interleaved_rows_and_labelled_tau() -> None:
     prepared, factor, diagonal, times, sites = _prepared()
     amplitude = np.array([0.7, 1.2])
 
     expected = _direct_covariance(factor, diagonal, times, sites, amplitude)
 
-    np.testing.assert_allclose(prepared.covariance_dense(amplitude), expected)
     assert prepared.site_labels == ("MHD", "TAC")
     np.testing.assert_allclose(prepared.tau_hours_by_site, [4.0, 8.0])
     ou_covariance = expected - factor @ factor.T - np.diag(diagonal)
@@ -362,7 +361,7 @@ def test_marginal_variance_includes_all_three_components_once() -> None:
 
 
 def test_random_draws_reproduce_dense_covariance() -> None:
-    prepared, *_ = _prepared()
+    prepared, factor, diagonal, times, sites = _prepared()
     amplitude = np.array([0.7, 1.2])
     draws = prepared.random(
         np.zeros(prepared.n_observation),
@@ -373,7 +372,7 @@ def test_random_draws_reproduce_dense_covariance() -> None:
 
     np.testing.assert_allclose(
         np.cov(draws, rowvar=False),
-        prepared.covariance_dense(amplitude),
+        _direct_covariance(factor, diagonal, times, sites, amplitude),
         rtol=0.04,
         atol=0.015,
     )
@@ -417,11 +416,11 @@ def test_tau_must_be_finite_and_strictly_positive(tau_hours: float) -> None:
 
 
 def test_small_tau_reproduces_iid_site_amplitudes() -> None:
-    prepared, factor, diagonal, *_ = _prepared()
+    prepared, factor, diagonal, times, _ = _prepared()
     iid = prepare_fixed_ou_low_rank(
         factor,
         diagonal,
-        prepared.observation_time_hours,
+        times,
         prepared.site_index,
         1.0e-12,
         site_labels=prepared.site_labels,
@@ -433,4 +432,6 @@ def test_small_tau_reproduces_iid_site_amplitudes() -> None:
         + np.diag(np.square(amplitude[prepared.site_index]))
     )
 
-    np.testing.assert_allclose(iid.covariance_dense(amplitude), expected, atol=0.0)
+    actual = iid.evaluate(np.zeros(iid.n_observation), amplitude).log_likelihood
+    expected_logp = multivariate_normal.logpdf(np.zeros(iid.n_observation), cov=expected)
+    assert actual == pytest.approx(expected_logp, rel=1.0e-12)

@@ -54,7 +54,7 @@ def annotate_likelihood_trace(
     builder_identity: dict[str, str],
     likelihood_kwargs: Mapping[str, Any] | None,
     concentration_units: str | None,
-    component_metadata: Mapping[str, str] | None = None,
+    component_metadata: Mapping[str, Any] | None = None,
 ) -> None:
     """Persist likelihood provenance and variable metadata in place.
 
@@ -69,8 +69,10 @@ def annotate_likelihood_trace(
         likelihood_kwargs: Resolved builder options to preserve as structured
             JSON metadata.
         concentration_units: Observation concentration units, when known.
-        component_metadata: Static scientific provenance supplied by the
-            likelihood component.
+        component_metadata: Static scientific provenance and possible plain
+            ``variable_roles`` and ``variable_units`` mappings supplied by the
+            likelihood component. Variables without an explicit unit use the
+            observation concentration unit.
 
     Returns:
         None. The input inference data and matching variable attributes are
@@ -81,54 +83,21 @@ def annotate_likelihood_trace(
         _structured_metadata(dict(likelihood_kwargs or {})), sort_keys=True
     )
     metadata = dict(component_metadata or {})
+    variable_roles = metadata.pop("variable_roles", {})
+    variable_units = metadata.pop("variable_units", {})
     for key, value in metadata.items():
         idata.attrs[f"rhime_{key}"] = value
-    if metadata.get("mismatch_component") == "iid_site_sigma":
-        options = likelihood_kwargs or {}
-        if options.get("fixed_site_amplitudes") is not None:
-            idata.attrs["rhime_site_sigma_mode"] = "fixed"
-        elif options.get("site_amplitude_prior") is not None:
-            idata.attrs["rhime_site_sigma_mode"] = "inferred"
     for group_name in idata.groups():
         group = getattr(idata, group_name)
         if not isinstance(group, xr.Dataset):
             continue
-        if "ou_tau_hours" in group:
-            group["ou_tau_hours"].attrs["units"] = "h"
-            group["ou_tau_hours"].attrs["rhime_scientific_role"] = (
-                "fixed_within_site_ou_correlation_time"
-            )
-        if "ou_site_amplitude" in group:
-            if concentration_units is not None:
-                group["ou_site_amplitude"].attrs["units"] = concentration_units
-            group["ou_site_amplitude"].attrs["rhime_scientific_role"] = (
-                "within_site_ou_mismatch_amplitude"
-            )
-        if metadata.get("mismatch_component") == "fixed_within_site_ou" and concentration_units is not None:
-            for name in ("epsilon", "y"):
-                if name in group:
-                    group[name].attrs["units"] = concentration_units
-        if metadata.get("mismatch_component") == "iid_site_sigma":
-            scientific_roles = {
-                "sigma_site": "site_iid_mismatch_standard_deviation",
-                "sigma_site_index": "observation_to_site_sigma_index",
-                "sigma_observation": "observation_aligned_site_iid_mismatch_standard_deviation",
-                "sigma_observation_variance": "observation_aligned_site_iid_mismatch_variance",
-                "epsilon": "total_marginal_observation_standard_deviation",
-                "y": "observed_concentration",
-            }
-            for name, role in scientific_roles.items():
-                if name not in group:
-                    continue
-                group[name].attrs["rhime_scientific_role"] = role
-                if name == "sigma_site_index":
-                    group[name].attrs["units"] = "1"
-                elif concentration_units is not None:
-                    group[name].attrs["units"] = (
-                        f"({concentration_units})^2"
-                        if name == "sigma_observation_variance"
-                        else concentration_units
-                    )
+        for role, name in variable_roles.items():
+            if name not in group:
+                continue
+            group[name].attrs["rhime_scientific_role"] = role
+            resolved_units = variable_units.get(name, concentration_units)
+            if resolved_units is not None:
+                group[name].attrs["units"] = resolved_units
 
 
 def _structured_metadata(value: Any) -> Any:

@@ -20,10 +20,6 @@ def test_site_sigma_annotation_round_trips_labels_units_and_provenance(tmp_path,
             ("chain", "draw", "nmeasure"),
             np.array([[[0.5, 0.7, 0.5]]]),
         ),
-        "sigma_observation_variance": (
-            ("chain", "draw", "nmeasure"),
-            np.array([[[0.25, 0.49, 0.25]]]),
-        ),
         "epsilon": (
             ("chain", "draw", "nmeasure"),
             np.ones((1, 1, 3)),
@@ -87,7 +83,6 @@ def test_site_sigma_annotation_round_trips_labels_units_and_provenance(tmp_path,
     assert json.loads(loaded.attrs["rhime_likelihood_builder"]) == identity
     assert json.loads(loaded.attrs["rhime_likelihood_kwargs"]) == options
     assert loaded.attrs["rhime_mismatch_component"] == "iid_site_sigma"
-    assert loaded.attrs["rhime_site_sigma_mode"] == mode
     assert loaded.attrs["rhime_residual_covariance"] == ("A + D_obs + diag(sigma_site[site(i)]^2)")
     assert loaded.attrs["rhime_verification_games_source"] == (
         "src/verification_games/rhime_calibration/site_sigma.py@41d061aea153ddc56130694bfa18b7e801fcd9df"
@@ -109,10 +104,6 @@ def test_site_sigma_annotation_round_trips_labels_units_and_provenance(tmp_path,
     assert loaded.posterior["sigma_observation"].attrs == {
         "rhime_scientific_role": ("observation_aligned_site_iid_mismatch_standard_deviation"),
         "units": "ppm",
-    }
-    assert loaded.posterior["sigma_observation_variance"].attrs == {
-        "rhime_scientific_role": "observation_aligned_site_iid_mismatch_variance",
-        "units": "(ppm)^2",
     }
     assert loaded.posterior["epsilon"].attrs == {
         "rhime_scientific_role": "total_marginal_observation_standard_deviation",
