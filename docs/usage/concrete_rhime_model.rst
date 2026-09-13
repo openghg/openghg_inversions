@@ -623,6 +623,67 @@ sampling and postprocessing. The runner records the likelihood builder's
 module and qualified name, so direct-Python likelihoods remain identifiable in
 persisted inversion outputs.
 
+Labelled per-site IID mismatch
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The built-in
+:func:`openghg_inversions.models.site_sigma.add_site_sigma_gaussian_likelihood`
+ports the labelled, run-level IID site-mismatch component used by the
+Verification Games calibration model. It derives stable site labels in
+first-observation order and uses exactly one standard deviation per site:
+
+.. math::
+
+   R = A + D_{obs}
+       + \operatorname{diag}\left(\sigma_{site}[\operatorname{site}(i)]^2\right).
+
+Here ``A`` is the selected aggregation-error covariance and ``D_obs`` is the
+diagonal covariance from reported observation errors. Each is included once.
+This likelihood does not apply ``min_error`` or ``fixed_model_mismatch`` and
+does not add temporal correlation. In particular, it is an IID component, not
+the fixed-OU model.
+
+Select it through the existing Python-only likelihood seam. For inferred site
+amplitudes, pass an explicit positive prior:
+
+.. code-block:: python
+
+   from openghg_inversions.models import add_site_sigma_gaussian_likelihood
+   from openghg_inversions.rhime import run_rhime
+
+   result = run_rhime(
+       config_file="config.ini",
+       mismatch_model=None,
+       likelihood_builder=add_site_sigma_gaussian_likelihood,
+       likelihood_kwargs={
+           "site_amplitude_prior": {"pdf": "halfnormal", "sigma": 0.75},
+       },
+   )
+
+The ``0.75`` value above is the Verification Games control in ppm. It is
+explicit because all prior parameters and fixed amplitudes are interpreted in
+the observations' concentration units; OpenGHG Inversions does not choose a
+universal default scale. To use known values instead, replace
+``site_amplitude_prior`` with ``fixed_site_amplitudes``, an exact mapping from
+every observation-site label to its standard deviation. Pass exactly one of
+these two options.
+
+The graph names the labelled site vector ``sigma_site`` on
+``sigma_site_dim``, with ``sigma_site_index`` retaining the observation-to-site
+mapping. Fixed amplitudes are stored as model data and inferred amplitudes as
+posterior variables. The ordinary runner records the callable identity,
+JSON-compatible options, ``rhime_mismatch_component="iid_site_sigma"``, the
+covariance equation, and source provenance in the saved output.
+
+This port is pinned to
+``src/verification_games/rhime_calibration/site_sigma.py`` at Verification
+Games commit ``41d061aea153ddc56130694bfa18b7e801fcd9df``; the original model
+implementation is commit
+``88f8d4cb21c7eb84b601c26fa51e806ff0bb3ed7``. It reuses OpenGHG Inversions'
+owned aggregation-error and Gaussian likelihood machinery and the stock PyMC
+sampling route. Verification Games cached/collapsed sampling is deliberately
+not included here and is tracked separately by OPE-115.
+
 Advanced whole-model compatibility boundary
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
