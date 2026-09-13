@@ -145,6 +145,7 @@ def _diagnose_command(args: argparse.Namespace) -> None:
 
     result = diagnose_rhime_stage(
         posterior=args.posterior,
+        sample_manifest=args.sample_manifest,
         output_dir=_stage_output_dir(args),
         check_output=args.check_output,
         max_rhat=args.max_rhat,
@@ -166,6 +167,7 @@ def _postprocess_command(args: argparse.Namespace) -> None:
         model=args.model,
         prepared_inputs=args.prepared_inputs,
         preparation_manifest=args.preparation_manifest,
+        sample_manifest=args.sample_manifest,
         posterior=args.posterior,
         output_dir=_stage_output_dir(args),
     )
@@ -214,7 +216,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_stage_config_args(prior_parser)
     _add_output_dir(prior_parser)
     prior_parser.add_argument("--prepared-inputs", required=True)
-    prior_parser.add_argument("--preparation-manifest")
+    prior_parser.add_argument("--preparation-manifest", required=True)
     prior_parser.add_argument("--check-output")
     prior_parser.add_argument("--draws", type=int, default=100)
     prior_parser.add_argument("--check-stage", default=os.environ.get("STAGE", "prior-predictive"))
@@ -225,12 +227,16 @@ def build_parser() -> argparse.ArgumentParser:
     _add_stage_config_args(sample_parser)
     _add_output_dir(sample_parser)
     sample_parser.add_argument("--prepared-inputs", required=True)
-    sample_parser.add_argument("--preparation-manifest")
+    sample_parser.add_argument("--preparation-manifest", required=True)
     sample_parser.set_defaults(func=_sample_command)
 
     diagnose_parser = subparsers.add_parser("diagnose", help="Calculate posterior convergence checks")
     _add_output_dir(diagnose_parser)
     diagnose_parser.add_argument("--posterior", required=True)
+    diagnose_parser.add_argument(
+        "--sample-manifest",
+        help="Authenticate the posterior when a staged sample manifest is available",
+    )
     diagnose_parser.add_argument("--check-output")
     diagnose_parser.add_argument("--max-rhat", type=float, default=1.01)
     diagnose_parser.add_argument("--min-bulk-ess", type=float, default=400)
@@ -246,7 +252,8 @@ def build_parser() -> argparse.ArgumentParser:
     _add_stage_config_args(postprocess_parser)
     _add_output_dir(postprocess_parser)
     postprocess_parser.add_argument("--prepared-inputs", required=True)
-    postprocess_parser.add_argument("--preparation-manifest")
+    postprocess_parser.add_argument("--preparation-manifest", required=True)
+    postprocess_parser.add_argument("--sample-manifest", required=True)
     postprocess_parser.add_argument("--posterior", required=True)
     postprocess_parser.set_defaults(func=_postprocess_command)
 

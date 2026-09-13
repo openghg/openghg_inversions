@@ -262,7 +262,9 @@ def save_datatree(
 ) -> None:
     """Save a DataTree to NetCDF or Zarr.
 
-    This writes the tree, replacing an existing destination artifact.
+    This writes the tree, replacing an existing destination artifact. NetCDF
+    uses ``h5netcdf``, matching the first-choice load engine so one process does
+    not mix incompatible HDF5 bindings at the serialization boundary.
 
     Args:
         dt: DataTree to persist.
@@ -288,7 +290,7 @@ def save_datatree(
     if output_format == "netcdf":
         if output_path.suffix != ".nc":
             output_path = output_path.with_suffix(".nc")
-        dt.to_netcdf(output_path)
+        dt.to_netcdf(output_path, engine="h5netcdf")
     elif output_format == "zarr":
         if output_path.suffix != ".zarr":
             output_path = output_path.with_suffix(".zarr")

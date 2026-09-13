@@ -8,8 +8,10 @@ orchestrator or scheduler.
 from __future__ import annotations
 
 from dataclasses import asdict, replace
+from datetime import date, datetime
 from hashlib import sha256
 import json
+from numbers import Integral, Real
 import os
 from pathlib import Path
 from typing import Any, Literal, Mapping, cast
@@ -55,15 +57,55 @@ PREPARATION_CHECK_NAME = "prior-predictive-readiness"
 CONVERGENCE_CHECK_NAME = "sampler-convergence"
 CHECK_SCHEMA_VERSION = 1
 
+_STAGE_PATH_OPTIONS = frozenset(
+    {
+        "basis_directory",
+        "bc_basis_directory",
+        "country_directory",
+        "country_file",
+        "merged_data_dir",
+    }
+)
+_PREPARATION_IDENTITY_EXCLUDED_OPTIONS = frozenset(
+    {
+        "basis_output_path",
+        "merged_data_dir",
+        "merged_data_name",
+        "output_name",
+        "reload_merged_data",
+        "save_merged_data",
+    }
+)
+
 
 def _json_value(value: Any) -> Any:
     """Return a stable JSON-compatible value for configuration provenance."""
     if isinstance(value, Path):
         return str(value)
+    if isinstance(value, slice):
+        return {
+            "type": "slice",
+            "start": _json_value(value.start),
+            "stop": _json_value(value.stop),
+            "step": _json_value(value.step),
+        }
+    if isinstance(value, xr.DataArray):
+        materialized = value.compute()
+        return {
+            "dims": [str(dim) for dim in materialized.dims],
+            "coords": {
+                str(dim): _json_value(materialized.coords[dim].to_numpy())
+                for dim in materialized.dims
+                if dim in materialized.coords
+            },
+            "values": _json_value(materialized.to_numpy()),
+        }
     if isinstance(value, np.ndarray):
-        return value.tolist()
+        return _json_value(value.tolist())
     if isinstance(value, np.generic):
-        return value.item()
+        return _json_value(value.item())
+    if isinstance(value, datetime | date):
+        return value.isoformat()
     if isinstance(value, Mapping):
         return {str(key): _json_value(item) for key, item in value.items()}
     if isinstance(value, tuple | list):
@@ -74,7 +116,10 @@ def _json_value(value: Any) -> Any:
 def _write_json(path: str | Path, value: Mapping[str, Any]) -> Path:
     output_path = Path(path).resolve()
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps(_json_value(value), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    output_path.write_text(
+        json.dumps(_json_value(value), allow_nan=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
     return output_path
 
 
@@ -98,10 +143,54 @@ def _file_identity(path: Path) -> str:
     return f"sha256:{digest.hexdigest()}"
 
 
+def _load_stage_manifest(path: str | Path, *, stage: str) -> tuple[Path, dict[str, Any]]:
+    """Load and validate one OGI stage manifest envelope."""
+    manifest_path = Path(path).resolve()
+    loaded = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if not isinstance(loaded, dict):
+        raise ValueError(f"Stage manifest {manifest_path} must contain one JSON object.")
+    expected = {
+        "schema_version": 1,
+        "producer": "openghg_inversions",
+        "stage": stage,
+    }
+    mismatched = {
+        name: (loaded.get(name), value)
+        for name, value in expected.items()
+        if loaded.get(name) != value
+    }
+    if mismatched:
+        raise ValueError(f"Stage manifest {manifest_path} has an invalid envelope: {mismatched!r}.")
+    return manifest_path, loaded
+
+
+def _verify_manifest_artifact(
+    manifest: Mapping[str, Any],
+    *,
+    manifest_path: Path,
+    artifact_name: str,
+    artifact_path: str | Path,
+) -> str:
+    """Verify a supplied artifact against its stage-manifest content digest."""
+    identities = manifest.get("artifact_identities")
+    recorded = identities.get(artifact_name) if isinstance(identities, Mapping) else None
+    if not isinstance(recorded, str):
+        raise ValueError(
+            f"Stage manifest {manifest_path} does not contain a content identity for {artifact_name!r}."
+        )
+    actual = _file_identity(Path(artifact_path).resolve())
+    if actual != recorded:
+        raise ValueError(
+            f"{artifact_name.replace('_', '-').capitalize()} content does not match {manifest_path}: "
+            f"manifest has {recorded!r}, supplied artifact has {actual!r}."
+        )
+    return actual
+
+
 def _output_path(output_dir: Path, requested: str | Path | None, default_name: str) -> Path:
     """Resolve an output path and keep it within the declared stage directory."""
     if requested is None:
-        path = output_dir / default_name
+        path = (output_dir / default_name).resolve()
     else:
         requested_path = Path(requested)
         path = requested_path.resolve() if requested_path.is_absolute() else (output_dir / requested_path).resolve()
@@ -110,6 +199,42 @@ def _output_path(output_dir: Path, requested: str | Path | None, default_name: s
     except ValueError:
         raise ValueError(f"Output path {path} must be beneath stage output directory {output_dir}.") from None
     return path
+
+
+def _stage_output_directory(output_dir: str | Path) -> Path:
+    """Create a stage directory and reject pre-existing symlink redirects."""
+    destination = Path(output_dir).resolve()
+    destination.mkdir(parents=True, exist_ok=True)
+    symlinks = [str(path) for path in destination.rglob("*") if path.is_symlink()]
+    if symlinks:
+        raise ValueError(
+            f"Stage output directory {destination} contains symlink(s), which are not safe output targets: "
+            f"{symlinks!r}."
+        )
+    return destination
+
+
+def _filename_component(name: str, value: Any) -> str:
+    """Validate a value interpolated into staged output filenames."""
+    text = str(value)
+    path = Path(text)
+    if not text or text in {".", ".."} or path.is_absolute() or path.name != text:
+        raise ValueError(
+            f"Staged RHIME {name} {value!r} must be a non-empty filename component without directories."
+        )
+    return text
+
+
+def _resolve_stage_paths(params: Mapping[str, Any], *, base_dir: Path) -> dict[str, Any]:
+    """Resolve filesystem-valued staged options relative to their config file."""
+    resolved = dict(params)
+    for name in _STAGE_PATH_OPTIONS:
+        value = resolved.get(name)
+        if not isinstance(value, str | Path) or not value:
+            continue
+        path = Path(value).expanduser()
+        resolved[name] = str(path.resolve() if path.is_absolute() else (base_dir / path).resolve())
+    return resolved
 
 
 def load_stage_params(
@@ -126,16 +251,17 @@ def load_stage_params(
     if (config_file is None) == (params_file is None):
         raise ValueError("Pass exactly one of `config_file` or `params_file`.")
     if config_file is not None:
-        params = params_from_config(Path(config_file).resolve(), normalise=False)
+        source_path = Path(config_file).resolve()
+        params = params_from_config(source_path, normalise=False)
     else:
-        params_path = Path(cast(str | Path, params_file)).resolve()
-        loaded = json.loads(params_path.read_text(encoding="utf-8"))
+        source_path = Path(cast(str | Path, params_file)).resolve()
+        loaded = json.loads(source_path.read_text(encoding="utf-8"))
         if not isinstance(loaded, dict):
-            raise ValueError(f"RHIME params file {params_path} must contain one JSON object.")
+            raise ValueError(f"RHIME params file {source_path} must contain one JSON object.")
         params = loaded
     if overrides:
         params.update(overrides)
-    return params
+    return _resolve_stage_paths(params, base_dir=source_path.parent)
 
 
 def resolve_stage_setup(params: Mapping[str, Any], *, model: ModelKind) -> RhimeRunnerSetup:
@@ -156,13 +282,20 @@ def effective_configuration(setup: RhimeRunnerSetup, *, model: ModelKind) -> dic
 def configuration_identity(setup: RhimeRunnerSetup, *, model: ModelKind) -> str:
     """Hash resolved data, period, model, and prior choices."""
     run_spec = setup.run_spec
+    preparation = {
+        name: value
+        for name, value in setup.data_args.items()
+        if name not in _PREPARATION_IDENTITY_EXCLUDED_OPTIONS
+    }
+    if "sites" in preparation:
+        preparation["sites"] = [str(site).upper() for site in preparation["sites"]]
     identity_configuration = {
         "model": model,
-        "preparation": setup.data_args,
+        "preparation": preparation,
         "run": {
             "start_date": run_spec.start_date,
             "end_date": run_spec.end_date,
-            "sites": run_spec.sites,
+            "sites": tuple(site.upper() for site in run_spec.sites),
             "averaging_period": run_spec.averaging_period,
             "model": asdict(run_spec.model),
             "split_by_sectors": run_spec.split_by_sectors,
@@ -183,43 +316,51 @@ def prepare_rhime_stage(
     output_dir: str | Path,
 ) -> dict[str, Any]:
     """Prepare and persist independently inspectable RHIME inputs."""
-    destination = Path(output_dir).resolve()
-    destination.mkdir(parents=True, exist_ok=True)
+    destination = _stage_output_directory(output_dir)
     multisector = model == "multisector"
     data_args = dict(setup.data_args)
     data_args["save_merged_data"] = False
     if data_args["basis_output_path"] is not None:
         data_args["basis_output_path"] = str(destination / "basis")
+    executed_setup = RhimeRunnerSetup(
+        run_spec=setup.run_spec,
+        sampler=setup.sampler,
+        data_args=data_args,
+    )
     merged = retrieve_or_reload_rhime_data(data_args, multisector=multisector)
     filtered = filter_rhime_observations(merged, data_args)
-    missing_sites = [site for site in data_args["sites"] if site not in filtered.sites]
+    retained_sites = {str(site).upper() for site in filtered.sites}
+    missing_sites = [site for site in data_args["sites"] if str(site).upper() not in retained_sites]
     if missing_sites:
         raise ValueError(
             "RHIME preparation could not produce required site input(s) "
             f"{missing_sites!r} for species {data_args['species']!r} and period "
             f"{data_args['start_date']} to {data_args['end_date']}."
-        )
-    merged_dir = destination / "merged-data"
-    _save_merged_data(filtered.fp_all, merged_dir, merged_data_name="merged-data.nc")
-    merged_path = merged_dir / "merged-data.nc"
-    basis = build_rhime_basis(filtered, data_args)
+    )
+    merged_path = _output_path(destination, None, "merged-data/merged-data.nc")
+    merged_dir = merged_path.parent
+    with xr.set_options(netcdf_engine_order=("h5netcdf", "netcdf4", "scipy")):
+        _save_merged_data(filtered.fp_all, merged_dir, merged_data_name="merged-data.nc")
+        basis = build_rhime_basis(filtered, data_args)
     site_data = build_rhime_sensitivities(filtered, basis, data_args, multisector=multisector)
     prepared = assemble_rhime_inputs(filtered, basis, site_data, data_args)
-    missing_sites = [site for site in setup.data_args["sites"] if site not in prepared.sites]
+    prepared_sites = {str(site).upper() for site in prepared.sites}
+    missing_sites = [site for site in setup.data_args["sites"] if str(site).upper() not in prepared_sites]
     if missing_sites:
         raise ValueError(
             "RHIME preparation could not produce required site input(s) "
             f"{missing_sites!r} for species {setup.data_args['species']!r} and period "
             f"{setup.data_args['start_date']} to {setup.data_args['end_date']}."
         )
-    prepared_path = destination / "prepared-inputs.nc"
+    prepared_path = _output_path(destination, None, "prepared-inputs.nc")
     prepared.save(prepared_path)
     manifest = {
         "schema_version": 1,
         "producer": "openghg_inversions",
         "stage": "prepare",
-        "configuration_identity": configuration_identity(setup, model=model),
-        "effective_configuration": effective_configuration(setup, model=model),
+        "configuration_identity": configuration_identity(executed_setup, model=model),
+        "requested_configuration": effective_configuration(setup, model=model),
+        "effective_configuration": effective_configuration(executed_setup, model=model),
         "artifacts": {
             "merged_data": _artifact_path(merged_path),
             "prepared_inputs": _artifact_path(prepared_path),
@@ -229,7 +370,7 @@ def prepare_rhime_stage(
             "prepared_inputs": _file_identity(prepared_path),
         },
     }
-    manifest_path = _write_json(destination / "prepare-manifest.json", manifest)
+    manifest_path = _write_json(_output_path(destination, None, "prepare-manifest.json"), manifest)
     manifest["manifest_path"] = str(manifest_path)
     return manifest
 
@@ -239,33 +380,58 @@ def _load_prepared(
     *,
     setup: RhimeRunnerSetup,
     model: ModelKind,
-    preparation_manifest: str | Path | None,
+    preparation_manifest: str | Path,
 ) -> tuple[RhimePreparedInputs, RhimeRunnerSetup]:
     prepared_path = Path(path).resolve()
-    if preparation_manifest is not None:
-        manifest_path = Path(preparation_manifest).resolve()
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        expected = configuration_identity(setup, model=model)
-        if manifest.get("configuration_identity") != expected:
-            raise ValueError(
-                "Prepared inputs do not match the effective RHIME configuration: "
-                f"manifest has {manifest.get('configuration_identity')!r}, current configuration has {expected!r}."
-            )
-        identities = manifest.get("artifact_identities")
-        recorded_identity = identities.get("prepared_inputs") if isinstance(identities, Mapping) else None
-        if not isinstance(recorded_identity, str):
-            raise ValueError(
-                f"Preparation manifest {manifest_path} does not contain a prepared-input content identity."
-            )
-        actual_identity = _file_identity(prepared_path)
-        if actual_identity != recorded_identity:
-            raise ValueError(
-                "Prepared-input content does not match the preparation manifest: "
-                f"manifest has {recorded_identity!r}, supplied artifact has {actual_identity!r}."
-            )
+    manifest_path, manifest = _load_stage_manifest(preparation_manifest, stage="prepare")
+    expected = configuration_identity(setup, model=model)
+    if manifest.get("configuration_identity") != expected:
+        raise ValueError(
+            "Prepared inputs do not match the effective RHIME configuration: "
+            f"manifest has {manifest.get('configuration_identity')!r}, current configuration has {expected!r}."
+        )
+    _verify_manifest_artifact(
+        manifest,
+        manifest_path=manifest_path,
+        artifact_name="prepared_inputs",
+        artifact_path=prepared_path,
+    )
     prepared = RhimePreparedInputs.load(prepared_path)
     run_spec = with_prepared_rhime_sites(setup.run_spec, prepared)
     return prepared, RhimeRunnerSetup(run_spec=run_spec, sampler=setup.sampler, data_args=setup.data_args)
+
+
+def _verify_sample_manifest(
+    path: str | Path,
+    *,
+    posterior: str | Path,
+    setup: RhimeRunnerSetup | None = None,
+    model: ModelKind | None = None,
+    prepared_inputs: str | Path | None = None,
+) -> dict[str, Any]:
+    """Authenticate a posterior handoff and its optional scientific context."""
+    manifest_path, manifest = _load_stage_manifest(path, stage="sample")
+    _verify_manifest_artifact(
+        manifest,
+        manifest_path=manifest_path,
+        artifact_name="posterior",
+        artifact_path=posterior,
+    )
+    if prepared_inputs is not None:
+        _verify_manifest_artifact(
+            manifest,
+            manifest_path=manifest_path,
+            artifact_name="prepared_inputs",
+            artifact_path=prepared_inputs,
+        )
+    if setup is not None and model is not None:
+        expected = configuration_identity(setup, model=model)
+        if manifest.get("configuration_identity") != expected:
+            raise ValueError(
+                "Posterior does not match the effective RHIME configuration: "
+                f"manifest has {manifest.get('configuration_identity')!r}, current configuration has {expected!r}."
+            )
+    return manifest
 
 
 def _build_prepared_model(
@@ -294,6 +460,7 @@ def _check_result(
     artifact_paths: list[str],
     stage: str,
 ) -> dict[str, Any]:
+    stage = _check_stage(stage)
     return {
         "schema_version": CHECK_SCHEMA_VERSION,
         "name": name,
@@ -307,6 +474,36 @@ def _check_result(
     }
 
 
+def _check_stage(stage: str) -> str:
+    """Validate the non-empty stage label required by OGR CheckResult v1."""
+    if not isinstance(stage, str) or not stage.strip():
+        raise ValueError("Scientific check stage must be a non-empty string.")
+    return stage.strip()
+
+
+def _validate_diagnostic_thresholds(
+    *,
+    max_rhat: float,
+    min_bulk_ess: float,
+    min_tail_ess: float,
+    max_divergences: int,
+) -> None:
+    """Reject thresholds that cannot define a valid convergence policy."""
+    for name, value, minimum in (
+        ("max_rhat", max_rhat, 1.0),
+        ("min_bulk_ess", min_bulk_ess, 0.0),
+        ("min_tail_ess", min_tail_ess, 0.0),
+    ):
+        if isinstance(value, bool) or not isinstance(value, Real) or not np.isfinite(value) or value < minimum:
+            raise ValueError(f"Diagnostic threshold {name} must be finite and at least {minimum:g}.")
+    if (
+        isinstance(max_divergences, bool)
+        or not isinstance(max_divergences, Integral)
+        or max_divergences < 0
+    ):
+        raise ValueError("Diagnostic threshold max_divergences must be a non-negative integer.")
+
+
 def prior_predictive_stage(
     *,
     setup: RhimeRunnerSetup,
@@ -314,25 +511,26 @@ def prior_predictive_stage(
     prepared_inputs: str | Path,
     output_dir: str | Path,
     check_output: str | Path | None = None,
-    preparation_manifest: str | Path | None = None,
+    preparation_manifest: str | Path,
     draws: int = 100,
     stage: str = "prior-predictive",
 ) -> dict[str, Any]:
     """Build the configured graph and check finite prior-predictive draws."""
-    destination = Path(output_dir).resolve()
-    destination.mkdir(parents=True, exist_ok=True)
-    prior_path = destination / "prior-predictive.nc"
+    stage = _check_stage(stage)
+    if isinstance(draws, bool) or not isinstance(draws, Integral) or draws <= 0:
+        raise ValueError("Prior-predictive draws must be a positive integer.")
+    destination = _stage_output_directory(output_dir)
+    prior_path = _output_path(destination, None, "prior-predictive.nc")
+    prepared, resolved = _load_prepared(
+        prepared_inputs,
+        setup=setup,
+        model=model,
+        preparation_manifest=preparation_manifest,
+    )
     try:
-        prepared, resolved = _load_prepared(
-            prepared_inputs,
-            setup=setup,
-            model=model,
-            preparation_manifest=preparation_manifest,
-        )
         built = _build_prepared_model(prepared, resolved, model=model)
         with built.model:
             prior = pm.sample_prior_predictive(draws, built.model)
-        save_inferencedata(prior, prior_path)
         values = [np.asarray(prior[group][name].values) for group in prior.groups() for name in prior[group]]
         non_finite = sum(int(np.size(value) - np.isfinite(value).sum()) for value in values)
         status = "pass" if values and non_finite == 0 else "fail"
@@ -341,12 +539,14 @@ def prior_predictive_stage(
             if status == "pass"
             else f"Prior predictive contains {non_finite} non-finite values."
         )
-        artifacts = [_artifact_path(prior_path)]
-    except Exception as exc:
+    except (KeyError, ValueError) as exc:
         non_finite = None
         status = "fail"
         message = f"Prior-predictive readiness failed: {type(exc).__name__}: {exc}"
         artifacts = []
+    else:
+        save_inferencedata(prior, prior_path)
+        artifacts = [_artifact_path(prior_path)]
     result = _check_result(
         name=PREPARATION_CHECK_NAME,
         status=status,
@@ -366,11 +566,10 @@ def sample_rhime_stage(
     model: ModelKind,
     prepared_inputs: str | Path,
     output_dir: str | Path,
-    preparation_manifest: str | Path | None = None,
+    preparation_manifest: str | Path,
 ) -> dict[str, Any]:
     """Sample explicitly supplied prepared inputs without running preparation."""
-    destination = Path(output_dir).resolve()
-    destination.mkdir(parents=True, exist_ok=True)
+    destination = _stage_output_directory(output_dir)
     prepared, resolved = _load_prepared(
         prepared_inputs,
         setup=setup,
@@ -379,13 +578,14 @@ def sample_rhime_stage(
     )
     built = _build_prepared_model(prepared, resolved, model=model)
     idata = sample_rhime_model(built, resolved.sampler)
-    trace_path = destination / "posterior.nc"
+    trace_path = _output_path(destination, None, "posterior.nc")
     save_inferencedata(idata, trace_path)
     manifest = {
         "schema_version": 1,
         "producer": "openghg_inversions",
         "stage": "sample",
         "configuration_identity": configuration_identity(resolved, model=model),
+        "effective_configuration": effective_configuration(resolved, model=model),
         "artifacts": {
             "posterior": _artifact_path(trace_path),
             "prepared_inputs": _artifact_path(Path(prepared_inputs)),
@@ -395,7 +595,8 @@ def sample_rhime_stage(
             "prepared_inputs": _file_identity(Path(prepared_inputs).resolve()),
         },
     }
-    _write_json(destination / "sample-manifest.json", manifest)
+    manifest_path = _write_json(_output_path(destination, None, "sample-manifest.json"), manifest)
+    manifest["manifest_path"] = str(manifest_path)
     return manifest
 
 
@@ -403,6 +604,7 @@ def diagnose_rhime_stage(
     *,
     posterior: str | Path,
     output_dir: str | Path,
+    sample_manifest: str | Path | None = None,
     check_output: str | Path | None = None,
     max_rhat: float = 1.01,
     min_bulk_ess: float = 400,
@@ -411,14 +613,23 @@ def diagnose_rhime_stage(
     stage: str = "posterior",
 ) -> dict[str, Any]:
     """Calculate the stable posterior convergence check."""
-    destination = Path(output_dir).resolve()
-    destination.mkdir(parents=True, exist_ok=True)
-    idata = load_inferencedata(Path(posterior).resolve())
+    stage = _check_stage(stage)
+    _validate_diagnostic_thresholds(
+        max_rhat=max_rhat,
+        min_bulk_ess=min_bulk_ess,
+        min_tail_ess=min_tail_ess,
+        max_divergences=max_divergences,
+    )
+    destination = _stage_output_directory(output_dir)
+    posterior_path = Path(posterior).resolve()
+    if sample_manifest is not None:
+        _verify_sample_manifest(sample_manifest, posterior=posterior_path)
+    idata = load_inferencedata(posterior_path)
     summary = az.summary(idata, kind="diagnostics", fmt="xarray")
-    summary_path = destination / "posterior-diagnostics.nc"
-    reset_serialisation_multiindexes(summary).to_netcdf(summary_path)
+    summary_path = _output_path(destination, None, "posterior-diagnostics.nc")
+    reset_serialisation_multiindexes(summary).to_netcdf(summary_path, engine="h5netcdf")
 
-    def finite_extreme(name: str, operation: str) -> tuple[float | None, str | None]:
+    def finite_extreme(name: str, operation: str) -> tuple[float | None, str | None, list[str]]:
         candidates = []
         if name in summary:
             candidates.append((name, summary[name]))
@@ -427,11 +638,20 @@ def diagnose_rhime_stage(
                 if "metric" in values.dims and name in values.coords["metric"]:
                     candidates.append((str(variable), values.sel(metric=name, drop=True)))
         best: tuple[float, str] | None = None
+        unassessable: list[str] = []
         for variable, values in candidates:
             array = np.asarray(values.values, dtype=float)
             finite = np.isfinite(array)
-            if not finite.all():
-                return None, None
+            for positions in np.argwhere(~finite):
+                index = tuple(positions)
+                labels = [
+                    f"{dim}={values.coords[dim].values[position]}"
+                    for dim, position in zip(values.dims, index)
+                    if dim in values.coords
+                ]
+                unassessable.append(",".join([variable, *labels]))
+            if not finite.any():
+                continue
             masked = np.where(finite, array, -np.inf if operation == "max" else np.inf)
             flat_index = int(masked.argmax() if operation == "max" else masked.argmin())
             index = np.unravel_index(flat_index, array.shape)
@@ -443,11 +663,13 @@ def diagnose_rhime_stage(
             candidate = (float(array[index]), ",".join([variable, *labels]))
             if best is None or (candidate[0] > best[0] if operation == "max" else candidate[0] < best[0]):
                 best = candidate
-        return best if best is not None else (None, None)
+        if best is None:
+            return None, None, unassessable
+        return best[0], best[1], unassessable
 
-    rhat, rhat_variable = finite_extreme("r_hat", "max")
-    bulk_ess, bulk_ess_variable = finite_extreme("ess_bulk", "min")
-    tail_ess, tail_ess_variable = finite_extreme("ess_tail", "min")
+    rhat, rhat_variable, unassessable_rhat = finite_extreme("r_hat", "max")
+    bulk_ess, bulk_ess_variable, unassessable_bulk_ess = finite_extreme("ess_bulk", "min")
+    tail_ess, tail_ess_variable, unassessable_tail_ess = finite_extreme("ess_tail", "min")
     posterior_group = getattr(idata, "posterior", None)
     sample_stats = getattr(idata, "sample_stats", None)
     divergences_by_chain = (
@@ -461,10 +683,13 @@ def diagnose_rhime_stage(
         "draws_per_chain": posterior_group.sizes.get("draw") if posterior_group is not None else None,
         "max_rhat": rhat,
         "max_rhat_variable": rhat_variable,
+        "unassessable_rhat": unassessable_rhat,
         "min_bulk_ess": bulk_ess,
         "min_bulk_ess_variable": bulk_ess_variable,
+        "unassessable_bulk_ess": unassessable_bulk_ess,
         "min_tail_ess": tail_ess,
         "min_tail_ess_variable": tail_ess_variable,
+        "unassessable_tail_ess": unassessable_tail_ess,
         "divergences": sum(divergences_by_chain) if divergences_by_chain is not None else None,
         "divergences_by_chain": divergences_by_chain,
     }
@@ -475,7 +700,12 @@ def diagnose_rhime_stage(
         "divergences": max_divergences,
     }
     assessed_names = ("max_rhat", "min_bulk_ess", "min_tail_ess", "divergences")
-    missing = [name for name in assessed_names if measured[name] is None]
+    partial = {
+        "max_rhat": unassessable_rhat,
+        "min_bulk_ess": unassessable_bulk_ess,
+        "min_tail_ess": unassessable_tail_ess,
+    }
+    missing = [name for name in assessed_names if measured[name] is None or partial.get(name)]
     failed = (
         (measured["max_rhat"] is not None and measured["max_rhat"] > max_rhat)
         or (measured["min_bulk_ess"] is not None and measured["min_bulk_ess"] < min_bulk_ess)
@@ -511,23 +741,30 @@ def postprocess_rhime_stage(
     prepared_inputs: str | Path,
     posterior: str | Path,
     output_dir: str | Path,
-    preparation_manifest: str | Path | None = None,
+    preparation_manifest: str | Path,
+    sample_manifest: str | Path,
 ) -> RhimeResult:
     """Build requested products from explicit prepared and posterior inputs."""
-    destination = Path(output_dir).resolve()
-    destination.mkdir(parents=True, exist_ok=True)
+    destination = _stage_output_directory(output_dir)
+    configured_output = setup.run_spec.output
+    _filename_component("output_name", configured_output.output_name)
+    _filename_component("species", setup.run_spec.model.species)
+    _filename_component("domain", setup.run_spec.model.domain)
+    _filename_component("start_date", setup.run_spec.start_date)
     prepared, resolved = _load_prepared(
         prepared_inputs,
         setup=setup,
         model=model,
         preparation_manifest=preparation_manifest,
     )
-    configured_output = resolved.run_spec.output
-    output_name = configured_output.output_name
-    if not output_name or Path(output_name).is_absolute() or Path(output_name).name != output_name:
-        raise ValueError(
-            f"Staged RHIME output_name {output_name!r} must be a non-empty filename stem without directories."
-        )
+    posterior_path = Path(posterior).resolve()
+    _verify_sample_manifest(
+        sample_manifest,
+        posterior=posterior_path,
+        setup=resolved,
+        model=model,
+        prepared_inputs=prepared_inputs,
+    )
     output_spec = replace(
         configured_output,
         output_path=str(destination),
@@ -537,27 +774,28 @@ def postprocess_rhime_stage(
     run_spec = replace(resolved.run_spec, output=output_spec)
     resolved = RhimeRunnerSetup(run_spec=run_spec, sampler=resolved.sampler, data_args=resolved.data_args)
     built = _build_prepared_model(prepared, resolved, model=model)
-    idata = load_inferencedata(Path(posterior).resolve())
-    if model == "multisector":
-        result = make_multisector_rhime_result(
-            prepared=prepared,
-            run_spec=run_spec,
-            sampler=resolved.sampler,
-            model_build_result=built,
-            idata=idata,
-            build_and_sample_seconds=0.0,
-        )
-        make_multisector_rhime_outputs(result=result, prepared=prepared)
-    else:
-        result = make_standard_rhime_result(
-            prepared=prepared,
-            run_spec=run_spec,
-            sampler=resolved.sampler,
-            model_build_result=built,
-            idata=idata,
-            build_and_sample_seconds=0.0,
-        )
-        make_standard_rhime_outputs(result=result, prepared=prepared)
+    idata = load_inferencedata(posterior_path)
+    with xr.set_options(netcdf_engine_order=("h5netcdf", "netcdf4", "scipy")):
+        if model == "multisector":
+            result = make_multisector_rhime_result(
+                prepared=prepared,
+                run_spec=run_spec,
+                sampler=resolved.sampler,
+                model_build_result=built,
+                idata=idata,
+                build_and_sample_seconds=0.0,
+            )
+            make_multisector_rhime_outputs(result=result, prepared=prepared)
+        else:
+            result = make_standard_rhime_result(
+                prepared=prepared,
+                run_spec=run_spec,
+                sampler=resolved.sampler,
+                model_build_result=built,
+                idata=idata,
+                build_and_sample_seconds=0.0,
+            )
+            make_standard_rhime_outputs(result=result, prepared=prepared)
     artifacts = {
         name: path
         for name, path in result.output_metadata.items()
@@ -565,16 +803,28 @@ def postprocess_rhime_stage(
     }
     basic = result.outputs.get("basic")
     if isinstance(basic, xr.Dataset):
-        basic_path = destination / "basic.nc"
-        reset_serialisation_multiindexes(basic).to_netcdf(basic_path)
+        basic_path = _output_path(destination, None, "basic.nc")
+        reset_serialisation_multiindexes(basic).to_netcdf(basic_path, engine="h5netcdf")
         artifacts["basic_path"] = str(basic_path)
+    for name, path in artifacts.items():
+        try:
+            Path(path).resolve().relative_to(destination)
+        except ValueError:
+            raise ValueError(
+                f"Postprocessing artifact {name!r} at {path!r} escaped stage output directory {destination}."
+            ) from None
     manifest = {
         "schema_version": 1,
         "producer": "openghg_inversions",
         "stage": "postprocess",
         "configuration_identity": configuration_identity(resolved, model=model),
+        "effective_configuration": effective_configuration(resolved, model=model),
+        "input_identities": {
+            "prepared_inputs": _file_identity(Path(prepared_inputs).resolve()),
+            "posterior": _file_identity(posterior_path),
+        },
         "artifacts": {name: _artifact_path(Path(path)) for name, path in artifacts.items()},
     }
-    manifest_path = _write_json(destination / "postprocess-manifest.json", manifest)
+    manifest_path = _write_json(_output_path(destination, None, "postprocess-manifest.json"), manifest)
     result.output_metadata["postprocess_manifest_path"] = str(manifest_path)
     return result

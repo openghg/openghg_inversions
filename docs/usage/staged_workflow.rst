@@ -28,6 +28,8 @@ new scientific keys.  The existing ``resolve_rhime_options`` boundary still
 normalizes and validates every value.  The staged commands deliberately do not
 read ambient ``CONFIG_FILE``.  ``OUTPUT_DIR`` is the only automatic path
 default, and the effective OGR ``STAGE`` is the default check-stage label.
+Relative filesystem values inside an INI or JSON parameter file are resolved
+against that file's directory, not the process working directory.
 
 OGR's ``EFFECTIVE_CONFIG`` is a stage-specific OGR TOML envelope, not an OGI
 scientific parameter file, so do not pass it to ``--params-file``.  It remains
@@ -57,12 +59,15 @@ year-, month- and prior-specific choices directly:
 * ``x_prior``, ``bc_prior``, ``sigma_prior`` and the selected mismatch model
   define mathematical priors and likelihood policy.
 
-All resolved choices are written to ``prepare-manifest.json``.  Its
+All requested choices and the exact stage-contained preparation choices that
+were executed are written to ``prepare-manifest.json``.  Its
 ``configuration_identity`` is a SHA-256 digest of the resolved preparation,
 period, model and prior settings.  Sampling and output-only changes do not
-invalidate reusable prepared inputs.  Consequently a gas, period, site, source,
-transport or prior change produces a different identity.  Downstream commands
-can pass ``--preparation-manifest`` to reject a mismatched configuration or
+invalidate reusable prepared inputs; cache locations and preparation artifact
+destinations are likewise excluded because the artifact digest identifies the
+resulting input content.  Consequently a gas, period, site, source, transport
+or prior change produces a different identity.  Downstream scientific commands
+require ``--preparation-manifest`` and reject a mismatched configuration or
 prepared-input content digest before model construction.  Preparation also
 treats every configured site as required and fails with the gas and period
 named if the existing acquisition layer could not produce it.
@@ -76,7 +81,8 @@ Commands and artifacts
 ----------------------
 
 All paths are explicit and outputs are written below ``--output-dir`` (or OGR's
-``OUTPUT_DIR``).  Commands do not depend on the caller's working directory.
+``OUTPUT_DIR``).  Commands do not depend on the caller's working directory and
+reject pre-existing symlinks beneath a stage output directory.
 
 ``prepare``
   Retrieves/reloads merged data, filters observations, constructs basis and
@@ -96,13 +102,18 @@ All paths are explicit and outputs are written below ``--output-dir`` (or OGR's
 ``sample``
   Loads the prepared artifact, builds the selected model, samples it with the
   resolved ``RhimeSampler``, and writes ``posterior.nc`` plus
-  ``sample-manifest.json``.  It never silently invokes preparation.
+  ``sample-manifest.json``.  The manifest records the effective sampling
+  configuration and content identities for the posterior and prepared input.
+  It never silently invokes preparation.
 
 ``diagnose``
   Loads ``--posterior``, writes ``posterior-diagnostics.nc`` and emits the
   ``sampler-convergence`` CheckResult.  Scientific failure exits zero by
   default, keeping scheduler status separate from scientific health.
-  ``--strict`` is available only for an explicitly chosen process policy.
+  ``--sample-manifest`` authenticates a posterior produced by the staged
+  sampler.  It is optional so persisted posteriors from earlier OGI runs can
+  still be diagnosed.  ``--strict`` is available only for an explicitly
+  chosen process policy.
 
 ``postprocess``
   Loads both prepared inputs and posterior, reconstructs the selected model's
@@ -110,8 +121,9 @@ All paths are explicit and outputs are written below ``--output-dir`` (or OGR's
   configuration's ``output_format`` controls ``inv_out``, ``basic``, ``paris``
   or ``legacy`` products; explicit save paths in configuration are replaced so
   every product remains beneath the stage output directory.  For the same
-  reason, staged postprocessing requires ``output_name`` to be a filename stem,
-  not an absolute path or a name containing directories.  Current all-chain
+  reason, staged postprocessing requires safe filename components and both the
+  preparation and sample manifests.  The latter binds the posterior to its
+  prepared-input digest and scientific configuration.  Current all-chain
   limitations of derived basic and
   PARIS products remain tracked separately; this stage does not change their
   scientific calculation.  ``postprocess-manifest.json`` is always written;
@@ -134,7 +146,8 @@ Both checks use OGR-compatible schema version 1 and producer
 ``sampler-convergence``
   Reports retained chain and draw counts, maximum R-hat and its variable,
   minimum bulk ESS and its variable, minimum tail ESS and its variable, total
-  divergences, and divergences per chain.  Defaults are maximum R-hat 1.01,
+  divergences, divergences per chain, and labels for unassessable R-hat/ESS
+  elements.  Defaults are maximum R-hat 1.01,
   minimum bulk ESS 400, minimum tail ESS 400, and maximum divergences 0.
   Thresholds have CLI options.  The result is ``unknown`` when a signal is not
   assessable (for example R-hat from one chain), ``fail`` when an available
@@ -172,6 +185,7 @@ can be substituted with ``--config``.
 
    openghg-inversions diagnose \
      --posterior "$OUTPUT_DIR/sample/posterior.nc" \
+     --sample-manifest "$OUTPUT_DIR/sample/sample-manifest.json" \
      --output-dir "$OUTPUT_DIR/diagnose" \
      --check-output "$OUTPUT_DIR/diagnose/convergence.json"
 
@@ -183,6 +197,7 @@ can be substituted with ``--config``.
      --prepared-inputs "$OUTPUT_DIR/prepare/prepared-inputs.nc" \
      --preparation-manifest "$OUTPUT_DIR/prepare/prepare-manifest.json" \
      --posterior "$OUTPUT_DIR/sample/posterior.nc" \
+     --sample-manifest "$OUTPUT_DIR/sample/sample-manifest.json" \
      --output-dir "$OUTPUT_DIR/postprocess"
 
 OGR campaign stages
@@ -214,13 +229,13 @@ their output directories.  No hand-authored SLURM script is required:
    [[stage]]
    name = "diagnose"
    depends_on = ["sample"]
-   command = '''openghg-inversions diagnose --posterior "$OUTPUT_DIR/sample/posterior.nc" --output-dir "$OUTPUT_DIR/diagnose" --check-output "$OUTPUT_DIR/diagnose/convergence.json" && openghg-run record-check "$RUN_ROOT" "$OUTPUT_DIR/diagnose/convergence.json"'''
+   command = '''openghg-inversions diagnose --posterior "$OUTPUT_DIR/sample/posterior.nc" --sample-manifest "$OUTPUT_DIR/sample/sample-manifest.json" --output-dir "$OUTPUT_DIR/diagnose" --check-output "$OUTPUT_DIR/diagnose/convergence.json" && openghg-run record-check "$RUN_ROOT" "$OUTPUT_DIR/diagnose/convergence.json"'''
    outputs = ["outputs/diagnose"]
 
    [[stage]]
    name = "postprocess"
-   depends_on = ["diagnose"]
-   command = '''openghg-inversions postprocess --config "$CONFIG_FILE" --model standard --prepared-inputs "$OUTPUT_DIR/prepare/prepared-inputs.nc" --preparation-manifest "$OUTPUT_DIR/prepare/prepare-manifest.json" --posterior "$OUTPUT_DIR/sample/posterior.nc" --output-dir "$OUTPUT_DIR/postprocess"'''
+   depends_on = ["prepare", "sample", "diagnose"]
+   command = '''openghg-inversions postprocess --config "$CONFIG_FILE" --model standard --prepared-inputs "$OUTPUT_DIR/prepare/prepared-inputs.nc" --preparation-manifest "$OUTPUT_DIR/prepare/prepare-manifest.json" --posterior "$OUTPUT_DIR/sample/posterior.nc" --sample-manifest "$OUTPUT_DIR/sample/sample-manifest.json" --output-dir "$OUTPUT_DIR/postprocess"'''
    outputs = ["outputs/postprocess"]
 
 OGR owns campaign matrices, selected tasks, dependencies, scheduler state,
