@@ -180,6 +180,65 @@ positive OU amplitude can lift a zero base mode. The component currently
 requires PyMC's native NUTS backend; sampled tau and the cached blocked sampler
 are separate extensions.
 
+Use a project-owned cached CompoundStep
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A cached conditional sampler changes more than the likelihood: its outer PyMC
+graph contains the quadratic for the currently accepted site amplitudes, and
+its sigma step refreshes that quadratic before a separate state NUTS step.
+It therefore belongs in a complete project-owned model builder, not in the
+ordinary ``likelihood_builder`` seam. Verification Games retains its reviewed
+cached-sigma implementation and consumes the public RHIME build and sampling
+contracts::
+
+   import json
+
+   from openghg_inversions.rhime import RhimeSampler, sample_rhime_model
+   from my_project.cached_sigma import build_cached_model, build_compound_step
+
+   built = build_cached_model(prepared_inputs, run_spec)
+   step = build_compound_step(built.model, prepared_inputs)
+   sampler = RhimeSampler(
+       draws=1000,
+       tune=1000,
+       chains=4,
+       nuts_sampler="pymc",
+       sample_kwargs={
+           "step": step,
+           "random_seed": 20260913,
+           "mp_ctx": "spawn",
+       },
+       sample_prior_predictive=False,
+   )
+   idata = sample_rhime_model(built, sampler)
+   idata.attrs["rhime_sampler_provenance"] = json.dumps(
+       {
+           "sampler": "verification-games cached sigma CompoundStep",
+           "step_order": ["cached_sigma_nuts", "state_nuts"],
+           "cache_artifact": cache_identity,
+           "eigen_artifact": eigen_identity,
+           "random_seed": 20260913,
+       },
+       sort_keys=True,
+   )
+
+``RhimeModelBuildResult`` carries the concrete model and its serializable model
+provenance. ``sample_rhime_model`` passes the exact object in
+``sample_kwargs["step"]`` to ``pm.sample`` and preserves the step's
+``sample_stats`` variables through burn slicing and coordinate restoration.
+The project must record the sampler implementation, ordered component steps,
+accepted-cache and eigen-artifact identities, and seeds on the returned trace
+before saving it. The cached implementation must update the accepted
+quadratic synchronously before state NUTS; rejected or unchanged sigma
+transitions must leave it untouched.
+
+This route is PyMC-only. An explicit PyMC step method requires
+``nuts_sampler="pymc"``; NumPyro, BlackJAX, and Nutpie NUTS cannot be combined
+with a PyMC ``CompoundStep``. The ordinary stock-PyMC fixed-OU likelihood above
+remains the log-density/gradient oracle and fallback. A live step object is
+not JSON serializable, so construct it after the model in a direct procedural
+runner rather than placing it in an INI file or a staged-workflow manifest.
+
 Built-in aggregation covariance relies on the guarantees of its construction
 pipeline. A custom pipeline that assembles its own covariance may optionally
 call

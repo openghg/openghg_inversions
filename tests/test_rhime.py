@@ -4672,6 +4672,68 @@ def test_rhime_sampler_runs_pymc_sampling_and_predictive_steps(
     assert sample_stats_fields["divergences"] == 2
 
 
+@pytest.mark.rhime_contract
+def test_rhime_sampler_forwards_project_owned_compound_step_and_stats(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The public sampling seam preserves an explicit step and its diagnostics."""
+    step = object()
+    trace = az.InferenceData(
+        posterior=xr.Dataset(
+            {"state": (("chain", "draw"), np.ones((1, 2)))},
+        ),
+        sample_stats=xr.Dataset(
+            {
+                "cache_refreshes": (("chain", "draw"), [[1, 0]]),
+                "accepted_sigma_block": (("chain", "draw"), [[1, 0]]),
+            }
+        ),
+    )
+    seen: dict[str, Any] = {}
+
+    def fake_sample(**kwargs: Any) -> az.InferenceData:
+        seen.update(kwargs)
+        return trace
+
+    monkeypatch.setattr("openghg_inversions.rhime.sampling.pm.sample", fake_sample)
+    sampler = RhimeSampler(
+        draws=2,
+        tune=0,
+        chains=1,
+        nuts_sampler="pymc",
+        sample_kwargs={"step": step, "compute_convergence_checks": False},
+        sample_prior_predictive=False,
+        sample_posterior_predictive=False,
+    )
+
+    sampled = sampler.sample(pm.Model())
+
+    assert seen["step"] is step
+    assert seen["nuts_sampler"] == "pymc"
+    assert seen["compute_convergence_checks"] is False
+    np.testing.assert_array_equal(sampled.sample_stats["cache_refreshes"], [[1, 0]])
+    np.testing.assert_array_equal(sampled.sample_stats["accepted_sigma_block"], [[1, 0]])
+
+
+def test_rhime_sampler_rejects_pymc_step_with_external_nuts_backend(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """PyMC CompoundStep methods cannot be delegated to an external NUTS backend."""
+    monkeypatch.setattr(
+        "openghg_inversions.rhime.sampling.pm.sample",
+        lambda **kwargs: pytest.fail("invalid sampler combination must fail before PyMC"),
+    )
+    sampler = RhimeSampler(
+        nuts_sampler="numpyro",
+        sample_kwargs={"step": object()},
+        sample_prior_predictive=False,
+        sample_posterior_predictive=False,
+    )
+
+    with pytest.raises(ValueError, match="nuts_sampler='pymc'.*CompoundStep"):
+        sampler.sample(pm.Model())
+
+
 def test_rhime_sampler_resets_retained_draws_before_extending_predictive_groups(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
