@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>openghg_inversions.models.priors &#8212; openghg_inversions  documentation</title>
+    <title>openghg_inversions.models.site_sigma &#8212; openghg_inversions  documentation</title>
   
   
   
@@ -47,12 +47,13 @@
     <script src="../_static/thebelab-helper.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
-    <script>DOCUMENTATION_OPTIONS.pagename = 'reference/openghg_inversions.models.priors';</script>
+    <script defer="defer" src="https://cdn.jsdelivr.net/npm/mathjax@4/tex-mml-chtml.js"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'reference/openghg_inversions.models.site_sigma';</script>
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="openghg_inversions.models.site_sigma" href="openghg_inversions.models.site_sigma.html" />
-    <link rel="prev" title="openghg_inversions.models.pollution_event" href="openghg_inversions.models.pollution_event.html" />
+    <link rel="next" title="openghg_inversions.models.state_activity" href="openghg_inversions.models.state_activity.html" />
+    <link rel="prev" title="openghg_inversions.models.priors" href="openghg_inversions.models.priors.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="" />
@@ -365,8 +366,8 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.fixed_error.html">openghg_inversions.models.fixed_error</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.fixed_ou.html">openghg_inversions.models.fixed_ou</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.pollution_event.html">openghg_inversions.models.pollution_event</a></li>
-<li class="toctree-l3 current active"><a class="current reference internal" href="#">openghg_inversions.models.priors</a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.site_sigma.html">openghg_inversions.models.site_sigma</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.priors.html">openghg_inversions.models.priors</a></li>
+<li class="toctree-l3 current active"><a class="current reference internal" href="#">openghg_inversions.models.site_sigma</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.state_activity.html">openghg_inversions.models.state_activity</a></li>
 </ul>
 </details></li>
@@ -472,7 +473,7 @@
     
     <li class="breadcrumb-item"><a href="openghg_inversions.models.html" class="nav-link">openghg_inversions.models</a></li>
     
-    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">openghg_inversions.models.priors</span></li>
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">openghg_inversions.models.site_sigma</span></li>
   </ul>
 </nav>
 </div>
@@ -489,56 +490,74 @@
 <div id="searchbox"></div>
                 <article class="bd-article">
                   
-  <section id="module-openghg_inversions.models.priors">
-<span id="openghg-inversions-models-priors"></span><h1>openghg_inversions.models.priors<a class="headerlink" href="#module-openghg_inversions.models.priors" title="Link to this heading">#</a></h1>
-<p>Create reusable scalar or array-valued PyMC prior variables.</p>
-<p><code class="docutils literal notranslate"><span class="pre">parse_prior</span></code> registers continuous distributions on the active model;
-<code class="docutils literal notranslate"><span class="pre">lognormal_mu_sigma</span></code> converts requested moments, including arrays. Optional
-lognormal reparameterization exposes <code class="docutils literal notranslate"><span class="pre">&lt;name&gt;_latent</span></code> and keeps <code class="docutils literal notranslate"><span class="pre">&lt;name&gt;</span></code> as
-the user-facing deterministic variable.</p>
+  <section id="module-openghg_inversions.models.site_sigma">
+<span id="openghg-inversions-models-site-sigma"></span><h1>openghg_inversions.models.site_sigma<a class="headerlink" href="#module-openghg_inversions.models.site_sigma" title="Link to this heading">#</a></h1>
+<p>Labelled run-level site mismatch scales for Gaussian observations.</p>
+<p>This component ports the site-sigma likelihood used by Verification Games in
+<code class="docutils literal notranslate"><span class="pre">src/verification_games/rhime_calibration/site_sigma.py</span></code> at commit
+<code class="docutils literal notranslate"><span class="pre">41d061aea153ddc56130694bfa18b7e801fcd9df</span></code> (original model commit
+<code class="docutils literal notranslate"><span class="pre">88f8d4cb21c7eb84b601c26fa51e806ff0bb3ed7</span></code>). For fixed aggregation
+covariance <span class="math notranslate nohighlight">\(A\)</span>, reported
+observation-error covariance <span class="math notranslate nohighlight">\(D_{obs}\)</span>, and one mismatch amplitude per
+site, it constructs</p>
+<div class="math notranslate nohighlight">
+\[R = A + D_{obs} + \operatorname{diag}(\sigma_{site(i)}^2).\]</div>
+<p>Site labels retain their stable first-occurrence order. Amplitudes use the same
+units as the observations and reported errors; they are not dimensionless
+multipliers. Verification Games uses an explicit <code class="docutils literal notranslate"><span class="pre">HalfNormal(0.75)</span></code> prior in
+ppm for its benchmark, but that scientific choice is deliberately not a
+universal OpenGHG Inversions default. Callers must provide either an exact
+fixed mapping or an explicit positive-support prior.</p>
+<p>The concrete component owns only the site-mismatch term. Fixed aggregation
+covariance representation and PyMC likelihood mechanics remain owned by
+<code class="xref py py-mod docutils literal notranslate"><span class="pre">openghg_inversions.models._gaussian_observation</span></code>.</p>
 <dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.models.priors.lognormal_mu_sigma">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.models.priors.</span></span><span class="sig-name descname"><span class="pre">lognormal_mu_sigma</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mean</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><span class="pre">ndarray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">stdev</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><span class="pre">ndarray</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><span class="pre">ndarray</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><span class="pre">ndarray</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#openghg_inversions.models.priors.lognormal_mu_sigma" title="Link to this definition">#</a></dt>
-<dd><p>Convert lognormal mean and stdev into PyMC’s <code class="docutils literal notranslate"><span class="pre">mu</span></code> and <code class="docutils literal notranslate"><span class="pre">sigma</span></code>.</p>
+<dt class="sig sig-object py" id="openghg_inversions.models.site_sigma.add_site_sigma_gaussian_likelihood">
+<span class="sig-prename descclassname"><span class="pre">openghg_inversions.models.site_sigma.</span></span><span class="sig-name descname"><span class="pre">add_site_sigma_gaussian_likelihood</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">observations</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">observation_error</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">aggregation_error</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.AggregationError" title="openghg_inversions.observation_error.AggregationError"><span class="pre">AggregationError</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">mean</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">TensorVariable</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fixed_site_amplitudes</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.14)"><span class="pre">Mapping</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">site_amplitude_prior</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.14)"><span class="pre">Mapping</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><span class="pre">Any</span></a><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_dim</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'nmeasure'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">observation_error_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'error'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">TensorVariable</span></span></span><a class="headerlink" href="#openghg_inversions.models.site_sigma.add_site_sigma_gaussian_likelihood" title="Link to this definition">#</a></dt>
+<dd><p>Add a Gaussian likelihood with one additive mismatch scale per site.</p>
+<p>Exactly one amplitude mode is required. Fixed amplitudes are supplied as a
+mapping whose keys exactly match the observation sites. Inferred amplitudes
+require an explicit positive-support prior from the Verification Games set:
+HalfNormal, HalfStudentT, Exponential, Gamma, LogNormal, or a Uniform with a
+non-negative lower bound.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>mean</strong> – Requested scalar or array-valued mean of the lognormal
-distribution.</p></li>
-<li><p><strong>stdev</strong> – Requested scalar or array-valued standard deviation of the
-lognormal distribution.</p></li>
+<li><p><strong>observations</strong> – One-dimensional observed mole fractions whose sole
+dimension is <code class="docutils literal notranslate"><span class="pre">output_dim</span></code> and which carry a one-dimensional
+<code class="docutils literal notranslate"><span class="pre">site</span></code> coordinate on that dimension.</p></li>
+<li><p><strong>observation_error</strong> – One-dimensional, non-negative reported
+observation-error standard deviations in the same units and
+observation order as <code class="docutils literal notranslate"><span class="pre">observations</span></code>.</p></li>
+<li><p><strong>aggregation_error</strong> – Validated fixed aggregation-error representation
+for the same observation order. Its diagonal, dense, or low-rank
+covariance is included exactly once.</p></li>
+<li><p><strong>mean</strong> – Completed one-dimensional forward-model concentration tensor
+aligned with <code class="docutils literal notranslate"><span class="pre">output_dim</span></code> and <code class="docutils literal notranslate"><span class="pre">observations</span></code>.</p></li>
+<li><p><strong>fixed_site_amplitudes</strong> – Fixed amplitudes keyed exactly by site label, in
+the same units as <code class="docutils literal notranslate"><span class="pre">observations</span></code>.</p></li>
+<li><p><strong>site_amplitude_prior</strong> – Explicit positive-support prior for inferred site
+amplitudes, in the same units as <code class="docutils literal notranslate"><span class="pre">observations</span></code>.</p></li>
+<li><p><strong>output_dim</strong> – Observation dimension used by named PyMC variables.</p></li>
+<li><p><strong>observation_error_name</strong> – PyMC data name for reported error.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>A <code class="docutils literal notranslate"><span class="pre">(mu,</span> <span class="pre">sigma)</span></code> tuple suitable for <code class="docutils literal notranslate"><span class="pre">pm.Lognormal</span></code>.</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.models.priors.parse_prior">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.models.priors.</span></span><span class="sig-name descname"><span class="pre">parse_prior</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">prior_params</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><span class="pre">Any</span></a><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">TensorVariable</span></span></span><a class="headerlink" href="#openghg_inversions.models.priors.parse_prior" title="Link to this definition">#</a></dt>
-<dd><p>Create a continuous PyMC prior from a prior-parameter dictionary.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>name</strong> – Name of the user-facing PyMC variable to create.</p></li>
-<li><p><strong>prior_params</strong> – Prior specification including <code class="docutils literal notranslate"><span class="pre">pdf</span></code> and any distribution
-parameters accepted by the chosen PyMC distribution.</p></li>
-<li><p><strong>**kwargs</strong> – Additional keyword arguments forwarded to the created PyMC
-variable, such as <code class="docutils literal notranslate"><span class="pre">dims</span></code>.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>The created PyMC random variable or deterministic transform.</p>
+<dd class="field-even"><p>The observed Gaussian variable named <code class="docutils literal notranslate"><span class="pre">y</span></code>. The graph also records the
+labelled <code class="docutils literal notranslate"><span class="pre">sigma_site</span></code> vector, observation lookup, aligned amplitudes,
+aligned mismatch variance, and total marginal scale <code class="docutils literal notranslate"><span class="pre">epsilon</span></code>.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If <code class="docutils literal notranslate"><span class="pre">prior_params[&quot;pdf&quot;]</span></code> does not name a supported PyMC
-    continuous distribution.</p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If the observations, site labels, amplitude mode, fixed
+    mapping, prior support, or complete fixed covariance is invalid.</p>
 </dd>
 </dl>
-<p>This helper must be called inside an active <code class="docutils literal notranslate"><span class="pre">pm.Model</span></code> context because it
-registers the created variable with the current model.</p>
+<p class="rubric">Notes</p>
+<p>Call this function inside
+<a class="reference internal" href="openghg_inversions.models.html#openghg_inversions.models.registered_model" title="openghg_inversions.models.registered_model"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.models.registered_model()</span></code></a> so scientific site
+labels are retained in the coordinate registry. The observation values
+are eagerly materialized at the named PyMC graph boundary; the input
+xarray objects are borrowed and are not mutated.</p>
 </dd></dl>
 
 </section>
@@ -554,20 +573,20 @@ registers the created variable with the current model.</p>
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="openghg_inversions.models.pollution_event.html"
+       href="openghg_inversions.models.priors.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">openghg_inversions.models.pollution_event</p>
+        <p class="prev-next-title">openghg_inversions.models.priors</p>
       </div>
     </a>
     <a class="right-next"
-       href="openghg_inversions.models.site_sigma.html"
+       href="openghg_inversions.models.state_activity.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">openghg_inversions.models.site_sigma</p>
+        <p class="prev-next-title">openghg_inversions.models.state_activity</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -590,15 +609,14 @@ registers the created variable with the current model.</p>
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.priors.lognormal_mu_sigma"><code class="docutils literal notranslate"><span class="pre">lognormal_mu_sigma()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.priors.parse_prior"><code class="docutils literal notranslate"><span class="pre">parse_prior()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.site_sigma.add_site_sigma_gaussian_likelihood"><code class="docutils literal notranslate"><span class="pre">add_site_sigma_gaussian_likelihood()</span></code></a></li>
 </ul>
   </nav></div>
 
   <div class="sidebar-secondary-item">
 
   <div class="tocsection sourcelink">
-    <a href="../_sources/reference/openghg_inversions.models.priors.rst.txt">
+    <a href="../_sources/reference/openghg_inversions.models.site_sigma.rst.txt">
       <i class="fa-solid fa-file-lines"></i> Show Source
     </a>
   </div>

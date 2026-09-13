@@ -938,6 +938,55 @@ minimal ordinary-runner call; this concrete-model page does not duplicate it.</p
 sampling and postprocessing. The runner records the likelihood builder’s
 module and qualified name, so direct-Python likelihoods remain identifiable in
 persisted inversion outputs.</p>
+<p>The built-in
+<a class="reference internal" href="../reference/openghg_inversions.models.site_sigma.html#openghg_inversions.models.site_sigma.add_site_sigma_gaussian_likelihood" title="openghg_inversions.models.site_sigma.add_site_sigma_gaussian_likelihood"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.models.site_sigma.add_site_sigma_gaussian_likelihood()</span></code></a>
+ports the labelled, run-level IID site-mismatch component used by the
+Verification Games calibration model. It derives stable site labels in
+first-observation order and uses exactly one standard deviation per site:</p>
+<div class="math notranslate nohighlight">
+\[R = A + D_{obs}
+    + \operatorname{diag}\left(\sigma_{site}[\operatorname{site}(i)]^2\right).\]</div>
+<p>Here <code class="docutils literal notranslate"><span class="pre">A</span></code> is the selected aggregation-error covariance and <code class="docutils literal notranslate"><span class="pre">D_obs</span></code> is the
+diagonal covariance from reported observation errors. Each is included once.
+This likelihood does not apply <code class="docutils literal notranslate"><span class="pre">min_error</span></code> or <code class="docutils literal notranslate"><span class="pre">fixed_model_mismatch</span></code> and
+does not add temporal correlation. In particular, it is an IID component, not
+the fixed-OU model.</p>
+<p>Select it through the existing Python-only likelihood seam. For inferred site
+amplitudes, pass an explicit positive prior:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">add_site_sigma_gaussian_likelihood</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="n">run_rhime</span>
+
+<span class="n">result</span> <span class="o">=</span> <span class="n">run_rhime</span><span class="p">(</span>
+    <span class="n">config_file</span><span class="o">=</span><span class="s2">"config.ini"</span><span class="p">,</span>
+    <span class="n">mismatch_model</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+    <span class="n">likelihood_builder</span><span class="o">=</span><span class="n">add_site_sigma_gaussian_likelihood</span><span class="p">,</span>
+    <span class="n">likelihood_kwargs</span><span class="o">=</span><span class="p">{</span>
+        <span class="s2">"site_amplitude_prior"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"pdf"</span><span class="p">:</span> <span class="s2">"halfnormal"</span><span class="p">,</span> <span class="s2">"sigma"</span><span class="p">:</span> <span class="mf">0.75</span><span class="p">},</span>
+    <span class="p">},</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p>The <code class="docutils literal notranslate"><span class="pre">0.75</span></code> value above is the Verification Games control in ppm. It is
+explicit because all prior parameters and fixed amplitudes are interpreted in
+the observations’ concentration units; OpenGHG Inversions does not choose a
+universal default scale. To use known values instead, replace
+<code class="docutils literal notranslate"><span class="pre">site_amplitude_prior</span></code> with <code class="docutils literal notranslate"><span class="pre">fixed_site_amplitudes</span></code>, an exact mapping from
+every observation-site label to its standard deviation. Pass exactly one of
+these two options.</p>
+<p>The graph names the labelled site vector <code class="docutils literal notranslate"><span class="pre">sigma_site</span></code> on
+<code class="docutils literal notranslate"><span class="pre">sigma_site_dim</span></code>, with <code class="docutils literal notranslate"><span class="pre">sigma_site_index</span></code> retaining the observation-to-site
+mapping. Fixed amplitudes are stored as model data and inferred amplitudes as
+posterior variables. The ordinary runner records the callable identity,
+JSON-compatible options, <code class="docutils literal notranslate"><span class="pre">rhime_mismatch_component=&quot;iid_site_sigma&quot;</span></code>, the
+covariance equation, and source provenance in the saved output.</p>
+<p>This port is pinned to
+<code class="docutils literal notranslate"><span class="pre">src/verification_games/rhime_calibration/site_sigma.py</span></code> at Verification
+Games commit <code class="docutils literal notranslate"><span class="pre">41d061aea153ddc56130694bfa18b7e801fcd9df</span></code>; the original model
+implementation is commit
+<code class="docutils literal notranslate"><span class="pre">88f8d4cb21c7eb84b601c26fa51e806ff0bb3ed7</span></code>. It reuses OpenGHG Inversions’
+owned aggregation-error and Gaussian likelihood machinery and the stock PyMC
+sampling route. Verification Games cached/collapsed sampling is deliberately
+not included here and is tracked separately by OPE-115.</p>
 <p>A complete model builder is an advanced escape hatch available only through
 <code class="docutils literal notranslate"><span class="pre">run_rhime_from_prepared_inputs</span></code>. It receives a
 <code class="docutils literal notranslate"><span class="pre">RhimeModelBuilderContext</span></code> containing the validated <code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code>,
