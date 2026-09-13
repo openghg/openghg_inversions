@@ -46,6 +46,19 @@ from .multisector import (
 from .outputs import RhimeResult, make_multisector_rhime_outputs, make_standard_rhime_outputs
 from .prepared import run_rhime_from_prepared_inputs
 from .sampling import RhimeSampler, sample_rhime_model
+from .stages import (
+    CONVERGENCE_CHECK_NAME,
+    PREPARATION_CHECK_NAME,
+    configuration_identity,
+    diagnose_rhime_stage,
+    effective_configuration,
+    load_stage_params,
+    postprocess_rhime_stage,
+    prepare_rhime_stage,
+    prior_predictive_stage,
+    resolve_stage_setup,
+    sample_rhime_stage,
+)
 from .standard import (
     build_standard_rhime_model,
     build_standard_rhime_model_result,
@@ -77,6 +90,8 @@ __all__ = [
     "RhimeSampler",
     "RhimeRunSpec",
     "RhimeResult",
+    "CONVERGENCE_CHECK_NAME",
+    "PREPARATION_CHECK_NAME",
     "params_from_config",
     "assemble_rhime_inputs",
     "build_multisector_rhime_model",
@@ -87,6 +102,10 @@ __all__ = [
     "build_standard_rhime_model",
     "build_standard_rhime_model_result",
     "filter_rhime_observations",
+    "configuration_identity",
+    "diagnose_rhime_stage",
+    "effective_configuration",
+    "load_stage_params",
     "make_multisector_rhime_result",
     "make_multisector_rhime_outputs",
     "make_standard_rhime_result",
@@ -97,11 +116,16 @@ __all__ = [
     "retrieve_or_reload_rhime_data",
     "resolve_flux_sources",
     "resolve_rhime_options",
+    "resolve_stage_setup",
+    "postprocess_rhime_stage",
+    "prepare_rhime_stage",
+    "prior_predictive_stage",
     "run_rhime",
     "run_rhime_co2",
     "run_rhime_from_prepared_inputs",
     "run_rhime_multisector",
     "sample_rhime_model",
+    "sample_rhime_stage",
     "standard_model_input_names",
     "with_prepared_rhime_sites",
 ]
