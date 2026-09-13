@@ -53,6 +53,35 @@ class AggregationError:
     diagonal_variance: xr.DataArray | None = None
 
 
+def aggregation_error_as_low_rank(
+    aggregation_error: AggregationError,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Materialize fixed aggregation covariance as factor-plus-diagonal data.
+
+    Dense covariance inputs use their positive eigenmodes, so this fallback is
+    generally full rank. It is therefore an exact representation for positive
+    semidefinite inputs, but not the low-rank performance path.
+    """
+    nmeasure = aggregation_error.marginal_variance.size
+    if aggregation_error.mode == "dense":
+        assert aggregation_error.covariance is not None
+        covariance = np.asarray(aggregation_error.covariance.values, dtype=float)
+        _validate_dense_covariance_values(covariance, owner="Dense aggregation covariance")
+        eigenvalues, eigenvectors = np.linalg.eigh((covariance + covariance.T) * 0.5)
+        positive = eigenvalues > 0.0
+        return eigenvectors[:, positive] * np.sqrt(eigenvalues[positive]), np.zeros(nmeasure)
+    if aggregation_error.mode == "low_rank":
+        assert aggregation_error.factor is not None and aggregation_error.diagonal_variance is not None
+        return (
+            np.asarray(aggregation_error.factor.values, dtype=float),
+            np.asarray(aggregation_error.diagonal_variance.values, dtype=float),
+        )
+    if aggregation_error.mode == "diagonal":
+        assert aggregation_error.diagonal_variance is not None
+        return np.empty((nmeasure, 0)), np.asarray(aggregation_error.diagonal_variance.values, dtype=float)
+    return np.empty((nmeasure, 0)), np.zeros(nmeasure)
+
+
 def validate_complete_observation_covariance(
     aggregation_error: AggregationError,
     independent_variance: np.ndarray,

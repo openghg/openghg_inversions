@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
+from datetime import date, datetime, time, timedelta
+import json
 from pathlib import Path
 from typing import Any, cast
 
@@ -45,15 +48,57 @@ class RhimeResult:
     model_build_result: RhimeModelBuildResult | None = None
 
 
+def annotate_likelihood_trace(
+    idata: az.InferenceData,
+    *,
+    builder_identity: dict[str, str],
+    likelihood_kwargs: Mapping[str, Any] | None,
+    concentration_units: str | None,
+    component_metadata: Mapping[str, str] | None = None,
+) -> None:
+    """Persist likelihood provenance and variable metadata in place.
+
+    Array-valued likelihood options are converted to JSON-compatible values;
+    labelled arrays cross an explicit eager serialization boundary.
+    """
+    idata.attrs["rhime_likelihood_builder"] = json.dumps(builder_identity, sort_keys=True)
+    idata.attrs["rhime_likelihood_kwargs"] = json.dumps(
+        _structured_metadata(dict(likelihood_kwargs or {})), sort_keys=True
+    )
+    metadata = dict(component_metadata or {})
+    for key, value in metadata.items():
+        idata.attrs[f"rhime_{key}"] = value
+    for group_name in idata.groups():
+        group = getattr(idata, group_name)
+        if not isinstance(group, xr.Dataset):
+            continue
+        if "ou_tau_hours" in group:
+            group["ou_tau_hours"].attrs["units"] = "h"
+            group["ou_tau_hours"].attrs["rhime_scientific_role"] = (
+                "fixed_within_site_ou_correlation_time"
+            )
+        if "ou_site_amplitude" in group:
+            if concentration_units is not None:
+                group["ou_site_amplitude"].attrs["units"] = concentration_units
+            group["ou_site_amplitude"].attrs["rhime_scientific_role"] = (
+                "within_site_ou_mismatch_amplitude"
+            )
+        if metadata.get("mismatch_component") == "fixed_within_site_ou" and concentration_units is not None:
+            for name in ("epsilon", "y"):
+                if name in group:
+                    group[name].attrs["units"] = concentration_units
+
+
 def _structured_metadata(value: Any) -> Any:
-    """Convert array-backed spec values to lossless JSON-compatible metadata.
+    """Convert array-backed spec values to JSON-compatible metadata.
 
     Args:
         value: Nested metadata value, possibly backed by NumPy or xarray.
 
     Returns:
         Scalars and recursively structured dictionaries/lists. DataArrays keep
-        explicit dimensions, dimension coordinates, and values.
+        explicit dimensions, dimension coordinates, and values. Python and
+        NumPy dates/times become ISO strings; timedeltas become strings.
     """
     if isinstance(value, xr.DataArray):
         materialized = value.compute()
@@ -66,10 +111,16 @@ def _structured_metadata(value: Any) -> Any:
             },
             "values": _structured_metadata(materialized.to_numpy()),
         }
+    if isinstance(value, np.datetime64 | np.timedelta64):
+        return str(value)
+    if isinstance(value, datetime | date | time):
+        return value.isoformat()
+    if isinstance(value, timedelta):
+        return str(value)
     if isinstance(value, np.ndarray):
         if value.ndim == 0:
-            return _structured_metadata(value.item())
-        return [_structured_metadata(item) for item in value.tolist()]
+            return _structured_metadata(value[()])
+        return [_structured_metadata(item) for item in value]
     if isinstance(value, np.generic):
         return value.item()
     if isinstance(value, dict):

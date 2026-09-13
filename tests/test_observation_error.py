@@ -5,6 +5,7 @@ import pytest
 import xarray as xr
 
 from openghg_inversions.observation_error import (
+    aggregation_error_as_low_rank,
     resolve_aggregation_error,
     validate_complete_observation_covariance,
 )
@@ -63,6 +64,27 @@ def test_low_rank_covariance_uses_factor_and_residual_diagonal() -> None:
 
     assert result.mode == "low_rank"
     np.testing.assert_allclose(result.marginal_variance, np.sum(factor**2, axis=1) + residual)
+
+
+@pytest.mark.parametrize("mode", ["dense", "low_rank", "diagonal", "none"])
+def test_aggregation_error_low_rank_conversion_preserves_covariance(mode: str) -> None:
+    """The model-owned conversion retains each validated covariance exactly."""
+    factor = np.array([[0.3], [0.1], [0.2]])
+    diagonal = np.array([0.2, 0.3, 0.4])
+    covariance = factor @ factor.T + np.diag(diagonal)
+    data = _inputs()
+    if mode == "dense":
+        data["aggregation_error_covariance"] = (("nmeasure", "nmeasure_cov"), covariance)
+    elif mode == "low_rank":
+        data["low_rank_factor"] = (("nmeasure", "agg_rank"), factor)
+        data["diagonal_residual_variance"] = ("nmeasure", diagonal)
+    elif mode == "diagonal":
+        data["aggregation_error_sd"] = ("nmeasure", np.sqrt(diagonal))
+
+    result = resolve_aggregation_error(data, mode)
+    converted_factor, converted_diagonal = aggregation_error_as_low_rank(result)
+    expected = covariance if mode in ("dense", "low_rank") else np.diag(diagonal if mode == "diagonal" else np.zeros(3))
+    np.testing.assert_allclose(converted_factor @ converted_factor.T + np.diag(converted_diagonal), expected)
 
 
 def test_optional_complete_covariance_check_uses_lrpd_structure() -> None:
