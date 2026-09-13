@@ -237,6 +237,16 @@ def _resolve_stage_paths(params: Mapping[str, Any], *, base_dir: Path) -> dict[s
     return resolved
 
 
+def _prefer_h5netcdf():
+    """Prefer h5netcdf for implicit writes on xarray versions that support it."""
+    options = (
+        {"netcdf_engine_order": ("h5netcdf", "netcdf4", "scipy")}
+        if "netcdf_engine_order" in xr.get_options()
+        else {}
+    )
+    return xr.set_options(**options)
+
+
 def load_stage_params(
     *,
     config_file: str | Path | None = None,
@@ -339,7 +349,7 @@ def prepare_rhime_stage(
     )
     merged_path = _output_path(destination, None, "merged-data/merged-data.nc")
     merged_dir = merged_path.parent
-    with xr.set_options(netcdf_engine_order=("h5netcdf", "netcdf4", "scipy")):
+    with _prefer_h5netcdf():
         _save_merged_data(filtered.fp_all, merged_dir, merged_data_name="merged-data.nc")
         basis = build_rhime_basis(filtered, data_args)
     site_data = build_rhime_sensitivities(filtered, basis, data_args, multisector=multisector)
@@ -775,7 +785,7 @@ def postprocess_rhime_stage(
     resolved = RhimeRunnerSetup(run_spec=run_spec, sampler=resolved.sampler, data_args=resolved.data_args)
     built = _build_prepared_model(prepared, resolved, model=model)
     idata = load_inferencedata(posterior_path)
-    with xr.set_options(netcdf_engine_order=("h5netcdf", "netcdf4", "scipy")):
+    with _prefer_h5netcdf():
         if model == "multisector":
             result = make_multisector_rhime_result(
                 prepared=prepared,
