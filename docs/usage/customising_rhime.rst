@@ -92,9 +92,11 @@ hiding the common scientific arrays in an opaque object::
 configuration template. Passing both a custom callable and either built-in
 selection is rejected as ambiguous.
 
-RHIME passes these options directly and records them beside the likelihood
-identity in result metadata and any saved inversion output. A non-empty
-mapping is rejected when no ``likelihood_builder`` is active.
+RHIME passes these options directly and records a JSON-compatible
+representation beside the likelihood identity in result metadata and any
+saved inversion output. NumPy and Python dates and times become ISO strings;
+timedeltas become strings. A non-empty mapping is rejected when no
+``likelihood_builder`` is active.
 
 Editable likelihood
 ~~~~~~~~~~~~~~~~~~~
@@ -171,6 +173,10 @@ to zero.
 The component evaluates low-rank aggregation covariance with a fixed-OU
 generalized-eigen and Woodbury method without forming a dense observation
 covariance. Dense aggregation input is a full-rank fallback. It currently
+requires every generalized base-plus-OU mode variance to be strictly positive.
+An exact zero mode is rejected before applying the low-rank factor, even when
+that factor would make a materialized dense covariance positive definite; a
+positive OU amplitude can lift a zero base mode. The component currently
 requires PyMC's native NUTS backend; sampled tau and the cached blocked sampler
 are separate extensions.
 

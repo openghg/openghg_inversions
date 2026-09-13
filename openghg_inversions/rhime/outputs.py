@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
+from datetime import date, datetime, time, timedelta
 import json
 from pathlib import Path
 from typing import Any, cast
@@ -96,7 +97,8 @@ def _structured_metadata(value: Any) -> Any:
 
     Returns:
         Scalars and recursively structured dictionaries/lists. DataArrays keep
-        explicit dimensions, dimension coordinates, and values.
+        explicit dimensions, dimension coordinates, and values. Python and
+        NumPy dates/times become ISO strings; timedeltas become strings.
     """
     if isinstance(value, xr.DataArray):
         materialized = value.compute()
@@ -109,10 +111,16 @@ def _structured_metadata(value: Any) -> Any:
             },
             "values": _structured_metadata(materialized.to_numpy()),
         }
+    if isinstance(value, np.datetime64 | np.timedelta64):
+        return str(value)
+    if isinstance(value, datetime | date | time):
+        return value.isoformat()
+    if isinstance(value, timedelta):
+        return str(value)
     if isinstance(value, np.ndarray):
         if value.ndim == 0:
-            return _structured_metadata(value.item())
-        return [_structured_metadata(item) for item in value.tolist()]
+            return _structured_metadata(value[()])
+        return [_structured_metadata(item) for item in value]
     if isinstance(value, np.generic):
         return value.item()
     if isinstance(value, dict):

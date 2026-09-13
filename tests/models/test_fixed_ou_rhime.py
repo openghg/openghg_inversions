@@ -130,11 +130,14 @@ def test_fixed_ou_builder_preserves_labels_tau_and_fixed_base() -> None:
     np.testing.assert_allclose(epsilon[0], np.sqrt(0.2**2 + 0.1**2 + 0.03 + 0.5**2))
 
 
-def test_fixed_ou_builder_rejects_a_singular_fixed_complete_covariance() -> None:
-    """A zero base and zero OU amplitude fail rather than gaining hidden jitter."""
+def test_fixed_zero_amplitude_has_a_clear_builder_error() -> None:
+    """A fixed zero amplitude reports the generalized-mode requirement clearly."""
     data = _ou_inputs(low_rank=False, zero_base=True)
     data["min_error"][:] = 0.0
-    with pytest.raises(ValueError, match=r"positive.?definite"):
+    with pytest.raises(
+        ValueError,
+        match=r"strictly positive generalized base-plus-OU mode variances",
+    ):
         _build_fixed_ou_model(data, fixed_site_amplitudes=0.0)
 
 
@@ -367,16 +370,25 @@ def test_likelihood_trace_annotation_round_trips_ou_identity_and_units(tmp_path)
 
 
 def test_likelihood_trace_annotation_serializes_array_options() -> None:
-    """Array-valued custom likelihood options remain valid after sampling."""
+    """Numeric and temporal array options remain valid after sampling."""
     idata = az.InferenceData(posterior=xr.Dataset())
 
     annotate_likelihood_trace(
         idata,
         builder_identity={"module": "consumer.likelihood", "qualname": "build"},
-        likelihood_kwargs={"site_amplitudes": np.array([0.5, 0.7])},
+        likelihood_kwargs={
+            "site_amplitudes": np.array([0.5, 0.7]),
+            "start_times": np.array(
+                ["2026-09-13T12:30", "2026-09-14T06:00"],
+                dtype="datetime64[m]",
+            ),
+            "window": np.array([30, 90], dtype="timedelta64[m]"),
+        },
         concentration_units=None,
     )
 
     assert json.loads(idata.attrs["rhime_likelihood_kwargs"]) == {
-        "site_amplitudes": [0.5, 0.7]
+        "site_amplitudes": [0.5, 0.7],
+        "start_times": ["2026-09-13T12:30", "2026-09-14T06:00"],
+        "window": ["30 minutes", "90 minutes"],
     }
