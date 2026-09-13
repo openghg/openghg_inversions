@@ -1231,9 +1231,11 @@ def _sector_country_posterior_covariances_kg(
             sector_trace[f"country_{sector_name}_posterior"].isel(flux_time=valid_indices)
         )
         sector_posteriors.append(
-            posterior.dropna(sample_dim, how="all").rename({sample_dim: "sample"})
-            if sample_dim != "sample"
-            else posterior.dropna(sample_dim, how="all")
+            (
+                posterior.dropna(sample_dim, how="all").rename({sample_dim: "sample"})
+                if sample_dim != "sample"
+                else posterior.dropna(sample_dim, how="all")
+            ).transpose("flux_time", "country", "sample")
         )
     sector_covariances = {}
     for sector_name, posterior in zip(sector_names, sector_posteriors, strict=True):

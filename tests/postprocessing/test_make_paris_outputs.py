@@ -469,12 +469,12 @@ def test_country_covariances_use_all_chains(
     country_trace = xr.Dataset(coords=coords)
     for sector_name, values in (("ff", ff), ("ocean", ocean)):
         country_trace[f"country_{sector_name}_posterior"] = (
-            ("flux_time", "country", "chain", "draw"),
-            values[None, None, :, :],
+            ("chain", "draw", "flux_time", "country"),
+            values[:, :, None, None],
         )
     country_trace["country_posterior"] = (
-        ("flux_time", "country", "chain", "draw"),
-        total[None, None, :, :],
+        ("chain", "draw", "flux_time", "country"),
+        total[:, :, None, None],
     )
 
     total_covariance = _country_posterior_covariance_kg(

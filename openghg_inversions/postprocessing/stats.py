@@ -69,6 +69,7 @@ def combine_chain_draw(ds: XarrayObject, sample_dim: str = "draw") -> tuple[Xarr
     if combined_dim in ds.dims:
         raise ValueError("Cannot combine chain and draw because a 'sample' dimension already exists.")
     combined = ds.stack({combined_dim: ("chain", sample_dim)}).reset_index(combined_dim, drop=True)
+    combined = combined.assign_coords({combined_dim: np.arange(combined.sizes[combined_dim])})
     return combined, combined_dim
 
 
@@ -121,32 +122,28 @@ def mode(ds: xr.Dataset, sample_dim: str = "draw", thin: int = 1) -> xr.Dataset:
         Dataset containing the approximate mode for each input variable.
     """
 
-    def mode_of_row(row, k):
+    def mode_of_row(row):
         row = row[np.isfinite(row)]
         if row.size == 0:
             return np.nan
         if row.size == 1:
             return float(row[0])
-        k = min(k, row.size - 1)
+        k = int(row.size**0.8)
         row = np.sort(row)
         id_med = np.argmin(row[k:] - row[:-k])
         return (row[id_med] + row[id_med + k]) / 2
 
-    def mode_of_arr(arr, k):
-        return np.apply_along_axis(mode_of_row, axis=-1, arr=arr, k=k)
+    def mode_of_arr(arr):
+        return np.apply_along_axis(mode_of_row, axis=-1, arr=arr)
 
     if thin > 1:
         ds = ds.isel({sample_dim: slice(None, None, int(thin))})
-        k = int((ds.sizes[sample_dim] // thin) ** 0.8)  # k = (# draws)^{4/5}
-    else:
-        k = int(ds.sizes[sample_dim] ** 0.8)  # k = (# draws)^{4/5}
 
     ds = _consolidate_sample_dimension(_to_dense_dataset(ds), sample_dim)
     return xr.apply_ufunc(
         mode_of_arr,
         ds,
         input_core_dims=[[sample_dim]],
-        kwargs={"k": k},
         dask="parallelized",
         output_dtypes=[float],
     )
