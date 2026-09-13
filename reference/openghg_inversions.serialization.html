@@ -401,6 +401,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.prepared.html">openghg_inversions.rhime.prepared</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.sampling.html">openghg_inversions.rhime.sampling</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.specs.html">openghg_inversions.rhime.specs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.stages.html">openghg_inversions.rhime.stages</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.rhime.standard.html">openghg_inversions.rhime.standard</a></li>
 </ul>
 </details></li>
@@ -636,10 +637,10 @@ the resulting labels are unique.</p>
 <dt class="sig sig-object py" id="openghg_inversions.serialization.open_datatree_loaded">
 <span class="sig-prename descclassname"><span class="pre">openghg_inversions.serialization.</span></span><span class="sig-name descname"><span class="pre">open_datatree_loaded</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">file_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><span class="pre">Path</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.7.0)"><span class="pre">DataTree</span></a></span></span><a class="headerlink" href="#openghg_inversions.serialization.open_datatree_loaded" title="Link to this definition">#</a></dt>
 <dd><p>Open and eagerly load a DataTree artifact.</p>
-<p>NetCDF is first attempted with <code class="docutils literal notranslate"><span class="pre">h5netcdf</span></code> for compatibility with modern
-inversion outputs, then with xarray’s default engine. Loading happens while
-the file context is open, so the returned tree owns its data and does not
-retain references to closed file handles.</p>
+<p>NetCDF uses xarray’s default engine, matching <a class="reference internal" href="#openghg_inversions.serialization.save_datatree" title="openghg_inversions.serialization.save_datatree"><code class="xref py py-func docutils literal notranslate"><span class="pre">save_datatree()</span></code></a> and the
+rest of the default data-loading path. Loading happens while the file
+context is open, so the returned tree owns its data and does not retain
+references to closed file handles.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><p><strong>file_path</strong> – NetCDF or Zarr DataTree artifact to load.</p>
@@ -730,7 +731,9 @@ serialization attribute removed. The input dataset is not modified.</p>
 <dt class="sig sig-object py" id="openghg_inversions.serialization.save_datatree">
 <span class="sig-prename descclassname"><span class="pre">openghg_inversions.serialization.</span></span><span class="sig-name descname"><span class="pre">save_datatree</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dt</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataTree.html#xarray.DataTree" title="(in xarray v2026.7.0)"><span class="pre">DataTree</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_file</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><span class="pre">Path</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_format</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><span class="pre">Literal</span></a><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'netcdf'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'zarr'</span></span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span></span><a class="headerlink" href="#openghg_inversions.serialization.save_datatree" title="Link to this definition">#</a></dt>
 <dd><p>Save a DataTree to NetCDF or Zarr.</p>
-<p>This writes the tree, replacing an existing destination artifact.</p>
+<p>This writes the tree, replacing an existing destination artifact. NetCDF
+uses xarray’s default engine so callers that already loaded NetCDF inputs
+do not switch HDF5 bindings at the serialization boundary.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">

@@ -1,0 +1,744 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Staged RHIME workflows &#8212; openghg_inversions  documentation</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../_static/styles/theme.css?digest=cb8930eaaf36d9849b67" rel="stylesheet" />
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=cb8930eaaf36d9849b67" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../_static/jupyter-sphinx.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/thebelab.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=f8ac5af1" />
+  
+  <!-- So that users can add custom icons -->
+  <script defer src="../_static/scripts/fontawesome.js?digest=cb8930eaaf36d9849b67"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=cb8930eaaf36d9849b67" />
+<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=cb8930eaaf36d9849b67" />
+
+    <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../_static/thebelab-helper.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'usage/staged_workflow';</script>
+    <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Grouped basis and state metadata" href="grouped_basis_layout.html" />
+    <link rel="prev" title="Running RHIME from the command line" href="cli.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="" />
+  
+    
+    <script src="../_static/searchtools.js"></script>
+    <script src="../_static/language_data.js"></script>
+    <script src="../searchindex.js"></script>
+  
+  </head>
+  <body data-default-mode="">
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+  
+  
+  
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header id="pst-header" class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../index.html">
+  
+  
+  
+  
+  
+  
+    <p class="title logo__title">openghg_inversions  documentation</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    <div class="me-auto navbar-header-items__center">
+      
+        <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="usage.html">
+    Using OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../development/index.html">
+    Developing OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../experimental/index.html">
+    Experimental code
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../reference/modules.html">
+    openghg_inversions
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+      
+    </div>
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+    <button class="pst-navbar-icon sidebar-toggle secondary-toggle" aria-label="On this page">
+      <span class="fa-solid fa-outdent"></span>
+    </button>
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+      <div class="sidebar-header-items__center">
+        
+          
+          
+            <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="usage.html">
+    Using OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../development/index.html">
+    Developing OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../experimental/index.html">
+    Experimental code
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../reference/modules.html">
+    openghg_inversions
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+          
+        
+      </div>
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item pst-sidebar-collapse"><button id="pst-collapse-sidebar-button" aria-expanded="true" aria-controls="pst-primary-sidebar">
+  <svg class="pst-icon" role="img" aria-hidden="true" focusable="false" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+    <path fill="currentColor" d="M3 15.5C2.36232 15.5 1.74874 15.2564 1.28478 14.8189C0.820828 14.3815 0.541576 13.7832 0.504167 13.1467L0.5 13L0.5 3C0.499965 2.36232 0.743605 1.74874 1.18107 1.28478C1.61854 0.820828 2.21676 0.541576 2.85333 0.504167L3 0.5L13 0.5C13.6377 0.499965 14.2513 0.743605 14.7152 1.18107C15.1792 1.61854 15.4584 2.21676 15.4958 2.85333L15.5 3L15.5 13C15.5 13.6377 15.2564 14.2513 14.8189 14.7152C14.3815 15.1792 13.7832 15.4584 13.1467 15.4958L13 15.5L3 15.5ZM3 13.8333L10.5 13.8333L10.5 2.16667L3 2.16667C2.79589 2.16669 2.59889 2.24163 2.44636 2.37726C2.29383 2.5129 2.19638 2.69979 2.1725 2.9025L2.16667 3L2.16667 13C2.16669 13.2041 2.24163 13.4011 2.37726 13.5536C2.5129 13.7062 2.69979 13.8036 2.9025 13.8275L3 13.8333ZM6.65583 10.325L6.5775 10.2558L4.91083 8.58917C4.76735 8.44567 4.68116 8.25476 4.66843 8.05223C4.65569 7.84971 4.71729 7.6495 4.84167 7.48917L4.91083 7.41083L6.5775 5.74417C6.72747 5.59471 6.9287 5.50794 7.14032 5.50148C7.35194 5.49502 7.55809 5.56935 7.7169 5.70937C7.8757 5.8494 7.97525 6.04463 7.99533 6.25539C8.01541 6.46616 7.95451 6.67667 7.825 6.84417L7.75583 6.9225L6.67917 8L7.75583 9.0775C7.89931 9.22099 7.98551 9.41191 7.99824 9.61443C8.01097 9.81695 7.94938 10.0172 7.825 10.1775L7.75583 10.2558C7.61234 10.3993 7.42142 10.4855 7.2189 10.4982C7.01638 10.511 6.81617 10.4494 6.65583 10.325Z"/>
+  </svg>
+  <span class="pst-collapse-sidebar-label">Collapse Sidebar</span>
+  <span class="pst-expand-sidebar-label">Expand Sidebar</span>
+</button></div>
+        <div class="sidebar-primary-item">
+
+<nav class="bd-docs-nav bd-links"
+     aria-label="Section Navigation">
+  <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
+  <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation and Setup</a></li>
+<li class="toctree-l1"><a class="reference internal" href="getting_started.html">Getting started with OpenGHG Inversions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="cli.html">Running RHIME from the command line</a></li>
+<li class="toctree-l1 current active"><a class="current reference internal" href="#">Staged RHIME workflows</a></li>
+<li class="toctree-l1"><a class="reference internal" href="grouped_basis_layout.html">Grouped basis and state metadata</a></li>
+<li class="toctree-l1"><a class="reference internal" href="rhime.html">RHIME Terminology And Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="customising_rhime.html">Customising RHIME</a></li>
+<li class="toctree-l1"><a class="reference internal" href="concrete_rhime_model.html">Concrete RHIME Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="native_covariance.html">Native Covariance Projection</a></li>
+<li class="toctree-l1"><a class="reference internal" href="coherent_reduction.html">Coherent Gaussian Reduction</a></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+      <div class="sidebar-primary-item">
+<div id="ethical-ad-placement"
+      class="flat"
+      data-ea-publisher="readthedocs"
+      data-ea-type="readthedocs-sidebar"
+      data-ea-manual="true">
+</div></div>
+  </div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="usage.html" class="nav-link">Using OpenGHG Inversions</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Staged RHIME workflows</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="staged-rhime-workflows">
+<h1>Staged RHIME workflows<a class="headerlink" href="#staged-rhime-workflows" title="Link to this heading">#</a></h1>
+<p><code class="docutils literal notranslate"><span class="pre">openghg-inversions</span></code> exposes file-backed stages for schedulers such as
+<code class="docutils literal notranslate"><span class="pre">openghg-run</span></code> (OGR).  The interface composes the same configuration resolver,
+preparation functions, model recipes, sampler and output functions used by
+<code class="docutils literal notranslate"><span class="pre">run_rhime</span></code>.  It is not a second scientific configuration system and OGI does
+not depend on OGR.</p>
+<p>The first supported recipes are <code class="docutils literal notranslate"><span class="pre">standard</span></code> and <code class="docutils literal notranslate"><span class="pre">multisector</span></code>.  Recipe
+selection is always explicit with <code class="docutils literal notranslate"><span class="pre">--model</span></code>.  It is not inferred from
+<code class="docutils literal notranslate"><span class="pre">species</span></code>, <code class="docutils literal notranslate"><span class="pre">fp_model</span></code> or <code class="docutils literal notranslate"><span class="pre">met_model</span></code>: CH4 and CO2 need not use the same
+model, while several F-gases may use the same standard recipe.  The distinct
+CO2 and CO2/O2 prepared-input recipes are not yet routed through these commands.</p>
+<section id="configuration-inputs">
+<h2>Configuration inputs<a class="headerlink" href="#configuration-inputs" title="Link to this heading">#</a></h2>
+<p>Every scientific stage except <code class="docutils literal notranslate"><span class="pre">diagnose</span></code> accepts exactly one of:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">--config</span> <span class="pre">/absolute/path/run.ini</span></code>, using the existing RHIME INI vocabulary;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--params-file</span> <span class="pre">/absolute/path/ogi-params.json</span></code>, containing one JSON object
+with the same keyword names accepted by <code class="docutils literal notranslate"><span class="pre">run_rhime</span></code>.</p></li>
+</ul>
+<p><code class="docutils literal notranslate"><span class="pre">--kwargs</span> <span class="pre">'{...}'</span></code> can explicitly override either source.  The JSON form
+supports OGR cases that do not declare an INI <code class="docutils literal notranslate"><span class="pre">CONFIG_FILE</span></code>; it does not add
+new scientific keys.  The existing <code class="docutils literal notranslate"><span class="pre">resolve_rhime_options</span></code> boundary still
+normalizes and validates every value.  The staged commands deliberately do not
+read ambient <code class="docutils literal notranslate"><span class="pre">CONFIG_FILE</span></code>.  <code class="docutils literal notranslate"><span class="pre">OUTPUT_DIR</span></code> is the only automatic path
+default, and the effective OGR <code class="docutils literal notranslate"><span class="pre">STAGE</span></code> is the default check-stage label.
+Relative filesystem values inside an INI or JSON parameter file are resolved
+against that file’s directory, not the process working directory.</p>
+<p>OGR’s <code class="docutils literal notranslate"><span class="pre">EFFECTIVE_CONFIG</span></code> is a stage-specific OGR TOML envelope, not an OGI
+scientific parameter file, so do not pass it to <code class="docutils literal notranslate"><span class="pre">--params-file</span></code>.  It remains
+orchestration provenance.  A no-INI campaign should explicitly copy or provide
+a canonical OGI JSON parameter file and pass that path (for example beneath
+<code class="docutils literal notranslate"><span class="pre">SOURCE_DIR</span></code> or <code class="docutils literal notranslate"><span class="pre">RUN_ROOT/scripts</span></code>).</p>
+<p>Legacy fixedbasis-style PARIS INIs contain options such as <code class="docutils literal notranslate"><span class="pre">nit</span></code>, <code class="docutils literal notranslate"><span class="pre">nchain</span></code>,
+<code class="docutils literal notranslate"><span class="pre">xprior</span></code> and <code class="docutils literal notranslate"><span class="pre">mcmc_type</span></code>.  Their translation remains owned by the existing
+<code class="docutils literal notranslate"><span class="pre">run_hbmcmc</span></code> compatibility path.  Do not copy those aliases into a staged
+JSON file; use canonical RHIME names or first migrate the configuration through
+that existing compatibility boundary.</p>
+</section>
+<section id="configuration-flow">
+<h2>Configuration flow<a class="headerlink" href="#configuration-flow" title="Link to this heading">#</a></h2>
+<p>The existing RHIME configuration supports gas-, site-, transport-, model-,
+year-, month- and prior-specific choices directly:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">species</span></code>, <code class="docutils literal notranslate"><span class="pre">start_date</span></code> and <code class="docutils literal notranslate"><span class="pre">end_date</span></code> select gas and period;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">sites</span></code> and the aligned <code class="docutils literal notranslate"><span class="pre">averaging_period</span></code>, <code class="docutils literal notranslate"><span class="pre">inlet</span></code>, <code class="docutils literal notranslate"><span class="pre">instrument</span></code>,
+<code class="docutils literal notranslate"><span class="pre">fp_height</span></code>, <code class="docutils literal notranslate"><span class="pre">obs_data_level</span></code>, <code class="docutils literal notranslate"><span class="pre">met_model</span></code>, <code class="docutils literal notranslate"><span class="pre">platform</span></code> and
+<code class="docutils literal notranslate"><span class="pre">max_level</span></code> values select site-specific observations and footprints;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">fp_model</span></code> selects footprint transport, independently of <code class="docutils literal notranslate"><span class="pre">--model</span></code>;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">flux_sources</span></code> selects OpenGHG prior flux identities.  Multisector runs may
+additionally use <code class="docutils literal notranslate"><span class="pre">sector_sources</span></code> and <code class="docutils literal notranslate"><span class="pre">sector_priors</span></code>;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">x_prior</span></code>, <code class="docutils literal notranslate"><span class="pre">bc_prior</span></code>, <code class="docutils literal notranslate"><span class="pre">sigma_prior</span></code> and the selected mismatch model
+define mathematical priors and likelihood policy.</p></li>
+</ul>
+<p>All requested choices and the exact stage-contained preparation choices that
+were executed are written to <code class="docutils literal notranslate"><span class="pre">prepare-manifest.json</span></code>.  Its
+<code class="docutils literal notranslate"><span class="pre">configuration_identity</span></code> is a SHA-256 digest of the resolved preparation,
+period, model and prior settings.  Sampling and output-only changes do not
+invalidate reusable prepared inputs; cache locations and preparation artifact
+destinations are likewise excluded because the artifact digest identifies the
+resulting input content.  Consequently a gas, period, site, source, transport
+or prior change produces a different identity.  Downstream scientific commands
+require <code class="docutils literal notranslate"><span class="pre">--preparation-manifest</span></code> and reject a mismatched configuration or
+prepared-input content digest before model construction.  Preparation also
+treats every configured site as required and fails with the gas and period
+named if the existing acquisition layer could not produce it.</p>
+<p>The manifest also records a content SHA-256 for <code class="docutils literal notranslate"><span class="pre">prepared-inputs.nc</span></code>.  OGR
+independently verifies the declared stage-output directory and records its own
+filesystem identity; the OGI digest gives scientific consumers a compact,
+direct identity for the prepared handoff.</p>
+</section>
+<section id="commands-and-artifacts">
+<h2>Commands and artifacts<a class="headerlink" href="#commands-and-artifacts" title="Link to this heading">#</a></h2>
+<p>All paths are explicit and outputs are written below <code class="docutils literal notranslate"><span class="pre">--output-dir</span></code> (or OGR’s
+<code class="docutils literal notranslate"><span class="pre">OUTPUT_DIR</span></code>).  Commands do not depend on the caller’s working directory and
+reject pre-existing symlinks beneath a stage output directory.</p>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">prepare</span></code></dt><dd><p>Retrieves/reloads merged data, filters observations, constructs basis and
+sensitivities, assembles canonical inputs, and writes an inspectable
+<code class="docutils literal notranslate"><span class="pre">merged-data/merged-data.nc</span></code>, <code class="docutils literal notranslate"><span class="pre">prepared-inputs.nc</span></code> and
+<code class="docutils literal notranslate"><span class="pre">prepare-manifest.json</span></code>.  It never builds a
+PyMC graph or samples a posterior.  The NetCDF is a versioned
+<code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code> artifact and is independently inspectable/loadable.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">prior-predictive</span></code></dt><dd><p>Loads <code class="docutils literal notranslate"><span class="pre">--prepared-inputs</span></code>, validates its layout against the explicit
+configuration, builds the selected model, draws from its prior predictive,
+and writes <code class="docutils literal notranslate"><span class="pre">prior-predictive.nc</span></code> plus a readiness CheckResult.  It never
+runs posterior sampling.  <code class="docutils literal notranslate"><span class="pre">--strict</span></code> converts a readiness <code class="docutils literal notranslate"><span class="pre">fail</span></code> to a
+nonzero process exit when a scheduler policy wants that behavior.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">sample</span></code></dt><dd><p>Loads the prepared artifact, builds the selected model, samples it with the
+resolved <code class="docutils literal notranslate"><span class="pre">RhimeSampler</span></code>, and writes <code class="docutils literal notranslate"><span class="pre">posterior.nc</span></code> plus
+<code class="docutils literal notranslate"><span class="pre">sample-manifest.json</span></code>.  The manifest records the effective sampling
+configuration and content identities for the posterior and prepared input.
+It never silently invokes preparation.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">diagnose</span></code></dt><dd><p>Loads <code class="docutils literal notranslate"><span class="pre">--posterior</span></code>, writes <code class="docutils literal notranslate"><span class="pre">posterior-diagnostics.nc</span></code> and emits the
+<code class="docutils literal notranslate"><span class="pre">sampler-convergence</span></code> CheckResult.  Scientific failure exits zero by
+default, keeping scheduler status separate from scientific health.
+<code class="docutils literal notranslate"><span class="pre">--sample-manifest</span></code> authenticates a posterior produced by the staged
+sampler.  It is optional so persisted posteriors from earlier OGI runs can
+still be diagnosed.  <code class="docutils literal notranslate"><span class="pre">--strict</span></code> is available only for an explicitly
+chosen process policy.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">postprocess</span></code></dt><dd><p>Loads both prepared inputs and posterior, reconstructs the selected model’s
+output contract, and invokes the existing RHIME output implementation.  The
+configuration’s <code class="docutils literal notranslate"><span class="pre">output_format</span></code> controls <code class="docutils literal notranslate"><span class="pre">inv_out</span></code>, <code class="docutils literal notranslate"><span class="pre">basic</span></code>, <code class="docutils literal notranslate"><span class="pre">paris</span></code>
+or <code class="docutils literal notranslate"><span class="pre">legacy</span></code> products; explicit save paths in configuration are replaced so
+every product remains beneath the stage output directory.  For the same
+reason, staged postprocessing requires safe filename components and both the
+preparation and sample manifests.  The latter binds the posterior to its
+prepared-input digest and scientific configuration.  The sampler settings
+restored into result metadata come from that sample manifest; sampler values
+in the postprocessing configuration cannot relabel an existing posterior.
+Current all-chain limitations of derived basic and
+PARIS products remain tracked separately; this stage does not change their
+scientific calculation.  <code class="docutils literal notranslate"><span class="pre">postprocess-manifest.json</span></code> is always written;
+the otherwise in-memory <code class="docutils literal notranslate"><span class="pre">basic</span></code> product is written as <code class="docutils literal notranslate"><span class="pre">basic.nc</span></code>.</p>
+</dd>
+</dl>
+</section>
+<section id="checkresult-contract">
+<h2>CheckResult contract<a class="headerlink" href="#checkresult-contract" title="Link to this heading">#</a></h2>
+<p>Both checks use OGR-compatible schema version 1 and producer
+<code class="docutils literal notranslate"><span class="pre">openghg_inversions</span></code>.  <code class="docutils literal notranslate"><span class="pre">--check-output</span></code> chooses the JSON path and
+<code class="docutils literal notranslate"><span class="pre">--check-stage</span></code> chooses the producing OGR stage name.</p>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">prior-predictive-readiness</span></code></dt><dd><p>Status is <code class="docutils literal notranslate"><span class="pre">pass</span></code> when model construction succeeds, prior and
+prior-predictive variables are produced, and all sampled values are finite.
+It reports <code class="docutils literal notranslate"><span class="pre">draws</span></code> and <code class="docutils literal notranslate"><span class="pre">non_finite_values</span></code> against
+<code class="docutils literal notranslate"><span class="pre">max_non_finite_values</span> <span class="pre">=</span> <span class="pre">0</span></code>.  Construction, input and sampling exceptions
+become a readable <code class="docutils literal notranslate"><span class="pre">fail</span></code> result.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">sampler-convergence</span></code></dt><dd><p>Reports retained chain and draw counts, maximum R-hat and its variable,
+minimum bulk ESS and its variable, minimum tail ESS and its variable, total
+divergences, divergences per chain, and labels for unassessable R-hat/ESS
+elements.  Defaults are maximum R-hat 1.01,
+minimum bulk ESS 400, minimum tail ESS 400, and maximum divergences 0.
+Thresholds have CLI options.  The result is <code class="docutils literal notranslate"><span class="pre">unknown</span></code> when a signal is not
+assessable (for example R-hat from one chain), <code class="docutils literal notranslate"><span class="pre">fail</span></code> when an available
+signal exceeds policy, and <code class="docutils literal notranslate"><span class="pre">pass</span></code> otherwise.  This is the machine-visible
+convergence outcome requested by issues #656/#667; OGR does not import
+ArviZ or PyMC.</p>
+</dd>
+</dl>
+</section>
+<section id="minimal-command-sequence">
+<h2>Minimal command sequence<a class="headerlink" href="#minimal-command-sequence" title="Link to this heading">#</a></h2>
+<p>The following is a complete run using a canonical JSON parameter file.  An INI
+can be substituted with <code class="docutils literal notranslate"><span class="pre">--config</span></code>.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>openghg-inversions<span class="w"> </span>prepare<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--params-file<span class="w"> </span><span class="s2">"</span><span class="nv">$OGI_PARAMS_FILE</span><span class="s2">"</span><span class="w"> </span>--model<span class="w"> </span>standard<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--output-dir<span class="w"> </span><span class="s2">"</span><span class="nv">$OUTPUT_DIR</span><span class="s2">/prepare"</span>
+
+openghg-inversions<span class="w"> </span>prior-predictive<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--params-file<span class="w"> </span><span class="s2">"</span><span class="nv">$OGI_PARAMS_FILE</span><span class="s2">"</span><span class="w"> </span>--model<span class="w"> </span>standard<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--prepared-inputs<span class="w"> </span><span class="s2">"</span><span class="nv">$OUTPUT_DIR</span><span class="s2">/prepare/prepared-inputs.nc"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--preparation-manifest<span class="w"> </span><span class="s2">"</span><span class="nv">$OUTPUT_DIR</span><span class="s2">/prepare/prepare-manifest.json"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--output-dir<span class="w"> </span><span class="s2">"</span><span class="nv">$OUTPUT_DIR</span><span class="s2">/prior-predictive"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--check-output<span class="w"> </span><span class="s2">"</span><span class="nv">$OUTPUT_DIR</span><span class="s2">/prior-predictive/prior-ready.json"</span>
+
+openghg-run<span class="w"> </span>record-check<span class="w"> </span><span class="s2">"</span><span class="nv">$RUN_ROOT</span><span class="s2">"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="s2">"</span><span class="nv">$OUTPUT_DIR</span><span class="s2">/prior-predictive/prior-ready.json"</span><span class="w"> </span>--strict
+
+openghg-inversions<span class="w"> </span>sample<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--params-file<span class="w"> </span><span class="s2">"</span><span class="nv">$OGI_PARAMS_FILE</span><span class="s2">"</span><span class="w"> </span>--model<span class="w"> </span>standard<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--prepared-inputs<span class="w"> </span><span class="s2">"</span><span class="nv">$OUTPUT_DIR</span><span class="s2">/prepare/prepared-inputs.nc"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--preparation-manifest<span class="w"> </span><span class="s2">"</span><span class="nv">$OUTPUT_DIR</span><span class="s2">/prepare/prepare-manifest.json"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--output-dir<span class="w"> </span><span class="s2">"</span><span class="nv">$OUTPUT_DIR</span><span class="s2">/sample"</span>
+
+openghg-inversions<span class="w"> </span>diagnose<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--posterior<span class="w"> </span><span class="s2">"</span><span class="nv">$OUTPUT_DIR</span><span class="s2">/sample/posterior.nc"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--sample-manifest<span class="w"> </span><span class="s2">"</span><span class="nv">$OUTPUT_DIR</span><span class="s2">/sample/sample-manifest.json"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--output-dir<span class="w"> </span><span class="s2">"</span><span class="nv">$OUTPUT_DIR</span><span class="s2">/diagnose"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--check-output<span class="w"> </span><span class="s2">"</span><span class="nv">$OUTPUT_DIR</span><span class="s2">/diagnose/convergence.json"</span>
+
+openghg-run<span class="w"> </span>record-check<span class="w"> </span><span class="s2">"</span><span class="nv">$RUN_ROOT</span><span class="s2">"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="s2">"</span><span class="nv">$OUTPUT_DIR</span><span class="s2">/diagnose/convergence.json"</span>
+
+openghg-inversions<span class="w"> </span>postprocess<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--params-file<span class="w"> </span><span class="s2">"</span><span class="nv">$OGI_PARAMS_FILE</span><span class="s2">"</span><span class="w"> </span>--model<span class="w"> </span>standard<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--prepared-inputs<span class="w"> </span><span class="s2">"</span><span class="nv">$OUTPUT_DIR</span><span class="s2">/prepare/prepared-inputs.nc"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--preparation-manifest<span class="w"> </span><span class="s2">"</span><span class="nv">$OUTPUT_DIR</span><span class="s2">/prepare/prepare-manifest.json"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--posterior<span class="w"> </span><span class="s2">"</span><span class="nv">$OUTPUT_DIR</span><span class="s2">/sample/posterior.nc"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--sample-manifest<span class="w"> </span><span class="s2">"</span><span class="nv">$OUTPUT_DIR</span><span class="s2">/sample/sample-manifest.json"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--output-dir<span class="w"> </span><span class="s2">"</span><span class="nv">$OUTPUT_DIR</span><span class="s2">/postprocess"</span>
+</pre></div>
+</div>
+</section>
+<section id="ogr-campaign-stages">
+<h2>OGR campaign stages<a class="headerlink" href="#ogr-campaign-stages" title="Link to this heading">#</a></h2>
+<p>A campaign can place the same commands directly in named stages and declare
+their output directories.  No hand-authored SLURM script is required:</p>
+<div class="highlight-toml notranslate"><div class="highlight"><pre><span></span><span class="k">[[stage]]</span>
+<span class="n">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"prepare"</span>
+<span class="n">command</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'''openghg-inversions prepare --config "$CONFIG_FILE" --model standard --output-dir "$OUTPUT_DIR/prepare"'''</span>
+<span class="n">outputs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">"outputs/prepare"</span><span class="p">]</span>
+
+<span class="k">[[stage]]</span>
+<span class="n">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"prior-predictive"</span>
+<span class="n">depends_on</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">"prepare"</span><span class="p">]</span>
+<span class="n">command</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'''openghg-inversions prior-predictive --config "$CONFIG_FILE" --model standard --prepared-inputs "$OUTPUT_DIR/prepare/prepared-inputs.nc" --preparation-manifest "$OUTPUT_DIR/prepare/prepare-manifest.json" --output-dir "$OUTPUT_DIR/prior-predictive" --check-output "$OUTPUT_DIR/prior-predictive/prior-ready.json" &amp;&amp; openghg-run record-check "$RUN_ROOT" "$OUTPUT_DIR/prior-predictive/prior-ready.json"'''</span>
+<span class="n">outputs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">"outputs/prior-predictive"</span><span class="p">]</span>
+
+<span class="k">[[stage]]</span>
+<span class="n">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"sample"</span>
+<span class="n">depends_on</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">"prior-predictive"</span><span class="p">]</span>
+<span class="n">required_checks</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">"prior-predictive-readiness"</span><span class="p">]</span>
+<span class="n">command</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'''openghg-inversions sample --config "$CONFIG_FILE" --model standard --prepared-inputs "$OUTPUT_DIR/prepare/prepared-inputs.nc" --preparation-manifest "$OUTPUT_DIR/prepare/prepare-manifest.json" --output-dir "$OUTPUT_DIR/sample"'''</span>
+<span class="n">outputs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">"outputs/sample"</span><span class="p">]</span>
+
+<span class="k">[[stage]]</span>
+<span class="n">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"diagnose"</span>
+<span class="n">depends_on</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">"sample"</span><span class="p">]</span>
+<span class="n">command</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'''openghg-inversions diagnose --posterior "$OUTPUT_DIR/sample/posterior.nc" --sample-manifest "$OUTPUT_DIR/sample/sample-manifest.json" --output-dir "$OUTPUT_DIR/diagnose" --check-output "$OUTPUT_DIR/diagnose/convergence.json" &amp;&amp; openghg-run record-check "$RUN_ROOT" "$OUTPUT_DIR/diagnose/convergence.json"'''</span>
+<span class="n">outputs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">"outputs/diagnose"</span><span class="p">]</span>
+
+<span class="k">[[stage]]</span>
+<span class="n">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"postprocess"</span>
+<span class="n">depends_on</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">"prepare"</span><span class="p">,</span><span class="w"> </span><span class="s2">"sample"</span><span class="p">,</span><span class="w"> </span><span class="s2">"diagnose"</span><span class="p">]</span>
+<span class="n">command</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'''openghg-inversions postprocess --config "$CONFIG_FILE" --model standard --prepared-inputs "$OUTPUT_DIR/prepare/prepared-inputs.nc" --preparation-manifest "$OUTPUT_DIR/prepare/prepare-manifest.json" --posterior "$OUTPUT_DIR/sample/posterior.nc" --sample-manifest "$OUTPUT_DIR/sample/sample-manifest.json" --output-dir "$OUTPUT_DIR/postprocess"'''</span>
+<span class="n">outputs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">"outputs/postprocess"</span><span class="p">]</span>
+</pre></div>
+</div>
+<p>OGR owns campaign matrices, selected tasks, dependencies, scheduler state,
+declared-output hashing, continuation manifests, check recording and gates. OGI
+owns data preparation, model selection, sampling, scientific products, check
+calculations and their threshold policy.  <code class="docutils literal notranslate"><span class="pre">STAGE_INPUTS_MANIFEST</span></code> may be used
+by application code to discover continued parent outputs, but it is not needed
+for full-graph submission and is not implicitly interpreted by OGI.  The
+predictable explicit paths above work in both modes.</p>
+</section>
+</section>
+
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="cli.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">Running RHIME from the command line</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="grouped_basis_layout.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">Grouped basis and state metadata</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+                <dialog id="pst-secondary-sidebar-modal"></dialog>
+                <div id="pst-secondary-sidebar" class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#configuration-inputs">Configuration inputs</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#configuration-flow">Configuration flow</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#commands-and-artifacts">Commands and artifacts</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#checkresult-contract">CheckResult contract</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#minimal-command-sequence">Minimal command sequence</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#ogr-campaign-stages">OGR campaign stages</a></li>
+</ul>
+  </nav></div>
+
+  <div class="sidebar-secondary-item">
+
+  <div class="tocsection sourcelink">
+    <a href="../_sources/usage/staged_workflow.rst.txt">
+      <i class="fa-solid fa-file-lines"></i> Show Source
+    </a>
+  </div>
+</div>
+
+</div></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../_static/scripts/bootstrap.js?digest=cb8930eaaf36d9849b67"></script>
+<script defer src="../_static/scripts/pydata-sphinx-theme.js?digest=cb8930eaaf36d9849b67"></script>
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+
+  <p class="copyright">
+    
+      © Copyright 2025, Eric Saboya and Brendan Murphy.
+      <br/>
+    
+  </p>
+</div>
+      
+        <div class="footer-item">
+
+  <p class="sphinx-version">
+    Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 9.0.4.
+    <br/>
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+    <div class="footer-items__end">
+      
+        <div class="footer-item">
+<p class="theme-version">
+  <!-- # L10n: Setting the PST URL as an argument as this does not need to be localized -->
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.21.0.
+</p></div>
+      
+    </div>
+  
+</div>
+
+  </footer>
+  </body>
+</html>
