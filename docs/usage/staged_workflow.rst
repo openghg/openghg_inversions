@@ -123,8 +123,10 @@ reject pre-existing symlinks beneath a stage output directory.
   every product remains beneath the stage output directory.  For the same
   reason, staged postprocessing requires safe filename components and both the
   preparation and sample manifests.  The latter binds the posterior to its
-  prepared-input digest and scientific configuration.  Current all-chain
-  limitations of derived basic and
+  prepared-input digest and scientific configuration.  The sampler settings
+  restored into result metadata come from that sample manifest; sampler values
+  in the postprocessing configuration cannot relabel an existing posterior.
+  Current all-chain limitations of derived basic and
   PARIS products remain tracked separately; this stage does not change their
   scientific calculation.  ``postprocess-manifest.json`` is always written;
   the otherwise in-memory ``basic`` product is written as ``basic.nc``.

@@ -665,6 +665,41 @@ def test_inferencedata_datatree_roundtrip_preserves_root_attrs() -> None:
     assert restored.attrs == idata.attrs
 
 
+def test_inferencedata_netcdf_roundtrip_uses_xarray_default_engine(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The shared boundary must not switch HDF5 bindings within a process."""
+    idata = az.InferenceData(
+        posterior=xr.Dataset(
+            {"x": (("chain", "draw"), [[1.0]])},
+            coords={"chain": [0], "draw": [0]},
+        )
+    )
+    path = tmp_path / "trace.nc"
+    write_engines: list[str | None] = []
+    read_engines: list[str | None] = []
+    original_write = xr.DataTree.to_netcdf
+    original_open = xr.open_datatree
+
+    def record_write(tree: xr.DataTree, *args: Any, **kwargs: Any):
+        write_engines.append(kwargs.get("engine"))
+        return original_write(tree, *args, **kwargs)
+
+    def record_open(*args: Any, **kwargs: Any):
+        read_engines.append(kwargs.get("engine"))
+        return original_open(*args, **kwargs)
+
+    monkeypatch.setattr(xr.DataTree, "to_netcdf", record_write)
+    monkeypatch.setattr(xr, "open_datatree", record_open)
+
+    save_inferencedata(idata, path)
+    load_inferencedata(path)
+
+    assert write_engines == [None]
+    assert read_engines == [None]
+
+
 @pytest.mark.parametrize("suffix", [".nc", ".zarr"])
 def test_supported_inferencedata_roundtrip_restores_multiindex(
     tmp_path: Path,

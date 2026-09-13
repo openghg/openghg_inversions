@@ -43,7 +43,7 @@ from .preparation import (
     retrieve_or_reload_rhime_data,
     with_prepared_rhime_sites,
 )
-from .sampling import sample_rhime_model
+from .sampling import RhimeSampler, sample_rhime_model
 from .standard import (
     build_standard_rhime_model_result,
     make_standard_rhime_result,
@@ -237,16 +237,6 @@ def _resolve_stage_paths(params: Mapping[str, Any], *, base_dir: Path) -> dict[s
     return resolved
 
 
-def _prefer_h5netcdf():
-    """Prefer h5netcdf for implicit writes on xarray versions that support it."""
-    options = (
-        {"netcdf_engine_order": ("h5netcdf", "netcdf4", "scipy")}
-        if "netcdf_engine_order" in xr.get_options()
-        else {}
-    )
-    return xr.set_options(**options)
-
-
 def load_stage_params(
     *,
     config_file: str | Path | None = None,
@@ -349,9 +339,8 @@ def prepare_rhime_stage(
     )
     merged_path = _output_path(destination, None, "merged-data/merged-data.nc")
     merged_dir = merged_path.parent
-    with _prefer_h5netcdf():
-        _save_merged_data(filtered.fp_all, merged_dir, merged_data_name="merged-data.nc")
-        basis = build_rhime_basis(filtered, data_args)
+    _save_merged_data(filtered.fp_all, merged_dir, merged_data_name="merged-data.nc")
+    basis = build_rhime_basis(filtered, data_args)
     site_data = build_rhime_sensitivities(filtered, basis, data_args, multisector=multisector)
     prepared = assemble_rhime_inputs(filtered, basis, site_data, data_args)
     prepared_sites = {str(site).upper() for site in prepared.sites}
@@ -442,6 +431,20 @@ def _verify_sample_manifest(
                 f"manifest has {manifest.get('configuration_identity')!r}, current configuration has {expected!r}."
             )
     return manifest
+
+
+def _sampler_from_sample_manifest(manifest: Mapping[str, Any], *, path: str | Path) -> RhimeSampler:
+    """Restore the sampler configuration recorded by the sampling stage."""
+    effective = manifest.get("effective_configuration")
+    sampler = effective.get("sampler") if isinstance(effective, Mapping) else None
+    if not isinstance(sampler, Mapping):
+        raise ValueError(f"Sample manifest {Path(path).resolve()} has no effective sampler configuration.")
+    try:
+        return RhimeSampler(**dict(sampler))
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"Sample manifest {Path(path).resolve()} has an invalid effective sampler configuration: {exc}"
+        ) from exc
 
 
 def _build_prepared_model(
@@ -637,7 +640,7 @@ def diagnose_rhime_stage(
     idata = load_inferencedata(posterior_path)
     summary = az.summary(idata, kind="diagnostics", fmt="xarray")
     summary_path = _output_path(destination, None, "posterior-diagnostics.nc")
-    reset_serialisation_multiindexes(summary).to_netcdf(summary_path, engine="h5netcdf")
+    reset_serialisation_multiindexes(summary).to_netcdf(summary_path)
 
     def finite_extreme(name: str, operation: str) -> tuple[float | None, str | None, list[str]]:
         candidates = []
@@ -768,13 +771,14 @@ def postprocess_rhime_stage(
         preparation_manifest=preparation_manifest,
     )
     posterior_path = Path(posterior).resolve()
-    _verify_sample_manifest(
+    sample_contract = _verify_sample_manifest(
         sample_manifest,
         posterior=posterior_path,
         setup=resolved,
         model=model,
         prepared_inputs=prepared_inputs,
     )
+    sampled_sampler = _sampler_from_sample_manifest(sample_contract, path=sample_manifest)
     output_spec = replace(
         configured_output,
         output_path=str(destination),
@@ -782,30 +786,29 @@ def postprocess_rhime_stage(
         save_inversion_output=bool(configured_output.save_inversion_output),
     )
     run_spec = replace(resolved.run_spec, output=output_spec)
-    resolved = RhimeRunnerSetup(run_spec=run_spec, sampler=resolved.sampler, data_args=resolved.data_args)
+    resolved = RhimeRunnerSetup(run_spec=run_spec, sampler=sampled_sampler, data_args=resolved.data_args)
     built = _build_prepared_model(prepared, resolved, model=model)
     idata = load_inferencedata(posterior_path)
-    with _prefer_h5netcdf():
-        if model == "multisector":
-            result = make_multisector_rhime_result(
-                prepared=prepared,
-                run_spec=run_spec,
-                sampler=resolved.sampler,
-                model_build_result=built,
-                idata=idata,
-                build_and_sample_seconds=0.0,
-            )
-            make_multisector_rhime_outputs(result=result, prepared=prepared)
-        else:
-            result = make_standard_rhime_result(
-                prepared=prepared,
-                run_spec=run_spec,
-                sampler=resolved.sampler,
-                model_build_result=built,
-                idata=idata,
-                build_and_sample_seconds=0.0,
-            )
-            make_standard_rhime_outputs(result=result, prepared=prepared)
+    if model == "multisector":
+        result = make_multisector_rhime_result(
+            prepared=prepared,
+            run_spec=run_spec,
+            sampler=resolved.sampler,
+            model_build_result=built,
+            idata=idata,
+            build_and_sample_seconds=0.0,
+        )
+        make_multisector_rhime_outputs(result=result, prepared=prepared)
+    else:
+        result = make_standard_rhime_result(
+            prepared=prepared,
+            run_spec=run_spec,
+            sampler=resolved.sampler,
+            model_build_result=built,
+            idata=idata,
+            build_and_sample_seconds=0.0,
+        )
+        make_standard_rhime_outputs(result=result, prepared=prepared)
     artifacts = {
         name: path
         for name, path in result.output_metadata.items()
@@ -814,7 +817,7 @@ def postprocess_rhime_stage(
     basic = result.outputs.get("basic")
     if isinstance(basic, xr.Dataset):
         basic_path = _output_path(destination, None, "basic.nc")
-        reset_serialisation_multiindexes(basic).to_netcdf(basic_path, engine="h5netcdf")
+        reset_serialisation_multiindexes(basic).to_netcdf(basic_path)
         artifacts["basic_path"] = str(basic_path)
     for name, path in artifacts.items():
         try:

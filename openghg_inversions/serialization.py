@@ -263,8 +263,8 @@ def save_datatree(
     """Save a DataTree to NetCDF or Zarr.
 
     This writes the tree, replacing an existing destination artifact. NetCDF
-    uses ``h5netcdf``, matching the first-choice load engine so one process does
-    not mix incompatible HDF5 bindings at the serialization boundary.
+    uses xarray's default engine so callers that already loaded NetCDF inputs
+    do not switch HDF5 bindings at the serialization boundary.
 
     Args:
         dt: DataTree to persist.
@@ -290,7 +290,7 @@ def save_datatree(
     if output_format == "netcdf":
         if output_path.suffix != ".nc":
             output_path = output_path.with_suffix(".nc")
-        dt.to_netcdf(output_path, engine="h5netcdf")
+        dt.to_netcdf(output_path)
     elif output_format == "zarr":
         if output_path.suffix != ".zarr":
             output_path = output_path.with_suffix(".zarr")
@@ -302,10 +302,10 @@ def save_datatree(
 def open_datatree_loaded(file_path: str | Path) -> xr.DataTree:
     """Open and eagerly load a DataTree artifact.
 
-    NetCDF is first attempted with ``h5netcdf`` for compatibility with modern
-    inversion outputs, then with xarray's default engine. Loading happens while
-    the file context is open, so the returned tree owns its data and does not
-    retain references to closed file handles.
+    NetCDF uses xarray's default engine, matching :func:`save_datatree` and the
+    rest of the default data-loading path. Loading happens while the file
+    context is open, so the returned tree owns its data and does not retain
+    references to closed file handles.
 
     Args:
         file_path: NetCDF or Zarr DataTree artifact to load.
@@ -318,21 +318,8 @@ def open_datatree_loaded(file_path: str | Path) -> xr.DataTree:
         RuntimeError: If opening fails due to a backend runtime error.
         ValueError: If no backend can interpret the artifact.
     """
-    open_errors: list[Exception] = []
-    for engine in ("h5netcdf", None):
-        try:
-            dt = (
-                xr.open_datatree(file_path, engine=engine)
-                if engine is not None
-                else xr.open_datatree(file_path)
-            )
-        except (OSError, RuntimeError, ValueError) as exc:
-            open_errors.append(exc)
-        else:
-            with dt:
-                return dt.load()
-
-    raise open_errors[-1]
+    with xr.open_datatree(file_path) as dt:
+        return dt.load()
 
 
 def inferencedata_to_datatree(idata: az.InferenceData) -> xr.DataTree:

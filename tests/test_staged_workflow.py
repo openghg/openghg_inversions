@@ -464,7 +464,7 @@ def test_diagnostics_emit_issue_667_convergence_signals(
     assert result["measured_values"]["min_bulk_ess_variable"] is not None
     assert result["measured_values"]["min_tail_ess_variable"] is not None
     assert Path(result["artifact_paths"][0]).is_file()
-    assert engines == ["h5netcdf"]
+    assert engines == [None]
 
 
 @pytest.mark.parametrize(("finite_rhat", "expected_status"), [(1.0, "unknown"), (1.2, "fail")])
@@ -676,13 +676,18 @@ def test_synthetic_staged_tracer_bullet(
     )
     posterior_path = Path(sampled["artifacts"]["posterior"])
     sample_manifest = Path(sampled["manifest_path"])
+    sample_contract = json.loads(sample_manifest.read_text(encoding="utf-8"))
     convergence = diagnose_rhime_stage(
         posterior=posterior_path,
         sample_manifest=sample_manifest,
         output_dir=tmp_path / "diagnose",
     )
+    postprocess_setup = resolve_stage_setup(
+        _params(draws=1_000, tune=1_000, chains=4),
+        model="standard",
+    )
     result = postprocess_rhime_stage(
-        setup=setup,
+        setup=postprocess_setup,
         model="standard",
         prepared_inputs=prepared_path,
         preparation_manifest=manifest_path,
@@ -696,10 +701,21 @@ def test_synthetic_staged_tracer_bullet(
     assert convergence["status"] in {"fail", "unknown", "pass"}
     assert result.output_metadata["inversion_output_path"].startswith(str(tmp_path / "postprocess"))
     assert Path(result.output_metadata["inversion_output_path"]).is_file()
+    assert result.inv_out is not None
+    assert result.inv_out.output_metadata["sampler"] == {
+        "draws": 10,
+        "burn": 0,
+        "tune": 10,
+        "chains": 2,
+        "nuts_sampler": "pymc",
+    }
     postprocess_manifest = Path(result.output_metadata["postprocess_manifest_path"])
     assert postprocess_manifest.is_file()
     postprocess_contract = json.loads(postprocess_manifest.read_text(encoding="utf-8"))
     assert postprocess_contract["input_identities"] == sampled["artifact_identities"]
+    assert postprocess_contract["effective_configuration"]["sampler"] == sample_contract[
+        "effective_configuration"
+    ]["sampler"]
     assert postprocess_contract["effective_configuration"]["run_spec"]["output"]["output_path"] == str(
         tmp_path / "postprocess"
     )
