@@ -53,14 +53,11 @@ def annotate_likelihood_trace(
     *,
     builder_identity: dict[str, str],
     likelihood_kwargs: Mapping[str, Any] | None,
-    concentration_units: str | None,
-    component_metadata: Mapping[str, Any] | None = None,
 ) -> None:
-    """Persist likelihood provenance and variable metadata in place.
+    """Persist custom-likelihood provenance in place.
 
-    Array-valued likelihood options are converted to JSON-compatible values;
-    labelled arrays cross an explicit eager serialization boundary. Known
-    mismatch components also receive stable scientific-role and unit metadata.
+    Array-valued options are converted to JSON-compatible values; labelled
+    arrays cross an explicit eager serialization boundary.
 
     Args:
         idata: Inference data to annotate in place.
@@ -68,11 +65,6 @@ def annotate_likelihood_trace(
             the likelihood builder.
         likelihood_kwargs: Resolved builder options to preserve as structured
             JSON metadata.
-        concentration_units: Observation concentration units, when known.
-        component_metadata: Static scientific provenance and possible plain
-            ``variable_roles`` and ``variable_units`` mappings supplied by the
-            likelihood component. Variables without an explicit unit use the
-            observation concentration unit.
 
     Returns:
         None. The input inference data and matching variable attributes are
@@ -82,22 +74,6 @@ def annotate_likelihood_trace(
     idata.attrs["rhime_likelihood_kwargs"] = json.dumps(
         _structured_metadata(dict(likelihood_kwargs or {})), sort_keys=True
     )
-    metadata = dict(component_metadata or {})
-    variable_roles = metadata.pop("variable_roles", {})
-    variable_units = metadata.pop("variable_units", {})
-    for key, value in metadata.items():
-        idata.attrs[f"rhime_{key}"] = value
-    for group_name in idata.groups():
-        group = getattr(idata, group_name)
-        if not isinstance(group, xr.Dataset):
-            continue
-        for role, name in variable_roles.items():
-            if name not in group:
-                continue
-            group[name].attrs["rhime_scientific_role"] = role
-            resolved_units = variable_units.get(name, concentration_units)
-            if resolved_units is not None:
-                group[name].attrs["units"] = resolved_units
 
 
 def _structured_metadata(value: Any) -> Any:

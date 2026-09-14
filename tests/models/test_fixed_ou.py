@@ -190,8 +190,8 @@ def test_analytic_value_mean_and_amplitude_gradients_match_dense_finite_differen
     )
 
 
-def test_logp_matches_frozen_verification_games_fixture() -> None:
-    """Match verification-games ``_inputs()`` and its fixed-OU evaluator."""
+def test_logp_matches_frozen_reference_fixture() -> None:
+    """Match the frozen dense reference for the fixed-OU evaluator."""
     observed = np.array([1.2, -0.4, 0.5, 1.6, -0.2, 0.8])
     fixed = np.array([0.1, -0.1, 0.2, 0.3, -0.2, 0.0])
     design = np.array(

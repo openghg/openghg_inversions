@@ -1,12 +1,4 @@
-"""Tests for the labelled IID per-site mismatch likelihood.
-
-The implementation contract is pinned to Verification Games
-``src/verification_games/rhime_calibration/site_sigma.py`` at commit
-``41d061aea153ddc56130694bfa18b7e801fcd9df``. The dense A/B/A fixture comes
-from ``tests/test_rhime_site_sigma.py`` at the original model commit
-``88f8d4cb21c7eb84b601c26fa51e806ff0bb3ed7``; the low-rank fixture comes from
-that test at ``abdf4671e5d7364fabb1c98f42f6982f8d29d4c0``.
-"""
+"""Tests for the labelled IID per-site mismatch likelihood."""
 
 from collections.abc import Mapping
 from typing import Any
@@ -25,7 +17,7 @@ from openghg_inversions.rhime.standard import build_standard_rhime_model
 
 SITE_LABELS = np.array(["A", "B", "A"])
 FIXED_SITE_SIGMA = {"A": 0.5, "B": 1.0}
-VG_BASE_COVARIANCE = np.array(
+REFERENCE_BASE_COVARIANCE = np.array(
     [
         [1.0, 0.2, 0.1],
         [0.2, 1.2, 0.3],
@@ -35,7 +27,7 @@ VG_BASE_COVARIANCE = np.array(
 
 
 def _observations(values: np.ndarray | None = None) -> xr.DataArray:
-    """Return an observation vector with the interleaved VG site labels."""
+    """Return an observation vector with interleaved site labels."""
     return xr.DataArray(
         np.array([1.3, 2.0, 0.9]) if values is None else values,
         dims="nmeasure",
@@ -129,15 +121,15 @@ def _likelihood_logp(model: pm.Model) -> float:
     return float(model.compile_logp(vars=model.observed_RVs)(model.initial_point()))
 
 
-def test_fixed_site_sigma_matches_frozen_vg_dense_covariance() -> None:
-    """Match the VG A/B/A covariance while preserving every dense off-diagonal."""
+def test_fixed_site_sigma_matches_frozen_dense_covariance() -> None:
+    """Match the A/B/A reference covariance while preserving every off-diagonal."""
     observation_error = np.array([0.3, 0.4, 0.2])
-    aggregation_covariance = VG_BASE_COVARIANCE - np.diag(observation_error**2)
+    aggregation_covariance = REFERENCE_BASE_COVARIANCE - np.diag(observation_error**2)
     model = _build_model(
         observation_error=observation_error,
         aggregation_error=_aggregation_error("dense", covariance=aggregation_covariance),
     )
-    expected_covariance = VG_BASE_COVARIANCE + np.diag([0.25, 1.0, 0.25])
+    expected_covariance = REFERENCE_BASE_COVARIANCE + np.diag([0.25, 1.0, 0.25])
     expected = multivariate_normal.logpdf(
         _observations().values,
         mean=np.array([1.0, 1.2, 0.8]),
@@ -178,8 +170,8 @@ def test_aggregation_covariance_and_reported_error_are_counted_once(mode: str) -
     np.testing.assert_allclose(model["epsilon"].eval() ** 2, np.diag(expected_covariance))
 
 
-def test_low_rank_logp_matches_the_four_row_vg_fixture() -> None:
-    """Match the VG low-rank fixture at commit ``abdf4671e5d7364fabb1c98f42f6982f8d29d4c0``."""
+def test_low_rank_logp_matches_the_four_row_reference_fixture() -> None:
+    """Match the frozen low-rank reference fixture."""
     factor = np.array([[0.4, 0.1], [0.2, -0.3], [0.5, 0.2], [-0.1, 0.6]])
     residual_variance = np.array([0.2, 0.35, 0.25, 0.4])
     mean_values = np.array([1.0, 1.2, 0.9, 1.1])
@@ -234,10 +226,10 @@ def test_inferred_sigma_uses_labelled_first_occurrence_site_order() -> None:
     assert np.isfinite(model.compile_logp()(model.initial_point()))
 
 
-def test_inferred_site_sigma_likelihood_matches_dense_vg_oracle() -> None:
-    """Match the VG dense likelihood at an explicit inferred physical sigma point."""
+def test_inferred_site_sigma_likelihood_matches_dense_reference() -> None:
+    """Match the dense reference at an explicit inferred physical sigma point."""
     observation_error = np.array([0.3, 0.4, 0.2])
-    aggregation_covariance = VG_BASE_COVARIANCE - np.diag(observation_error**2)
+    aggregation_covariance = REFERENCE_BASE_COVARIANCE - np.diag(observation_error**2)
     model = _build_model(
         observation_error=observation_error,
         aggregation_error=_aggregation_error("dense", covariance=aggregation_covariance),
@@ -249,7 +241,7 @@ def test_inferred_site_sigma_likelihood_matches_dense_vg_oracle() -> None:
     expected = multivariate_normal.logpdf(
         _observations().values,
         mean=np.array([1.0, 1.2, 0.8]),
-        cov=VG_BASE_COVARIANCE + np.diag([0.25, 1.0, 0.25]),
+        cov=REFERENCE_BASE_COVARIANCE + np.diag([0.25, 1.0, 0.25]),
     )
 
     actual = float(model.compile_logp(vars=model.observed_RVs)(point))
@@ -328,7 +320,7 @@ def test_low_rank_zero_diagonal_rescued_only_by_factor_is_rejected() -> None:
 
 
 def test_standard_recipe_accepts_site_sigma_through_public_likelihood_seam() -> None:
-    """Install the VG site-sigma component through the ordinary RHIME builder seam."""
+    """Install site sigma through the ordinary RHIME builder seam."""
     observations = _observations()
     data = xr.Dataset(
         {

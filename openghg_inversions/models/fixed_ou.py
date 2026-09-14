@@ -522,129 +522,108 @@ def _site_values(
     return cast(FloatArray, values.copy())
 
 
-class FixedOuGaussianLikelihood:
-    """Callable fixed-OU component and its static output contract."""
+def add_fixed_ou_gaussian_likelihood(
+    *,
+    observations: xr.DataArray,
+    observation_error: xr.DataArray,
+    aggregation_error: AggregationError,
+    mean: TensorVariable,
+    tau_hours: float | Mapping[str, float],
+    fixed_site_amplitudes: float | Mapping[str, float] | None = None,
+    site_amplitude_prior: Mapping[str, Any] | None = None,
+    output_dim: str = "nmeasure",
+) -> TensorVariable:
+    """Add fixed-tau, within-site OU mismatch to a Gaussian observation model.
 
-    rhime_metadata = {
-        "mismatch_component": "fixed_within_site_ou",
-        "residual_covariance": "F F^T + diag(d) + direct_sum_site(a_s^2 T_s(tau_s))",
-        "sampler_backend": "pymc",
-        "variable_roles": {
-            "fixed_within_site_ou_correlation_time": "ou_tau_hours",
-            "within_site_ou_mismatch_amplitude": "ou_site_amplitude",
-            "total_marginal_observation_standard_deviation": "epsilon",
-            "observed_concentration": "y",
-        },
-        "variable_units": {"ou_tau_hours": "h"},
-    }
-
-
-    def __call__(
-        self,
-        *,
-        observations: xr.DataArray,
-        observation_error: xr.DataArray,
-        aggregation_error: AggregationError,
-        mean: TensorVariable,
-        tau_hours: float | Mapping[str, float],
-        fixed_site_amplitudes: float | Mapping[str, float] | None = None,
-        site_amplitude_prior: Mapping[str, Any] | None = None,
-        output_dim: str = "nmeasure",
-    ) -> TensorVariable:
-        """Add fixed-tau, within-site OU mismatch to a Gaussian observation model.
-
-        The residual covariance is fixed aggregation error plus reported observation
-        variance plus one labelled OU block per site. Inferred amplitudes require
-        an explicit prior in the observations' concentration units. A positive OU
-        term may make a singular fixed base valid. Fixed amplitudes must produce
-        strictly positive generalized base-plus-OU mode variances before the
-        low-rank update.
-        """
-        if fixed_site_amplitudes is not None and site_amplitude_prior is not None:
-            raise ValueError("Pass either `fixed_site_amplitudes` or `site_amplitude_prior`, not both.")
-        if fixed_site_amplitudes is None and site_amplitude_prior is None:
-            raise ValueError("An inferred fixed-OU amplitude requires an explicit `site_amplitude_prior`.")
-        validate_observation_error_arrays(
-            observations,
-            observation_error,
-            None,
-            owner="Fixed-OU likelihood",
-            output_dim=output_dim,
+    The residual covariance is fixed aggregation error plus reported observation
+    variance plus one labelled OU block per site. Inferred amplitudes require
+    an explicit prior in the observations' concentration units. A positive OU
+    term may make a singular fixed base valid. Fixed amplitudes must produce
+    strictly positive generalized base-plus-OU mode variances before the
+    low-rank update.
+    """
+    if fixed_site_amplitudes is not None and site_amplitude_prior is not None:
+        raise ValueError("Pass either `fixed_site_amplitudes` or `site_amplitude_prior`, not both.")
+    if fixed_site_amplitudes is None and site_amplitude_prior is None:
+        raise ValueError("An inferred fixed-OU amplitude requires an explicit `site_amplitude_prior`.")
+    validate_observation_error_arrays(
+        observations,
+        observation_error,
+        None,
+        owner="Fixed-OU likelihood",
+        output_dim=output_dim,
+    )
+    time = observations.coords.get("time")
+    if time is None or time.dims != (output_dim,):
+        raise ValueError(
+            "The fixed-OU likelihood requires observation-aligned 'site' and 'time' coordinates."
         )
-        time = observations.coords.get("time")
-        if time is None or time.dims != (output_dim,):
+    alignment = SigmaAlignment.from_observations(observations)
+    site_index = alignment.site_index.rename("ou_site_index")
+    site_coord = alignment.site_labels.rename({"nsigma_site": "ou_site"}).rename("ou_site")
+    site_labels = tuple(str(label) for label in site_coord.values)
+    observation_variance = np.square(np.asarray(observation_error.values, dtype=np.float64))
+    factor, aggregation_diagonal = aggregation_error_as_low_rank(aggregation_error)
+    resolved_tau = (
+        expand_mapping(tau_hours, site_coord).values
+        if isinstance(tau_hours, Mapping)
+        else tau_hours
+    )
+    prepared = prepare_fixed_ou_low_rank(
+        factor,
+        observation_variance + aggregation_diagonal,
+        np.asarray(time.values),
+        np.asarray(site_index.values, dtype=np.int64),
+        resolved_tau,
+        site_labels=site_labels,
+    )
+    fixed_amplitudes = None
+    if fixed_site_amplitudes is not None:
+        fixed_amplitudes = _site_values(
+            expand_mapping(fixed_site_amplitudes, site_coord).values
+            if isinstance(fixed_site_amplitudes, Mapping)
+            else fixed_site_amplitudes,
+            alignment.nsite,
+            "fixed_site_amplitudes",
+            positive=False,
+        )
+        mode_variance = prepared.mode_eigenvalues + np.square(fixed_amplitudes)[
+            prepared.mode_site_index
+        ]
+        if np.any(mode_variance <= 0.0):
             raise ValueError(
-                "The fixed-OU likelihood requires observation-aligned 'site' and 'time' coordinates."
+                "Fixed OU amplitudes must produce a positive-definite complete "
+                "observation covariance with strictly positive generalized "
+                "base-plus-OU mode variances before the low-rank update."
             )
-        alignment = SigmaAlignment.from_observations(observations)
-        site_index = alignment.site_index.rename("ou_site_index")
-        site_coord = alignment.site_labels.rename({"nsigma_site": "ou_site"}).rename("ou_site")
-        site_labels = tuple(str(label) for label in site_coord.values)
-        observation_variance = np.square(np.asarray(observation_error.values, dtype=np.float64))
-        factor, aggregation_diagonal = aggregation_error_as_low_rank(aggregation_error)
-        resolved_tau = (
-            expand_mapping(tau_hours, site_coord).values
-            if isinstance(tau_hours, Mapping)
-            else tau_hours
-        )
-        prepared = prepare_fixed_ou_low_rank(
-            factor,
-            observation_variance + aggregation_diagonal,
-            np.asarray(time.values),
-            np.asarray(site_index.values, dtype=np.int64),
-            resolved_tau,
-            site_labels=site_labels,
-        )
-        fixed_amplitudes = None
-        if fixed_site_amplitudes is not None:
-            fixed_amplitudes = _site_values(
-                expand_mapping(fixed_site_amplitudes, site_coord).values
-                if isinstance(fixed_site_amplitudes, Mapping)
-                else fixed_site_amplitudes,
-                alignment.nsite,
-                "fixed_site_amplitudes",
-                positive=False,
-            )
-            mode_variance = prepared.mode_eigenvalues + np.square(fixed_amplitudes)[
-                prepared.mode_site_index
-            ]
-            if np.any(mode_variance <= 0.0):
-                raise ValueError(
-                    "Fixed OU amplitudes must produce a positive-definite complete "
-                    "observation covariance with strictly positive generalized "
-                    "base-plus-OU mode variances before the low-rank update."
-                )
 
-        observed = add_model_data(observations, "Y")
-        add_model_data(observation_error, "error")
-        add_model_data(site_index)
-        add_model_data(site_coord.copy(data=prepared.tau_hours_by_site).rename("ou_tau_hours"))
-        if fixed_site_amplitudes is None:
-            assert site_amplitude_prior is not None
-            amplitude = parse_prior(
-                "ou_site_amplitude",
-                positive_prior_args(site_amplitude_prior),
-                dims="ou_site",
-            )
-        else:
-            assert fixed_amplitudes is not None
-            amplitude = add_model_data(
-                site_coord.copy(data=fixed_amplitudes).rename("ou_site_amplitude")
-            )
-        pm.Deterministic("epsilon", pt.sqrt(prepared.marginal_variance(amplitude)), dims=output_dim)
-        return cast(
-            TensorVariable,
-            pm.CustomDist(
-                "y",
-                mean,
-                amplitude,
-                logp=prepared.logp,
-                random=prepared.random,
-                signature="(n),(s)->(n)",
-                observed=observed,
-                dims=output_dim,
-            ),
+    observed = add_model_data(observations, "Y")
+    add_model_data(observation_error, "error")
+    add_model_data(site_index)
+    add_model_data(site_coord.copy(data=prepared.tau_hours_by_site).rename("ou_tau_hours"))
+    if fixed_site_amplitudes is None:
+        assert site_amplitude_prior is not None
+        amplitude = parse_prior(
+            "ou_site_amplitude",
+            positive_prior_args(site_amplitude_prior),
+            dims="ou_site",
         )
-
-
-add_fixed_ou_gaussian_likelihood = FixedOuGaussianLikelihood()
+    else:
+        assert fixed_amplitudes is not None
+        amplitude = add_model_data(
+            site_coord.copy(data=fixed_amplitudes).rename("ou_site_amplitude")
+        )
+    pm.Deterministic("epsilon", pt.sqrt(prepared.marginal_variance(amplitude)), dims=output_dim)
+    return cast(
+        TensorVariable,
+        pm.CustomDist(
+            "y",
+            mean,
+            amplitude,
+            logp=prepared.logp,
+            random=prepared.random,
+            signature="(n),(s)->(n)",
+            observed=observed,
+            dims=output_dim,
+        ),
+    )
