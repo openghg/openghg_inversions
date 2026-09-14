@@ -957,6 +957,8 @@ minimal ordinary-runner call; this concrete-model page does not duplicate it.</p
 sampling and postprocessing. The runner records the likelihood builder’s
 module and qualified name, so direct-Python likelihoods remain identifiable in
 persisted inversion outputs.</p>
+<section id="labelled-per-site-iid-mismatch">
+<h3>Labelled per-site IID mismatch<a class="headerlink" href="#labelled-per-site-iid-mismatch" title="Link to this heading">#</a></h3>
 <p>The built-in
 <a class="reference internal" href="../reference/openghg_inversions.models.site_sigma.html#openghg_inversions.models.site_sigma.add_site_sigma_gaussian_likelihood" title="openghg_inversions.models.site_sigma.add_site_sigma_gaussian_likelihood"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.models.site_sigma.add_site_sigma_gaussian_likelihood()</span></code></a>
 provides a labelled, run-level IID site-mismatch component. It derives stable
@@ -997,6 +999,9 @@ mapping. Fixed amplitudes are stored as model data and inferred amplitudes as
 posterior variables. The ordinary runner records the callable identity,
 and JSON-compatible options in the saved output. The component reuses OpenGHG
 Inversions’ aggregation-error and Gaussian likelihood machinery.</p>
+</section>
+<section id="advanced-whole-model-compatibility-boundary">
+<h3>Advanced whole-model compatibility boundary<a class="headerlink" href="#advanced-whole-model-compatibility-boundary" title="Link to this heading">#</a></h3>
 <p>A complete model builder is an advanced escape hatch available only through
 <code class="docutils literal notranslate"><span class="pre">run_rhime_from_prepared_inputs</span></code>. It receives a
 <code class="docutils literal notranslate"><span class="pre">RhimeModelBuilderContext</span></code> containing the validated <code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code>,
@@ -1088,6 +1093,7 @@ recipes with concrete builders. The active design guidance is
 <a class="reference internal" href="../development/rhime_model_development.html"><span class="doc">Developing RHIME models</span></a>; the retired semantic-model work
 in issue #528 remains research evidence rather than production architecture.</p>
 </section>
+</section>
 <section id="customization-boundaries">
 <h2>Customization boundaries<a class="headerlink" href="#customization-boundaries" title="Link to this heading">#</a></h2>
 <p>The current customization levels are:</p>
@@ -1165,7 +1171,11 @@ component is insufficient.</p>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#equivalent-construction-from-public-helpers">Equivalent construction from public helpers</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#multisector-model">Multisector model</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#names-and-generated-names">Names and generated names</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#alternative-models-and-likelihoods">Alternative models and likelihoods</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#alternative-models-and-likelihoods">Alternative models and likelihoods</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#labelled-per-site-iid-mismatch">Labelled per-site IID mismatch</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#advanced-whole-model-compatibility-boundary">Advanced whole-model compatibility boundary</a></li>
+</ul>
+</li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#customization-boundaries">Customization boundaries</a></li>
 </ul>
   </nav></div>
