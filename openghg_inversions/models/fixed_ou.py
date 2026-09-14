@@ -19,15 +19,15 @@ from pytensor.tensor.variable import TensorVariable
 from scipy.linalg import cho_solve, eigh, solve_triangular
 from scipy.sparse import csr_matrix
 
-from openghg_inversions.inversion_inputs import make_site_indicator
+from openghg_inversions.array_ops import expand_mapping
 from openghg_inversions.models.components import add_model_data
-from openghg_inversions.models.coords import add_coords
-from openghg_inversions.models.priors import parse_prior
+from openghg_inversions.models.priors import parse_prior, positive_prior_args
 from openghg_inversions.observation_error import (
     AggregationError,
     aggregation_error_as_low_rank,
     validate_observation_error_arrays,
 )
+from openghg_inversions.sigma import SigmaAlignment
 
 
 FloatArray = NDArray[np.float64]
@@ -41,10 +41,7 @@ class FixedOuSiteBlock:
 
     site: int
     observation_indices: IntArray
-    mode_slice: slice
-    correlation: FloatArray
     correlation_cholesky: FloatArray
-    transform: FloatArray
 
 
 @dataclass(frozen=True)
@@ -134,7 +131,6 @@ class FixedOuLowRank:
 
     factor: FloatArray
     diagonal_variance: FloatArray
-    observation_time_hours: FloatArray
     site_index: IntArray
     site_labels: tuple[str, ...]
     tau_hours_by_site: FloatArray
@@ -303,17 +299,6 @@ class FixedOuLowRank:
             + pt.square(amplitude[site_index])
         )
 
-    def covariance_dense(self, site_amplitude: ArrayLike | float) -> FloatArray:
-        """Materialize the represented covariance for small reference checks."""
-        amplitude = _site_values(site_amplitude, self.n_site, "site_amplitude", positive=False)
-        covariance = self.factor @ self.factor.T + np.diag(self.diagonal_variance)
-        for block in self.site_blocks:
-            indices = block.observation_indices
-            covariance[np.ix_(indices, indices)] += (
-                amplitude[block.site] ** 2 * block.correlation
-            )
-        return cast(FloatArray, (covariance + covariance.T) * 0.5)
-
     def random(
         self,
         mean: np.ndarray,
@@ -420,10 +405,7 @@ def prepare_fixed_ou_low_rank(
             FixedOuSiteBlock(
                 site=site,
                 observation_indices=indices,
-                mode_slice=slice(mode_start, mode_stop),
-                correlation=correlation,
                 correlation_cholesky=cast(FloatArray, correlation_cholesky),
-                transform=transform,
             )
         )
         eigenvalues.append(values)
@@ -433,7 +415,6 @@ def prepare_fixed_ou_low_rank(
     return FixedOuLowRank(
         factor=factor_value,
         diagonal_variance=diagonal,
-        observation_time_hours=time_hours,
         site_index=group_index,
         site_labels=labels,
         tau_hours_by_site=tau_by_site,
@@ -565,47 +546,84 @@ def add_fixed_ou_gaussian_likelihood(
         raise ValueError("Pass either `fixed_site_amplitudes` or `site_amplitude_prior`, not both.")
     if fixed_site_amplitudes is None and site_amplitude_prior is None:
         raise ValueError("An inferred fixed-OU amplitude requires an explicit `site_amplitude_prior`.")
-    validate_observation_error_arrays(observations, observation_error, None, owner="Fixed-OU likelihood", output_dim=output_dim)
-    site = observations.coords.get("site")
+    validate_observation_error_arrays(
+        observations,
+        observation_error,
+        None,
+        owner="Fixed-OU likelihood",
+        output_dim=output_dim,
+    )
     time = observations.coords.get("time")
-    if site is None or site.dims != (output_dim,) or time is None or time.dims != (output_dim,):
-        raise ValueError("The fixed-OU likelihood requires observation-aligned 'site' and 'time' coordinates.")
-    site_index = make_site_indicator(site)
-    site_codes = np.asarray(site_index.values, dtype=np.int64)
-    site_values = np.asarray(site.values)
-    site_labels = tuple(str(site_values[np.flatnonzero(site_codes == index)[0]]) for index in range(int(site_codes.max()) + 1))
-    add_coords({"ou_site": np.asarray(site_labels, dtype=object)})
-    observed = add_model_data(observations.transpose(output_dim), "Y")
-    add_model_data(observation_error.transpose(output_dim), "error")
-    add_model_data(site_index.rename("ou_site_index"), "ou_site_index")
+    if time is None or time.dims != (output_dim,):
+        raise ValueError(
+            "The fixed-OU likelihood requires observation-aligned 'site' and 'time' coordinates."
+        )
+    alignment = SigmaAlignment.from_observations(observations)
+    site_index = alignment.site_index.rename("ou_site_index")
+    site_coord = alignment.site_labels.rename({"nsigma_site": "ou_site"}).rename("ou_site")
+    site_labels = tuple(str(label) for label in site_coord.values)
     observation_variance = np.square(np.asarray(observation_error.values, dtype=np.float64))
     factor, aggregation_diagonal = aggregation_error_as_low_rank(aggregation_error)
-    prepared = prepare_fixed_ou_low_rank(factor, observation_variance + aggregation_diagonal, np.asarray(time.values), site_codes, tau_hours, site_labels=site_labels)
-    add_model_data(xr.DataArray(prepared.tau_hours_by_site, dims=("ou_site",), coords={"ou_site": np.asarray(site_labels, dtype=object)}, name="ou_tau_hours"))
-    if fixed_site_amplitudes is None:
-        amplitude = parse_prior("ou_site_amplitude", dict(site_amplitude_prior), dims="ou_site")
-    else:
-        values = _site_values(
-            [fixed_site_amplitudes[label] for label in site_labels] if isinstance(fixed_site_amplitudes, Mapping) else fixed_site_amplitudes,
-            len(site_labels), "fixed_site_amplitudes", positive=False,
+    resolved_tau = (
+        expand_mapping(tau_hours, site_coord).values
+        if isinstance(tau_hours, Mapping)
+        else tau_hours
+    )
+    prepared = prepare_fixed_ou_low_rank(
+        factor,
+        observation_variance + aggregation_diagonal,
+        np.asarray(time.values),
+        np.asarray(site_index.values, dtype=np.int64),
+        resolved_tau,
+        site_labels=site_labels,
+    )
+    fixed_amplitudes = None
+    if fixed_site_amplitudes is not None:
+        fixed_amplitudes = _site_values(
+            expand_mapping(fixed_site_amplitudes, site_coord).values
+            if isinstance(fixed_site_amplitudes, Mapping)
+            else fixed_site_amplitudes,
+            alignment.nsite,
+            "fixed_site_amplitudes",
+            positive=False,
         )
-        if isinstance(fixed_site_amplitudes, Mapping) and set(fixed_site_amplitudes) != set(site_labels):
-            raise ValueError("`fixed_site_amplitudes` mapping keys must exactly match the observation sites.")
-        if not np.isfinite(
-            prepared.evaluate(np.zeros(prepared.n_observation), values).log_likelihood
-        ):
+        mode_variance = prepared.mode_eigenvalues + np.square(fixed_amplitudes)[
+            prepared.mode_site_index
+        ]
+        if np.any(mode_variance <= 0.0):
             raise ValueError(
                 "Fixed OU amplitudes must produce a positive-definite complete "
                 "observation covariance with strictly positive generalized "
                 "base-plus-OU mode variances before the low-rank update."
             )
-        amplitude = add_model_data(xr.DataArray(values, dims=("ou_site",), coords={"ou_site": np.asarray(site_labels, dtype=object)}, name="ou_site_amplitude"))
+
+    observed = add_model_data(observations, "Y")
+    add_model_data(observation_error, "error")
+    add_model_data(site_index)
+    add_model_data(site_coord.copy(data=prepared.tau_hours_by_site).rename("ou_tau_hours"))
+    if fixed_site_amplitudes is None:
+        assert site_amplitude_prior is not None
+        amplitude = parse_prior(
+            "ou_site_amplitude",
+            positive_prior_args(site_amplitude_prior),
+            dims="ou_site",
+        )
+    else:
+        assert fixed_amplitudes is not None
+        amplitude = add_model_data(
+            site_coord.copy(data=fixed_amplitudes).rename("ou_site_amplitude")
+        )
     pm.Deterministic("epsilon", pt.sqrt(prepared.marginal_variance(amplitude)), dims=output_dim)
-    return cast(TensorVariable, pm.CustomDist("y", mean, amplitude, logp=prepared.logp, random=prepared.random, signature="(n),(s)->(n)", observed=observed, dims=output_dim))
-
-
-add_fixed_ou_gaussian_likelihood.rhime_metadata = {
-    "mismatch_component": "fixed_within_site_ou",
-    "residual_covariance": "F F^T + diag(d) + direct_sum_site(a_s^2 T_s(tau_s))",
-    "sampler_backend": "pymc",
-}
+    return cast(
+        TensorVariable,
+        pm.CustomDist(
+            "y",
+            mean,
+            amplitude,
+            logp=prepared.logp,
+            random=prepared.random,
+            signature="(n),(s)->(n)",
+            observed=observed,
+            dims=output_dim,
+        ),
+    )

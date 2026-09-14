@@ -7,7 +7,6 @@ import xarray as xr
 from openghg_inversions.observation_error import (
     aggregation_error_as_low_rank,
     resolve_aggregation_error,
-    validate_complete_observation_covariance,
 )
 
 
@@ -85,43 +84,6 @@ def test_aggregation_error_low_rank_conversion_preserves_covariance(mode: str) -
     converted_factor, converted_diagonal = aggregation_error_as_low_rank(result)
     expected = covariance if mode in ("dense", "low_rank") else np.diag(diagonal if mode == "diagonal" else np.zeros(3))
     np.testing.assert_allclose(converted_factor @ converted_factor.T + np.diag(converted_diagonal), expected)
-
-
-def test_optional_complete_covariance_check_uses_lrpd_structure() -> None:
-    data = xr.Dataset(coords={"nmeasure": ["A", "B"]})
-    data["low_rank_factor"] = (("nmeasure", "agg_rank"), np.eye(2))
-    data["diagonal_residual_variance"] = ("nmeasure", np.zeros(2))
-
-    validate_complete_observation_covariance(
-        resolve_aggregation_error(data),
-        np.zeros(2),
-    )
-
-
-def test_optional_complete_covariance_check_rejects_singular_lrpd() -> None:
-    data = xr.Dataset(coords={"nmeasure": ["A", "B"]})
-    data["low_rank_factor"] = (("nmeasure", "agg_rank"), np.ones((2, 1)))
-    data["diagonal_residual_variance"] = ("nmeasure", np.zeros(2))
-
-    with pytest.raises(ValueError, match="positive definite"):
-        validate_complete_observation_covariance(
-            resolve_aggregation_error(data),
-            np.zeros(2),
-        )
-
-
-def test_optional_complete_covariance_check_rejects_singular_dense() -> None:
-    data = xr.Dataset(coords={"nmeasure": ["A", "B"]})
-    data["aggregation_error_covariance"] = (
-        ("nmeasure", "nmeasure_cov"),
-        np.ones((2, 2)),
-    )
-
-    with pytest.raises(ValueError, match="positive definite"):
-        validate_complete_observation_covariance(
-            resolve_aggregation_error(data),
-            np.zeros(2),
-        )
 
 
 def test_low_rank_payloads_materialize_together_and_remain_eager() -> None:

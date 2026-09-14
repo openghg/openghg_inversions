@@ -105,6 +105,26 @@ def test_from_observations_derives_site_positions_and_periods() -> None:
 
     np.testing.assert_array_equal(alignment.site_index, [0, 0, 1, 1])
     np.testing.assert_array_equal(alignment.period_index, [0, 1, 0, 1])
+    assert alignment.site_labels.name == "nsigma_site"
+    assert alignment.site_labels.dims == ("nsigma_site",)
+    np.testing.assert_array_equal(alignment.site_labels, ["TAC", "MHD"])
+
+
+def test_from_model_data_preserves_labelled_site_coordinate() -> None:
+    """Registered latent labels survive reconstruction from model data."""
+    model_data = xr.Dataset(
+        {
+            "sigma_site_index": _index((0, 1, 0, 1)),
+            "sigma_period_index": _index((0, 0, 1, 1)),
+        },
+        coords={"nsigma_site": ["MHD", "TAC"]},
+    )
+
+    alignment = SigmaAlignment.from_model_data(model_data)
+
+    assert alignment.site_labels.name == "nsigma_site"
+    assert alignment.site_labels.dims == ("nsigma_site",)
+    np.testing.assert_array_equal(alignment.site_labels, ["MHD", "TAC"])
 
 
 @pytest.mark.parametrize(

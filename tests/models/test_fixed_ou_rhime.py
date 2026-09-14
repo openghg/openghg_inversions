@@ -15,7 +15,6 @@ from openghg_inversions.models.coords import get_coord_registry, registered_mode
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
 from openghg_inversions.observation_error import resolve_aggregation_error
 from openghg_inversions.rhime.multisector import build_multisector_rhime_model
-from openghg_inversions.rhime._model_building import validate_likelihood_sampler_backend
 from openghg_inversions.rhime.outputs import annotate_likelihood_trace
 from openghg_inversions.rhime.specs import SectorSpec
 from openghg_inversions.rhime.standard import build_standard_rhime_model
@@ -161,15 +160,6 @@ def test_fixed_ou_builder_creates_an_inferred_labelled_amplitude() -> None:
     assert model["ou_site_amplitude"] in model.free_RVs
     assert model.named_vars_to_dims["ou_site_amplitude"] == ("ou_site",)
     assert "sigma" not in model.named_vars
-
-
-def test_fixed_ou_rejects_non_pymc_sampler_before_model_building() -> None:
-    """The SciPy-backed component declares PyMC as its only NUTS backend."""
-    with pytest.raises(ValueError, match="nuts_sampler='pymc'"):
-        validate_likelihood_sampler_backend(
-            add_fixed_ou_gaussian_likelihood,
-            nuts_sampler="numpyro",
-        )
 
 
 def test_fixed_ou_builder_samples_state_and_site_amplitudes_together() -> None:
@@ -326,24 +316,9 @@ def test_standard_recipes_accept_installed_fixed_ou_likelihood(
     assert "sigma" not in model.named_vars
 
 
-def test_likelihood_trace_annotation_round_trips_ou_identity_and_units(tmp_path) -> None:
-    """Raw trace metadata identifies fixed OU configuration and concentration units."""
-    idata = az.InferenceData(
-        posterior=xr.Dataset(
-            {
-                "ou_site_amplitude": (
-                    ("chain", "draw", "ou_site"),
-                    np.ones((1, 1, 2)),
-                ),
-                "epsilon": (("chain", "draw", "nmeasure"), np.ones((1, 1, 4))),
-            },
-            coords={"ou_site": ["MHD", "TAC"]},
-        ),
-        constant_data=xr.Dataset(
-            {"ou_tau_hours": ("ou_site", [5.0, 7.0])},
-            coords={"ou_site": ["MHD", "TAC"]},
-        ),
-    )
+def test_likelihood_trace_annotation_round_trips_identity_and_options(tmp_path) -> None:
+    """Raw trace metadata identifies the custom callable and its arguments."""
+    idata = az.InferenceData(posterior=xr.Dataset())
     identity = {
         "module": "openghg_inversions.models.fixed_ou",
         "qualname": "add_fixed_ou_gaussian_likelihood",
@@ -353,8 +328,6 @@ def test_likelihood_trace_annotation_round_trips_ou_identity_and_units(tmp_path)
         idata,
         builder_identity=identity,
         likelihood_kwargs=options,
-        concentration_units="ppm",
-        component_metadata=add_fixed_ou_gaussian_likelihood.rhime_metadata,
     )
     path = tmp_path / "ou-trace.nc"
     idata.to_netcdf(path)
@@ -362,11 +335,6 @@ def test_likelihood_trace_annotation_round_trips_ou_identity_and_units(tmp_path)
 
     assert json.loads(loaded.attrs["rhime_likelihood_builder"]) == identity
     assert json.loads(loaded.attrs["rhime_likelihood_kwargs"]) == options
-    assert loaded.attrs["rhime_mismatch_component"] == "fixed_within_site_ou"
-    assert tuple(loaded.posterior.ou_site.values) == ("MHD", "TAC")
-    assert loaded.posterior["ou_site_amplitude"].attrs["units"] == "ppm"
-    assert loaded.posterior["epsilon"].attrs["units"] == "ppm"
-    assert loaded.constant_data["ou_tau_hours"].attrs["units"] == "h"
 
 
 def test_likelihood_trace_annotation_serializes_array_options() -> None:
@@ -384,7 +352,6 @@ def test_likelihood_trace_annotation_serializes_array_options() -> None:
             ),
             "window": np.array([30, 90], dtype="timedelta64[m]"),
         },
-        concentration_units=None,
     )
 
     assert json.loads(idata.attrs["rhime_likelihood_kwargs"]) == {

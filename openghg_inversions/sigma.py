@@ -7,6 +7,7 @@ inversion backend.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 import numpy as np
@@ -75,6 +76,7 @@ class SigmaAlignment:
     Args:
         site_index: Observation-aligned site positions.
         period_index: Observation-aligned sigma-period positions.
+        site_labels: Labelled latent site coordinate, in index order.
 
     Raises:
         TypeError: If an index is not an xarray DataArray.
@@ -83,6 +85,7 @@ class SigmaAlignment:
 
     site_index: xr.DataArray
     period_index: xr.DataArray
+    site_labels: xr.DataArray | Sequence[str | int] | np.ndarray = ()
 
     def __post_init__(self) -> None:
         """Normalise indexes and enforce their shared observation alignment."""
@@ -102,6 +105,25 @@ class SigmaAlignment:
         coords = {**period_coords, **site_coords}
         object.__setattr__(self, "site_index", site.assign_coords(coords))
         object.__setattr__(self, "period_index", period.assign_coords(coords))
+        nsite = int(site.max().item()) + 1
+        supplied_labels = (
+            np.asarray(self.site_labels.values)
+            if isinstance(self.site_labels, xr.DataArray)
+            else np.asarray(self.site_labels)
+        )
+        labels = np.arange(nsite) if supplied_labels.size == 0 else supplied_labels
+        if labels.shape != (nsite,) or pd.Index(labels).has_duplicates:
+            raise ValueError("Sigma site labels must contain one unique label per site position.")
+        object.__setattr__(
+            self,
+            "site_labels",
+            xr.DataArray(
+                labels.copy(),
+                dims=("nsigma_site",),
+                coords={"nsigma_site": labels.copy()},
+                name="nsigma_site",
+            ),
+        )
 
     @classmethod
     def from_frequency(
@@ -111,6 +133,7 @@ class SigmaAlignment:
         *,
         per_site: bool = True,
         anchor_time: DatetimeLike | None = None,
+        site_labels: xr.DataArray | Sequence[str | int] | np.ndarray | None = None,
     ) -> SigmaAlignment:
         """Derive sigma alignment from site positions and observation times.
 
@@ -119,6 +142,7 @@ class SigmaAlignment:
             frequency: Sigma period frequency. ``None`` creates one period.
             per_site: Whether sigma varies by site.
             anchor_time: Optional fixed-duration period anchor.
+            site_labels: Labels for latent site positions, in index order.
 
         Returns:
             Canonical sigma alignment.
@@ -134,7 +158,10 @@ class SigmaAlignment:
             if time is None or np.any(pd.isna(np.asarray(time.values))):
                 raise ValueError("Sigma frequencies require complete observation timestamps.")
             period = make_sigma_freq(time, freq=frequency, anchor_time=anchor_time)
-        return cls.from_indices(site, period, per_site=per_site)
+        if not per_site:
+            site = xr.zeros_like(site, dtype=int)
+            site_labels = ("all",) if site_labels is not None else None
+        return cls(site, period, () if site_labels is None else site_labels)
 
     @classmethod
     def from_observations(
@@ -171,6 +198,7 @@ class SigmaAlignment:
             frequency=frequency,
             per_site=per_site,
             anchor_time=anchor_time,
+            site_labels=pd.unique(site.values),
         )
 
     @classmethod
@@ -180,6 +208,7 @@ class SigmaAlignment:
         period_index: xr.DataArray,
         *,
         per_site: bool = True,
+        site_labels: xr.DataArray | Sequence[str | int] | np.ndarray | None = None,
     ) -> SigmaAlignment:
         """Build sigma alignment from explicit observation indexes.
 
@@ -187,6 +216,7 @@ class SigmaAlignment:
             site_index: Observation-aligned site positions.
             period_index: Observation-aligned sigma-period positions.
             per_site: Whether sigma varies by site.
+            site_labels: Labels for latent site positions, in index order.
 
         Returns:
             Canonical sigma alignment.
@@ -195,10 +225,10 @@ class SigmaAlignment:
             TypeError: If an index is not an xarray DataArray.
             ValueError: If indexes are invalid or incompatible.
         """
-        alignment = cls(site_index, period_index)
-        if per_site:
-            return alignment
-        return cls(xr.zeros_like(alignment.site_index, dtype=int), alignment.period_index)
+        if not per_site:
+            site_index = xr.zeros_like(site_index, dtype=int)
+            site_labels = ("all",) if site_labels is not None else None
+        return cls(site_index, period_index, () if site_labels is None else site_labels)
 
     @classmethod
     def from_model_data(cls, model_data: xr.Dataset) -> SigmaAlignment:
@@ -215,9 +245,11 @@ class SigmaAlignment:
             KeyError: If a required index variable is absent.
             ValueError: If stored indexes are invalid or incompatible.
         """
+        site_labels = model_data.coords.get("nsigma_site")
         return cls(
             model_data[_SITE_INDEX_NAME],
             model_data[_PERIOD_INDEX_NAME],
+            () if site_labels is None else site_labels,
         )
 
     @property

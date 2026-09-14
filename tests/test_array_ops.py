@@ -12,10 +12,27 @@ from openghg_inversions.array_ops import (
     concat_gather_data_arrays,
     concat_gather_datatree,
     concat_gather_datasets,
+    expand_mapping,
     iter_multi_index_level_slices,
     select_gathered_data_array,
     validate_covariance_coordinates,
 )
+
+
+def test_expand_mapping_uses_labelled_vectorized_indexing() -> None:
+    """Mapping values follow and expand onto the target coordinate labels."""
+    sites = xr.DataArray(
+        ["A", "B", "A"],
+        dims=("nmeasure",),
+        coords={"nmeasure": [3, 4, 5]},
+        name="site",
+    )
+
+    result = expand_mapping({"B": 1.0, "unused": 9.0, "A": 0.5}, sites)
+
+    assert result.dims == ("nmeasure",)
+    np.testing.assert_array_equal(result.coords["nmeasure"], [3, 4, 5])
+    np.testing.assert_allclose(result, [0.5, 1.0, 0.5])
 
 
 def test_validate_covariance_coordinates_uses_default_covariance_dimension() -> None:
