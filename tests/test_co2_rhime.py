@@ -11,10 +11,13 @@ import pandas as pd
 import pymc as pm
 import arviz as az
 import pytest
+from scipy.stats import multivariate_normal
 import xarray as xr
 
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.models.coords import get_coord_registry
+from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
+from openghg_inversions.models.site_sigma import add_site_sigma_gaussian_likelihood
 from openghg_inversions.models.state_activity import StateActivity
 from openghg_inversions.observation_error import resolve_aggregation_error
 from openghg_inversions.rhime.co2 import (
@@ -153,6 +156,20 @@ def test_public_co2_runner_rejects_model_error_options_when_disabled(
             prepared_inputs=cast(Any, object()),
             no_model_error=True,
             **model_error_option,
+        )
+
+
+def test_public_co2_runner_rejects_default_model_error_with_selected_likelihood() -> None:
+    with pytest.raises(ValueError, match="replaces the default model-error options"):
+        run_rhime_co2(
+            prepared_inputs=cast(Any, object()),
+            likelihood_builder=add_site_sigma_gaussian_likelihood,
+            no_model_error=True,
+        )
+    with pytest.raises(ValueError, match="likelihood_kwargs require likelihood_builder"):
+        run_rhime_co2(
+            prepared_inputs=cast(Any, object()),
+            likelihood_kwargs={"fixed_site_amplitudes": {"MHD": 0.5}},
         )
 
 
@@ -384,6 +401,112 @@ def test_public_co2_runner_derives_default_model_error_alignment(monkeypatch: An
         np.zeros(inputs.sizes["nmeasure"]),
     )
     assert "sigma" in sampled_models[0].named_vars
+
+
+@pytest.mark.parametrize(
+    ("likelihood_builder", "likelihood_kwargs", "expected_variable"),
+    [
+        (
+            add_fixed_ou_gaussian_likelihood,
+            {"tau_hours": 5.0, "fixed_site_amplitudes": {"MHD": 0.5}},
+            "ou_site_amplitude",
+        ),
+        (
+            add_site_sigma_gaussian_likelihood,
+            {"fixed_site_amplitudes": {"MHD": 0.5}},
+            "sigma_site",
+        ),
+    ],
+)
+def test_public_co2_runner_selects_covariance_aware_likelihood(
+    monkeypatch: Any,
+    likelihood_builder: Any,
+    likelihood_kwargs: dict[str, Any],
+    expected_variable: str,
+) -> None:
+    """Route installed likelihoods through the completed CO2 model mean."""
+    inputs = _golden_inputs().assign_coords(
+        site=("nmeasure", ["MHD", "MHD"]),
+        time=("nmeasure", np.array(["2020-01-01", "2020-01-02"], dtype="datetime64[D]")),
+    )
+    inputs["mf_error"] = xr.DataArray(
+        [0.2, 0.3],
+        dims="nmeasure",
+        coords={"nmeasure": inputs["nmeasure"]},
+        attrs={"units": "ppm"},
+    )
+
+    class PreparedInputsStub:
+        inv_inputs = inputs
+
+        def validated(self) -> "PreparedInputsStub":
+            return self
+
+    monkeypatch.setattr(co2_runner, "materialize_pymc_inputs", lambda *_args, **_kwargs: inputs)
+    built_results: list[Any] = []
+
+    def sample_model(built: Any, _sampler: Any) -> az.InferenceData:
+        built_results.append(built)
+        return _empty_sampled_trace(inputs)
+
+    received: dict[str, Any] = {}
+
+    def recording_likelihood(**kwargs: Any) -> Any:
+        received.update(kwargs)
+        return likelihood_builder(**kwargs)
+
+    monkeypatch.setattr(co2_runner, "sample_rhime_model", sample_model)
+    result = run_rhime_co2(
+        prepared_inputs=cast(Any, PreparedInputsStub()),
+        likelihood_builder=recording_likelihood,
+        likelihood_kwargs=likelihood_kwargs,
+    )
+
+    built = built_results[0]
+    model = built.model
+    assert received["mean"] is model["modelled_concentration"]
+    aggregation_error = received["aggregation_error"]
+    assert aggregation_error.mode == "dense"
+    assert aggregation_error.covariance is not None
+    np.testing.assert_allclose(
+        aggregation_error.covariance.values,
+        inputs["aggregation_error_covariance"].values,
+    )
+    assert aggregation_error.covariance.values[0, 1] != 0.0
+    assert {"modelled_concentration", "y", "epsilon", expected_variable} <= set(model.named_vars)
+    assert set(built.variable_roles.values()) <= set(model.named_vars)
+    assert "sigma" not in model.named_vars
+
+    point = model.initial_point()
+    mean_function = model.compile_fn(
+        model.replace_rvs_by_values([model["modelled_concentration"]])[0],
+        inputs=model.value_vars,
+        on_unused_input="ignore",
+    )
+    mean = mean_function(point)
+    if expected_variable == "ou_site_amplitude":
+        lag_hours = np.abs(
+            (inputs["time"].values[:, None] - inputs["time"].values[None, :])
+            / np.timedelta64(1, "h")
+        )
+        mismatch_covariance = 0.5**2 * np.exp(-lag_hours / 5.0)
+    else:
+        mismatch_covariance = 0.5**2 * np.eye(inputs.sizes["nmeasure"])
+    expected_logp = multivariate_normal.logpdf(
+        inputs["mf"].values,
+        mean=mean,
+        cov=(
+            inputs["aggregation_error_covariance"].values
+            + np.diag(inputs["mf_error"].values ** 2)
+            + mismatch_covariance
+        ),
+    )
+    actual_logp = model.compile_logp(vars=model.observed_RVs)(point)
+    assert float(actual_logp) == pytest.approx(expected_logp, rel=1.0e-10)
+    assert json.loads(result.attrs["rhime_likelihood_kwargs"]) == likelihood_kwargs
+    assert json.loads(result.attrs["rhime_likelihood_builder"])["qualname"].endswith(
+        "recording_likelihood"
+    )
 
 
 def test_public_co2_runner_preserves_materialized_fixed_mismatch(monkeypatch: Any) -> None:
