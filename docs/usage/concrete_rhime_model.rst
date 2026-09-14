@@ -238,6 +238,9 @@ pollution-event-scaled mismatch. OpenGHG Inversions does not default
 Verification Games fixed-only policy passes ``fixed_model_mismatch=1.0`` and
 ``no_model_error=True`` visibly. A runnable CO2 configuration and resolver are
 tracked in `OPE-79 <https://linear.app/openghg-inversions/issue/OPE-79>`_.
+For the matched fixed-tau OU likelihood with independently inferred site
+amplitudes, use :ref:`the production cached-sigma CO2 recipe
+<cached-sigma-co2-recipe>`.
 
 CO2 grouped inner and outer states
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

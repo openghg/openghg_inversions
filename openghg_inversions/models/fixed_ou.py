@@ -53,6 +53,14 @@ class FixedOuLikelihoodEvaluation:
     gradient_site_amplitude: FloatArray
 
 
+@dataclass(frozen=True)
+class FixedOuCovarianceSolve:
+    """One explicit factorization-and-solve of the prepared covariance."""
+
+    solution: FloatArray
+    logdet: float
+
+
 def _rejection_gradient_amplitude(amplitude: FloatArray) -> FloatArray:
     """Return a transform-safe gradient for an invalid scale proposal."""
     gradient = np.full(amplitude.shape, -1.0, dtype=np.float64)
@@ -288,6 +296,78 @@ class FixedOuLowRank:
             gradient_residual=cast(FloatArray, np.asarray(gradient_residual)),
             gradient_site_amplitude=cast(FloatArray, gradient_amplitude),
         )
+
+    def solve(
+        self,
+        rhs: ArrayLike,
+        site_amplitude: ArrayLike | float,
+    ) -> FixedOuCovarianceSolve:
+        """Factorize ``C(site_amplitude)`` once and solve one or many RHS.
+
+        This is an explicit eager numerical boundary for consumers such as an
+        accepted-amplitude state cache. It reuses the generalized eigenbasis
+        prepared by :func:`prepare_fixed_ou_low_rank` and never constructs a
+        second eigensolver.
+        """
+        rhs_value = np.asarray(rhs, dtype=np.float64)
+        if rhs_value.ndim not in (1, 2) or rhs_value.shape[0] != self.n_observation:
+            raise ValueError(
+                "rhs must be a vector or matrix with one row per observation; "
+                f"got {rhs_value.shape}."
+            )
+        if not np.isfinite(rhs_value).all():
+            raise ValueError("rhs must contain only finite values.")
+        amplitude = _site_values(
+            site_amplitude,
+            self.n_site,
+            "site_amplitude",
+            positive=False,
+        )
+        weights, logdet = self._mode_weights_and_logdet(amplitude)
+        transformed_rhs = cast(FloatArray, self.mode_transform @ rhs_value)
+        rhs_2d = transformed_rhs[:, None] if transformed_rhs.ndim == 1 else transformed_rhs
+        square_root_weights = np.sqrt(weights)
+        whitened_rhs = square_root_weights[:, None] * rhs_2d
+        if self.rank:
+            whitened_factor = self.transformed_factor * square_root_weights[:, None]
+            basis, _ = np.linalg.qr(
+                np.column_stack((whitened_factor, whitened_rhs)),
+                mode="reduced",
+            )
+            factor_coordinates = basis.T @ whitened_factor
+            rhs_coordinates = basis.T @ whitened_rhs
+            left_vectors, singular_values, _ = np.linalg.svd(
+                factor_coordinates,
+                full_matrices=True,
+            )
+            rotated_rhs = left_vectors.T @ rhs_coordinates
+            rotated_rhs[: singular_values.size] /= (
+                1.0 + np.square(singular_values)
+            )[:, None]
+            whitened_solution = basis @ (left_vectors @ rotated_rhs)
+            logdet += float(np.log1p(np.square(singular_values)).sum())
+        else:
+            whitened_solution = whitened_rhs
+        solved = square_root_weights[:, None] * whitened_solution
+        solution = self.mode_transform.T @ (
+            solved[:, 0] if transformed_rhs.ndim == 1 else solved
+        )
+        return FixedOuCovarianceSolve(
+            solution=cast(FloatArray, np.asarray(solution)),
+            logdet=logdet,
+        )
+
+    def _mode_weights_and_logdet(
+        self,
+        amplitude: FloatArray,
+    ) -> tuple[FloatArray, float]:
+        """Return diagonal-mode weights and their contribution to the log determinant."""
+        mode_variance = self.mode_eigenvalues + np.square(amplitude)[self.mode_site_index]
+        if not np.isfinite(mode_variance).all() or np.any(mode_variance <= 0.0):
+            raise ValueError("Fixed-OU generalized eigenvalues produced invalid variance.")
+        weights = np.reciprocal(mode_variance)
+        logdet = self.base_logdet + float(np.log(mode_variance).sum())
+        return cast(FloatArray, weights), logdet
 
     def marginal_variance(self, site_amplitude: TensorVariable) -> TensorVariable:
         """Return the observation-aligned covariance diagonal."""

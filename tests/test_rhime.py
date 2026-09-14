@@ -4672,6 +4672,43 @@ def test_rhime_sampler_runs_pymc_sampling_and_predictive_steps(
     assert sample_stats_fields["divergences"] == 2
 
 
+@pytest.mark.rhime_contract
+def test_rhime_sampler_preserves_disabled_log_likelihood(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The public sampling seam preserves an explicit log-likelihood policy."""
+    trace = az.InferenceData(
+        posterior=xr.Dataset(
+            {"state": (("chain", "draw"), np.ones((1, 2)))},
+        ),
+    )
+    seen: dict[str, Any] = {}
+
+    def fake_sample(**kwargs: Any) -> az.InferenceData:
+        seen.update(kwargs)
+        return trace
+
+    monkeypatch.setattr("openghg_inversions.rhime.sampling.pm.sample", fake_sample)
+    sampler = RhimeSampler(
+        draws=2,
+        tune=0,
+        chains=1,
+        nuts_sampler="pymc",
+        sample_kwargs={
+            "compute_convergence_checks": False,
+            "idata_kwargs": {"log_likelihood": False},
+        },
+        sample_prior_predictive=False,
+        sample_posterior_predictive=False,
+    )
+
+    sampler.sample(pm.Model())
+
+    assert seen["nuts_sampler"] == "pymc"
+    assert seen["compute_convergence_checks"] is False
+    assert seen["idata_kwargs"] == {"log_likelihood": False}
+
+
 def test_rhime_sampler_resets_retained_draws_before_extending_predictive_groups(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

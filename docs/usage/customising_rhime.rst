@@ -22,6 +22,8 @@ documented interfaces.
 Choose the smallest starting point that fits the change:
 
 * To change only the likelihood, pass a Python function to ``run_rhime``.
+* To run the matched fixed-tau OU CO2 model with inferred site amplitudes, use
+  :ref:`the production cached-sigma CO2 recipe <cached-sigma-co2-recipe>`.
 * To resume from externally supplied merged observations, footprints, and
   fluxes, pass a borrowed ``RhimeMergedData`` object as ``merged_data``.
 * To change a preparation stage such as basis construction, copy the visible
@@ -177,15 +179,9 @@ requires every generalized base-plus-OU mode variance to be strictly positive.
 An exact zero mode is rejected before applying the low-rank factor, even when
 that factor would make a materialized dense covariance positive definite; a
 positive OU amplitude can lift a zero base mode. The component currently
-requires PyMC's native NUTS backend; sampled tau and the cached blocked sampler
-are separate extensions.
-
-Built-in aggregation covariance relies on the guarantees of its construction
-pipeline. A custom pipeline that assembles its own covariance may optionally
-call
-:func:`openghg_inversions.observation_error.validate_complete_observation_covariance`
-with its fixed independent variance. Model builders do not run this eager
-diagnostic automatically.
+requires PyMC's native NUTS backend. Sampled tau is a separate extension; the
+production cached sampler is the matched recipe described in
+:ref:`cached-sigma-co2-recipe`.
 
 Optional project CLI
 ~~~~~~~~~~~~~~~~~~~~
@@ -206,6 +202,93 @@ Run it with a normal RHIME configuration and optional JSON overrides::
 standard multi-sector model retains sector flux components and roles, then
 passes their combined observation mean to the likelihood, so no special case
 or semantic compromise is required.
+
+.. _cached-sigma-co2-recipe:
+
+Run the production cached-sigma CO2 recipe
+------------------------------------------
+
+``run_rhime_co2_cached_sigma`` is the first-class production route for the
+fixed-tau OU likelihood with independently inferred site amplitudes. It owns
+the matched PyMC graph and sampler: the sigma-only NUTS step runs first against
+the exact conditional likelihood, refreshes the accepted state quadratic, and
+stock state NUTS then reads that cache without refactorizing the observation
+covariance during its trajectory.
+
+The runner begins from an already assembled coherent-reduction
+``RhimePreparedInputs`` artifact; it does not perform coherent reduction. Its
+``inv_inputs`` must contain ``H``, ``alpha_prior_mean``,
+``alpha_prior_covariance``, ``fixed_prior_contribution``, ``mf``, and
+``mf_error``. The observation arrays share one ``nmeasure`` row order, while
+the prior arrays share ``H``'s state labels. With the ``"low_rank"``
+aggregation-error mode used below, the artifact must also contain
+``low_rank_factor`` and ``diagonal_residual_variance``. A dense artifact
+instead contains ``aggregation_error_covariance`` and must be selected with
+``aggregation_error_mode="dense"``. Optional ``state_is_active`` and
+``state_fixed_value`` variables carry the prepared state-activity policy.
+
+:doc:`coherent_reduction` describes the linked retained prior, effective
+operator, affine contribution, and unresolved covariance, but no public
+function currently assembles those products into this durable artifact. That
+handoff is tracked in `OPE-153
+<https://linear.app/openghg-inversions/issue/OPE-153/add-a-public-coherent-reduction-handoff-for-co-prepared-inputs>`_.
+Until it lands, callers must supply already-prepared coherent-reduction inputs.
+
+For example::
+
+   from openghg_inversions.inversion_data import RhimePreparedInputs
+   from openghg_inversions.rhime import RhimeSampler
+   from openghg_inversions.rhime.co2 import run_rhime_co2_cached_sigma
+
+   prepared = RhimePreparedInputs.load("co2-coherent-low-rank.zarr")
+   idata = run_rhime_co2_cached_sigma(
+       prepared_inputs=prepared,
+       tau_hours={"BSD": 24.0, "TAC": 18.0},
+       site_amplitude_prior_scale=0.75,  # concentration units
+       aggregation_error_mode="low_rank",
+       sigma_target_accept=0.9,
+       state_target_accept=0.9,
+       sampler=RhimeSampler(
+           draws=1000,
+           tune=1000,
+           chains=4,
+           nuts_sampler="pymc",
+           sample_kwargs={"random_seed": 20260913},
+           sample_prior_predictive=False,
+       ),
+   )
+
+The runner constructs the required ``site amplitude -> state`` ``CompoundStep`` and
+uses process spawning for multiple chains. Do not pass another step method in
+``sample_kwargs``. Set ``sigma_target_accept`` and ``state_target_accept`` on
+the runner rather than putting a generic ``target_accept`` in
+``RhimeSampler.sample_kwargs``. The accepted quadratic and fixed-OU generalized
+eigenbasis are runtime numerical state derived from the materialized prepared
+inputs; they are not external cache artifacts.
+
+Because the cached graph uses a normalized joint ``Potential``, it does not
+invent an independent observed distribution. After sampling, the same exact
+fixed-OU target adds ``log_likelihood.y`` as one scalar per complete
+observation vector and, when requested, draws complete correlated vectors in
+``posterior_predictive.y``. The variables carry explicit joint-scope metadata.
+
+This route deliberately supports only independent HalfNormal site-amplitude
+priors and fixed positive OU timescales. Sampled tau and alternative amplitude
+priors are separate extensions. The route is PyMC-only because it constructs
+and owns a PyMC ``CompoundStep``. The ordinary stock-PyMC fixed-OU likelihood
+above remains the log-density/gradient oracle and fallback.
+
+The exponential within-site covariance follows the stationary process of
+`Uhlenbeck and Ornstein (1930)
+<https://doi.org/10.1103/PhysRev.36.823>`_. The named recipe and its matched
+accepted-state cache are implemented and versioned by OpenGHG Inversions.
+
+Built-in aggregation covariance relies on the guarantees of its construction
+pipeline. A custom pipeline that assembles its own covariance may optionally
+call
+:func:`openghg_inversions.observation_error.validate_complete_observation_covariance`
+with its fixed independent variance. Model builders do not run this eager
+diagnostic automatically.
 
 Use the seam from a generated project
 -------------------------------------
