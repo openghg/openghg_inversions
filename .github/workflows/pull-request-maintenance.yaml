@@ -1,0 +1,198 @@
+name: Pull request maintenance
+
+on:
+  schedule:
+    - cron: '30 9 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: pull-request-maintenance
+  cancel-in-progress: false
+
+jobs:
+  sync-devel:
+    name: Remind and opt-in sync feature PRs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Inspect open pull requests targeting devel
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const marker = "<!-- devel-sync-reminder -->";
+            const labels = {
+              sync: {
+                name: "needs-devel-sync",
+                color: "fbca04",
+                description: "The pull request branch is behind devel",
+              },
+              auto: {
+                name: "auto-sync-devel",
+                color: "0e8a16",
+                description: "Allow the weekly workflow to update this branch from devel",
+              },
+              conflict: {
+                name: "devel-sync-conflict",
+                color: "d73a4a",
+                description: "Automatic synchronization with devel needs human conflict resolution",
+              },
+            };
+
+            for (const label of Object.values(labels)) {
+              try {
+                await github.rest.issues.getLabel({ owner, repo, name: label.name });
+              } catch (error) {
+                if (error.status !== 404) throw error;
+                await github.rest.issues.createLabel({ owner, repo, ...label });
+              }
+            }
+
+            const pulls = await github.paginate(github.rest.pulls.list, {
+              owner,
+              repo,
+              state: "open",
+              base: "devel",
+              per_page: 100,
+            });
+            const base = await github.rest.repos.getBranch({ owner, repo, branch: "devel" });
+            const summary = [];
+
+            for (const pull of pulls) {
+              const comparison = await github.rest.repos.compareCommits({
+                owner,
+                repo,
+                base: pull.head.sha,
+                head: base.data.commit.sha,
+              });
+              const behind = comparison.data.ahead_by;
+              const names = new Set(pull.labels.map((label) => label.name));
+
+              if (behind === 0) {
+                if (names.has(labels.sync.name)) {
+                  await github.rest.issues.removeLabel({
+                    owner,
+                    repo,
+                    issue_number: pull.number,
+                    name: labels.sync.name,
+                  });
+                }
+                if (names.has(labels.conflict.name)) {
+                  await github.rest.issues.removeLabel({
+                    owner,
+                    repo,
+                    issue_number: pull.number,
+                    name: labels.conflict.name,
+                  });
+                }
+                summary.push(`- #${pull.number}: up to date`);
+                continue;
+              }
+
+              if (!names.has(labels.sync.name)) {
+                await github.rest.issues.addLabels({
+                  owner,
+                  repo,
+                  issue_number: pull.number,
+                  labels: [labels.sync.name],
+                });
+              }
+
+              const sameRepository = pull.head.repo?.full_name === `${owner}/${repo}`;
+              const autoSync = sameRepository && names.has(labels.auto.name);
+              let outcome = "reminder sent";
+              if (autoSync) {
+                try {
+                  await github.rest.pulls.updateBranch({
+                    owner,
+                    repo,
+                    pull_number: pull.number,
+                    expected_head_sha: pull.head.sha,
+                  });
+                  outcome = "automatic update requested";
+                  if (names.has(labels.conflict.name)) {
+                    await github.rest.issues.removeLabel({
+                      owner,
+                      repo,
+                      issue_number: pull.number,
+                      name: labels.conflict.name,
+                    });
+                  }
+                } catch (error) {
+                  if (![409, 422].includes(error.status)) throw error;
+                  outcome = "automatic update needs conflict resolution";
+                  await github.rest.issues.addLabels({
+                    owner,
+                    repo,
+                    issue_number: pull.number,
+                    labels: [labels.conflict.name],
+                  });
+                }
+              }
+
+              const comments = await github.paginate(github.rest.issues.listComments, {
+                owner,
+                repo,
+                issue_number: pull.number,
+                per_page: 100,
+              });
+              const existing = comments.find(
+                (comment) => comment.user?.login === "github-actions[bot]" && comment.body?.includes(marker),
+              );
+              const forkNote = sameRepository
+                ? "Add the `auto-sync-devel` label to opt into clean automatic updates."
+                : "This branch is in a fork, so it must be updated by its contributor.";
+              const body = `${marker}\nThis branch is behind \`devel\`. ${forkNote}\n\n` +
+                "This comment is updated in place by the weekly maintenance workflow.";
+              if (existing) {
+                if (existing.body !== body) {
+                  await github.rest.issues.updateComment({
+                    owner,
+                    repo,
+                    comment_id: existing.id,
+                    body,
+                  });
+                }
+              } else {
+                await github.rest.issues.createComment({
+                  owner,
+                  repo,
+                  issue_number: pull.number,
+                  body,
+                });
+              }
+              summary.push(`- #${pull.number}: ${behind} behind; ${outcome}`);
+            }
+
+            await core.summary
+              .addHeading("Feature PR synchronization")
+              .addRaw(summary.length ? summary.join("\n") : "No open PRs target devel.")
+              .write();
+
+  stale:
+    name: Warn and close inactive pull requests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/stale@v10
+        with:
+          repo-token: ${{ github.token }}
+          days-before-issue-stale: -1
+          days-before-issue-close: -1
+          days-before-pr-stale: 30
+          days-before-pr-close: 14
+          stale-pr-label: stale
+          exempt-pr-labels: keep-open
+          stale-pr-message: >-
+            This pull request has had no activity for 30 days. It will be closed
+            after another 14 days unless work resumes or `keep-open` is applied.
+          close-pr-message: >-
+            Closing after the inactivity grace period. The branch has not been
+            deleted, and this pull request can be reopened when work resumes.
+          remove-pr-stale-when-updated: true
+          delete-branch: false
+          operations-per-run: 1000

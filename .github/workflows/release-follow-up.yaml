@@ -1,0 +1,104 @@
+name: Forward released main to devel
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Published release tag
+        required: true
+        type: string
+
+permissions:
+  checks: read
+  contents: write
+  pull-requests: write
+  statuses: read
+
+concurrency:
+  group: release-follow-up
+  cancel-in-progress: false
+
+jobs:
+  forward-port:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Open or reuse main to devel pull request
+        id: pull-request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          REQUESTED_TAG: ${{ inputs.tag }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            TAG=$REQUESTED_TAG
+          else
+            TAG=$RELEASE_TAG
+          fi
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Release tags must look like v0.7.0."
+            exit 1
+          fi
+          SHA=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${TAG}" --jq '.sha')
+          CI_RESULT=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${SHA}/check-runs" \
+            --jq '[.check_runs[] | select(.name == "CI Gate")] | sort_by(.completed_at) | last | .conclusion // ""')
+          HPC_RESULT=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${SHA}/status" \
+            --jq '[.statuses[] | select(.context == "HPC / test_inversions")] | sort_by(.updated_at) | last | .state // ""')
+          if [ "$CI_RESULT" != "success" ] || [ "$HPC_RESULT" != "success" ]; then
+            echo "Release follow-up requires successful CI and HPC gates on ${SHA}."
+            exit 1
+          fi
+          AHEAD=$(gh api "repos/${GITHUB_REPOSITORY}/compare/devel...main" --jq '.ahead_by')
+          if [ "$AHEAD" -eq 0 ]; then
+            {
+              echo "needed=false"
+              echo "tag=$TAG"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          URL=$(gh pr list \
+            --repo "$GITHUB_REPOSITORY" \
+            --base devel \
+            --head main \
+            --state open \
+            --json url \
+            --jq '.[0].url // ""')
+          if [ -z "$URL" ]; then
+            URL=$(gh pr create \
+              --repo "$GITHUB_REPOSITORY" \
+              --base devel \
+              --head main \
+              --title "Forward-port ${TAG} to devel" \
+              --body "Keep the integration branch on the released main history. Created automatically after ${TAG} was published.")
+          fi
+          {
+            echo "needed=true"
+            echo "url=$URL"
+            echo "tag=$TAG"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Enable auto-merge when repository rules allow it
+        if: steps.pull-request.outputs.needed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          URL: ${{ steps.pull-request.outputs.url }}
+        run: gh pr merge --auto --merge "$URL" || echo "Auto-merge is unavailable; the PR remains open."
+
+      - name: Delete the short-lived release branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.pull-request.outputs.tag }}
+        run: |
+          VERSION=${TAG#v}
+          REF="heads/release/v${VERSION}"
+          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/${REF}" >/dev/null 2>&1; then
+            gh api --method DELETE "repos/${GITHUB_REPOSITORY}/git/refs/${REF}"
+          fi
+
+      - name: Summarize
+        if: steps.pull-request.outputs.needed == 'true'
+        env:
+          URL: ${{ steps.pull-request.outputs.url }}
+        run: |
+          echo "Forward-port PR: $URL" >> "$GITHUB_STEP_SUMMARY"
