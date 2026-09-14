@@ -158,6 +158,22 @@ class FixedOuCachedSigmaTarget:
         residual = self._residual_at_zero - self.design @ state_value
         return self.evaluate_from_residual(residual, sigma).log_likelihood
 
+    def log_likelihood_from_mean(
+        self,
+        mean: ArrayLike,
+        sigma: ArrayLike | float,
+    ) -> float:
+        """Evaluate the exact likelihood from a completed observation mean."""
+        mean_value = _vector(mean, "mean")
+        if mean_value.shape != (self.n_obs,):
+            raise ValueError(
+                f"mean has shape {mean_value.shape}, expected {(self.n_obs,)}."
+            )
+        return self.evaluate_from_residual(
+            self.observations - mean_value,
+            sigma,
+        ).log_likelihood
+
     def random(
         self,
         state: ArrayLike,
@@ -172,3 +188,24 @@ class FixedOuCachedSigmaTarget:
             raise ValueError(f"state has shape {state_value.shape}, expected {(self.n_state,)}.")
         mean = self.fixed_contribution + self.design @ state_value
         return self.prepared.random(mean, np.asarray(sigma), rng=rng, size=size)
+
+    def random_from_mean(
+        self,
+        mean: ArrayLike,
+        sigma: ArrayLike | float,
+        *,
+        rng: np.random.Generator,
+        size: int | tuple[int, ...] | None = None,
+    ) -> np.ndarray:
+        """Draw a joint observation vector from a completed observation mean."""
+        mean_value = _vector(mean, "mean")
+        if mean_value.shape != (self.n_obs,):
+            raise ValueError(
+                f"mean has shape {mean_value.shape}, expected {(self.n_obs,)}."
+            )
+        return self.prepared.random(
+            mean_value,
+            np.asarray(sigma),
+            rng=rng,
+            size=size,
+        )

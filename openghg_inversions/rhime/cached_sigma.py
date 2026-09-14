@@ -9,6 +9,7 @@ covariance.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any, Literal, cast
 
 import numpy as np
@@ -25,6 +26,7 @@ from pymc.util import RandomGenerator, get_random_generator, get_value_vars_from
 from pytensor.gradient import DisconnectedType, grad_not_implemented
 from pytensor.graph.basic import Apply, Variable
 from pytensor.graph.op import Op
+from pytensor.tensor.variable import TensorVariable
 
 from openghg_inversions.models.cached_sigma import (
     FixedOuCachedSigmaTarget,
@@ -55,16 +57,17 @@ class PytensorMarginalQuadraticCache:
 
     @property
     def n_state(self) -> int:
-        """Return the represented physical-state dimension."""
+        """Return the represented affine-coefficient dimension."""
         return int(self.linear.get_value(borrow=True).size)
 
-    def log_likelihood(self, state: Any) -> Any:
+    def log_likelihood(self, coefficients: TensorVariable) -> TensorVariable:
         """Return the normalized cached quadratic as a PyTensor scalar."""
-        return (
+        return cast(
+            TensorVariable,
             self.constant
-            + pt.dot(self.linear, state)
+            + pt.dot(self.linear, coefficients)
             - np.asarray(0.5, dtype=self.constant.dtype)
-            * pt.dot(state, pt.dot(self.precision, state))
+            * pt.dot(coefficients, pt.dot(self.precision, coefficients)),
         )
 
     def update(self, cache: MarginalQuadraticCache) -> None:
@@ -155,7 +158,7 @@ class _CachedSigmaNutsState(StepMethodState):
 
 
 class PymcCachedSigmaNutsStep(BlockedStep):
-    """Sample site amplitudes exactly conditional on the current flux state."""
+    """Sample site amplitudes conditional on the current completed model mean."""
 
     name = "cached_sigma_nuts"
     default_blocked = True
@@ -177,33 +180,29 @@ class PymcCachedSigmaNutsStep(BlockedStep):
 
     def __init__(  # noqa: PLR0913
         self,
-        vars=None,
+        sigma: TensorVariable,
         *,
         target: FixedOuCachedSigmaTarget,
         shared_cache: PytensorMarginalQuadraticCache,
         initial_cache: MarginalQuadraticCache,
-        state_value_name: str,
-        state_location: ArrayLike,
-        state_cholesky: ArrayLike,
+        modelled_mean: TensorVariable,
         prior_scale: ArrayLike | float,
         target_accept: float = 0.8,
         max_treedepth: int = 10,
         early_max_treedepth: int = 8,
         step_scale: float = 0.25,
         initial_point: PointType | None = None,
-        model=None,
+        model: pm.Model | None = None,
         blocked: bool = True,
         rng: RandomGenerator = None,
     ) -> None:
         outer_model = modelcontext(model)
-        if vars is None:
-            raise ValueError("The grouped sigma variable must be supplied explicitly.")
-        value_vars = get_value_vars_from_user_vars(vars, outer_model)
+        value_vars = get_value_vars_from_user_vars([sigma], outer_model)
         if len(value_vars) != 1:
             raise ValueError("Exactly one grouped sigma variable is required.")
         sigma_value_name = cast(str | None, value_vars[0].name)
-        if not sigma_value_name or not state_value_name:
-            raise ValueError("State and transformed-sigma point names must be non-empty.")
+        if not sigma_value_name:
+            raise ValueError("The transformed-sigma point name must be non-empty.")
         if shared_cache.n_state != target.n_state:
             raise ValueError("Shared cache and marginalized target dimensions differ.")
         if not np.isfinite(target_accept) or not 0.0 < target_accept < 1.0:
@@ -219,22 +218,9 @@ class PymcCachedSigmaNutsStep(BlockedStep):
 
         point = outer_model.initial_point() if initial_point is None else initial_point
         try:
-            state_point = np.asarray(point[state_value_name])
             initial_eta = np.asarray(point[sigma_value_name])
         except KeyError as exc:
             raise KeyError(f"Initial point is missing value {exc.args[0]!r}.") from exc
-        location = np.asarray(state_location, dtype=state_point.dtype)
-        cholesky = np.asarray(state_cholesky, dtype=state_point.dtype)
-        if location.shape != state_point.shape:
-            raise ValueError(
-                f"state_location has shape {location.shape}, expected {state_point.shape}."
-            )
-        if cholesky.shape != (location.size, location.size):
-            raise ValueError("state_cholesky must be square with one row per state.")
-        if target.n_state != location.size:
-            raise ValueError("Target design and state transform dimensions differ.")
-        if not np.isfinite(location).all() or not np.isfinite(cholesky).all():
-            raise ValueError("State transform must contain only finite values.")
         if initial_eta.shape != (target.n_group,):
             raise ValueError(
                 f"Initial transformed sigma has shape {initial_eta.shape}, "
@@ -253,10 +239,19 @@ class PymcCachedSigmaNutsStep(BlockedStep):
         self.rng = get_random_generator(rng)
         self.target = target
         self.shared_cache = shared_cache
-        self.state_value_name = state_value_name
         self.sigma_value_name = sigma_value_name
-        self.state_location = location.copy()
-        self.state_cholesky = cholesky.copy()
+        modelled_mean_value = outer_model.replace_rvs_by_values([modelled_mean])[0]
+        self.modelled_mean_fn = outer_model.compile_fn(
+            modelled_mean_value,
+            inputs=outer_model.value_vars,
+            on_unused_input="ignore",
+        )
+        initial_mean = np.asarray(self.modelled_mean_fn(point), dtype=np.float64)
+        if initial_mean.shape != (target.n_obs,):
+            raise ValueError(
+                "Modelled mean has shape "
+                f"{initial_mean.shape}, expected {(target.n_obs,)}."
+            )
         self.tune = True
         initial_sigma = np.exp(initial_eta.astype(np.float64))
         tolerance = 8.0 * np.finfo(initial_eta.dtype).eps
@@ -319,14 +314,12 @@ class PymcCachedSigmaNutsStep(BlockedStep):
         )
 
     def _point_values(self, point: PointType) -> tuple[FloatArray, FloatArray]:
-        state_white = np.asarray(point[self.state_value_name])
         eta = np.asarray(point[self.sigma_value_name])
-        linear_state = self.state_location + self.state_cholesky @ state_white
-        physical_state = np.exp(linear_state, dtype=linear_state.dtype)
-        residual = self.target.observations - (
-            self.target.fixed_contribution
-            + self.target.design @ np.asarray(physical_state, dtype=np.float64)
+        modelled_mean = np.asarray(
+            self.modelled_mean_fn(point),
+            dtype=np.float64,
         )
+        residual = self.target.observations - modelled_mean
         return eta.astype(np.float64), residual
 
     def _ensure_cache_matches(self, eta: FloatArray) -> int:
@@ -408,31 +401,32 @@ class PymcCachedSigmaNutsStep(BlockedStep):
 def make_cached_sigma_compound_step(  # noqa: PLR0913
     *,
     model: pm.Model,
-    sigma: Any,
-    state: Any,
+    sigma: TensorVariable,
+    states: Sequence[TensorVariable],
+    modelled_mean: TensorVariable,
     target: FixedOuCachedSigmaTarget,
     shared_cache: PytensorMarginalQuadraticCache,
     initial_cache: MarginalQuadraticCache,
-    state_value_name: str,
-    state_location: ArrayLike,
-    state_cholesky: ArrayLike,
     prior_scale: ArrayLike | float,
     initial_point: PointType | None = None,
     sigma_target_accept: float = 0.8,
     state_target_accept: float = 0.9,
     rng: RandomGenerator = None,
 ) -> pm.CompoundStep:
-    """Construct the required sigma-then-state stock PyMC compound sweep."""
+    """Construct the required sigma-then-state stock PyMC compound sweep.
+
+    The sigma step compiles ``modelled_mean`` once and evaluates it at each
+    accepted state point; the following stock NUTS step jointly updates
+    ``states`` against the refreshed quadratic cache.
+    """
     root_rng = get_random_generator(rng)
     sigma_rng, state_rng = root_rng.spawn(2)
     sigma_step = PymcCachedSigmaNutsStep(
-        [sigma],
+        sigma,
         target=target,
         shared_cache=shared_cache,
         initial_cache=initial_cache,
-        state_value_name=state_value_name,
-        state_location=state_location,
-        state_cholesky=state_cholesky,
+        modelled_mean=modelled_mean,
         prior_scale=prior_scale,
         target_accept=sigma_target_accept,
         initial_point=initial_point,
@@ -441,7 +435,7 @@ def make_cached_sigma_compound_step(  # noqa: PLR0913
     )
     with model:
         state_step = pm.NUTS(
-            vars=[state],
+            vars=list(states),
             target_accept=state_target_accept,
             initial_point=initial_point,
             model=model,

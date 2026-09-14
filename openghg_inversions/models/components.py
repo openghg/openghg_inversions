@@ -61,6 +61,16 @@ class LinearComponentResult:
 
 
 @dataclass
+class OffsetComponentResult:
+    """Graph objects and labelled design created for one offset component."""
+
+    design: xr.DataArray
+    latent: TensorVariable
+    coefficients: TensorVariable
+    output: TensorVariable
+
+
+@dataclass
 class StateVectorResult:
     """Objects created by ``add_state_vector``.
 
@@ -163,7 +173,22 @@ def _resolve_freq_indicator(
     """Return an explicit or derived observation-aligned frequency indicator."""
     if explicit_indicator is not None:
         if isinstance(explicit_indicator, xr.DataArray):
-            return explicit_indicator.rename(explicit_indicator.name or fallback_name)
+            if explicit_indicator.dims != (output_dim,):
+                raise ValueError(
+                    f"{fallback_name!r} must have dims {(output_dim,)!r}; "
+                    f"got {explicit_indicator.dims!r}."
+                )
+            try:
+                indicator, _ = xr.align(
+                    explicit_indicator,
+                    data,
+                    join="exact",
+                )
+            except ValueError as error:
+                raise ValueError(
+                    f"{fallback_name!r} coordinates must exactly match observations."
+                ) from error
+            return indicator.rename(indicator.name or fallback_name)
         return xr.DataArray(
             np.asarray(explicit_indicator, dtype=int),
             dims=(output_dim,),
@@ -680,6 +705,122 @@ def add_sigma_component(
     return aligned
 
 
+def _add_offset_component_result(
+    observations: xr.DataArray,
+    /,
+    prior_args: dict,
+    offset_freq_indicator: xr.DataArray | np.ndarray | None = None,
+    offset_freq: str | None = None,
+    var_name: str = "offset_latent",
+    output_name: str = "offset",
+    output_dim: str = "nmeasure",
+    drop_first: bool = False,
+    per_site: bool = True,
+) -> OffsetComponentResult:
+    """Build one offset component and return its labelled design and graph terms."""
+    output_dim = str(output_dim)
+    output_coord = observations.coords[output_dim]
+    if not per_site:
+        if offset_freq_indicator is not None or offset_freq is not None:
+            raise ValueError("Global offsets do not accept an offset frequency.")
+        if drop_first:
+            raise ValueError("Global offsets do not support `drop_first=True`.")
+        design = xr.DataArray(
+            np.ones((observations.sizes[output_dim], 1), dtype=np.float64),
+            dims=(output_dim, "offset_term"),
+            coords={output_dim: output_coord, "offset_term": ["global"]},
+            name="offset_design",
+        )
+        coefficient = parse_prior(var_name, prior_args)
+        coefficients = pt.atleast_1d(coefficient)
+        output = pm.Deterministic(
+            output_name,
+            pt.broadcast_to(coefficient, (observations.sizes[output_dim],)),
+            dims=output_dim,
+        )
+        return OffsetComponentResult(
+            design=design,
+            latent=get_model_latent(coefficient, var_name),
+            coefficients=coefficients,
+            output=output,
+        )
+
+    if "site" not in observations.coords or observations.coords["site"].dims != (output_dim,):
+        raise ValueError(
+            "Offset observations must have an observation-aligned `site` coordinate."
+        )
+    if bool(pd.isna(observations.coords["site"].values).any()):
+        raise ValueError("Offset observations must have non-missing site labels.")
+    site_indicator = make_site_indicator(observations.coords["site"])
+    site_indicator = site_indicator.rename("site_indicator").transpose(output_dim)
+    indicator = _resolve_freq_indicator(
+        explicit_indicator=offset_freq_indicator,
+        freq=offset_freq,
+        data=site_indicator,
+        output_dim=output_dim,
+        fallback_name="offset_freq_indicator",
+    )
+
+    site_codes = np.asarray(site_indicator.values, dtype=int)
+    site_labels = pd.unique(np.asarray(observations.coords["site"].values))
+    selected_sites = np.arange(int(drop_first), site_labels.size)
+    if selected_sites.size == 0:
+        raise ValueError("drop_first removes the only available offset site.")
+    site_matrix = (site_codes[:, None] == selected_sites[None, :]).astype(int)
+    if indicator is not None:
+        if bool(pd.isna(indicator.values).any()):
+            raise ValueError("Offset frequency indicators must have non-missing labels.")
+        period_dummies = pd.get_dummies(indicator.values, dtype=int)
+        period_matrix = period_dummies.values
+        period_labels = period_dummies.columns.to_numpy()
+        design_matrix = (site_matrix[:, :, None] * period_matrix[:, None, :]).reshape(
+            site_matrix.shape[0], -1
+        )
+        term_index = pd.MultiIndex.from_product(
+            [site_labels[selected_sites], period_labels],
+            names=("offset_site", "offset_period"),
+        )
+        term_coords = xr.Coordinates.from_pandas_multiindex(
+            term_index,
+            "offset_term",
+        )
+    else:
+        design_matrix = site_matrix
+        selected_labels = site_labels[selected_sites]
+        term_coords = {
+            "offset_term": selected_labels,
+            "offset_site": ("offset_term", selected_labels),
+        }
+
+    design = xr.DataArray(
+        design_matrix,
+        dims=(output_dim, "offset_term"),
+        coords={
+            output_dim: output_coord,
+            **term_coords,
+        },
+        name="offset_design",
+    )
+    add_model_data(site_indicator, str(site_indicator.name))
+    if indicator is not None:
+        add_model_data(indicator.transpose(output_dim), str(indicator.name))
+    design_data = add_model_data(design, f"{output_name}_design")
+    coefficient = parse_prior(var_name, prior_args, dims="offset_term")
+    coefficients = pt.atleast_1d(coefficient)
+    aligned = pt.dot(design_data, coefficients)
+    output = pm.Deterministic(
+        output_name,
+        aligned,
+        dims=output_dim,
+    )
+    return OffsetComponentResult(
+        design=design,
+        latent=get_model_latent(coefficient, var_name),
+        coefficients=coefficients,
+        output=output,
+    )
+
+
 def add_offset_component(
     observations: xr.DataArray,
     /,
@@ -699,7 +840,8 @@ def add_offset_component(
             ``site`` coordinate.
         prior_args: Prior specification for the offset latent variable.
         offset_freq_indicator: Optional explicit observation-aligned offset
-            frequency indicator.
+            frequency indicator. A labelled array must exactly match the
+            observation coordinates.
         offset_freq: Optional frequency string used to derive an indicator when
             ``offset_freq_indicator`` is not provided.
         var_name: Name for the latent offset variable.
@@ -714,63 +856,20 @@ def add_offset_component(
 
     Raises:
         ValueError: If ``observations`` does not have an observation-aligned
-            ``site`` coordinate, or if global-offset options conflict.
+            ``site`` coordinate, labelled coordinates do not match, or the
+            selected global or drop-first options cannot form a component.
     """
-    output_dim = str(output_dim)
-    if not per_site:
-        if offset_freq_indicator is not None or offset_freq is not None:
-            raise ValueError("Global offsets do not accept an offset frequency.")
-        if drop_first:
-            raise ValueError("Global offsets do not support `drop_first=True`.")
-        latent = parse_prior(var_name, prior_args)
-        aligned = pt.broadcast_to(latent, (observations.sizes[output_dim],))
-        return pm.Deterministic(output_name, aligned, dims=output_dim)
-
-    if "site" not in observations.coords or observations.coords["site"].dims != (output_dim,):
-        raise ValueError(
-            "Offset observations must have an observation-aligned `site` coordinate."
-        )
-    site_indicator = make_site_indicator(observations.coords["site"])
-    site_indicator = site_indicator.rename("site_indicator").transpose(output_dim)
-    add_model_data(site_indicator, "site_indicator")
-
-    indicator = _resolve_freq_indicator(
-        explicit_indicator=offset_freq_indicator,
-        freq=offset_freq,
-        data=site_indicator,
+    return _add_offset_component_result(
+        observations,
+        prior_args=prior_args,
+        offset_freq_indicator=offset_freq_indicator,
+        offset_freq=offset_freq,
+        var_name=var_name,
+        output_name=output_name,
         output_dim=output_dim,
-        fallback_name="offset_freq_indicator",
-    )
-    if indicator is not None:
-        add_model_data(indicator.transpose(output_dim), str(indicator.name))
-
-    site_codes = np.asarray(site_indicator.values, dtype=int)
-    site_matrix = pd.get_dummies(site_codes, drop_first=drop_first, dtype=int).values
-
-    if indicator is not None:
-        period_codes = np.asarray(indicator.values, dtype=int)
-        period_matrix = pd.get_dummies(period_codes, dtype=int).values
-        design_matrix = (site_matrix[:, :, None] * period_matrix[:, None, :]).reshape(
-            site_matrix.shape[0], -1
-        )
-    else:
-        design_matrix = site_matrix
-
-    design_name = f"{output_name}_design"
-    design_data = add_model_data(
-        xr.DataArray(
-            design_matrix,
-            dims=(output_dim, "noffset_term"),
-            coords={
-                output_dim: site_indicator.coords[output_dim],
-                "noffset_term": np.arange(design_matrix.shape[1]),
-            },
-            name=design_name,
-        ),
-        design_name,
-    )
-    latent = parse_prior(var_name, prior_args, shape=design_matrix.shape[1])
-    return pm.Deterministic(output_name, pt.dot(design_data, latent), dims=output_dim)
+        drop_first=drop_first,
+        per_site=per_site,
+    ).output
 
 
 def add_inferpymc_likelihood_component(

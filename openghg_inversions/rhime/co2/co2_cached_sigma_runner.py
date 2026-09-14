@@ -13,6 +13,7 @@ import xarray as xr
 
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.inversion_data import RhimePreparedInputs
+from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.models.state_activity import StateActivity
 from openghg_inversions.observation_error import (
     AggregationErrorMode,
@@ -30,7 +31,11 @@ from .co2_cached_sigma_model import (
     Co2CachedSigmaModel,
     build_co2_cached_sigma_model,
 )
-from .co2_runner import _annotate_co2_trace, _state_activity_from_inputs
+from .co2_runner import (
+    _annotate_co2_trace,
+    _normalise_offset_args,
+    _state_activity_from_inputs,
+)
 
 
 _CO2_CACHED_SIGMA_INPUT_NAMES = (
@@ -47,10 +52,13 @@ def co2_cached_sigma_input_names(
     prepared_inputs: RhimePreparedInputs,
     *,
     aggregation_error_mode: AggregationErrorMode,
+    use_bc: bool = False,
 ) -> tuple[str, ...]:
     """Declare arrays consumed by the named cached fixed-OU recipe."""
     inputs = prepared_inputs.inv_inputs
     names = list(_CO2_CACHED_SIGMA_INPUT_NAMES)
+    if use_bc:
+        names.append("H_bc")
     names.extend(aggregation_error_input_names(inputs, aggregation_error_mode))
     if "state_is_active" in inputs:
         names.append("state_is_active")
@@ -91,19 +99,11 @@ def _sampler_for_cached_graph(
         sample_kwargs["step"] = make_cached_sigma_compound_step(
             model=cached_model.model,
             sigma=cached_model.amplitude,
-            state=cached_model.state,
+            states=cached_model.states,
+            modelled_mean=cached_model.modelled_mean,
             target=cached_model.target,
             shared_cache=cached_model.shared_cache,
             initial_cache=cached_model.initial_cache,
-            state_value_name=cached_model.state_value_name,
-            state_location=np.asarray(
-                cached_model.active_state_prior.latent_mean.values,
-                dtype=np.float64,
-            ),
-            state_cholesky=np.asarray(
-                cached_model.active_state_prior.latent_cholesky.values,
-                dtype=np.float64,
-            ),
             prior_scale=cached_model.site_amplitude_prior_scale,
             initial_point=cached_model.model.initial_point(),
             sigma_target_accept=sigma_target_accept,
@@ -160,19 +160,19 @@ def _append_joint_outputs(
 ) -> az.InferenceData:
     """Attach exact joint log likelihood and optional joint replicates."""
     posterior = cast(xr.Dataset, trace.posterior)
-    state = posterior[cached_model.state_output_name]
+    mean = posterior["modelled_concentration"]
     sigma = posterior[OU_SITE_AMPLITUDE]
-    state_dim = next(dim for dim in state.dims if dim not in {"chain", "draw"})
+    output_dim = str(observations.dims[0])
     sigma_dim = next(dim for dim in sigma.dims if dim not in {"chain", "draw"})
-    state_values = np.asarray(
-        state.transpose("chain", "draw", state_dim).values,
+    mean_values = np.asarray(
+        mean.transpose("chain", "draw", output_dim).values,
         dtype=np.float64,
     )
     sigma_values = np.asarray(
         sigma.transpose("chain", "draw", sigma_dim).values,
         dtype=np.float64,
     )
-    chain_count, draw_count = state_values.shape[:2]
+    chain_count, draw_count = mean_values.shape[:2]
     log_likelihood = np.empty((chain_count, draw_count), dtype=np.float64)
     predictive = (
         np.empty(
@@ -185,15 +185,15 @@ def _append_joint_outputs(
     rng = np.random.default_rng(random_seed)
     for chain in range(chain_count):
         for draw in range(draw_count):
-            draw_state = state_values[chain, draw]
+            draw_mean = mean_values[chain, draw]
             draw_sigma = sigma_values[chain, draw]
-            log_likelihood[chain, draw] = cached_model.target.log_likelihood(
-                draw_state,
+            log_likelihood[chain, draw] = cached_model.target.log_likelihood_from_mean(
+                draw_mean,
                 draw_sigma,
             )
             if predictive is not None:
-                predictive[chain, draw] = cached_model.target.random(
-                    draw_state,
+                predictive[chain, draw] = cached_model.target.random_from_mean(
+                    draw_mean,
                     draw_sigma,
                     rng=rng,
                 )
@@ -216,7 +216,6 @@ def _append_joint_outputs(
         "log_likelihood": likelihood_data.to_dataset(),
     }
     if predictive is not None:
-        output_dim = str(observations.dims[0])
         predictive_coords = {**sample_coords, **_observation_coords(observations)}
         predictive_data = xr.DataArray(
             predictive,
@@ -291,14 +290,21 @@ def run_rhime_co2_cached_sigma(
     sigma_target_accept: float = 0.8,
     state_target_accept: float = 0.9,
     aggregation_error_mode: AggregationErrorMode = "low_rank",
+    use_bc: bool = False,
+    bc_prior: PriorArgs | None = None,
+    bc_state_activity: StateActivity | None = None,
+    offset_prior: PriorArgs | None = None,
+    offset_args: Mapping[str, Any] | None = None,
 ) -> az.InferenceData:
-    """Run the production CO2 fixed-OU cached-amplitude recipe.
+    """Run the package-supported CO2 fixed-OU cached-amplitude recipe.
 
     The graph and sampler are a matched pair: site amplitudes are updated first by the
     exact conditional bridge, the accepted cache is refreshed once, and stock
-    PyMC NUTS then updates the correlated flux state against that cache.
-    ``sigma_target_accept`` and ``state_target_accept`` tune those two steps
-    independently.
+    PyMC NUTS then updates the correlated flux and optional boundary and offset
+    states against that cache. ``use_bc=False`` leaves a prepared boundary
+    field unselected and preserves the no-baseline route. An offset is added
+    only when ``offset_prior`` is supplied. ``sigma_target_accept`` and
+    ``state_target_accept`` tune the two sampler steps independently.
 
     Args:
         prepared_inputs: Coherent-reduction inputs containing ``H``,
@@ -318,11 +324,18 @@ def run_rhime_co2_cached_sigma(
             ``posterior_predictive_kwargs``.
         sigma_target_accept: NUTS target acceptance probability for the site-
             amplitude transition.
-        state_target_accept: NUTS target acceptance probability for the flux-
-            state transition.
+        state_target_accept: NUTS target acceptance probability for the joint
+            flux, boundary, and offset state transition.
         aggregation_error_mode: Prepared aggregation-error representation.
             The default ``"low_rank"`` requires ``low_rank_factor`` and
             ``diagonal_residual_variance``.
+        use_bc: Whether to include prepared ``H_bc`` boundary sensitivity.
+        bc_prior: Optional prior for boundary-condition scaling.
+        bc_state_activity: Optional active/fixed boundary-state policy.
+        offset_prior: Optional prior for an offset component. When omitted, no
+            offset is added.
+        offset_args: Optional offset settings: ``offset_freq_indicator``,
+            ``offset_freq``, ``drop_first``, and ``per_site``.
 
     Returns:
         Sampled inference data with the normalized joint log likelihood as one
@@ -335,10 +348,21 @@ def run_rhime_co2_cached_sigma(
             the sampler is not PyMC, supplies ``step`` or generic
             ``target_accept``, or has unsupported predictive keywords.
     """
+    if not use_bc and (bc_prior is not None or bc_state_activity is not None):
+        raise ValueError("bc_prior and bc_state_activity require use_bc=True.")
+    if offset_prior is None and offset_args:
+        raise ValueError("offset_args require offset_prior.")
+    (
+        offset_freq_indicator,
+        offset_freq,
+        offset_drop_first,
+        offset_per_site,
+    ) = _normalise_offset_args(offset_args)
     prepared = prepared_inputs.validated()
     names = co2_cached_sigma_input_names(
         prepared,
         aggregation_error_mode=aggregation_error_mode,
+        use_bc=use_bc,
     )
     model_inputs = materialize_pymc_inputs(prepared, variable_names=names)
     aggregation_error = resolve_aggregation_error(
@@ -362,6 +386,14 @@ def run_rhime_co2_cached_sigma(
         site_amplitude_prior_scale=site_amplitude_prior_scale,
         initial_site_amplitudes=initial_site_amplitudes,
         state_activity=cast(StateActivity | None, _state_activity_from_inputs(model_inputs)),
+        boundary_sensitivity=model_inputs.get("H_bc") if use_bc else None,
+        bc_prior=bc_prior,
+        bc_state_activity=bc_state_activity,
+        offset_prior=offset_prior,
+        offset_freq_indicator=offset_freq_indicator,
+        offset_freq=offset_freq,
+        offset_drop_first=offset_drop_first,
+        offset_per_site=offset_per_site,
     )
     requested_sampler = RhimeSampler() if sampler is None else sampler
     metadata = {
@@ -376,22 +408,33 @@ def run_rhime_co2_cached_sigma(
         ),
         "basis_artifact_path": getattr(prepared, "basis_artifact_path", None),
     }
+    variable_roles = {
+        "observation": "Y",
+        "observation_error": "error",
+        "concentration": "y",
+        "model_error": "epsilon",
+        "model_mean": "modelled_concentration",
+        "pollution_concentration": "co2_flux_contribution",
+        "flux_scale": "flux_scaling",
+        "fixed_ou_site_amplitude": OU_SITE_AMPLITUDE,
+        "observation_to_fixed_ou_site_index": OU_SITE_INDEX,
+        "fixed_ou_timescale": "ou_tau_hours",
+        "emissions_sensitivity": "co2_sensitivity",
+        "coherent_prior_contribution": "fixed_prior_contribution",
+    }
+    if use_bc:
+        variable_roles.update(
+            {
+                "baseline_concentration": "mu_bc",
+                "baseline_scale": "bc",
+                "boundary_sensitivity": "hbc",
+            }
+        )
+    if offset_prior is not None:
+        variable_roles["offset_concentration"] = "offset"
     built = RhimeModelBuildResult(
         model=cached_model.model,
-        variable_roles={
-            "observation": "Y",
-            "observation_error": "error",
-            "concentration": "y",
-            "model_error": "epsilon",
-            "model_mean": "modelled_concentration",
-            "pollution_concentration": "co2_flux_contribution",
-            "flux_scale": "flux_scaling",
-            "fixed_ou_site_amplitude": OU_SITE_AMPLITUDE,
-            "observation_to_fixed_ou_site_index": OU_SITE_INDEX,
-            "fixed_ou_timescale": "ou_tau_hours",
-            "emissions_sensitivity": "co2_sensitivity",
-            "coherent_prior_contribution": "fixed_prior_contribution",
-        },
+        variable_roles=variable_roles,
         metadata=metadata,
     )
     sampling_sampler = _sampler_for_cached_graph(

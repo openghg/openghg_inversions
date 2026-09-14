@@ -60,6 +60,31 @@ def _golden_inputs() -> xr.Dataset:
     return inputs
 
 
+def _production_boundary_inputs() -> xr.Dataset:
+    """Small VG-shaped inner/outer flux and monthly NESW boundary input."""
+    inputs = _golden_inputs().assign_coords(
+        basis_group=("region", ["inner", "outer", "inner", "outer"]),
+        site=("nmeasure", ["MHD", "TAC"]),
+        time=(
+            "nmeasure",
+            np.asarray(["2021-01-15", "2021-02-15"], dtype="datetime64[D]"),
+        ),
+    )
+    bc_index = pd.MultiIndex.from_product(
+        [["north", "east", "south", "west"], ["2021-01", "2021-02"]],
+        names=("bc_curtain", "bc_period"),
+    )
+    bc_coords = xr.Coordinates.from_pandas_multiindex(bc_index, "bc_region")
+    inputs["H_bc"] = xr.DataArray(
+        np.arange(16, dtype=float).reshape(2, 8) / 20.0,
+        dims=("nmeasure", "bc_region"),
+        coords={"nmeasure": inputs["nmeasure"], **bc_coords},
+        attrs={"units": "ppm"},
+    )
+    inputs["aggregation_error_covariance"][:] = [[0.08, 0.02], [0.02, 0.12]]
+    return inputs
+
+
 def _empty_sampled_trace(inputs: xr.Dataset) -> az.InferenceData:
     """Return a small trace with representative CO2 sample groups."""
     return az.from_dict(
@@ -168,6 +193,46 @@ def test_public_co2_runner_rejects_default_model_error_with_selected_likelihood(
         )
 
 
+@pytest.mark.parametrize(
+    ("offset_args", "error", "message"),
+    [
+        ({"var_name": "custom_offset"}, ValueError, "Unsupported offset_args"),
+        ({"output_name": "custom_output"}, ValueError, "Unsupported offset_args"),
+        (
+            {
+                "offset_freq": "monthly",
+                "offset_freq_indicator": np.asarray([0, 1]),
+            },
+            ValueError,
+            "Specify only one",
+        ),
+        ({"per_site": 1}, TypeError, "must be booleans"),
+    ],
+)
+def test_co2_offset_args_are_normalised_explicitly(
+    offset_args: dict[str, Any],
+    error: type[Exception],
+    message: str,
+) -> None:
+    """Reject unsupported or internally inconsistent CO2 offset options."""
+    with pytest.raises(error, match=message):
+        co2_runner._normalise_offset_args(offset_args)
+
+
+def test_build_co2_model_preserves_offset_args_compatibility() -> None:
+    """Direct builder callers can still select a global offset via offset_args."""
+    model = _build_model(
+        _production_boundary_inputs(),
+        offset_prior={"pdf": "normal", "mu": 0.2, "sigma": 0.1},
+        offset_args={"per_site": False},
+    )
+
+    assert model["offset_latent"].ndim == 0
+    assert "offset" in model.named_vars
+    assert "offset_design" not in model.named_vars
+    assert "site_indicator" not in model.named_vars
+
+
 def test_co2_structural_zero_is_fixed_at_one_and_pruned_only_from_operator() -> None:
     inputs = _golden_inputs()
     inputs["H"][:, 1] = 0.0
@@ -188,7 +253,10 @@ def test_co2_structural_zero_is_fixed_at_one_and_pruned_only_from_operator() -> 
     assert active_state.shape == (inputs.sizes["region"] - 1,)
     assert full_state[1] == 1.0
     np.testing.assert_allclose(model["co2_sensitivity"].eval(), inputs["H"].values[:, [0, 2, 3]])
-    np.testing.assert_allclose(forward, inputs["H"].values @ full_state)
+    np.testing.assert_allclose(
+        forward,
+        inputs["fixed_prior_contribution"].values + inputs["H"].values @ full_state,
+    )
 
 
 def test_co2_fixed_mismatch_completes_dense_observation_covariance() -> None:
@@ -260,7 +328,10 @@ def test_co2_partial_activity_preserves_full_gathered_multiindex_state() -> None
     assert full_state.shape == (4,)
     assert active_state.shape == (2,)
     np.testing.assert_array_equal(full_state[~is_active.values], fixed_value.values[~is_active.values])
-    np.testing.assert_allclose(forward, inputs["H"].values @ full_state)
+    np.testing.assert_allclose(
+        forward,
+        inputs["fixed_prior_contribution"].values + inputs["H"].values @ full_state,
+    )
     assert registry.original_coords["region"].equals(state_index)
     assert registry.original_coords["region_flux_scaling_active"].tolist() == [
         ("ff", "north"),
@@ -396,6 +467,117 @@ def test_public_co2_runner_derives_default_model_error_alignment(monkeypatch: An
         np.zeros(inputs.sizes["nmeasure"]),
     )
     assert "sigma" in sampled_models[0].named_vars
+
+
+def test_public_co2_runner_selects_boundary_and_offset_once(monkeypatch: Any) -> None:
+    """The public runner materializes and composes each selected baseline once."""
+    inputs = _production_boundary_inputs()
+
+    class PreparedInputsStub:
+        inv_inputs = inputs
+
+        def validated(self) -> "PreparedInputsStub":
+            return self
+
+    materialized_names: list[tuple[str, ...]] = []
+    built_models: list[pm.Model] = []
+
+    def materialize(_prepared: Any, *, variable_names: tuple[str, ...]) -> xr.Dataset:
+        materialized_names.append(variable_names)
+        return inputs
+
+    def sample_model(built: Any, _sampler: Any) -> az.InferenceData:
+        built_models.append(built.model)
+        return _empty_sampled_trace(inputs)
+
+    monkeypatch.setattr(co2_runner, "materialize_pymc_inputs", materialize)
+    monkeypatch.setattr(co2_runner, "sample_rhime_model", sample_model)
+    bc_active = xr.DataArray(
+        [True, False, True, False, True, False, True, False],
+        dims="bc_region",
+        coords={"bc_region": inputs["bc_region"]},
+    )
+    bc_fixed = xr.DataArray(
+        np.linspace(0.8, 1.5, 8),
+        dims="bc_region",
+        coords={"bc_region": inputs["bc_region"]},
+    )
+
+    run_rhime_co2(
+        prepared_inputs=cast(Any, PreparedInputsStub()),
+        fixed_model_mismatch=1.0,
+        no_model_error=True,
+        use_bc=True,
+        bc_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.1},
+        bc_state_activity=StateActivity(active=bc_active, fixed_value=bc_fixed),
+        offset_prior={"pdf": "normal", "mu": 0.2, "sigma": 0.1},
+        offset_args={"per_site": False},
+    )
+
+    model = built_models[0]
+    assert len(materialized_names) == 1
+    assert materialized_names[0].count("H_bc") == 1
+    assert {"hbc", "bc", "mu_bc", "offset", "offset_latent"} <= set(model.named_vars)
+    registry = get_coord_registry(model)
+    assert registry is not None
+    assert registry.original_coords["bc_region"].equals(inputs.indexes["bc_region"])
+    np.testing.assert_array_equal(model["bc_is_active"].eval(), bc_active)
+
+    variables = [
+        model[name]
+        for name in (
+            "modelled_concentration",
+            "fixed_prior_contribution",
+            "co2_flux_contribution",
+            "mu_bc",
+            "offset",
+            "flux_scaling",
+        )
+    ]
+    values = model.compile_fn(
+        model.replace_rvs_by_values(variables),
+        inputs=model.value_vars,
+        on_unused_input="ignore",
+    )(model.initial_point())
+    total, fixed, flux, boundary, offset, flux_scaling = map(np.asarray, values)
+    np.testing.assert_allclose(total, flux + boundary + offset)
+    np.testing.assert_allclose(
+        flux,
+        fixed + inputs["H"].values @ flux_scaling,
+    )
+
+
+def test_public_co2_runner_does_not_auto_select_prepared_baseline(monkeypatch: Any) -> None:
+    """A prepared boundary remains unused unless the runner explicitly selects it."""
+    inputs = _production_boundary_inputs()
+
+    class PreparedInputsStub:
+        inv_inputs = inputs
+
+        def validated(self) -> "PreparedInputsStub":
+            return self
+
+    selected: list[tuple[str, ...]] = []
+    built_models: list[pm.Model] = []
+
+    def materialize(_prepared: Any, *, variable_names: tuple[str, ...]) -> xr.Dataset:
+        selected.append(variable_names)
+        return inputs
+
+    def sample_model(built: Any, _sampler: Any) -> az.InferenceData:
+        built_models.append(built.model)
+        return _empty_sampled_trace(inputs)
+
+    monkeypatch.setattr(co2_runner, "materialize_pymc_inputs", materialize)
+    monkeypatch.setattr(co2_runner, "sample_rhime_model", sample_model)
+    run_rhime_co2(
+        prepared_inputs=cast(Any, PreparedInputsStub()),
+        fixed_model_mismatch=1.0,
+        no_model_error=True,
+    )
+
+    assert "H_bc" not in selected[0]
+    assert {"hbc", "bc", "mu_bc", "offset"}.isdisjoint(built_models[0].named_vars)
 
 
 def _run_selected_co2_likelihood(

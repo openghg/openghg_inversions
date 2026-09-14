@@ -94,6 +94,12 @@ def test_advanced_co2_reader_path_exposes_current_boundaries() -> None:
     assert "CO2 coherent-reduction model" in recipes
     assert "CO2/O2 shared-state model" in recipes
     assert ".. _co2-cached-sigma-recipe:" in recipes
+    assert "Run the ordinary prepared-input CO2 runner" in recipes
+    assert "idata = run_rhime_co2(" in recipes
+    assert "idata = run_rhime_co2_cached_sigma(" in recipes
+    assert recipes.count("use_bc=True") >= 2
+    assert "Not exposed by the linked prepared-input runner" in family
+    assert "= \\mathtt{co2\\_flux\\_contribution}" in recipes
     assert "validate_complete_observation_covariance" not in recipes
 
 
