@@ -608,9 +608,10 @@ selected from prepared inputs. With reported observation standard deviation
 mismatch <code class="docutils literal notranslate"><span class="pre">sigma</span></code>, its covariance is</p>
 <div class="math notranslate nohighlight">
 \[R = C_{agg} + \operatorname{diag}
-    (s_y^2 + s_{fixed}^2 + \sigma^2),\]</div>
-<p>after applying <code class="docutils literal notranslate"><span class="pre">min_error</span></code> as a floor on the total marginal standard
-deviation. OpenGHG Inversions does not default <code class="docutils literal notranslate"><span class="pre">s_fixed</span></code> to 1 ppm. The
+    (s_y^2 + s_{fixed}^2 + \sigma^2).\]</div>
+<p>CO2 likelihoods do not apply <code class="docutils literal notranslate"><span class="pre">min_error</span></code>; that input belongs to
+pollution-event-scaled mismatch. OpenGHG Inversions does not default
+<code class="docutils literal notranslate"><span class="pre">s_fixed</span></code> to 1 ppm. The
 Verification Games fixed-only policy passes <code class="docutils literal notranslate"><span class="pre">fixed_model_mismatch=1.0</span></code> and
 <code class="docutils literal notranslate"><span class="pre">no_model_error=True</span></code> visibly. A runnable CO2 configuration and resolver are
 tracked in <a class="reference external" href="https://linear.app/openghg-inversions/issue/OPE-79">OPE-79</a>.</p>
@@ -663,6 +664,17 @@ The current prepared-input runner does not accept or construct an
 outer-specific object. It constructs the complete retained prior from the
 prepared arithmetic mean and covariance, then forwards the prepared activity
 policy to the builder.</p>
+<p>The CO2 builder and prepared-input runner also accept one ordinary
+<code class="docutils literal notranslate"><span class="pre">likelihood_builder</span></code> with explicit <code class="docutils literal notranslate"><span class="pre">likelihood_kwargs</span></code>. This selects
+package components such as
+<a class="reference internal" href="../reference/openghg_inversions.models.fixed_ou.html#openghg_inversions.models.fixed_ou.add_fixed_ou_gaussian_likelihood" title="openghg_inversions.models.fixed_ou.add_fixed_ou_gaussian_likelihood"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.models.fixed_ou.add_fixed_ou_gaussian_likelihood()</span></code></a> and
+<a class="reference internal" href="../reference/openghg_inversions.models.html#openghg_inversions.models.add_site_sigma_gaussian_likelihood" title="openghg_inversions.models.add_site_sigma_gaussian_likelihood"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.models.add_site_sigma_gaussian_likelihood()</span></code></a> after
+<code class="docutils literal notranslate"><span class="pre">modelled_concentration</span></code> has been completed. Selecting one replaces the
+default additive-sigma likelihood; its scientific options belong in
+<code class="docutils literal notranslate"><span class="pre">likelihood_kwargs</span></code> rather than the default <code class="docutils literal notranslate"><span class="pre">sigma_*</span></code> or
+<code class="docutils literal notranslate"><span class="pre">fixed_model_mismatch</span></code> arguments. The returned trace records the selected
+callable identity and its explicit options using the ordinary likelihood
+provenance attributes.</p>
 </section>
 </section>
 <section id="co2-o2-shared-state-model">
@@ -674,6 +686,10 @@ preparation, <a class="reference internal" href="../reference/openghg_inversions
 construction, and
 <a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs" title="openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs()</span></code></a> for
 materialization, sampling, and trace metadata.</p>
+<p>This joint recipe currently keeps its fixed, row-labelled independent error
+and does not expose the CO2 <code class="docutils literal notranslate"><span class="pre">likelihood_builder</span></code> seam. A cross-channel
+mismatch model must first define its CO2/O2 covariance, parameter sharing, and
+mixed-unit behavior explicitly.</p>
 <p>Partition that state as</p>
 <div class="math notranslate nohighlight">
 \[\begin{split}\alpha =
