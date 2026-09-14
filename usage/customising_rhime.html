@@ -405,6 +405,8 @@ documented interfaces.</p>
 <p>Choose the smallest starting point that fits the change:</p>
 <ul class="simple">
 <li><p>To change only the likelihood, pass a Python function to <code class="docutils literal notranslate"><span class="pre">run_rhime</span></code>.</p></li>
+<li><p>To run the matched fixed-tau OU CO2 model with inferred site amplitudes, use
+<a class="reference internal" href="#cached-sigma-co2-recipe"><span class="std std-ref">the production cached-sigma CO2 recipe</span></a>.</p></li>
 <li><p>To resume from externally supplied merged observations, footprints, and
 fluxes, pass a borrowed <code class="docutils literal notranslate"><span class="pre">RhimeMergedData</span></code> object as <code class="docutils literal notranslate"><span class="pre">merged_data</span></code>.</p></li>
 <li><p>To change a preparation stage such as basis construction, copy the visible
@@ -637,14 +639,9 @@ requires every generalized base-plus-OU mode variance to be strictly positive.
 An exact zero mode is rejected before applying the low-rank factor, even when
 that factor would make a materialized dense covariance positive definite; a
 positive OU amplitude can lift a zero base mode. The component currently
-requires PyMC’s native NUTS backend; sampled tau and the cached blocked sampler
-are separate extensions.</p>
-<p>Built-in aggregation covariance relies on the guarantees of its construction
-pipeline. A custom pipeline that assembles its own covariance may optionally
-call
-<code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.observation_error.validate_complete_observation_covariance()</span></code>
-with its fixed independent variance. Model builders do not run this eager
-diagnostic automatically.</p>
+requires PyMC’s native NUTS backend. Sampled tau is a separate extension; the
+production cached sampler is the matched recipe described in
+<a class="reference internal" href="#cached-sigma-co2-recipe"><span class="std std-ref">Run the production cached-sigma CO2 recipe</span></a>.</p>
 </section>
 <section id="optional-project-cli">
 <h3>Optional project CLI<a class="headerlink" href="#optional-project-cli" title="Link to this heading">#</a></h3>
@@ -772,6 +769,81 @@ standard multi-sector model retains sector flux components and roles, then
 passes their combined observation mean to the likelihood, so no special case
 or semantic compromise is required.</p>
 </section>
+</section>
+<section id="run-the-production-cached-sigma-co2-recipe">
+<span id="cached-sigma-co2-recipe"></span><h2>Run the production cached-sigma CO2 recipe<a class="headerlink" href="#run-the-production-cached-sigma-co2-recipe" title="Link to this heading">#</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">run_rhime_co2_cached_sigma</span></code> is the first-class production route for the
+fixed-tau OU likelihood with independently inferred site amplitudes. It owns
+the matched PyMC graph and sampler: the sigma-only NUTS step runs first against
+the exact conditional likelihood, refreshes the accepted state quadratic, and
+stock state NUTS then reads that cache without refactorizing the observation
+covariance during its trajectory.</p>
+<p>The runner begins from an already assembled coherent-reduction
+<code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code> artifact; it does not perform coherent reduction. Its
+<code class="docutils literal notranslate"><span class="pre">inv_inputs</span></code> must contain <code class="docutils literal notranslate"><span class="pre">H</span></code>, <code class="docutils literal notranslate"><span class="pre">alpha_prior_mean</span></code>,
+<code class="docutils literal notranslate"><span class="pre">alpha_prior_covariance</span></code>, <code class="docutils literal notranslate"><span class="pre">fixed_prior_contribution</span></code>, <code class="docutils literal notranslate"><span class="pre">mf</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">mf_error</span></code>. The observation arrays share one <code class="docutils literal notranslate"><span class="pre">nmeasure</span></code> row order, while
+the prior arrays share <code class="docutils literal notranslate"><span class="pre">H</span></code>’s state labels. With the <code class="docutils literal notranslate"><span class="pre">&quot;low_rank&quot;</span></code>
+aggregation-error mode used below, the artifact must also contain
+<code class="docutils literal notranslate"><span class="pre">low_rank_factor</span></code> and <code class="docutils literal notranslate"><span class="pre">diagonal_residual_variance</span></code>. A dense artifact
+instead contains <code class="docutils literal notranslate"><span class="pre">aggregation_error_covariance</span></code> and must be selected with
+<code class="docutils literal notranslate"><span class="pre">aggregation_error_mode=&quot;dense&quot;</span></code>. Optional <code class="docutils literal notranslate"><span class="pre">state_is_active</span></code> and
+<code class="docutils literal notranslate"><span class="pre">state_fixed_value</span></code> variables carry the prepared state-activity policy.</p>
+<p><a class="reference internal" href="coherent_reduction.html"><span class="doc">Coherent Gaussian Reduction</span></a> describes the linked retained prior, effective
+operator, affine contribution, and unresolved covariance, but no public
+function currently assembles those products into this durable artifact. That
+handoff is tracked in <a class="reference external" href="https://linear.app/openghg-inversions/issue/OPE-153/add-a-public-coherent-reduction-handoff-for-co-prepared-inputs">OPE-153</a>.
+Until it lands, callers must supply already-prepared coherent-reduction inputs.</p>
+<p>For example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.inversion_data</span><span class="w"> </span><span class="kn">import</span> <span class="n">RhimePreparedInputs</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="n">RhimeSampler</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.co2</span><span class="w"> </span><span class="kn">import</span> <span class="n">run_rhime_co2_cached_sigma</span>
+
+<span class="n">prepared</span> <span class="o">=</span> <span class="n">RhimePreparedInputs</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="s2">"co2-coherent-low-rank.zarr"</span><span class="p">)</span>
+<span class="n">idata</span> <span class="o">=</span> <span class="n">run_rhime_co2_cached_sigma</span><span class="p">(</span>
+    <span class="n">prepared_inputs</span><span class="o">=</span><span class="n">prepared</span><span class="p">,</span>
+    <span class="n">tau_hours</span><span class="o">=</span><span class="p">{</span><span class="s2">"BSD"</span><span class="p">:</span> <span class="mf">24.0</span><span class="p">,</span> <span class="s2">"TAC"</span><span class="p">:</span> <span class="mf">18.0</span><span class="p">},</span>
+    <span class="n">site_amplitude_prior_scale</span><span class="o">=</span><span class="mf">0.75</span><span class="p">,</span>  <span class="c1"># concentration units</span>
+    <span class="n">aggregation_error_mode</span><span class="o">=</span><span class="s2">"low_rank"</span><span class="p">,</span>
+    <span class="n">sigma_target_accept</span><span class="o">=</span><span class="mf">0.9</span><span class="p">,</span>
+    <span class="n">state_target_accept</span><span class="o">=</span><span class="mf">0.9</span><span class="p">,</span>
+    <span class="n">sampler</span><span class="o">=</span><span class="n">RhimeSampler</span><span class="p">(</span>
+        <span class="n">draws</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span>
+        <span class="n">tune</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span>
+        <span class="n">chains</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span>
+        <span class="n">nuts_sampler</span><span class="o">=</span><span class="s2">"pymc"</span><span class="p">,</span>
+        <span class="n">sample_kwargs</span><span class="o">=</span><span class="p">{</span><span class="s2">"random_seed"</span><span class="p">:</span> <span class="mi">20260913</span><span class="p">},</span>
+        <span class="n">sample_prior_predictive</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+    <span class="p">),</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p>The runner constructs the required <code class="docutils literal notranslate"><span class="pre">site</span> <span class="pre">amplitude</span> <span class="pre">-&gt;</span> <span class="pre">state</span></code> <code class="docutils literal notranslate"><span class="pre">CompoundStep</span></code> and
+uses process spawning for multiple chains. Do not pass another step method in
+<code class="docutils literal notranslate"><span class="pre">sample_kwargs</span></code>. Set <code class="docutils literal notranslate"><span class="pre">sigma_target_accept</span></code> and <code class="docutils literal notranslate"><span class="pre">state_target_accept</span></code> on
+the runner rather than putting a generic <code class="docutils literal notranslate"><span class="pre">target_accept</span></code> in
+<code class="docutils literal notranslate"><span class="pre">RhimeSampler.sample_kwargs</span></code>. The accepted quadratic and fixed-OU generalized
+eigenbasis are runtime numerical state derived from the materialized prepared
+inputs; they are not external cache artifacts.</p>
+<p>Because the cached graph uses a normalized joint <code class="docutils literal notranslate"><span class="pre">Potential</span></code>, it does not
+invent an independent observed distribution. After sampling, the same exact
+fixed-OU target adds <code class="docutils literal notranslate"><span class="pre">log_likelihood.y</span></code> as one scalar per complete
+observation vector and, when requested, draws complete correlated vectors in
+<code class="docutils literal notranslate"><span class="pre">posterior_predictive.y</span></code>. The variables carry explicit joint-scope metadata.</p>
+<p>This route deliberately supports only independent HalfNormal site-amplitude
+priors and fixed positive OU timescales. Sampled tau and alternative amplitude
+priors are separate extensions. The route is PyMC-only because it constructs
+and owns a PyMC <code class="docutils literal notranslate"><span class="pre">CompoundStep</span></code>. The ordinary stock-PyMC fixed-OU likelihood
+above remains the log-density/gradient oracle and fallback.</p>
+<p>The exponential within-site covariance follows the stationary process of
+<a class="reference external" href="https://doi.org/10.1103/PhysRev.36.823">Uhlenbeck and Ornstein (1930)</a>. The named recipe and its matched
+accepted-state cache are implemented and versioned by OpenGHG Inversions.</p>
+<p>Built-in aggregation covariance relies on the guarantees of its construction
+pipeline. A custom pipeline that assembles its own covariance may optionally
+call
+<code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.observation_error.validate_complete_observation_covariance()</span></code>
+with its fixed independent variance. Model builders do not run this eager
+diagnostic automatically.</p>
 </section>
 <section id="use-the-seam-from-a-generated-project">
 <h2>Use the seam from a generated project<a class="headerlink" href="#use-the-seam-from-a-generated-project" title="Link to this heading">#</a></h2>
@@ -1754,6 +1826,7 @@ option.</p>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#optional-project-cli">Optional project CLI</a></li>
 </ul>
 </li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#run-the-production-cached-sigma-co2-recipe">Run the production cached-sigma CO2 recipe</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#use-the-seam-from-a-generated-project">Use the seam from a generated project</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#copy-the-complete-runner">Copy the complete runner</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#compose-a-custom-basis-stage">Compose a custom basis stage</a></li>
