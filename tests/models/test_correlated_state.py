@@ -417,6 +417,50 @@ def test_correlated_lognormal_activity_rejects_reordered_prior_before_model_muta
     assert model.named_vars == {}
 
 
+def test_correlated_lognormal_activity_does_not_accept_a_supplied_active_prior() -> None:
+    """The exported component cannot bypass labelled active-prior preparation."""
+    mean = xr.DataArray(
+        [1.0, 2.0, 3.0],
+        dims="state",
+        coords={"state": ["A", "B", "C"]},
+    )
+    prior = CorrelatedLognormalPrior(mean, np.diag([0.1, 0.2, 0.3]))
+    sensitivity = xr.DataArray(
+        np.ones((2, 3)),
+        dims=("nmeasure", "state"),
+        coords={"nmeasure": [0, 1], "state": mean.coords["state"]},
+    )
+    activity = resolve_state_activity(
+        detect_zero_sensitivity(sensitivity),
+        StateActivity(
+            active=xr.DataArray(
+                [True, False, True],
+                dims="state",
+                coords={"state": mean.coords["state"]},
+            )
+        ),
+    )
+    reversed_active_prior = CorrelatedLognormalPrior(
+        xr.DataArray(
+            [3.0, 1.0],
+            dims="state_x_active",
+            coords={"state_x_active": ["C", "A"]},
+        ),
+        np.diag([0.3, 0.1]),
+    )
+
+    with registered_model() as model:
+        with pytest.raises(TypeError, match="unexpected keyword argument 'active_prior'"):
+            add_correlated_lognormal_state_with_activity(
+                activity,
+                prior,
+                var_name="x",
+                **{"active_prior": reversed_active_prior},
+            )
+
+    assert model.named_vars == {}
+
+
 def test_add_correlated_lognormal_state_rejects_float32_cholesky_underflow() -> None:
     """Fail atomically rather than leaving a deterministic or partial state."""
     mean = _gathered_mean().isel(state=[0])

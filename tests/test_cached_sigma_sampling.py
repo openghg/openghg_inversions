@@ -294,3 +294,109 @@ def test_two_spawn_chains_are_reproducible_and_emit_cached_diagnostics() -> None
     assert "sigma_nuts_tree_steps" in first.sample_stats
     assert "cache_refreshes" in first.sample_stats
     assert np.isfinite(first.posterior["sigma_site"]).all()
+
+
+def test_compound_sampler_matches_independent_dense_posterior_moments() -> None:
+    """The composed amplitude/state transition targets the intended posterior."""
+    from scipy.integrate import trapezoid
+
+    observations = np.array([0.9, -0.1, 0.7])
+    design = np.array([[0.8], [0.3], [1.0]])
+    factor = np.array([[0.25], [-0.1], [0.2]])
+    diagonal_variance = np.array([0.15, 0.2, 0.12])
+    times = np.array([0.0, 1.0, 2.0])
+    tau_hours = 4.0
+    prior_scale = 0.75
+    prepared = prepare_fixed_ou_low_rank(
+        factor=factor,
+        diagonal_variance=diagonal_variance,
+        observation_times=times,
+        site_index=np.zeros(3, dtype=int),
+        tau_hours=np.array([tau_hours]),
+        site_labels=("AAA",),
+    )
+    target = FixedOuCachedSigmaTarget(
+        prepared=prepared,
+        observations=observations,
+        fixed_contribution=np.zeros(3),
+        design=design,
+    )
+
+    state_grid = np.linspace(-4.0, 3.0, 700)
+    amplitude_grid = np.linspace(1.0e-4, 3.5, 600)
+    physical_state_grid = np.exp(state_grid)
+    log_weights = np.empty((amplitude_grid.size, state_grid.size))
+    correlation = np.exp(-np.abs(times[:, None] - times[None, :]) / tau_hours)
+    fixed_covariance = factor @ factor.T + np.diag(diagonal_variance)
+    residual = observations[:, None] - design @ physical_state_grid[None, :]
+    for index, amplitude in enumerate(amplitude_grid):
+        covariance = fixed_covariance + amplitude**2 * correlation
+        cholesky = np.linalg.cholesky(covariance)
+        solved = np.linalg.solve(cholesky.T, np.linalg.solve(cholesky, residual))
+        log_weights[index] = -0.5 * (
+            np.square(state_grid)
+            + (amplitude / prior_scale) ** 2
+            + 2.0 * np.log(np.diag(cholesky)).sum()
+            + np.sum(residual * solved, axis=0)
+        )
+    weights = np.exp(log_weights - log_weights.max())
+    normalization = trapezoid(
+        trapezoid(weights, state_grid, axis=1),
+        amplitude_grid,
+    )
+    expected_state = trapezoid(
+        trapezoid(weights * physical_state_grid, state_grid, axis=1),
+        amplitude_grid,
+    ) / normalization
+    expected_amplitude = trapezoid(
+        trapezoid(weights * amplitude_grid[:, None], state_grid, axis=1),
+        amplitude_grid,
+    ) / normalization
+
+    initial_cache = target.refresh(np.array([0.4]))
+    shared = PytensorMarginalQuadraticCache(initial_cache)
+    with pm.Model() as model:
+        state_white = pm.Normal("state_white", shape=1)
+        state = pm.Deterministic("state", pt.exp(state_white))
+        amplitude = pm.HalfNormal(
+            "site_amplitude",
+            sigma=prior_scale,
+            shape=1,
+            initval=pm.floatX([0.4]),
+        )
+        pm.Potential("cached_likelihood", shared.log_likelihood(state))
+        step = make_cached_sigma_compound_step(
+            model=model,
+            sigma=amplitude,
+            state=state_white,
+            target=target,
+            shared_cache=shared,
+            initial_cache=initial_cache,
+            state_value_name="state_white",
+            state_location=np.zeros(1),
+            state_cholesky=np.eye(1),
+            prior_scale=prior_scale,
+            sigma_target_accept=0.9,
+            state_target_accept=0.9,
+            rng=np.random.default_rng(710),
+        )
+        idata = pm.sample(
+            draws=800,
+            tune=800,
+            chains=2,
+            cores=1,
+            step=step,
+            random_seed=20260914,
+            progressbar=False,
+            compute_convergence_checks=False,
+        )
+
+    assert np.asarray(idata.posterior["state"]).mean() == pytest.approx(
+        expected_state,
+        abs=0.05,
+    )
+    assert np.asarray(idata.posterior["site_amplitude"]).mean() == pytest.approx(
+        expected_amplitude,
+        abs=0.05,
+    )
+    assert int(np.asarray(idata.sample_stats["diverging"]).sum()) == 0

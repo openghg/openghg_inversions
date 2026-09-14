@@ -82,27 +82,47 @@ def test_cached_quadratic_value_and_gradient_match_dense_oracle() -> None:
     np.testing.assert_allclose(cache.sigma, sigma)
 
 
-def test_refresh_factorizes_once_and_state_evaluations_do_not_refactorize(
+def test_refresh_uses_one_rank_space_svd_and_state_evaluations_do_not_refactorize(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     target, _, _ = _target()
-    calls = 0
-    original = np.linalg.cholesky
+    qr_calls = 0
+    svd_calls = 0
+    cholesky_calls = 0
+    original_qr = np.linalg.qr
+    original_svd = np.linalg.svd
+    original_cholesky = np.linalg.cholesky
 
-    def counted_cholesky(matrix: np.ndarray) -> np.ndarray:
-        nonlocal calls
-        calls += 1
-        return original(matrix)
+    def counted_qr(*args: object, **kwargs: object) -> tuple[np.ndarray, ...]:
+        nonlocal qr_calls
+        qr_calls += 1
+        return original_qr(*args, **kwargs)
 
+    def counted_svd(*args: object, **kwargs: object) -> tuple[np.ndarray, ...]:
+        nonlocal svd_calls
+        svd_calls += 1
+        return original_svd(*args, **kwargs)
+
+    def counted_cholesky(*args: object, **kwargs: object) -> np.ndarray:
+        nonlocal cholesky_calls
+        cholesky_calls += 1
+        return original_cholesky(*args, **kwargs)
+
+    monkeypatch.setattr(np.linalg, "qr", counted_qr)
+    monkeypatch.setattr(np.linalg, "svd", counted_svd)
     monkeypatch.setattr(np.linalg, "cholesky", counted_cholesky)
 
     cache = target.refresh(np.array([0.23, 0.41]))
-    assert calls == 1
+    assert qr_calls == 1
+    assert svd_calls == 1
+    assert cholesky_calls == 0
 
     for state in (np.zeros(2), np.ones(2), np.array([-0.5, 0.25])):
         assert np.isfinite(cache.log_likelihood(state))
         assert np.isfinite(cache.gradient(state)).all()
-    assert calls == 1
+    assert qr_calls == 1
+    assert svd_calls == 1
+    assert cholesky_calls == 0
 
 
 def test_exact_sigma_conditional_reuses_fixed_ou_target() -> None:

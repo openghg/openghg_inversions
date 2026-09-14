@@ -69,10 +69,19 @@ def _sampler_for_cached_graph(
     sampler: RhimeSampler,
     *,
     cached_model: Co2CachedSigmaModel,
+    sigma_target_accept: float,
+    state_target_accept: float,
 ) -> RhimeSampler:
     if sampler.nuts_sampler != "pymc":
         raise ValueError("The cached-sigma CO2 recipe requires nuts_sampler='pymc'.")
     sample_kwargs = dict(sampler.sample_kwargs or {})
+    if "target_accept" in sample_kwargs:
+        raise ValueError(
+            "The cached-sigma CO2 recipe owns two NUTS tuning controls; pass "
+            "`sigma_target_accept` and `state_target_accept` to "
+            "`run_rhime_co2_cached_sigma` instead of "
+            "sampler.sample_kwargs['target_accept']."
+        )
     if sample_kwargs.get("step") is not None:
         raise ValueError(
             "The cached-sigma CO2 recipe constructs its required sigma-then-state "
@@ -97,6 +106,8 @@ def _sampler_for_cached_graph(
             ),
             prior_scale=cached_model.site_amplitude_prior_scale,
             initial_point=cached_model.model.initial_point(),
+            sigma_target_accept=sigma_target_accept,
+            state_target_accept=state_target_accept,
         )
     sample_kwargs.setdefault("mp_ctx", "spawn")
     idata_kwargs = dict(sample_kwargs.get("idata_kwargs", {}))
@@ -277,6 +288,8 @@ def run_rhime_co2_cached_sigma(
     site_amplitude_prior_scale: float,
     initial_site_amplitudes: float | Mapping[str, float] | None = None,
     sampler: RhimeSampler | None = None,
+    sigma_target_accept: float = 0.8,
+    state_target_accept: float = 0.9,
     aggregation_error_mode: AggregationErrorMode = "low_rank",
 ) -> az.InferenceData:
     """Run the production CO2 fixed-OU cached-amplitude recipe.
@@ -284,6 +297,8 @@ def run_rhime_co2_cached_sigma(
     The graph and sampler are a matched pair: site amplitudes are updated first by the
     exact conditional bridge, the accepted cache is refreshed once, and stock
     PyMC NUTS then updates the correlated flux state against that cache.
+    ``sigma_target_accept`` and ``state_target_accept`` tune those two steps
+    independently.
     """
     prepared = prepared_inputs.validated()
     names = co2_cached_sigma_input_names(
@@ -347,6 +362,8 @@ def run_rhime_co2_cached_sigma(
     sampling_sampler = _sampler_for_cached_graph(
         requested_sampler,
         cached_model=cached_model,
+        sigma_target_accept=sigma_target_accept,
+        state_target_accept=state_target_accept,
     )
     trace = sample_rhime_model(built, sampling_sampler)
     trace = _append_joint_outputs(

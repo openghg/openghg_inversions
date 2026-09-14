@@ -124,15 +124,17 @@ def test_active_prior_is_prepared_once_for_graph_and_sampler(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     graph_prior: dict[str, CorrelatedLognormalPrior] = {}
-    original_add_state = co2_cached_sigma_model.add_correlated_lognormal_state_with_activity
+    original_add_state = (
+        co2_cached_sigma_model._add_prepared_correlated_lognormal_state_with_activity
+    )
 
     def capture_graph_prior(*args: Any, **kwargs: Any) -> Any:
-        graph_prior["value"] = kwargs["active_prior"]
+        graph_prior["value"] = args[1]
         return original_add_state(*args, **kwargs)
 
     monkeypatch.setattr(
         co2_cached_sigma_model,
-        "add_correlated_lognormal_state_with_activity",
+        "_add_prepared_correlated_lognormal_state_with_activity",
         capture_graph_prior,
     )
     cached = _build(
@@ -154,10 +156,14 @@ def test_active_prior_is_prepared_once_for_graph_and_sampler(
     co2_cached_sigma_runner._sampler_for_cached_graph(
         RhimeSampler(chains=1),
         cached_model=cached,
+        sigma_target_accept=0.81,
+        state_target_accept=0.92,
     )
 
     assert graph_prior["value"] is cached.active_state_prior
     assert step_args["initial_cache"] is cached.initial_cache
+    assert step_args["sigma_target_accept"] == 0.81
+    assert step_args["state_target_accept"] == 0.92
     np.testing.assert_array_equal(
         step_args["state_location"],
         cached.active_state_prior.latent_mean.values,
@@ -216,6 +222,13 @@ def test_named_runner_samples_real_graph_and_labels_cached_outputs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     inputs = _inputs()
+    step_settings: dict[str, float] = {}
+    original_make_step = co2_cached_sigma_runner.make_cached_sigma_compound_step
+
+    def capture_step_settings(**kwargs: Any) -> pm.CompoundStep:
+        step_settings["sigma_target_accept"] = kwargs["sigma_target_accept"]
+        step_settings["state_target_accept"] = kwargs["state_target_accept"]
+        return original_make_step(**kwargs)
 
     class PreparedInputsStub:
         inv_inputs = inputs
@@ -227,6 +240,11 @@ def test_named_runner_samples_real_graph_and_labels_cached_outputs(
         co2_cached_sigma_runner,
         "materialize_pymc_inputs",
         lambda *_args, **_kwargs: inputs,
+    )
+    monkeypatch.setattr(
+        co2_cached_sigma_runner,
+        "make_cached_sigma_compound_step",
+        capture_step_settings,
     )
     sampler = RhimeSampler(
         draws=2,
@@ -248,9 +266,15 @@ def test_named_runner_samples_real_graph_and_labels_cached_outputs(
         site_amplitude_prior_scale=0.75,
         initial_site_amplitudes=0.4,
         sampler=sampler,
+        sigma_target_accept=0.82,
+        state_target_accept=0.93,
         aggregation_error_mode="dense",
     )
 
+    assert step_settings == {
+        "sigma_target_accept": 0.82,
+        "state_target_accept": 0.93,
+    }
     assert result.posterior["flux_scaling"].shape == (1, 2, 2)
     assert result.posterior_predictive["y"].shape == (1, 2, 4)
     assert result.log_likelihood["y"].shape == (1, 2)
@@ -273,3 +297,23 @@ def test_named_runner_samples_real_graph_and_labels_cached_outputs(
         "joint_log_likelihood"
     ]
     assert result.posterior.attrs["rhime_recipe"] == "co2_cached_sigma_fixed_ou"
+
+
+def test_cached_runner_rejects_generic_target_accept() -> None:
+    class PreparedInputsStub:
+        inv_inputs = _inputs()
+
+        def validated(self) -> "PreparedInputsStub":
+            return self
+
+    with pytest.raises(
+        ValueError,
+        match="sigma_target_accept.*state_target_accept",
+    ):
+        run_rhime_co2_cached_sigma(
+            prepared_inputs=cast(Any, PreparedInputsStub()),
+            tau_hours={"AAA": 3.0, "BBB": 7.0},
+            site_amplitude_prior_scale=0.75,
+            sampler=RhimeSampler(sample_kwargs={"target_accept": 0.95}),
+            aggregation_error_mode="dense",
+        )

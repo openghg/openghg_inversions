@@ -199,6 +199,8 @@ covariance during its trajectory::
        prepared_inputs=prepared,
        tau_hours={"BSD": 24.0, "TAC": 18.0},
        site_amplitude_prior_scale=0.75,  # concentration units
+       sigma_target_accept=0.9,
+       state_target_accept=0.9,
        sampler=RhimeSampler(
            draws=1000,
            tune=1000,
@@ -211,9 +213,11 @@ covariance during its trajectory::
 
 The runner constructs the required ``site amplitude -> state`` ``CompoundStep`` and
 uses process spawning for multiple chains. Do not pass another step method in
-``sample_kwargs``. The accepted quadratic and fixed-OU generalized eigenbasis
-are runtime numerical state derived from the materialized prepared inputs;
-they are not external cache artifacts.
+``sample_kwargs``. Set ``sigma_target_accept`` and ``state_target_accept`` on
+the runner rather than putting a generic ``target_accept`` in
+``RhimeSampler.sample_kwargs``. The accepted quadratic and fixed-OU generalized
+eigenbasis are runtime numerical state derived from the materialized prepared
+inputs; they are not external cache artifacts.
 
 Because the cached graph uses a normalized joint ``Potential``, it does not
 invent an independent observed distribution. After sampling, the same exact

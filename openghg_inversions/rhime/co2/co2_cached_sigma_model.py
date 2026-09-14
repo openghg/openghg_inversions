@@ -19,8 +19,8 @@ from openghg_inversions.models.cached_sigma import (
     MarginalQuadraticCache,
 )
 from openghg_inversions.models.components import (
+    _add_prepared_correlated_lognormal_state_with_activity,
     add_coherent_affine_component,
-    add_correlated_lognormal_state_with_activity,
     add_model_data,
     apply_linear_sensitivity,
     prepare_active_correlated_lognormal_prior,
@@ -196,11 +196,10 @@ def build_co2_cached_sigma_model(
     shared_cache = PytensorMarginalQuadraticCache(initial_cache)
 
     with registered_model() as model:
-        state_result = add_correlated_lognormal_state_with_activity(
+        state_result = _add_prepared_correlated_lognormal_state_with_activity(
             activity,
-            retained_prior,
+            active_state_prior,
             var_name="flux_scaling",
-            active_prior=active_state_prior,
         )
         if state_result.latent is None:  # guarded above; keeps the type honest
             raise AssertionError("An active cached flux state must have a latent variable.")

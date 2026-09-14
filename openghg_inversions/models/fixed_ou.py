@@ -323,7 +323,7 @@ class FixedOuLowRank:
             "site_amplitude",
             positive=False,
         )
-        weights, logdet = self._factorize(amplitude)
+        weights, logdet = self._mode_weights_and_logdet(amplitude)
         transformed_rhs = cast(FloatArray, self.mode_transform @ rhs_value)
         rhs_2d = transformed_rhs[:, None] if transformed_rhs.ndim == 1 else transformed_rhs
         square_root_weights = np.sqrt(weights)
@@ -345,6 +345,7 @@ class FixedOuLowRank:
                 1.0 + np.square(singular_values)
             )[:, None]
             whitened_solution = basis @ (left_vectors @ rotated_rhs)
+            logdet += float(np.log1p(np.square(singular_values)).sum())
         else:
             whitened_solution = whitened_rhs
         solved = square_root_weights[:, None] * whitened_solution
@@ -356,28 +357,16 @@ class FixedOuLowRank:
             logdet=logdet,
         )
 
-    def _factorize(
+    def _mode_weights_and_logdet(
         self,
         amplitude: FloatArray,
     ) -> tuple[FloatArray, float]:
-        """Factorize the rank-space covariance for one valid amplitude."""
+        """Return diagonal-mode weights and their contribution to the log determinant."""
         mode_variance = self.mode_eigenvalues + np.square(amplitude)[self.mode_site_index]
         if not np.isfinite(mode_variance).all() or np.any(mode_variance <= 0.0):
             raise ValueError("Fixed-OU generalized eigenvalues produced invalid variance.")
         weights = np.reciprocal(mode_variance)
-        if not self.rank:
-            return cast(FloatArray, weights), self.base_logdet + float(
-                np.log(mode_variance).sum()
-            )
-        weighted_factor = self.transformed_factor * np.sqrt(weights)[:, None]
-        core = np.eye(self.rank, dtype=np.float64) + weighted_factor.T @ weighted_factor
-        core = (core + core.T) * 0.5
-        cholesky = np.linalg.cholesky(core)
-        logdet = (
-            self.base_logdet
-            + float(np.log(mode_variance).sum())
-            + float(2.0 * np.log(np.diag(cholesky)).sum())
-        )
+        logdet = self.base_logdet + float(np.log(mode_variance).sum())
         return cast(FloatArray, weights), logdet
 
     def marginal_variance(self, site_amplitude: TensorVariable) -> TensorVariable:

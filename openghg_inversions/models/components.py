@@ -519,7 +519,6 @@ def add_correlated_lognormal_state_with_activity(
     /,
     *,
     var_name: str,
-    active_prior: CorrelatedLognormalPrior | None = None,
 ) -> StateVectorResult:
     """Construct a correlated LogNormal state with exact active/fixed values.
 
@@ -533,27 +532,31 @@ def add_correlated_lognormal_state_with_activity(
         prior: Validated labelled arithmetic-moment LogNormal prior for the
             full state.
         var_name: Name of the full user-facing state vector.
-        active_prior: Optional active-state prior returned by
-            :func:`prepare_active_correlated_lognormal_prior`. Supplying it
-            lets a matched graph and sampler share one preparation result.
 
     Returns:
         Effective whitened latent, full state vector, and supplied activity.
     """
+    active_prior = prepare_active_correlated_lognormal_prior(
+        activity,
+        prior,
+        var_name=var_name,
+    )
+    return _add_prepared_correlated_lognormal_state_with_activity(
+        activity,
+        active_prior,
+        var_name=var_name,
+    )
+
+
+def _add_prepared_correlated_lognormal_state_with_activity(
+    activity: ResolvedStateActivity,
+    active_prior: CorrelatedLognormalPrior | None,
+    /,
+    *,
+    var_name: str,
+) -> StateVectorResult:
+    """Construct a state from the package-prepared active prior."""
     state_dim = activity.state_dim
-    if active_prior is None:
-        active_prior = prepare_active_correlated_lognormal_prior(
-            activity,
-            prior,
-            var_name=var_name,
-        )
-    # The preparation seam performs the full-prior alignment check before any
-    # model mutation. A supplied active prior is a package-created intermediate.
-    elif prior.state_dim != state_dim:
-        raise ValueError(
-            "Correlated LogNormal prior and state activity must use the same "
-            f"state dimension; found {prior.state_dim!r} and {state_dim!r}."
-        )
     add_coords(activity.zero_sensitivity.coords, model_dims=(state_dim,))
 
     if activity.n_active == activity.n_state:
