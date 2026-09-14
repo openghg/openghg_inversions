@@ -299,6 +299,41 @@ def run_rhime_co2_cached_sigma(
     PyMC NUTS then updates the correlated flux state against that cache.
     ``sigma_target_accept`` and ``state_target_accept`` tune those two steps
     independently.
+
+    Args:
+        prepared_inputs: Coherent-reduction inputs containing ``H``,
+            ``alpha_prior_mean``, ``alpha_prior_covariance``,
+            ``fixed_prior_contribution``, ``mf``, and ``mf_error``. Observations
+            must have aligned ``site`` and ``time`` coordinates. The selected
+            aggregation-error representation must also be present.
+        tau_hours: Fixed OU decorrelation time in hours. A scalar applies to
+            every site; a mapping must cover every observed site label.
+        site_amplitude_prior_scale: Scale of the independent HalfNormal site-
+            amplitude priors, in the observations' concentration units.
+        initial_site_amplitudes: Optional positive initial amplitude in the
+            same units, supplied as one scalar or a mapping covering every
+            observed site. Defaults to ``site_amplitude_prior_scale``.
+        sampler: Optional sampling configuration. This recipe requires PyMC,
+            constructs its own step, and supports only ``random_seed`` in
+            ``posterior_predictive_kwargs``.
+        sigma_target_accept: NUTS target acceptance probability for the site-
+            amplitude transition.
+        state_target_accept: NUTS target acceptance probability for the flux-
+            state transition.
+        aggregation_error_mode: Prepared aggregation-error representation.
+            The default ``"low_rank"`` requires ``low_rank_factor`` and
+            ``diagonal_residual_variance``.
+
+    Returns:
+        Sampled inference data with the normalized joint log likelihood as one
+        value per complete observation vector and, when requested, correlated
+        joint posterior-predictive vectors.
+
+    Raises:
+        ValueError: If prepared arrays, labels, numerical inputs, or model
+            construction are invalid; if a site mapping is incomplete; or if
+            the sampler is not PyMC, supplies ``step`` or generic
+            ``target_accept``, or has unsupported predictive keywords.
     """
     prepared = prepared_inputs.validated()
     names = co2_cached_sigma_input_names(

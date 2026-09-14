@@ -22,6 +22,8 @@ documented interfaces.
 Choose the smallest starting point that fits the change:
 
 * To change only the likelihood, pass a Python function to ``run_rhime``.
+* To run the matched fixed-tau OU CO2 model with inferred site amplitudes, use
+  :ref:`the production cached-sigma CO2 recipe <cached-sigma-co2-recipe>`.
 * To resume from externally supplied merged observations, footprints, and
   fluxes, pass a borrowed ``RhimeMergedData`` object as ``merged_data``.
 * To change a preparation stage such as basis construction, copy the visible
@@ -178,27 +180,72 @@ An exact zero mode is rejected before applying the low-rank factor, even when
 that factor would make a materialized dense covariance positive definite; a
 positive OU amplitude can lift a zero base mode. The component currently
 requires PyMC's native NUTS backend. Sampled tau is a separate extension; the
-production cached sampler is the matched recipe below.
+production cached sampler is the matched recipe described in
+:ref:`cached-sigma-co2-recipe`.
+
+Optional project CLI
+~~~~~~~~~~~~~~~~~~~~
+
+The short wrapper below packages the same one-call integration as a reusable
+Python function and command-line entry point:
+
+.. literalinclude:: ../../examples/rhime_customisation/run_with_likelihood.py
+   :language: python
+   :linenos:
+
+Run it with a normal RHIME configuration and optional JSON overrides::
+
+   python -m package_name.run_with_likelihood config.ini \
+       --kwargs '{"output_path": "outputs", "output_format": "inv_out"}'
+
+``run_rhime_multisector`` accepts the same Python-only builder contract. The
+standard multi-sector model retains sector flux components and roles, then
+passes their combined observation mean to the likelihood, so no special case
+or semantic compromise is required.
+
+.. _cached-sigma-co2-recipe:
 
 Run the production cached-sigma CO2 recipe
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+------------------------------------------
 
 ``run_rhime_co2_cached_sigma`` is the first-class production route for the
 fixed-tau OU likelihood with independently inferred site amplitudes. It owns
 the matched PyMC graph and sampler: the sigma-only NUTS step runs first against
 the exact conditional likelihood, refreshes the accepted state quadratic, and
 stock state NUTS then reads that cache without refactorizing the observation
-covariance during its trajectory::
+covariance during its trajectory.
+
+The runner begins from an already assembled coherent-reduction
+``RhimePreparedInputs`` artifact; it does not perform coherent reduction. Its
+``inv_inputs`` must contain ``H``, ``alpha_prior_mean``,
+``alpha_prior_covariance``, ``fixed_prior_contribution``, ``mf``, and
+``mf_error``. The observation arrays share one ``nmeasure`` row order, while
+the prior arrays share ``H``'s state labels. With the ``"low_rank"``
+aggregation-error mode used below, the artifact must also contain
+``low_rank_factor`` and ``diagonal_residual_variance``. A dense artifact
+instead contains ``aggregation_error_covariance`` and must be selected with
+``aggregation_error_mode="dense"``. Optional ``state_is_active`` and
+``state_fixed_value`` variables carry the prepared state-activity policy.
+
+:doc:`coherent_reduction` describes the linked retained prior, effective
+operator, affine contribution, and unresolved covariance, but no public
+function currently assembles those products into this durable artifact. That
+handoff is tracked in `OPE-153
+<https://linear.app/openghg-inversions/issue/OPE-153/add-a-public-coherent-reduction-handoff-for-co-prepared-inputs>`_.
+Until it lands, callers must supply already-prepared coherent-reduction inputs.
+
+For example::
 
    from openghg_inversions.inversion_data import RhimePreparedInputs
    from openghg_inversions.rhime import RhimeSampler
    from openghg_inversions.rhime.co2 import run_rhime_co2_cached_sigma
 
-   prepared = RhimePreparedInputs.load("co2-prepared-inputs.zarr")
+   prepared = RhimePreparedInputs.load("co2-coherent-low-rank.zarr")
    idata = run_rhime_co2_cached_sigma(
        prepared_inputs=prepared,
        tau_hours={"BSD": 24.0, "TAC": 18.0},
        site_amplitude_prior_scale=0.75,  # concentration units
+       aggregation_error_mode="low_rank",
        sigma_target_accept=0.9,
        state_target_accept=0.9,
        sampler=RhimeSampler(
@@ -234,9 +281,7 @@ above remains the log-density/gradient oracle and fallback.
 The exponential within-site covariance follows the stationary process of
 `Uhlenbeck and Ornstein (1930)
 <https://doi.org/10.1103/PhysRev.36.823>`_. The named recipe and its matched
-accepted-state cache are implemented and versioned by OpenGHG Inversions; the
-input artifact in the example can be produced with the xarray adapter shown in
-:doc:`rhime`.
+accepted-state cache are implemented and versioned by OpenGHG Inversions.
 
 Built-in aggregation covariance relies on the guarantees of its construction
 pipeline. A custom pipeline that assembles its own covariance may optionally
@@ -244,26 +289,6 @@ call
 :func:`openghg_inversions.observation_error.validate_complete_observation_covariance`
 with its fixed independent variance. Model builders do not run this eager
 diagnostic automatically.
-
-Optional project CLI
-~~~~~~~~~~~~~~~~~~~~
-
-The short wrapper below packages the same one-call integration as a reusable
-Python function and command-line entry point:
-
-.. literalinclude:: ../../examples/rhime_customisation/run_with_likelihood.py
-   :language: python
-   :linenos:
-
-Run it with a normal RHIME configuration and optional JSON overrides::
-
-   python -m package_name.run_with_likelihood config.ini \
-       --kwargs '{"output_path": "outputs", "output_format": "inv_out"}'
-
-``run_rhime_multisector`` accepts the same Python-only builder contract. The
-standard multi-sector model retains sector flux components and roles, then
-passes their combined observation mean to the likelihood, so no special case
-or semantic compromise is required.
 
 Use the seam from a generated project
 -------------------------------------
