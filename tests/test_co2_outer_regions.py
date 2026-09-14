@@ -74,7 +74,6 @@ def _grouped_inputs() -> tuple[xr.Dataset, CorrelatedLognormalPrior]:
             ),
             "mf": observations,
             "mf_error": error.rename("mf_error"),
-            "min_error": error.rename("min_error"),
         }
     )
     return dataset, CorrelatedLognormalPrior(
@@ -95,7 +94,6 @@ def _build(
         fixed_prior_contribution=dataset["fixed_prior_contribution"],
         observations=dataset["mf"],
         observation_error=dataset["mf_error"],
-        minimum_error=dataset["min_error"],
         aggregation_error=resolve_aggregation_error(dataset, "none"),
         fixed_model_mismatch=1.0,
         **kwargs,

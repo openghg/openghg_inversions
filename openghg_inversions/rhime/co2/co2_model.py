@@ -7,6 +7,9 @@ contribution, and finally constructs the observation likelihood.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from typing import Any
+
 import numpy as np
 import pymc as pm
 import xarray as xr
@@ -31,6 +34,8 @@ from openghg_inversions.models.state_activity import (
     resolve_state_activity,
 )
 from openghg_inversions.observation_error import AggregationError
+from openghg_inversions.rhime._model_building import _call_custom_likelihood
+from openghg_inversions.rhime.builders import RhimeLikelihoodBuilder
 from openghg_inversions.rhime.specs import DEFAULT_BC_PRIOR
 from openghg_inversions.sigma import SigmaAlignment
 
@@ -64,8 +69,9 @@ def build_co2_model(
     fixed_prior_contribution: xr.DataArray,
     observations: xr.DataArray,
     observation_error: xr.DataArray,
-    minimum_error: xr.DataArray,
     aggregation_error: AggregationError,
+    likelihood_builder: RhimeLikelihoodBuilder | None = None,
+    likelihood_kwargs: Mapping[str, Any] | None = None,
     sigma_alignment: SigmaAlignment | None = None,
     sigma_prior: PriorArgs | None = None,
     fixed_model_mismatch: float | xr.DataArray | None = None,
@@ -112,9 +118,10 @@ def build_co2_model(
             named ``fixed_prior_contribution`` on ``nmeasure``.
         observations: Observed CO2 concentrations on ``nmeasure``.
         observation_error: Reported observation standard deviation.
-        minimum_error: Minimum independent model-data mismatch standard
-            deviation.
         aggregation_error: Prepared fixed aggregation-error representation.
+        likelihood_builder: Optional ordinary likelihood component. When
+            supplied, it replaces the default additive-sigma likelihood.
+        likelihood_kwargs: Options passed only to the selected likelihood.
         sigma_alignment: Optional grouping policy for inferred additive model
             error.
         sigma_prior: Optional prior arguments for inferred additive model
@@ -143,10 +150,19 @@ def build_co2_model(
             coordinate alignment fails, or if ``sigma_prior`` is supplied
             without ``sigma_alignment``.
     """
-    if sigma_alignment is None and sigma_prior is not None:
-        raise ValueError("`sigma_prior` requires `sigma_alignment`.")
-    if sigma_alignment is not None:
-        sigma_prior = dict(DEFAULT_ADDITIVE_SIGMA_PRIOR if sigma_prior is None else sigma_prior)
+    if likelihood_builder is None:
+        if likelihood_kwargs:
+            raise ValueError("likelihood_kwargs require likelihood_builder.")
+        if sigma_alignment is None and sigma_prior is not None:
+            raise ValueError("`sigma_prior` requires `sigma_alignment`.")
+        if sigma_alignment is not None:
+            sigma_prior = dict(DEFAULT_ADDITIVE_SIGMA_PRIOR if sigma_prior is None else sigma_prior)
+    elif any(value is not None for value in (sigma_alignment, sigma_prior, fixed_model_mismatch)):
+        raise ValueError(
+            "A selected likelihood_builder cannot be combined with default "
+            "additive-sigma or fixed-mismatch options; pass its options in "
+            "likelihood_kwargs."
+        )
     bc_prior = dict(DEFAULT_BC_PRIOR if bc_prior is None else bc_prior)
     if offset_prior is not None:
         offset_prior = dict(offset_prior)
@@ -194,17 +210,27 @@ def build_co2_model(
             modelled_linear_signal,
             output_name="modelled_concentration",
         )
-        add_additive_sigma_likelihood(
-            observations=observations,
-            observation_error=observation_error,
-            minimum_error_floor=minimum_error,
-            aggregation_error=aggregation_error,
-            fixed_model_mismatch=fixed_mismatch,
-            mean=modelled_mean,
-            additive_sigma_alignment=sigma_alignment,
-            additive_sigma_prior=sigma_prior,
-            output_dim="nmeasure",
-        )
+        if likelihood_builder is None:
+            add_additive_sigma_likelihood(
+                observations=observations,
+                observation_error=observation_error,
+                aggregation_error=aggregation_error,
+                fixed_model_mismatch=fixed_mismatch,
+                mean=modelled_mean,
+                additive_sigma_alignment=sigma_alignment,
+                additive_sigma_prior=sigma_prior,
+                output_dim="nmeasure",
+            )
+        else:
+            _call_custom_likelihood(
+                likelihood_builder,
+                observations=observations,
+                observation_error=observation_error,
+                aggregation_error=aggregation_error,
+                mean=modelled_mean,
+                output_dim="nmeasure",
+                likelihood_kwargs=likelihood_kwargs,
+            )
     return model
 
 

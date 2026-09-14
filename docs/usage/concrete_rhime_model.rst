@@ -230,10 +230,11 @@ mismatch ``sigma``, its covariance is
 .. math::
 
    R = C_{agg} + \operatorname{diag}
-       (s_y^2 + s_{fixed}^2 + \sigma^2),
+       (s_y^2 + s_{fixed}^2 + \sigma^2).
 
-after applying ``min_error`` as a floor on the total marginal standard
-deviation. OpenGHG Inversions does not default ``s_fixed`` to 1 ppm. The
+CO2 likelihoods do not apply ``min_error``; that input belongs to
+pollution-event-scaled mismatch. OpenGHG Inversions does not default
+``s_fixed`` to 1 ppm. The
 Verification Games fixed-only policy passes ``fixed_model_mismatch=1.0`` and
 ``no_model_error=True`` visibly. A runnable CO2 configuration and resolver are
 tracked in `OPE-79 <https://linear.app/openghg-inversions/issue/OPE-79>`_.
@@ -297,6 +298,18 @@ outer-specific object. It constructs the complete retained prior from the
 prepared arithmetic mean and covariance, then forwards the prepared activity
 policy to the builder.
 
+The CO2 builder and prepared-input runner also accept one ordinary
+``likelihood_builder`` with explicit ``likelihood_kwargs``. This selects
+package components such as
+:func:`openghg_inversions.models.fixed_ou.add_fixed_ou_gaussian_likelihood` and
+:func:`openghg_inversions.models.add_site_sigma_gaussian_likelihood` after
+``modelled_concentration`` has been completed. Selecting one replaces the
+default additive-sigma likelihood; its scientific options belong in
+``likelihood_kwargs`` rather than the default ``sigma_*`` or
+``fixed_model_mismatch`` arguments. The returned trace records the selected
+callable identity and its explicit options using the ordinary likelihood
+provenance attributes.
+
 CO2/O2 shared-state model
 -------------------------
 
@@ -307,6 +320,11 @@ preparation, :func:`openghg_inversions.rhime.co2.build_co2_o2_model` for graph
 construction, and
 :func:`openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs` for
 materialization, sampling, and trace metadata.
+
+This joint recipe currently keeps its fixed, row-labelled independent error
+and does not expose the CO2 ``likelihood_builder`` seam. A cross-channel
+mismatch model must first define its CO2/O2 covariance, parameter sharing, and
+mixed-unit behavior explicitly.
 
 Partition that state as
 
