@@ -69,7 +69,6 @@ def build_co2_model(
     fixed_prior_contribution: xr.DataArray,
     observations: xr.DataArray,
     observation_error: xr.DataArray,
-    minimum_error: xr.DataArray,
     aggregation_error: AggregationError,
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
     likelihood_kwargs: Mapping[str, Any] | None = None,
@@ -119,8 +118,6 @@ def build_co2_model(
             named ``fixed_prior_contribution`` on ``nmeasure``.
         observations: Observed CO2 concentrations on ``nmeasure``.
         observation_error: Reported observation standard deviation.
-        minimum_error: Minimum independent model-data mismatch standard
-            deviation.
         aggregation_error: Prepared fixed aggregation-error representation.
         likelihood_builder: Optional ordinary likelihood component. When
             supplied, it replaces the default additive-sigma likelihood.
@@ -217,7 +214,6 @@ def build_co2_model(
             add_additive_sigma_likelihood(
                 observations=observations,
                 observation_error=observation_error,
-                minimum_error_floor=minimum_error,
                 aggregation_error=aggregation_error,
                 fixed_model_mismatch=fixed_mismatch,
                 mean=modelled_mean,

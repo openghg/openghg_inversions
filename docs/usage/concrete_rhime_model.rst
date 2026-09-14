@@ -230,10 +230,11 @@ mismatch ``sigma``, its covariance is
 .. math::
 
    R = C_{agg} + \operatorname{diag}
-       (s_y^2 + s_{fixed}^2 + \sigma^2),
+       (s_y^2 + s_{fixed}^2 + \sigma^2).
 
-after applying ``min_error`` as a floor on the total marginal standard
-deviation. OpenGHG Inversions does not default ``s_fixed`` to 1 ppm. The
+CO2 likelihoods do not apply ``min_error``; that input belongs to
+pollution-event-scaled mismatch. OpenGHG Inversions does not default
+``s_fixed`` to 1 ppm. The
 Verification Games fixed-only policy passes ``fixed_model_mismatch=1.0`` and
 ``no_model_error=True`` visibly. A runnable CO2 configuration and resolver are
 tracked in `OPE-79 <https://linear.app/openghg-inversions/issue/OPE-79>`_.

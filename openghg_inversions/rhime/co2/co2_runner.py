@@ -16,7 +16,6 @@ from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.models.state_activity import StateActivity
 from openghg_inversions.observation_error import (
     AggregationErrorMode,
-    OBSERVATION_ERROR_INPUT_NAMES,
     aggregation_error_input_names,
     resolve_aggregation_error,
 )
@@ -38,7 +37,8 @@ _CO2_SCIENTIFIC_INPUT_NAMES = (
     "alpha_prior_mean",
     "alpha_prior_covariance",
     "fixed_prior_contribution",
-    *OBSERVATION_ERROR_INPUT_NAMES,
+    "mf",
+    "mf_error",
 )
 
 
@@ -61,7 +61,6 @@ def _annotate_co2_trace(
     # concrete scientific identities visible on stored constants too.
     concrete_roles = {
         "error": ["observation_error"],
-        "min_error": ["minimum_error"],
         "fixed_model_mismatch": ["fixed_model_mismatch"],
         "fixed_prior_contribution": ["coherent_prior_contribution"],
         "co2_sensitivity": ["emissions_sensitivity"],
@@ -81,7 +80,6 @@ def _annotate_co2_trace(
 
     concentration_variables = {
         "error",
-        "min_error",
         "fixed_model_mismatch",
         "fixed_prior_contribution",
         "modelled_concentration",
@@ -260,7 +258,6 @@ def run_rhime_co2(
         fixed_prior_contribution=model_inputs["fixed_prior_contribution"],
         observations=model_inputs["mf"],
         observation_error=model_inputs["mf_error"],
-        minimum_error=model_inputs["min_error"],
         aggregation_error=aggregation_error,
         likelihood_builder=likelihood_builder,
         likelihood_kwargs=likelihood_kwargs,
@@ -281,8 +278,6 @@ def run_rhime_co2(
     }
     if "error" in model.named_vars:
         variable_roles["observation_error"] = "error"
-    if likelihood_builder is None:
-        variable_roles["minimum_error"] = "min_error"
     built = RhimeModelBuildResult(
         model=model,
         variable_roles=variable_roles,

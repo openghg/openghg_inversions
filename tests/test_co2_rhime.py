@@ -52,11 +52,10 @@ def _golden_inputs() -> xr.Dataset:
             ),
             "mf": (("nmeasure",), fixture["mf"]),
             "mf_error": (("nmeasure",), np.zeros(operator.shape[0])),
-            "min_error": (("nmeasure",), np.zeros(operator.shape[0])),
         },
         coords={"region": labels, "nmeasure": np.arange(operator.shape[0])},
     )
-    for name in ("mf", "mf_error", "min_error", "fixed_prior_contribution"):
+    for name in ("mf", "mf_error", "fixed_prior_contribution"):
         inputs[name].attrs["units"] = "ppm"
     return inputs
 
@@ -73,7 +72,6 @@ def _empty_sampled_trace(inputs: xr.Dataset) -> az.InferenceData:
         posterior_predictive={"y": np.ones((1, 2, inputs.sizes["nmeasure"]))},
         constant_data={
             "error": inputs["mf_error"].values,
-            "min_error": inputs["min_error"].values,
             "fixed_model_mismatch": np.ones(inputs.sizes["nmeasure"]),
             "fixed_prior_contribution": inputs["fixed_prior_contribution"].values,
             "co2_sensitivity": inputs["H"].values,
@@ -85,7 +83,6 @@ def _empty_sampled_trace(inputs: xr.Dataset) -> az.InferenceData:
             "epsilon": ["nmeasure"],
             "y": ["nmeasure"],
             "error": ["nmeasure"],
-            "min_error": ["nmeasure"],
             "fixed_model_mismatch": ["nmeasure"],
             "fixed_prior_contribution": ["nmeasure"],
             "co2_sensitivity": ["nmeasure", "region"],
@@ -105,7 +102,6 @@ def _build_model(inputs: xr.Dataset, **kwargs: Any) -> pm.Model:
         fixed_prior_contribution=inputs["fixed_prior_contribution"],
         observations=inputs["mf"],
         observation_error=inputs["mf_error"],
-        minimum_error=inputs["min_error"],
         aggregation_error=resolve_aggregation_error(inputs, "dense"),
         **kwargs,
     )
@@ -122,7 +118,6 @@ def test_co2_model_exposes_affine_correlated_dense_covariance_graph() -> None:
         "fixed_prior_contribution",
         "modelled_concentration",
         "error",
-        "min_error",
         "fixed_model_mismatch",
         "epsilon",
         "y",
@@ -403,28 +398,12 @@ def test_public_co2_runner_derives_default_model_error_alignment(monkeypatch: An
     assert "sigma" in sampled_models[0].named_vars
 
 
-@pytest.mark.parametrize(
-    ("likelihood_builder", "likelihood_kwargs", "expected_variable"),
-    [
-        (
-            add_fixed_ou_gaussian_likelihood,
-            {"tau_hours": 5.0, "fixed_site_amplitudes": {"MHD": 0.5}},
-            "ou_site_amplitude",
-        ),
-        (
-            add_site_sigma_gaussian_likelihood,
-            {"fixed_site_amplitudes": {"MHD": 0.5}},
-            "sigma_site",
-        ),
-    ],
-)
-def test_public_co2_runner_selects_covariance_aware_likelihood(
+def _run_selected_co2_likelihood(
     monkeypatch: Any,
     likelihood_builder: Any,
     likelihood_kwargs: dict[str, Any],
-    expected_variable: str,
-) -> None:
-    """Route installed likelihoods through the completed CO2 model mean."""
+) -> tuple[xr.Dataset, Any, dict[str, Any], az.InferenceData]:
+    """Run one selected likelihood through the public CO2 route."""
     inputs = _golden_inputs().assign_coords(
         site=("nmeasure", ["MHD", "MHD"]),
         time=("nmeasure", np.array(["2020-01-01", "2020-01-02"], dtype="datetime64[D]")),
@@ -461,9 +440,35 @@ def test_public_co2_runner_selects_covariance_aware_likelihood(
         likelihood_builder=recording_likelihood,
         likelihood_kwargs=likelihood_kwargs,
     )
+    return inputs, built_results[0], received, result
 
-    built = built_results[0]
+
+def _initial_mean_and_observed_logp(model: pm.Model) -> tuple[np.ndarray, float]:
+    """Evaluate the completed mean and likelihood at the model initial point."""
+    point = model.initial_point()
+    mean_function = model.compile_fn(
+        model.replace_rvs_by_values([model["modelled_concentration"]])[0],
+        inputs=model.value_vars,
+        on_unused_input="ignore",
+    )
+    mean = np.asarray(mean_function(point))
+    logp = float(model.compile_logp(vars=model.observed_RVs)(point))
+    return mean, logp
+
+
+def test_public_co2_runner_selects_fixed_ou_likelihood(monkeypatch: Any) -> None:
+    """Fixed OU keeps its labelled temporal covariance equation."""
+    likelihood_kwargs = {
+        "tau_hours": 5.0,
+        "fixed_site_amplitudes": {"MHD": 0.5},
+    }
+    inputs, built, received, result = _run_selected_co2_likelihood(
+        monkeypatch,
+        add_fixed_ou_gaussian_likelihood,
+        likelihood_kwargs,
+    )
     model = built.model
+    assert "min_error" not in inputs
     assert received["mean"] is model["modelled_concentration"]
     aggregation_error = received["aggregation_error"]
     assert aggregation_error.mode == "dense"
@@ -473,36 +478,65 @@ def test_public_co2_runner_selects_covariance_aware_likelihood(
         inputs["aggregation_error_covariance"].values,
     )
     assert aggregation_error.covariance.values[0, 1] != 0.0
-    assert {"modelled_concentration", "y", "epsilon", expected_variable} <= set(model.named_vars)
+    assert {"modelled_concentration", "y", "epsilon", "ou_site_amplitude"} <= set(
+        model.named_vars
+    )
     assert set(built.variable_roles.values()) <= set(model.named_vars)
     assert "sigma" not in model.named_vars
 
-    point = model.initial_point()
-    mean_function = model.compile_fn(
-        model.replace_rvs_by_values([model["modelled_concentration"]])[0],
-        inputs=model.value_vars,
-        on_unused_input="ignore",
+    mean, actual_logp = _initial_mean_and_observed_logp(model)
+    lag_hours = np.abs(
+        (inputs["time"].values[:, None] - inputs["time"].values[None, :])
+        / np.timedelta64(1, "h")
     )
-    mean = mean_function(point)
-    if expected_variable == "ou_site_amplitude":
-        lag_hours = np.abs(
-            (inputs["time"].values[:, None] - inputs["time"].values[None, :])
-            / np.timedelta64(1, "h")
-        )
-        mismatch_covariance = 0.5**2 * np.exp(-lag_hours / 5.0)
-    else:
-        mismatch_covariance = 0.5**2 * np.eye(inputs.sizes["nmeasure"])
+    ou_covariance = 0.5**2 * np.exp(-lag_hours / 5.0)
     expected_logp = multivariate_normal.logpdf(
         inputs["mf"].values,
         mean=mean,
         cov=(
             inputs["aggregation_error_covariance"].values
             + np.diag(inputs["mf_error"].values ** 2)
-            + mismatch_covariance
+            + ou_covariance
         ),
     )
-    actual_logp = model.compile_logp(vars=model.observed_RVs)(point)
-    assert float(actual_logp) == pytest.approx(expected_logp, rel=1.0e-10)
+    assert actual_logp == pytest.approx(expected_logp, rel=1.0e-10)
+    assert json.loads(result.attrs["rhime_likelihood_kwargs"]) == likelihood_kwargs
+    assert json.loads(result.attrs["rhime_likelihood_builder"])["qualname"].endswith(
+        "recording_likelihood"
+    )
+
+
+def test_public_co2_runner_selects_iid_site_sigma_likelihood(monkeypatch: Any) -> None:
+    """IID site sigma keeps its labelled diagonal mismatch equation."""
+    likelihood_kwargs = {"fixed_site_amplitudes": {"MHD": 0.5}}
+    inputs, built, received, result = _run_selected_co2_likelihood(
+        monkeypatch,
+        add_site_sigma_gaussian_likelihood,
+        likelihood_kwargs,
+    )
+    model = built.model
+    assert "min_error" not in inputs
+    assert received["mean"] is model["modelled_concentration"]
+    aggregation_error = received["aggregation_error"]
+    assert aggregation_error.mode == "dense"
+    assert aggregation_error.covariance is not None
+    np.testing.assert_allclose(
+        aggregation_error.covariance.values,
+        inputs["aggregation_error_covariance"].values,
+    )
+    assert aggregation_error.covariance.values[0, 1] != 0.0
+    assert {"modelled_concentration", "y", "epsilon", "sigma_site"} <= set(model.named_vars)
+    assert set(built.variable_roles.values()) <= set(model.named_vars)
+    assert "sigma" not in model.named_vars
+
+    mean, actual_logp = _initial_mean_and_observed_logp(model)
+    iid_covariance = np.diag(inputs["mf_error"].values ** 2 + 0.5**2)
+    expected_logp = multivariate_normal.logpdf(
+        inputs["mf"].values,
+        mean=mean,
+        cov=inputs["aggregation_error_covariance"].values + iid_covariance,
+    )
+    assert actual_logp == pytest.approx(expected_logp, rel=1.0e-10)
     assert json.loads(result.attrs["rhime_likelihood_kwargs"]) == likelihood_kwargs
     assert json.loads(result.attrs["rhime_likelihood_builder"])["qualname"].endswith(
         "recording_likelihood"
