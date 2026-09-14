@@ -35,7 +35,6 @@ import pytensor.tensor as pt
 import xarray as xr
 from pytensor.tensor.variable import TensorVariable
 
-from openghg_inversions.inversion_inputs import xr_factorize
 from openghg_inversions.models._gaussian_observation import (
     add_aggregation_error_data,
     add_gaussian_observation_likelihood,
@@ -47,44 +46,13 @@ from openghg_inversions.observation_error import (
     AggregationError,
     validate_observation_error_arrays,
 )
+from openghg_inversions.sigma import SigmaAlignment
 
 
 SITE_SIGMA_DIM = "sigma_site_dim"
 SITE_SIGMA = "sigma_site"
 SITE_SIGMA_INDEX = "sigma_site_index"
 SIGMA_OBSERVATION = "sigma_observation"
-
-
-def _site_structure(
-    observations: xr.DataArray,
-    *,
-    output_dim: str,
-) -> tuple[tuple[str, ...], np.ndarray]:
-    """Return stable string site labels and an observation lookup vector.
-
-    Args:
-        observations: One-dimensional observation array carrying site labels.
-        output_dim: Required observation dimension.
-
-    Returns:
-        Stable first-occurrence site labels and an ``int32`` site index aligned
-        with the observations.
-
-    Raises:
-        ValueError: If ``site`` is missing, misaligned, empty, or contains a
-            blank label.
-    """
-    site = observations.coords.get("site")
-    if site is None or site.dims != (output_dim,):
-        raise ValueError("The site-sigma likelihood requires an observation-aligned 'site' coordinate.")
-    structure = xr_factorize(
-        site,
-        indicator_name=SITE_SIGMA_INDEX,
-        label_name=SITE_SIGMA_DIM,
-        label_dim=SITE_SIGMA_DIM,
-    )
-    labels = tuple(str(label) for label in structure[SITE_SIGMA_DIM].values)
-    return labels, np.asarray(structure[SITE_SIGMA_INDEX].values, dtype=np.int32)
 
 
 def _fixed_amplitudes(
@@ -186,22 +154,16 @@ def add_site_sigma_gaussian_likelihood(
         owner="Site-sigma likelihood",
         output_dim=output_dim,
     )
-    site_labels, site_index = _site_structure(observations, output_dim=output_dim)
+    alignment = SigmaAlignment.from_observations(observations)
+    site_labels = tuple(str(label) for label in alignment.site_labels)
+    site_index = alignment.site_index
     site_coord = np.asarray(site_labels, dtype=object)
-    add_coords({SITE_SIGMA_DIM: site_coord})
 
     reported_error = add_model_data(
-        observation_error.transpose(output_dim),
+        observation_error,
         observation_error_name,
     )
-    index_data = add_model_data(
-        xr.DataArray(
-            site_index,
-            dims=(output_dim,),
-            coords={output_dim: observations.coords[output_dim]},
-            name=SITE_SIGMA_INDEX,
-        )
-    )
+    index_data = add_model_data(site_index)
     registered_aggregation_error = add_aggregation_error_data(
         aggregation_error,
         observations,
@@ -236,6 +198,7 @@ def add_site_sigma_gaussian_likelihood(
         )
     else:
         assert site_amplitude_prior is not None
+        add_coords({SITE_SIGMA_DIM: site_coord})
         sigma_site = parse_prior(
             SITE_SIGMA,
             positive_prior_args(site_amplitude_prior),
@@ -254,7 +217,7 @@ def add_site_sigma_gaussian_likelihood(
         dims=output_dim,
     )
     return add_gaussian_observation_likelihood(
-        observed=pm.floatX(observations.transpose(output_dim).compute().values),
+        observed=pm.floatX(observations.compute().values),
         mean=mean,
         independent_variance=independent_variance,
         aggregation_error=registered_aggregation_error,

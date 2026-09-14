@@ -105,6 +105,7 @@ def test_from_observations_derives_site_positions_and_periods() -> None:
 
     np.testing.assert_array_equal(alignment.site_index, [0, 0, 1, 1])
     np.testing.assert_array_equal(alignment.period_index, [0, 1, 0, 1])
+    assert alignment.site_labels == ("TAC", "MHD")
 
 
 @pytest.mark.parametrize(

@@ -631,7 +631,7 @@ def add_sigma_component(
 
     add_coords(
         {
-            "nsigma_site": np.arange(alignment.nsite),
+            "nsigma_site": np.asarray(alignment.site_labels),
             "nsigma_time": np.arange(alignment.nperiod),
         }
     )

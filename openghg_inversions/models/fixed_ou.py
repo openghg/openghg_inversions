@@ -19,15 +19,14 @@ from pytensor.tensor.variable import TensorVariable
 from scipy.linalg import cho_solve, eigh, solve_triangular
 from scipy.sparse import csr_matrix
 
-from openghg_inversions.inversion_inputs import xr_factorize
 from openghg_inversions.models.components import add_model_data
-from openghg_inversions.models.coords import add_coords
 from openghg_inversions.models.priors import parse_prior, positive_prior_args
 from openghg_inversions.observation_error import (
     AggregationError,
     aggregation_error_as_low_rank,
     validate_observation_error_arrays,
 )
+from openghg_inversions.sigma import SigmaAlignment
 
 
 FloatArray = NDArray[np.float64]
@@ -547,22 +546,15 @@ def add_fixed_ou_gaussian_likelihood(
     if fixed_site_amplitudes is None and site_amplitude_prior is None:
         raise ValueError("An inferred fixed-OU amplitude requires an explicit `site_amplitude_prior`.")
     validate_observation_error_arrays(observations, observation_error, None, owner="Fixed-OU likelihood", output_dim=output_dim)
-    site = observations.coords.get("site")
     time = observations.coords.get("time")
-    if site is None or site.dims != (output_dim,) or time is None or time.dims != (output_dim,):
+    if time is None or time.dims != (output_dim,):
         raise ValueError("The fixed-OU likelihood requires observation-aligned 'site' and 'time' coordinates.")
-    site_structure = xr_factorize(
-        site,
-        indicator_name="ou_site_index",
-        label_name="ou_site",
-        label_dim="ou_site",
-    )
-    site_index = site_structure["ou_site_index"]
+    alignment = SigmaAlignment.from_observations(observations)
+    site_index = alignment.site_index.rename("ou_site_index")
     site_codes = np.asarray(site_index.values, dtype=np.int64)
-    site_labels = tuple(str(label) for label in site_structure["ou_site"].values)
-    add_coords({"ou_site": np.asarray(site_labels, dtype=object)})
-    observed = add_model_data(observations.transpose(output_dim), "Y")
-    add_model_data(observation_error.transpose(output_dim), "error")
+    site_labels = tuple(str(label) for label in alignment.site_labels)
+    observed = add_model_data(observations, "Y")
+    add_model_data(observation_error, "error")
     add_model_data(site_index.rename("ou_site_index"), "ou_site_index")
     observation_variance = np.square(np.asarray(observation_error.values, dtype=np.float64))
     factor, aggregation_diagonal = aggregation_error_as_low_rank(aggregation_error)
