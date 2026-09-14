@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 import math
-import time
 from typing import Any, cast
 
 import numpy as np
@@ -52,7 +51,6 @@ class FixedOuLikelihoodEvaluation:
     log_likelihood: float
     gradient_residual: FloatArray
     gradient_site_amplitude: FloatArray
-    factor_cholesky_seconds: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -61,8 +59,6 @@ class FixedOuCovarianceSolve:
 
     solution: FloatArray
     logdet: float
-    factor_cholesky_seconds: float
-    factor_cholesky_operations: int
 
 
 def _rejection_gradient_amplitude(amplitude: FloatArray) -> FloatArray:
@@ -238,24 +234,36 @@ class FixedOuLowRank:
                 gradient_site_amplitude=np.zeros(self.n_site, dtype=np.float64),
             )
 
-        try:
-            weights, cholesky, logdet, cholesky_seconds = self._factorize(amplitude)
-        except ValueError:
+        mode_variance = self.mode_eigenvalues + amplitude_squared[self.mode_site_index]
+        if not np.isfinite(mode_variance).all() or np.any(mode_variance <= 0.0):
             return FixedOuLikelihoodEvaluation(
                 log_likelihood=-np.inf,
                 gradient_residual=np.zeros(self.n_observation, dtype=np.float64),
                 gradient_site_amplitude=np.zeros(self.n_site, dtype=np.float64),
             )
+        weights = np.reciprocal(mode_variance)
         transformed_residual = cast(FloatArray, self.mode_transform @ residual_value)
-        weighted_residual = transformed_residual * weights
+        square_root_weights = np.sqrt(weights)
+        whitened_residual = transformed_residual * square_root_weights
 
         if self.rank:
-            projected = self.transformed_factor.T @ weighted_residual
+            whitened_factor = self.transformed_factor * square_root_weights[:, None]
+            core = np.eye(self.rank, dtype=np.float64) + (
+                whitened_factor.T @ whitened_factor
+            )
+            core = (core + core.T) * 0.5
+            cholesky = np.linalg.cholesky(core)
+            projected = whitened_factor.T @ whitened_residual
             latent_mode = cho_solve((cholesky, True), projected, check_finite=False)
+            conditional_whitened = whitened_residual - whitened_factor @ latent_mode
+            quadratic = float(
+                conditional_whitened @ conditional_whitened
+                + latent_mode @ latent_mode
+            )
+            logdet_core = float(2.0 * np.log(np.diag(cholesky)).sum())
             conditional_residual = (
                 transformed_residual - self.transformed_factor @ latent_mode
             )
-            quadratic = float(transformed_residual @ weighted_residual - projected @ latent_mode)
             transformed = solve_triangular(
                 cholesky,
                 self.transformed_factor.T,
@@ -264,10 +272,12 @@ class FixedOuLowRank:
             )
             leverage = np.square(transformed).sum(axis=0)
         else:
-            quadratic = float(transformed_residual @ weighted_residual)
+            quadratic = float(whitened_residual @ whitened_residual)
+            logdet_core = 0.0
             conditional_residual = transformed_residual
             leverage = np.zeros(self.n_observation, dtype=np.float64)
 
+        logdet = self.base_logdet + float(np.log(mode_variance).sum()) + logdet_core
         log_likelihood = -0.5 * (
             self.n_observation * math.log(2.0 * math.pi) + logdet + quadratic
         )
@@ -285,7 +295,6 @@ class FixedOuLowRank:
             log_likelihood=float(log_likelihood),
             gradient_residual=cast(FloatArray, np.asarray(gradient_residual)),
             gradient_site_amplitude=cast(FloatArray, gradient_amplitude),
-            factor_cholesky_seconds=cholesky_seconds,
         )
 
     def solve(
@@ -314,55 +323,62 @@ class FixedOuLowRank:
             "site_amplitude",
             positive=False,
         )
-        weights, cholesky, logdet, cholesky_seconds = self._factorize(amplitude)
+        weights, logdet = self._factorize(amplitude)
         transformed_rhs = cast(FloatArray, self.mode_transform @ rhs_value)
         rhs_2d = transformed_rhs[:, None] if transformed_rhs.ndim == 1 else transformed_rhs
-        solved = weights[:, None] * rhs_2d
+        square_root_weights = np.sqrt(weights)
+        whitened_rhs = square_root_weights[:, None] * rhs_2d
         if self.rank:
-            factor_solution = cho_solve(
-                (cholesky, True),
-                self.transformed_factor.T @ solved,
-                check_finite=False,
+            whitened_factor = self.transformed_factor * square_root_weights[:, None]
+            basis, _ = np.linalg.qr(
+                np.column_stack((whitened_factor, whitened_rhs)),
+                mode="reduced",
             )
-            solved -= weights[:, None] * self.transformed_factor @ factor_solution
+            factor_coordinates = basis.T @ whitened_factor
+            rhs_coordinates = basis.T @ whitened_rhs
+            left_vectors, singular_values, _ = np.linalg.svd(
+                factor_coordinates,
+                full_matrices=True,
+            )
+            rotated_rhs = left_vectors.T @ rhs_coordinates
+            rotated_rhs[: singular_values.size] /= (
+                1.0 + np.square(singular_values)
+            )[:, None]
+            whitened_solution = basis @ (left_vectors @ rotated_rhs)
+        else:
+            whitened_solution = whitened_rhs
+        solved = square_root_weights[:, None] * whitened_solution
         solution = self.mode_transform.T @ (
             solved[:, 0] if transformed_rhs.ndim == 1 else solved
         )
         return FixedOuCovarianceSolve(
             solution=cast(FloatArray, np.asarray(solution)),
             logdet=logdet,
-            factor_cholesky_seconds=cholesky_seconds,
-            factor_cholesky_operations=int(self.rank > 0),
         )
 
     def _factorize(
         self,
         amplitude: FloatArray,
-    ) -> tuple[FloatArray, FloatArray, float, float]:
+    ) -> tuple[FloatArray, float]:
         """Factorize the rank-space covariance for one valid amplitude."""
         mode_variance = self.mode_eigenvalues + np.square(amplitude)[self.mode_site_index]
         if not np.isfinite(mode_variance).all() or np.any(mode_variance <= 0.0):
             raise ValueError("Fixed-OU generalized eigenvalues produced invalid variance.")
         weights = np.reciprocal(mode_variance)
         if not self.rank:
-            return (
-                cast(FloatArray, weights),
-                np.empty((0, 0), dtype=np.float64),
-                self.base_logdet + float(np.log(mode_variance).sum()),
-                0.0,
+            return cast(FloatArray, weights), self.base_logdet + float(
+                np.log(mode_variance).sum()
             )
         weighted_factor = self.transformed_factor * np.sqrt(weights)[:, None]
         core = np.eye(self.rank, dtype=np.float64) + weighted_factor.T @ weighted_factor
         core = (core + core.T) * 0.5
-        start = time.perf_counter()
         cholesky = np.linalg.cholesky(core)
-        elapsed = time.perf_counter() - start
         logdet = (
             self.base_logdet
             + float(np.log(mode_variance).sum())
             + float(2.0 * np.log(np.diag(cholesky)).sum())
         )
-        return cast(FloatArray, weights), cast(FloatArray, cholesky), logdet, elapsed
+        return cast(FloatArray, weights), logdet
 
     def marginal_variance(self, site_amplitude: TensorVariable) -> TensorVariable:
         """Return the observation-aligned covariance diagonal."""

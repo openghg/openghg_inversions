@@ -1,4 +1,4 @@
-"""Named CO2 runner for accepted-state cached fixed-OU site sigma."""
+"""Named CO2 runner for accepted-state cached fixed-OU amplitudes."""
 
 from __future__ import annotations
 
@@ -13,7 +13,6 @@ import xarray as xr
 
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.inversion_data import RhimePreparedInputs
-from openghg_inversions.models.site_sigma import SITE_SIGMA
 from openghg_inversions.models.state_activity import StateActivity
 from openghg_inversions.observation_error import (
     AggregationErrorMode,
@@ -21,14 +20,16 @@ from openghg_inversions.observation_error import (
     resolve_aggregation_error,
 )
 from openghg_inversions.rhime.builders import RhimeModelBuildResult
-from openghg_inversions.rhime.cached_sigma import (
-    CACHED_SIGMA_SAMPLER_METADATA,
-    make_cached_sigma_compound_step,
-)
+from openghg_inversions.rhime.cached_sigma import make_cached_sigma_compound_step
 from openghg_inversions.rhime.materialization import materialize_pymc_inputs
 from openghg_inversions.rhime.sampling import RhimeSampler, sample_rhime_model
 
-from .co2_cached_sigma_model import Co2CachedSigmaModel, build_co2_cached_sigma_model
+from .co2_cached_sigma_model import (
+    OU_SITE_AMPLITUDE,
+    OU_SITE_INDEX,
+    Co2CachedSigmaModel,
+    build_co2_cached_sigma_model,
+)
 from .co2_runner import _annotate_co2_trace, _state_activity_from_inputs
 
 
@@ -80,14 +81,21 @@ def _sampler_for_cached_graph(
     with cached_model.model:
         sample_kwargs["step"] = make_cached_sigma_compound_step(
             model=cached_model.model,
-            sigma=cached_model.sigma,
+            sigma=cached_model.amplitude,
             state=cached_model.state,
             target=cached_model.target,
             shared_cache=cached_model.shared_cache,
+            initial_cache=cached_model.initial_cache,
             state_value_name=cached_model.state_value_name,
-            state_location=cached_model.state_location,
-            state_cholesky=cached_model.state_cholesky,
-            prior_scale=cached_model.sigma_prior_scale,
+            state_location=np.asarray(
+                cached_model.active_state_prior.latent_mean.values,
+                dtype=np.float64,
+            ),
+            state_cholesky=np.asarray(
+                cached_model.active_state_prior.latent_cholesky.values,
+                dtype=np.float64,
+            ),
+            prior_scale=cached_model.site_amplitude_prior_scale,
             initial_point=cached_model.model.initial_point(),
         )
     sample_kwargs.setdefault("mp_ctx", "spawn")
@@ -122,19 +130,6 @@ def _predictive_seed(sampler: RhimeSampler) -> Any:
     return dict(sampler.sample_kwargs or {}).get("random_seed")
 
 
-def _seed_metadata(value: Any) -> int | list[int] | str | None:
-    """Return JSON-safe seed provenance without consuming an RNG."""
-    if value is None:
-        return None
-    if isinstance(value, (int, np.integer)):
-        return int(value)
-    try:
-        array = np.asarray(value, dtype=np.int64)
-    except (TypeError, ValueError):
-        return f"runtime {type(value).__module__}.{type(value).__qualname__}"
-    return [int(item) for item in array.reshape(-1)]
-
-
 def _observation_coords(observations: xr.DataArray) -> dict[str, Any]:
     output_dim = str(observations.dims[0])
     coords: dict[str, Any] = {output_dim: observations.coords[output_dim]}
@@ -155,7 +150,7 @@ def _append_joint_outputs(
     """Attach exact joint log likelihood and optional joint replicates."""
     posterior = cast(xr.Dataset, trace.posterior)
     state = posterior[cached_model.state_output_name]
-    sigma = posterior[SITE_SIGMA]
+    sigma = posterior[OU_SITE_AMPLITUDE]
     state_dim = next(dim for dim in state.dims if dim not in {"chain", "draw"})
     sigma_dim = next(dim for dim in sigma.dims if dim not in {"chain", "draw"})
     state_values = np.asarray(
@@ -231,18 +226,62 @@ def _append_joint_outputs(
     return trace
 
 
+def _annotate_cached_co2_trace(
+    trace: az.InferenceData,
+    built: RhimeModelBuildResult,
+    *,
+    concentration_units: str | None,
+) -> az.InferenceData:
+    """Add output semantics that belong only to the cached fixed-OU recipe."""
+    trace = _annotate_co2_trace(
+        trace,
+        built,
+        concentration_units=concentration_units,
+    )
+    for group_name in trace.groups():
+        group = getattr(trace, group_name)
+        if isinstance(group, xr.Dataset):
+            group.attrs["rhime_recipe"] = "co2_cached_sigma_fixed_ou"
+
+    if hasattr(trace, "log_likelihood") and "y" in trace.log_likelihood:
+        likelihood = trace.log_likelihood["y"]
+        likelihood.attrs["rhime_scientific_roles"] = json.dumps(["joint_log_likelihood"])
+        likelihood.attrs.pop("units", None)
+    if hasattr(trace, "posterior_predictive") and "y" in trace.posterior_predictive:
+        predictive = trace.posterior_predictive["y"]
+        predictive.attrs["rhime_scientific_roles"] = json.dumps(["concentration"])
+        if concentration_units is not None:
+            predictive.attrs["units"] = concentration_units
+    if hasattr(trace, "observed_data") and "y" in trace.observed_data:
+        observed = trace.observed_data["y"]
+        observed.attrs["rhime_scientific_roles"] = json.dumps(["observation"])
+        if concentration_units is not None:
+            observed.attrs["units"] = concentration_units
+    if hasattr(trace, "posterior") and OU_SITE_AMPLITUDE in trace.posterior:
+        amplitude = trace.posterior[OU_SITE_AMPLITUDE]
+        if concentration_units is not None:
+            amplitude.attrs["units"] = concentration_units
+    if hasattr(trace, "constant_data"):
+        if "ou_tau_hours" in trace.constant_data:
+            trace.constant_data["ou_tau_hours"].attrs["units"] = "hours"
+        for name in ("Y", "error"):
+            if concentration_units is not None and name in trace.constant_data:
+                trace.constant_data[name].attrs["units"] = concentration_units
+    return trace
+
+
 def run_rhime_co2_cached_sigma(
     *,
     prepared_inputs: RhimePreparedInputs,
     tau_hours: float | Mapping[str, float],
-    sigma_prior_scale: float,
-    initial_site_sigma: float | Mapping[str, float] | None = None,
+    site_amplitude_prior_scale: float,
+    initial_site_amplitudes: float | Mapping[str, float] | None = None,
     sampler: RhimeSampler | None = None,
     aggregation_error_mode: AggregationErrorMode = "low_rank",
 ) -> az.InferenceData:
-    """Run the production CO2 fixed-OU cached site-sigma recipe.
+    """Run the production CO2 fixed-OU cached-amplitude recipe.
 
-    The graph and sampler are a matched pair: sigma is updated first by the
+    The graph and sampler are a matched pair: site amplitudes are updated first by the
     exact conditional bridge, the accepted cache is refreshed once, and stock
     PyMC NUTS then updates the correlated flux state against that cache.
     """
@@ -270,8 +309,8 @@ def run_rhime_co2_cached_sigma(
         observation_error=model_inputs["mf_error"],
         aggregation_error=aggregation_error,
         tau_hours=tau_hours,
-        sigma_prior_scale=sigma_prior_scale,
-        initial_site_sigma=initial_site_sigma,
+        site_amplitude_prior_scale=site_amplitude_prior_scale,
+        initial_site_amplitudes=initial_site_amplitudes,
         state_activity=cast(StateActivity | None, _state_activity_from_inputs(model_inputs)),
     )
     requested_sampler = RhimeSampler() if sampler is None else sampler
@@ -280,36 +319,6 @@ def run_rhime_co2_cached_sigma(
         "kind": "builtin",
         "prior": "correlated arithmetic-moment lognormal",
         "mismatch_component": "fixed_within_site_ou",
-        "sampler": {
-            **dict(CACHED_SIGMA_SAMPLER_METADATA),
-            "random_seed": _seed_metadata(
-                dict(requested_sampler.sample_kwargs or {}).get("random_seed")
-            ),
-            "posterior_predictive_random_seed": _seed_metadata(
-                _predictive_seed(requested_sampler)
-            ),
-        },
-        "numerical_preparation": {
-            "target": (
-                "openghg_inversions.models.cached_sigma."
-                "FixedOuCachedSigmaTarget"
-            ),
-            "fixed_ou_eigenbasis": "derived_at_model_build_from_prepared_inputs",
-            "accepted_quadratic": "chain_local_runtime_state_not_an_external_artifact",
-            "site_labels": list(cached_model.covariance.site_labels),
-            "tau_hours_by_site": [
-                float(value) for value in cached_model.covariance.tau_hours_by_site
-            ],
-            "aggregation_error_mode": aggregation_error.mode,
-            "fixed_covariance_rank": cached_model.covariance.rank,
-            "initial_site_sigma": {
-                site: float(value)
-                for site, value in zip(
-                    cached_model.covariance.site_labels,
-                    cached_model.initial_site_sigma,
-                )
-            },
-        },
         "basis_artifact_source": getattr(
             prepared,
             "basis_artifact_source",
@@ -327,7 +336,9 @@ def run_rhime_co2_cached_sigma(
             "model_mean": "modelled_concentration",
             "pollution_concentration": "co2_flux_contribution",
             "flux_scale": "flux_scaling",
-            "site_model_error": SITE_SIGMA,
+            "fixed_ou_site_amplitude": OU_SITE_AMPLITUDE,
+            "observation_to_fixed_ou_site_index": OU_SITE_INDEX,
+            "fixed_ou_timescale": "ou_tau_hours",
             "emissions_sensitivity": "co2_sensitivity",
             "coherent_prior_contribution": "fixed_prior_contribution",
         },
@@ -345,11 +356,7 @@ def run_rhime_co2_cached_sigma(
         posterior_predictive=_posterior_predictive_requested(requested_sampler),
         random_seed=_predictive_seed(requested_sampler),
     )
-    trace.attrs["rhime_sampler_provenance"] = json.dumps(
-        metadata["sampler"],
-        sort_keys=True,
-    )
-    return _annotate_co2_trace(
+    return _annotate_cached_co2_trace(
         trace,
         built,
         concentration_units=model_inputs["mf"].attrs.get("units"),

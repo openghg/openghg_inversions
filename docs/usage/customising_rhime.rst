@@ -190,13 +190,15 @@ the exact conditional likelihood, refreshes the accepted state quadratic, and
 stock state NUTS then reads that cache without refactorizing the observation
 covariance during its trajectory::
 
+   from openghg_inversions.inversion_data import RhimePreparedInputs
    from openghg_inversions.rhime import RhimeSampler
    from openghg_inversions.rhime.co2 import run_rhime_co2_cached_sigma
 
+   prepared = RhimePreparedInputs.load("co2-prepared-inputs.zarr")
    idata = run_rhime_co2_cached_sigma(
        prepared_inputs=prepared,
        tau_hours={"BSD": 24.0, "TAC": 18.0},
-       sigma_prior_scale=0.75,  # concentration units
+       site_amplitude_prior_scale=0.75,  # concentration units
        sampler=RhimeSampler(
            draws=1000,
            tune=1000,
@@ -207,13 +209,11 @@ covariance during its trajectory::
        ),
    )
 
-The runner constructs the required ``sigma -> state`` ``CompoundStep`` and
+The runner constructs the required ``site amplitude -> state`` ``CompoundStep`` and
 uses process spawning for multiple chains. Do not pass another step method in
 ``sample_kwargs``. The accepted quadratic and fixed-OU generalized eigenbasis
 are runtime numerical state derived from the materialized prepared inputs;
-they are not external cache artifacts. The trace records the OGI sampler and
-Verification Games source revisions, fixed site/tau identity, and ordered
-steps automatically.
+they are not external cache artifacts.
 
 Because the cached graph uses a normalized joint ``Potential``, it does not
 invent an independent observed distribution. After sampling, the same exact
@@ -221,15 +221,18 @@ fixed-OU target adds ``log_likelihood.y`` as one scalar per complete
 observation vector and, when requested, draws complete correlated vectors in
 ``posterior_predictive.y``. The variables carry explicit joint-scope metadata.
 
-This route deliberately supports only the production independent HalfNormal
-site-amplitude prior and fixed positive OU timescales. Hierarchical sigma,
-sampled tau, Slice, custom HMC, and adaptive Metropolis remain Verification
-Games experiments. The route is PyMC-only. An explicit PyMC step method requires
-``nuts_sampler="pymc"``; NumPyro, BlackJAX, and Nutpie NUTS cannot be combined
-with a PyMC ``CompoundStep``. The ordinary stock-PyMC fixed-OU likelihood above
-remains the log-density/gradient oracle and fallback. A live step object is
-not JSON serializable, so construct it after the model in a direct procedural
-runner rather than placing it in an INI file or a staged-workflow manifest.
+This route deliberately supports only independent HalfNormal site-amplitude
+priors and fixed positive OU timescales. Sampled tau and alternative amplitude
+priors are separate extensions. The route is PyMC-only because it constructs
+and owns a PyMC ``CompoundStep``. The ordinary stock-PyMC fixed-OU likelihood
+above remains the log-density/gradient oracle and fallback.
+
+The exponential within-site covariance follows the stationary process of
+`Uhlenbeck and Ornstein (1930)
+<https://doi.org/10.1103/PhysRev.36.823>`_. The named recipe and its matched
+accepted-state cache are implemented and versioned by OpenGHG Inversions; the
+input artifact in the example can be produced with the xarray adapter shown in
+:doc:`rhime`.
 
 Built-in aggregation covariance relies on the guarantees of its construction
 pipeline. A custom pipeline that assembles its own covariance may optionally

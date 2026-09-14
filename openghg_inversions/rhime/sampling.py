@@ -132,9 +132,6 @@ class RhimeSampler:
         nuts_sampler: PyMC NUTS backend name.
         progressbar: Whether PyMC progress output should be shown.
         sample_kwargs: Extra keyword arguments forwarded to ``pm.sample``.
-            An explicit PyMC step method, including ``pm.CompoundStep``, may
-            be supplied as ``sample_kwargs["step"]`` only with the native
-            ``nuts_sampler="pymc"`` backend.
         sample_prior_predictive: Whether to append prior predictive draws.
         sample_posterior_predictive: Whether to append posterior predictive
             draws, or variable names to sample.
@@ -239,11 +236,6 @@ class RhimeSampler:
                 variable named ``y``.
         """
         sample_kwargs = dict(self.sample_kwargs or {})
-        if sample_kwargs.get("step") is not None and self.nuts_sampler != "pymc":
-            raise ValueError(
-                "An explicit PyMC step method requires nuts_sampler='pymc'; "
-                "external NUTS backends cannot be combined with PyMC CompoundStep methods."
-            )
         sample_kwargs.pop("return_inferencedata", None)
         idata_kwargs = dict(sample_kwargs.pop("idata_kwargs", {}))
         idata_kwargs.setdefault("log_likelihood", True)

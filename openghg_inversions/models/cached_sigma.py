@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import math
-import time
 from typing import cast
 
 import numpy as np
@@ -45,32 +44,6 @@ class MarginalQuadraticCache:
     linear: FloatArray
     precision: FloatArray
     sigma: FloatArray
-    factor_cholesky_seconds: float
-    factor_cholesky_operations: int
-    refresh_seconds: float
-
-    def __post_init__(self) -> None:
-        linear = _vector(self.linear, "linear")
-        precision = _matrix(self.precision, "precision")
-        sigma = _vector(self.sigma, "sigma")
-        if precision.shape != (linear.size, linear.size):
-            raise ValueError(
-                "precision must be square with one row per state; "
-                f"got {precision.shape} for {linear.size} states."
-            )
-        if not np.allclose(precision, precision.T, rtol=1.0e-10, atol=1.0e-12):
-            raise ValueError("precision must be symmetric.")
-        if np.any(sigma < 0.0):
-            raise ValueError("sigma must be non-negative.")
-        if not np.isfinite(self.constant):
-            raise ValueError("constant must be finite.")
-        if self.factor_cholesky_seconds < 0.0 or self.refresh_seconds < 0.0:
-            raise ValueError("cache timings must be non-negative.")
-        if self.factor_cholesky_operations not in (0, 1):
-            raise ValueError("a cache refresh must perform zero or one factor Cholesky.")
-        object.__setattr__(self, "linear", linear)
-        object.__setattr__(self, "precision", precision)
-        object.__setattr__(self, "sigma", sigma)
 
     @property
     def n_state(self) -> int:
@@ -79,9 +52,7 @@ class MarginalQuadraticCache:
 
     def log_likelihood(self, state: ArrayLike) -> float:
         """Evaluate the cached normalized likelihood without a factorization."""
-        value = _vector(state, "state")
-        if value.shape != (self.n_state,):
-            raise ValueError(f"state has shape {value.shape}, expected {(self.n_state,)}.")
+        value = np.asarray(state)
         return float(
             self.constant
             + self.linear @ value
@@ -90,9 +61,7 @@ class MarginalQuadraticCache:
 
     def gradient(self, state: ArrayLike) -> FloatArray:
         """Evaluate the exact cached gradient with respect to state."""
-        value = _vector(state, "state")
-        if value.shape != (self.n_state,):
-            raise ValueError(f"state has shape {value.shape}, expected {(self.n_state,)}.")
+        value = np.asarray(state)
         return cast(FloatArray, self.linear - self.precision @ value)
 
 
@@ -147,7 +116,6 @@ class FixedOuCachedSigmaTarget:
 
     def refresh(self, sigma: ArrayLike | float) -> MarginalQuadraticCache:
         """Build one exact float64 quadratic for an accepted sigma."""
-        start = time.perf_counter()
         sigma_value = np.asarray(sigma, dtype=np.float64)
         if sigma_value.ndim == 0:
             sigma_value = np.full(self.n_group, sigma_value.item(), dtype=np.float64)
@@ -171,10 +139,7 @@ class FixedOuCachedSigmaTarget:
             constant=constant,
             linear=cast(FloatArray, linear),
             precision=cast(FloatArray, precision),
-            sigma=cast(FloatArray, sigma_value),
-            factor_cholesky_seconds=covariance_solve.factor_cholesky_seconds,
-            factor_cholesky_operations=covariance_solve.factor_cholesky_operations,
-            refresh_seconds=time.perf_counter() - start,
+            sigma=cast(FloatArray, sigma_value.copy()),
         )
 
     def evaluate_from_residual(

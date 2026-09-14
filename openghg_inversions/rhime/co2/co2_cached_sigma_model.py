@@ -1,4 +1,4 @@
-"""CO2 graph for accepted-state cached fixed-OU site sigma sampling."""
+"""CO2 graph for accepted-state cached fixed-OU amplitude sampling."""
 
 from __future__ import annotations
 
@@ -12,27 +12,25 @@ import pytensor.tensor as pt
 import xarray as xr
 from pytensor.tensor.variable import TensorVariable
 
+from openghg_inversions.array_ops import expand_mapping
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
-from openghg_inversions.models.cached_sigma import FixedOuCachedSigmaTarget
+from openghg_inversions.models.cached_sigma import (
+    FixedOuCachedSigmaTarget,
+    MarginalQuadraticCache,
+)
 from openghg_inversions.models.components import (
     add_coherent_affine_component,
     add_correlated_lognormal_state_with_activity,
-    apply_linear_sensitivity,
     add_model_data,
+    apply_linear_sensitivity,
+    prepare_active_correlated_lognormal_prior,
 )
 from openghg_inversions.models.coords import add_coords, registered_model
-from openghg_inversions.models.fixed_ou import FixedOuLowRank, prepare_fixed_ou_low_rank
+from openghg_inversions.models.fixed_ou import prepare_fixed_ou_low_rank
 from openghg_inversions.models.state_activity import (
     StateActivity,
     prepare_linear_sensitivity,
     resolve_state_activity,
-)
-from openghg_inversions.models.site_sigma import (
-    SIGMA_OBSERVATION,
-    SITE_SIGMA,
-    SITE_SIGMA_DIM,
-    SITE_SIGMA_INDEX,
-    site_sigma_structure,
 )
 from openghg_inversions.observation_error import (
     AggregationError,
@@ -40,6 +38,12 @@ from openghg_inversions.observation_error import (
     validate_observation_error_arrays,
 )
 from openghg_inversions.rhime.cached_sigma import PytensorMarginalQuadraticCache
+from openghg_inversions.sigma import SigmaAlignment
+
+
+OU_SITE_DIM = "ou_site"
+OU_SITE_INDEX = "ou_site_index"
+OU_SITE_AMPLITUDE = "ou_site_amplitude"
 
 
 @dataclass(frozen=True)
@@ -49,81 +53,52 @@ class Co2CachedSigmaModel:
     model: pm.Model
     target: FixedOuCachedSigmaTarget
     shared_cache: PytensorMarginalQuadraticCache
-    covariance: FixedOuLowRank
-    sigma: TensorVariable
+    initial_cache: MarginalQuadraticCache
+    amplitude: TensorVariable
     state: TensorVariable
     state_value_name: str
-    state_location: np.ndarray
-    state_cholesky: np.ndarray
+    active_state_prior: CorrelatedLognormalPrior
     state_output_name: str
-    sigma_prior_scale: float
-    initial_site_sigma: np.ndarray
+    site_amplitude_prior_scale: float
 
 
-def _fixed_ou_site_structure(
+def _fixed_ou_site_alignment(
     observations: xr.DataArray,
     *,
     output_dim: str,
-) -> tuple[tuple[str, ...], xr.DataArray]:
+) -> tuple[xr.DataArray, xr.DataArray]:
     time = observations.coords.get("time")
     if time is None or time.dims != (output_dim,):
         raise ValueError(
             "The cached fixed-OU CO2 recipe requires observation-aligned "
             "'time' coordinates."
         )
-    labels, codes = site_sigma_structure(observations, output_dim=output_dim)
-    site_index = xr.DataArray(
-        codes,
-        dims=(output_dim,),
-        coords={output_dim: observations.coords[output_dim]},
-        name=SITE_SIGMA_INDEX,
+    alignment = SigmaAlignment.from_observations(observations)
+    site_index = alignment.site_index.rename(OU_SITE_INDEX)
+    site_coord = alignment.site_labels.rename({"nsigma_site": OU_SITE_DIM}).rename(
+        OU_SITE_DIM
     )
-    return labels, site_index
+    return site_coord, site_index
 
 
 def _site_values(
     value: float | Mapping[str, float] | None,
     *,
-    labels: tuple[str, ...],
+    site_coord: xr.DataArray,
     default: float,
 ) -> np.ndarray:
     if value is None:
-        values = np.full(len(labels), default, dtype=np.float64)
+        values = np.full(site_coord.size, default, dtype=np.float64)
     elif isinstance(value, Mapping):
-        if set(value) != set(labels):
-            raise ValueError(
-                "`initial_site_sigma` mapping keys must exactly match the observation sites."
-            )
-        values = np.asarray([value[label] for label in labels], dtype=np.float64)
+        values = np.asarray(
+            expand_mapping(value, site_coord, name=OU_SITE_AMPLITUDE).values,
+            dtype=np.float64,
+        )
     else:
-        values = np.full(len(labels), value, dtype=np.float64)
+        values = np.full(site_coord.size, value, dtype=np.float64)
     if not np.isfinite(values).all() or np.any(values <= 0.0):
-        raise ValueError("Initial site sigma values must be finite and strictly positive.")
+        raise ValueError("Initial site amplitudes must be finite and strictly positive.")
     return values
-
-
-def _active_latent_parameters(
-    prior: CorrelatedLognormalPrior,
-    active_indices: np.ndarray,
-) -> tuple[np.ndarray, np.ndarray]:
-    if active_indices.size == prior.mean.sizes[prior.state_dim]:
-        active_prior = prior
-    else:
-        active_mean = prior.mean.isel({prior.state_dim: active_indices})
-        active_covariance = prior.arithmetic_covariance.isel(
-            {
-                prior.state_dim: active_indices,
-                prior.covariance_dim: active_indices,
-            }
-        )
-        active_prior = CorrelatedLognormalPrior(
-            active_mean,
-            np.asarray(active_covariance.values, dtype=np.float64),
-        )
-    return (
-        np.asarray(active_prior.latent_mean.values, dtype=np.float64),
-        np.asarray(active_prior.latent_cholesky.values, dtype=np.float64),
-    )
 
 
 def build_co2_cached_sigma_model(
@@ -135,8 +110,8 @@ def build_co2_cached_sigma_model(
     observation_error: xr.DataArray,
     aggregation_error: AggregationError,
     tau_hours: float | Mapping[str, float],
-    sigma_prior_scale: float,
-    initial_site_sigma: float | Mapping[str, float] | None = None,
+    site_amplitude_prior_scale: float,
+    initial_site_amplitudes: float | Mapping[str, float] | None = None,
     state_activity: StateActivity | None = None,
     output_dim: str = "nmeasure",
 ) -> Co2CachedSigmaModel:
@@ -147,8 +122,8 @@ def build_co2_cached_sigma_model(
     likelihood and predictive evaluation after sampling; no independent
     pointwise likelihood is fabricated in the graph.
     """
-    if not np.isfinite(sigma_prior_scale) or sigma_prior_scale <= 0.0:
-        raise ValueError("`sigma_prior_scale` must be finite and strictly positive.")
+    if not np.isfinite(site_amplitude_prior_scale) or site_amplitude_prior_scale <= 0.0:
+        raise ValueError("`site_amplitude_prior_scale` must be finite and strictly positive.")
     validate_observation_error_arrays(
         observations,
         observation_error,
@@ -156,14 +131,15 @@ def build_co2_cached_sigma_model(
         owner="Cached fixed-OU CO2 likelihood",
         output_dim=output_dim,
     )
-    labels, site_index = _fixed_ou_site_structure(
+    site_coord, site_index = _fixed_ou_site_alignment(
         observations,
         output_dim=output_dim,
     )
-    initial_sigma = _site_values(
-        initial_site_sigma,
-        labels=labels,
-        default=float(sigma_prior_scale),
+    site_labels = tuple(str(label) for label in site_coord.values)
+    initial_amplitudes = _site_values(
+        initial_site_amplitudes,
+        site_coord=site_coord,
+        default=float(site_amplitude_prior_scale),
     )
     prepared_flux = prepare_linear_sensitivity(
         flux_sensitivity,
@@ -172,6 +148,12 @@ def build_co2_cached_sigma_model(
     activity = resolve_state_activity(prepared_flux.removed, state_activity)
     if activity.n_active == 0:
         raise ValueError("The cached-sigma recipe requires at least one active flux state.")
+    active_state_prior = prepare_active_correlated_lognormal_prior(
+        activity,
+        retained_prior,
+        var_name="flux_scaling",
+    )
+    assert active_state_prior is not None
 
     full_design = np.asarray(
         flux_sensitivity.transpose(output_dim, activity.state_dim).compute().values,
@@ -199,7 +181,7 @@ def build_co2_cached_sigma_model(
         np.asarray(observations.coords["time"].compute().values),
         np.asarray(site_index.values, dtype=np.int64),
         tau_hours,
-        site_labels=labels,
+        site_labels=site_labels,
     )
     target = FixedOuCachedSigmaTarget(
         prepared=covariance,
@@ -210,17 +192,15 @@ def build_co2_cached_sigma_model(
         fixed_contribution=fixed,
         design=active_design,
     )
-    shared_cache = PytensorMarginalQuadraticCache(target.refresh(initial_sigma))
-    state_location, state_cholesky = _active_latent_parameters(
-        retained_prior,
-        activity.active_indices,
-    )
+    initial_cache = target.refresh(initial_amplitudes)
+    shared_cache = PytensorMarginalQuadraticCache(initial_cache)
 
     with registered_model() as model:
         state_result = add_correlated_lognormal_state_with_activity(
             activity,
             retained_prior,
             var_name="flux_scaling",
+            active_prior=active_state_prior,
         )
         if state_result.latent is None:  # guarded above; keeps the type honest
             raise AssertionError("An active cached flux state must have a latent variable.")
@@ -235,28 +215,27 @@ def build_co2_cached_sigma_model(
             contribution,
             output_name="modelled_concentration",
         )
-        add_coords({SITE_SIGMA_DIM: np.asarray(labels, dtype=object)})
+        add_coords({OU_SITE_DIM: site_coord})
         add_model_data(observations.transpose(output_dim), "Y")
         add_model_data(observation_error.transpose(output_dim), "error")
-        sigma_index = add_model_data(site_index, SITE_SIGMA_INDEX)
+        add_model_data(site_index)
         add_model_data(
             xr.DataArray(
                 covariance.tau_hours_by_site,
-                dims=(SITE_SIGMA_DIM,),
-                coords={SITE_SIGMA_DIM: np.asarray(labels, dtype=object)},
+                dims=(OU_SITE_DIM,),
+                coords={OU_SITE_DIM: site_coord},
                 name="ou_tau_hours",
             )
         )
-        sigma = pm.HalfNormal(
-            SITE_SIGMA,
-            sigma=float(sigma_prior_scale),
-            initval=pm.floatX(initial_sigma),
-            dims=SITE_SIGMA_DIM,
+        amplitude = pm.HalfNormal(
+            OU_SITE_AMPLITUDE,
+            sigma=float(site_amplitude_prior_scale),
+            initval=pm.floatX(initial_amplitudes),
+            dims=OU_SITE_DIM,
         )
-        pm.Deterministic(SIGMA_OBSERVATION, sigma[sigma_index], dims=output_dim)
         pm.Deterministic(
             "epsilon",
-            pt.sqrt(covariance.marginal_variance(sigma)),
+            pt.sqrt(covariance.marginal_variance(amplitude)),
             dims=output_dim,
         )
         active_state_name = (
@@ -278,16 +257,20 @@ def build_co2_cached_sigma_model(
         model=model,
         target=target,
         shared_cache=shared_cache,
-        covariance=covariance,
-        sigma=cast(TensorVariable, model[SITE_SIGMA]),
+        initial_cache=initial_cache,
+        amplitude=cast(TensorVariable, model[OU_SITE_AMPLITUDE]),
         state=state_result.latent,
         state_value_name=state_value_name,
-        state_location=state_location,
-        state_cholesky=state_cholesky,
+        active_state_prior=active_state_prior,
         state_output_name=active_state_name,
-        sigma_prior_scale=float(sigma_prior_scale),
-        initial_site_sigma=initial_sigma.copy(),
+        site_amplitude_prior_scale=float(site_amplitude_prior_scale),
     )
 
 
-__all__ = ["Co2CachedSigmaModel", "build_co2_cached_sigma_model"]
+__all__ = [
+    "OU_SITE_AMPLITUDE",
+    "OU_SITE_DIM",
+    "OU_SITE_INDEX",
+    "Co2CachedSigmaModel",
+    "build_co2_cached_sigma_model",
+]

@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import numpy as np
 import pymc as pm
+import pytensor
+import pytensor.tensor as pt
+import pytest
 
 from openghg_inversions.models.cached_sigma import FixedOuCachedSigmaTarget
 from openghg_inversions.models.fixed_ou import prepare_fixed_ou_low_rank
@@ -39,23 +42,32 @@ def _target() -> FixedOuCachedSigmaTarget:
     )
 
 
-def _step_context(*, constructor_seed: int = 101):
+def _step_context(
+    *, constructor_seed: int = 101, forbid_constructor_refresh: bool = False
+):
     target = _target()
-    shared = PytensorMarginalQuadraticCache(target.refresh(np.array([0.4, 0.4])))
     with pm.Model() as model:
         state = pm.Normal("state", shape=1)
-        sigma = pm.HalfNormal("sigma_site", sigma=0.75, shape=2)
-        pm.Potential("cached_likelihood", shared.log_likelihood(state))
+        sigma = pm.HalfNormal(
+            "sigma_site", sigma=0.75, shape=2, initval=pm.floatX([0.4, 0.4])
+        )
+        initial_cache = target.refresh(np.array([0.4, 0.4]))
+        shared = PytensorMarginalQuadraticCache(initial_cache)
+        pm.Potential("cached_likelihood", shared.log_likelihood(pt.exp(state)))
+    if forbid_constructor_refresh:
+        target.refresh = lambda _: (_ for _ in ()).throw(
+            AssertionError("Step construction must reuse the installed initial cache.")
+        )
     point = model.initial_point()
     point["state"] = np.array([0.3])
     step = PymcCachedSigmaNutsStep(
         [sigma],
         target=target,
         shared_cache=shared,
+        initial_cache=initial_cache,
         state_value_name="state",
         state_location=np.zeros(1),
         state_cholesky=np.eye(1),
-        state_link="identity",
         prior_scale=0.75,
         initial_point=point,
         model=model,
@@ -63,7 +75,7 @@ def _step_context(*, constructor_seed: int = 101):
         early_max_treedepth=3,
         rng=np.random.default_rng(constructor_seed),
     )
-    return target, shared, model, state, sigma, point, step
+    return target, shared, initial_cache, model, state, sigma, point, step
 
 
 def _nuts_stats() -> list[dict[str, object]]:
@@ -83,10 +95,18 @@ def _nuts_stats() -> list[dict[str, object]]:
     ]
 
 
+def test_sigma_step_reuses_passed_initial_cache() -> None:
+    _, _, initial_cache, _, _, _, _, step = _step_context(
+        forbid_constructor_refresh=True
+    )
+
+    assert step.current_cache is initial_cache
+
+
 def test_sigma_step_refreshes_once_only_when_the_accepted_value_changes(
     monkeypatch,
 ) -> None:
-    target, shared, _, _, _, point, step = _step_context()
+    target, shared, _, _, _, _, point, step = _step_context()
     proposed = point["sigma_site_log__"] + np.array([0.05, -0.03])
     original_refresh = target.refresh
     refreshes = 0
@@ -106,7 +126,6 @@ def test_sigma_step_refreshes_once_only_when_the_accepted_value_changes(
     updated, stats = step.step(point)
 
     assert refreshes == 1
-    assert stats[0]["accepted_sigma_block"] == 1
     assert stats[0]["cache_refreshes"] == 1
     expected_point = np.asarray(
         proposed,
@@ -123,8 +142,28 @@ def test_sigma_step_refreshes_once_only_when_the_accepted_value_changes(
     )
     _, unchanged_stats = step.step(updated)
     assert refreshes == 1
-    assert unchanged_stats[0]["accepted_sigma_block"] == 0
     assert unchanged_stats[0]["cache_refreshes"] == 0
+
+
+@pytest.mark.parametrize("dtype", ["float32", "float64"])
+def test_shared_quadratic_uses_active_pytensor_dtype(dtype: str) -> None:
+    target = _target()
+    cache = target.refresh(np.array([0.4, 0.4]))
+
+    with pytensor.config.change_flags(floatX=dtype):
+        shared = PytensorMarginalQuadraticCache(cache)
+        state = pt.vector("state", dtype=dtype)
+        evaluate = pytensor.function([state], shared.log_likelihood(state))
+        value = evaluate(np.array([0.3], dtype=dtype))
+
+    assert shared.constant.dtype == dtype
+    assert shared.linear.dtype == dtype
+    assert shared.precision.dtype == dtype
+    assert np.asarray(value).dtype == np.dtype(dtype)
+    assert float(value) == pytest.approx(
+        cache.log_likelihood(np.array([0.3])),
+        rel=2e-6 if dtype == "float32" else 1e-12,
+    )
 
 
 def test_set_rng_reseeds_the_delegated_nuts_and_repeats_one_transition() -> None:
@@ -163,17 +202,17 @@ def test_sigma_sampler_mutable_state_is_chain_local() -> None:
 def test_compound_orders_sigma_before_state_without_state_refactorization(
     monkeypatch,
 ) -> None:
-    target, shared, model, state, sigma, point, _ = _step_context()
+    target, shared, _, model, state, sigma, point, step = _step_context()
     compound = make_cached_sigma_compound_step(
         model=model,
         sigma=sigma,
         state=state,
         target=target,
         shared_cache=shared,
+        initial_cache=step.current_cache,
         state_value_name="state",
         state_location=np.zeros(1),
         state_cholesky=np.eye(1),
-        state_link="identity",
         prior_scale=0.75,
         initial_point=point,
         rng=np.random.default_rng(703),
@@ -204,21 +243,24 @@ def test_compound_orders_sigma_before_state_without_state_refactorization(
 
 def _sample_two_spawn_chains(seed: int):
     target = _target()
-    shared = PytensorMarginalQuadraticCache(target.refresh(np.array([0.4, 0.4])))
     with pm.Model() as model:
         state = pm.Normal("state", shape=1)
-        sigma = pm.HalfNormal("sigma_site", sigma=0.75, shape=2)
-        pm.Potential("cached_likelihood", shared.log_likelihood(state))
+        sigma = pm.HalfNormal(
+            "sigma_site", sigma=0.75, shape=2, initval=pm.floatX([0.4, 0.4])
+        )
+        initial_cache = target.refresh(np.array([0.4, 0.4]))
+        shared = PytensorMarginalQuadraticCache(initial_cache)
+        pm.Potential("cached_likelihood", shared.log_likelihood(pt.exp(state)))
         step = make_cached_sigma_compound_step(
             model=model,
             sigma=sigma,
             state=state,
             target=target,
             shared_cache=shared,
+            initial_cache=initial_cache,
             state_value_name="state",
             state_location=np.zeros(1),
             state_cholesky=np.eye(1),
-            state_link="identity",
             prior_scale=0.75,
             rng=np.random.default_rng(700),
         )
@@ -251,6 +293,4 @@ def test_two_spawn_chains_are_reproducible_and_emit_cached_diagnostics() -> None
     assert first.posterior.sizes == {"chain": 2, "draw": 4, "state_dim_0": 1, "sigma_site_dim_0": 2}
     assert "sigma_nuts_tree_steps" in first.sample_stats
     assert "cache_refreshes" in first.sample_stats
-    assert "quadratic_factor_cholesky_seconds" in first.sample_stats
-    assert "sigma_factor_cholesky_seconds" in first.sample_stats
     assert np.isfinite(first.posterior["sigma_site"]).all()

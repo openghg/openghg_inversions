@@ -53,12 +53,19 @@ def _target() -> tuple[FixedOuCachedSigmaTarget, np.ndarray, np.ndarray]:
 
 
 def test_cached_quadratic_value_and_gradient_match_dense_oracle() -> None:
-    target, _, _ = _target()
+    target, factor, diagonal = _target()
     sigma = np.array([0.23, 0.41])
     state = np.array([0.3, -0.7])
 
     cache = target.refresh(sigma)
-    covariance = target.prepared.covariance_dense(sigma)
+    covariance = factor @ factor.T + np.diag(diagonal)
+    for block in target.prepared.site_blocks:
+        indices = block.observation_indices
+        covariance[np.ix_(indices, indices)] += (
+            np.square(sigma[block.site])
+            * block.correlation_cholesky
+            @ block.correlation_cholesky.T
+        )
     mean = target.fixed_contribution + target.design @ state
     expected_value = multivariate_normal.logpdf(
         target.observations,
@@ -91,7 +98,6 @@ def test_refresh_factorizes_once_and_state_evaluations_do_not_refactorize(
 
     cache = target.refresh(np.array([0.23, 0.41]))
     assert calls == 1
-    assert cache.factor_cholesky_operations == 1
 
     for state in (np.zeros(2), np.ones(2), np.array([-0.5, 0.25])):
         assert np.isfinite(cache.log_likelihood(state))
@@ -150,3 +156,27 @@ def test_target_copies_borrowed_inputs() -> None:
     assert np.any(replacement.observations != 0.0)
     assert np.any(replacement.fixed_contribution != 0.0)
     assert np.any(replacement.design != 0.0)
+
+
+def test_cached_target_avoids_cancellation_for_dominant_low_rank_factor() -> None:
+    factor_scale = 1.0e10
+    prepared = prepare_fixed_ou_low_rank(
+        np.full((2, 1), factor_scale),
+        np.ones(2),
+        np.array([0.0, 0.0]),
+        np.array([0, 1]),
+        1.0,
+        site_labels=("MHD", "TAC"),
+    )
+    observations = np.full(2, factor_scale)
+    target = FixedOuCachedSigmaTarget(
+        prepared=prepared,
+        observations=observations,
+        fixed_contribution=np.zeros(2),
+        design=np.zeros((2, 1)),
+    )
+
+    cache = target.refresh(np.ones(2))
+    expected = prepared.evaluate(observations, np.ones(2)).log_likelihood
+
+    assert cache.log_likelihood([0.0]) == pytest.approx(expected, rel=1.0e-12)

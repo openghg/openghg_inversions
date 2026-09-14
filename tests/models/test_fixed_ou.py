@@ -1,3 +1,5 @@
+import math
+
 import numpy as np
 import pymc as pm
 import pytensor
@@ -435,3 +437,27 @@ def test_small_tau_reproduces_iid_site_amplitudes() -> None:
     actual = iid.evaluate(np.zeros(iid.n_observation), amplitude).log_likelihood
     expected_logp = multivariate_normal.logpdf(np.zeros(iid.n_observation), cov=expected)
     assert actual == pytest.approx(expected_logp, rel=1.0e-12)
+
+
+def test_evaluate_avoids_cancellation_for_dominant_low_rank_factor() -> None:
+    factor_scale = 1.0e10
+    prepared = prepare_fixed_ou_low_rank(
+        np.full((2, 1), factor_scale),
+        np.ones(2),
+        np.array([0.0, 0.0]),
+        np.array([0, 1]),
+        1.0,
+        site_labels=("MHD", "TAC"),
+    )
+    residual = np.full(2, factor_scale)
+
+    actual = prepared.evaluate(residual, np.ones(2)).log_likelihood
+    large_eigenvalue = 2.0 * factor_scale**2 + 2.0
+    expected = -0.5 * (
+        2.0 * math.log(2.0 * math.pi)
+        + math.log(2.0)
+        + math.log(large_eigenvalue)
+        + 2.0 * factor_scale**2 / large_eigenvalue
+    )
+
+    assert actual == pytest.approx(expected, rel=1.0e-12)

@@ -519,6 +519,7 @@ def add_correlated_lognormal_state_with_activity(
     /,
     *,
     var_name: str,
+    active_prior: CorrelatedLognormalPrior | None = None,
 ) -> StateVectorResult:
     """Construct a correlated LogNormal state with exact active/fixed values.
 
@@ -532,30 +533,33 @@ def add_correlated_lognormal_state_with_activity(
         prior: Validated labelled arithmetic-moment LogNormal prior for the
             full state.
         var_name: Name of the full user-facing state vector.
+        active_prior: Optional active-state prior returned by
+            :func:`prepare_active_correlated_lognormal_prior`. Supplying it
+            lets a matched graph and sampler share one preparation result.
 
     Returns:
         Effective whitened latent, full state vector, and supplied activity.
     """
     state_dim = activity.state_dim
-    if prior.state_dim != state_dim:
+    if active_prior is None:
+        active_prior = prepare_active_correlated_lognormal_prior(
+            activity,
+            prior,
+            var_name=var_name,
+        )
+    # The preparation seam performs the full-prior alignment check before any
+    # model mutation. A supplied active prior is a package-created intermediate.
+    elif prior.state_dim != state_dim:
         raise ValueError(
             "Correlated LogNormal prior and state activity must use the same "
             f"state dimension; found {prior.state_dim!r} and {state_dim!r}."
         )
-    mean = prior.mean
-    activity_index = activity.zero_sensitivity.coords[state_dim].to_index()
-    if not mean.coords[state_dim].to_index().equals(activity_index):
-        raise ValueError(
-            "Correlated LogNormal prior labels must exactly match state-activity labels in the same order."
-        )
-    covariance = prior.arithmetic_covariance
-
-    # All contract checks above deliberately precede model mutation.
     add_coords(activity.zero_sensitivity.coords, model_dims=(state_dim,))
 
     if activity.n_active == activity.n_state:
+        assert active_prior is not None
         result = add_correlated_lognormal_state(
-            prior,
+            active_prior,
             var_name=var_name,
         )
         return StateVectorResult(
@@ -576,27 +580,9 @@ def add_correlated_lognormal_state_with_activity(
     latent: TensorVariable | None = None
     active_state: TensorVariable | None = None
     if activity.n_active:
-        active_dim = f"{state_dim}_{var_name}_active"
-        active_index = mean.coords[state_dim].to_index()[active_indices]
-        if isinstance(active_index, pd.MultiIndex):
-            active_index = active_index.set_names(
-                [f"{name}_{var_name}_active" for name in active_index.names]
-            )
-            active_coords = xr.Coordinates.from_pandas_multiindex(active_index, active_dim)
-        else:
-            active_coords = {active_dim: active_index.to_numpy()}
-        active_mean = xr.DataArray(
-            mean.isel({state_dim: active_indices}).values,
-            dims=(active_dim,),
-            coords=active_coords,
-            name=mean.name,
-            attrs=mean.attrs,
-        )
-        active_covariance = covariance.isel(
-            {state_dim: active_indices, prior.covariance_dim: active_indices}
-        ).values
+        assert active_prior is not None
         result = add_correlated_lognormal_state(
-            CorrelatedLognormalPrior(active_mean, active_covariance),
+            active_prior,
             var_name=f"{var_name}_active",
         )
         latent = result.latent
@@ -607,6 +593,54 @@ def add_correlated_lognormal_state_with_activity(
         full_state = pt.set_subtensor(full_state[active_indices], active_state)
     state = pm.Deterministic(var_name, full_state, dims=state_dim)
     return StateVectorResult(latent=latent, state=state, activity=activity)
+
+
+def prepare_active_correlated_lognormal_prior(
+    activity: ResolvedStateActivity,
+    prior: CorrelatedLognormalPrior,
+    /,
+    *,
+    var_name: str,
+) -> CorrelatedLognormalPrior | None:
+    """Align and subset one correlated prior for active-state construction."""
+    state_dim = activity.state_dim
+    if prior.state_dim != state_dim:
+        raise ValueError(
+            "Correlated LogNormal prior and state activity must use the same "
+            f"state dimension; found {prior.state_dim!r} and {state_dim!r}."
+        )
+    mean = prior.mean
+    activity_index = activity.zero_sensitivity.coords[state_dim].to_index()
+    if not mean.coords[state_dim].to_index().equals(activity_index):
+        raise ValueError(
+            "Correlated LogNormal prior labels must exactly match state-activity labels in the same order."
+        )
+    if activity.n_active == 0:
+        return None
+    if activity.n_active == activity.n_state:
+        return prior
+
+    active_indices = activity.active_indices
+    active_dim = f"{state_dim}_{var_name}_active"
+    active_index = mean.coords[state_dim].to_index()[active_indices]
+    if isinstance(active_index, pd.MultiIndex):
+        active_index = active_index.set_names(
+            [f"{name}_{var_name}_active" for name in active_index.names]
+        )
+        active_coords = xr.Coordinates.from_pandas_multiindex(active_index, active_dim)
+    else:
+        active_coords = {active_dim: active_index.to_numpy()}
+    active_mean = xr.DataArray(
+        mean.isel({state_dim: active_indices}).values,
+        dims=(active_dim,),
+        coords=active_coords,
+        name=mean.name,
+        attrs=mean.attrs,
+    )
+    active_covariance = prior.arithmetic_covariance.isel(
+        {state_dim: active_indices, prior.covariance_dim: active_indices}
+    ).values
+    return CorrelatedLognormalPrior(active_mean, active_covariance)
 
 
 def add_sigma_component(

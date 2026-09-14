@@ -9,9 +9,6 @@ covariance.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from dataclasses import dataclass
-import time
 from typing import Any, Literal, cast
 
 import numpy as np
@@ -37,32 +34,22 @@ from openghg_inversions.models.cached_sigma import (
 
 FloatArray = NDArray[np.float64]
 
-CACHED_SIGMA_SAMPLER_METADATA: Mapping[str, Any] = {
-    "sampler": "accepted_sigma_cached_compound",
-    "step_order": ("sigma_site_nuts", "state_nuts"),
-    "sigma_step": "stock_pymc_nuts_exact_conditional",
-    "state_step": "stock_pymc_nuts_cached_quadratic",
-    "verification_games_source": (
-        "src/verification_games/rhime_calibration/cached_sigma_step.py"
-        "@51aaeb101a5d8daf57b1dcf43ea1716c850fc21c"
-    ),
-}
-
 
 class PytensorMarginalQuadraticCache:
-    """Mutable float32 coefficients read by the state-only PyTensor graph."""
+    """Mutable coefficients read by the state-only PyTensor graph."""
 
     def __init__(self, initial: MarginalQuadraticCache) -> None:
+        dtype = pytensor.config.floatX
         self.constant = pytensor.shared(
-            np.asarray(initial.constant, dtype=np.float32),
+            np.asarray(initial.constant, dtype=dtype),
             name="cached_marginal_constant",
         )
         self.linear = pytensor.shared(
-            np.asarray(initial.linear, dtype=np.float32),
+            np.asarray(initial.linear, dtype=dtype),
             name="cached_marginal_linear",
         )
         self.precision = pytensor.shared(
-            np.asarray(initial.precision, dtype=np.float32),
+            np.asarray(initial.precision, dtype=dtype),
             name="cached_marginal_precision",
         )
 
@@ -76,37 +63,15 @@ class PytensorMarginalQuadraticCache:
         return (
             self.constant
             + pt.dot(self.linear, state)
-            - np.float32(0.5) * pt.dot(state, pt.dot(self.precision, state))
+            - np.asarray(0.5, dtype=self.constant.dtype)
+            * pt.dot(state, pt.dot(self.precision, state))
         )
 
     def update(self, cache: MarginalQuadraticCache) -> None:
         """Install one complete accepted-sigma cache between compound steps."""
-        if cache.n_state != self.n_state:
-            raise ValueError(
-                f"Cache has {cache.n_state} states, expected {self.n_state}."
-            )
-        self.constant.set_value(np.asarray(cache.constant, dtype=np.float32))
-        self.linear.set_value(np.asarray(cache.linear, dtype=np.float32))
-        self.precision.set_value(np.asarray(cache.precision, dtype=np.float32))
-
-
-@dataclass(frozen=True)
-class SigmaLikelihoodDiagnostics:
-    """Exact conditional evaluations accumulated during one NUTS transition."""
-
-    likelihood_evaluations: int
-    gradient_evaluations: int
-    factor_cholesky_operations: int
-    factor_cholesky_seconds: float
-    evaluation_seconds: float
-
-
-def _rejection_gradient_sigma(sigma: FloatArray) -> FloatArray:
-    """Return a transform-safe physical gradient for an invalid proposal."""
-    gradient = np.full(sigma.shape, -1.0, dtype=np.float64)
-    finite_large = np.isfinite(sigma) & (sigma > 1.0)
-    gradient[finite_large] = -np.reciprocal(sigma[finite_large])
-    return gradient
+        self.constant.set_value(np.asarray(cache.constant, dtype=self.constant.dtype))
+        self.linear.set_value(np.asarray(cache.linear, dtype=self.linear.dtype))
+        self.precision.set_value(np.asarray(cache.precision, dtype=self.precision.dtype))
 
 
 class _PytensorSigmaLikelihoodOp(Op):
@@ -118,7 +83,6 @@ class _PytensorSigmaLikelihoodOp(Op):
             np.zeros(target.n_obs, dtype=np.float64),
             name="sigma_conditional_residual",
         )
-        self.reset_diagnostics()
 
     def make_node(self, sigma: Any, residual: Any) -> Apply:
         sigma_variable = pt.as_tensor_variable(sigma)
@@ -140,41 +104,17 @@ class _PytensorSigmaLikelihoodOp(Op):
         output_storage: list[list[NDArray[Any] | None]],
     ) -> None:
         del node
-        started = time.perf_counter()
         sigma = np.asarray(inputs[0], dtype=np.float64)
         residual = np.asarray(inputs[1], dtype=np.float64)
-        self.likelihood_evaluations += 1
-        self.gradient_evaluations += 1
-        if sigma.shape != (self.target.n_group,):
-            raise ValueError(
-                f"sigma has shape {sigma.shape}, expected {(self.target.n_group,)}."
-            )
-        with np.errstate(over="ignore", invalid="ignore"):
-            sigma_squared = np.square(sigma)
-        invalid = bool(
-            not np.isfinite(sigma).all()
-            or np.any(sigma < 0.0)
-            or not np.isfinite(sigma_squared).all()
+        evaluation = self.target.evaluate_from_residual(residual, sigma)
+        output_storage[0][0] = np.asarray(
+            evaluation.log_likelihood,
+            dtype=np.float64,
         )
-        if invalid:
-            output_storage[0][0] = np.asarray(-np.inf, dtype=np.float64)
-            output_storage[1][0] = _rejection_gradient_sigma(sigma)
-        else:
-            evaluation = self.target.evaluate_from_residual(residual, sigma)
-            output_storage[0][0] = np.asarray(
-                evaluation.log_likelihood,
-                dtype=np.float64,
-            )
-            output_storage[1][0] = np.asarray(
-                evaluation.gradient_site_amplitude,
-                dtype=np.float64,
-            )
-            self.factor_cholesky_operations += int(
-                self.target.prepared.rank > 0
-                and np.isfinite(evaluation.log_likelihood)
-            )
-            self.factor_cholesky_seconds += evaluation.factor_cholesky_seconds
-        self.evaluation_seconds += time.perf_counter() - started
+        output_storage[1][0] = np.asarray(
+            evaluation.gradient_site_amplitude,
+            dtype=np.float64,
+        )
 
     def L_op(
         self,
@@ -203,33 +143,7 @@ class _PytensorSigmaLikelihoodOp(Op):
 
     def install_residual(self, residual: ArrayLike) -> None:
         """Set the exact residual used for the next conditional trajectory."""
-        value = np.asarray(residual, dtype=np.float64)
-        if value.shape != (self.target.n_obs,):
-            raise ValueError(
-                f"residual has shape {value.shape}, expected {(self.target.n_obs,)}."
-            )
-        if not np.isfinite(value).all():
-            raise ValueError("residual must contain only finite values.")
-        self.residual.set_value(value.copy())
-
-    def reset_diagnostics(self) -> None:
-        """Reset counters immediately before one delegated NUTS transition."""
-        self.likelihood_evaluations = 0
-        self.gradient_evaluations = 0
-        self.factor_cholesky_operations = 0
-        self.factor_cholesky_seconds = 0.0
-        self.evaluation_seconds = 0.0
-
-    @property
-    def diagnostics(self) -> SigmaLikelihoodDiagnostics:
-        """Return an immutable snapshot of current counters."""
-        return SigmaLikelihoodDiagnostics(
-            likelihood_evaluations=self.likelihood_evaluations,
-            gradient_evaluations=self.gradient_evaluations,
-            factor_cholesky_operations=self.factor_cholesky_operations,
-            factor_cholesky_seconds=self.factor_cholesky_seconds,
-            evaluation_seconds=self.evaluation_seconds,
-        )
+        self.residual.set_value(np.asarray(residual, dtype=np.float64))
 
 
 @dataclass_state
@@ -255,18 +169,9 @@ class PymcCachedSigmaNutsStep(BlockedStep):
         "sigma_nuts_max_energy_error": (float, []),
         "sigma_nuts_reached_max_treedepth": (bool, []),
         "sigma_nuts_index_in_trajectory": (int, []),
-        "sigma_likelihood_evaluations": (int, []),
-        "sigma_gradient_evaluations": (int, []),
-        "factor_cholesky_operations": (int, []),
-        "accepted_sigma_block": (int, []),
         "sigma_accept_probability": (float, []),
         "sigma_proposal_scale": (float, []),
         "cache_refreshes": (int, []),
-        "sigma_block_seconds": (float, []),
-        "sigma_likelihood_evaluation_seconds": (float, []),
-        "quadratic_refresh_seconds": (float, []),
-        "quadratic_factor_cholesky_seconds": (float, []),
-        "sigma_factor_cholesky_seconds": (float, []),
     }
     _state_class = _CachedSigmaNutsState
 
@@ -276,16 +181,15 @@ class PymcCachedSigmaNutsStep(BlockedStep):
         *,
         target: FixedOuCachedSigmaTarget,
         shared_cache: PytensorMarginalQuadraticCache,
+        initial_cache: MarginalQuadraticCache,
         state_value_name: str,
         state_location: ArrayLike,
         state_cholesky: ArrayLike,
         prior_scale: ArrayLike | float,
-        state_link: Literal["identity", "exp"] = "exp",
         target_accept: float = 0.8,
         max_treedepth: int = 10,
         early_max_treedepth: int = 8,
         step_scale: float = 0.25,
-        compile_kwargs: dict[str, Any] | None = None,
         initial_point: PointType | None = None,
         model=None,
         blocked: bool = True,
@@ -302,8 +206,6 @@ class PymcCachedSigmaNutsStep(BlockedStep):
             raise ValueError("State and transformed-sigma point names must be non-empty.")
         if shared_cache.n_state != target.n_state:
             raise ValueError("Shared cache and marginalized target dimensions differ.")
-        if state_link not in {"identity", "exp"}:
-            raise ValueError("state_link must be 'identity' or 'exp'.")
         if not np.isfinite(target_accept) or not 0.0 < target_accept < 1.0:
             raise ValueError("target_accept must lie strictly between zero and one.")
         if max_treedepth <= 0:
@@ -355,10 +257,13 @@ class PymcCachedSigmaNutsStep(BlockedStep):
         self.sigma_value_name = sigma_value_name
         self.state_location = location.copy()
         self.state_cholesky = cholesky.copy()
-        self.state_link = state_link
         self.tune = True
-        self.current_cache = target.refresh(np.exp(initial_eta.astype(np.float64)))
-        shared_cache.update(self.current_cache)
+        initial_sigma = np.exp(initial_eta.astype(np.float64))
+        tolerance = 8.0 * np.finfo(initial_eta.dtype).eps
+        if not np.allclose(initial_cache.sigma, initial_sigma, rtol=tolerance, atol=0.0):
+            raise ValueError("Initial cache and transformed sigma point do not match.")
+        self.current_cache = initial_cache
+        self.current_eta = initial_eta.astype(np.float64)
 
         point_dtype = initial_eta.dtype
         outer_sigma_rv = outer_model.values_to_rvs[value_vars[0]]
@@ -398,50 +303,26 @@ class PymcCachedSigmaNutsStep(BlockedStep):
             dtype=point_dtype.name,
             rng=potential_rng,
         )
-        nuts_kwargs: dict[str, Any] = {
-            "vars": [conditional_sigma],
-            "target_accept": target_accept,
-            "max_treedepth": int(max_treedepth),
-            "early_max_treedepth": int(early_max_treedepth),
-            "step_scale": float(step_scale),
-            "model": conditional_model,
-            "initial_point": conditional_initial,
-            "rng": nuts_rng,
-            "dtype": point_dtype.name,
-            "potential": potential,
-        }
-        if compile_kwargs is not None:
-            nuts_kwargs["compile_kwargs"] = compile_kwargs
         self.conditional_model = conditional_model
         self.conditional_sigma = conditional_sigma
-        self.nuts_step = pm.NUTS(**nuts_kwargs)
+        self.nuts_step = pm.NUTS(
+            vars=[conditional_sigma],
+            target_accept=target_accept,
+            max_treedepth=int(max_treedepth),
+            early_max_treedepth=int(early_max_treedepth),
+            step_scale=float(step_scale),
+            model=conditional_model,
+            initial_point=conditional_initial,
+            rng=nuts_rng,
+            dtype=point_dtype.name,
+            potential=potential,
+        )
 
     def _point_values(self, point: PointType) -> tuple[FloatArray, FloatArray]:
-        try:
-            state_white = np.asarray(point[self.state_value_name])
-            eta = np.asarray(point[self.sigma_value_name])
-        except KeyError as exc:
-            raise KeyError(
-                f"Compound point is missing required value {exc.args[0]!r}."
-            ) from exc
-        if state_white.shape != self.state_location.shape:
-            raise ValueError(
-                f"Whitened state has shape {state_white.shape}, "
-                f"expected {self.state_location.shape}."
-            )
-        if eta.shape != (self.target.n_group,):
-            raise ValueError(
-                f"Transformed sigma has shape {eta.shape}, "
-                f"expected {(self.target.n_group,)}."
-            )
+        state_white = np.asarray(point[self.state_value_name])
+        eta = np.asarray(point[self.sigma_value_name])
         linear_state = self.state_location + self.state_cholesky @ state_white
-        physical_state = (
-            np.exp(linear_state, dtype=linear_state.dtype)
-            if self.state_link == "exp"
-            else linear_state
-        )
-        if not np.isfinite(physical_state).all():
-            raise FloatingPointError("Physical state is non-finite.")
+        physical_state = np.exp(linear_state, dtype=linear_state.dtype)
         residual = self.target.observations - (
             self.target.fixed_contribution
             + self.target.design @ np.asarray(physical_state, dtype=np.float64)
@@ -449,26 +330,18 @@ class PymcCachedSigmaNutsStep(BlockedStep):
         return eta.astype(np.float64), residual
 
     def _ensure_cache_matches(self, eta: FloatArray) -> int:
-        sigma = np.exp(eta)
-        if np.array_equal(sigma, self.current_cache.sigma):
+        if np.array_equal(eta, self.current_eta):
             return 0
-        self.current_cache = self.target.refresh(sigma)
+        self.current_cache = self.target.refresh(np.exp(eta))
         self.shared_cache.update(self.current_cache)
+        self.current_eta = eta.copy()
         return 1
 
     def step(self, point: PointType) -> tuple[PointType, StatsType]:
         """Delegate the conditional trajectory and refresh only when changed."""
-        started = time.perf_counter()
         eta_initial, residual = self._point_values(point)
-        pre_refreshes = self._ensure_cache_matches(eta_initial)
-        pre_refresh_factorizations = (
-            self.current_cache.factor_cholesky_operations if pre_refreshes else 0
-        )
-        pre_refresh_cholesky_seconds = (
-            self.current_cache.factor_cholesky_seconds if pre_refreshes else 0.0
-        )
+        cache_refreshes = self._ensure_cache_matches(eta_initial)
         self.likelihood_op.install_residual(residual)
-        self.likelihood_op.reset_diagnostics()
         conditional_point = {
             self.sigma_value_name: np.asarray(point[self.sigma_value_name]).copy()
         }
@@ -482,19 +355,12 @@ class PymcCachedSigmaNutsStep(BlockedStep):
         )
         eta_next = eta_next_point.astype(np.float64)
         changed = not np.array_equal(eta_next, eta_initial)
-        cache_refreshes = pre_refreshes
-        refresh_seconds = 0.0
-        refresh_factorizations = 0
-        refresh_cholesky_seconds = 0.0
         if changed:
             cache = self.target.refresh(np.exp(eta_next))
             self.current_cache = cache
             self.shared_cache.update(cache)
+            self.current_eta = eta_next.copy()
             cache_refreshes += 1
-            refresh_seconds = cache.refresh_seconds
-            refresh_factorizations = cache.factor_cholesky_operations
-            refresh_cholesky_seconds = cache.factor_cholesky_seconds
-        diagnostics = self.likelihood_op.diagnostics
         point_new = point.copy()
         point_new[self.sigma_value_name] = eta_next_point
         return point_new, [
@@ -512,24 +378,9 @@ class PymcCachedSigmaNutsStep(BlockedStep):
                 "sigma_nuts_index_in_trajectory": int(
                     nuts_stats["index_in_trajectory"]
                 ),
-                "sigma_likelihood_evaluations": diagnostics.likelihood_evaluations,
-                "sigma_gradient_evaluations": diagnostics.gradient_evaluations,
-                "factor_cholesky_operations": (
-                    pre_refresh_factorizations
-                    + diagnostics.factor_cholesky_operations
-                    + refresh_factorizations
-                ),
-                "accepted_sigma_block": int(changed),
                 "sigma_accept_probability": float(nuts_stats["mean_tree_accept"]),
                 "sigma_proposal_scale": float(nuts_stats["step_size"]),
                 "cache_refreshes": cache_refreshes,
-                "sigma_block_seconds": time.perf_counter() - started,
-                "sigma_likelihood_evaluation_seconds": diagnostics.evaluation_seconds,
-                "quadratic_refresh_seconds": refresh_seconds,
-                "quadratic_factor_cholesky_seconds": (
-                    pre_refresh_cholesky_seconds + refresh_cholesky_seconds
-                ),
-                "sigma_factor_cholesky_seconds": diagnostics.factor_cholesky_seconds,
             }
         ]
 
@@ -561,11 +412,11 @@ def make_cached_sigma_compound_step(  # noqa: PLR0913
     state: Any,
     target: FixedOuCachedSigmaTarget,
     shared_cache: PytensorMarginalQuadraticCache,
+    initial_cache: MarginalQuadraticCache,
     state_value_name: str,
     state_location: ArrayLike,
     state_cholesky: ArrayLike,
     prior_scale: ArrayLike | float,
-    state_link: Literal["identity", "exp"] = "exp",
     initial_point: PointType | None = None,
     sigma_target_accept: float = 0.8,
     state_target_accept: float = 0.9,
@@ -578,11 +429,11 @@ def make_cached_sigma_compound_step(  # noqa: PLR0913
         [sigma],
         target=target,
         shared_cache=shared_cache,
+        initial_cache=initial_cache,
         state_value_name=state_value_name,
         state_location=state_location,
         state_cholesky=state_cholesky,
         prior_scale=prior_scale,
-        state_link=state_link,
         target_accept=sigma_target_accept,
         initial_point=initial_point,
         model=model,
@@ -600,7 +451,6 @@ def make_cached_sigma_compound_step(  # noqa: PLR0913
 
 
 __all__ = [
-    "CACHED_SIGMA_SAMPLER_METADATA",
     "PymcCachedSigmaNutsStep",
     "PytensorMarginalQuadraticCache",
     "make_cached_sigma_compound_step",

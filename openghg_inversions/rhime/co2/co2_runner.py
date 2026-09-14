@@ -44,7 +44,6 @@ def _annotate_co2_trace(
     """Persist the CO2 scientific manifest on a sampled trace."""
     roles = dict(built.variable_roles)
     metadata = dict(built.metadata)
-    recipe = str(metadata.get("recipe", "co2"))
     trace.attrs["rhime_variable_roles"] = json.dumps(roles, sort_keys=True)
     trace.attrs["rhime_model_metadata"] = json.dumps(metadata, sort_keys=True)
 
@@ -68,11 +67,6 @@ def _annotate_co2_trace(
         "mu_bc": ["boundary_concentration"],
         "offset": ["offset_concentration"],
         "epsilon": ["model_error"],
-        "sigma_site": ["site_model_error"],
-        "sigma_site_index": ["observation_to_site_model_error_index"],
-        "sigma_observation": ["observation_model_error"],
-        "ou_tau_hours": ["fixed_ou_timescale"],
-        "Y": ["observation"],
         "y": ["concentration"],
     }
     for name, scientific_roles in concrete_roles.items():
@@ -88,16 +82,13 @@ def _annotate_co2_trace(
         "mu_bc",
         "offset",
         "epsilon",
-        "sigma_site",
-        "sigma_observation",
-        "Y",
         "y",
     }
     for group_name in trace.groups():
         group = getattr(trace, group_name)
         if not isinstance(group, xr.Dataset):
             continue
-        group.attrs["rhime_recipe"] = recipe
+        group.attrs["rhime_recipe"] = "co2"
         for name, variable in group.data_vars.items():
             scientific_roles = sorted(set(roles_by_variable.get(name, ())))
             if scientific_roles:
@@ -108,8 +99,6 @@ def _annotate_co2_trace(
                 "flux_scaling_active",
             }:
                 variable.attrs["units"] = "1"
-            elif name == "ou_tau_hours":
-                variable.attrs["units"] = "hours"
             elif concentration_units is not None and name in concentration_variables:
                 variable.attrs["units"] = concentration_units
     return trace
