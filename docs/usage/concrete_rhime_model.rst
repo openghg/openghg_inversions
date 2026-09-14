@@ -624,7 +624,7 @@ module and qualified name, so direct-Python likelihoods remain identifiable in
 persisted inversion outputs.
 
 Labelled per-site IID mismatch
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 The built-in
 :func:`openghg_inversions.models.site_sigma.add_site_sigma_gaussian_likelihood`
@@ -675,7 +675,7 @@ and JSON-compatible options in the saved output. The component reuses OpenGHG
 Inversions' aggregation-error and Gaussian likelihood machinery.
 
 Advanced whole-model compatibility boundary
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 A complete model builder is an advanced escape hatch available only through
 ``run_rhime_from_prepared_inputs``. It receives a
