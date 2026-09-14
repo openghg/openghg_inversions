@@ -357,19 +357,17 @@ def test_standard_recipe_accepts_site_sigma_through_public_likelihood_seam() -> 
     assert "sigma" not in model.named_vars
 
 
-@pytest.mark.parametrize(
-    "fixed_site_amplitudes",
-    [
-        {"A": 0.5},
-        {"A": 0.5, "B": 1.0, "C": 0.2},
-    ],
-)
-def test_fixed_mapping_must_match_observation_sites_exactly(
-    fixed_site_amplitudes: Mapping[str, float],
-) -> None:
-    """Reject fixed mappings with missing or additional site labels."""
-    with pytest.raises(ValueError, match="exactly|missing|extra"):
-        _build_model(fixed_site_amplitudes=fixed_site_amplitudes)
+def test_fixed_mapping_requires_each_observation_site() -> None:
+    """Reject a fixed mapping that cannot be selected onto observations."""
+    with pytest.raises(ValueError, match="every coordinate label"):
+        _build_model(fixed_site_amplitudes={"A": 0.5})
+
+
+def test_fixed_mapping_ignores_unused_sites_and_uses_label_order() -> None:
+    """Select observed sites by label, independent of mapping insertion order."""
+    model = _build_model(fixed_site_amplitudes={"C": 0.2, "B": 1.0, "A": 0.5})
+
+    np.testing.assert_allclose(model["sigma_site"].eval(), [0.5, 1.0])
 
 
 def test_fixed_mapping_rejects_boolean_amplitudes() -> None:

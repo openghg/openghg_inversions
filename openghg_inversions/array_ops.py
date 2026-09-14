@@ -56,6 +56,39 @@ from xarray.core.common import DataWithCoords, is_chunked_array  # type: ignore
 DataSetOrArray = TypeVar("DataSetOrArray", bound=DataWithCoords)
 
 
+def expand_mapping(
+    values: Mapping[Hashable, Any],
+    coordinate: xr.DataArray,
+    *,
+    name: str | None = None,
+) -> xr.DataArray:
+    """Select mapping values along a labelled coordinate.
+
+    This is the labelled equivalent of indexing an array of values with an
+    integer index vector. Extra mapping entries are harmless; xarray reports a
+    missing key when the target coordinate cannot be selected.
+
+    Args:
+        values: Values keyed by scientific coordinate label.
+        coordinate: Labels and output dimensions onto which to expand them.
+        name: Optional name for the returned array.
+
+    Returns:
+        Mapping values ordered and expanded like ``coordinate``.
+    """
+    lookup_dim = coordinate.name or "mapping_key"
+    lookup = xr.DataArray(
+        list(values.values()),
+        dims=(lookup_dim,),
+        coords={lookup_dim: list(values)},
+    )
+    try:
+        expanded = lookup.sel({lookup_dim: coordinate})
+    except KeyError as error:
+        raise ValueError("Mapping has no value for every coordinate label.") from error
+    return expanded.rename(name)
+
+
 def validate_covariance_coordinates(
     covariance: xr.DataArray,
     *,
