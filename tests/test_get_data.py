@@ -123,6 +123,76 @@ def test_missing_data_at_one_site(tac_ch4_data_args):
     assert "MHD" not in fp_all
 
 
+def test_get_footprint_to_match_preserves_original_observation_positions(
+    openghg_test_store, monkeypatch: pytest.MonkeyPatch
+):
+    """Unmatched inlets and empty footprints do not shift observation positions."""
+    obs = get_obs_surface(
+        site="tac",
+        species="ch4",
+        inlet="185m",
+        start_date="2019-01-01",
+        end_date="2019-01-02",
+        average="1h",
+        store="inversions_tests",
+    )
+    available_footprint = getters_module.get_footprint(
+        site="TAC",
+        species="inert",
+        domain="EUROPE",
+        model="NAME",
+        inlet="185m",
+        store="inversions_tests",
+        start_date="2019-01-01",
+        end_date="2019-01-02",
+    )
+    empty_footprint = copy.deepcopy(available_footprint)
+    empty_footprint.data = empty_footprint.data.isel(time=slice(0, 0))
+
+    monkeypatch.setattr(
+        getters_module,
+        "search_footprints",
+        lambda **kwargs: SimpleNamespace(results=pd.DataFrame({"inlet": ["10m", "185m"]})),
+    )
+
+    def get_test_footprint(**kwargs):
+        if kwargs["inlet"] == "10m":
+            return copy.deepcopy(empty_footprint)
+        return copy.deepcopy(available_footprint)
+
+    monkeypatch.setattr(getters_module, "get_footprint", get_test_footprint)
+
+    unmatched_count = 4
+    empty_footprint_count = 1
+    obs.data["inlet"] = xr.DataArray(
+        np.concatenate(
+            (
+                np.full(unmatched_count, 100.0),
+                np.full(empty_footprint_count, 10.0),
+                np.full(obs.data.sizes["time"] - unmatched_count - empty_footprint_count, 185.0),
+            )
+        ),
+        coords={"time": obs.data.time},
+        dims="time",
+    )
+
+    footprint = getters_module.get_footprint_to_match(
+        obs,
+        domain="EUROPE",
+        model="NAME",
+        fp_species="inert",
+        store="inversions_tests",
+        start_date="2019-01-01",
+        end_date="2019-01-02",
+        averaging_period="1h",
+    )
+
+    np.testing.assert_array_equal(
+        footprint.data.time.values,
+        obs.data.time.values[unmatched_count + empty_footprint_count :],
+    )
+
+
 def test_mixed_platforms_keep_surface_calibration_scale_per_site(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
