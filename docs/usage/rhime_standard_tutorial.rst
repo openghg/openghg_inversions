@@ -177,6 +177,8 @@ Inspect the ``site`` and ``time`` levels of ``nmeasure`` rather than relying on
 array position. The complete role and model-variable contract is described in
 :doc:`concrete_rhime_model`.
 
+.. _standard-rhime-diagnostics:
+
 Inspect diagnostics before interpreting any posterior quantity:
 
 .. jupyter-input::
@@ -289,9 +291,9 @@ result, and persistence route without downloading the companion data bundle:
 
 The test standardises maintained ``tests/data`` files into a temporary
 ``inversions_tests`` store and overrides store/output paths. It uses a
-deterministic one-draw sampler so it validates mechanics and labels, not NUTS
-quality or scientific conclusions. Running the packaged config normally uses
-the configured real PyMC sampler.
+deterministic one-draw sampler, so it validates mechanics and labels but not
+No-U-Turn Sampler (NUTS) quality or scientific conclusions. Running the packaged
+config normally uses the configured real PyMC sampler.
 
 Common failures
 ---------------

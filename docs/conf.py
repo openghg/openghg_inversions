@@ -81,5 +81,10 @@ exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 
 # html_theme = 'alabaster'
 html_theme = 'pydata_sphinx_theme'
+html_theme_options = {
+    # Keep family and concept landing pages as visible parents on leaf pages.
+    "navigation_depth": 4,
+    "show_nav_level": 1,
+}
 html_static_path = ['_static']
 html_css_files = ['custom.css']
