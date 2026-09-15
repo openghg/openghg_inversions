@@ -239,6 +239,10 @@ def assemble_rhime_inputs(
         inv_inputs,
         sites=merged.sites,
         platform=merged.platform,
+        observation_max_level=merged.site_options.max_level,
+        footprint_max_level=tuple(
+            owned_site_data[site].attrs.get("footprint_max_level") for site in merged.sites
+        ),
     )
     inversion_preparation._warn_for_nan_inputs(inv_inputs, use_bc=data_args["use_bc"])
     basis_source = basis_functions.basis_artifact_source or "generated"
