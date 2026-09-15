@@ -22,8 +22,9 @@ documented interfaces.
 Choose the smallest starting point that fits the change:
 
 * To change only the likelihood, pass a Python function to ``run_rhime``.
-* To run the matched fixed-tau OU CO₂ model with inferred site amplitudes, use
-  :ref:`the production cached-sigma CO₂ recipe <cached-sigma-co2-recipe>` in
+* To run the matched fixed-tau Ornstein--Uhlenbeck (OU) CO₂ model with inferred
+  site amplitudes, use :ref:`the package-supported cached-sigma CO₂ recipe
+  <co2-cached-sigma-recipe>` in
   the :doc:`CO₂ model family <co2_model_family>`.
 * To resume from externally supplied merged observations, footprints, and
   fluxes, pass a borrowed ``RhimeMergedData`` object as ``merged_data``.
@@ -31,6 +32,11 @@ Choose the smallest starting point that fits the change:
   runner and replace that stage.
 * To start from prepared data or replace the complete model, use
   ``run_rhime_from_prepared_inputs``.
+
+.. _cached-sigma-co2-recipe:
+
+The cached-sigma CO₂ recipe documentation moved to the
+:ref:`package-supported cached-sigma recipe <co2-cached-sigma-recipe>`.
 
 Resume from cached or external scientific data
 ----------------------------------------------
@@ -180,9 +186,10 @@ requires every generalized base-plus-OU mode variance to be strictly positive.
 An exact zero mode is rejected before applying the low-rank factor, even when
 that factor would make a materialized dense covariance positive definite; a
 positive OU amplitude can lift a zero base mode. The component currently
-requires PyMC's native NUTS backend. Sampled tau is a separate extension; the
+requires PyMC's native No-U-Turn Sampler (NUTS) backend. Sampled tau is a
+separate extension; the
 production cached sampler is the matched recipe described in
-:ref:`cached-sigma-co2-recipe`.
+:ref:`co2-cached-sigma-recipe`.
 
 Optional project CLI
 ~~~~~~~~~~~~~~~~~~~~

@@ -22,9 +22,9 @@ Current support
      - CO₂ and O₂ channels with shared and tracer-specific retained states and
        cross-channel covariance.
    * - Public entry point
-     - :func:`openghg_inversions.rhime.run_rhime_co2`; the cached-sigma
-       specialization is
-       :func:`openghg_inversions.rhime.co2.run_rhime_co2_cached_sigma`.
+     - :func:`openghg_inversions.rhime.run_rhime_co2`; see the
+       :ref:`package-supported cached-sigma specialization
+       <co2-cached-sigma-recipe>` for its prepared-input runner.
      - :func:`openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs`.
        A complete ``run_rhime_co2_o2`` entry point is not available.
    * - Acquisition and preparation

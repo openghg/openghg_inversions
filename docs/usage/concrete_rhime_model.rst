@@ -10,6 +10,16 @@ purposes:
 * show how the standard model can be reconstructed from public component
   helpers.
 
+.. _co2-coherent-reduction-model:
+
+The CO₂ coherent-reduction model documentation moved to the
+:ref:`CO₂-only model recipe <co2-only-model>`.
+
+.. _co2-o2-shared-state-model:
+
+The CO₂/O₂ shared-state model documentation moved to the
+:ref:`linked CO₂/O₂ model recipe <linked-co2-o2-model>`.
+
 The current builders
 --------------------
 

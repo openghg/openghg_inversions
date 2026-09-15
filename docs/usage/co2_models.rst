@@ -6,6 +6,8 @@ seams for the CO₂-only and linked CO₂/O₂ recipes. Start with the
 :doc:`CO₂ model family <co2_model_family>` support matrix before using these
 interfaces.
 
+.. _co2-only-model:
+
 CO2 coherent-reduction model
 ----------------------------
 
@@ -19,6 +21,13 @@ contribution. The core retained-state terms are
 
    x &\sim \operatorname{LogNormalMoments}(m_\alpha, C_\alpha), \\
    \mu_{CO_2} &= H_\alpha x.
+
+The covariance projection identities in this reduction are exact for a
+jointly Gaussian native state. The builder reuses the resulting arithmetic
+moments for a correlated LogNormal positive state, which is a moment-matched
+approximation rather than an exact marginalization of a LogNormal native
+state. The positivity constraint and the suitability of that approximation
+therefore require separate scientific justification.
 
 The affine term is part of coherent prior closure; it is not an atmospheric
 boundary condition. An explicit state-activity policy omits inactive elements
@@ -35,15 +44,23 @@ mismatch ``sigma``, its covariance is
    R = C_{agg} + \operatorname{diag}
        (s_y^2 + s_{fixed}^2 + \sigma^2).
 
-CO2 likelihoods do not apply ``min_error``; that input belongs to
-pollution-event-scaled mismatch. OpenGHG Inversions does not default
-``s_fixed`` to 1 ppm. The
+The lower-level builder adds inferred ``sigma`` only when the caller supplies a
+``sigma_alignment``. The public :func:`~openghg_inversions.rhime.run_rhime_co2`
+runner creates a site-specific alignment over one shared time period by
+default, and uses an independent HalfNormal prior with ``sigma=1.0`` unless
+``sigma_prior`` overrides it. Set ``no_model_error=True`` to disable this
+inferred term.
+
+The CO₂ runner does not consume ``min_error`` or apply a minimum-error floor.
+Other recipes and components own their own floor settings; for example, the
+standard additive-sigma likelihood can opt into ``min_error`` explicitly.
+OpenGHG Inversions does not default ``s_fixed`` to 1 ppm. The
 Verification Games fixed-only policy passes ``fixed_model_mismatch=1.0`` and
 ``no_model_error=True`` visibly. A runnable CO2 configuration and resolver are
 tracked in `OPE-79 <https://linear.app/openghg-inversions/issue/OPE-79>`_.
-For the matched fixed-tau OU likelihood with independently inferred site
-amplitudes, use :ref:`the production cached-sigma CO2 recipe
-<cached-sigma-co2-recipe>`.
+For the matched fixed-tau Ornstein--Uhlenbeck (OU) likelihood with independently
+inferred site amplitudes, use :ref:`the production cached-sigma CO2 recipe
+<co2-cached-sigma-recipe>`.
 
 CO2 grouped inner and outer states
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -69,9 +86,13 @@ cross-covariance; it remains part of that one prior and is not also added to
 the observation covariance.
 
 ``co2_flux_contribution`` contains the complete flux prediction. The model does
-not construct separate inner or outer terms. Outputs can reconstruct either
-view by selecting the corresponding ``basis_group`` entries from the stored
-sensitivity and ``flux_scaling`` state.
+not construct separate inner or outer terms. Exact-zero columns are pruned from
+the model's stored ``co2_sensitivity`` and use a retained-state dimension,
+while ``flux_scaling`` preserves the complete labelled state. To reconstruct a
+complete inner or outer view, select matching ``basis_group`` entries from the
+original prepared ``H`` and ``flux_scaling``. Do not multiply the full state by
+the pruned model-data variable unless an explicit retained-to-full mapping is
+also applied.
 
 With optional boundary conditions and offset present, the likelihood mean is
 
@@ -116,6 +137,8 @@ default additive-sigma likelihood; its scientific options belong in
 callable identity and its explicit options using the ordinary likelihood
 provenance attributes.
 
+.. _linked-co2-o2-model:
+
 CO2/O2 shared-state model
 -------------------------
 
@@ -143,7 +166,8 @@ Partition that state as
       \alpha_{O_2,ocean}
    \end{bmatrix},
 
-where :math:`\alpha_{shared}` contains the GPP, TER, and fossil-fuel states.
+where :math:`\alpha_{shared}` contains the gross primary production (GPP),
+terrestrial ecosystem respiration (TER), and fossil-fuel states.
 The joint affine model is
 
 .. math::
@@ -197,15 +221,27 @@ mean :math:`m`, covariance :math:`B`, joint native observation sensitivity
    b_{joint} &= Gm - H_{joint}\Pi m, \\
    A &= GBG^\mathsf{T} - H_{joint}C_\alpha H_{joint}^\mathsf{T}.
 
+These reduction identities are exact for a jointly Gaussian native state. As
+in the CO₂-only recipe, using the projected arithmetic moments for a correlated
+LogNormal positive retained state is a moment-matched approximation, not exact
+LogNormal marginalization. Positivity and the scientific suitability of that
+approximation must be justified independently.
+
 In particular, the off-diagonal :math:`A_{CO_2,O_2}` block is part of the
 coherent-reduction contract. See the :doc:`full derivation
 <coherent_reduction>` for its assumptions and limitations.
 
 Preparation accepts separate native channel arrays, then gathers their rows on
 one ``(species, channel_observation)`` observation index before the model
-applies the joint sensitivity once. Each row still retains its declared native
-units and numerical scale. Verification-game inputs may use ppm for both
-channels, while real atmospheric O2 observations may use per-meg delta(O2/N2).
+applies the joint sensitivity once. Before calling
+:func:`~openghg_inversions.rhime.co2.prepare_co2_o2_inputs`, callers must
+numerically convert observations, sensitivities, independent errors, and every
+covariance block into mutually consistent channel units. The ``co2_units`` and
+``o2_units`` arguments only attach labels; they do not convert or validate
+numerical scales, so incorrectly scaled values can pass preparation. Each row
+then retains its declared native units and numerical scale. Verification-game
+inputs may use ppm for both channels, while real atmospheric O2 observations
+may use per-meg delta(O2/N2).
 The prepared channel fields are named ``co2_sensitivity`` and
 ``o2_sensitivity``; their gathered model-data variable is
 ``co2_o2_sensitivity``.
@@ -256,14 +292,15 @@ ratio-free O2 sensitivity. The :doc:`Ramsden methane/ethane model
 <../experimental/ramsden2022>` follows that explicit pattern for its emission
 ratio. OPE-118 owns that future CO2/O2 coupling work.
 
-.. _cached-sigma-co2-recipe:
+.. _co2-cached-sigma-recipe:
 
 Run the production cached-sigma CO2 recipe
 ------------------------------------------
 
-``run_rhime_co2_cached_sigma`` is the first-class production route for the
-fixed-tau OU likelihood with independently inferred site amplitudes. It owns
-the matched PyMC graph and sampler: the sigma-only NUTS step runs first against
+``run_rhime_co2_cached_sigma`` is the package-supported cached-sigma runner at
+the prepared-input boundary for the fixed-tau OU likelihood with independently
+inferred site amplitudes. It owns the matched PyMC graph and sampler: the
+sigma-only No-U-Turn Sampler (NUTS) step runs first against
 the exact conditional likelihood, refreshes the accepted state quadratic, and
 stock state NUTS then reads that cache without refactorizing the observation
 covariance during its trajectory.
@@ -279,6 +316,9 @@ aggregation-error mode used below, the artifact must also contain
 instead contains ``aggregation_error_covariance`` and must be selected with
 ``aggregation_error_mode="dense"``. Optional ``state_is_active`` and
 ``state_fixed_value`` variables carry the prepared state-activity policy.
+The observation array must also have observation-aligned ``site`` and ``time``
+coordinates. If ``tau_hours`` is a mapping, its keys must exactly match every
+observed site label.
 
 :doc:`coherent_reduction` describes the linked retained prior, effective
 operator, affine contribution, and unresolved covariance, but no public
@@ -337,8 +377,8 @@ The exponential within-site covariance follows the stationary process of
 accepted-state cache are implemented and versioned by OpenGHG Inversions.
 
 Built-in aggregation covariance relies on the guarantees of its construction
-pipeline. A custom pipeline that assembles its own covariance may optionally
-call
-:func:`openghg_inversions.observation_error.validate_complete_observation_covariance`
-with its fixed independent variance. Model builders do not run this eager
-diagnostic automatically.
+pipeline. The runner selects and validates prepared aggregation-error arrays
+through :func:`openghg_inversions.observation_error.resolve_aggregation_error`.
+A custom pipeline that constructs an ``AggregationError`` directly owns the
+completeness, coherence, and numerical covariance guarantees of that object;
+there is no separate public complete-covariance validator.

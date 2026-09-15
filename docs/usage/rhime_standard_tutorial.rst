@@ -177,6 +177,8 @@ Inspect the ``site`` and ``time`` levels of ``nmeasure`` rather than relying on
 array position. The complete role and model-variable contract is described in
 :doc:`concrete_rhime_model`.
 
+.. _standard-rhime-diagnostics:
+
 Inspect diagnostics before interpreting any posterior quantity:
 
 .. jupyter-input::

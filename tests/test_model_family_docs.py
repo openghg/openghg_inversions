@@ -1,5 +1,7 @@
 """Verify the reader paths and support boundaries in the model-family docs."""
 
+import importlib
+import re
 from pathlib import Path
 
 
@@ -86,4 +88,34 @@ def test_advanced_co2_reader_path_exposes_current_boundaries() -> None:
     assert "remain future work" in family
     assert "CO2 coherent-reduction model" in recipes
     assert "CO2/O2 shared-state model" in recipes
-    assert ".. _cached-sigma-co2-recipe:" in recipes
+    assert ".. _co2-cached-sigma-recipe:" in recipes
+    assert "validate_complete_observation_covariance" not in recipes
+
+
+def test_moved_recipe_sections_preserve_legacy_fragment_targets() -> None:
+    """Moved CO₂ sections retain their deployed fragment identifiers."""
+    concrete = _source("concrete_rhime_model.rst")
+    customising = _source("customising_rhime.rst")
+    recipes = _source("co2_models.rst")
+
+    assert ".. _co2-coherent-reduction-model:" in concrete
+    assert "<co2-only-model>" in concrete
+    assert ".. _co2-only-model:" in recipes
+    assert ".. _co2-o2-shared-state-model:" in concrete
+    assert "<linked-co2-o2-model>" in concrete
+    assert ".. _linked-co2-o2-model:" in recipes
+    assert ".. _cached-sigma-co2-recipe:" in customising
+    assert "<co2-cached-sigma-recipe>" in customising
+
+
+def test_co2_python_domain_references_resolve() -> None:
+    """Every fully qualified CO₂ function and class reference exists."""
+    targets: list[str] = []
+    for name in ("co2_model_family.rst", "co2_models.rst"):
+        targets.extend(re.findall(r":(?:func|class):`~?([^`]+)`", _source(name)))
+
+    assert targets
+    for target in targets:
+        module_name, attribute = target.rsplit(".", maxsplit=1)
+        module = importlib.import_module(module_name)
+        assert hasattr(module, attribute), target

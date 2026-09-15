@@ -4,8 +4,13 @@
 
 OpenGHG Inversions is a Python package that is being developed as part of the [OpenGHG project](https://openghg.org) with the aim of merging the data-processing and simulation modelling capabilities of OpenGHG with the atmospheric Bayesian inverse models developed by the Atmospheric Chemistry Research Group (ACRG) at the University of Bristol, UK.
 
-Currently, OpenGHG Inversions includes the following regional inversion models:
-- Hierarchical Bayesian Markov Chain Monte Carlo (HBMCMC) model (as described in Ganesan et al., 2014, _ACP_)
+Current regional inversion work uses RHIME: the standard and multisector
+recipes provide complete acquisition-to-output runners, while the advanced
+CO₂ family provides prepared-input model-building and replay interfaces.
+[Choose a RHIME model recipe](docs/usage/model_recipes.rst) from the supported
+workflows. The fixedbasis and hierarchical Bayesian Markov chain Monte Carlo
+(HBMCMC) interfaces remain compatibility paths for existing scripts,
+configuration files, and historical outputs.
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.10650595.svg)](https://doi.org/10.5281/zenodo.10650595)
 

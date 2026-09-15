@@ -4,7 +4,7 @@ Standard RHIME model family
 The standard RHIME family contains the complete one-component and multisector
 recipes. Both acquire OpenGHG data, prepare labelled inversion inputs, build and
 sample a PyMC model, and construct supported outputs. They can also run through
-the staged command-line workflow.
+the :doc:`staged command-line workflow <staged_workflow>`.
 
 Start with the standard tutorial when one flux component and one scaling state
 fit the scientific question. Use the multisector tutorial when named sources
