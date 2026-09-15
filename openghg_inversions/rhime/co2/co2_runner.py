@@ -29,7 +29,7 @@ from openghg_inversions.rhime.outputs import annotate_likelihood_trace
 from openghg_inversions.rhime.sampling import RhimeSampler, sample_rhime_model
 from openghg_inversions.sigma import SigmaAlignment
 
-from .co2_model import _normalise_offset_args, build_co2_model
+from .co2_model import build_co2_model
 
 
 _CO2_SCIENTIFIC_INPUT_NAMES = (
@@ -240,7 +240,6 @@ def run_rhime_co2(
         raise ValueError("bc_prior and bc_state_activity require use_bc=True.")
     if offset_prior is None and offset_args:
         raise ValueError("offset_args require offset_prior.")
-    _normalise_offset_args(offset_args)
     if likelihood_builder is not None and (
         no_model_error
         or sigma_alignment is not None
@@ -310,8 +309,8 @@ def run_rhime_co2(
     if use_bc:
         variable_roles.update(
             {
-                "baseline_concentration": "mu_bc",
-                "baseline_scale": "bc",
+                "boundary_concentration": "mu_bc",
+                "boundary_scale": "bc",
                 "boundary_sensitivity": "hbc",
             }
         )

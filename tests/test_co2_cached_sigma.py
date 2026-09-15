@@ -367,13 +367,18 @@ def test_cached_boundary_and_default_site_offset_match_dense_oracle_at_varied_po
             flux,
             fixed + inputs["H"].values @ flux_scaling,
         )
-        assert float(cached_logp) == pytest.approx(dense_logp(point), rel=2.0e-10)
+        logp_rtol = 2.0e-6 if np.asarray(cached_logp).dtype == np.float32 else 2.0e-10
+        assert float(cached_logp) == pytest.approx(dense_logp(point), rel=logp_rtol)
         if index == 1:
             gradient_values = evaluated[7:]
             gradient_point = point
 
     assert gradient_values is not None and gradient_point is not None
-    step = 1.0e-6
+    gradient_dtype = np.result_type(*(value.dtype for value in gradient_values))
+    is_float32 = gradient_dtype == np.dtype("float32")
+    step = 1.0e-3 if is_float32 else 1.0e-6
+    gradient_rtol = 2.0e-3 if is_float32 else 2.0e-5
+    gradient_atol = 2.0e-4 if is_float32 else 2.0e-6
     for name, actual in zip(state_names, gradient_values, strict=True):
         expected = np.empty_like(actual, dtype=np.float64)
         for index in np.ndindex(actual.shape):
@@ -382,7 +387,7 @@ def test_cached_boundary_and_default_site_offset_match_dense_oracle_at_varied_po
             plus[name][index] += step
             minus[name][index] -= step
             expected[index] = (dense_logp(plus) - dense_logp(minus)) / (2.0 * step)
-        np.testing.assert_allclose(actual, expected, rtol=2.0e-5, atol=2.0e-6)
+        np.testing.assert_allclose(actual, expected, rtol=gradient_rtol, atol=gradient_atol)
 
     assert cached.target.n_state == 1 + int(bc_active.sum()) + 2
     assert len(cached.states) == 3
@@ -492,9 +497,10 @@ def test_cached_offset_modes_match_completed_mean_and_dense_likelihood(
         flux,
         fixed + inputs["H"].values @ flux_scaling,
     )
+    logp_rtol = 2.0e-6 if np.asarray(cached_logp).dtype == np.float32 else 2.0e-10
     assert float(cached_logp) == pytest.approx(
         multivariate_normal.logpdf(inputs["mf"].values, mean=total, cov=covariance),
-        rel=2.0e-10,
+        rel=logp_rtol,
     )
     assert cached.target.n_state == inputs.sizes["region"] + expected_offset_states
     assert cached.states[-1].name == expected_sampler_name
@@ -782,7 +788,19 @@ def test_named_runner_samples_real_graph_and_labels_cached_outputs(
     assert result.posterior["offset_latent"].attrs["units"] == "ppm"
     assert result.posterior_predictive["y"].shape == (1, 2, 4)
     assert result.log_likelihood["y"].shape == (1, 2)
+    roles = json.loads(result.attrs["rhime_variable_roles"])
     metadata = json.loads(result.attrs["rhime_model_metadata"])
+    assert roles["boundary_concentration"] == "mu_bc"
+    assert roles["boundary_scale"] == "bc"
+    assert roles["boundary_sensitivity"] == "hbc"
+    assert "baseline_concentration" not in roles
+    assert "baseline_scale" not in roles
+    assert json.loads(result.posterior["bc"].attrs["rhime_scientific_roles"]) == [
+        "boundary_scale"
+    ]
+    assert json.loads(result.posterior["mu_bc"].attrs["rhime_scientific_roles"]) == [
+        "boundary_concentration"
+    ]
     assert metadata["recipe"] == "co2_cached_sigma_fixed_ou"
     assert "sampler" not in metadata
     assert "numerical_preparation" not in metadata

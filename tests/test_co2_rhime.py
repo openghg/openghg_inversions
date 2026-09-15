@@ -213,7 +213,11 @@ def test_co2_offset_args_are_normalised_explicitly(
 ) -> None:
     """Reject unsupported or internally inconsistent CO2 offset options."""
     with pytest.raises(error, match=message):
-        co2_runner._normalise_offset_args(offset_args)
+        _build_model(
+            _production_boundary_inputs(),
+            offset_prior={"pdf": "normal", "mu": 0.2, "sigma": 0.1},
+            offset_args=offset_args,
+        )
 
 
 def test_build_co2_model_preserves_offset_args_compatibility() -> None:
@@ -467,7 +471,7 @@ def test_public_co2_runner_derives_default_model_error_alignment(monkeypatch: An
 
 
 def test_public_co2_runner_selects_boundary_and_offset_once(monkeypatch: Any) -> None:
-    """The public runner materializes and composes each selected baseline once."""
+    """The public runner materializes and composes boundary and offset once."""
     inputs = _production_boundary_inputs()
 
     class PreparedInputsStub:
@@ -500,7 +504,7 @@ def test_public_co2_runner_selects_boundary_and_offset_once(monkeypatch: Any) ->
         coords={"bc_region": inputs["bc_region"]},
     )
 
-    run_rhime_co2(
+    result = run_rhime_co2(
         prepared_inputs=cast(Any, PreparedInputsStub()),
         fixed_model_mismatch=1.0,
         no_model_error=True,
@@ -512,9 +516,15 @@ def test_public_co2_runner_selects_boundary_and_offset_once(monkeypatch: Any) ->
     )
 
     model = built_models[0]
+    roles = json.loads(result.attrs["rhime_variable_roles"])
     assert len(materialized_names) == 1
     assert materialized_names[0].count("H_bc") == 1
     assert {"hbc", "bc", "mu_bc", "offset", "offset_latent"} <= set(model.named_vars)
+    assert roles["boundary_concentration"] == "mu_bc"
+    assert roles["boundary_scale"] == "bc"
+    assert roles["boundary_sensitivity"] == "hbc"
+    assert "baseline_concentration" not in roles
+    assert "baseline_scale" not in roles
     registry = get_coord_registry(model)
     assert registry is not None
     assert registry.original_coords["bc_region"].equals(inputs.indexes["bc_region"])
@@ -537,7 +547,7 @@ def test_public_co2_runner_selects_boundary_and_offset_once(monkeypatch: Any) ->
         on_unused_input="ignore",
     )(model.initial_point())
     total, fixed, flux, boundary, offset, flux_scaling = map(np.asarray, values)
-    np.testing.assert_allclose(total, flux + boundary + offset)
+    np.testing.assert_allclose(total, flux + boundary + offset, rtol=2.0e-6)
     np.testing.assert_allclose(
         flux,
         fixed + inputs["H"].values @ flux_scaling,

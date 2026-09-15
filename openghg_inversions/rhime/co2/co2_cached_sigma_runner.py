@@ -31,9 +31,9 @@ from .co2_cached_sigma_model import (
     Co2CachedSigmaModel,
     build_co2_cached_sigma_model,
 )
+from .co2_model import _normalise_offset_args
 from .co2_runner import (
     _annotate_co2_trace,
-    _normalise_offset_args,
     _state_activity_from_inputs,
 )
 
@@ -420,8 +420,8 @@ def run_rhime_co2_cached_sigma(
     if use_bc:
         variable_roles.update(
             {
-                "baseline_concentration": "mu_bc",
-                "baseline_scale": "bc",
+                "boundary_concentration": "mu_bc",
+                "boundary_scale": "bc",
                 "boundary_sensitivity": "hbc",
             }
         )
