@@ -6,6 +6,7 @@ Using OpenGHG Inversions
    :caption: Contents:
 
    installation
+   conceptual_inversion
    getting_started
    cli
    staged_workflow

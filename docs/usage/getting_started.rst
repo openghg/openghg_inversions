@@ -1,38 +1,10 @@
 Getting started with OpenGHG Inversions
 =======================================
 
-This is an overview of what OpenGHG Inversions does, and how to use it.
-
-Overview
---------
-
-- Countries are required to create “bottom-up” inventories of emissions.
-  These may be totals for a country, or may be a map of estimated
-  emissions for a given time period.
-- To check these inventories, we create “top-down” constraints by
-  passing emissions/flux maps through a physical model and comparing the
-  result with observations. We use a Bayesian model to update the flux
-  maps using the given observation data.
-- The model is roughly
-  :math:`\mathrm{obs} \approx \mathrm{sensitivities} \times \mathrm{flux} + \mathrm{baseline} + \mathrm{error}`
-- The baseline is calculated by multiplying the flux at the boundaries
-  by a sensivity map for each boundary “curtain” (NESW).
-- Disturbances from the baseline are calculated by multiplying a
-  “footprint” (sensitivities for fluxes) times a flux map.
-- The sensitivities are considered deterministic, and the fluxes and
-  boundary conditions are modelled as random quantities
-- We place prior distributions on the fluxes and boundary conditions and
-  use the observation data and MCMC to sample from their posterior
-  distributions. (These are specified by the ``xprior`` and ``bcprior``
-  variables in the .ini file below.)
-- Roughly, an inversion attempts to solve
-  :math:`\mathrm{obs} - \mathrm{baseline} \approx \mathrm{sensitivities} \times \mathrm{flux}`;
-  the sensitivity matrix is not invertible, so a method like
-  least-squares is necessary. We use a hierarchical Bayesian regression
-  approach, which estimates uncertainties in a natural way.
-- The output of an inversion contains prior and posterior: modelled
-  observations (“ :math:`Y` ” variables), fluxes, and boundary
-  conditions.
+This page describes the data and legacy interfaces used by existing inversion
+workflows. If atmospheric inversions are new to you, first read
+:doc:`conceptual_inversion` for the scientific concepts and current RHIME
+terminology.
 
 What do you need to run an inversion?
 -------------------------------------
