@@ -38,7 +38,9 @@ Keep the JSON in single quotes so the shell passes it as one argument. Run
 ``openghg-inversions run-rhime-multisector --help`` for the complete command
 syntax. New configuration files should use the RHIME vocabulary documented in
 :doc:`rhime`; the packaged starting point is
-``openghg_inversions/config/templates/rhime_template.ini``.
+``openghg_inversions/config/templates/rhime_template.ini``. Complete,
+validated production-shape examples are used by
+:doc:`rhime_standard_tutorial` and :doc:`rhime_multisector_tutorial`.
 
 Translating the older batch example
 -----------------------------------

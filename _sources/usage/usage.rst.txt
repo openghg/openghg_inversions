@@ -9,6 +9,8 @@ Using OpenGHG Inversions
    conceptual_inversion
    getting_started
    cli
+   rhime_standard_tutorial
+   rhime_multisector_tutorial
    staged_workflow
    grouped_basis_layout
    rhime

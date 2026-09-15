@@ -1,0 +1,806 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Multisector RHIME tutorial &#8212; openghg_inversions  documentation</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../_static/styles/theme.css?digest=cb8930eaaf36d9849b67" rel="stylesheet" />
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=cb8930eaaf36d9849b67" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../_static/jupyter-sphinx.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/thebelab.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=f8ac5af1" />
+  
+  <!-- So that users can add custom icons -->
+  <script defer src="../_static/scripts/fontawesome.js?digest=cb8930eaaf36d9849b67"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=cb8930eaaf36d9849b67" />
+<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=cb8930eaaf36d9849b67" />
+
+    <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../_static/thebelab-helper.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'usage/rhime_multisector_tutorial';</script>
+    <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Staged RHIME workflows" href="staged_workflow.html" />
+    <link rel="prev" title="Standard RHIME tutorial" href="rhime_standard_tutorial.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="" />
+  
+    
+    <script src="../_static/searchtools.js"></script>
+    <script src="../_static/language_data.js"></script>
+    <script src="../searchindex.js"></script>
+  
+  </head>
+  <body data-default-mode="">
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+  
+  
+  
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header id="pst-header" class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../index.html">
+  
+  
+  
+  
+  
+  
+    <p class="title logo__title">openghg_inversions  documentation</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    <div class="me-auto navbar-header-items__center">
+      
+        <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="usage.html">
+    Using OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../development/index.html">
+    Developing OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../experimental/index.html">
+    Experimental code
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../reference/modules.html">
+    openghg_inversions
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+      
+    </div>
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+    <button class="pst-navbar-icon sidebar-toggle secondary-toggle" aria-label="On this page">
+      <span class="fa-solid fa-outdent"></span>
+    </button>
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+      <div class="sidebar-header-items__center">
+        
+          
+          
+            <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="usage.html">
+    Using OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../development/index.html">
+    Developing OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../experimental/index.html">
+    Experimental code
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../reference/modules.html">
+    openghg_inversions
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+          
+        
+      </div>
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item pst-sidebar-collapse"><button id="pst-collapse-sidebar-button" aria-expanded="true" aria-controls="pst-primary-sidebar">
+  <svg class="pst-icon" role="img" aria-hidden="true" focusable="false" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+    <path fill="currentColor" d="M3 15.5C2.36232 15.5 1.74874 15.2564 1.28478 14.8189C0.820828 14.3815 0.541576 13.7832 0.504167 13.1467L0.5 13L0.5 3C0.499965 2.36232 0.743605 1.74874 1.18107 1.28478C1.61854 0.820828 2.21676 0.541576 2.85333 0.504167L3 0.5L13 0.5C13.6377 0.499965 14.2513 0.743605 14.7152 1.18107C15.1792 1.61854 15.4584 2.21676 15.4958 2.85333L15.5 3L15.5 13C15.5 13.6377 15.2564 14.2513 14.8189 14.7152C14.3815 15.1792 13.7832 15.4584 13.1467 15.4958L13 15.5L3 15.5ZM3 13.8333L10.5 13.8333L10.5 2.16667L3 2.16667C2.79589 2.16669 2.59889 2.24163 2.44636 2.37726C2.29383 2.5129 2.19638 2.69979 2.1725 2.9025L2.16667 3L2.16667 13C2.16669 13.2041 2.24163 13.4011 2.37726 13.5536C2.5129 13.7062 2.69979 13.8036 2.9025 13.8275L3 13.8333ZM6.65583 10.325L6.5775 10.2558L4.91083 8.58917C4.76735 8.44567 4.68116 8.25476 4.66843 8.05223C4.65569 7.84971 4.71729 7.6495 4.84167 7.48917L4.91083 7.41083L6.5775 5.74417C6.72747 5.59471 6.9287 5.50794 7.14032 5.50148C7.35194 5.49502 7.55809 5.56935 7.7169 5.70937C7.8757 5.8494 7.97525 6.04463 7.99533 6.25539C8.01541 6.46616 7.95451 6.67667 7.825 6.84417L7.75583 6.9225L6.67917 8L7.75583 9.0775C7.89931 9.22099 7.98551 9.41191 7.99824 9.61443C8.01097 9.81695 7.94938 10.0172 7.825 10.1775L7.75583 10.2558C7.61234 10.3993 7.42142 10.4855 7.2189 10.4982C7.01638 10.511 6.81617 10.4494 6.65583 10.325Z"/>
+  </svg>
+  <span class="pst-collapse-sidebar-label">Collapse Sidebar</span>
+  <span class="pst-expand-sidebar-label">Expand Sidebar</span>
+</button></div>
+        <div class="sidebar-primary-item">
+
+<nav class="bd-docs-nav bd-links"
+     aria-label="Section Navigation">
+  <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
+  <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation and Setup</a></li>
+<li class="toctree-l1"><a class="reference internal" href="conceptual_inversion.html">How an Atmospheric Inversion Works</a></li>
+<li class="toctree-l1"><a class="reference internal" href="getting_started.html">Getting started with OpenGHG Inversions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="cli.html">Running RHIME from the command line</a></li>
+<li class="toctree-l1"><a class="reference internal" href="rhime_standard_tutorial.html">Standard RHIME tutorial</a></li>
+<li class="toctree-l1 current active"><a class="current reference internal" href="#">Multisector RHIME tutorial</a></li>
+<li class="toctree-l1"><a class="reference internal" href="staged_workflow.html">Staged RHIME workflows</a></li>
+<li class="toctree-l1"><a class="reference internal" href="grouped_basis_layout.html">Grouped basis and state metadata</a></li>
+<li class="toctree-l1"><a class="reference internal" href="rhime.html">RHIME Terminology And Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="customising_rhime.html">Customising RHIME</a></li>
+<li class="toctree-l1"><a class="reference internal" href="concrete_rhime_model.html">Concrete RHIME Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="native_covariance.html">Native Covariance Projection</a></li>
+<li class="toctree-l1"><a class="reference internal" href="coherent_reduction.html">Coherent Gaussian Reduction</a></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+      <div class="sidebar-primary-item">
+<div id="ethical-ad-placement"
+      class="flat"
+      data-ea-publisher="readthedocs"
+      data-ea-type="readthedocs-sidebar"
+      data-ea-manual="true">
+</div></div>
+  </div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="usage.html" class="nav-link">Using OpenGHG Inversions</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Multisector RHIME tutorial</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="multisector-rhime-tutorial">
+<h1>Multisector RHIME tutorial<a class="headerlink" href="#multisector-rhime-tutorial" title="Link to this heading">#</a></h1>
+<p>This tutorial runs the supported
+<a class="reference internal" href="../reference/openghg_inversions.rhime.html#openghg_inversions.rhime.run_rhime_multisector" title="openghg_inversions.rhime.run_rhime_multisector"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.run_rhime_multisector()</span></code></a> recipe and inspects its
+sector-labelled state and persisted sector/source diagnostics. It uses the
+current production multisector runner.</p>
+<p>The code and recorded outputs form one stateful session. You can
+<a class="reference download internal" download="" href="../_downloads/6a0e9c7d5bb1443da85a1c13072c20da/rhime_multisector_tutorial.ipynb"><code class="xref download docutils literal notranslate"><span class="pre">download</span> <span class="pre">it</span> <span class="pre">as</span> <span class="pre">a</span> <span class="pre">Jupyter</span> <span class="pre">notebook</span></code></a>
+to rerun or modify locally.</p>
+<section id="prerequisites-and-sector-inputs">
+<h2>Prerequisites and sector inputs<a class="headerlink" href="#prerequisites-and-sector-inputs" title="Link to this heading">#</a></h2>
+<p>Complete the environment and OpenGHG setup in <a class="reference internal" href="rhime_standard_tutorial.html"><span class="doc">Standard RHIME tutorial</span></a>.
+The observation, boundary-condition, and footprint requirements are the same.
+The companion store also supplies two distinct flux products on compatible
+latitude, longitude, and time coordinates.</p>
+<p>The example models two scientific sectors, <code class="docutils literal notranslate"><span class="pre">anthropogenic</span></code> and <code class="docutils literal notranslate"><span class="pre">wetlands</span></code>,
+using <code class="docutils literal notranslate"><span class="pre">edgar-v80-anthropogenic</span></code> and <code class="docutils literal notranslate"><span class="pre">wetcharts-v131-wetlands</span></code> respectively.
+<code class="docutils literal notranslate"><span class="pre">flux_sources</span></code> lists what OpenGHG retrieves. <code class="docutils literal notranslate"><span class="pre">sector_sources</span></code> maps stable,
+human-readable sector labels to those source values. Every source is used once
+because independently inferred sectors may not share one source. Do not change
+the sector keys without also changing <code class="docutils literal notranslate"><span class="pre">sector_priors</span></code>.</p>
+</section>
+<section id="configuration">
+<h2>Configuration<a class="headerlink" href="#configuration" title="Link to this heading">#</a></h2>
+<div class="highlight-ini notranslate"><div class="highlight"><pre><span></span><span class="c1">; Small, complete multisector RHIME example using the companion tutorial store.</span>
+<span class="c1">; The sampler settings are a smoke test, not a scientific run.</span>
+
+<span class="k">[INPUT.MEASUREMENTS]</span>
+<span class="na">species</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"ch4"</span>
+<span class="na">sites</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">["MHD", "TAC"]</span>
+<span class="na">averaging_period</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">["4h", "4h"]</span>
+<span class="na">start_date</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"2020-01-01"</span>
+<span class="na">end_date</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"2020-01-08"</span>
+<span class="na">inlet</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">["24m", "185m"]</span>
+<span class="na">filters</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">[]</span>
+
+<span class="k">[INPUT.STORES]</span>
+<span class="na">bc_store</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"inversions_tutorial_data"</span>
+<span class="na">obs_store</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"inversions_tutorial_data"</span>
+<span class="na">footprint_store</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"inversions_tutorial_data"</span>
+<span class="na">emissions_store</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"inversions_tutorial_data"</span>
+
+<span class="k">[INPUT.PRIORS]</span>
+<span class="na">domain</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"EUROPE"</span>
+<span class="na">fp_model</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"NAME"</span>
+<span class="na">fp_height</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">["10m", "185m"]</span>
+<span class="na">fp_species</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"inert"</span>
+<span class="na">met_model</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"UKV"</span>
+<span class="na">flux_sources</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">["edgar-v80-anthropogenic", "wetcharts-v131-wetlands"]</span>
+<span class="na">sector_sources = {"anthropogenic"</span><span class="o">:</span><span class="w"> </span><span class="s">"edgar-v80-anthropogenic"</span><span class="na">, "wetlands"</span><span class="o">:</span><span class="w"> </span><span class="s">"wetcharts-v131-wetlands"</span><span class="na">}</span>
+<span class="na">bc_input</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"camsv22r2_daily"</span>
+
+<span class="k">[INPUT.BASIS_CASE]</span>
+<span class="na">basis_algorithm</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"quadtree"</span>
+<span class="na">bc_basis_case</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"NESW"</span>
+<span class="na">nbasis</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">4</span>
+
+<span class="k">[RHIME.PDF]</span>
+<span class="na">x_prior = {"pdf"</span><span class="o">:</span><span class="w"> </span><span class="s">"lognormal"</span><span class="na">, "mean"</span><span class="o">:</span><span class="w"> </span><span class="s">1.0, "stdev": 1.0}</span>
+<span class="na">sector_priors = {"anthropogenic": {"pdf"</span><span class="o">:</span><span class="w"> </span><span class="s">"lognormal"</span><span class="na">, "mean": 1.0, "stdev": 1.0}, "wetlands": {"pdf"</span><span class="o">:</span><span class="w"> </span><span class="s">"lognormal"</span><span class="na">, "mean"</span><span class="o">:</span><span class="w"> </span><span class="s">1.0, "stdev": 1.0}}</span>
+<span class="na">bc_prior = {"pdf"</span><span class="o">:</span><span class="w"> </span><span class="s">"truncatednormal"</span><span class="na">, "mu"</span><span class="o">:</span><span class="w"> </span><span class="s">1.0, "sigma": 0.05, "lower": 0.0}</span>
+<span class="na">sigma_prior = {"pdf"</span><span class="o">:</span><span class="w"> </span><span class="s">"uniform"</span><span class="na">, "lower"</span><span class="o">:</span><span class="w"> </span><span class="s">0.1, "upper": 3.0}</span>
+
+<span class="k">[RHIME.SPLIT]</span>
+<span class="na">sigma_per_site</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">True</span>
+
+<span class="k">[RHIME.ITERATIONS]</span>
+<span class="na">draws</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">50</span>
+<span class="na">burn</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">0</span>
+<span class="na">tune</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">50</span>
+<span class="na">chains</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">2</span>
+
+<span class="k">[RHIME.OPTIONS]</span>
+<span class="na">mismatch_model</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"pollution_event"</span>
+<span class="na">use_bc</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">True</span>
+<span class="na">averaging_error</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">True</span>
+<span class="na">min_error</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">0.0</span>
+<span class="na">nuts_sampler</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"pymc"</span>
+<span class="na">save_trace</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">False</span>
+<span class="na">save_inversion_output</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">True</span>
+<span class="na">sample_kwargs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">{"random_seed": 108, "compute_convergence_checks": False, "progressbar": False}</span>
+
+<span class="k">[RHIME.OUTPUT]</span>
+<span class="na">output_path</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"outputs"</span>
+<span class="na">output_name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"multisector_tutorial"</span>
+<span class="na">output_format</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"inv_out"</span>
+</pre></div>
+</div>
+<p>Each prior describes a multiplicative scale factor for one sector. The explicit
+mapping prevents sector meaning from depending on source-coordinate order.
+The short sampler is a controlled smoke test only; use convergence-checked
+sampling sized for the real scientific question before interpreting results.</p>
+</section>
+<section id="run-it">
+<h2>Run it<a class="headerlink" href="#run-it" title="Link to this heading">#</a></h2>
+<p>The supported CLI route differs from the standard tutorial only by subcommand:</p>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>pixi<span class="w"> </span>run<span class="w"> </span>-e<span class="w"> </span>dev<span class="w"> </span>openghg-inversions<span class="w"> </span>run-rhime-multisector<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--config<span class="w"> </span>openghg_inversions/rhime/config/multisector_tutorial.ini<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--output-path<span class="w"> </span>outputs
+</pre></div>
+</div>
+<p>The <a class="reference internal" href="cli.html"><span class="doc">Running RHIME from the command line</span></a> page documents the equivalent <code class="docutils literal notranslate"><span class="pre">uv</span> <span class="pre">run</span></code> command for
+an existing compatible uv environment.</p>
+<p>The supported Python route is:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">importlib.resources</span><span class="w"> </span><span class="kn">import</span> <span class="n">as_file</span><span class="p">,</span> <span class="n">files</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="n">run_rhime_multisector</span>
+
+<span class="n">tutorial_output_path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"OPENGHG_TUTORIAL_OUTPUT_PATH"</span><span class="p">,</span> <span class="s2">"outputs"</span><span class="p">))</span>
+<span class="n">resource</span> <span class="o">=</span> <span class="n">files</span><span class="p">(</span><span class="s2">"openghg_inversions.rhime"</span><span class="p">)</span><span class="o">.</span><span class="n">joinpath</span><span class="p">(</span><span class="s2">"config/multisector_tutorial.ini"</span><span class="p">)</span>
+<span class="k">with</span> <span class="n">as_file</span><span class="p">(</span><span class="n">resource</span><span class="p">)</span> <span class="k">as</span> <span class="n">config</span><span class="p">:</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="n">run_rhime_multisector</span><span class="p">(</span><span class="n">config_file</span><span class="o">=</span><span class="n">config</span><span class="p">,</span> <span class="n">output_path</span><span class="o">=</span><span class="n">tutorial_output_path</span><span class="p">)</span>
+
+<span class="p">{</span>
+    <span class="s2">"OpenGHG Inversions commit"</span><span class="p">:</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span>
+        <span class="s2">"OPENGHG_TUTORIAL_CODE_REF"</span><span class="p">,</span> <span class="s2">"local checkout"</span>
+    <span class="p">),</span>
+    <span class="s2">"tutorial data"</span><span class="p">:</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"OPENGHG_TUTORIAL_DATA_TAG"</span><span class="p">,</span> <span class="s2">"v1.0.0"</span><span class="p">),</span>
+    <span class="s2">"sites"</span><span class="p">:</span> <span class="nb">list</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">run_spec</span><span class="o">.</span><span class="n">sites</span><span class="p">),</span>
+    <span class="s2">"observations"</span><span class="p">:</span> <span class="n">result</span><span class="o">.</span><span class="n">inv_inputs</span><span class="o">.</span><span class="n">sizes</span><span class="p">[</span><span class="s2">"nmeasure"</span><span class="p">],</span>
+    <span class="s2">"posterior samples"</span><span class="p">:</span> <span class="p">{</span>
+        <span class="n">name</span><span class="p">:</span> <span class="n">result</span><span class="o">.</span><span class="n">idata</span><span class="o">.</span><span class="n">posterior</span><span class="o">.</span><span class="n">sizes</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">"chain"</span><span class="p">,</span> <span class="s2">"draw"</span><span class="p">)</span>
+    <span class="p">},</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>{'OpenGHG Inversions commit': '9202222950c3ef2eb7bc83d040df3bcf6c26f94c',
+ 'tutorial data': 'v1.0.0',
+ 'sites': ['MHD', 'TAC'],
+ 'observations': 84,
+ 'posterior samples': {'chain': 2, 'draw': 50}}
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+<section id="inspect-labelled-state-and-provenance">
+<h2>Inspect labelled state and provenance<a class="headerlink" href="#inspect-labelled-state-and-provenance" title="Link to this heading">#</a></h2>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">inversion_output</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">outputs</span><span class="p">[</span><span class="s2">"inversion_output"</span><span class="p">]</span>
+<span class="p">{</span>
+    <span class="s2">"sectors"</span><span class="p">:</span> <span class="p">[</span>
+        <span class="p">(</span><span class="n">sector</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="n">sector</span><span class="o">.</span><span class="n">flux_source</span><span class="p">)</span> <span class="k">for</span> <span class="n">sector</span> <span class="ow">in</span> <span class="n">result</span><span class="o">.</span><span class="n">model_spec</span><span class="o">.</span><span class="n">sectors</span>
+    <span class="p">],</span>
+    <span class="s2">"H dimensions"</span><span class="p">:</span> <span class="n">result</span><span class="o">.</span><span class="n">inv_inputs</span><span class="p">[</span><span class="s2">"H"</span><span class="p">]</span><span class="o">.</span><span class="n">dims</span><span class="p">,</span>
+    <span class="s2">"source labels"</span><span class="p">:</span> <span class="n">result</span><span class="o">.</span><span class="n">inv_inputs</span><span class="p">[</span><span class="s2">"H"</span><span class="p">]</span><span class="o">.</span><span class="n">source</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">tolist</span><span class="p">(),</span>
+    <span class="s2">"scale variables"</span><span class="p">:</span> <span class="nb">sorted</span><span class="p">(</span>
+        <span class="n">name</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">result</span><span class="o">.</span><span class="n">idata</span><span class="o">.</span><span class="n">posterior</span><span class="o">.</span><span class="n">data_vars</span> <span class="k">if</span> <span class="n">name</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">"x_"</span><span class="p">)</span>
+    <span class="p">),</span>
+    <span class="s2">"variable roles"</span><span class="p">:</span> <span class="n">result</span><span class="o">.</span><span class="n">model_build_result</span><span class="o">.</span><span class="n">variable_roles</span><span class="p">,</span>
+    <span class="s2">"provenance contract"</span><span class="p">:</span> <span class="n">inversion_output</span><span class="o">.</span><span class="n">provenance</span><span class="p">[</span><span class="s2">"contract"</span><span class="p">],</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>{'sectors': [('anthropogenic', 'edgar-v80-anthropogenic'),
+  ('wetlands', 'wetcharts-v131-wetlands')],
+ 'H dimensions': ('region', 'nmeasure', 'source'),
+ 'source labels': ['edgar-v80-anthropogenic', 'wetcharts-v131-wetlands'],
+ 'scale variables': ['x_anthropogenic', 'x_wetlands'],
+ 'variable roles': {'observation': 'mf',
+  'observation_error': 'mf_error',
+  'minimum_error': 'min_error',
+  'concentration': 'y',
+  'model_error': 'epsilon',
+  'observation_repeatability': 'mf_repeatability',
+  'observation_variability': 'mf_variability',
+  'flux_scale:anthropogenic': 'x_anthropogenic',
+  'flux_contribution:anthropogenic': 'mu_anthropogenic',
+  'emissions_sensitivity:anthropogenic': 'hx_anthropogenic',
+  'flux_scale:wetlands': 'x_wetlands',
+  'flux_contribution:wetlands': 'mu_wetlands',
+  'emissions_sensitivity:wetlands': 'hx_wetlands',
+  'boundary': 'mu_bc',
+  'baseline_scale': 'bc',
+  'baseline_sensitivity': 'hbc',
+  'baseline': 'mu_bc'},
+ 'provenance contract': 'modern_rhime_inversion_output'}
+</pre></div>
+</div>
+</div>
+</div>
+<p>Shared-basis preparation represents sensitivity as
+<code class="docutils literal notranslate"><span class="pre">H(region,</span> <span class="pre">nmeasure,</span> <span class="pre">source)</span></code>. Source-specific bases may instead use one
+gathered state dimension labelled by <code class="docutils literal notranslate"><span class="pre">(source,</span> <span class="pre">region_in_source)</span></code>. In either
+case, select by the <code class="docutils literal notranslate"><span class="pre">source</span></code> label or gathered source level; never infer
+sector identity from axis position. The posterior variables
+<code class="docutils literal notranslate"><span class="pre">x_anthropogenic</span></code> and <code class="docutils literal notranslate"><span class="pre">x_wetlands</span></code> scale their own prior fluxes. Their
+forward contributions add to the modelled pollution concentration, while the
+observation likelihood is shared. See <a class="reference internal" href="rhime.html"><span class="doc">RHIME Terminology And Quickstart</span></a> for both supported layouts
+and <a class="reference internal" href="concrete_rhime_model.html"><span class="doc">Concrete RHIME Model</span></a> for the scientific-role mapping.</p>
+<p>Use <code class="docutils literal notranslate"><span class="pre">az.summary</span></code> as in the standard tutorial for both scale variables and
+inspect their joint posterior. Strong cross-sector correlation or posterior
+behaviour dominated by the priors indicates that the observations do not
+separately identify those sources, even when every array label is correct.</p>
+</section>
+<section id="inspect-the-sector-source-output">
+<h2>Inspect the sector/source output<a class="headerlink" href="#inspect-the-sector-source-output" title="Link to this heading">#</a></h2>
+<p>Every multisector run constructs labelled sector diagnostics. With the
+configured <code class="docutils literal notranslate"><span class="pre">inv_out</span></code> output they are also persisted:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">diagnostics</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">outputs</span><span class="p">[</span><span class="s2">"sector_flux_diagnostics"</span><span class="p">]</span>
+<span class="p">{</span>
+    <span class="s2">"diagnostic variables"</span><span class="p">:</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">diagnostics</span><span class="o">.</span><span class="n">data_vars</span><span class="p">),</span>
+    <span class="s2">"diagnostic sizes"</span><span class="p">:</span> <span class="nb">dict</span><span class="p">(</span><span class="n">diagnostics</span><span class="o">.</span><span class="n">sizes</span><span class="p">),</span>
+    <span class="s2">"variable dimensions"</span><span class="p">:</span> <span class="p">{</span>
+        <span class="n">name</span><span class="p">:</span> <span class="n">diagnostics</span><span class="p">[</span><span class="n">name</span><span class="p">]</span><span class="o">.</span><span class="n">dims</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">diagnostics</span><span class="o">.</span><span class="n">data_vars</span><span class="p">)</span>
+    <span class="p">},</span>
+    <span class="s2">"sector diagnostics file"</span><span class="p">:</span> <span class="n">Path</span><span class="p">(</span>
+        <span class="n">result</span><span class="o">.</span><span class="n">output_metadata</span><span class="p">[</span><span class="s2">"sector_flux_diagnostics_path"</span><span class="p">]</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">name</span><span class="p">,</span>
+    <span class="s2">"inversion output file"</span><span class="p">:</span> <span class="n">Path</span><span class="p">(</span>
+        <span class="n">result</span><span class="o">.</span><span class="n">output_metadata</span><span class="p">[</span><span class="s2">"inversion_output_path"</span><span class="p">]</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">name</span><span class="p">,</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>{'diagnostic variables': ['flux_anthropogenic_posterior_mean',
+  'flux_anthropogenic_prior_mean',
+  'flux_total_posterior_mean',
+  'flux_total_prior_mean',
+  'flux_wetlands_posterior_mean',
+  'flux_wetlands_prior_mean',
+  'scaling_anthropogenic_posterior_mean',
+  'scaling_anthropogenic_prior_mean',
+  'scaling_wetlands_posterior_mean',
+  'scaling_wetlands_prior_mean'],
+ 'diagnostic sizes': {'flux_time': 1, 'lat': 293, 'lon': 391},
+ 'variable dimensions': {'flux_anthropogenic_posterior_mean': ('flux_time',
+   'lat',
+   'lon'),
+  'flux_anthropogenic_prior_mean': ('flux_time', 'lat', 'lon'),
+  'flux_total_posterior_mean': ('flux_time', 'lat', 'lon'),
+  'flux_total_prior_mean': ('flux_time', 'lat', 'lon'),
+  'flux_wetlands_posterior_mean': ('flux_time', 'lat', 'lon'),
+  'flux_wetlands_prior_mean': ('flux_time', 'lat', 'lon'),
+  'scaling_anthropogenic_posterior_mean': ('lat', 'lon'),
+  'scaling_anthropogenic_prior_mean': ('lat', 'lon'),
+  'scaling_wetlands_posterior_mean': ('lat', 'lon'),
+  'scaling_wetlands_prior_mean': ('lat', 'lon')},
+ 'sector diagnostics file': 'multisector_tutorial2020-01-01_sector_flux_diagnostics.nc',
+ 'inversion output file': 'multisector_tutorial2020-01-01_inversion_output.nc'}
+</pre></div>
+</div>
+</div>
+</div>
+<p>Sector posterior flux is the retained prior flux multiplied by that sector’s
+posterior scaling. <code class="docutils literal notranslate"><span class="pre">flux_total_posterior_mean</span></code> is the sum of sector fluxes,
+not another independently inferred state. Keep the sector variables labelled
+when comparing source contributions. The inversion output’s provenance has the
+same limits described by the standard tutorial: it retains prepared arrays,
+basis, trace and resolved metadata, but is not an object-store query snapshot.</p>
+<p>For a clean-checkout mechanics test, run
+<code class="docutils literal notranslate"><span class="pre">uv</span> <span class="pre">run</span> <span class="pre">pytest</span> <span class="pre">tests/test_rhime_tutorials.py</span> <span class="pre">-q</span></code>. Its multisector case uses
+two maintained fixture products, one a dimension-shuffled numerical duplicate,
+and deterministic sampling. That verifies labelled routing and persistence,
+not scientific sector separation. Normal CI does not clone or download the
+companion data repository.</p>
+</section>
+<section id="common-failures">
+<h2>Common failures<a class="headerlink" href="#common-failures" title="Link to this heading">#</a></h2>
+<dl class="simple">
+<dt>Missing or duplicate sources</dt><dd><p>Supply at least two unique <code class="docutils literal notranslate"><span class="pre">flux_sources</span></code>. Each <code class="docutils literal notranslate"><span class="pre">sector_sources</span></code> value
+must exist in that list and may be selected by only one sector.</p>
+</dd>
+<dt>Missing or unused sector prior</dt><dd><p>When <code class="docutils literal notranslate"><span class="pre">sector_priors</span></code> is present it must have exactly the same keys as
+<code class="docutils literal notranslate"><span class="pre">sector_sources</span></code>. A typo is rejected rather than silently using the shared
+prior.</p>
+</dd>
+<dt>Incompatible source coordinates</dt><dd><p>Sector fluxes must have compatible spatial and time coordinates before
+shared-basis construction. Resample explicitly; do not rely on implicit
+xarray padding or positional alignment.</p>
+</dd>
+<dt>Unexpected output selection</dt><dd><p><code class="docutils literal notranslate"><span class="pre">inv_out</span></code> and sector diagnostics are supported here. Latest PARIS flux
+output is a separate, explicitly configured route; multisector PARIS
+concentration output is not currently implemented. See <a class="reference internal" href="rhime.html"><span class="doc">RHIME Terminology And Quickstart</span></a> before
+changing <code class="docutils literal notranslate"><span class="pre">output_format</span></code>.</p>
+</dd>
+</dl>
+</section>
+</section>
+
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="rhime_standard_tutorial.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">Standard RHIME tutorial</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="staged_workflow.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">Staged RHIME workflows</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+                <dialog id="pst-secondary-sidebar-modal"></dialog>
+                <div id="pst-secondary-sidebar" class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#prerequisites-and-sector-inputs">Prerequisites and sector inputs</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#configuration">Configuration</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#run-it">Run it</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#inspect-labelled-state-and-provenance">Inspect labelled state and provenance</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#inspect-the-sector-source-output">Inspect the sector/source output</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#common-failures">Common failures</a></li>
+</ul>
+  </nav></div>
+
+  <div class="sidebar-secondary-item">
+
+  <div class="tocsection sourcelink">
+    <a href="../_sources/usage/rhime_multisector_tutorial.rst.txt">
+      <i class="fa-solid fa-file-lines"></i> Show Source
+    </a>
+  </div>
+</div>
+
+</div></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../_static/scripts/bootstrap.js?digest=cb8930eaaf36d9849b67"></script>
+<script defer src="../_static/scripts/pydata-sphinx-theme.js?digest=cb8930eaaf36d9849b67"></script>
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+
+  <p class="copyright">
+    
+      © Copyright 2025, Eric Saboya and Brendan Murphy.
+      <br/>
+    
+  </p>
+</div>
+      
+        <div class="footer-item">
+
+  <p class="sphinx-version">
+    Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 9.0.4.
+    <br/>
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+    <div class="footer-items__end">
+      
+        <div class="footer-item">
+<p class="theme-version">
+  <!-- # L10n: Setting the PST URL as an argument as this does not need to be localized -->
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.21.0.
+</p></div>
+      
+    </div>
+  
+</div>
+
+  </footer>
+  </body>
+</html>
