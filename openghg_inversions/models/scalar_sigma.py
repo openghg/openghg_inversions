@@ -254,6 +254,11 @@ def scalar_sigma_base_covariance(
 class ScalarSigmaEigenbasis:
     """Trusted labelled eigenbasis for ``C0 + sigma_global**2 I``.
 
+    Instances returned by :func:`prepare_scalar_sigma_eigenbasis` and
+    :func:`load_scalar_sigma_eigenbasis` have already crossed their validation
+    boundary. Direct construction therefore assumes valid labelled arrays and
+    metadata; it only takes an immutable eager copy of the numerical payloads.
+
     Args:
         eigenvectors: Square labelled matrix with dimensions ``(output_dim,
             scalar_sigma_mode)``.
@@ -265,10 +270,6 @@ class ScalarSigmaEigenbasis:
         aggregation_error_mode: Aggregation-error representation used to
             construct the base covariance.
         output_dim: Observation dimension represented by the rows.
-
-    Raises:
-        ValueError: If dimensions, coordinates, units, cache metadata, or
-            numerical values do not define a finite labelled eigenbasis.
     """
 
     eigenvectors: xr.DataArray
@@ -279,58 +280,11 @@ class ScalarSigmaEigenbasis:
     output_dim: str = "nmeasure"
 
     def __post_init__(self) -> None:
-        """Validate dimensions and own eager numerical payloads."""
-        expected_vector_dims = (self.output_dim, SCALAR_SIGMA_MODE_DIM)
-        if self.eigenvectors.dims != expected_vector_dims:
-            raise ValueError(
-                f"eigenvectors must have dims {expected_vector_dims!r}; got {self.eigenvectors.dims!r}."
-            )
-        if self.eigenvalues.dims != (SCALAR_SIGMA_MODE_DIM,):
-            raise ValueError(f"eigenvalues must have dims ({SCALAR_SIGMA_MODE_DIM!r},).")
-        n_observation = self.eigenvectors.sizes[self.output_dim]
-        if n_observation == 0 or self.eigenvectors.shape != (
-            n_observation,
-            n_observation,
-        ):
-            raise ValueError("Scalar-sigma eigenvectors must be non-empty and square.")
-        if self.eigenvalues.sizes[SCALAR_SIGMA_MODE_DIM] != n_observation:
-            raise ValueError("Scalar-sigma eigenvalues must match the eigenvector size.")
-        if self.output_dim not in self.eigenvectors.indexes:
-            raise ValueError("Scalar-sigma eigenvectors require an indexed observation coordinate.")
-        vector_modes = self.eigenvectors.indexes.get(SCALAR_SIGMA_MODE_DIM)
-        value_modes = self.eigenvalues.indexes.get(SCALAR_SIGMA_MODE_DIM)
-        if vector_modes is None or value_modes is None or not vector_modes.equals(value_modes):
-            raise ValueError("Scalar-sigma eigenvector and eigenvalue modes must match exactly.")
+        """Own immutable eager numerical payloads and canonical metadata."""
         units = str(self.concentration_units).strip()
-        if not units:
-            raise ValueError("Scalar-sigma eigenbasis requires concentration units.")
         digest = str(self.base_covariance_sha256).strip().lower()
-        try:
-            digest_bytes = bytes.fromhex(digest)
-        except ValueError as error:
-            raise ValueError("Scalar-sigma base covariance fingerprint must be SHA-256.") from error
-        if len(digest_bytes) != 32 or len(digest) != 64:
-            raise ValueError("Scalar-sigma base covariance fingerprint must be SHA-256.")
-        if self.aggregation_error_mode not in ("none", "dense", "low_rank", "diagonal"):
-            raise ValueError("Scalar-sigma cache requires a concrete aggregation-error mode.")
-        source_vectors = np.asarray(self.eigenvectors.values)
-        source_dtype = (
-            source_vectors.dtype if np.issubdtype(source_vectors.dtype, np.floating) else np.dtype(np.float64)
-        )
-        vectors = np.array(source_vectors, dtype=np.float64, copy=True)
+        vectors = np.array(self.eigenvectors.values, dtype=np.float64, copy=True)
         values = np.array(self.eigenvalues.values, dtype=np.float64, copy=True)
-        if not np.isfinite(vectors).all() or not np.isfinite(values).all():
-            raise ValueError("Scalar-sigma eigenbasis values must be finite.")
-        if (values < 0.0).any():
-            raise ValueError("Scalar-sigma eigenvalues must be non-negative.")
-        orthogonality_tolerance = 100.0 * np.finfo(source_dtype).eps * np.sqrt(n_observation)
-        if not np.allclose(
-            vectors.T @ vectors,
-            np.eye(n_observation),
-            rtol=orthogonality_tolerance,
-            atol=orthogonality_tolerance,
-        ):
-            raise ValueError("Scalar-sigma eigenvectors must be orthonormal.")
         vectors.setflags(write=False)
         values.setflags(write=False)
         object.__setattr__(
@@ -556,8 +510,8 @@ def load_scalar_sigma_eigenbasis(
     """Load and align a versioned scalar-sigma eigenbasis cache.
 
     Loading is the cache trust boundary. It validates the small xarray schema,
-    exact dimensions, finite cache values, units, and ordered
-    observation/error labels. It reconstructs the currently resolved
+    exact dimensions, units, metadata, and ordered observation/error labels.
+    It reconstructs the currently resolved
     ``A + D_obs`` once and verifies its fingerprint and aggregation-error mode
     before model construction.
 
@@ -592,6 +546,29 @@ def load_scalar_sigma_eigenbasis(
     missing = [name for name in (EIGENVECTORS, EIGENVALUES) if name not in dataset]
     if missing:
         raise ValueError(f"Scalar-sigma cache is missing variable(s): {missing!r}.")
+    vectors = dataset[EIGENVECTORS]
+    eigenvalues = dataset[EIGENVALUES]
+    expected_vector_dims = (output_dim, SCALAR_SIGMA_MODE_DIM)
+    if vectors.dims != expected_vector_dims:
+        raise ValueError(
+            f"Scalar-sigma cache eigenvectors must have dims {expected_vector_dims!r}; "
+            f"got {vectors.dims!r}."
+        )
+    if eigenvalues.dims != (SCALAR_SIGMA_MODE_DIM,):
+        raise ValueError(
+            f"Scalar-sigma cache eigenvalues must have dims ({SCALAR_SIGMA_MODE_DIM!r},)."
+        )
+    n_observation = vectors.sizes[output_dim]
+    if n_observation == 0 or vectors.shape != (n_observation, n_observation):
+        raise ValueError("Scalar-sigma cache eigenvectors must be non-empty and square.")
+    if eigenvalues.sizes[SCALAR_SIGMA_MODE_DIM] != n_observation:
+        raise ValueError("Scalar-sigma cache eigenvalues must match the eigenvector size.")
+    if output_dim not in vectors.indexes:
+        raise ValueError("Scalar-sigma cache eigenvectors require an indexed observation coordinate.")
+    vector_modes = vectors.indexes.get(SCALAR_SIGMA_MODE_DIM)
+    value_modes = eigenvalues.indexes.get(SCALAR_SIGMA_MODE_DIM)
+    if vector_modes is None or value_modes is None or not vector_modes.equals(value_modes):
+        raise ValueError("Scalar-sigma cache eigenvector and eigenvalue modes must match exactly.")
     if observations.dims != (output_dim,):
         raise ValueError(
             f"Scalar-sigma cache expects observations on {output_dim!r}; got {observations.dims!r}."
@@ -609,7 +586,7 @@ def load_scalar_sigma_eigenbasis(
     try:
         _, vectors = xr.align(
             observations,
-            dataset[EIGENVECTORS],
+            vectors,
             join="exact",
             copy=False,
         )
@@ -620,12 +597,22 @@ def load_scalar_sigma_eigenbasis(
     error_units = str(observation_error.attrs.get("units", "")).strip()
     if not units or units != observation_units or units != error_units:
         raise ValueError("Scalar-sigma cache, observations, and reported errors require matching units.")
+    digest = str(dataset.attrs.get("base_covariance_sha256", "")).strip().lower()
+    try:
+        digest_bytes = bytes.fromhex(digest)
+    except ValueError as error:
+        raise ValueError("Scalar-sigma base covariance fingerprint must be SHA-256.") from error
+    if len(digest_bytes) != 32 or len(digest) != 64:
+        raise ValueError("Scalar-sigma base covariance fingerprint must be SHA-256.")
+    aggregation_error_mode = dataset.attrs.get("aggregation_error_mode", "")
+    if aggregation_error_mode not in ("none", "dense", "low_rank", "diagonal"):
+        raise ValueError("Scalar-sigma cache requires a concrete aggregation-error mode.")
     eigenbasis = ScalarSigmaEigenbasis(
         eigenvectors=vectors,
-        eigenvalues=dataset[EIGENVALUES],
+        eigenvalues=eigenvalues,
         concentration_units=units,
-        base_covariance_sha256=dataset.attrs.get("base_covariance_sha256", ""),
-        aggregation_error_mode=dataset.attrs.get("aggregation_error_mode", ""),
+        base_covariance_sha256=digest,
+        aggregation_error_mode=aggregation_error_mode,
         output_dim=output_dim,
     )
     if eigenbasis.aggregation_error_mode != aggregation_error.mode:

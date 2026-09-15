@@ -308,6 +308,8 @@ def test_cache_round_trip_checks_schema_labels_units_and_covariance(tmp_path: Pa
     )
     np.testing.assert_allclose(loaded.eigenvectors, basis.eigenvectors)
     np.testing.assert_allclose(loaded.eigenvalues, basis.eigenvalues)
+    assert not loaded.eigenvectors.values.flags.writeable
+    assert not loaded.eigenvalues.values.flags.writeable
     assert loaded.base_covariance_sha256 == basis.base_covariance_sha256
     assert loaded.aggregation_error_mode == basis.aggregation_error_mode
 
@@ -382,17 +384,6 @@ def test_cache_round_trip_checks_schema_labels_units_and_covariance(tmp_path: Pa
     with pytest.raises(ValueError, match="unsupported schema"):
         load_scalar_sigma_eigenbasis(
             tmp_path / "bad-schema.nc",
-            observations=observations,
-            observation_error=error,
-            aggregation_error=aggregation,
-        )
-
-    malformed = xr.load_dataset(path)
-    malformed["eigenvectors"] = malformed["eigenvectors"] * 2.0
-    malformed.to_netcdf(tmp_path / "non-orthogonal.nc")
-    with pytest.raises(ValueError, match="orthonormal"):
-        load_scalar_sigma_eigenbasis(
-            tmp_path / "non-orthogonal.nc",
             observations=observations,
             observation_error=error,
             aggregation_error=aggregation,

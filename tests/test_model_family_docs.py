@@ -71,6 +71,7 @@ def test_standard_reader_path_avoids_detailed_co2_material() -> None:
     ]
     assert "CO2 coherent-reduction model" not in concrete
     assert "Run the production cached-sigma CO2 recipe" not in customising
+    assert "scalar-sigma-eigenbasis.nc" not in customising
 
 
 def test_advanced_co2_reader_path_exposes_current_boundaries() -> None:
@@ -93,6 +94,9 @@ def test_advanced_co2_reader_path_exposes_current_boundaries() -> None:
     assert "remain future work" in family
     assert "CO2 coherent-reduction model" in recipes
     assert "CO2/O2 shared-state model" in recipes
+    assert ".. _co2-scalar-sigma-recipe:" in recipes
+    assert "aggregation_error_covariance" in recipes
+    assert "Unit conversion is caller-owned" in recipes
     assert ".. _co2-cached-sigma-recipe:" in recipes
     assert "Run the ordinary prepared-input CO2 runner" in recipes
     assert "idata = run_rhime_co2(" in recipes
