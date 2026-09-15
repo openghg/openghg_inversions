@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import Literal, TypeAlias
 
 from dask import compute as dask_compute
+from dask.array import Array as DaskArray
 import numpy as np
 import xarray as xr
 
@@ -124,6 +125,8 @@ def _numeric_finite(
 
 def _materialize_together(*arrays: xr.DataArray) -> tuple[xr.DataArray, ...]:
     """Return shallow labelled copies whose related payloads are eager."""
+    if all(not isinstance(array.data, DaskArray) for array in arrays):
+        return arrays
     computed = dask_compute(*(array.data for array in arrays))
     return tuple(
         array.copy(deep=False, data=values)

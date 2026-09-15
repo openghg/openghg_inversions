@@ -84,8 +84,9 @@ def _structured_metadata(value: Any) -> Any:
 
     Returns:
         Scalars and recursively structured dictionaries/lists. DataArrays keep
-        explicit dimensions, dimension coordinates, and values. Python and
-        NumPy dates/times become ISO strings; timedeltas become strings.
+        explicit dimensions, dimension coordinates, and values. Paths become
+        strings, Python and NumPy dates/times become ISO strings, and timedeltas
+        become strings.
     """
     if isinstance(value, xr.DataArray):
         materialized = value.compute()
@@ -103,6 +104,8 @@ def _structured_metadata(value: Any) -> Any:
     if isinstance(value, datetime | date | time):
         return value.isoformat()
     if isinstance(value, timedelta):
+        return str(value)
+    if isinstance(value, Path):
         return str(value)
     if isinstance(value, np.ndarray):
         if value.ndim == 0:
