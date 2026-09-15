@@ -17,7 +17,6 @@ import xarray as xr
 from openghg_inversions.models.coords import registered_model
 from openghg_inversions.models.scalar_sigma import (
     SCALAR_SIGMA_CACHE_SCHEMA,
-    SCALAR_SIGMA_MODE_DIM,
     ScalarSigmaEigenbasis,
     add_scalar_sigma_eigen_likelihood,
     load_scalar_sigma_eigenbasis,
@@ -63,20 +62,26 @@ def _dense_aggregation() -> AggregationError:
 
 
 def _eigenbasis(covariance: np.ndarray) -> ScalarSigmaEigenbasis:
-    eigenvalues, eigenvectors = np.linalg.eigh(covariance)
-    mode = np.arange(covariance.shape[0])
-    return ScalarSigmaEigenbasis(
-        eigenvectors=xr.DataArray(
-            eigenvectors,
-            dims=("nmeasure", SCALAR_SIGMA_MODE_DIM),
-            coords={"nmeasure": LABELS, SCALAR_SIGMA_MODE_DIM: mode},
+    observations = xr.DataArray(
+        np.zeros(covariance.shape[0]),
+        dims="nmeasure",
+        coords={"nmeasure": LABELS},
+        attrs={"units": "ppm"},
+    )
+    error = xr.zeros_like(observations)
+    error.attrs["units"] = "ppm"
+    return prepare_scalar_sigma_eigenbasis(
+        observations=observations,
+        observation_error=error,
+        aggregation_error=AggregationError(
+            mode="dense",
+            marginal_variance=np.diag(covariance),
+            covariance=xr.DataArray(
+                covariance,
+                dims=("nmeasure", "nmeasure_cov"),
+                coords={"nmeasure": LABELS, "nmeasure_cov": LABELS},
+            ),
         ),
-        eigenvalues=xr.DataArray(
-            eigenvalues,
-            dims=SCALAR_SIGMA_MODE_DIM,
-            coords={SCALAR_SIGMA_MODE_DIM: mode},
-        ),
-        concentration_units="ppm",
     )
 
 
@@ -284,13 +289,14 @@ def test_covariance_validation_is_invariant_to_concentration_units(
         )
 
 
-def test_cache_round_trip_checks_schema_labels_and_units(tmp_path: Path) -> None:
-    """The small xarray loader is the sole cache trust boundary."""
+def test_cache_round_trip_checks_schema_labels_units_and_covariance(tmp_path: Path) -> None:
+    """The loader binds the cache to the current labelled base covariance."""
     observations, error = _observations()
+    aggregation = _dense_aggregation()
     basis = prepare_scalar_sigma_eigenbasis(
         observations=observations,
         observation_error=error,
-        aggregation_error=_dense_aggregation(),
+        aggregation_error=aggregation,
     )
     path = save_scalar_sigma_eigenbasis(tmp_path / "scalar-sigma.nc", basis)
 
@@ -298,33 +304,76 @@ def test_cache_round_trip_checks_schema_labels_and_units(tmp_path: Path) -> None
         path,
         observations=observations,
         observation_error=error,
+        aggregation_error=aggregation,
     )
     np.testing.assert_allclose(loaded.eigenvectors, basis.eigenvectors)
     np.testing.assert_allclose(loaded.eigenvalues, basis.eigenvalues)
+    assert loaded.base_covariance_sha256 == basis.base_covariance_sha256
+    assert loaded.aggregation_error_mode == basis.aggregation_error_mode
 
     with pytest.raises(ValueError, match="exact ordered observation coordinate"):
         load_scalar_sigma_eigenbasis(
             path,
             observations=observations.sel(nmeasure=LABELS[::-1]),
             observation_error=error.sel(nmeasure=LABELS[::-1]),
+            aggregation_error=aggregation,
         )
     with pytest.raises(ValueError, match="exact ordered observation coordinate"):
         load_scalar_sigma_eigenbasis(
             path,
             observations=observations,
             observation_error=error.sel(nmeasure=LABELS[::-1]),
+            aggregation_error=aggregation,
         )
     with pytest.raises(ValueError, match="matching units"):
         load_scalar_sigma_eigenbasis(
             path,
             observations=observations.assign_attrs(units="ppb"),
             observation_error=error.assign_attrs(units="ppb"),
+            aggregation_error=aggregation,
         )
     with pytest.raises(ValueError, match="matching units"):
         load_scalar_sigma_eigenbasis(
             path,
             observations=observations,
             observation_error=error.assign_attrs(units="ppb"),
+            aggregation_error=aggregation,
+        )
+
+    with pytest.raises(ValueError, match="current reported and aggregation errors"):
+        load_scalar_sigma_eigenbasis(
+            path,
+            observations=observations,
+            observation_error=error.copy(data=error.values * 2.0),
+            aggregation_error=aggregation,
+        )
+
+    assert aggregation.covariance is not None
+    changed_covariance = aggregation.covariance.copy(
+        data=aggregation.covariance.values + np.eye(3) * 0.1
+    )
+    changed_aggregation = AggregationError(
+        mode="dense",
+        marginal_variance=np.diag(changed_covariance.values),
+        covariance=changed_covariance,
+    )
+    with pytest.raises(ValueError, match="current reported and aggregation errors"):
+        load_scalar_sigma_eigenbasis(
+            path,
+            observations=observations,
+            observation_error=error,
+            aggregation_error=changed_aggregation,
+        )
+
+    with pytest.raises(ValueError, match="same mode"):
+        load_scalar_sigma_eigenbasis(
+            path,
+            observations=observations,
+            observation_error=error,
+            aggregation_error=AggregationError(
+                mode="none",
+                marginal_variance=np.zeros(3),
+            ),
         )
 
     malformed = xr.load_dataset(path)
@@ -335,6 +384,7 @@ def test_cache_round_trip_checks_schema_labels_and_units(tmp_path: Path) -> None
             tmp_path / "bad-schema.nc",
             observations=observations,
             observation_error=error,
+            aggregation_error=aggregation,
         )
 
     malformed = xr.load_dataset(path)
@@ -345,6 +395,7 @@ def test_cache_round_trip_checks_schema_labels_and_units(tmp_path: Path) -> None
             tmp_path / "non-orthogonal.nc",
             observations=observations,
             observation_error=error,
+            aggregation_error=aggregation,
         )
 
 
@@ -384,6 +435,7 @@ def test_cache_round_trip_preserves_multiindex_labels(tmp_path: Path) -> None:
         path,
         observations=observations,
         observation_error=error,
+        aggregation_error=aggregation,
     )
 
     assert loaded.eigenvectors.indexes["nmeasure"].equals(observations.indexes["nmeasure"])
@@ -445,4 +497,6 @@ def test_cache_dataset_uses_the_published_schema() -> None:
     """The serializable cache exposes its normal xarray schema directly."""
     dataset = _eigenbasis(np.eye(3)).to_dataset()
     assert dataset.attrs["schema"] == SCALAR_SIGMA_CACHE_SCHEMA
+    assert dataset.attrs["base_covariance_sha256"]
+    assert dataset.attrs["aggregation_error_mode"] == "dense"
     assert set(dataset.data_vars) == {"eigenvectors", "eigenvalues"}

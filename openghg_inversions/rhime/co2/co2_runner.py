@@ -22,6 +22,7 @@ from openghg_inversions.models.scalar_sigma import (
 )
 from openghg_inversions.models.state_activity import StateActivity
 from openghg_inversions.observation_error import (
+    AggregationError,
     AggregationErrorMode,
     aggregation_error_input_names,
     resolve_aggregation_error,
@@ -225,6 +226,7 @@ def _resolve_co2_likelihood_kwargs(
     *,
     observations: xr.DataArray,
     observation_error: xr.DataArray,
+    aggregation_error: AggregationError,
 ) -> Mapping[str, Any] | None:
     """Resolve file-backed scalar-sigma options before model construction."""
     if likelihood_builder is not add_scalar_sigma_eigen_likelihood:
@@ -244,6 +246,7 @@ def _resolve_co2_likelihood_kwargs(
             options["eigenbasis_path"],
             observations=observations,
             observation_error=observation_error,
+            aggregation_error=aggregation_error,
         ),
         "sigma_prior": options["sigma_prior"],
     }
@@ -355,6 +358,7 @@ def run_rhime_co2(
         likelihood_kwargs,
         observations=model_inputs["mf"],
         observation_error=model_inputs["mf_error"],
+        aggregation_error=aggregation_error,
     )
     prepared_mismatch = (
         model_inputs.get("fixed_model_mismatch")

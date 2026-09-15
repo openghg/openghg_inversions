@@ -11,8 +11,9 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from hashlib import sha256
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from dask import compute as dask_compute
 from dask.array import Array as DaskArray
@@ -32,10 +33,12 @@ from openghg_inversions.serialization import decode_cf_multiindexes, encode_cf_m
 
 
 SCALAR_SIGMA_CACHE_SCHEMA = "openghg_inversions.scalar_sigma_eigenbasis"
-SCALAR_SIGMA_CACHE_VERSION = 1
+SCALAR_SIGMA_CACHE_VERSION = 2
 SCALAR_SIGMA_MODE_DIM = "scalar_sigma_mode"
 EIGENVECTORS = "eigenvectors"
 EIGENVALUES = "eigenvalues"
+
+ScalarSigmaAggregationMode = Literal["none", "dense", "low_rank", "diagonal"]
 
 
 def _align_observation_array(
@@ -88,6 +91,12 @@ def _scale_relative_tolerance(values: NDArray[np.float64]) -> float:
         np.finfo(values.dtype).tiny,
     )
     return 1.0e-10 * scale
+
+
+def _base_covariance_sha256(covariance: NDArray[np.float64]) -> str:
+    """Return a stable fingerprint for one dense base covariance."""
+    canonical = np.ascontiguousarray(covariance, dtype=np.dtype("<f8"))
+    return sha256(canonical.tobytes()).hexdigest()
 
 
 def scalar_sigma_base_covariance(
@@ -251,16 +260,22 @@ class ScalarSigmaEigenbasis:
         eigenvalues: Non-negative values on ``scalar_sigma_mode``.
         concentration_units: Physical concentration units shared by the
             observations, reported errors, and scalar mismatch amplitude.
+        base_covariance_sha256: SHA-256 fingerprint of the resolved
+            ``A + D_obs`` covariance represented by this eigenbasis.
+        aggregation_error_mode: Aggregation-error representation used to
+            construct the base covariance.
         output_dim: Observation dimension represented by the rows.
 
     Raises:
-        ValueError: If dimensions, coordinates, units, or numerical values do
-            not define a finite labelled eigenbasis.
+        ValueError: If dimensions, coordinates, units, cache metadata, or
+            numerical values do not define a finite labelled eigenbasis.
     """
 
     eigenvectors: xr.DataArray
     eigenvalues: xr.DataArray
     concentration_units: str
+    base_covariance_sha256: str
+    aggregation_error_mode: ScalarSigmaAggregationMode
     output_dim: str = "nmeasure"
 
     def __post_init__(self) -> None:
@@ -289,6 +304,15 @@ class ScalarSigmaEigenbasis:
         units = str(self.concentration_units).strip()
         if not units:
             raise ValueError("Scalar-sigma eigenbasis requires concentration units.")
+        digest = str(self.base_covariance_sha256).strip().lower()
+        try:
+            digest_bytes = bytes.fromhex(digest)
+        except ValueError as error:
+            raise ValueError("Scalar-sigma base covariance fingerprint must be SHA-256.") from error
+        if len(digest_bytes) != 32 or len(digest) != 64:
+            raise ValueError("Scalar-sigma base covariance fingerprint must be SHA-256.")
+        if self.aggregation_error_mode not in ("none", "dense", "low_rank", "diagonal"):
+            raise ValueError("Scalar-sigma cache requires a concrete aggregation-error mode.")
         source_vectors = np.asarray(self.eigenvectors.values)
         source_dtype = (
             source_vectors.dtype if np.issubdtype(source_vectors.dtype, np.floating) else np.dtype(np.float64)
@@ -320,6 +344,7 @@ class ScalarSigmaEigenbasis:
             self.eigenvalues.copy(deep=False, data=values),
         )
         object.__setattr__(self, "concentration_units", units)
+        object.__setattr__(self, "base_covariance_sha256", digest)
 
     @property
     def n_observation(self) -> int:
@@ -331,7 +356,8 @@ class ScalarSigmaEigenbasis:
 
         Returns:
             Dataset containing the labelled eigenvectors, eigenvalues, schema,
-            units, and observation-dimension name.
+            units, base-covariance fingerprint, aggregation-error mode, and
+            observation-dimension name.
         """
         return xr.Dataset(
             {EIGENVECTORS: self.eigenvectors, EIGENVALUES: self.eigenvalues},
@@ -340,6 +366,8 @@ class ScalarSigmaEigenbasis:
                 "schema_version": SCALAR_SIGMA_CACHE_VERSION,
                 "output_dim": self.output_dim,
                 "concentration_units": self.concentration_units,
+                "base_covariance_sha256": self.base_covariance_sha256,
+                "aggregation_error_mode": self.aggregation_error_mode,
             },
         )
 
@@ -484,6 +512,8 @@ def prepare_scalar_sigma_eigenbasis(
             name=EIGENVALUES,
         ),
         concentration_units=str(observations.attrs["units"]),
+        base_covariance_sha256=_base_covariance_sha256(covariance),
+        aggregation_error_mode=aggregation_error.mode,
         output_dim=output_dim,
     )
 
@@ -521,25 +551,30 @@ def load_scalar_sigma_eigenbasis(
     *,
     observations: xr.DataArray,
     observation_error: xr.DataArray,
+    aggregation_error: AggregationError,
 ) -> ScalarSigmaEigenbasis:
     """Load and align a versioned scalar-sigma eigenbasis cache.
 
     Loading is the cache trust boundary. It validates the small xarray schema,
     exact dimensions, finite cache values, units, and ordered
-    observation/error labels. It does not reconstruct or hash the dense
-    covariance.
+    observation/error labels. It reconstructs the currently resolved
+    ``A + D_obs`` once and verifies its fingerprint and aggregation-error mode
+    before model construction.
 
     Args:
         path: NetCDF cache created by :func:`save_scalar_sigma_eigenbasis`.
         observations: Observations that will consume the cache.
         observation_error: Reported errors that will consume the cache, with
             the same ordered labels and concentration units as ``observations``.
+        aggregation_error: Currently resolved aggregation-error representation
+            that will consume the cache.
 
     Returns:
         Eager trusted eigenbasis aligned to ``observations``.
 
     Raises:
-        ValueError: If schema, dimensions, labels, units, or values disagree.
+        ValueError: If schema, dimensions, labels, units, aggregation mode, or
+            numerical base covariance disagree.
         OSError: If the cache cannot be opened.
     """
     source = Path(path).resolve()
@@ -585,12 +620,29 @@ def load_scalar_sigma_eigenbasis(
     error_units = str(observation_error.attrs.get("units", "")).strip()
     if not units or units != observation_units or units != error_units:
         raise ValueError("Scalar-sigma cache, observations, and reported errors require matching units.")
-    return ScalarSigmaEigenbasis(
+    eigenbasis = ScalarSigmaEigenbasis(
         eigenvectors=vectors,
         eigenvalues=dataset[EIGENVALUES],
         concentration_units=units,
+        base_covariance_sha256=dataset.attrs.get("base_covariance_sha256", ""),
+        aggregation_error_mode=dataset.attrs.get("aggregation_error_mode", ""),
         output_dim=output_dim,
     )
+    if eigenbasis.aggregation_error_mode != aggregation_error.mode:
+        raise ValueError(
+            "Scalar-sigma cache and current aggregation error require the same mode."
+        )
+    current_covariance = scalar_sigma_base_covariance(
+        observations,
+        observation_error,
+        aggregation_error,
+        output_dim=output_dim,
+    )
+    if eigenbasis.base_covariance_sha256 != _base_covariance_sha256(current_covariance):
+        raise ValueError(
+            "Scalar-sigma cache does not match the current reported and aggregation errors."
+        )
+    return eigenbasis
 
 
 def add_scalar_sigma_eigen_likelihood(

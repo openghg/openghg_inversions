@@ -13,11 +13,16 @@ The CO2 scalar-sigma component evaluates the exact Gaussian covariance
   reconstruction.
 
 The optional cache is a small versioned xarray Dataset stored as NetCDF. It
-contains labelled ``eigenvectors`` and ``eigenvalues``. Loading checks the
-schema, dimensions, finite values, matching cache, observation, and
-reported-error concentration units, and exact ordered observation/error
-coordinates; it does not create a second content-identity system or reconstruct
-the dense covariance.
+contains labelled ``eigenvectors`` and ``eigenvalues``, the selected
+aggregation-error mode, and one SHA-256 fingerprint of the resolved
+``A + D_obs`` covariance. Loading checks the schema, dimensions, finite values,
+matching cache, observation, and reported-error concentration units, and exact
+ordered observation/error coordinates. It then constructs the current
+``A + D_obs`` once and rejects a changed reported-error value, aggregation-error
+value, or aggregation-error mode before model construction. This verification
+does not repeat the eigendecomposition or add work to likelihood evaluations.
+Regenerate the cache after an intended change to ``mf_error``, the selected
+aggregation-error values, or ``aggregation_error_mode``.
 
 Prepare and save a reusable cache::
 
