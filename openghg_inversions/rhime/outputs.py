@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
+from datetime import date, datetime, time, timedelta
+import json
 from pathlib import Path
 from typing import Any, cast
 
@@ -45,15 +48,44 @@ class RhimeResult:
     model_build_result: RhimeModelBuildResult | None = None
 
 
+def annotate_likelihood_trace(
+    idata: az.InferenceData,
+    *,
+    builder_identity: dict[str, str],
+    likelihood_kwargs: Mapping[str, Any] | None,
+) -> None:
+    """Persist custom-likelihood provenance in place.
+
+    Array-valued options are converted to JSON-compatible values; labelled
+    arrays cross an explicit eager serialization boundary.
+
+    Args:
+        idata: Inference data to annotate in place.
+        builder_identity: Importable module and qualified-name provenance for
+            the likelihood builder.
+        likelihood_kwargs: Resolved builder options to preserve as structured
+            JSON metadata.
+
+    Returns:
+        None. The input inference data and matching variable attributes are
+        annotated in place.
+    """
+    idata.attrs["rhime_likelihood_builder"] = json.dumps(builder_identity, sort_keys=True)
+    idata.attrs["rhime_likelihood_kwargs"] = json.dumps(
+        _structured_metadata(dict(likelihood_kwargs or {})), sort_keys=True
+    )
+
+
 def _structured_metadata(value: Any) -> Any:
-    """Convert array-backed spec values to lossless JSON-compatible metadata.
+    """Convert array-backed spec values to JSON-compatible metadata.
 
     Args:
         value: Nested metadata value, possibly backed by NumPy or xarray.
 
     Returns:
         Scalars and recursively structured dictionaries/lists. DataArrays keep
-        explicit dimensions, dimension coordinates, and values.
+        explicit dimensions, dimension coordinates, and values. Python and
+        NumPy dates/times become ISO strings; timedeltas become strings.
     """
     if isinstance(value, xr.DataArray):
         materialized = value.compute()
@@ -66,10 +98,16 @@ def _structured_metadata(value: Any) -> Any:
             },
             "values": _structured_metadata(materialized.to_numpy()),
         }
+    if isinstance(value, np.datetime64 | np.timedelta64):
+        return str(value)
+    if isinstance(value, datetime | date | time):
+        return value.isoformat()
+    if isinstance(value, timedelta):
+        return str(value)
     if isinstance(value, np.ndarray):
         if value.ndim == 0:
-            return _structured_metadata(value.item())
-        return [_structured_metadata(item) for item in value.tolist()]
+            return _structured_metadata(value[()])
+        return [_structured_metadata(item) for item in value]
     if isinstance(value, np.generic):
         return value.item()
     if isinstance(value, dict):

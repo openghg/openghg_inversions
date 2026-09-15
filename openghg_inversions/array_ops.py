@@ -42,7 +42,7 @@ an xarray issue, which now is written in terms of ``force_align``.
 from __future__ import annotations
 
 import warnings
-from collections.abc import Hashable, Iterable, Mapping, Sequence
+from collections.abc import Hashable, Iterable, Iterator, Mapping, Sequence
 from typing import Any, Literal, TypeVar, overload
 
 import numpy as np
@@ -54,6 +54,39 @@ from xarray.core.common import DataWithCoords, is_chunked_array  # type: ignore
 
 # type for xr.Dataset *or* xr.DataArray
 DataSetOrArray = TypeVar("DataSetOrArray", bound=DataWithCoords)
+
+
+def expand_mapping(
+    values: Mapping[Hashable, Any],
+    coordinate: xr.DataArray,
+    *,
+    name: str | None = None,
+) -> xr.DataArray:
+    """Select mapping values along a labelled coordinate.
+
+    This is the labelled equivalent of indexing an array of values with an
+    integer index vector. Extra mapping entries are harmless; xarray reports a
+    missing key when the target coordinate cannot be selected.
+
+    Args:
+        values: Values keyed by scientific coordinate label.
+        coordinate: Labels and output dimensions onto which to expand them.
+        name: Optional name for the returned array.
+
+    Returns:
+        Mapping values ordered and expanded like ``coordinate``.
+    """
+    lookup_dim = coordinate.name or "mapping_key"
+    lookup = xr.DataArray(
+        list(values.values()),
+        dims=(lookup_dim,),
+        coords={lookup_dim: list(values)},
+    )
+    try:
+        expanded = lookup.sel({lookup_dim: coordinate})
+    except KeyError as error:
+        raise ValueError("Mapping has no value for every coordinate label.") from error
+    return expanded.rename(name)
 
 
 def validate_covariance_coordinates(
@@ -620,6 +653,80 @@ def _resolve_shared_data_vars(
 # Align to multi-index
 # ----------------------------------------
 
+_MULTI_INDEX_BROADCAST_WARN_BYTES = 1024**3
+_MULTI_INDEX_BROADCAST_WARN_RATIO = 10
+
+
+def iter_multi_index_level_slices(
+    da: xr.DataArray,
+    *,
+    multi_index: xr.DataArray,
+    multi_dim: str,
+    level: str,
+    array_dim: str,
+) -> Iterator[tuple[Hashable, np.ndarray, xr.DataArray]]:
+    """Pair unique-level values with matching gathered-axis slices.
+
+    This supports split -> operate -> combine algorithms without first
+    broadcasting ``da(array_dim, ...)`` onto every entry of ``multi_dim``.
+    That distinction is essential when the non-index dimensions are large:
+    vectorized selection with repeated level values can create a temporary of
+    shape ``(multi_dim, ...)`` before the expensive dimensions are reduced.
+
+    Target values are visited in first-seen MultiIndex order. Positions are
+    grouped in one pass over the gathered index, and callers retain the
+    positions needed to restore canonical gathered order after combining
+    operation-specific results.
+
+    Args:
+        da: Array indexed once per unique ``level`` value.
+        multi_index: Coordinate backed by the gathered pandas MultiIndex.
+        multi_dim: Gathered dimension name.
+        level: MultiIndex level paired with ``array_dim``.
+        array_dim: Unique-level dimension on ``da``.
+
+    Yields:
+        The level value, its integer positions in ``multi_dim``, and the
+        matching scalar selection from ``da``.
+
+    Raises:
+        ValueError: If the gathered coordinate is not the requested
+            MultiIndex, or the input labels are absent, duplicated, missing,
+            or extra relative to the target level.
+    """
+    if multi_index.dims != (multi_dim,):
+        raise ValueError(
+            f"multi_index must have the single dimension {multi_dim!r}; got {multi_index.dims!r}."
+        )
+    index = multi_index.to_index()
+    if not isinstance(index, pd.MultiIndex):
+        raise ValueError("multi_index must be backed by a pandas.MultiIndex.")
+    if level not in index.names:
+        raise ValueError(f"Requested level {level!r} not found in MultiIndex levels {index.names!r}.")
+    if array_dim not in da.dims or array_dim not in da.coords:
+        raise ValueError(f"Input array must carry labelled dimension {array_dim!r}.")
+
+    array_index = da.get_index(array_dim)
+    if not array_index.is_unique:
+        raise ValueError(f"Input labels for {array_dim!r} must be unique.")
+
+    level_values = index.get_level_values(level)
+    unique_values = level_values.unique()
+    missing = unique_values.difference(array_index)
+    extra = array_index.difference(unique_values)
+    if len(missing) or len(extra):
+        raise ValueError(
+            f"Input labels for {array_dim!r} must exactly cover MultiIndex level {level!r}; "
+            f"missing {missing.tolist()!r}, extra {extra.tolist()!r}."
+        )
+
+    positions: dict[Hashable, list[int]] = {}
+    for position, value in enumerate(level_values):
+        positions.setdefault(value, []).append(position)
+
+    for value in unique_values:
+        yield value, np.asarray(positions[value]), da.sel({array_dim: value}, drop=True)
+
 
 def align_to_multi_index_level_values(
     da: xr.DataArray,
@@ -695,6 +802,24 @@ def align_to_multi_index_level_values(
             UserWarning,
             stacklevel=2,
         )
+
+    source_size = da.sizes[other_dim]
+    target_size = multi_index.sizes[multi_dim]
+    if source_size:
+        expansion_ratio = target_size / source_size
+        projected_bytes = da.nbytes // source_size * target_size
+        if (
+            expansion_ratio >= _MULTI_INDEX_BROADCAST_WARN_RATIO
+            and projected_bytes >= _MULTI_INDEX_BROADCAST_WARN_BYTES
+        ):
+            warnings.warn(
+                f"Aligning {other_dim!r} to {multi_dim!r} expands {source_size} values to "
+                f"{target_size} ({expansion_ratio:.1f}x) with a projected logical size of "
+                f"{projected_bytes / 1024**3:.1f} GiB. This explicit broadcast may exhaust "
+                "memory; use iter_multi_index_level_slices for split-operate-combine work.",
+                UserWarning,
+                stacklevel=2,
+            )
 
     # Vectorized selection in the order of the level values (dim becomes multi_dim)
     level_values = multi_index[level]

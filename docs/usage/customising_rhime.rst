@@ -22,6 +22,8 @@ documented interfaces.
 Choose the smallest starting point that fits the change:
 
 * To change only the likelihood, pass a Python function to ``run_rhime``.
+* To run the matched fixed-tau OU CO2 model with inferred site amplitudes, use
+  :ref:`the production cached-sigma CO2 recipe <cached-sigma-co2-recipe>`.
 * To resume from externally supplied merged observations, footprints, and
   fluxes, pass a borrowed ``RhimeMergedData`` object as ``merged_data``.
 * To change a preparation stage such as basis construction, copy the visible
@@ -65,15 +67,17 @@ The complete integration is one named argument:
 
    result = run_rhime(
        config_file="config.ini",
+       mismatch_model=None,
        likelihood_builder=likelihood_builder,
    )
 
 RHIME calls the function with explicit keyword arguments while constructing
 the PyMC model: the prepared observations, completed forward-model mean,
-pollution contribution, pollution-event baseline, selected aggregation error,
-and output dimension. The function adds ``epsilon`` and the canonical observed
-variable ``y`` to the active model and returns ``y``. There is no framework
-context or likelihood-result record to construct.
+reported observation error, selected aggregation error, and output dimension.
+Pollution-event-only terms remain inside the built-in pollution-event
+component. The function adds ``epsilon`` and the canonical observed variable
+``y`` to the active model and returns ``y``. There is no framework context or
+likelihood-result record to construct.
 
 Options owned only by a custom likelihood can be supplied separately with
 ``likelihood_kwargs``. RHIME expands that mapping into the callable without
@@ -81,14 +85,20 @@ hiding the common scientific arrays in an opaque object::
 
    result = run_rhime(
        config_file="config.ini",
+       mismatch_model=None,
        likelihood_builder=likelihood_builder,
        likelihood_kwargs={"degrees_of_freedom": 4.0},
    )
 
-These options must be a string-keyed, JSON-compatible mapping. RHIME copies
-the mapping before use and records the copy beside the likelihood identity in
-the result metadata and any saved inversion output. A non-empty mapping is
-rejected when no ``likelihood_builder`` is active.
+``mismatch_model=None`` explicitly opts out of the built-in selected by the
+configuration template. Passing both a custom callable and either built-in
+selection is rejected as ambiguous.
+
+RHIME passes these options directly and records a JSON-compatible
+representation beside the likelihood identity in result metadata and any
+saved inversion output. NumPy and Python dates and times become ISO strings;
+timedeltas become strings. A non-empty mapping is rejected when no
+``likelihood_builder`` is active.
 
 Editable likelihood
 ~~~~~~~~~~~~~~~~~~~
@@ -112,19 +122,66 @@ The example rejects dense and low-rank aggregation covariance because it uses
 an independent Student-t distribution. Supporting those aggregation-error
 modes would require a multivariate likelihood.
 
-The installed ``rhime.likelihoods.additive_sigma_likelihood_builder`` is a
-drop-in ordinary likelihood builder. It derives sigma alignment from the
-labelled observation ``site`` and ``time`` coordinates. Optional
-``sigma_prior``, ``sigma_freq``, ``sigma_per_site``, ``sigma_freq_anchor``, and
-``no_model_error`` settings belong to that component and can be supplied in
-``likelihood_kwargs``.
+Built-in mismatch equations are direct model components, not examples of this
+custom-callback contract. In particular,
+``models.additive_sigma.add_additive_sigma_likelihood`` adds an absolute
+concentration-scale variance, while ``models.pollution_event`` owns the
+pollution-enhancement-scaled equation. Select the absolute additive equation
+directly with ``mismatch_model="additive_sigma"`` in ``run_rhime`` or
+``run_rhime_multisector``; ``sigma_prior``, ``sigma_freq``, and
+``sigma_per_site`` then configure its scale. Additive sigma does not load the
+historical ``min_error`` floor unless
+``use_minimum_error_floor=True`` is selected explicitly. A custom likelihood
+loads only ``mf`` and ``mf_error`` from the universal observation inputs and
+does not require ``min_error``.
 
-Built-in aggregation covariance relies on the guarantees of its construction
-pipeline. A custom pipeline that assembles its own covariance may optionally
-call
-:func:`openghg_inversions.observation_error.validate_complete_observation_covariance`
-with its fixed independent variance. Model builders do not run this eager
-diagnostic automatically.
+Legacy ``run_hbmcmc`` additive configuration is translated at that script's
+entry point into the same explicit likelihood settings. Parameter resolution
+stores built-in mismatch science in ``RhimeModelSpec`` before the standard or
+multisector recipe is called; the recipes themselves select no default.
+
+The model-owned
+``models.fixed_ou.add_fixed_ou_gaussian_likelihood`` adds a fixed-timescale,
+within-site Ornstein--Uhlenbeck mismatch covariance. For example::
+
+   from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
+   from openghg_inversions.rhime import run_rhime
+
+   result = run_rhime(
+       ...,
+       likelihood_builder=add_fixed_ou_gaussian_likelihood,
+       likelihood_kwargs={
+           "tau_hours": 5.0,
+           "site_amplitude_prior": {"pdf": "halfnormal", "sigma": 0.75},
+       },
+   )
+
+The residual covariance is
+``R = F F^T + diag(d) + direct_sum_s(a_s^2 T_s(tau_s))``, where
+``T_s[i, j] = exp(-abs(t_i - t_j) / tau_s)``. The direct sum gives zero
+cross-site OU covariance. ``F F^T + diag(d)`` is the selected fixed
+aggregation covariance plus reported observation-error variance; this
+component does not apply the historical ``min_error`` floor.
+
+``tau_hours`` may instead be an exact mapping from retained site labels to
+fixed positive timescales. Pass ``fixed_site_amplitudes`` as a scalar or exact
+site mapping to use known amplitudes instead of the inferred prior. An inferred
+amplitude requires an explicit ``site_amplitude_prior`` in the same
+concentration units as the observations; no fixed default is assumed. Tau has
+units of hours. Observation rows may be interleaved or nonmonotonic in time;
+the component preserves their order and sets cross-site OU covariance exactly
+to zero.
+
+The component evaluates low-rank aggregation covariance with a fixed-OU
+generalized-eigen and Woodbury method without forming a dense observation
+covariance. Dense aggregation input is a full-rank fallback. It currently
+requires every generalized base-plus-OU mode variance to be strictly positive.
+An exact zero mode is rejected before applying the low-rank factor, even when
+that factor would make a materialized dense covariance positive definite; a
+positive OU amplitude can lift a zero base mode. The component currently
+requires PyMC's native NUTS backend. Sampled tau is a separate extension; the
+production cached sampler is the matched recipe described in
+:ref:`cached-sigma-co2-recipe`.
 
 Optional project CLI
 ~~~~~~~~~~~~~~~~~~~~
@@ -145,6 +202,93 @@ Run it with a normal RHIME configuration and optional JSON overrides::
 standard multi-sector model retains sector flux components and roles, then
 passes their combined observation mean to the likelihood, so no special case
 or semantic compromise is required.
+
+.. _cached-sigma-co2-recipe:
+
+Run the production cached-sigma CO2 recipe
+------------------------------------------
+
+``run_rhime_co2_cached_sigma`` is the first-class production route for the
+fixed-tau OU likelihood with independently inferred site amplitudes. It owns
+the matched PyMC graph and sampler: the sigma-only NUTS step runs first against
+the exact conditional likelihood, refreshes the accepted state quadratic, and
+stock state NUTS then reads that cache without refactorizing the observation
+covariance during its trajectory.
+
+The runner begins from an already assembled coherent-reduction
+``RhimePreparedInputs`` artifact; it does not perform coherent reduction. Its
+``inv_inputs`` must contain ``H``, ``alpha_prior_mean``,
+``alpha_prior_covariance``, ``fixed_prior_contribution``, ``mf``, and
+``mf_error``. The observation arrays share one ``nmeasure`` row order, while
+the prior arrays share ``H``'s state labels. With the ``"low_rank"``
+aggregation-error mode used below, the artifact must also contain
+``low_rank_factor`` and ``diagonal_residual_variance``. A dense artifact
+instead contains ``aggregation_error_covariance`` and must be selected with
+``aggregation_error_mode="dense"``. Optional ``state_is_active`` and
+``state_fixed_value`` variables carry the prepared state-activity policy.
+
+:doc:`coherent_reduction` describes the linked retained prior, effective
+operator, affine contribution, and unresolved covariance, but no public
+function currently assembles those products into this durable artifact. That
+handoff is tracked in `OPE-153
+<https://linear.app/openghg-inversions/issue/OPE-153/add-a-public-coherent-reduction-handoff-for-co-prepared-inputs>`_.
+Until it lands, callers must supply already-prepared coherent-reduction inputs.
+
+For example::
+
+   from openghg_inversions.inversion_data import RhimePreparedInputs
+   from openghg_inversions.rhime import RhimeSampler
+   from openghg_inversions.rhime.co2 import run_rhime_co2_cached_sigma
+
+   prepared = RhimePreparedInputs.load("co2-coherent-low-rank.zarr")
+   idata = run_rhime_co2_cached_sigma(
+       prepared_inputs=prepared,
+       tau_hours={"BSD": 24.0, "TAC": 18.0},
+       site_amplitude_prior_scale=0.75,  # concentration units
+       aggregation_error_mode="low_rank",
+       sigma_target_accept=0.9,
+       state_target_accept=0.9,
+       sampler=RhimeSampler(
+           draws=1000,
+           tune=1000,
+           chains=4,
+           nuts_sampler="pymc",
+           sample_kwargs={"random_seed": 20260913},
+           sample_prior_predictive=False,
+       ),
+   )
+
+The runner constructs the required ``site amplitude -> state`` ``CompoundStep`` and
+uses process spawning for multiple chains. Do not pass another step method in
+``sample_kwargs``. Set ``sigma_target_accept`` and ``state_target_accept`` on
+the runner rather than putting a generic ``target_accept`` in
+``RhimeSampler.sample_kwargs``. The accepted quadratic and fixed-OU generalized
+eigenbasis are runtime numerical state derived from the materialized prepared
+inputs; they are not external cache artifacts.
+
+Because the cached graph uses a normalized joint ``Potential``, it does not
+invent an independent observed distribution. After sampling, the same exact
+fixed-OU target adds ``log_likelihood.y`` as one scalar per complete
+observation vector and, when requested, draws complete correlated vectors in
+``posterior_predictive.y``. The variables carry explicit joint-scope metadata.
+
+This route deliberately supports only independent HalfNormal site-amplitude
+priors and fixed positive OU timescales. Sampled tau and alternative amplitude
+priors are separate extensions. The route is PyMC-only because it constructs
+and owns a PyMC ``CompoundStep``. The ordinary stock-PyMC fixed-OU likelihood
+above remains the log-density/gradient oracle and fallback.
+
+The exponential within-site covariance follows the stationary process of
+`Uhlenbeck and Ornstein (1930)
+<https://doi.org/10.1103/PhysRev.36.823>`_. The named recipe and its matched
+accepted-state cache are implemented and versioned by OpenGHG Inversions.
+
+Built-in aggregation covariance relies on the guarantees of its construction
+pipeline. A custom pipeline that assembles its own covariance may optionally
+call
+:func:`openghg_inversions.observation_error.validate_complete_observation_covariance`
+with its fixed independent variance. Model builders do not run this eager
+diagnostic automatically.
 
 Use the seam from a generated project
 -------------------------------------

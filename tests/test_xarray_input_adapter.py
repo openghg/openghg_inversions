@@ -15,6 +15,7 @@ import openghg_inversions.rhime.prepared as rhime_prepared
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.inversion_data import prepare_rhime_inputs_from_xarray
 from openghg_inversions.rhime import (
+    PollutionEventSettings,
     RhimeModelSpec,
     RhimeOutputSpec,
     RhimeRunSpec,
@@ -307,7 +308,11 @@ def test_nonmonotonic_times_and_mapping_order_are_preserved() -> None:
         "MHD": _site_dataset("MHD", ["2021-01-04", "2021-01-02"]),
     }
 
-    prepared = prepare_rhime_inputs_from_xarray(data, basis_functions=_basis_functions())
+    prepared = prepare_rhime_inputs_from_xarray(
+        data,
+        basis_functions=_basis_functions(),
+        min_error="percentile",
+    )
 
     assert prepared.sites == ("TAC", "MHD")
     assert list(prepared.inv_inputs.coords["site"].values) == ["TAC", "TAC", "MHD", "MHD"]
@@ -318,6 +323,7 @@ def test_nonmonotonic_times_and_mapping_order_are_preserved() -> None:
             dtype="datetime64[ns]",
         ),
     )
+    np.testing.assert_allclose(prepared.inv_inputs["min_error"], 0.45)
 
 
 def test_stationary_release_coordinates_are_broadcast_to_observations() -> None:
@@ -810,7 +816,9 @@ def test_adapter_output_executes_through_prepared_runner_without_openghg(
             ),
         ),
         use_bc=False,
-        sigma_prior={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
+        likelihood=PollutionEventSettings(
+            sigma_prior={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
+        ),
     )
     run_spec = RhimeRunSpec(
         start_date="2021-01-01",
@@ -901,7 +909,9 @@ def test_unequal_source_regions_round_trip_and_execute(
         ),
         use_bc=True,
         bc_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.1},
-        sigma_prior={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
+        likelihood=PollutionEventSettings(
+            sigma_prior={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
+        ),
     )
     run_spec = RhimeRunSpec(
         start_date="2021-01-01",

@@ -36,7 +36,7 @@ import xarray as xr
 from pytensor.tensor.variable import TensorVariable
 
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
-from openghg_inversions.inversion_inputs import make_freq_indicator
+from openghg_inversions.inversion_inputs import make_freq_indicator, make_site_indicator
 from openghg_inversions.models.coords import add_coords
 from openghg_inversions.models.priors import parse_prior
 from openghg_inversions.models.state_activity import (
@@ -536,26 +536,33 @@ def add_correlated_lognormal_state_with_activity(
     Returns:
         Effective whitened latent, full state vector, and supplied activity.
     """
-    state_dim = activity.state_dim
-    if prior.state_dim != state_dim:
-        raise ValueError(
-            "Correlated LogNormal prior and state activity must use the same "
-            f"state dimension; found {prior.state_dim!r} and {state_dim!r}."
-        )
-    mean = prior.mean
-    activity_index = activity.zero_sensitivity.coords[state_dim].to_index()
-    if not mean.coords[state_dim].to_index().equals(activity_index):
-        raise ValueError(
-            "Correlated LogNormal prior labels must exactly match state-activity labels in the same order."
-        )
-    covariance = prior.arithmetic_covariance
+    active_prior = prepare_active_correlated_lognormal_prior(
+        activity,
+        prior,
+        var_name=var_name,
+    )
+    return _add_prepared_correlated_lognormal_state_with_activity(
+        activity,
+        active_prior,
+        var_name=var_name,
+    )
 
-    # All contract checks above deliberately precede model mutation.
+
+def _add_prepared_correlated_lognormal_state_with_activity(
+    activity: ResolvedStateActivity,
+    active_prior: CorrelatedLognormalPrior | None,
+    /,
+    *,
+    var_name: str,
+) -> StateVectorResult:
+    """Construct a state from the package-prepared active prior."""
+    state_dim = activity.state_dim
     add_coords(activity.zero_sensitivity.coords, model_dims=(state_dim,))
 
     if activity.n_active == activity.n_state:
+        assert active_prior is not None
         result = add_correlated_lognormal_state(
-            prior,
+            active_prior,
             var_name=var_name,
         )
         return StateVectorResult(
@@ -576,27 +583,9 @@ def add_correlated_lognormal_state_with_activity(
     latent: TensorVariable | None = None
     active_state: TensorVariable | None = None
     if activity.n_active:
-        active_dim = f"{state_dim}_{var_name}_active"
-        active_index = mean.coords[state_dim].to_index()[active_indices]
-        if isinstance(active_index, pd.MultiIndex):
-            active_index = active_index.set_names(
-                [f"{name}_{var_name}_active" for name in active_index.names]
-            )
-            active_coords = xr.Coordinates.from_pandas_multiindex(active_index, active_dim)
-        else:
-            active_coords = {active_dim: active_index.to_numpy()}
-        active_mean = xr.DataArray(
-            mean.isel({state_dim: active_indices}).values,
-            dims=(active_dim,),
-            coords=active_coords,
-            name=mean.name,
-            attrs=mean.attrs,
-        )
-        active_covariance = covariance.isel(
-            {state_dim: active_indices, prior.covariance_dim: active_indices}
-        ).values
+        assert active_prior is not None
         result = add_correlated_lognormal_state(
-            CorrelatedLognormalPrior(active_mean, active_covariance),
+            active_prior,
             var_name=f"{var_name}_active",
         )
         latent = result.latent
@@ -607,6 +596,54 @@ def add_correlated_lognormal_state_with_activity(
         full_state = pt.set_subtensor(full_state[active_indices], active_state)
     state = pm.Deterministic(var_name, full_state, dims=state_dim)
     return StateVectorResult(latent=latent, state=state, activity=activity)
+
+
+def prepare_active_correlated_lognormal_prior(
+    activity: ResolvedStateActivity,
+    prior: CorrelatedLognormalPrior,
+    /,
+    *,
+    var_name: str,
+) -> CorrelatedLognormalPrior | None:
+    """Align and subset one correlated prior for active-state construction."""
+    state_dim = activity.state_dim
+    if prior.state_dim != state_dim:
+        raise ValueError(
+            "Correlated LogNormal prior and state activity must use the same "
+            f"state dimension; found {prior.state_dim!r} and {state_dim!r}."
+        )
+    mean = prior.mean
+    activity_index = activity.zero_sensitivity.coords[state_dim].to_index()
+    if not mean.coords[state_dim].to_index().equals(activity_index):
+        raise ValueError(
+            "Correlated LogNormal prior labels must exactly match state-activity labels in the same order."
+        )
+    if activity.n_active == 0:
+        return None
+    if activity.n_active == activity.n_state:
+        return prior
+
+    active_indices = activity.active_indices
+    active_dim = f"{state_dim}_{var_name}_active"
+    active_index = mean.coords[state_dim].to_index()[active_indices]
+    if isinstance(active_index, pd.MultiIndex):
+        active_index = active_index.set_names(
+            [f"{name}_{var_name}_active" for name in active_index.names]
+        )
+        active_coords = xr.Coordinates.from_pandas_multiindex(active_index, active_dim)
+    else:
+        active_coords = {active_dim: active_index.to_numpy()}
+    active_mean = xr.DataArray(
+        mean.isel({state_dim: active_indices}).values,
+        dims=(active_dim,),
+        coords=active_coords,
+        name=mean.name,
+        attrs=mean.attrs,
+    )
+    active_covariance = prior.arithmetic_covariance.isel(
+        {state_dim: active_indices, prior.covariance_dim: active_indices}
+    ).values
+    return CorrelatedLognormalPrior(active_mean, active_covariance)
 
 
 def add_sigma_component(
@@ -631,7 +668,7 @@ def add_sigma_component(
 
     add_coords(
         {
-            "nsigma_site": np.arange(alignment.nsite),
+            "nsigma_site": np.asarray(alignment.site_labels),
             "nsigma_time": np.arange(alignment.nperiod),
         }
     )
@@ -644,7 +681,7 @@ def add_sigma_component(
 
 
 def add_offset_component(
-    site_indicator: xr.DataArray,
+    observations: xr.DataArray,
     /,
     prior_args: dict,
     offset_freq_indicator: xr.DataArray | np.ndarray | None = None,
@@ -658,7 +695,8 @@ def add_offset_component(
     """Add a global, site-only, or site-by-period offset component.
 
     Args:
-        site_indicator: Observation-aligned site indicator.
+        observations: Observation data carrying an observation-aligned
+            ``site`` coordinate.
         prior_args: Prior specification for the offset latent variable.
         offset_freq_indicator: Optional explicit observation-aligned offset
             frequency indicator.
@@ -673,18 +711,28 @@ def add_offset_component(
 
     Returns:
         The aligned offset deterministic variable.
+
+    Raises:
+        ValueError: If ``observations`` does not have an observation-aligned
+            ``site`` coordinate, or if global-offset options conflict.
     """
     output_dim = str(output_dim)
-    site_indicator = site_indicator.rename("site_indicator").transpose(output_dim)
-    add_model_data(site_indicator, "site_indicator")
     if not per_site:
         if offset_freq_indicator is not None or offset_freq is not None:
             raise ValueError("Global offsets do not accept an offset frequency.")
         if drop_first:
             raise ValueError("Global offsets do not support `drop_first=True`.")
         latent = parse_prior(var_name, prior_args)
-        aligned = pt.broadcast_to(latent, (site_indicator.sizes[output_dim],))
+        aligned = pt.broadcast_to(latent, (observations.sizes[output_dim],))
         return pm.Deterministic(output_name, aligned, dims=output_dim)
+
+    if "site" not in observations.coords or observations.coords["site"].dims != (output_dim,):
+        raise ValueError(
+            "Offset observations must have an observation-aligned `site` coordinate."
+        )
+    site_indicator = make_site_indicator(observations.coords["site"])
+    site_indicator = site_indicator.rename("site_indicator").transpose(output_dim)
+    add_model_data(site_indicator, "site_indicator")
 
     indicator = _resolve_freq_indicator(
         explicit_indicator=offset_freq_indicator,

@@ -112,6 +112,122 @@ recognizable product, such as ``BasisFunctions`` or a prepared handoff joining
 two aligned observation channels. It is not justified solely to shorten a
 function signature.
 
+Likelihood, covariance, and sampler conventions
+------------------------------------------------
+
+A likelihood is a scientific component, not a metadata or strategy object.
+Implement an ordinary likelihood as a directly callable function whose
+signature names the completed model mean, observations, reported observation
+error, fixed aggregation error, and the mismatch parameters or alignment it
+actually uses. Keep covariance construction visible in the order in which its
+terms enter the observation model.
+
+Aggregation error is fixed scientific input, separate from reported
+measurement error and inferred model-data mismatch. It may be represented as
+diagonal, dense, or low-rank-plus-diagonal covariance. Each concrete recipe
+must state which representations it supports and select one explicitly before
+model construction. The likelihood must include the selected representation
+exactly once.
+
+Aggregation error and correlated mismatch models can make the observation
+covariance non-diagonal. When a sampled mismatch parameter changes that
+covariance, ordinary NUTS may repeatedly perform expensive factorizations.
+Sampler choice is therefore part of a concrete scientific recipe when the
+graph and update algorithm are genuinely coupled. Keep such a graph and
+sampler together in a named recipe and show their update order. Do not add a
+general sampler protocol or one runner per ordinary likelihood variation.
+
+A sampler-independent likelihood belongs behind the recipe's ordinary
+likelihood-selection seam. A specialized sampler deserves a separate runner
+only when it requires a matched graph, accepted-state cache, or ordered
+``CompoundStep``. A component should not publish bespoke sampler-capability
+metadata merely to predict whether another PyMC backend supports its graph.
+Let PyMC or PyTensor reject unsupported operations during backend conversion.
+A recipe may reject an incompatible sampler setting when it constructs and
+owns a required step method itself.
+
+The current production home for covariance-aware likelihoods and optimized
+samplers is the CO2 model family because CO2 and CO2/O2 currently own
+aggregation-error preparation and the associated non-diagonal observation
+covariance. The general ``likelihood_builder`` seam remains useful for
+experiments and downstream customization. A repeatedly used, paper-facing CO2
+variant must also be selectable from the named CO2 recipe instead of existing
+only in Verification Games customization. Apply a CO2-only mismatch equation
+to the joint CO2/O2 stack only after its cross-tracer covariance, units, and
+parameter-sharing semantics have been stated explicitly.
+
+Fixed OU, IID site sigma, and scalar/global sigma are distinct scientific
+targets. Keep their names, equations, options, and tests distinct even when
+they reuse the same covariance preparation or numerical kernel. Stock PyMC is
+the correctness oracle and fallback for an optimized sampler; it need not be
+the efficient production route for every non-diagonal covariance.
+
+Use ``SigmaAlignment`` for site- or period-varying mismatch parameters. It is
+the single labelled value mapping latent sigma coordinates to observations.
+Derive it once at a visible preparation or model-composition boundary and pass
+it explicitly when components share it. Do not repeat site factorization,
+dummy encoding, label ordering, or observation lookup in individual
+likelihoods. A small component may encapsulate closely related preparation
+when doing so leaves its scientific meaning obvious; mechanical separation is
+not a goal.
+
+Use labelled xarray operations before positional indexing. Expand mappings
+keyed by site or state by selection against the canonical labelled coordinate,
+not by parallel lists or hand-written loops. Preserve labels until the named
+PyMC, SciPy, or other eager numerical boundary.
+
+Covariance matrices require specialized xarray and NetCDF handling because
+their two axes carry the same scientific labels but need distinct dimension
+names. Use ``dim`` for rows and ``dim_cov`` for columns and establish once,
+with ``validate_covariance_coordinates``, that both coordinates contain the
+same labels in the same order. This does not weaken ordinary coordinate
+registration. Conversely, a genuinely latent-only dimension may be added
+directly when no model data exists from which to register it; a bare
+``add_coords`` call is not intrinsically an error.
+
+Validate independently sourced observations, covariance representations,
+coordinates, units, mappings, cached artifacts, and user configuration at the
+boundary which owns them. After construction, trust package-created
+intermediates. Prefer ``xr.align(..., join="exact")``, labelled selection,
+Pint conversion, and the factorization or backend operation itself to repeated
+assertions. Add a bespoke check only when it protects a scientific policy or a
+real boundary those mechanisms cannot express and gives a materially better
+failure.
+
+Positive-support prior policy is general prior-building behavior. Normalize or
+reject unsupported positive priors in one helper beside ``parse_prior``; do
+not duplicate distribution allow-lists and support checks in each likelihood.
+
+Return the smallest object the caller needs. Return the observed tensor when
+that is the component's sole product. Return a small dataclass when several
+outputs form one recognizable scientific result that a caller consumes. Do
+not introduce a dataclass solely to carry provenance, sampler restrictions, or
+future flexibility.
+
+Trace provenance for a custom likelihood consists of safe callable identity
+and explicit JSON-compatible arguments unless an output consumer demonstrates
+a further requirement. Do not add likelihood-specific ``rhime_metadata``,
+variable-role maps, or redundant derived arrays by default. Scientific roles
+belong to the concrete model/output contract and should be added only for
+quantities postprocessing genuinely consumes.
+
+Public scientific citations belong in recipe documentation and should point
+to accessible scientific sources. Private repository paths, private commit
+hashes, and development-history citations do not belong in runtime model code,
+trace attributes, public API documentation, or test names. Record such
+implementation provenance in the pull request, issue, or internal parity
+record. Tests and released documentation must remain understandable without
+access to Verification Games.
+
+OpenGHG Inversions owns released, generally useful numerical components,
+likelihoods, samplers, and named production recipes. Verification Games owns
+calibration cases, experimental orchestration, campaign-specific configuration,
+and independent acceptance evidence. Verification Games should consume OGI
+through public APIs and remove its duplicate implementation after parity is
+established. A migration is not complete merely because the OGI implementation
+has merged; the corresponding Verification Games consumer and duplicate-code
+removal are compensating parts of the same cutover.
+
 Configuration ownership
 -----------------------
 
@@ -203,7 +319,9 @@ arrays together, and pass them to components as honest named arguments.
    * - ``min_error``
      - Reusable error-model product
      - Currently calculated by preparation
-     - Passed as ``minimum_error`` to the likelihood
+     - Selected as ``minimum_error`` by pollution-event mismatch or by another
+       built-in component which explicitly opts into the historical total-error
+       floor; custom likelihoods do not require it
    * - ``aggregation_error_covariance``, ``low_rank_factor``,
        ``diagonal_residual_variance``, ``aggregation_error_sd``
      - Optional reusable fixed-error products
@@ -216,18 +334,18 @@ arrays together, and pass them to components as honest named arguments.
      - Their scientific producer
      - Not materialized unless a concrete recipe explicitly selects them
    * - ``site_indicator``
-     - Model-only derived wiring
+     - Legacy output/compatibility wiring
      - ``RhimePreparedInputs`` derives and validates it from labelled
        ``(site, time)`` observations
-     - The model-error recipe derives ``SigmaAlignment``; the offset component
-       may also select it
+     - Built-in likelihoods do not materialize it; the offset component may
+       still register its own model data
    * - ``site_names``
      - Output/compatibility wiring
      - ``RhimePreparedInputs`` regenerates it from site metadata
      - Not a PyMC input
    * - ``SigmaAlignment``
      - Cohesive model-only value
-     - The standard or multisector recipe derives it from ``site_indicator``,
+     - The shared likelihood dispatcher derives it from ``mf.coords["site"]``,
        time, and resolved model-error options
      - Passed explicitly to the likelihood
    * - Source/sector selection and state grouping
@@ -237,8 +355,10 @@ arrays together, and pass them to components as honest named arguments.
      - Never stored in a generic model-input context
 
 The current preparation ownership of ``min_error`` calculation and boundary
-period expansion is explicit rather than accidental; moving either equation
-requires its own scientific parity change. An externally cached sensitivity,
+period expansion is explicit rather than accidental. A concrete recipe does
+not materialize ``min_error`` unless its selected mismatch component owns the
+floor. Moving either preparation equation requires its own scientific parity
+change. An externally cached sensitivity,
 including a Verification Games ``fp_x_flux`` projection, can be installed as
 labelled ``H`` at this durable handoff. Its Dask graph and provenance remain
 borrowed until a selected flux recipe reaches the named PyMC materialization

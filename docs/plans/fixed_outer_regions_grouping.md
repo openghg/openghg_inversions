@@ -110,14 +110,27 @@ A minimal spec should contain:
 - inner basis count: class-local requested count for the inner class;
 - outer prior group and inner prior group names.
 
+The resulting same-grid states enter the CO2 recipe through one labelled
+sensitivity and one complete ordered `CorrelatedLognormalPrior`. Inner/outer is
+ordinary `basis_group` metadata. Fixed outer scaling uses
+`StateActivity(fixed_groups=("outer",), fixed_value=1.0)`; inferred outer
+scaling leaves the group active. Group-specific moments are preparation inputs
+and must be aligned into the full prior without discarding cross-group
+covariance.
+
+There is no outer-specific model mode, Gaussian marginalization, or sector
+collapse API. The full sensitivity and state are sufficient to reconstruct
+inner and outer flux contributions, and general sector combinations are owned
+by the general sector feature.
+
 This keeps `run_hbmcmc.py` compatibility separate from the new grouped RHIME
 surface and avoids changing the accepted legacy `quadtree` and `weighted`
 options.
 
 ## Validation For Implementation
 
-When this moves from design to code, use a tiny deterministic fixture that has
-two fixed outer classes and one inner class. The test should assert:
+Use a tiny deterministic fixture that has two fixed outer classes and one inner
+class. The basis-layout tests should assert:
 
 - each outer class produces exactly one state;
 - the inner class produces the requested number of states, subject to any split
@@ -129,3 +142,8 @@ two fixed outer classes and one inner class. The test should assert:
 The existing `fixed_outer_regions_basis` regression should remain in place as a
 compatibility test unless the user explicitly approves changing that legacy
 route.
+
+The CO2 model tests additionally assert fixed-at-one parity, inferred
+prior-forward parity, label-order invariance, group-specific moment alignment,
+cross-group covariance retention, structural-zero activity composition, and
+reporting closure.

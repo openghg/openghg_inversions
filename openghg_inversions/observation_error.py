@@ -53,50 +53,32 @@ class AggregationError:
     diagonal_variance: xr.DataArray | None = None
 
 
-def validate_complete_observation_covariance(
+def aggregation_error_as_low_rank(
     aggregation_error: AggregationError,
-    independent_variance: np.ndarray,
-) -> None:
-    """Optionally check a custom complete observation covariance is positive definite (PD).
+) -> tuple[np.ndarray, np.ndarray]:
+    """Materialize fixed aggregation covariance as factor-plus-diagonal data.
 
-    Built-in pipelines construct covariance components with known guarantees
-    and do not call this eager diagnostic. Custom pipelines may use it after
-    adding their fixed independent variance. For an LRPD covariance, the
-    structural check uses ``F F.T + diag(d)`` directly: it is positive
-    definite exactly when the rows of ``F`` corresponding to zero entries of
-    non-negative ``d`` are linearly independent.
+    Dense covariance inputs use their positive eigenmodes, so this fallback is
+    generally full rank. It is therefore an exact representation for positive
+    semidefinite inputs, but not the low-rank performance path.
     """
-    variance = np.asarray(independent_variance)
-    if variance.shape != aggregation_error.marginal_variance.shape:
-        raise ValueError("Independent variance must match the observation covariance diagonal.")
-    if not np.isfinite(variance).all() or (variance < 0.0).any():
-        raise ValueError("Independent variance must contain only finite non-negative values.")
-
+    nmeasure = aggregation_error.marginal_variance.size
     if aggregation_error.mode == "dense":
         assert aggregation_error.covariance is not None
-        complete = np.asarray(aggregation_error.covariance.values) + np.diag(variance)
-        try:
-            np.linalg.cholesky(complete)
-        except np.linalg.LinAlgError as error:
-            raise ValueError(
-                "Complete observation covariance must be positive definite."
-            ) from error
-        return
-
-    diagonal = variance
-    if aggregation_error.diagonal_variance is not None:
-        diagonal = diagonal + np.asarray(aggregation_error.diagonal_variance.values)
+        covariance = np.asarray(aggregation_error.covariance.values, dtype=float)
+        eigenvalues, eigenvectors = np.linalg.eigh((covariance + covariance.T) * 0.5)
+        positive = eigenvalues > 0.0
+        return eigenvectors[:, positive] * np.sqrt(eigenvalues[positive]), np.zeros(nmeasure)
     if aggregation_error.mode == "low_rank":
-        assert aggregation_error.factor is not None
-        zero_diagonal = diagonal == 0.0
-        if not zero_diagonal.any():
-            return
-        zero_rows = np.asarray(aggregation_error.factor.values)[zero_diagonal]
-        if np.linalg.matrix_rank(zero_rows) == int(zero_diagonal.sum()):
-            return
-    elif (diagonal > 0.0).all():
-        return
-    raise ValueError("Complete observation covariance must be positive definite.")
+        assert aggregation_error.factor is not None and aggregation_error.diagonal_variance is not None
+        return (
+            np.asarray(aggregation_error.factor.values, dtype=float),
+            np.asarray(aggregation_error.diagonal_variance.values, dtype=float),
+        )
+    if aggregation_error.mode == "diagonal":
+        assert aggregation_error.diagonal_variance is not None
+        return np.empty((nmeasure, 0)), np.asarray(aggregation_error.diagonal_variance.values, dtype=float)
+    return np.empty((nmeasure, 0)), np.zeros(nmeasure)
 
 
 def _validate_dense_covariance_values(
@@ -188,7 +170,7 @@ def _validate_vector(
 def validate_observation_error_arrays(
     observations: xr.DataArray,
     observation_error: xr.DataArray,
-    minimum_error: xr.DataArray,
+    minimum_error: xr.DataArray | None,
     *,
     owner: str,
     output_dim: str = "nmeasure",
@@ -198,7 +180,7 @@ def validate_observation_error_arrays(
     Args:
         observations: Observed mole fractions.
         observation_error: Reported observation-error standard deviations.
-        minimum_error: Minimum total-error standard deviations.
+        minimum_error: Optional minimum total-error standard deviations.
         owner: Name of the likelihood/error component consuming the arrays.
         output_dim: Required observation dimension.
 
@@ -213,10 +195,10 @@ def validate_observation_error_arrays(
         )
     _numeric_finite("observations", observations, owner=f"{owner} input")
     nmeasure = observations.sizes[output_dim]
-    for name, array in (
-        ("observation_error", observation_error),
-        ("minimum_error", minimum_error),
-    ):
+    arrays = [("observation_error", observation_error)]
+    if minimum_error is not None:
+        arrays.append(("minimum_error", minimum_error))
+    for name, array in arrays:
         if array.dims != (output_dim,):
             raise ValueError(
                 f"{owner} input {name!r} must have dims "

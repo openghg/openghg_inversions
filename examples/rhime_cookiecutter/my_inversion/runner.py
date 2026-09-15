@@ -27,6 +27,7 @@ def run(
     Returns:
         The library-owned RHIME result and any requested supported output.
     """
+    kwargs["mismatch_model"] = None
     return run_rhime(
         config_file=config_file,
         likelihood_builder=likelihood_builder,

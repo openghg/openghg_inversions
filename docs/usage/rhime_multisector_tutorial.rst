@@ -50,7 +50,7 @@ The supported CLI route differs from the standard tutorial only by subcommand:
        --config openghg_inversions/rhime/config/multisector_tutorial.ini \
        --output-path outputs
 
-The :doc:`installation` page documents the equivalent ``uv run`` command for
+The :doc:`cli` page documents the equivalent ``uv run`` command for
 an existing compatible uv environment.
 
 The supported Python route is:

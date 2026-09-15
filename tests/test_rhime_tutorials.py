@@ -87,6 +87,7 @@ def test_packaged_tutorial_configs_are_complete_and_distinct() -> None:
     assert standard["obs_store"] == "inversions_tutorial_data"
     assert standard["draws"] == 50
     assert standard["output_format"] == "inv_out"
+    assert standard["mismatch_model"] == "pollution_event"
     assert standard["use_bc"] is True
     assert multisector["sites"] == ["MHD", "TAC"]
     assert multisector["flux_sources"] == [
@@ -98,6 +99,7 @@ def test_packaged_tutorial_configs_are_complete_and_distinct() -> None:
         "wetlands": "wetcharts-v131-wetlands",
     }
     assert set(multisector["sector_priors"]) == {"anthropogenic", "wetlands"}
+    assert multisector["mismatch_model"] == "pollution_event"
     assert multisector["use_bc"] is True
 
 

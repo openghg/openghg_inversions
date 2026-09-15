@@ -27,7 +27,7 @@ from openghg_inversions.inversion_inputs import (
     concat_gather_datasets,
     make_inv_inputs,
 )
-from openghg_inversions.model_error import MinimumError
+from openghg_inversions.model_error import MinimumError, percentile_error_method
 from openghg_inversions.sigma import SigmaAlignment
 
 
@@ -398,6 +398,31 @@ def test_make_inv_inputs_infers_sites_only_when_sites_is_none() -> None:
     assert list(result["site_names"].values) == ["AAA", "BBB"]
 
 
+def test_make_inv_inputs_drops_unobserved_boundary_states() -> None:
+    fp_data = {
+        "AAA": _make_minimal_fp_site(mf_base=10.0, include_inlet_height=False),
+        "BBB": _make_minimal_fp_site(mf_base=20.0, include_inlet_height=False),
+    }
+    fp_data["AAA"]["H_bc"] = xr.DataArray(
+        [[0.0, 1.0], [0.0, 0.0], [0.0, 0.0]],
+        dims=("bc_region", "time"),
+        coords={"bc_region": ["north", "unused", "south"]},
+    )
+    fp_data["BBB"]["H_bc"] = xr.DataArray(
+        [[0.0, 0.0], [0.0, 0.0], [2.0, 0.0]],
+        dims=("bc_region", "time"),
+        coords={"bc_region": ["north", "unused", "south"]},
+    )
+
+    result = make_inv_inputs(fp_data=fp_data, sites=["AAA", "BBB"], min_error=0.0)
+
+    assert [region[0] for region in result["bc_region"].values.tolist()] == ["north", "south"]
+    np.testing.assert_array_equal(
+        result["H_bc"].values,
+        [[0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 2.0, 0.0]],
+    )
+
+
 def test_make_inv_inputs_rejects_missing_requested_site() -> None:
     """A missing requested site raises a clear error before dataset gathering."""
     fp_data = {"AAA": _make_minimal_fp_site(mf_base=10.0, include_inlet_height=False)}
@@ -587,12 +612,42 @@ def test_minimum_error_uses_declared_site_order_and_records_provenance(tmp_path:
     result.values.to_netcdf(tmp_path / "minimum_error.nc")
 
 
-@pytest.mark.parametrize("value", [-1.0, np.inf, np.nan])
-def test_minimum_error_rejects_invalid_values(value: float):
+@pytest.mark.parametrize(
+    ("value", "message"),
+    [
+        pytest.param(-1.0, "must be non-negative", id="negative"),
+        pytest.param(np.inf, "contain NaN or infinite", id="infinite"),
+        pytest.param(np.nan, "contain NaN or infinite", id="nan"),
+    ],
+)
+def test_minimum_error_rejects_invalid_values(value: float, message: str):
     observations = xr.Dataset({"mf": ("nmeasure", [1.0])})
 
-    with pytest.raises(ValueError, match="finite and non-negative"):
+    with pytest.raises(ValueError, match=message):
         MinimumError.prepare(observations, {}, value)
+
+
+def test_percentile_error_accepts_nonmonotonic_site_times():
+    """Nonmonotonic inputs match sorted results without losing sparse sites or site order."""
+    sites = {
+        "AAA": xr.Dataset(
+            {"mf": ("time", [5.0, 1.0, 3.0])},
+            coords={"time": pd.to_datetime(["2024-03-01", "2024-01-01", "2024-01-02"])},
+        ),
+        "BBB": xr.Dataset(
+            {"mf": ("time", [30.0, 10.0, 20.0])},
+            coords={"time": pd.to_datetime(["2024-03-01", "2024-01-01", "2024-02-01"])},
+        ),
+    }
+    original_times = {site: dataset.time.copy() for site, dataset in sites.items()}
+
+    result = percentile_error_method(sites)
+    sorted_result = percentile_error_method({site: dataset.sortby("time") for site, dataset in sites.items()})
+
+    np.testing.assert_allclose(result, [0.45, 0.0])
+    np.testing.assert_allclose(result, sorted_result)
+    for site, dataset in sites.items():
+        xr.testing.assert_identical(dataset.time, original_times[site])
 
 
 def test_scalar_minimum_error_preserves_lazy_borrowed_observations():

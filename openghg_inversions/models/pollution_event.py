@@ -8,6 +8,10 @@ historical model uses
 The pollution event is either the modelled pollution contribution or the
 observation after removing an explicitly supplied modelled baseline. Fixed
 aggregation covariance is an optional, explicitly selected addition.
+
+This module owns the pollution-event PyMC graph and therefore requires an
+active model context. Its PEFO-only pollution and baseline inputs do not cross
+RHIME's general likelihood-builder seam.
 """
 
 from __future__ import annotations
@@ -23,7 +27,7 @@ import xarray as xr
 from pytensor.tensor.variable import TensorVariable
 
 from openghg_inversions.models.components import add_model_data, add_sigma_component
-from openghg_inversions.models.likelihoods import (
+from openghg_inversions.models._gaussian_observation import (
     RegisteredAggregationError,
     add_aggregation_error_data,
     add_gaussian_observation_likelihood,
@@ -37,7 +41,7 @@ from openghg_inversions.sigma import SigmaAlignment
 
 
 @dataclass(frozen=True)
-class PollutionEventErrorState:
+class _PollutionEventErrorState:
     """Terms required to construct an observation distribution."""
 
     observed: TensorVariable
@@ -46,7 +50,7 @@ class PollutionEventErrorState:
     error_scale: TensorVariable
 
 
-def build_pollution_event_error(
+def _build_pollution_event_error(
     *,
     observations: xr.DataArray,
     observation_error: xr.DataArray,
@@ -61,7 +65,7 @@ def build_pollution_event_error(
     no_model_error: bool,
     retain_unused_sigma: bool = False,
     output_dim: str = "nmeasure",
-) -> PollutionEventErrorState:
+) -> _PollutionEventErrorState:
     """Build the historical pollution-event error terms.
 
     ``pollution_mean`` is the modelled pollution contribution.
@@ -168,7 +172,7 @@ def build_pollution_event_error(
         pt.sqrt(total_marginal_variance),
         dims=output_dim,
     )
-    return PollutionEventErrorState(
+    return _PollutionEventErrorState(
         observed=observed,
         independent_variance=independent_variance,
         aggregation_error=registered_aggregation_error,
@@ -176,7 +180,7 @@ def build_pollution_event_error(
     )
 
 
-def build_pollution_event_gaussian_likelihood(
+def add_pollution_event_likelihood(
     *,
     observations: xr.DataArray,
     observation_error: xr.DataArray,
@@ -220,7 +224,7 @@ def build_pollution_event_gaussian_likelihood(
         Observed Gaussian variable named ``y``. The component also creates the
         canonical total-error variable ``epsilon``.
     """
-    state = build_pollution_event_error(
+    state = _build_pollution_event_error(
         observations=observations,
         observation_error=observation_error,
         minimum_error=minimum_error,
@@ -244,8 +248,4 @@ def build_pollution_event_gaussian_likelihood(
     )
 
 
-__all__ = [
-    "PollutionEventErrorState",
-    "build_pollution_event_error",
-    "build_pollution_event_gaussian_likelihood",
-]
+__all__ = ["add_pollution_event_likelihood"]

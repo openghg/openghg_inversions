@@ -75,7 +75,7 @@ From a source checkout, the supported CLI route is:
        --config openghg_inversions/rhime/config/standard_tutorial.ini \
        --output-path outputs
 
-The :doc:`installation` page documents the equivalent ``uv run`` command for
+The :doc:`cli` page documents the equivalent ``uv run`` command for
 an existing compatible uv environment.
 
 The equivalent supported Python entry point is:

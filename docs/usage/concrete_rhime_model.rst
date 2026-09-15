@@ -73,8 +73,18 @@ mean of the observed distribution is therefore
 
 where omitted components are left out of the sum.
 
-The ordinary model preserves the pollution-event fractional-error equation
-used by ``run_hbmcmc.py``. Aggregation error is disabled by default. Let
+The configuration template explicitly selects
+``mismatch_model="pollution_event"``. This preserves the fractional-error
+equation used by ``run_hbmcmc.py`` for users who start from that template.
+Direct runner calls must make a likelihood selection explicitly. The concrete
+model recipe has no mismatch default: parameter resolution converts the
+selector to ``PollutionEventSettings`` in the serializable model specification
+before construction. Select
+``mismatch_model="additive_sigma"`` for an absolute concentration-scale
+mismatch instead; this is a resolved model option and does not use the custom
+``likelihood_builder`` extension point. Additive sigma does not select the
+prepared ``min_error`` input unless ``use_minimum_error_floor=True`` is also
+set. Aggregation error is disabled by default. Let
 :math:`P` be the pollution event and let ``sigma`` be the observation-aligned
 fractional model-error parameter. With the default
 ``pollution_events_from_obs=False``,
@@ -99,10 +109,11 @@ variant: :math:`P=|Y-\mu_{bc}|`, even when an offset is also included in
 :math:`\mu_{\mathrm{obs}}`. That exception preserves existing configurations;
 it is not the scientific default for new RHIME recipes.
 
-With ``no_model_error=True``, the sampled fractional-error contribution is
-omitted and the likelihood scale is the observation error, protected only by
-the historical very-small numerical floor. ``min_error`` is not applied in
-that branch.
+Select ``mismatch_model="fixed_error"`` to omit inferred mismatch error. Its
+likelihood scale uses the reported observation error and does not select
+``min_error``.
+``run_hbmcmc.py`` privately preserves the different historical floor and
+unused-variable details of its two ``no_model_error`` routes.
 
 Aggregation covariance is an explicit advanced opt-in. If a caller selects a
 prepared covariance :math:`C_{agg}` with marginal variance
@@ -219,57 +230,47 @@ mismatch ``sigma``, its covariance is
 .. math::
 
    R = C_{agg} + \operatorname{diag}
-       (s_y^2 + s_{fixed}^2 + \sigma^2),
+       (s_y^2 + s_{fixed}^2 + \sigma^2).
 
-after applying ``min_error`` as a floor on the total marginal standard
-deviation. OpenGHG Inversions does not default ``s_fixed`` to 1 ppm. The
+CO2 likelihoods do not apply ``min_error``; that input belongs to
+pollution-event-scaled mismatch. OpenGHG Inversions does not default
+``s_fixed`` to 1 ppm. The
 Verification Games fixed-only policy passes ``fixed_model_mismatch=1.0`` and
 ``no_model_error=True`` visibly. A runnable CO2 configuration and resolver are
 tracked in `OPE-79 <https://linear.app/openghg-inversions/issue/OPE-79>`_.
+For the matched fixed-tau OU likelihood with independently inferred site
+amplitudes, use :ref:`the production cached-sigma CO2 recipe
+<cached-sigma-co2-recipe>`.
 
-CO2 outer-region treatment
-^^^^^^^^^^^^^^^^^^^^^^^^^^
+CO2 grouped inner and outer states
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-The direct CO2 builder accepts an optional outer-region treatment prepared with
-:func:`openghg_inversions.rhime.co2.prepare_outer_region_treatment`. The three
-modes are mutually exclusive:
+Same-grid inner and outer fluxes use one ordinary retained state and one
+``co2_sensitivity``. Their geography is labelled metadata, not a second model
+component. The state axis retains ``basis_group``, ``basis_partition``, and
+``region_in_partition`` coordinates; select ``basis_group == "outer"`` rather
+than inferring outer entries from integer ranges or positions.
 
-.. list-table:: Outer-region modes
-   :header-rows: 1
-   :widths: 18 32 32
+Fixed versus inferred outer entries use the ordinary
+:class:`~openghg_inversions.models.StateActivity` contract. To preserve the
+fixed-at-one behavior, pass
+``StateActivity(fixed_groups=("outer",), fixed_value=1.0)``. Leaving the outer
+group active infers those entries with the same correlated LogNormal state as
+the inner entries. Exact-zero sensitivity pruning composes with either policy.
 
-   * - Mode
-     - Mean contribution
-     - Uncertainty treatment
-   * - ``fixed``
-     - :math:`\mu_{outer}=H_{outer}s`, with ``fixed_scale=1`` by default
-     - ``outer_flux_scaling`` is retained as a fixed state; no outer prior
-       uncertainty is added
-   * - ``marginalized``
-     - :math:`\mu_{outer}=H_{outer}m_{outer}`
-     - No ``outer_flux_scaling`` is sampled and
-       :math:`H_{outer}C_{outer}H_{outer}^{\mathsf T}` is added to the
-       observation covariance
-   * - ``inferred``
-     - :math:`\mu_{outer}=H_{outer}x_{outer}`
-     - ``outer_flux_scaling`` is inferred with the labelled correlated
-       arithmetic-moment LogNormal prior
+The builder accepts one prepared
+:class:`~openghg_inversions.correlated_state.CorrelatedLognormalPrior` over the
+complete ordered state. Group-specific arithmetic moments must be aligned and
+assembled before graph construction. A full prior may contain inner/outer
+cross-covariance; it remains part of that one prior and is not also added to
+the observation covariance.
 
-All modes expose ``outer_flux_contribution``. Fixed and inferred modes also
-retain ``outer_flux_scaling`` and model data named ``outer_sensitivity``;
-marginalized mode has no outer state vector.
+``co2_flux_contribution`` contains the complete flux prediction. The model does
+not construct separate inner or outer terms. Outputs can reconstruct either
+view by selecting the corresponding ``basis_group`` entries from the stored
+sensitivity and ``flux_scaling`` state.
 
-The marginalized mode is an explicit Gaussian marginalization using the
-supplied arithmetic mean and covariance. It is not an exact marginalization of
-the LogNormal state used by inferred mode. This surface was motivated by
-Verification Games/PARIS experiments: current PARIS evidence selects inferred
-outer states. Marginalized mode is implemented and tested, but is not
-established as a production or non-Verification-Games default. Those
-experiments use synthetic observations from known flux and transport, so the
-posterior flux can be scored against known truth.
-
-With both optional components present, the current CO2 builder's complete
-likelihood mean is
+With optional boundary conditions and offset present, the likelihood mean is
 
 .. math::
 
@@ -277,34 +278,13 @@ likelihood mean is
    = \mathtt{fixed\_prior\_contribution}
    + \mathtt{co2\_flux\_contribution}
    + \mathtt{mu\_bc}
-   + \mathtt{outer\_flux\_contribution}.
+   + \mathtt{offset}.
 
-``modelled_concentration`` is the mean passed to the likelihood, not a
-pollution-only subtotal. Any future declared mean term, such as an offset, must
-also be included in this sum before likelihood construction. The graph and
-reporting names remain separate: atmospheric boundary conditions produce
-``mu_bc``, outer flux produces ``outer_flux_contribution``, and the coherent
-affine term remains ``fixed_prior_contribution``. Grouping boundary and outer
-concentrations as a baseline is a reporting choice only; it does not create a
-combined model component or alter this composition.
-
-Outer sensitivity must have exactly one state dimension with unique state
-labels. For the CO2 builder the observation dimension is ``nmeasure``. When
-outer sensitivity and observations carry explicit indexes, their labels,
-order, and index-level names must match; the builder rejects conflicting
-indexes. Direct callers remain responsible for the semantics of unlabeled
-arrays. Labelled outer prior means and covariance rows and columns must likewise
-match the outer-state coordinate exactly. Direct custom callers are responsible
-for ensuring that inner and outer sensitivities represent disjoint state
-partitions and do not double count flux.
-
-:func:`openghg_inversions.rhime.co2.collapse_outer_sectors` may be applied
-before any of the three modes. Explicit state-aligned ``group_labels`` select
-which sensitivity columns are summed into one shared outer scaling state, while
-the returned member table preserves the original source, sector, domain, and
-region metadata. Collapsing is orthogonal to treatment: it does not choose a
-mode or derive collapsed prior moments, so callers supply any collapsed mean
-and covariance to ``prepare_outer_region_treatment`` afterward.
+An output may report a composite baseline by reconstructing the outer flux view
+and adding it to ``mu_bc + offset``. This is an output policy only: boundary
+conditions, offsets, and outer flux remain distinct scientific terms. Sector
+combinations are likewise a general state-grouping choice rather than an
+outer-region model option.
 
 The model builder accepts explicit scientific arrays rather than a dataset.
 For durable prepared artifacts, :func:`openghg_inversions.rhime.run_rhime_co2`
@@ -317,8 +297,21 @@ it. Persist gathered-state traces with
 :func:`openghg_inversions.serialization.save_inferencedata`, which uses the
 same MultiIndex-safe boundary as standard and multisector RHIME outputs.
 The current prepared-input runner does not accept or construct an
-``outer_treatment``; outer-region treatment is therefore a direct-builder
-surface until prepared-artifact and runner integration is added.
+outer-specific object. It constructs the complete retained prior from the
+prepared arithmetic mean and covariance, then forwards the prepared activity
+policy to the builder.
+
+The CO2 builder and prepared-input runner also accept one ordinary
+``likelihood_builder`` with explicit ``likelihood_kwargs``. This selects
+package components such as
+:func:`openghg_inversions.models.fixed_ou.add_fixed_ou_gaussian_likelihood` and
+:func:`openghg_inversions.models.add_site_sigma_gaussian_likelihood` after
+``modelled_concentration`` has been completed. Selecting one replaces the
+default additive-sigma likelihood; its scientific options belong in
+``likelihood_kwargs`` rather than the default ``sigma_*`` or
+``fixed_model_mismatch`` arguments. The returned trace records the selected
+callable identity and its explicit options using the ordinary likelihood
+provenance attributes.
 
 CO2/O2 shared-state model
 -------------------------
@@ -330,6 +323,11 @@ preparation, :func:`openghg_inversions.rhime.co2.build_co2_o2_model` for graph
 construction, and
 :func:`openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs` for
 materialization, sampling, and trace metadata.
+
+This joint recipe currently keeps its fixed, row-labelled independent error
+and does not expose the CO2 ``likelihood_builder`` seam. A cross-channel
+mismatch model must first define its CO2/O2 covariance, parameter sharing, and
+mixed-unit behavior explicitly.
 
 Partition that state as
 
@@ -447,14 +445,13 @@ than inventing scalar values; the supplied effective O2 sensitivity remains the
 scientific input.
 
 Because this recipe receives the O2 sensitivity with the fixed ratio already
-applied upstream, its builder passes the shared state directly to
-``add_linked_linear_component``. If a fixed or inferred oxidation ratio were
-instead explicit model state, the recipe would visibly form
-``o2_state = oxidation_ratio * co2_state`` and pass ``o2_state`` to that
-component. The :doc:`Ramsden methane/ethane model
+applied upstream, its builder applies the gathered sensitivity directly to the
+unchanged shared state with ``apply_linear_sensitivity``. If a fixed or
+inferred oxidation ratio were instead explicit model state, the recipe would
+visibly form ``o2_state = oxidation_ratio * co2_state`` before applying the
+ratio-free O2 sensitivity. The :doc:`Ramsden methane/ethane model
 <../experimental/ramsden2022>` follows that explicit pattern for its emission
-ratio. The linked component registers and applies a sensitivity; it does not
-own scientific scaling.
+ratio. OPE-118 owns that future CO2/O2 coupling work.
 
 Equivalent construction from public helpers
 -------------------------------------------
@@ -471,8 +468,7 @@ helpers:
        prepare_linear_sensitivity,
        registered_model,
    )
-   from openghg_inversions.models.likelihoods import add_gaussian_observation_likelihood
-   from openghg_inversions.models.pollution_event import build_pollution_event_error
+   from openghg_inversions.models.pollution_event import add_pollution_event_likelihood
    from openghg_inversions.observation_error import resolve_aggregation_error
    from openghg_inversions.sigma import SigmaAlignment
 
@@ -488,10 +484,10 @@ helpers:
        "sigma": 0.05,
        "lower": 0.0,
    }
-   sigma_prior = {"pdf": "uniform", "lower": 0.1, "upper": 3.0}
+   sigma_prior = {"pdf": "uniform", "lower": 0.0, "upper": 0.1}
 
-   sigma_alignment = SigmaAlignment.from_frequency(
-       inv_inputs["site_indicator"],
+   sigma_alignment = SigmaAlignment.from_observations(
+       inv_inputs["mf"],
        frequency=None,
        per_site=True,
    )
@@ -519,11 +515,12 @@ helpers:
        baseline_mean = boundary.output
        modelled_mean = pollution_mean + baseline_mean
 
-       error_state = build_pollution_event_error(
+       add_pollution_event_likelihood(
            observations=inv_inputs["mf"],
            observation_error=inv_inputs["mf_error"],
            minimum_error=inv_inputs["min_error"],
            aggregation_error=resolve_aggregation_error(inv_inputs, "none"),
+           mean=modelled_mean,
            pollution_mean=pollution_mean,
            pollution_event_baseline=baseline_mean,
            sigma_alignment=sigma_alignment,
@@ -531,13 +528,6 @@ helpers:
            power=1.99,
            pollution_events_from_obs=False,
            no_model_error=False,
-           output_dim="nmeasure",
-       )
-       add_gaussian_observation_likelihood(
-           observed=error_state.observed,
-           mean=modelled_mean,
-           independent_variance=error_state.independent_variance,
-           aggregation_error=error_state.aggregation_error,
            output_dim="nmeasure",
        )
 
@@ -605,18 +595,21 @@ Callables are never read from configuration or stored on ``RhimeModelSpec`` or
 entry-point or config-file plugin registry.
 
 A concrete recipe owns the complete forward-model mean: pollution, baseline,
-and optional offset contributions are composed visibly before the likelihood
-seam. A likelihood builder owns error construction and the observed
-distribution. RHIME passes the completed concentration, pollution contribution,
-pollution-event baseline, prepared observations and errors, a validated
-``AggregationError``, and output dimension as explicit arguments. Options
-specific to that likelihood travel separately in ``likelihood_kwargs``.
+and optional offset contributions are composed visibly and packaged as named
+forward terms before the shared built-in dispatcher is invoked. The runner
+stores one typed settings value on ``RhimeModelSpec``; the dispatcher calls the
+ordinary built-in equation with only that likelihood's inputs. A custom caller
+instead supplies a mean-only callable. Every likelihood receives the completed
+concentration, prepared observations and reported observation error, a
+validated ``AggregationError``, and output dimension. Built-in pollution-event
+scaling additionally receives the named pollution and baseline terms.
+``likelihood_kwargs`` is reserved for custom callables.
 The builder adds and returns the canonical observed variable ``y`` and also
 adds the canonical marginal error scale ``epsilon``.
 
-``likelihood_kwargs`` must be a string-keyed, JSON-compatible mapping and is
-valid only when a likelihood builder is active. The runner copies and records
-the mapping with the callable identity in result and saved builder metadata.
+``likelihood_kwargs`` is valid only when a custom likelihood builder is active.
+The runner expands the mapping into that callable and records it with the
+callable identity in result and saved builder metadata.
 
 The editable example in :doc:`customising_rhime` implements a fixed-error
 Student-t likelihood using only those common inputs. Pass it directly to the
@@ -629,6 +622,7 @@ ordinary runner:
 
    result = run_rhime(
        config_file="config.ini",
+       mismatch_model=None,
        likelihood_builder=likelihood_builder,
    )
 
@@ -650,8 +644,59 @@ sampling and postprocessing. The runner records the likelihood builder's
 module and qualified name, so direct-Python likelihoods remain identifiable in
 persisted inversion outputs.
 
+Labelled per-site IID mismatch
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The built-in
+:func:`openghg_inversions.models.site_sigma.add_site_sigma_gaussian_likelihood`
+provides a labelled, run-level IID site-mismatch component. It derives stable
+site labels in first-observation order and uses exactly one standard deviation
+per site:
+
+.. math::
+
+   R = A + D_{obs}
+       + \operatorname{diag}\left(\sigma_{site}[\operatorname{site}(i)]^2\right).
+
+Here ``A`` is the selected aggregation-error covariance and ``D_obs`` is the
+diagonal covariance from reported observation errors. Each is included once.
+This likelihood does not apply ``min_error`` or ``fixed_model_mismatch`` and
+does not add temporal correlation. In particular, it is an IID component, not
+the fixed-OU model.
+
+Select it through the existing Python-only likelihood seam. For inferred site
+amplitudes, pass an explicit positive prior:
+
+.. code-block:: python
+
+   from openghg_inversions.models import add_site_sigma_gaussian_likelihood
+   from openghg_inversions.rhime import run_rhime
+
+   result = run_rhime(
+       config_file="config.ini",
+       mismatch_model=None,
+       likelihood_builder=add_site_sigma_gaussian_likelihood,
+       likelihood_kwargs={
+           "site_amplitude_prior": {"pdf": "halfnormal", "sigma": 0.75},
+       },
+   )
+
+The ``0.75`` value above is an explicit scale in ppm because all prior
+parameters and fixed amplitudes are interpreted in the observations'
+concentration units; OpenGHG Inversions does not choose a universal default
+scale. To use known values instead, replace ``site_amplitude_prior`` with
+``fixed_site_amplitudes``, a mapping covering every observed site label. Pass
+exactly one of these two options.
+
+The graph names the labelled site vector ``sigma_site`` on
+``sigma_site_dim``, with ``sigma_site_index`` retaining the observation-to-site
+mapping. Fixed amplitudes are stored as model data and inferred amplitudes as
+posterior variables. The ordinary runner records the callable identity,
+and JSON-compatible options in the saved output. The component reuses OpenGHG
+Inversions' aggregation-error and Gaussian likelihood machinery.
+
 Advanced whole-model compatibility boundary
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 A complete model builder is an advanced escape hatch available only through
 ``run_rhime_from_prepared_inputs``. It receives a
