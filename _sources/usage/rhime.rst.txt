@@ -1,8 +1,13 @@
-RHIME Terminology And Quickstart
-================================
+.. _rhime-terminology-and-quickstart:
 
-RHIME runners use the modern spec vocabulary below. New Python examples and
-new config files should use these names.
+RHIME configuration and prepared-input reference
+================================================
+
+This page is reference material for RHIME vocabulary, configuration, and
+advanced prepared-input boundaries. For a first complete inversion, use the
+:doc:`standard tutorial <rhime_standard_tutorial>` or
+:doc:`multisector tutorial <rhime_multisector_tutorial>` instead. New Python
+examples and configuration files should use the modern spec names below.
 
 Terminology
 -----------
@@ -37,8 +42,9 @@ Terminology
 
 ``tracer``
    Additional species used to constrain the primary species, normally with
-   linked forward models. The current RHIME preparation path does not support
-   tracer inversions.
+   linked forward models. The standard-family acquisition and preparation path
+   does not support tracer inversions; the advanced linked CO₂/O₂ recipe starts
+   from separately prepared channel arrays.
 
 ``emissions_name``
    Legacy compatibility spelling accepted only when ``flux_sources`` is absent.

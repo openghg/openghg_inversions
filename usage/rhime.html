@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>RHIME Terminology And Quickstart &#8212; openghg_inversions  documentation</title>
+    <title>RHIME configuration and prepared-input reference &#8212; openghg_inversions  documentation</title>
   
   
   
@@ -52,8 +52,8 @@
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="Customising RHIME" href="customising_rhime.html" />
-    <link rel="prev" title="Grouped basis and state metadata" href="grouped_basis_layout.html" />
+    <link rel="next" title="Running RHIME from the command line" href="cli.html" />
+    <link rel="prev" title="Standard and multisector RHIME models" href="concrete_rhime_model.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="" />
@@ -316,19 +316,36 @@
   <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
   <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">Contents:</span></p>
 <ul class="current nav bd-sidenav">
-<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation and Setup</a></li>
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Install and set up OpenGHG Inversions</a></li>
 <li class="toctree-l1"><a class="reference internal" href="conceptual_inversion.html">How an Atmospheric Inversion Works</a></li>
-<li class="toctree-l1"><a class="reference internal" href="getting_started.html">Getting started with OpenGHG Inversions</a></li>
-<li class="toctree-l1"><a class="reference internal" href="cli.html">Running RHIME from the command line</a></li>
-<li class="toctree-l1"><a class="reference internal" href="rhime_standard_tutorial.html">Standard RHIME tutorial</a></li>
-<li class="toctree-l1"><a class="reference internal" href="rhime_multisector_tutorial.html">Multisector RHIME tutorial</a></li>
-<li class="toctree-l1"><a class="reference internal" href="staged_workflow.html">Staged RHIME workflows</a></li>
-<li class="toctree-l1"><a class="reference internal" href="grouped_basis_layout.html">Grouped basis and state metadata</a></li>
-<li class="toctree-l1 current active"><a class="current reference internal" href="#">RHIME Terminology And Quickstart</a></li>
-<li class="toctree-l1"><a class="reference internal" href="customising_rhime.html">Customising RHIME</a></li>
-<li class="toctree-l1"><a class="reference internal" href="concrete_rhime_model.html">Concrete RHIME Model</a></li>
-<li class="toctree-l1"><a class="reference internal" href="native_covariance.html">Native Covariance Projection</a></li>
-<li class="toctree-l1"><a class="reference internal" href="coherent_reduction.html">Coherent Gaussian Reduction</a></li>
+<li class="toctree-l1"><a class="reference internal" href="model_recipes.html">Choose a RHIME model recipe</a></li>
+<li class="toctree-l1 current active has-children"><a class="reference internal" href="standard_model_family.html">Standard RHIME model family</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="rhime_standard_tutorial.html">Standard RHIME tutorial</a></li>
+<li class="toctree-l2"><a class="reference internal" href="rhime_multisector_tutorial.html">Multisector RHIME tutorial</a></li>
+<li class="toctree-l2"><a class="reference internal" href="concrete_rhime_model.html">Standard and multisector RHIME models</a></li>
+<li class="toctree-l2 current active"><a class="current reference internal" href="#">RHIME configuration and prepared-input reference</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cli.html">Running RHIME from the command line</a></li>
+<li class="toctree-l2"><a class="reference internal" href="customising_rhime.html">Customising RHIME</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="co2_model_family.html">CO₂ model family</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="co2_models.html">CO₂ model recipes</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="running_and_validating.html">Running and validating inversions</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="staged_workflow.html">Staged RHIME workflows</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="shared_scientific_concepts.html">Shared scientific concepts</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="grouped_basis_layout.html">Grouped basis and state metadata</a></li>
+<li class="toctree-l2"><a class="reference internal" href="native_covariance.html">Native Covariance Projection</a></li>
+<li class="toctree-l2"><a class="reference internal" href="coherent_reduction.html">Coherent Gaussian Reduction</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="legacy_and_migration.html">Legacy interfaces and migration</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html">Getting started with OpenGHG Inversions</a></li>
+</ul>
+</details></li>
 </ul>
 </div>
 </nav></div>
@@ -372,7 +389,10 @@
     
     <li class="breadcrumb-item"><a href="usage.html" class="nav-link">Using OpenGHG Inversions</a></li>
     
-    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">RHIME Terminology And Quickstart</span></li>
+    
+    <li class="breadcrumb-item"><a href="standard_model_family.html" class="nav-link">Standard RHIME model family</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">RHIME configuration and prepared-input reference</span></li>
   </ul>
 </nav>
 </div>
@@ -389,10 +409,13 @@
 <div id="searchbox"></div>
                 <article class="bd-article">
                   
-  <section id="rhime-terminology-and-quickstart">
-<h1>RHIME Terminology And Quickstart<a class="headerlink" href="#rhime-terminology-and-quickstart" title="Link to this heading">#</a></h1>
-<p>RHIME runners use the modern spec vocabulary below. New Python examples and
-new config files should use these names.</p>
+  <section id="rhime-configuration-and-prepared-input-reference">
+<span id="rhime-terminology-and-quickstart"></span><h1>RHIME configuration and prepared-input reference<a class="headerlink" href="#rhime-configuration-and-prepared-input-reference" title="Link to this heading">#</a></h1>
+<p>This page is reference material for RHIME vocabulary, configuration, and
+advanced prepared-input boundaries. For a first complete inversion, use the
+<a class="reference internal" href="rhime_standard_tutorial.html"><span class="doc">standard tutorial</span></a> or
+<a class="reference internal" href="rhime_multisector_tutorial.html"><span class="doc">multisector tutorial</span></a> instead. New Python
+examples and configuration files should use the modern spec names below.</p>
 <section id="terminology">
 <h2>Terminology<a class="headerlink" href="#terminology" title="Link to this heading">#</a></h2>
 <dl class="simple">
@@ -419,8 +442,9 @@ omitted, all sectors use the shared <code class="docutils literal notranslate"><
 unused sector keys are errors.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">tracer</span></code></dt><dd><p>Additional species used to constrain the primary species, normally with
-linked forward models. The current RHIME preparation path does not support
-tracer inversions.</p>
+linked forward models. The standard-family acquisition and preparation path
+does not support tracer inversions; the advanced linked CO₂/O₂ recipe starts
+from separately prepared channel arrays.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">emissions_name</span></code></dt><dd><p>Legacy compatibility spelling accepted only when <code class="docutils literal notranslate"><span class="pre">flux_sources</span></code> is absent.</p>
 </dd>
@@ -612,7 +636,7 @@ derived-error reconstruction follow-up lands, aggregation-error runs support
 <h2>Model Construction<a class="headerlink" href="#model-construction" title="Link to this heading">#</a></h2>
 <p>The concrete PyMC graph, its variable names, an equivalent construction from
 public model components, and links to tracked extension work are described in
-<a class="reference internal" href="concrete_rhime_model.html"><span class="doc">Concrete RHIME Model</span></a>.</p>
+<a class="reference internal" href="concrete_rhime_model.html"><span class="doc">Standard and multisector RHIME models</span></a>.</p>
 <p>RHIME directly composes the concrete standard or multisector model in its
 corresponding recipe module. See
 <a class="reference internal" href="concrete_rhime_model.html#rhime-builder-stability"><span class="std std-ref">the concrete model stability contract</span></a> for the
@@ -1244,20 +1268,20 @@ wrapper around <code class="docutils literal notranslate"><span class="pre">run_
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="grouped_basis_layout.html"
+       href="concrete_rhime_model.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">Grouped basis and state metadata</p>
+        <p class="prev-next-title">Standard and multisector RHIME models</p>
       </div>
     </a>
     <a class="right-next"
-       href="customising_rhime.html"
+       href="cli.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">Customising RHIME</p>
+        <p class="prev-next-title">Running RHIME from the command line</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>

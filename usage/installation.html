@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>Installation and Setup &#8212; openghg_inversions  documentation</title>
+    <title>Install and set up OpenGHG Inversions &#8212; openghg_inversions  documentation</title>
   
   
   
@@ -315,19 +315,36 @@
   <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
   <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">Contents:</span></p>
 <ul class="current nav bd-sidenav">
-<li class="toctree-l1 current active"><a class="current reference internal" href="#">Installation and Setup</a></li>
+<li class="toctree-l1 current active"><a class="current reference internal" href="#">Install and set up OpenGHG Inversions</a></li>
 <li class="toctree-l1"><a class="reference internal" href="conceptual_inversion.html">How an Atmospheric Inversion Works</a></li>
-<li class="toctree-l1"><a class="reference internal" href="getting_started.html">Getting started with OpenGHG Inversions</a></li>
-<li class="toctree-l1"><a class="reference internal" href="cli.html">Running RHIME from the command line</a></li>
-<li class="toctree-l1"><a class="reference internal" href="rhime_standard_tutorial.html">Standard RHIME tutorial</a></li>
-<li class="toctree-l1"><a class="reference internal" href="rhime_multisector_tutorial.html">Multisector RHIME tutorial</a></li>
-<li class="toctree-l1"><a class="reference internal" href="staged_workflow.html">Staged RHIME workflows</a></li>
-<li class="toctree-l1"><a class="reference internal" href="grouped_basis_layout.html">Grouped basis and state metadata</a></li>
-<li class="toctree-l1"><a class="reference internal" href="rhime.html">RHIME Terminology And Quickstart</a></li>
-<li class="toctree-l1"><a class="reference internal" href="customising_rhime.html">Customising RHIME</a></li>
-<li class="toctree-l1"><a class="reference internal" href="concrete_rhime_model.html">Concrete RHIME Model</a></li>
-<li class="toctree-l1"><a class="reference internal" href="native_covariance.html">Native Covariance Projection</a></li>
-<li class="toctree-l1"><a class="reference internal" href="coherent_reduction.html">Coherent Gaussian Reduction</a></li>
+<li class="toctree-l1"><a class="reference internal" href="model_recipes.html">Choose a RHIME model recipe</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="standard_model_family.html">Standard RHIME model family</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="rhime_standard_tutorial.html">Standard RHIME tutorial</a></li>
+<li class="toctree-l2"><a class="reference internal" href="rhime_multisector_tutorial.html">Multisector RHIME tutorial</a></li>
+<li class="toctree-l2"><a class="reference internal" href="concrete_rhime_model.html">Standard and multisector RHIME models</a></li>
+<li class="toctree-l2"><a class="reference internal" href="rhime.html">RHIME configuration and prepared-input reference</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cli.html">Running RHIME from the command line</a></li>
+<li class="toctree-l2"><a class="reference internal" href="customising_rhime.html">Customising RHIME</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="co2_model_family.html">CO₂ model family</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="co2_models.html">CO₂ model recipes</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="running_and_validating.html">Running and validating inversions</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="staged_workflow.html">Staged RHIME workflows</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="shared_scientific_concepts.html">Shared scientific concepts</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="grouped_basis_layout.html">Grouped basis and state metadata</a></li>
+<li class="toctree-l2"><a class="reference internal" href="native_covariance.html">Native Covariance Projection</a></li>
+<li class="toctree-l2"><a class="reference internal" href="coherent_reduction.html">Coherent Gaussian Reduction</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="legacy_and_migration.html">Legacy interfaces and migration</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html">Getting started with OpenGHG Inversions</a></li>
+</ul>
+</details></li>
 </ul>
 </div>
 </nav></div>
@@ -371,7 +388,7 @@
     
     <li class="breadcrumb-item"><a href="usage.html" class="nav-link">Using OpenGHG Inversions</a></li>
     
-    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Installation and Setup</span></li>
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Install and set up OpenGHG Inversions</span></li>
   </ul>
 </nav>
 </div>
@@ -388,144 +405,84 @@
 <div id="searchbox"></div>
                 <article class="bd-article">
                   
-  <section id="installation-and-setup">
-<h1>Installation and Setup<a class="headerlink" href="#installation-and-setup" title="Link to this heading">#</a></h1>
-<p>As OpenGHG Inversions is dependent on OpenGHG, please ensure that when
-running locally you are using Python 3.10 or later on Linux or MacOS.
-Please see the <a class="reference external" href="https://github.com/openghg/openghg/">OpenGHG project</a>
-for further installation instructions of OpenGHG and setting up an
-object store.</p>
-<section id="recommended-development-install-using-pixi">
-<h2>Recommended development install using Pixi<a class="headerlink" href="#recommended-development-install-using-pixi" title="Link to this heading">#</a></h2>
-<p>OpenGHG Inversions and OpenGHG read and write NetCDF/HDF5 data through
-<code class="docutils literal notranslate"><span class="pre">xarray</span></code>, <code class="docutils literal notranslate"><span class="pre">h5netcdf</span></code>, <code class="docutils literal notranslate"><span class="pre">h5py</span></code>, and <code class="docutils literal notranslate"><span class="pre">netcdf4</span></code>. Plain <code class="docutils literal notranslate"><span class="pre">pip</span></code> or
-<code class="docutils literal notranslate"><span class="pre">uv</span></code> installs can select PyPI wheels with incompatible bundled HDF5
-libraries. The Pixi workspace in this repository installs the compiled
-HDF5/NetCDF stack from conda-forge and installs <code class="docutils literal notranslate"><span class="pre">openghg_inversions</span></code> in
-editable mode.</p>
-<p>Install <a class="reference external" href="https://pixi.prefix.dev/latest/installation/">Pixi</a>, then run:</p>
+  <section id="install-and-set-up-openghg-inversions">
+<span id="installation-and-setup"></span><h1>Install and set up OpenGHG Inversions<a class="headerlink" href="#install-and-set-up-openghg-inversions" title="Link to this heading">#</a></h1>
+<p>Choose the setup that matches your task:</p>
+<ul class="simple">
+<li><p>To run inversions with a released version, install the package in a virtual
+environment.</p></li>
+<li><p>To contribute to OpenGHG Inversions, use the repository’s Pixi environment.</p></li>
+</ul>
+<p>OpenGHG Inversions supports Python 3.10 or later on Linux and macOS. Inversions
+that acquire data through OpenGHG also need access to a configured OpenGHG
+object store; see the <a class="reference external" href="https://docs.openghg.org/">OpenGHG project documentation</a> for that separate setup.</p>
+<section id="install-the-released-package">
+<h2>Install the released package<a class="headerlink" href="#install-the-released-package" title="Link to this heading">#</a></h2>
+<p>Create and activate a virtual environment, then install the package from PyPI:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python3<span class="w"> </span>-m<span class="w"> </span>venv<span class="w"> </span>.venv
+<span class="nb">source</span><span class="w"> </span>.venv/bin/activate
+python<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>--upgrade<span class="w"> </span>pip
+python<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>openghg-inversions
+</pre></div>
+</div>
+<p>Confirm that the installed package imports and report its version:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-c<span class="w"> </span><span class="s2">"import importlib.metadata; print(importlib.metadata.version('openghg-inversions'))"</span>
+</pre></div>
+</div>
+<p>Start with <a class="reference internal" href="conceptual_inversion.html"><span class="doc">How an Atmospheric Inversion Works</span></a>, then use the
+<a class="reference internal" href="model_recipes.html"><span class="doc">model recipe chooser</span></a> to select a runnable workflow.</p>
+</section>
+<section id="contributor-setup-with-pixi">
+<h2>Contributor setup with Pixi<a class="headerlink" href="#contributor-setup-with-pixi" title="Link to this heading">#</a></h2>
+<p>The repository’s recommended contributor environment uses <a class="reference external" href="https://pixi.prefix.dev/latest/installation/">Pixi</a>. Pixi keeps the compiled
+NetCDF/HDF5 stack from conda-forge consistent across OpenGHG, xarray,
+<code class="docutils literal notranslate"><span class="pre">h5netcdf</span></code>, <code class="docutils literal notranslate"><span class="pre">h5py</span></code>, and <code class="docutils literal notranslate"><span class="pre">netcdf4</span></code>.</p>
+<p>Clone the repository, install the development environment, and verify its core
+imports:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/openghg/openghg_inversions.git
 <span class="nb">cd</span><span class="w"> </span>openghg_inversions
 pixi<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span>dev
 pixi<span class="w"> </span>run<span class="w"> </span>-e<span class="w"> </span>dev<span class="w"> </span>python<span class="w"> </span>-c<span class="w"> </span><span class="s2">"import openghg_inversions, h5py, h5netcdf, netCDF4"</span>
 </pre></div>
 </div>
-<p>The <code class="docutils literal notranslate"><span class="pre">dev</span></code> environment includes the test, lint, type-checking, and tox
-tools used by the repository:</p>
+<p>The main contributor checks are:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pixi<span class="w"> </span>run<span class="w"> </span>-e<span class="w"> </span>dev<span class="w"> </span><span class="nb">test</span>
 pixi<span class="w"> </span>run<span class="w"> </span>-e<span class="w"> </span>dev<span class="w"> </span>lint
 pixi<span class="w"> </span>run<span class="w"> </span>-e<span class="w"> </span>dev<span class="w"> </span>typecheck
-pixi<span class="w"> </span>run<span class="w"> </span>-e<span class="w"> </span>dev<span class="w"> </span>tox
-pixi<span class="w"> </span>run<span class="w"> </span>-e<span class="w"> </span>dev<span class="w"> </span>docs-preview
 </pre></div>
 </div>
-<p>The <code class="docutils literal notranslate"><span class="pre">docs-preview</span></code> task incrementally builds the Sphinx documentation with
-<code class="docutils literal notranslate"><span class="pre">tox</span> <span class="pre">-e</span> <span class="pre">docs</span></code>, serves it at <code class="docutils literal notranslate"><span class="pre">http://127.0.0.1:8765/</span></code>, and opens it in Safari
-on macOS. Keep the task running while reading the docs and press Ctrl-C to stop
-the server. Each invocation builds once before starting the static server, so
-stop and rerun it after changing a source file. Use a different port, disable
-automatic browser opening, or discard Sphinx’s cached doctrees before building
-if needed:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pixi<span class="w"> </span>run<span class="w"> </span>-e<span class="w"> </span>dev<span class="w"> </span>docs-preview<span class="w"> </span>--port<span class="w"> </span><span class="m">8766</span><span class="w"> </span>--no-open
+<p>Build and preview the documentation with:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pixi<span class="w"> </span>run<span class="w"> </span>-e<span class="w"> </span>dev<span class="w"> </span>docs-preview
+</pre></div>
+</div>
+<p>The preview is served at <code class="docutils literal notranslate"><span class="pre">http://127.0.0.1:8765/</span></code> and opens in Safari on
+macOS. Use <code class="docutils literal notranslate"><span class="pre">--no-open</span></code> to keep it in the terminal or <code class="docutils literal notranslate"><span class="pre">--fresh</span></code> to discard
+cached Sphinx doctrees:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pixi<span class="w"> </span>run<span class="w"> </span>-e<span class="w"> </span>dev<span class="w"> </span>docs-preview<span class="w"> </span>--no-open
 pixi<span class="w"> </span>run<span class="w"> </span>-e<span class="w"> </span>dev<span class="w"> </span>docs-preview<span class="w"> </span>--fresh
 </pre></div>
 </div>
-<p>Preview output and cached doctrees remain in the ignored <code class="docutils literal notranslate"><span class="pre">docs/_build</span></code>
-directory so later builds only rebuild changed pages. Regenerate the checked-in
-API reference pages separately with <code class="docutils literal notranslate"><span class="pre">pixi</span> <span class="pre">run</span> <span class="pre">-e</span> <span class="pre">dev</span> <span class="pre">tox</span> <span class="pre">-e</span> <span class="pre">docs-api</span></code> after
-changing the package layout. <code class="docutils literal notranslate"><span class="pre">uv</span> <span class="pre">run</span> <span class="pre">python</span> <span class="pre">scripts/preview_docs.py</span> <span class="pre">clean</span></code>
-removes all preview output without rebuilding it.</p>
-<p>The default uv group is intentionally limited to pytest and Ruff. To opt into
-the larger development group for documentation work, use:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>run<span class="w"> </span>--group<span class="w"> </span>uv_dev<span class="w"> </span>python<span class="w"> </span>scripts/preview_docs.py
-uv<span class="w"> </span>run<span class="w"> </span>--group<span class="w"> </span>uv_dev<span class="w"> </span>python<span class="w"> </span>scripts/preview_docs.py<span class="w"> </span>--port<span class="w"> </span><span class="m">8766</span><span class="w"> </span>--no-open
-uv<span class="w"> </span>run<span class="w"> </span>--group<span class="w"> </span>uv_dev<span class="w"> </span>python<span class="w"> </span>scripts/preview_docs.py<span class="w"> </span>--fresh
-uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>scripts/preview_docs.py<span class="w"> </span>clean
-</pre></div>
-</div>
-<p>To run the optional real country-file HDF5 smoke check on a machine that
-can access the ACRG country files, set the country directory and run the
-Pixi task:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nv">OPENGHG_COUNTRY_FILE_SMOKE_DIR</span><span class="o">=</span>/group/chem/acrg/LPDM/countries<span class="w"> </span>pixi<span class="w"> </span>run<span class="w"> </span>-e<span class="w"> </span>dev<span class="w"> </span>country-file-smoke
-</pre></div>
-</div>
-<p>The smoke check opens <code class="docutils literal notranslate"><span class="pre">country_EUROPE_EEZ_PARIS_gapfilled.nc</span></code> and
-<code class="docutils literal notranslate"><span class="pre">country_EUROPE.nc</span></code> with xarray’s default backend, <code class="docutils literal notranslate"><span class="pre">h5netcdf</span></code>, and
-<code class="docutils literal notranslate"><span class="pre">netcdf4</span></code>, then exercises
-<code class="docutils literal notranslate"><span class="pre">openghg_inversions._country_file.load_country_dataset</span></code>. It prints the
-<code class="docutils literal notranslate"><span class="pre">xarray</span></code>, <code class="docutils literal notranslate"><span class="pre">h5netcdf</span></code>, <code class="docutils literal notranslate"><span class="pre">h5py</span></code>, and <code class="docutils literal notranslate"><span class="pre">netCDF4</span></code> versions and the
-per-engine result. Without <code class="docutils literal notranslate"><span class="pre">OPENGHG_COUNTRY_FILE_SMOKE_DIR</span></code>, the
-real-file tests are skipped so uv/pip CI does not need access to cluster
-data.</p>
-<p>If you need to test against a local OpenGHG checkout, install only the
-local package code into the Pixi environment. The <code class="docutils literal notranslate"><span class="pre">--no-deps</span></code> flag is
-important because it prevents <code class="docutils literal notranslate"><span class="pre">pip</span></code> from replacing Pixi’s conda-forge
-HDF5/NetCDF packages with wheels.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pixi<span class="w"> </span>run<span class="w"> </span>-e<span class="w"> </span>dev<span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>--no-deps<span class="w"> </span>-e<span class="w"> </span>~/Documents/openghg
-</pre></div>
-</div>
-<p>Avoid running commands such as <code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">-U</span> <span class="pre">h5py</span> <span class="pre">h5netcdf</span> <span class="pre">netcdf4</span></code>
-inside the Pixi environment. That can reintroduce the binary mismatch
-that Pixi is intended to avoid.</p>
+<p>The <a class="reference external" href="https://github.com/openghg/openghg_inversions#installation">repository README</a> documents
+additional contributor tasks, including the optional country-file smoke test
+and the larger <code class="docutils literal notranslate"><span class="pre">uv_dev</span></code> environment.</p>
 </section>
-<section id="setup-a-virtual-environment">
-<h2>Setup a virtual environment<a class="headerlink" href="#setup-a-virtual-environment" title="Link to this heading">#</a></h2>
-<p>Check that you have Python 3.10 or greater:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>--version
+<section id="use-a-local-openghg-checkout">
+<h2>Use a local OpenGHG checkout<a class="headerlink" href="#use-a-local-openghg-checkout" title="Link to this heading">#</a></h2>
+<p>To test repository code against a local OpenGHG checkout, replace only the
+OpenGHG package code inside the Pixi environment:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pixi<span class="w"> </span>run<span class="w"> </span>-e<span class="w"> </span>dev<span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>--no-deps<span class="w"> </span>-e<span class="w"> </span>/path/to/openghg
 </pre></div>
 </div>
-<p>(Note for Bristol ACRG group: If you are on Blue Pebble, the default
-anaconda module <code class="docutils literal notranslate"><span class="pre">lang/python/anaconda</span></code> is Python 3.9. Use
-<code class="docutils literal notranslate"><span class="pre">module</span> <span class="pre">avail</span></code> to list other options;
-<code class="docutils literal notranslate"><span class="pre">lang/python/miniconda/3.10.10.cuda-12</span></code> or
-<code class="docutils literal notranslate"><span class="pre">lang/python/miniconda/3.12.2.inc-perl-5.30.0</span></code> will work.)</p>
-<p>Make a virtual environment</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-m<span class="w"> </span>venv<span class="w"> </span>openghg_inv
-</pre></div>
-</div>
-<p>Next activate the environment</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">source</span><span class="w"> </span>openghg_inv/bin/activate
-</pre></div>
-</div>
+<p>The <code class="docutils literal notranslate"><span class="pre">--no-deps</span></code> flag prevents <code class="docutils literal notranslate"><span class="pre">pip</span></code> from replacing Pixi’s conda-forge
+NetCDF/HDF5 libraries with unrelated wheels.</p>
 </section>
-<section id="installation-using-pip">
-<h2>Installation using <code class="docutils literal notranslate"><span class="pre">pip</span></code><a class="headerlink" href="#installation-using-pip" title="Link to this heading">#</a></h2>
-<p>First you’ll need to clone the repository</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/openghg/openghg_inversions.git
-</pre></div>
-</div>
-<p>Next make sure <code class="docutils literal notranslate"><span class="pre">pip</span></code> and related install tools are up to date and then
-install OpenGHG Inversions using the editable install flag (<code class="docutils literal notranslate"><span class="pre">-e</span></code>)</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>--upgrade<span class="w"> </span>pip<span class="w"> </span>setuptools<span class="w"> </span>wheel
-pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span>openghg_inversions
-</pre></div>
-</div>
-<p>Optionally, install the developer requirements (there is more
-information about this in the “Contributing” section below):</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>requirements-dev.txt
-</pre></div>
-</div>
-</section>
-<section id="verify-that-pymc-is-using-fast-linear-algebra-libraries">
-<h2>Verify that PyMC is using fast linear algebra libraries<a class="headerlink" href="#verify-that-pymc-is-using-fast-linear-algebra-libraries" title="Link to this heading">#</a></h2>
-<p>At this point, run</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-c<span class="w"> </span><span class="s2">"import pymc"</span>
-</pre></div>
-</div>
-<p>This should run without printing any messages. If you receive a message
-about <code class="docutils literal notranslate"><span class="pre">pymc</span></code> or <code class="docutils literal notranslate"><span class="pre">pytensor</span></code> using the <code class="docutils literal notranslate"><span class="pre">numpy</span></code> C-API, then your
-inversions might run slowly because the fast linear algebra libraries
-used by <code class="docutils literal notranslate"><span class="pre">numpy</span></code> haven’t been found.</p>
-<p>Solutions to this are:</p>
-<ol class="arabic simple">
-<li><p>Use the Pixi development environment above, which installs <code class="docutils literal notranslate"><span class="pre">numpy</span></code>
-and the NetCDF/HDF5 stack from conda-forge.</p></li>
-<li><p>Try <code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">-m</span> <span class="pre">pip</span> <span class="pre">install</span> <span class="pre">numpy</span></code> after upgrading
-<code class="docutils literal notranslate"><span class="pre">pip,</span> <span class="pre">setuptools,</span> <span class="pre">wheel</span></code>.</p></li>
-<li><p>Create a <code class="docutils literal notranslate"><span class="pre">conda</span></code> env, install <code class="docutils literal notranslate"><span class="pre">numpy</span></code> using <code class="docutils literal notranslate"><span class="pre">conda</span></code>, then use
-<code class="docutils literal notranslate"><span class="pre">pip</span></code> to upgrade <code class="docutils literal notranslate"><span class="pre">pip,</span> <span class="pre">setuptools,</span> <span class="pre">wheel</span></code> and install
-<code class="docutils literal notranslate"><span class="pre">openghg_inversions</span></code>.</p></li>
-</ol>
+<section id="troubleshoot-compiled-dependencies">
+<h2>Troubleshoot compiled dependencies<a class="headerlink" href="#troubleshoot-compiled-dependencies" title="Link to this heading">#</a></h2>
+<p>If importing <code class="docutils literal notranslate"><span class="pre">h5py</span></code>, <code class="docutils literal notranslate"><span class="pre">h5netcdf</span></code>, or <code class="docutils literal notranslate"><span class="pre">netCDF4</span></code> reports an HDF5 library
+error, recreate the Pixi development environment before changing individual
+packages. Avoid upgrading those compiled packages separately with <code class="docutils literal notranslate"><span class="pre">pip</span></code>
+inside the Pixi environment, because doing so can mix incompatible binary
+libraries.</p>
 </section>
 </section>
 
@@ -576,10 +533,10 @@ and the NetCDF/HDF5 stack from conda-forge.</p></li>
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#recommended-development-install-using-pixi">Recommended development install using Pixi</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#setup-a-virtual-environment">Setup a virtual environment</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#installation-using-pip">Installation using <code class="docutils literal notranslate"><span class="pre">pip</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#verify-that-pymc-is-using-fast-linear-algebra-libraries">Verify that PyMC is using fast linear algebra libraries</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#install-the-released-package">Install the released package</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#contributor-setup-with-pixi">Contributor setup with Pixi</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#use-a-local-openghg-checkout">Use a local OpenGHG checkout</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#troubleshoot-compiled-dependencies">Troubleshoot compiled dependencies</a></li>
 </ul>
   </nav></div>
 

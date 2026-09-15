@@ -2,10 +2,10 @@ Staged RHIME workflows
 ======================
 
 ``openghg-inversions`` exposes file-backed stages for schedulers such as
-``openghg-run`` (OGR).  The interface composes the same configuration resolver,
+``openghg-run``. The interface composes the same configuration resolver,
 preparation functions, model recipes, sampler and output functions used by
-``run_rhime``.  It is not a second scientific configuration system and OGI does
-not depend on OGR.
+``run_rhime``. It is not a second scientific configuration system, and
+OpenGHG Inversions does not depend on ``openghg-run``.
 
 The first supported recipes are ``standard`` and ``multisector``.  Recipe
 selection is always explicit with ``--model``.  It is not inferred from
@@ -22,20 +22,22 @@ Every scientific stage except ``diagnose`` accepts exactly one of:
 * ``--params-file /absolute/path/ogi-params.json``, containing one JSON object
   with the same keyword names accepted by ``run_rhime``.
 
-``--kwargs '{...}'`` can explicitly override either source.  The JSON form
-supports OGR cases that do not declare an INI ``CONFIG_FILE``; it does not add
-new scientific keys.  The existing ``resolve_rhime_options`` boundary still
+``--kwargs '{...}'`` can explicitly override either source. The JSON form
+supports ``openghg-run`` cases that do not declare an INI ``CONFIG_FILE``; it
+does not add new scientific keys. The existing ``resolve_rhime_options`` boundary still
 normalizes and validates every value.  The staged commands deliberately do not
 read ambient ``CONFIG_FILE``.  ``OUTPUT_DIR`` is the only automatic path
-default, and the effective OGR ``STAGE`` is the default check-stage label.
+default, and the effective ``openghg-run`` ``STAGE`` is the default check-stage
+label.
 Relative filesystem values inside an INI or JSON parameter file are resolved
 against that file's directory, not the process working directory.
 
-OGR's ``EFFECTIVE_CONFIG`` is a stage-specific OGR TOML envelope, not an OGI
-scientific parameter file, so do not pass it to ``--params-file``.  It remains
-orchestration provenance.  A no-INI campaign should explicitly copy or provide
-a canonical OGI JSON parameter file and pass that path (for example beneath
-``SOURCE_DIR`` or ``RUN_ROOT/scripts``).
+``openghg-run``'s ``EFFECTIVE_CONFIG`` is a stage-specific TOML envelope, not
+an OpenGHG Inversions scientific parameter file, so do not pass it to
+``--params-file``. It remains orchestration provenance. A no-INI campaign
+should explicitly copy or provide a canonical OpenGHG Inversions JSON
+parameter file and pass that path (for example beneath ``SOURCE_DIR`` or
+``RUN_ROOT/scripts``).
 
 Legacy fixedbasis-style PARIS INIs contain options such as ``nit``, ``nchain``,
 ``xprior`` and ``mcmc_type``.  Their translation remains owned by the existing
@@ -72,17 +74,19 @@ prepared-input content digest before model construction.  Preparation also
 treats every configured site as required and fails with the gas and period
 named if the existing acquisition layer could not produce it.
 
-The manifest also records a content SHA-256 for ``prepared-inputs.nc``.  OGR
+The manifest also records a content SHA-256 for ``prepared-inputs.nc``.
+``openghg-run``
 independently verifies the declared stage-output directory and records its own
-filesystem identity; the OGI digest gives scientific consumers a compact,
-direct identity for the prepared handoff.
+filesystem identity; the OpenGHG Inversions digest gives scientific consumers
+a compact, direct identity for the prepared handoff.
 
 Commands and artifacts
 ----------------------
 
-All paths are explicit and outputs are written below ``--output-dir`` (or OGR's
-``OUTPUT_DIR``).  Commands do not depend on the caller's working directory and
-reject pre-existing symlinks beneath a stage output directory.
+All paths are explicit and outputs are written below ``--output-dir`` (or
+``openghg-run``'s ``OUTPUT_DIR``). Commands do not depend on the caller's
+working directory and reject pre-existing symlinks beneath a stage output
+directory.
 
 ``prepare``
   Retrieves/reloads merged data, filters observations, constructs basis and
@@ -111,7 +115,8 @@ reject pre-existing symlinks beneath a stage output directory.
   ``sampler-convergence`` CheckResult.  Scientific failure exits zero by
   default, keeping scheduler status separate from scientific health.
   ``--sample-manifest`` authenticates a posterior produced by the staged
-  sampler.  It is optional so persisted posteriors from earlier OGI runs can
+  sampler. It is optional so persisted posteriors from earlier OpenGHG
+  Inversions runs can
   still be diagnosed.  ``--strict`` is available only for an explicitly
   chosen process policy.
 
@@ -134,9 +139,9 @@ reject pre-existing symlinks beneath a stage output directory.
 CheckResult contract
 --------------------
 
-Both checks use OGR-compatible schema version 1 and producer
+Both checks use the schema version 1 understood by ``openghg-run`` and producer
 ``openghg_inversions``.  ``--check-output`` chooses the JSON path and
-``--check-stage`` chooses the producing OGR stage name.
+``--check-stage`` chooses the producing ``openghg-run`` stage name.
 
 ``prior-predictive-readiness``
   Status is ``pass`` when model construction succeeds, prior and
@@ -154,14 +159,15 @@ Both checks use OGR-compatible schema version 1 and producer
   Thresholds have CLI options.  The result is ``unknown`` when a signal is not
   assessable (for example R-hat from one chain), ``fail`` when an available
   signal exceeds policy, and ``pass`` otherwise.  This is the machine-visible
-  convergence outcome requested by issues #656/#667; OGR does not import
-  ArviZ or PyMC.
+  convergence outcome requested by issues #656/#667; ``openghg-run`` does not
+  import ArviZ or PyMC.
 
 Minimal command sequence
 ------------------------
 
-The following is a complete run using a canonical JSON parameter file.  An INI
-can be substituted with ``--config``.
+The following is a complete run using a canonical JSON parameter file. An INI
+can be substituted with ``--config``. Set ``OGI_PARAMS_FILE`` to the path of
+that OpenGHG Inversions JSON parameter file before running the commands.
 
 .. code-block:: bash
 
@@ -202,8 +208,8 @@ can be substituted with ``--config``.
      --sample-manifest "$OUTPUT_DIR/sample/sample-manifest.json" \
      --output-dir "$OUTPUT_DIR/postprocess"
 
-OGR campaign stages
--------------------
+``openghg-run`` campaign stages
+-------------------------------
 
 A campaign can place the same commands directly in named stages and declare
 their output directories.  No hand-authored SLURM script is required:
@@ -240,10 +246,12 @@ their output directories.  No hand-authored SLURM script is required:
    command = '''openghg-inversions postprocess --config "$CONFIG_FILE" --model standard --prepared-inputs "$OUTPUT_DIR/prepare/prepared-inputs.nc" --preparation-manifest "$OUTPUT_DIR/prepare/prepare-manifest.json" --posterior "$OUTPUT_DIR/sample/posterior.nc" --sample-manifest "$OUTPUT_DIR/sample/sample-manifest.json" --output-dir "$OUTPUT_DIR/postprocess"'''
    outputs = ["outputs/postprocess"]
 
-OGR owns campaign matrices, selected tasks, dependencies, scheduler state,
-declared-output hashing, continuation manifests, check recording and gates. OGI
-owns data preparation, model selection, sampling, scientific products, check
-calculations and their threshold policy.  ``STAGE_INPUTS_MANIFEST`` may be used
+``openghg-run`` owns campaign matrices, selected tasks, dependencies, scheduler
+state, declared-output hashing, continuation manifests, check recording and
+gates. OpenGHG Inversions owns data preparation, model selection, sampling,
+scientific products, check calculations and their threshold policy.
+``STAGE_INPUTS_MANIFEST`` may be used
 by application code to discover continued parent outputs, but it is not needed
-for full-graph submission and is not implicitly interpreted by OGI.  The
+for full-graph submission and is not implicitly interpreted by OpenGHG
+Inversions. The
 predictable explicit paths above work in both modes.

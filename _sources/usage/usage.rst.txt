@@ -7,14 +7,9 @@ Using OpenGHG Inversions
 
    installation
    conceptual_inversion
-   getting_started
-   cli
-   rhime_standard_tutorial
-   rhime_multisector_tutorial
-   staged_workflow
-   grouped_basis_layout
-   rhime
-   customising_rhime
-   concrete_rhime_model
-   native_covariance
-   coherent_reduction
+   model_recipes
+   standard_model_family
+   co2_model_family
+   running_and_validating
+   shared_scientific_concepts
+   legacy_and_migration

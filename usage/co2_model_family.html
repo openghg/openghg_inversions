@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>Using OpenGHG Inversions &#8212; openghg_inversions  documentation</title>
+    <title>CO₂ model family &#8212; openghg_inversions  documentation</title>
   
   
   
@@ -47,12 +47,12 @@
     <script src="../_static/thebelab-helper.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
-    <script>DOCUMENTATION_OPTIONS.pagename = 'usage/usage';</script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'usage/co2_model_family';</script>
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="Install and set up OpenGHG Inversions" href="installation.html" />
-    <link rel="prev" title="OpenGHG Inversions Documentation" href="../index.html" />
+    <link rel="next" title="CO₂ model recipes" href="co2_models.html" />
+    <link rel="prev" title="Customising RHIME" href="customising_rhime.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="" />
@@ -138,7 +138,7 @@
   <ul class="bd-navbar-elements navbar-nav">
     
 <li class="nav-item current active">
-  <a class="nav-link nav-internal" href="#">
+  <a class="nav-link nav-internal" href="usage.html">
     Using OpenGHG Inversions
   </a>
 </li>
@@ -245,7 +245,7 @@
   <ul class="bd-navbar-elements navbar-nav">
     
 <li class="nav-item current active">
-  <a class="nav-link nav-internal" href="#">
+  <a class="nav-link nav-internal" href="usage.html">
     Using OpenGHG Inversions
   </a>
 </li>
@@ -314,7 +314,7 @@
      aria-label="Section Navigation">
   <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
   <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">Contents:</span></p>
-<ul class="nav bd-sidenav">
+<ul class="current nav bd-sidenav">
 <li class="toctree-l1"><a class="reference internal" href="installation.html">Install and set up OpenGHG Inversions</a></li>
 <li class="toctree-l1"><a class="reference internal" href="conceptual_inversion.html">How an Atmospheric Inversion Works</a></li>
 <li class="toctree-l1"><a class="reference internal" href="model_recipes.html">Choose a RHIME model recipe</a></li>
@@ -327,7 +327,7 @@
 <li class="toctree-l2"><a class="reference internal" href="customising_rhime.html">Customising RHIME</a></li>
 </ul>
 </details></li>
-<li class="toctree-l1 has-children"><a class="reference internal" href="co2_model_family.html">CO₂ model family</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l1 current active has-children"><a class="current reference internal" href="#">CO₂ model family</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l2"><a class="reference internal" href="co2_models.html">CO₂ model recipes</a></li>
 </ul>
 </details></li>
@@ -385,7 +385,10 @@
         <i class="fa-solid fa-home"></i>
       </a>
     </li>
-    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Using OpenGHG Inversions</span></li>
+    
+    <li class="breadcrumb-item"><a href="usage.html" class="nav-link">Using OpenGHG Inversions</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">CO₂ model family</span></li>
   </ul>
 </nav>
 </div>
@@ -402,21 +405,91 @@
 <div id="searchbox"></div>
                 <article class="bd-article">
                   
-  <section id="using-openghg-inversions">
-<h1>Using OpenGHG Inversions<a class="headerlink" href="#using-openghg-inversions" title="Link to this heading">#</a></h1>
+  <section id="co2-model-family">
+<h1>CO₂ model family<a class="headerlink" href="#co2-model-family" title="Link to this heading">#</a></h1>
+<p>The advanced CO₂ model family contains the <strong>CO₂-only</strong> and <strong>linked CO₂/O₂</strong>
+recipes. O₂ is a tracer in the linked recipe, not a standalone supported model.
+Both recipes begin from scientific arrays that have already been prepared; they
+are not alternative species settings for the complete standard runner.</p>
+<section id="current-support">
+<h2>Current support<a class="headerlink" href="#current-support" title="Link to this heading">#</a></h2>
+<div class="pst-scrollable-table-container"><table class="table">
+<colgroup>
+<col style="width: 22.0%" />
+<col style="width: 39.0%" />
+<col style="width: 39.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Capability</p></th>
+<th class="head"><p>CO₂-only</p></th>
+<th class="head"><p>Linked CO₂/O₂</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Intended use</p></td>
+<td><p>One CO₂ channel with a correlated positive retained state and coherent
+aggregation covariance.</p></td>
+<td><p>CO₂ and O₂ channels with shared and tracer-specific retained states and
+cross-channel covariance.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Public entry point</p></td>
+<td><p><a class="reference internal" href="../reference/openghg_inversions.rhime.html#openghg_inversions.rhime.run_rhime_co2" title="openghg_inversions.rhime.run_rhime_co2"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.run_rhime_co2()</span></code></a>; see the
+<a class="reference internal" href="co2_models.html#co2-cached-sigma-recipe"><span class="std std-ref">package-supported cached-sigma specialization</span></a> for its prepared-input runner.</p></td>
+<td><p><a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs" title="openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs()</span></code></a>.
+A complete <code class="docutils literal notranslate"><span class="pre">run_rhime_co2_o2</span></code> entry point is not available.</p></td>
+</tr>
+<tr class="row-even"><td><p>Acquisition and preparation</p></td>
+<td><p>Consumes a prepared coherent-reduction <code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code> artifact.
+The public handoff that assembles that artifact is incomplete.</p></td>
+<td><p><a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.prepare_co2_o2_inputs" title="openghg_inversions.rhime.co2.prepare_co2_o2_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.prepare_co2_o2_inputs()</span></code></a> gathers
+caller-supplied, channel-native prepared arrays; it does not acquire
+OpenGHG data.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Configuration</p></td>
+<td><p>Python arguments at the prepared-input boundary; no complete built-in
+CO₂ configuration workflow.</p></td>
+<td><p>Python arguments at the prepared-input boundary; no complete built-in
+linked configuration workflow.</p></td>
+</tr>
+<tr class="row-even"><td><p>Staged workflow</p></td>
+<td><p>Not supported by the staged CLI.</p></td>
+<td><p>Not supported by the staged CLI.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Outputs and postprocessing</p></td>
+<td><p>Returns annotated <code class="docutils literal notranslate"><span class="pre">InferenceData</span></code>. Use the documented serialization
+boundary; the complete RHIME output pipeline is not integrated.</p></td>
+<td><p>Returns annotated <code class="docutils literal notranslate"><span class="pre">InferenceData</span></code>. Use the documented serialization
+boundary; family-specific output and postprocessing are not integrated.</p></td>
+</tr>
+<tr class="row-even"><td><p>Validation and acceptance</p></td>
+<td><p>Model construction, replay, provenance, and cached-sampler behavior have
+automated regression tests. Complete configuration, outputs, staged
+integration, and scientist acceptance remain future work.</p></td>
+<td><p>Preparation, graph construction, mixed-unit metadata, replay, and
+provenance have automated regression tests. Production scientist
+acceptance remains future work.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="prerequisites">
+<h2>Prerequisites<a class="headerlink" href="#prerequisites" title="Link to this heading">#</a></h2>
+<p>Readers should already understand labelled xarray state and observation
+dimensions, the distinction between native and retained state, and covariance
+in the observation likelihood. The shared pages on <a class="reference internal" href="grouped_basis_layout.html"><span class="doc">grouped basis layouts</span></a>, <a class="reference internal" href="native_covariance.html"><span class="doc">native covariance</span></a>, and
+<a class="reference internal" href="coherent_reduction.html"><span class="doc">coherent reduction</span></a> provide that background without
+making those concepts specific to CO₂.</p>
+<p>The family page records present software support, not evidence that a selected
+recipe is scientifically suitable for a particular inversion. Complete
+configuration, outputs, staged integration, and scientist acceptance are
+tracked in <a class="reference external" href="https://linear.app/openghg-inversions/issue/OPE-79">OPE-79</a>.</p>
 <div class="toctree-wrapper compound">
-<p aria-level="2" class="caption" role="heading"><span class="caption-text">Contents:</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="installation.html">Install and set up OpenGHG Inversions</a></li>
-<li class="toctree-l1"><a class="reference internal" href="conceptual_inversion.html">How an Atmospheric Inversion Works</a></li>
-<li class="toctree-l1"><a class="reference internal" href="model_recipes.html">Choose a RHIME model recipe</a></li>
-<li class="toctree-l1"><a class="reference internal" href="standard_model_family.html">Standard RHIME model family</a></li>
-<li class="toctree-l1"><a class="reference internal" href="co2_model_family.html">CO₂ model family</a></li>
-<li class="toctree-l1"><a class="reference internal" href="running_and_validating.html">Running and validating inversions</a></li>
-<li class="toctree-l1"><a class="reference internal" href="shared_scientific_concepts.html">Shared scientific concepts</a></li>
-<li class="toctree-l1"><a class="reference internal" href="legacy_and_migration.html">Legacy interfaces and migration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="co2_models.html">CO₂ model recipes</a></li>
 </ul>
 </div>
+</section>
 </section>
 
 
@@ -430,20 +503,20 @@
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="../index.html"
+       href="customising_rhime.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">OpenGHG Inversions Documentation</p>
+        <p class="prev-next-title">Customising RHIME</p>
       </div>
     </a>
     <a class="right-next"
-       href="installation.html"
+       href="co2_models.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">Install and set up OpenGHG Inversions</p>
+        <p class="prev-next-title">CO₂ model recipes</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -459,9 +532,22 @@
 
 
   <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#current-support">Current support</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#prerequisites">Prerequisites</a></li>
+</ul>
+  </nav></div>
+
+  <div class="sidebar-secondary-item">
 
   <div class="tocsection sourcelink">
-    <a href="../_sources/usage/usage.rst.txt">
+    <a href="../_sources/usage/co2_model_family.rst.txt">
       <i class="fa-solid fa-file-lines"></i> Show Source
     </a>
   </div>

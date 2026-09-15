@@ -51,8 +51,8 @@
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="Standard RHIME tutorial" href="rhime_standard_tutorial.html" />
-    <link rel="prev" title="Getting started with OpenGHG Inversions" href="getting_started.html" />
+    <link rel="next" title="Customising RHIME" href="customising_rhime.html" />
+    <link rel="prev" title="RHIME configuration and prepared-input reference" href="rhime.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="" />
@@ -315,19 +315,36 @@
   <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
   <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">Contents:</span></p>
 <ul class="current nav bd-sidenav">
-<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation and Setup</a></li>
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Install and set up OpenGHG Inversions</a></li>
 <li class="toctree-l1"><a class="reference internal" href="conceptual_inversion.html">How an Atmospheric Inversion Works</a></li>
-<li class="toctree-l1"><a class="reference internal" href="getting_started.html">Getting started with OpenGHG Inversions</a></li>
-<li class="toctree-l1 current active"><a class="current reference internal" href="#">Running RHIME from the command line</a></li>
-<li class="toctree-l1"><a class="reference internal" href="rhime_standard_tutorial.html">Standard RHIME tutorial</a></li>
-<li class="toctree-l1"><a class="reference internal" href="rhime_multisector_tutorial.html">Multisector RHIME tutorial</a></li>
-<li class="toctree-l1"><a class="reference internal" href="staged_workflow.html">Staged RHIME workflows</a></li>
-<li class="toctree-l1"><a class="reference internal" href="grouped_basis_layout.html">Grouped basis and state metadata</a></li>
-<li class="toctree-l1"><a class="reference internal" href="rhime.html">RHIME Terminology And Quickstart</a></li>
-<li class="toctree-l1"><a class="reference internal" href="customising_rhime.html">Customising RHIME</a></li>
-<li class="toctree-l1"><a class="reference internal" href="concrete_rhime_model.html">Concrete RHIME Model</a></li>
-<li class="toctree-l1"><a class="reference internal" href="native_covariance.html">Native Covariance Projection</a></li>
-<li class="toctree-l1"><a class="reference internal" href="coherent_reduction.html">Coherent Gaussian Reduction</a></li>
+<li class="toctree-l1"><a class="reference internal" href="model_recipes.html">Choose a RHIME model recipe</a></li>
+<li class="toctree-l1 current active has-children"><a class="reference internal" href="standard_model_family.html">Standard RHIME model family</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="rhime_standard_tutorial.html">Standard RHIME tutorial</a></li>
+<li class="toctree-l2"><a class="reference internal" href="rhime_multisector_tutorial.html">Multisector RHIME tutorial</a></li>
+<li class="toctree-l2"><a class="reference internal" href="concrete_rhime_model.html">Standard and multisector RHIME models</a></li>
+<li class="toctree-l2"><a class="reference internal" href="rhime.html">RHIME configuration and prepared-input reference</a></li>
+<li class="toctree-l2 current active"><a class="current reference internal" href="#">Running RHIME from the command line</a></li>
+<li class="toctree-l2"><a class="reference internal" href="customising_rhime.html">Customising RHIME</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="co2_model_family.html">CO₂ model family</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="co2_models.html">CO₂ model recipes</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="running_and_validating.html">Running and validating inversions</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="staged_workflow.html">Staged RHIME workflows</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="shared_scientific_concepts.html">Shared scientific concepts</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="grouped_basis_layout.html">Grouped basis and state metadata</a></li>
+<li class="toctree-l2"><a class="reference internal" href="native_covariance.html">Native Covariance Projection</a></li>
+<li class="toctree-l2"><a class="reference internal" href="coherent_reduction.html">Coherent Gaussian Reduction</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="legacy_and_migration.html">Legacy interfaces and migration</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html">Getting started with OpenGHG Inversions</a></li>
+</ul>
+</details></li>
 </ul>
 </div>
 </nav></div>
@@ -370,6 +387,9 @@
     </li>
     
     <li class="breadcrumb-item"><a href="usage.html" class="nav-link">Using OpenGHG Inversions</a></li>
+    
+    
+    <li class="breadcrumb-item"><a href="standard_model_family.html" class="nav-link">Standard RHIME model family</a></li>
     
     <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Running RHIME from the command line</span></li>
   </ul>
@@ -420,7 +440,7 @@ with a JSON object passed to <code class="docutils literal notranslate"><span cl
 <code class="docutils literal notranslate"><span class="pre">openghg-inversions</span> <span class="pre">run-rhime</span> <span class="pre">--help</span></code> or
 <code class="docutils literal notranslate"><span class="pre">openghg-inversions</span> <span class="pre">run-rhime-multisector</span> <span class="pre">--help</span></code> for the complete command
 syntax. New configuration files should use the RHIME vocabulary documented in
-<a class="reference internal" href="rhime.html"><span class="doc">RHIME Terminology And Quickstart</span></a>; the packaged starting point is
+<a class="reference internal" href="rhime.html"><span class="doc">RHIME configuration and prepared-input reference</span></a>; the packaged starting point is
 <code class="docutils literal notranslate"><span class="pre">openghg_inversions/config/templates/rhime_template.ini</span></code>. Complete,
 validated production-shape examples are used by
 <a class="reference internal" href="rhime_standard_tutorial.html"><span class="doc">Standard RHIME tutorial</span></a> and <a class="reference internal" href="rhime_multisector_tutorial.html"><span class="doc">Multisector RHIME tutorial</span></a>.</p>
@@ -436,7 +456,7 @@ python<span class="w"> </span>/user/home/example/openghg_inversions/openghg_inve
 The following updated version uses the repository’s Pixi environment. Pixi is
 recommended for inversion jobs that read NetCDF/HDF5 data because the workspace
 keeps the compiled HDF5 and NetCDF stack together on conda-forge; see
-<a class="reference internal" href="installation.html"><span class="doc">Installation and Setup</span></a> for the package constraints and smoke check.</p>
+<a class="reference internal" href="installation.html"><span class="doc">Install and set up OpenGHG Inversions</span></a> for the package constraints and smoke check.</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="ch">#!/bin/bash</span>
 <span class="c1">#SBATCH --job-name=my_inv</span>
 <span class="c1">#SBATCH --output=openghg_inversions.out</span>
@@ -514,7 +534,7 @@ pixi<span class="w"> </span>run<span class="w"> </span>--locked<span class="w"> 
 for supported older fixedbasis-style INI files. It does not turn such a file
 into a multisector configuration. For new batch jobs, start from the RHIME
 template, use <code class="docutils literal notranslate"><span class="pre">flux_sources</span></code> for standard runs, and configure the sector
-sources described in <a class="reference internal" href="rhime.html"><span class="doc">RHIME Terminology And Quickstart</span></a> before selecting
+sources described in <a class="reference internal" href="rhime.html"><span class="doc">RHIME configuration and prepared-input reference</span></a> before selecting
 <code class="docutils literal notranslate"><span class="pre">run-rhime-multisector</span></code>.</p>
 </section>
 </section>
@@ -547,20 +567,20 @@ for legacy and latest products because their variable contracts differ.</p>
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="getting_started.html"
+       href="rhime.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">Getting started with OpenGHG Inversions</p>
+        <p class="prev-next-title">RHIME configuration and prepared-input reference</p>
       </div>
     </a>
     <a class="right-next"
-       href="rhime_standard_tutorial.html"
+       href="customising_rhime.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">Standard RHIME tutorial</p>
+        <p class="prev-next-title">Customising RHIME</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>

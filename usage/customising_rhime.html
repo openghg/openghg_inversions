@@ -51,8 +51,8 @@
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="Concrete RHIME Model" href="concrete_rhime_model.html" />
-    <link rel="prev" title="RHIME Terminology And Quickstart" href="rhime.html" />
+    <link rel="next" title="CO₂ model family" href="co2_model_family.html" />
+    <link rel="prev" title="Running RHIME from the command line" href="cli.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="" />
@@ -315,19 +315,36 @@
   <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
   <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">Contents:</span></p>
 <ul class="current nav bd-sidenav">
-<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation and Setup</a></li>
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Install and set up OpenGHG Inversions</a></li>
 <li class="toctree-l1"><a class="reference internal" href="conceptual_inversion.html">How an Atmospheric Inversion Works</a></li>
-<li class="toctree-l1"><a class="reference internal" href="getting_started.html">Getting started with OpenGHG Inversions</a></li>
-<li class="toctree-l1"><a class="reference internal" href="cli.html">Running RHIME from the command line</a></li>
-<li class="toctree-l1"><a class="reference internal" href="rhime_standard_tutorial.html">Standard RHIME tutorial</a></li>
-<li class="toctree-l1"><a class="reference internal" href="rhime_multisector_tutorial.html">Multisector RHIME tutorial</a></li>
-<li class="toctree-l1"><a class="reference internal" href="staged_workflow.html">Staged RHIME workflows</a></li>
-<li class="toctree-l1"><a class="reference internal" href="grouped_basis_layout.html">Grouped basis and state metadata</a></li>
-<li class="toctree-l1"><a class="reference internal" href="rhime.html">RHIME Terminology And Quickstart</a></li>
-<li class="toctree-l1 current active"><a class="current reference internal" href="#">Customising RHIME</a></li>
-<li class="toctree-l1"><a class="reference internal" href="concrete_rhime_model.html">Concrete RHIME Model</a></li>
-<li class="toctree-l1"><a class="reference internal" href="native_covariance.html">Native Covariance Projection</a></li>
-<li class="toctree-l1"><a class="reference internal" href="coherent_reduction.html">Coherent Gaussian Reduction</a></li>
+<li class="toctree-l1"><a class="reference internal" href="model_recipes.html">Choose a RHIME model recipe</a></li>
+<li class="toctree-l1 current active has-children"><a class="reference internal" href="standard_model_family.html">Standard RHIME model family</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="rhime_standard_tutorial.html">Standard RHIME tutorial</a></li>
+<li class="toctree-l2"><a class="reference internal" href="rhime_multisector_tutorial.html">Multisector RHIME tutorial</a></li>
+<li class="toctree-l2"><a class="reference internal" href="concrete_rhime_model.html">Standard and multisector RHIME models</a></li>
+<li class="toctree-l2"><a class="reference internal" href="rhime.html">RHIME configuration and prepared-input reference</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cli.html">Running RHIME from the command line</a></li>
+<li class="toctree-l2 current active"><a class="current reference internal" href="#">Customising RHIME</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="co2_model_family.html">CO₂ model family</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="co2_models.html">CO₂ model recipes</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="running_and_validating.html">Running and validating inversions</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="staged_workflow.html">Staged RHIME workflows</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="shared_scientific_concepts.html">Shared scientific concepts</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="grouped_basis_layout.html">Grouped basis and state metadata</a></li>
+<li class="toctree-l2"><a class="reference internal" href="native_covariance.html">Native Covariance Projection</a></li>
+<li class="toctree-l2"><a class="reference internal" href="coherent_reduction.html">Coherent Gaussian Reduction</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="legacy_and_migration.html">Legacy interfaces and migration</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html">Getting started with OpenGHG Inversions</a></li>
+</ul>
+</details></li>
 </ul>
 </div>
 </nav></div>
@@ -371,6 +388,9 @@
     
     <li class="breadcrumb-item"><a href="usage.html" class="nav-link">Using OpenGHG Inversions</a></li>
     
+    
+    <li class="breadcrumb-item"><a href="standard_model_family.html" class="nav-link">Standard RHIME model family</a></li>
+    
     <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Customising RHIME</span></li>
   </ul>
 </nav>
@@ -408,8 +428,9 @@ documented interfaces.</p>
 <p>Choose the smallest starting point that fits the change:</p>
 <ul class="simple">
 <li><p>To change only the likelihood, pass a Python function to <code class="docutils literal notranslate"><span class="pre">run_rhime</span></code>.</p></li>
-<li><p>To run the matched fixed-tau OU CO2 model with inferred site amplitudes, use
-<a class="reference internal" href="#cached-sigma-co2-recipe"><span class="std std-ref">the production cached-sigma CO2 recipe</span></a>.</p></li>
+<li><p>To run the matched fixed-tau Ornstein–Uhlenbeck (OU) CO₂ model with inferred
+site amplitudes, use <a class="reference internal" href="co2_models.html#co2-cached-sigma-recipe"><span class="std std-ref">the package-supported cached-sigma CO₂ recipe</span></a> in
+the <a class="reference internal" href="co2_model_family.html"><span class="doc">CO₂ model family</span></a>.</p></li>
 <li><p>To resume from externally supplied merged observations, footprints, and
 fluxes, pass a borrowed <code class="docutils literal notranslate"><span class="pre">RhimeMergedData</span></code> object as <code class="docutils literal notranslate"><span class="pre">merged_data</span></code>.</p></li>
 <li><p>To change a preparation stage such as basis construction, copy the visible
@@ -417,6 +438,8 @@ runner and replace that stage.</p></li>
 <li><p>To start from prepared data or replace the complete model, use
 <code class="docutils literal notranslate"><span class="pre">run_rhime_from_prepared_inputs</span></code>.</p></li>
 </ul>
+<p id="run-the-production-cached-sigma-co2-recipe"><span id="cached-sigma-co2-recipe"></span>The cached-sigma CO₂ recipe documentation moved to the
+<a class="reference internal" href="co2_models.html#co2-cached-sigma-recipe"><span class="std std-ref">package-supported cached-sigma recipe</span></a>.</p>
 <section id="resume-from-cached-or-external-scientific-data">
 <h2>Resume from cached or external scientific data<a class="headerlink" href="#resume-from-cached-or-external-scientific-data" title="Link to this heading">#</a></h2>
 <p><code class="docutils literal notranslate"><span class="pre">run_rhime</span></code> and <code class="docutils literal notranslate"><span class="pre">run_rhime_multisector</span></code> accept <code class="docutils literal notranslate"><span class="pre">merged_data</span></code> as a
@@ -642,9 +665,9 @@ requires every generalized base-plus-OU mode variance to be strictly positive.
 An exact zero mode is rejected before applying the low-rank factor, even when
 that factor would make a materialized dense covariance positive definite; a
 positive OU amplitude can lift a zero base mode. The component currently
-requires PyMC’s native NUTS backend. Sampled tau is a separate extension; the
-production cached sampler is the matched recipe described in
-<a class="reference internal" href="#cached-sigma-co2-recipe"><span class="std std-ref">Run the production cached-sigma CO2 recipe</span></a>.</p>
+requires PyMC’s native No-U-Turn Sampler (NUTS) backend. Sampled tau is a
+separate extension; the package-supported cached sampler is the matched recipe
+described in <a class="reference internal" href="co2_models.html#co2-cached-sigma-recipe"><span class="std std-ref">Run the package-supported cached-sigma CO2 runner</span></a>.</p>
 </section>
 <section id="optional-project-cli">
 <h3>Optional project CLI<a class="headerlink" href="#optional-project-cli" title="Link to this heading">#</a></h3>
@@ -772,81 +795,6 @@ standard multi-sector model retains sector flux components and roles, then
 passes their combined observation mean to the likelihood, so no special case
 or semantic compromise is required.</p>
 </section>
-</section>
-<section id="run-the-production-cached-sigma-co2-recipe">
-<span id="cached-sigma-co2-recipe"></span><h2>Run the production cached-sigma CO2 recipe<a class="headerlink" href="#run-the-production-cached-sigma-co2-recipe" title="Link to this heading">#</a></h2>
-<p><code class="docutils literal notranslate"><span class="pre">run_rhime_co2_cached_sigma</span></code> is the first-class production route for the
-fixed-tau OU likelihood with independently inferred site amplitudes. It owns
-the matched PyMC graph and sampler: the sigma-only NUTS step runs first against
-the exact conditional likelihood, refreshes the accepted state quadratic, and
-stock state NUTS then reads that cache without refactorizing the observation
-covariance during its trajectory.</p>
-<p>The runner begins from an already assembled coherent-reduction
-<code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code> artifact; it does not perform coherent reduction. Its
-<code class="docutils literal notranslate"><span class="pre">inv_inputs</span></code> must contain <code class="docutils literal notranslate"><span class="pre">H</span></code>, <code class="docutils literal notranslate"><span class="pre">alpha_prior_mean</span></code>,
-<code class="docutils literal notranslate"><span class="pre">alpha_prior_covariance</span></code>, <code class="docutils literal notranslate"><span class="pre">fixed_prior_contribution</span></code>, <code class="docutils literal notranslate"><span class="pre">mf</span></code>, and
-<code class="docutils literal notranslate"><span class="pre">mf_error</span></code>. The observation arrays share one <code class="docutils literal notranslate"><span class="pre">nmeasure</span></code> row order, while
-the prior arrays share <code class="docutils literal notranslate"><span class="pre">H</span></code>’s state labels. With the <code class="docutils literal notranslate"><span class="pre">&quot;low_rank&quot;</span></code>
-aggregation-error mode used below, the artifact must also contain
-<code class="docutils literal notranslate"><span class="pre">low_rank_factor</span></code> and <code class="docutils literal notranslate"><span class="pre">diagonal_residual_variance</span></code>. A dense artifact
-instead contains <code class="docutils literal notranslate"><span class="pre">aggregation_error_covariance</span></code> and must be selected with
-<code class="docutils literal notranslate"><span class="pre">aggregation_error_mode=&quot;dense&quot;</span></code>. Optional <code class="docutils literal notranslate"><span class="pre">state_is_active</span></code> and
-<code class="docutils literal notranslate"><span class="pre">state_fixed_value</span></code> variables carry the prepared state-activity policy.</p>
-<p><a class="reference internal" href="coherent_reduction.html"><span class="doc">Coherent Gaussian Reduction</span></a> describes the linked retained prior, effective
-operator, affine contribution, and unresolved covariance, but no public
-function currently assembles those products into this durable artifact. That
-handoff is tracked in <a class="reference external" href="https://linear.app/openghg-inversions/issue/OPE-153/add-a-public-coherent-reduction-handoff-for-co-prepared-inputs">OPE-153</a>.
-Until it lands, callers must supply already-prepared coherent-reduction inputs.</p>
-<p>For example:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.inversion_data</span><span class="w"> </span><span class="kn">import</span> <span class="n">RhimePreparedInputs</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="n">RhimeSampler</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.co2</span><span class="w"> </span><span class="kn">import</span> <span class="n">run_rhime_co2_cached_sigma</span>
-
-<span class="n">prepared</span> <span class="o">=</span> <span class="n">RhimePreparedInputs</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="s2">"co2-coherent-low-rank.zarr"</span><span class="p">)</span>
-<span class="n">idata</span> <span class="o">=</span> <span class="n">run_rhime_co2_cached_sigma</span><span class="p">(</span>
-    <span class="n">prepared_inputs</span><span class="o">=</span><span class="n">prepared</span><span class="p">,</span>
-    <span class="n">tau_hours</span><span class="o">=</span><span class="p">{</span><span class="s2">"BSD"</span><span class="p">:</span> <span class="mf">24.0</span><span class="p">,</span> <span class="s2">"TAC"</span><span class="p">:</span> <span class="mf">18.0</span><span class="p">},</span>
-    <span class="n">site_amplitude_prior_scale</span><span class="o">=</span><span class="mf">0.75</span><span class="p">,</span>  <span class="c1"># concentration units</span>
-    <span class="n">aggregation_error_mode</span><span class="o">=</span><span class="s2">"low_rank"</span><span class="p">,</span>
-    <span class="n">sigma_target_accept</span><span class="o">=</span><span class="mf">0.9</span><span class="p">,</span>
-    <span class="n">state_target_accept</span><span class="o">=</span><span class="mf">0.9</span><span class="p">,</span>
-    <span class="n">sampler</span><span class="o">=</span><span class="n">RhimeSampler</span><span class="p">(</span>
-        <span class="n">draws</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span>
-        <span class="n">tune</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span>
-        <span class="n">chains</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span>
-        <span class="n">nuts_sampler</span><span class="o">=</span><span class="s2">"pymc"</span><span class="p">,</span>
-        <span class="n">sample_kwargs</span><span class="o">=</span><span class="p">{</span><span class="s2">"random_seed"</span><span class="p">:</span> <span class="mi">20260913</span><span class="p">},</span>
-        <span class="n">sample_prior_predictive</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
-    <span class="p">),</span>
-<span class="p">)</span>
-</pre></div>
-</div>
-<p>The runner constructs the required <code class="docutils literal notranslate"><span class="pre">site</span> <span class="pre">amplitude</span> <span class="pre">-&gt;</span> <span class="pre">state</span></code> <code class="docutils literal notranslate"><span class="pre">CompoundStep</span></code> and
-uses process spawning for multiple chains. Do not pass another step method in
-<code class="docutils literal notranslate"><span class="pre">sample_kwargs</span></code>. Set <code class="docutils literal notranslate"><span class="pre">sigma_target_accept</span></code> and <code class="docutils literal notranslate"><span class="pre">state_target_accept</span></code> on
-the runner rather than putting a generic <code class="docutils literal notranslate"><span class="pre">target_accept</span></code> in
-<code class="docutils literal notranslate"><span class="pre">RhimeSampler.sample_kwargs</span></code>. The accepted quadratic and fixed-OU generalized
-eigenbasis are runtime numerical state derived from the materialized prepared
-inputs; they are not external cache artifacts.</p>
-<p>Because the cached graph uses a normalized joint <code class="docutils literal notranslate"><span class="pre">Potential</span></code>, it does not
-invent an independent observed distribution. After sampling, the same exact
-fixed-OU target adds <code class="docutils literal notranslate"><span class="pre">log_likelihood.y</span></code> as one scalar per complete
-observation vector and, when requested, draws complete correlated vectors in
-<code class="docutils literal notranslate"><span class="pre">posterior_predictive.y</span></code>. The variables carry explicit joint-scope metadata.</p>
-<p>This route deliberately supports only independent HalfNormal site-amplitude
-priors and fixed positive OU timescales. Sampled tau and alternative amplitude
-priors are separate extensions. The route is PyMC-only because it constructs
-and owns a PyMC <code class="docutils literal notranslate"><span class="pre">CompoundStep</span></code>. The ordinary stock-PyMC fixed-OU likelihood
-above remains the log-density/gradient oracle and fallback.</p>
-<p>The exponential within-site covariance follows the stationary process of
-<a class="reference external" href="https://doi.org/10.1103/PhysRev.36.823">Uhlenbeck and Ornstein (1930)</a>. The named recipe and its matched
-accepted-state cache are implemented and versioned by OpenGHG Inversions.</p>
-<p>Built-in aggregation covariance relies on the guarantees of its construction
-pipeline. A custom pipeline that assembles its own covariance may optionally
-call
-<code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.observation_error.validate_complete_observation_covariance()</span></code>
-with its fixed independent variance. Model builders do not run this eager
-diagnostic automatically.</p>
 </section>
 <section id="use-the-seam-from-a-generated-project">
 <h2>Use the seam from a generated project<a class="headerlink" href="#use-the-seam-from-a-generated-project" title="Link to this heading">#</a></h2>
@@ -1787,20 +1735,20 @@ option.</p>
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="rhime.html"
+       href="cli.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">RHIME Terminology And Quickstart</p>
+        <p class="prev-next-title">Running RHIME from the command line</p>
       </div>
     </a>
     <a class="right-next"
-       href="concrete_rhime_model.html"
+       href="co2_model_family.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">Concrete RHIME Model</p>
+        <p class="prev-next-title">CO₂ model family</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -1829,7 +1777,6 @@ option.</p>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#optional-project-cli">Optional project CLI</a></li>
 </ul>
 </li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#run-the-production-cached-sigma-co2-recipe">Run the production cached-sigma CO2 recipe</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#use-the-seam-from-a-generated-project">Use the seam from a generated project</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#copy-the-complete-runner">Copy the complete runner</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#compose-a-custom-basis-stage">Compose a custom basis stage</a></li>

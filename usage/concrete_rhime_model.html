@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>Concrete RHIME Model &#8212; openghg_inversions  documentation</title>
+    <title>Standard and multisector RHIME models &#8212; openghg_inversions  documentation</title>
   
   
   
@@ -52,8 +52,8 @@
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="Native Covariance Projection" href="native_covariance.html" />
-    <link rel="prev" title="Customising RHIME" href="customising_rhime.html" />
+    <link rel="next" title="RHIME configuration and prepared-input reference" href="rhime.html" />
+    <link rel="prev" title="Multisector RHIME tutorial" href="rhime_multisector_tutorial.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="" />
@@ -316,19 +316,36 @@
   <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
   <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">Contents:</span></p>
 <ul class="current nav bd-sidenav">
-<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation and Setup</a></li>
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Install and set up OpenGHG Inversions</a></li>
 <li class="toctree-l1"><a class="reference internal" href="conceptual_inversion.html">How an Atmospheric Inversion Works</a></li>
-<li class="toctree-l1"><a class="reference internal" href="getting_started.html">Getting started with OpenGHG Inversions</a></li>
-<li class="toctree-l1"><a class="reference internal" href="cli.html">Running RHIME from the command line</a></li>
-<li class="toctree-l1"><a class="reference internal" href="rhime_standard_tutorial.html">Standard RHIME tutorial</a></li>
-<li class="toctree-l1"><a class="reference internal" href="rhime_multisector_tutorial.html">Multisector RHIME tutorial</a></li>
-<li class="toctree-l1"><a class="reference internal" href="staged_workflow.html">Staged RHIME workflows</a></li>
-<li class="toctree-l1"><a class="reference internal" href="grouped_basis_layout.html">Grouped basis and state metadata</a></li>
-<li class="toctree-l1"><a class="reference internal" href="rhime.html">RHIME Terminology And Quickstart</a></li>
-<li class="toctree-l1"><a class="reference internal" href="customising_rhime.html">Customising RHIME</a></li>
-<li class="toctree-l1 current active"><a class="current reference internal" href="#">Concrete RHIME Model</a></li>
-<li class="toctree-l1"><a class="reference internal" href="native_covariance.html">Native Covariance Projection</a></li>
-<li class="toctree-l1"><a class="reference internal" href="coherent_reduction.html">Coherent Gaussian Reduction</a></li>
+<li class="toctree-l1"><a class="reference internal" href="model_recipes.html">Choose a RHIME model recipe</a></li>
+<li class="toctree-l1 current active has-children"><a class="reference internal" href="standard_model_family.html">Standard RHIME model family</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="rhime_standard_tutorial.html">Standard RHIME tutorial</a></li>
+<li class="toctree-l2"><a class="reference internal" href="rhime_multisector_tutorial.html">Multisector RHIME tutorial</a></li>
+<li class="toctree-l2 current active"><a class="current reference internal" href="#">Standard and multisector RHIME models</a></li>
+<li class="toctree-l2"><a class="reference internal" href="rhime.html">RHIME configuration and prepared-input reference</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cli.html">Running RHIME from the command line</a></li>
+<li class="toctree-l2"><a class="reference internal" href="customising_rhime.html">Customising RHIME</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="co2_model_family.html">CO₂ model family</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="co2_models.html">CO₂ model recipes</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="running_and_validating.html">Running and validating inversions</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="staged_workflow.html">Staged RHIME workflows</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="shared_scientific_concepts.html">Shared scientific concepts</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="grouped_basis_layout.html">Grouped basis and state metadata</a></li>
+<li class="toctree-l2"><a class="reference internal" href="native_covariance.html">Native Covariance Projection</a></li>
+<li class="toctree-l2"><a class="reference internal" href="coherent_reduction.html">Coherent Gaussian Reduction</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="legacy_and_migration.html">Legacy interfaces and migration</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html">Getting started with OpenGHG Inversions</a></li>
+</ul>
+</details></li>
 </ul>
 </div>
 </nav></div>
@@ -372,7 +389,10 @@
     
     <li class="breadcrumb-item"><a href="usage.html" class="nav-link">Using OpenGHG Inversions</a></li>
     
-    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Concrete RHIME Model</span></li>
+    
+    <li class="breadcrumb-item"><a href="standard_model_family.html" class="nav-link">Standard RHIME model family</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Standard and multisector RHIME models</span></li>
   </ul>
 </nav>
 </div>
@@ -389,15 +409,23 @@
 <div id="searchbox"></div>
                 <article class="bd-article">
                   
-  <section id="concrete-rhime-model">
-<h1>Concrete RHIME Model<a class="headerlink" href="#concrete-rhime-model" title="Link to this heading">#</a></h1>
+  <section id="standard-and-multisector-rhime-models">
+<h1>Standard and multisector RHIME models<a class="headerlink" href="#standard-and-multisector-rhime-models" title="Link to this heading">#</a></h1>
 <p>This page makes the model graph behind <code class="xref py py-func docutils literal notranslate"><span class="pre">run_rhime()</span></code> and
-<code class="xref py py-func docutils literal notranslate"><span class="pre">run_rhime_multisector()</span></code> explicit. It has two purposes:</p>
+<code class="xref py py-func docutils literal notranslate"><span class="pre">run_rhime_multisector()</span></code> explicit. The advanced CO₂-only and linked
+CO₂/O₂ graphs have their canonical home in <a class="reference internal" href="co2_models.html"><span class="doc">CO₂ model recipes</span></a>. This page has two
+purposes:</p>
 <ul class="simple">
 <li><p>show the concrete statistical model and its PyMC names;</p></li>
 <li><p>show how the standard model can be reconstructed from public component
 helpers.</p></li>
 </ul>
+<p id="co2-coherent-reduction-model">The CO₂ coherent-reduction model documentation moved to the
+<a class="reference internal" href="co2_models.html#co2-only-model"><span class="std std-ref">CO₂-only model recipe</span></a>.</p>
+<p id="co2-grouped-inner-and-outer-states">The CO₂ grouped inner and outer state documentation moved to the
+<a class="reference internal" href="co2_models.html#co2-grouped-states"><span class="std std-ref">grouped CO₂ state recipe</span></a>.</p>
+<p id="co2-o2-shared-state-model">The CO₂/O₂ shared-state model documentation moved to the
+<a class="reference internal" href="co2_models.html#linked-co2-o2-model"><span class="std std-ref">linked CO₂/O₂ model recipe</span></a>.</p>
 <section id="the-current-builders">
 <h2>The current builders<a class="headerlink" href="#the-current-builders" title="Link to this heading">#</a></h2>
 <p>Each recipe directly composes one readable concrete graph. The standard graph
@@ -590,206 +618,6 @@ config prior to request the API-default parameterization shown here.</p>
 </tbody>
 </table>
 </div>
-</section>
-<section id="co2-coherent-reduction-model">
-<h2>CO2 coherent-reduction model<a class="headerlink" href="#co2-coherent-reduction-model" title="Link to this heading">#</a></h2>
-<p>The public <a class="reference internal" href="../reference/openghg_inversions.rhime.html#openghg_inversions.rhime.build_co2_model" title="openghg_inversions.rhime.build_co2_model"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.build_co2_model()</span></code></a> recipe
-consumes the labelled products of a coherent state reduction. Let
-<code class="docutils literal notranslate"><span class="pre">H_alpha</span></code> be the retained-state sensitivity, <code class="docutils literal notranslate"><span class="pre">m_alpha</span></code> and <code class="docutils literal notranslate"><span class="pre">C_alpha</span></code> its
-arithmetic prior mean and covariance, and <code class="docutils literal notranslate"><span class="pre">b_fixed</span></code> the fixed affine prior
-contribution. The core retained-state terms are</p>
-<div class="math notranslate nohighlight">
-\[\begin{split}x &amp;\sim \operatorname{LogNormalMoments}(m_\alpha, C_\alpha), \\
-\mu_{CO_2} &amp;= H_\alpha x.\end{split}\]</div>
-<p>The affine term is part of coherent prior closure; it is not an atmospheric
-boundary condition. An explicit state-activity policy omits inactive elements
-from the sampled correlated vector while restoring their exact fixed values
-in the full public <code class="docutils literal notranslate"><span class="pre">flux_scaling</span></code> vector and in <code class="docutils literal notranslate"><span class="pre">co2_flux_contribution</span></code>.</p>
-<p>The CO2 likelihood uses the explicit <a class="reference internal" href="../reference/openghg_inversions.observation_error.html#openghg_inversions.observation_error.AggregationError" title="openghg_inversions.observation_error.AggregationError"><code class="xref py py-class docutils literal notranslate"><span class="pre">AggregationError</span></code></a>
-selected from prepared inputs. With reported observation standard deviation
-<code class="docutils literal notranslate"><span class="pre">s_y</span></code>, optional known mismatch <code class="docutils literal notranslate"><span class="pre">s_fixed</span></code>, and optional inferred additive
-mismatch <code class="docutils literal notranslate"><span class="pre">sigma</span></code>, its covariance is</p>
-<div class="math notranslate nohighlight">
-\[R = C_{agg} + \operatorname{diag}
-    (s_y^2 + s_{fixed}^2 + \sigma^2).\]</div>
-<p>CO2 likelihoods do not apply <code class="docutils literal notranslate"><span class="pre">min_error</span></code>; that input belongs to
-pollution-event-scaled mismatch. OpenGHG Inversions does not default
-<code class="docutils literal notranslate"><span class="pre">s_fixed</span></code> to 1 ppm. The
-Verification Games fixed-only policy passes <code class="docutils literal notranslate"><span class="pre">fixed_model_mismatch=1.0</span></code> and
-<code class="docutils literal notranslate"><span class="pre">no_model_error=True</span></code> visibly. A runnable CO2 configuration and resolver are
-tracked in <a class="reference external" href="https://linear.app/openghg-inversions/issue/OPE-79">OPE-79</a>.
-For the matched fixed-tau OU likelihood with independently inferred site
-amplitudes, use <a class="reference internal" href="customising_rhime.html#cached-sigma-co2-recipe"><span class="std std-ref">the production cached-sigma CO2 recipe</span></a>.</p>
-<section id="co2-grouped-inner-and-outer-states">
-<h3>CO2 grouped inner and outer states<a class="headerlink" href="#co2-grouped-inner-and-outer-states" title="Link to this heading">#</a></h3>
-<p>Same-grid inner and outer fluxes use one ordinary retained state and one
-<code class="docutils literal notranslate"><span class="pre">co2_sensitivity</span></code>. Their geography is labelled metadata, not a second model
-component. The state axis retains <code class="docutils literal notranslate"><span class="pre">basis_group</span></code>, <code class="docutils literal notranslate"><span class="pre">basis_partition</span></code>, and
-<code class="docutils literal notranslate"><span class="pre">region_in_partition</span></code> coordinates; select <code class="docutils literal notranslate"><span class="pre">basis_group</span> <span class="pre">==</span> <span class="pre">&quot;outer&quot;</span></code> rather
-than inferring outer entries from integer ranges or positions.</p>
-<p>Fixed versus inferred outer entries use the ordinary
-<a class="reference internal" href="../reference/openghg_inversions.models.html#openghg_inversions.models.StateActivity" title="openghg_inversions.models.StateActivity"><code class="xref py py-class docutils literal notranslate"><span class="pre">StateActivity</span></code></a> contract. To preserve the
-fixed-at-one behavior, pass
-<code class="docutils literal notranslate"><span class="pre">StateActivity(fixed_groups=(&quot;outer&quot;,),</span> <span class="pre">fixed_value=1.0)</span></code>. Leaving the outer
-group active infers those entries with the same correlated LogNormal state as
-the inner entries. Exact-zero sensitivity pruning composes with either policy.</p>
-<p>The builder accepts one prepared
-<a class="reference internal" href="../reference/openghg_inversions.correlated_state.html#openghg_inversions.correlated_state.CorrelatedLognormalPrior" title="openghg_inversions.correlated_state.CorrelatedLognormalPrior"><code class="xref py py-class docutils literal notranslate"><span class="pre">CorrelatedLognormalPrior</span></code></a> over the
-complete ordered state. Group-specific arithmetic moments must be aligned and
-assembled before graph construction. A full prior may contain inner/outer
-cross-covariance; it remains part of that one prior and is not also added to
-the observation covariance.</p>
-<p><code class="docutils literal notranslate"><span class="pre">co2_flux_contribution</span></code> contains the complete flux prediction. The model does
-not construct separate inner or outer terms. Outputs can reconstruct either
-view by selecting the corresponding <code class="docutils literal notranslate"><span class="pre">basis_group</span></code> entries from the stored
-sensitivity and <code class="docutils literal notranslate"><span class="pre">flux_scaling</span></code> state.</p>
-<p>With optional boundary conditions and offset present, the likelihood mean is</p>
-<div class="math notranslate nohighlight">
-\[\mathtt{modelled\_concentration}
-= \mathtt{fixed\_prior\_contribution}
-+ \mathtt{co2\_flux\_contribution}
-+ \mathtt{mu\_bc}
-+ \mathtt{offset}.\]</div>
-<p>An output may report a composite baseline by reconstructing the outer flux view
-and adding it to <code class="docutils literal notranslate"><span class="pre">mu_bc</span> <span class="pre">+</span> <span class="pre">offset</span></code>. This is an output policy only: boundary
-conditions, offsets, and outer flux remain distinct scientific terms. Sector
-combinations are likewise a general state-grouping choice rather than an
-outer-region model option.</p>
-<p>The model builder accepts explicit scientific arrays rather than a dataset.
-For durable prepared artifacts, <a class="reference internal" href="../reference/openghg_inversions.rhime.html#openghg_inversions.rhime.run_rhime_co2" title="openghg_inversions.rhime.run_rhime_co2"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.run_rhime_co2()</span></code></a>
-is the public replay seam: it validates and materializes the selected arrays,
-resolves aggregation error, calls the explicit builder, samples, and stores a
-JSON variable-role and model-provenance manifest on the returned
-<code class="docutils literal notranslate"><span class="pre">InferenceData</span></code>. A prepared <code class="docutils literal notranslate"><span class="pre">fixed_model_mismatch</span></code> is preserved when the
-runner argument is <code class="docutils literal notranslate"><span class="pre">None</span></code>; an explicit scalar or labelled vector overrides
-it. Persist gathered-state traces with
-<a class="reference internal" href="../reference/openghg_inversions.serialization.html#openghg_inversions.serialization.save_inferencedata" title="openghg_inversions.serialization.save_inferencedata"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.serialization.save_inferencedata()</span></code></a>, which uses the
-same MultiIndex-safe boundary as standard and multisector RHIME outputs.
-The current prepared-input runner does not accept or construct an
-outer-specific object. It constructs the complete retained prior from the
-prepared arithmetic mean and covariance, then forwards the prepared activity
-policy to the builder.</p>
-<p>The CO2 builder and prepared-input runner also accept one ordinary
-<code class="docutils literal notranslate"><span class="pre">likelihood_builder</span></code> with explicit <code class="docutils literal notranslate"><span class="pre">likelihood_kwargs</span></code>. This selects
-package components such as
-<a class="reference internal" href="../reference/openghg_inversions.models.fixed_ou.html#openghg_inversions.models.fixed_ou.add_fixed_ou_gaussian_likelihood" title="openghg_inversions.models.fixed_ou.add_fixed_ou_gaussian_likelihood"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.models.fixed_ou.add_fixed_ou_gaussian_likelihood()</span></code></a> and
-<a class="reference internal" href="../reference/openghg_inversions.models.html#openghg_inversions.models.add_site_sigma_gaussian_likelihood" title="openghg_inversions.models.add_site_sigma_gaussian_likelihood"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.models.add_site_sigma_gaussian_likelihood()</span></code></a> after
-<code class="docutils literal notranslate"><span class="pre">modelled_concentration</span></code> has been completed. Selecting one replaces the
-default additive-sigma likelihood; its scientific options belong in
-<code class="docutils literal notranslate"><span class="pre">likelihood_kwargs</span></code> rather than the default <code class="docutils literal notranslate"><span class="pre">sigma_*</span></code> or
-<code class="docutils literal notranslate"><span class="pre">fixed_model_mismatch</span></code> arguments. The returned trace records the selected
-callable identity and its explicit options using the ordinary likelihood
-provenance attributes.</p>
-</section>
-</section>
-<section id="co2-o2-shared-state-model">
-<h2>CO2/O2 shared-state model<a class="headerlink" href="#co2-o2-shared-state-model" title="Link to this heading">#</a></h2>
-<p>The CO2/O2 recipe applies one retained state to both observation channels.
-Its public boundaries are
-<a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.prepare_co2_o2_inputs" title="openghg_inversions.rhime.co2.prepare_co2_o2_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.prepare_co2_o2_inputs()</span></code></a> for labelled
-preparation, <a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.build_co2_o2_model" title="openghg_inversions.rhime.co2.build_co2_o2_model"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.build_co2_o2_model()</span></code></a> for graph
-construction, and
-<a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs" title="openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs()</span></code></a> for
-materialization, sampling, and trace metadata.</p>
-<p>This joint recipe currently keeps its fixed, row-labelled independent error
-and does not expose the CO2 <code class="docutils literal notranslate"><span class="pre">likelihood_builder</span></code> seam. A cross-channel
-mismatch model must first define its CO2/O2 covariance, parameter sharing, and
-mixed-unit behavior explicitly.</p>
-<p>Partition that state as</p>
-<div class="math notranslate nohighlight">
-\[\begin{split}\alpha =
-\begin{bmatrix}
-   \alpha_{shared} \\
-   \alpha_{CO_2,ocean} \\
-   \alpha_{O_2,ocean}
-\end{bmatrix},\end{split}\]</div>
-<p>where <span class="math notranslate nohighlight">\(\alpha_{shared}\)</span> contains the GPP, TER, and fossil-fuel states.
-The joint affine model is</p>
-<div class="math notranslate nohighlight">
-\[\begin{split}H_{joint} =
-\begin{bmatrix}
-   H_{CO_2,shared} &amp; H_{CO_2,ocean} &amp; 0 \\
-   H_{O_2,shared}^{eff} &amp; 0 &amp; H_{O_2,ocean}
-\end{bmatrix},
-\qquad
-b_{joint} =
-\begin{bmatrix} b_{CO_2} \\ b_{O_2} \end{bmatrix},
-\qquad
-\mu_{joint} = b_{joint} + H_{joint}\alpha.\end{split}\]</div>
-<p>Equivalently, coherent reduction may be written in centred or affine form,</p>
-<div class="math notranslate nohighlight">
-\[\mu_{joint}
-= \mu_{prior} + H_{joint}(\alpha - m_\alpha)
-= (\mu_{prior} - H_{joint}m_\alpha) + H_{joint}\alpha.\]</div>
-<p>The prepared <code class="docutils literal notranslate"><span class="pre">fixed_prior_contribution</span></code> is the parenthesized affine
-intercept, not the complete prior-forward concentration.</p>
-<p>Thus this is a row-stacked, block-sparse sensitivity acting on one state vector,
-not two independent block-diagonal models. Its fixed-error likelihood is</p>
-<div class="math notranslate nohighlight">
-\[\begin{split}\begin{bmatrix} y_{CO_2} \\ y_{O_2} \end{bmatrix}
-\mid \alpha
-\sim \mathcal N\!\left(
-   \mu_{joint},
-   \begin{bmatrix}
-      A_{CO_2,CO_2} &amp; A_{CO_2,O_2} \\
-      A_{O_2,CO_2} &amp; A_{O_2,O_2}
-   \end{bmatrix}
-   + \operatorname{diag}(s_{independent}^2)
-\right).\end{split}\]</div>
-<p>These quantities must come from one coherent reduction. With native state
-mean <span class="math notranslate nohighlight">\(m\)</span>, covariance <span class="math notranslate nohighlight">\(B\)</span>, joint native observation sensitivity
-<span class="math notranslate nohighlight">\(G\)</span>, and retained-state restriction <span class="math notranslate nohighlight">\(\Pi\)</span>,</p>
-<div class="math notranslate nohighlight">
-\[\begin{split}C_\alpha &amp;= \Pi B\Pi^\mathsf{T}, \\
-H_{joint} &amp;= GB\Pi^\mathsf{T}C_\alpha^{-1}, \\
-b_{joint} &amp;= Gm - H_{joint}\Pi m, \\
-A &amp;= GBG^\mathsf{T} - H_{joint}C_\alpha H_{joint}^\mathsf{T}.\end{split}\]</div>
-<p>In particular, the off-diagonal <span class="math notranslate nohighlight">\(A_{CO_2,O_2}\)</span> block is part of the
-coherent-reduction contract. See the <a class="reference internal" href="coherent_reduction.html"><span class="doc">full derivation</span></a> for its assumptions and limitations.</p>
-<p>Preparation accepts separate native channel arrays, then gathers their rows on
-one <code class="docutils literal notranslate"><span class="pre">(species,</span> <span class="pre">channel_observation)</span></code> observation index before the model
-applies the joint sensitivity once. Each row still retains its declared native
-units and numerical scale. Verification-game inputs may use ppm for both
-channels, while real atmospheric O2 observations may use per-meg delta(O2/N2).
-The prepared channel fields are named <code class="docutils literal notranslate"><span class="pre">co2_sensitivity</span></code> and
-<code class="docutils literal notranslate"><span class="pre">o2_sensitivity</span></code>; their gathered model-data variable is
-<code class="docutils literal notranslate"><span class="pre">co2_o2_sensitivity</span></code>.
-<code class="docutils literal notranslate"><span class="pre">independent_error_sd</span></code> and every covariance row and column must use the
-corresponding observation-row units. Any future numerical scaling or whitening
-must be a named transformation applied consistently to observations, model
-mean, independent error, and all joint covariance blocks, while retaining
-physical-unit outputs and provenance. The displayed row stack is the
-mathematical model: every sensitivity and covariance block must still be produced
-by the same reduction.</p>
-<p>The graph names the gathered linear signal <code class="docutils literal notranslate"><span class="pre">co2_o2_flux_contribution</span></code> and the
-complete affine sum and likelihood mean <code class="docutils literal notranslate"><span class="pre">modelled_concentration</span></code>. In
-model-variable vocabulary,</p>
-<div class="math notranslate nohighlight">
-\[\mathtt{modelled\_concentration}
-= \mathtt{fixed\_prior\_contribution}
-+ \mathtt{co2\_o2\_flux\_contribution}.\]</div>
-<p>Persist sampled CO2/O2 results with
-<a class="reference internal" href="../reference/openghg_inversions.serialization.html#openghg_inversions.serialization.save_inferencedata" title="openghg_inversions.serialization.save_inferencedata"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.serialization.save_inferencedata()</span></code></a> and restore them
-with <a class="reference internal" href="../reference/openghg_inversions.serialization.html#openghg_inversions.serialization.load_inferencedata" title="openghg_inversions.serialization.load_inferencedata"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.serialization.load_inferencedata()</span></code></a>; this is the
-declared boundary for preserving gathered MultiIndex coordinates.</p>
-<p>The signed oxidation ratio is fixed in this recipe and already folded into the
-shared-state O2 sensitivity. When it is representable by retained-state or
-source-resolved values <span class="math notranslate nohighlight">\(R\)</span>,</p>
-<div class="math notranslate nohighlight">
-\[H_{O_2,shared}^{eff}
-= H_{O_2,ratio\text{-}free}\operatorname{diag}(R).\]</div>
-<p>Native paired-flux construction may instead apply spatially resolved ratios
-before footprint convolution, in which case no unique retained-state
-<span class="math notranslate nohighlight">\(R\)</span> is available. Preparation records that status and its reason rather
-than inventing scalar values; the supplied effective O2 sensitivity remains the
-scientific input.</p>
-<p>Because this recipe receives the O2 sensitivity with the fixed ratio already
-applied upstream, its builder applies the gathered sensitivity directly to the
-unchanged shared state with <code class="docutils literal notranslate"><span class="pre">apply_linear_sensitivity</span></code>. If a fixed or
-inferred oxidation ratio were instead explicit model state, the recipe would
-visibly form <code class="docutils literal notranslate"><span class="pre">o2_state</span> <span class="pre">=</span> <span class="pre">oxidation_ratio</span> <span class="pre">*</span> <span class="pre">co2_state</span></code> before applying the
-ratio-free O2 sensitivity. The <a class="reference internal" href="../experimental/ramsden2022.html"><span class="doc">Ramsden methane/ethane model</span></a> follows that explicit pattern for its emission
-ratio. OPE-118 owns that future CO2/O2 coupling work.</p>
 </section>
 <section id="equivalent-construction-from-public-helpers">
 <h2>Equivalent construction from public helpers<a class="headerlink" href="#equivalent-construction-from-public-helpers" title="Link to this heading">#</a></h2>
@@ -1127,20 +955,20 @@ component is insufficient.</p>
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="customising_rhime.html"
+       href="rhime_multisector_tutorial.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">Customising RHIME</p>
+        <p class="prev-next-title">Multisector RHIME tutorial</p>
       </div>
     </a>
     <a class="right-next"
-       href="native_covariance.html"
+       href="rhime.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">Native Covariance Projection</p>
+        <p class="prev-next-title">RHIME configuration and prepared-input reference</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -1166,11 +994,6 @@ component is insufficient.</p>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#the-current-builders">The current builders</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#stability-contract">Stability contract</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#standard-single-flux-model">Standard single-flux model</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#co2-coherent-reduction-model">CO2 coherent-reduction model</a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#co2-grouped-inner-and-outer-states">CO2 grouped inner and outer states</a></li>
-</ul>
-</li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#co2-o2-shared-state-model">CO2/O2 shared-state model</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#equivalent-construction-from-public-helpers">Equivalent construction from public helpers</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#multisector-model">Multisector model</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#names-and-generated-names">Names and generated names</a></li>

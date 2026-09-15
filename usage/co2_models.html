@@ -1,0 +1,859 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>CO₂ model recipes &#8212; openghg_inversions  documentation</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../_static/styles/theme.css?digest=cb8930eaaf36d9849b67" rel="stylesheet" />
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=cb8930eaaf36d9849b67" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../_static/jupyter-sphinx.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/thebelab.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=f8ac5af1" />
+  
+  <!-- So that users can add custom icons -->
+  <script defer src="../_static/scripts/fontawesome.js?digest=cb8930eaaf36d9849b67"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=cb8930eaaf36d9849b67" />
+<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=cb8930eaaf36d9849b67" />
+
+    <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../_static/thebelab-helper.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+    <script defer="defer" src="https://cdn.jsdelivr.net/npm/mathjax@4/tex-mml-chtml.js"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'usage/co2_models';</script>
+    <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Running and validating inversions" href="running_and_validating.html" />
+    <link rel="prev" title="CO₂ model family" href="co2_model_family.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="" />
+  
+    
+    <script src="../_static/searchtools.js"></script>
+    <script src="../_static/language_data.js"></script>
+    <script src="../searchindex.js"></script>
+  
+  </head>
+  <body data-default-mode="">
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+  
+  
+  
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header id="pst-header" class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../index.html">
+  
+  
+  
+  
+  
+  
+    <p class="title logo__title">openghg_inversions  documentation</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    <div class="me-auto navbar-header-items__center">
+      
+        <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="usage.html">
+    Using OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../development/index.html">
+    Developing OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../experimental/index.html">
+    Experimental code
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../reference/modules.html">
+    openghg_inversions
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+      
+    </div>
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+    <button class="pst-navbar-icon sidebar-toggle secondary-toggle" aria-label="On this page">
+      <span class="fa-solid fa-outdent"></span>
+    </button>
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+      <div class="sidebar-header-items__center">
+        
+          
+          
+            <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="usage.html">
+    Using OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../development/index.html">
+    Developing OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../experimental/index.html">
+    Experimental code
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../reference/modules.html">
+    openghg_inversions
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+          
+        
+      </div>
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item pst-sidebar-collapse"><button id="pst-collapse-sidebar-button" aria-expanded="true" aria-controls="pst-primary-sidebar">
+  <svg class="pst-icon" role="img" aria-hidden="true" focusable="false" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+    <path fill="currentColor" d="M3 15.5C2.36232 15.5 1.74874 15.2564 1.28478 14.8189C0.820828 14.3815 0.541576 13.7832 0.504167 13.1467L0.5 13L0.5 3C0.499965 2.36232 0.743605 1.74874 1.18107 1.28478C1.61854 0.820828 2.21676 0.541576 2.85333 0.504167L3 0.5L13 0.5C13.6377 0.499965 14.2513 0.743605 14.7152 1.18107C15.1792 1.61854 15.4584 2.21676 15.4958 2.85333L15.5 3L15.5 13C15.5 13.6377 15.2564 14.2513 14.8189 14.7152C14.3815 15.1792 13.7832 15.4584 13.1467 15.4958L13 15.5L3 15.5ZM3 13.8333L10.5 13.8333L10.5 2.16667L3 2.16667C2.79589 2.16669 2.59889 2.24163 2.44636 2.37726C2.29383 2.5129 2.19638 2.69979 2.1725 2.9025L2.16667 3L2.16667 13C2.16669 13.2041 2.24163 13.4011 2.37726 13.5536C2.5129 13.7062 2.69979 13.8036 2.9025 13.8275L3 13.8333ZM6.65583 10.325L6.5775 10.2558L4.91083 8.58917C4.76735 8.44567 4.68116 8.25476 4.66843 8.05223C4.65569 7.84971 4.71729 7.6495 4.84167 7.48917L4.91083 7.41083L6.5775 5.74417C6.72747 5.59471 6.9287 5.50794 7.14032 5.50148C7.35194 5.49502 7.55809 5.56935 7.7169 5.70937C7.8757 5.8494 7.97525 6.04463 7.99533 6.25539C8.01541 6.46616 7.95451 6.67667 7.825 6.84417L7.75583 6.9225L6.67917 8L7.75583 9.0775C7.89931 9.22099 7.98551 9.41191 7.99824 9.61443C8.01097 9.81695 7.94938 10.0172 7.825 10.1775L7.75583 10.2558C7.61234 10.3993 7.42142 10.4855 7.2189 10.4982C7.01638 10.511 6.81617 10.4494 6.65583 10.325Z"/>
+  </svg>
+  <span class="pst-collapse-sidebar-label">Collapse Sidebar</span>
+  <span class="pst-expand-sidebar-label">Expand Sidebar</span>
+</button></div>
+        <div class="sidebar-primary-item">
+
+<nav class="bd-docs-nav bd-links"
+     aria-label="Section Navigation">
+  <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
+  <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Install and set up OpenGHG Inversions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="conceptual_inversion.html">How an Atmospheric Inversion Works</a></li>
+<li class="toctree-l1"><a class="reference internal" href="model_recipes.html">Choose a RHIME model recipe</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="standard_model_family.html">Standard RHIME model family</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="rhime_standard_tutorial.html">Standard RHIME tutorial</a></li>
+<li class="toctree-l2"><a class="reference internal" href="rhime_multisector_tutorial.html">Multisector RHIME tutorial</a></li>
+<li class="toctree-l2"><a class="reference internal" href="concrete_rhime_model.html">Standard and multisector RHIME models</a></li>
+<li class="toctree-l2"><a class="reference internal" href="rhime.html">RHIME configuration and prepared-input reference</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cli.html">Running RHIME from the command line</a></li>
+<li class="toctree-l2"><a class="reference internal" href="customising_rhime.html">Customising RHIME</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 current active has-children"><a class="reference internal" href="co2_model_family.html">CO₂ model family</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
+<li class="toctree-l2 current active"><a class="current reference internal" href="#">CO₂ model recipes</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="running_and_validating.html">Running and validating inversions</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="staged_workflow.html">Staged RHIME workflows</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="shared_scientific_concepts.html">Shared scientific concepts</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="grouped_basis_layout.html">Grouped basis and state metadata</a></li>
+<li class="toctree-l2"><a class="reference internal" href="native_covariance.html">Native Covariance Projection</a></li>
+<li class="toctree-l2"><a class="reference internal" href="coherent_reduction.html">Coherent Gaussian Reduction</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="legacy_and_migration.html">Legacy interfaces and migration</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html">Getting started with OpenGHG Inversions</a></li>
+</ul>
+</details></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+      <div class="sidebar-primary-item">
+<div id="ethical-ad-placement"
+      class="flat"
+      data-ea-publisher="readthedocs"
+      data-ea-type="readthedocs-sidebar"
+      data-ea-manual="true">
+</div></div>
+  </div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="usage.html" class="nav-link">Using OpenGHG Inversions</a></li>
+    
+    
+    <li class="breadcrumb-item"><a href="co2_model_family.html" class="nav-link">CO₂ model family</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">CO₂ model recipes</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="co2-model-recipes">
+<h1>CO₂ model recipes<a class="headerlink" href="#co2-model-recipes" title="Link to this heading">#</a></h1>
+<p>This page describes the scientific graphs and current prepared-input replay
+seams for the CO₂-only and linked CO₂/O₂ recipes. Start with the
+<a class="reference internal" href="co2_model_family.html"><span class="doc">CO₂ model family</span></a> support matrix before using these
+interfaces.</p>
+<section id="co2-coherent-reduction-model">
+<span id="co2-only-model"></span><h2>CO2 coherent-reduction model<a class="headerlink" href="#co2-coherent-reduction-model" title="Link to this heading">#</a></h2>
+<p>The public <a class="reference internal" href="../reference/openghg_inversions.rhime.html#openghg_inversions.rhime.build_co2_model" title="openghg_inversions.rhime.build_co2_model"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.build_co2_model()</span></code></a> recipe
+consumes the labelled products of a coherent state reduction. Let
+<code class="docutils literal notranslate"><span class="pre">H_alpha</span></code> be the retained-state sensitivity, <code class="docutils literal notranslate"><span class="pre">m_alpha</span></code> and <code class="docutils literal notranslate"><span class="pre">C_alpha</span></code> its
+arithmetic prior mean and covariance, and <code class="docutils literal notranslate"><span class="pre">b_fixed</span></code> the fixed affine prior
+contribution. The core retained-state terms are</p>
+<div class="math notranslate nohighlight">
+\[\begin{split}x &amp;\sim \operatorname{LogNormalMoments}(m_\alpha, C_\alpha), \\
+\mu_{CO_2} &amp;= H_\alpha x.\end{split}\]</div>
+<p>The covariance projection identities in this reduction are exact for a
+jointly Gaussian native state. The builder reuses the resulting arithmetic
+moments for a correlated LogNormal positive state, which is a moment-matched
+approximation rather than an exact marginalization of a LogNormal native
+state. The positivity constraint and the suitability of that approximation
+therefore require separate scientific justification.</p>
+<p>The affine term is part of coherent prior closure; it is not an atmospheric
+boundary condition. An explicit state-activity policy omits inactive elements
+from the sampled correlated vector while restoring their exact fixed values
+in the full public <code class="docutils literal notranslate"><span class="pre">flux_scaling</span></code> vector and in <code class="docutils literal notranslate"><span class="pre">co2_flux_contribution</span></code>.</p>
+<p>The CO2 likelihood uses the explicit <a class="reference internal" href="../reference/openghg_inversions.observation_error.html#openghg_inversions.observation_error.AggregationError" title="openghg_inversions.observation_error.AggregationError"><code class="xref py py-class docutils literal notranslate"><span class="pre">AggregationError</span></code></a>
+selected from prepared inputs. With reported observation standard deviation
+<code class="docutils literal notranslate"><span class="pre">s_y</span></code>, optional known mismatch <code class="docutils literal notranslate"><span class="pre">s_fixed</span></code>, and optional inferred additive
+mismatch <code class="docutils literal notranslate"><span class="pre">sigma</span></code>, its covariance is</p>
+<div class="math notranslate nohighlight">
+\[R = C_{agg} + \operatorname{diag}
+    (s_y^2 + s_{fixed}^2 + \sigma^2).\]</div>
+<p>The lower-level builder adds inferred <code class="docutils literal notranslate"><span class="pre">sigma</span></code> only when the caller supplies a
+<code class="docutils literal notranslate"><span class="pre">sigma_alignment</span></code>. The public <a class="reference internal" href="../reference/openghg_inversions.rhime.html#openghg_inversions.rhime.run_rhime_co2" title="openghg_inversions.rhime.run_rhime_co2"><code class="xref py py-func docutils literal notranslate"><span class="pre">run_rhime_co2()</span></code></a>
+runner creates a site-specific alignment over one shared time period by
+default, and uses an independent HalfNormal prior with <code class="docutils literal notranslate"><span class="pre">sigma=1.0</span></code> in the
+observations’ concentration units unless <code class="docutils literal notranslate"><span class="pre">sigma_prior</span></code> overrides it. Override
+<code class="docutils literal notranslate"><span class="pre">sigma_prior</span></code> when that scale is inappropriate for the observation units or
+scientific application. Set <code class="docutils literal notranslate"><span class="pre">no_model_error=True</span></code> to disable this inferred
+term.</p>
+<p>The CO₂ runner does not consume <code class="docutils literal notranslate"><span class="pre">min_error</span></code> or apply a minimum-error floor.
+Other recipes and components own their own floor settings; for example, the
+standard additive-sigma likelihood can opt into <code class="docutils literal notranslate"><span class="pre">min_error</span></code> explicitly.
+OpenGHG Inversions does not default <code class="docutils literal notranslate"><span class="pre">s_fixed</span></code> to 1 ppm. The
+Verification Games fixed-only policy passes <code class="docutils literal notranslate"><span class="pre">fixed_model_mismatch=1.0</span></code> and
+<code class="docutils literal notranslate"><span class="pre">no_model_error=True</span></code> visibly. A runnable CO2 configuration and resolver are
+tracked in <a class="reference external" href="https://linear.app/openghg-inversions/issue/OPE-79">OPE-79</a>.
+For the matched fixed-tau Ornstein–Uhlenbeck (OU) likelihood with independently
+inferred site amplitudes, use <a class="reference internal" href="#co2-cached-sigma-recipe"><span class="std std-ref">the package-supported cached-sigma CO2 runner</span></a>.</p>
+<section id="co2-grouped-inner-and-outer-states">
+<span id="co2-grouped-states"></span><h3>CO2 grouped inner and outer states<a class="headerlink" href="#co2-grouped-inner-and-outer-states" title="Link to this heading">#</a></h3>
+<p>Same-grid inner and outer fluxes use one ordinary retained state and one
+<code class="docutils literal notranslate"><span class="pre">co2_sensitivity</span></code>. Their geography is labelled metadata, not a second model
+component. The state axis retains <code class="docutils literal notranslate"><span class="pre">basis_group</span></code>, <code class="docutils literal notranslate"><span class="pre">basis_partition</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">region_in_partition</span></code> coordinates; select <code class="docutils literal notranslate"><span class="pre">basis_group</span> <span class="pre">==</span> <span class="pre">&quot;outer&quot;</span></code> rather
+than inferring outer entries from integer ranges or positions.</p>
+<p>Fixed versus inferred outer entries use the ordinary
+<a class="reference internal" href="../reference/openghg_inversions.models.html#openghg_inversions.models.StateActivity" title="openghg_inversions.models.StateActivity"><code class="xref py py-class docutils literal notranslate"><span class="pre">StateActivity</span></code></a> contract. To preserve the
+fixed-at-one behavior, pass
+<code class="docutils literal notranslate"><span class="pre">StateActivity(fixed_groups=(&quot;outer&quot;,),</span> <span class="pre">fixed_value=1.0)</span></code>. Leaving the outer
+group active infers those entries with the same correlated LogNormal state as
+the inner entries. Exact-zero sensitivity pruning composes with either policy.</p>
+<p>The builder accepts one prepared
+<a class="reference internal" href="../reference/openghg_inversions.correlated_state.html#openghg_inversions.correlated_state.CorrelatedLognormalPrior" title="openghg_inversions.correlated_state.CorrelatedLognormalPrior"><code class="xref py py-class docutils literal notranslate"><span class="pre">CorrelatedLognormalPrior</span></code></a> over the
+complete ordered state. Group-specific arithmetic moments must be aligned and
+assembled before graph construction. A full prior may contain inner/outer
+cross-covariance; it remains part of that one prior and is not also added to
+the observation covariance.</p>
+<p><code class="docutils literal notranslate"><span class="pre">co2_flux_contribution</span></code> contains the complete flux prediction. The model does
+not construct separate inner or outer terms. Exact-zero columns are pruned from
+the model’s stored <code class="docutils literal notranslate"><span class="pre">co2_sensitivity</span></code> and use a retained-state dimension,
+while <code class="docutils literal notranslate"><span class="pre">flux_scaling</span></code> preserves the complete labelled state. To reconstruct a
+complete inner or outer view, select matching <code class="docutils literal notranslate"><span class="pre">basis_group</span></code> entries from the
+original prepared <code class="docutils literal notranslate"><span class="pre">H</span></code> and <code class="docutils literal notranslate"><span class="pre">flux_scaling</span></code>. Do not multiply the full state by
+the pruned model-data variable unless an explicit retained-to-full mapping is
+also applied.</p>
+<p>With optional boundary conditions and offset present, the likelihood mean is</p>
+<div class="math notranslate nohighlight">
+\[\mathtt{modelled\_concentration}
+= \mathtt{fixed\_prior\_contribution}
++ \mathtt{co2\_flux\_contribution}
++ \mathtt{mu\_bc}
++ \mathtt{offset}.\]</div>
+<p>An output may report a composite baseline by reconstructing the outer flux view
+and adding it to <code class="docutils literal notranslate"><span class="pre">mu_bc</span> <span class="pre">+</span> <span class="pre">offset</span></code>. This is an output policy only: boundary
+conditions, offsets, and outer flux remain distinct scientific terms. Sector
+combinations are likewise a general state-grouping choice rather than an
+outer-region model option.</p>
+<p>The model builder accepts explicit scientific arrays rather than a dataset.
+For durable prepared artifacts, <a class="reference internal" href="../reference/openghg_inversions.rhime.html#openghg_inversions.rhime.run_rhime_co2" title="openghg_inversions.rhime.run_rhime_co2"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.run_rhime_co2()</span></code></a>
+is the public replay seam: it validates and materializes the selected arrays,
+resolves aggregation error, calls the explicit builder, samples, and stores a
+JSON variable-role and model-provenance manifest on the returned
+<code class="docutils literal notranslate"><span class="pre">InferenceData</span></code>. A prepared <code class="docutils literal notranslate"><span class="pre">fixed_model_mismatch</span></code> is preserved when the
+runner argument is <code class="docutils literal notranslate"><span class="pre">None</span></code>; an explicit scalar or labelled vector overrides
+it. Persist gathered-state traces with
+<a class="reference internal" href="../reference/openghg_inversions.serialization.html#openghg_inversions.serialization.save_inferencedata" title="openghg_inversions.serialization.save_inferencedata"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.serialization.save_inferencedata()</span></code></a>, which uses the
+same MultiIndex-safe boundary as standard and multisector RHIME outputs.
+The current prepared-input runner does not accept or construct an
+outer-specific object. It constructs the complete retained prior from the
+prepared arithmetic mean and covariance, then forwards the prepared activity
+policy to the builder.</p>
+<p>The CO2 builder and prepared-input runner also accept one ordinary
+<code class="docutils literal notranslate"><span class="pre">likelihood_builder</span></code> with explicit <code class="docutils literal notranslate"><span class="pre">likelihood_kwargs</span></code>. This selects
+package components such as
+<a class="reference internal" href="../reference/openghg_inversions.models.fixed_ou.html#openghg_inversions.models.fixed_ou.add_fixed_ou_gaussian_likelihood" title="openghg_inversions.models.fixed_ou.add_fixed_ou_gaussian_likelihood"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.models.fixed_ou.add_fixed_ou_gaussian_likelihood()</span></code></a> and
+<a class="reference internal" href="../reference/openghg_inversions.models.html#openghg_inversions.models.add_site_sigma_gaussian_likelihood" title="openghg_inversions.models.add_site_sigma_gaussian_likelihood"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.models.add_site_sigma_gaussian_likelihood()</span></code></a> after
+<code class="docutils literal notranslate"><span class="pre">modelled_concentration</span></code> has been completed. Selecting one replaces the
+default additive-sigma likelihood; its scientific options belong in
+<code class="docutils literal notranslate"><span class="pre">likelihood_kwargs</span></code> rather than the default <code class="docutils literal notranslate"><span class="pre">sigma_*</span></code> or
+<code class="docutils literal notranslate"><span class="pre">fixed_model_mismatch</span></code> arguments. The returned trace records the selected
+callable identity and its explicit options using the ordinary likelihood
+provenance attributes.</p>
+</section>
+</section>
+<section id="co2-o2-shared-state-model">
+<span id="linked-co2-o2-model"></span><h2>CO2/O2 shared-state model<a class="headerlink" href="#co2-o2-shared-state-model" title="Link to this heading">#</a></h2>
+<p>The CO2/O2 recipe applies one retained state to both observation channels.
+Its public boundaries are
+<a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.prepare_co2_o2_inputs" title="openghg_inversions.rhime.co2.prepare_co2_o2_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.prepare_co2_o2_inputs()</span></code></a> for labelled
+preparation, <a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.build_co2_o2_model" title="openghg_inversions.rhime.co2.build_co2_o2_model"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.build_co2_o2_model()</span></code></a> for graph
+construction, and
+<a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs" title="openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs()</span></code></a> for
+materialization, sampling, and trace metadata.</p>
+<p>This joint recipe currently keeps its fixed, row-labelled independent error
+and does not expose the CO2 <code class="docutils literal notranslate"><span class="pre">likelihood_builder</span></code> seam. A cross-channel
+mismatch model must first define its CO2/O2 covariance, parameter sharing, and
+mixed-unit behavior explicitly.</p>
+<p>Partition that state as</p>
+<div class="math notranslate nohighlight">
+\[\begin{split}\alpha =
+\begin{bmatrix}
+   \alpha_{shared} \\
+   \alpha_{CO_2,ocean} \\
+   \alpha_{O_2,ocean}
+\end{bmatrix},\end{split}\]</div>
+<p>where <span class="math notranslate nohighlight">\(\alpha_{shared}\)</span> contains the gross primary production (GPP),
+terrestrial ecosystem respiration (TER), and fossil-fuel states.
+The joint affine model is</p>
+<div class="math notranslate nohighlight">
+\[\begin{split}H_{joint} =
+\begin{bmatrix}
+   H_{CO_2,shared} &amp; H_{CO_2,ocean} &amp; 0 \\
+   H_{O_2,shared}^{eff} &amp; 0 &amp; H_{O_2,ocean}
+\end{bmatrix},
+\qquad
+b_{joint} =
+\begin{bmatrix} b_{CO_2} \\ b_{O_2} \end{bmatrix},
+\qquad
+\mu_{joint} = b_{joint} + H_{joint}\alpha.\end{split}\]</div>
+<p>Equivalently, coherent reduction may be written in centred or affine form,</p>
+<div class="math notranslate nohighlight">
+\[\mu_{joint}
+= \mu_{prior} + H_{joint}(\alpha - m_\alpha)
+= (\mu_{prior} - H_{joint}m_\alpha) + H_{joint}\alpha.\]</div>
+<p>The prepared <code class="docutils literal notranslate"><span class="pre">fixed_prior_contribution</span></code> is the parenthesized affine
+intercept, not the complete prior-forward concentration.</p>
+<p>Thus this is a row-stacked, block-sparse sensitivity acting on one state vector,
+not two independent block-diagonal models. Its fixed-error likelihood is</p>
+<div class="math notranslate nohighlight">
+\[\begin{split}\begin{bmatrix} y_{CO_2} \\ y_{O_2} \end{bmatrix}
+\mid \alpha
+\sim \mathcal N\!\left(
+   \mu_{joint},
+   \begin{bmatrix}
+      A_{CO_2,CO_2} &amp; A_{CO_2,O_2} \\
+      A_{O_2,CO_2} &amp; A_{O_2,O_2}
+   \end{bmatrix}
+   + \operatorname{diag}(s_{independent}^2)
+\right).\end{split}\]</div>
+<p>These quantities must come from one coherent reduction. With native state
+mean <span class="math notranslate nohighlight">\(m\)</span>, covariance <span class="math notranslate nohighlight">\(B\)</span>, joint native observation sensitivity
+<span class="math notranslate nohighlight">\(G\)</span>, and retained-state restriction <span class="math notranslate nohighlight">\(\Pi\)</span>,</p>
+<div class="math notranslate nohighlight">
+\[\begin{split}C_\alpha &amp;= \Pi B\Pi^\mathsf{T}, \\
+H_{joint} &amp;= GB\Pi^\mathsf{T}C_\alpha^{-1}, \\
+b_{joint} &amp;= Gm - H_{joint}\Pi m, \\
+A &amp;= GBG^\mathsf{T} - H_{joint}C_\alpha H_{joint}^\mathsf{T}.\end{split}\]</div>
+<p>These reduction identities are exact for a jointly Gaussian native state. As
+in the CO₂-only recipe, using the projected arithmetic moments for a correlated
+LogNormal positive retained state is a moment-matched approximation, not exact
+LogNormal marginalization. Positivity and the scientific suitability of that
+approximation must be justified independently.</p>
+<p>In particular, the off-diagonal <span class="math notranslate nohighlight">\(A_{CO_2,O_2}\)</span> block is part of the
+coherent-reduction contract. See the <a class="reference internal" href="coherent_reduction.html"><span class="doc">full derivation</span></a> for its assumptions and limitations.</p>
+<p>Preparation accepts separate native channel arrays, then gathers their rows on
+one <code class="docutils literal notranslate"><span class="pre">(species,</span> <span class="pre">channel_observation)</span></code> observation index before the model
+applies the joint sensitivity once. Before calling
+<a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.prepare_co2_o2_inputs" title="openghg_inversions.rhime.co2.prepare_co2_o2_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">prepare_co2_o2_inputs()</span></code></a>, callers must
+numerically convert observations, prior-forward means, sensitivities, and every
+covariance block into mutually consistent channel units. The <code class="docutils literal notranslate"><span class="pre">co2_units</span></code> and
+<code class="docutils literal notranslate"><span class="pre">o2_units</span></code> arguments only attach labels; they do not convert or validate
+numerical scales, so incorrectly scaled values can pass preparation. Before
+calling
+<a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs" title="openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">run_rhime_co2_o2_from_prepared_inputs()</span></code></a>,
+callers must separately convert <code class="docutils literal notranslate"><span class="pre">independent_error_sd</span></code> into the corresponding
+observation-row units and attach matching <code class="docutils literal notranslate"><span class="pre">observation_units</span></code> labels. Each
+row then retains its declared native units and numerical scale.
+Verification-game inputs may use ppm for both channels, while real atmospheric
+O2 observations may use per-meg delta(O2/N2).
+The prepared channel fields are named <code class="docutils literal notranslate"><span class="pre">co2_sensitivity</span></code> and
+<code class="docutils literal notranslate"><span class="pre">o2_sensitivity</span></code>; their gathered model-data variable is
+<code class="docutils literal notranslate"><span class="pre">co2_o2_sensitivity</span></code>.
+<code class="docutils literal notranslate"><span class="pre">independent_error_sd</span></code> and every covariance row and column must use the
+corresponding observation-row units. Any future numerical scaling or whitening
+must be a named transformation applied consistently to observations, model
+mean, independent error, and all joint covariance blocks, while retaining
+physical-unit outputs and provenance. The displayed row stack is the
+mathematical model: every sensitivity and covariance block must still be produced
+by the same reduction.</p>
+<p>The graph names the gathered linear signal <code class="docutils literal notranslate"><span class="pre">co2_o2_flux_contribution</span></code> and the
+complete affine sum and likelihood mean <code class="docutils literal notranslate"><span class="pre">modelled_concentration</span></code>. In
+model-variable vocabulary,</p>
+<div class="math notranslate nohighlight">
+\[\mathtt{modelled\_concentration}
+= \mathtt{fixed\_prior\_contribution}
++ \mathtt{co2\_o2\_flux\_contribution}.\]</div>
+<p>Persist sampled CO2/O2 results with
+<a class="reference internal" href="../reference/openghg_inversions.serialization.html#openghg_inversions.serialization.save_inferencedata" title="openghg_inversions.serialization.save_inferencedata"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.serialization.save_inferencedata()</span></code></a> and restore them
+with <a class="reference internal" href="../reference/openghg_inversions.serialization.html#openghg_inversions.serialization.load_inferencedata" title="openghg_inversions.serialization.load_inferencedata"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.serialization.load_inferencedata()</span></code></a>; this is the
+declared boundary for preserving gathered MultiIndex coordinates.</p>
+<p>The signed oxidation ratio is fixed in this recipe and already folded into the
+shared-state O2 sensitivity. When it is representable by retained-state or
+source-resolved values <span class="math notranslate nohighlight">\(R\)</span>,</p>
+<div class="math notranslate nohighlight">
+\[H_{O_2,shared}^{eff}
+= H_{O_2,ratio\text{-}free}\operatorname{diag}(R).\]</div>
+<p>Native paired-flux construction may instead apply spatially resolved ratios
+before footprint convolution, in which case no unique retained-state
+<span class="math notranslate nohighlight">\(R\)</span> is available. Preparation records that status and its reason rather
+than inventing scalar values; the supplied effective O2 sensitivity remains the
+scientific input.</p>
+<p>Because this recipe receives the O2 sensitivity with the fixed ratio already
+applied upstream, its builder applies the gathered sensitivity directly to the
+unchanged shared state with <code class="docutils literal notranslate"><span class="pre">apply_linear_sensitivity</span></code>. If a fixed or
+inferred oxidation ratio were instead explicit model state, the recipe would
+visibly form <code class="docutils literal notranslate"><span class="pre">o2_state</span> <span class="pre">=</span> <span class="pre">oxidation_ratio</span> <span class="pre">*</span> <span class="pre">co2_state</span></code> before applying the
+ratio-free O2 sensitivity. The <a class="reference internal" href="../experimental/ramsden2022.html"><span class="doc">Ramsden methane/ethane model</span></a> follows that explicit pattern for its emission
+ratio. That future CO2/O2 coupling work is tracked in <a class="reference external" href="https://linear.app/openghg-inversions/issue/OPE-118">OPE-118</a>.</p>
+</section>
+<section id="run-the-package-supported-cached-sigma-co2-runner">
+<span id="co2-cached-sigma-recipe"></span><h2>Run the package-supported cached-sigma CO2 runner<a class="headerlink" href="#run-the-package-supported-cached-sigma-co2-runner" title="Link to this heading">#</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">run_rhime_co2_cached_sigma</span></code> is the package-supported cached-sigma runner at
+the prepared-input boundary for the fixed-tau OU likelihood with independently
+inferred site amplitudes. It owns the matched PyMC graph and sampler: the
+sigma-only No-U-Turn Sampler (NUTS) step runs first against
+the exact conditional likelihood, refreshes the accepted state quadratic, and
+stock state NUTS then reads that cache without refactorizing the observation
+covariance during its trajectory.</p>
+<p>The runner begins from an already assembled coherent-reduction
+<code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code> artifact; it does not perform coherent reduction. Its
+<code class="docutils literal notranslate"><span class="pre">inv_inputs</span></code> must contain <code class="docutils literal notranslate"><span class="pre">H</span></code>, <code class="docutils literal notranslate"><span class="pre">alpha_prior_mean</span></code>,
+<code class="docutils literal notranslate"><span class="pre">alpha_prior_covariance</span></code>, <code class="docutils literal notranslate"><span class="pre">fixed_prior_contribution</span></code>, <code class="docutils literal notranslate"><span class="pre">mf</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">mf_error</span></code>. The observation arrays share one <code class="docutils literal notranslate"><span class="pre">nmeasure</span></code> row order, while
+the prior arrays share <code class="docutils literal notranslate"><span class="pre">H</span></code>’s state labels. With the <code class="docutils literal notranslate"><span class="pre">&quot;low_rank&quot;</span></code>
+aggregation-error mode used below, the artifact must also contain
+<code class="docutils literal notranslate"><span class="pre">low_rank_factor</span></code> and <code class="docutils literal notranslate"><span class="pre">diagonal_residual_variance</span></code>. A dense artifact
+instead contains <code class="docutils literal notranslate"><span class="pre">aggregation_error_covariance</span></code> and must be selected with
+<code class="docutils literal notranslate"><span class="pre">aggregation_error_mode=&quot;dense&quot;</span></code>. Optional <code class="docutils literal notranslate"><span class="pre">state_is_active</span></code> and
+<code class="docutils literal notranslate"><span class="pre">state_fixed_value</span></code> variables carry the prepared state-activity policy.
+The observation array must also have observation-aligned <code class="docutils literal notranslate"><span class="pre">site</span></code> and <code class="docutils literal notranslate"><span class="pre">time</span></code>
+coordinates. Times must be finite and unique within each site, although rows
+may be interleaved or unsorted. Datetime coordinates are converted to elapsed
+hours; numeric time coordinates are interpreted directly as hours. If
+<code class="docutils literal notranslate"><span class="pre">tau_hours</span></code> is a mapping, its keys must exactly match every observed site
+label.</p>
+<p><a class="reference internal" href="coherent_reduction.html"><span class="doc">Coherent Gaussian Reduction</span></a> describes the linked retained prior, effective
+operator, affine contribution, and unresolved covariance, but no public
+function currently assembles those products into this durable artifact. That
+handoff is tracked in <a class="reference external" href="https://linear.app/openghg-inversions/issue/OPE-153/add-a-public-coherent-reduction-handoff-for-co-prepared-inputs">OPE-153</a>.
+Until it lands, callers must supply already-prepared coherent-reduction inputs.</p>
+<p>For example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.inversion_data</span><span class="w"> </span><span class="kn">import</span> <span class="n">RhimePreparedInputs</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="n">RhimeSampler</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.co2</span><span class="w"> </span><span class="kn">import</span> <span class="n">run_rhime_co2_cached_sigma</span>
+
+<span class="n">prepared</span> <span class="o">=</span> <span class="n">RhimePreparedInputs</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="s2">"co2-coherent-low-rank.zarr"</span><span class="p">)</span>
+<span class="n">idata</span> <span class="o">=</span> <span class="n">run_rhime_co2_cached_sigma</span><span class="p">(</span>
+    <span class="n">prepared_inputs</span><span class="o">=</span><span class="n">prepared</span><span class="p">,</span>
+    <span class="n">tau_hours</span><span class="o">=</span><span class="p">{</span><span class="s2">"BSD"</span><span class="p">:</span> <span class="mf">24.0</span><span class="p">,</span> <span class="s2">"TAC"</span><span class="p">:</span> <span class="mf">18.0</span><span class="p">},</span>
+    <span class="n">site_amplitude_prior_scale</span><span class="o">=</span><span class="mf">0.75</span><span class="p">,</span>  <span class="c1"># concentration units</span>
+    <span class="n">aggregation_error_mode</span><span class="o">=</span><span class="s2">"low_rank"</span><span class="p">,</span>
+    <span class="n">sigma_target_accept</span><span class="o">=</span><span class="mf">0.9</span><span class="p">,</span>
+    <span class="n">state_target_accept</span><span class="o">=</span><span class="mf">0.9</span><span class="p">,</span>
+    <span class="n">sampler</span><span class="o">=</span><span class="n">RhimeSampler</span><span class="p">(</span>
+        <span class="n">draws</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span>
+        <span class="n">tune</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span>
+        <span class="n">chains</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span>
+        <span class="n">nuts_sampler</span><span class="o">=</span><span class="s2">"pymc"</span><span class="p">,</span>
+        <span class="n">sample_kwargs</span><span class="o">=</span><span class="p">{</span><span class="s2">"random_seed"</span><span class="p">:</span> <span class="mi">20260913</span><span class="p">},</span>
+        <span class="n">sample_prior_predictive</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+    <span class="p">),</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p>The runner constructs the required <code class="docutils literal notranslate"><span class="pre">site</span> <span class="pre">amplitude</span> <span class="pre">-&gt;</span> <span class="pre">state</span></code> <code class="docutils literal notranslate"><span class="pre">CompoundStep</span></code> and
+uses process spawning for multiple chains. Do not pass another step method in
+<code class="docutils literal notranslate"><span class="pre">sample_kwargs</span></code>. Set <code class="docutils literal notranslate"><span class="pre">sigma_target_accept</span></code> and <code class="docutils literal notranslate"><span class="pre">state_target_accept</span></code> on
+the runner rather than putting a generic <code class="docutils literal notranslate"><span class="pre">target_accept</span></code> in
+<code class="docutils literal notranslate"><span class="pre">RhimeSampler.sample_kwargs</span></code>. The accepted quadratic and fixed-OU generalized
+eigenbasis are runtime numerical state derived from the materialized prepared
+inputs; they are not external cache artifacts.</p>
+<p>Because the cached graph uses a normalized joint <code class="docutils literal notranslate"><span class="pre">Potential</span></code>, it does not
+invent an independent observed distribution. After sampling, the same exact
+fixed-OU target adds <code class="docutils literal notranslate"><span class="pre">log_likelihood.y</span></code> as one scalar per complete
+observation vector and, when requested, draws complete correlated vectors in
+<code class="docutils literal notranslate"><span class="pre">posterior_predictive.y</span></code>. The variables carry explicit joint-scope metadata.</p>
+<p>This route deliberately supports only independent HalfNormal site-amplitude
+priors and fixed positive OU timescales. Sampled tau and alternative amplitude
+priors are separate extensions. The route is PyMC-only because it constructs
+and owns a PyMC <code class="docutils literal notranslate"><span class="pre">CompoundStep</span></code>. The ordinary stock-PyMC fixed-OU likelihood
+above remains the log-density/gradient oracle and fallback.</p>
+<p>The exponential within-site covariance follows the stationary process of
+<a class="reference external" href="https://doi.org/10.1103/PhysRev.36.823">Uhlenbeck and Ornstein (1930)</a>. The named recipe and its matched
+accepted-state cache are implemented and versioned by OpenGHG Inversions.</p>
+<p>Built-in aggregation covariance relies on the guarantees of its construction
+pipeline. The runner selects and validates prepared aggregation-error arrays
+through <a class="reference internal" href="../reference/openghg_inversions.observation_error.html#openghg_inversions.observation_error.resolve_aggregation_error" title="openghg_inversions.observation_error.resolve_aggregation_error"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.observation_error.resolve_aggregation_error()</span></code></a>.
+A custom pipeline that constructs an <code class="docutils literal notranslate"><span class="pre">AggregationError</span></code> directly owns the
+completeness, coherence, and numerical covariance guarantees of that object;
+there is no separate public complete-covariance validator.</p>
+</section>
+</section>
+
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="co2_model_family.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">CO₂ model family</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="running_and_validating.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">Running and validating inversions</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+                <dialog id="pst-secondary-sidebar-modal"></dialog>
+                <div id="pst-secondary-sidebar" class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#co2-coherent-reduction-model">CO2 coherent-reduction model</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#co2-grouped-inner-and-outer-states">CO2 grouped inner and outer states</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#co2-o2-shared-state-model">CO2/O2 shared-state model</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#run-the-package-supported-cached-sigma-co2-runner">Run the package-supported cached-sigma CO2 runner</a></li>
+</ul>
+  </nav></div>
+
+  <div class="sidebar-secondary-item">
+
+  <div class="tocsection sourcelink">
+    <a href="../_sources/usage/co2_models.rst.txt">
+      <i class="fa-solid fa-file-lines"></i> Show Source
+    </a>
+  </div>
+</div>
+
+</div></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../_static/scripts/bootstrap.js?digest=cb8930eaaf36d9849b67"></script>
+<script defer src="../_static/scripts/pydata-sphinx-theme.js?digest=cb8930eaaf36d9849b67"></script>
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+
+  <p class="copyright">
+    
+      © Copyright 2025, Eric Saboya and Brendan Murphy.
+      <br/>
+    
+  </p>
+</div>
+      
+        <div class="footer-item">
+
+  <p class="sphinx-version">
+    Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 9.0.4.
+    <br/>
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+    <div class="footer-items__end">
+      
+        <div class="footer-item">
+<p class="theme-version">
+  <!-- # L10n: Setting the PST URL as an argument as this does not need to be localized -->
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.21.0.
+</p></div>
+      
+    </div>
+  
+</div>
+
+  </footer>
+  </body>
+</html>

@@ -51,8 +51,8 @@
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="Grouped basis and state metadata" href="grouped_basis_layout.html" />
-    <link rel="prev" title="Multisector RHIME tutorial" href="rhime_multisector_tutorial.html" />
+    <link rel="next" title="Shared scientific concepts" href="shared_scientific_concepts.html" />
+    <link rel="prev" title="Running and validating inversions" href="running_and_validating.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="" />
@@ -315,19 +315,36 @@
   <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
   <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">Contents:</span></p>
 <ul class="current nav bd-sidenav">
-<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation and Setup</a></li>
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Install and set up OpenGHG Inversions</a></li>
 <li class="toctree-l1"><a class="reference internal" href="conceptual_inversion.html">How an Atmospheric Inversion Works</a></li>
-<li class="toctree-l1"><a class="reference internal" href="getting_started.html">Getting started with OpenGHG Inversions</a></li>
-<li class="toctree-l1"><a class="reference internal" href="cli.html">Running RHIME from the command line</a></li>
-<li class="toctree-l1"><a class="reference internal" href="rhime_standard_tutorial.html">Standard RHIME tutorial</a></li>
-<li class="toctree-l1"><a class="reference internal" href="rhime_multisector_tutorial.html">Multisector RHIME tutorial</a></li>
-<li class="toctree-l1 current active"><a class="current reference internal" href="#">Staged RHIME workflows</a></li>
-<li class="toctree-l1"><a class="reference internal" href="grouped_basis_layout.html">Grouped basis and state metadata</a></li>
-<li class="toctree-l1"><a class="reference internal" href="rhime.html">RHIME Terminology And Quickstart</a></li>
-<li class="toctree-l1"><a class="reference internal" href="customising_rhime.html">Customising RHIME</a></li>
-<li class="toctree-l1"><a class="reference internal" href="concrete_rhime_model.html">Concrete RHIME Model</a></li>
-<li class="toctree-l1"><a class="reference internal" href="native_covariance.html">Native Covariance Projection</a></li>
-<li class="toctree-l1"><a class="reference internal" href="coherent_reduction.html">Coherent Gaussian Reduction</a></li>
+<li class="toctree-l1"><a class="reference internal" href="model_recipes.html">Choose a RHIME model recipe</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="standard_model_family.html">Standard RHIME model family</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="rhime_standard_tutorial.html">Standard RHIME tutorial</a></li>
+<li class="toctree-l2"><a class="reference internal" href="rhime_multisector_tutorial.html">Multisector RHIME tutorial</a></li>
+<li class="toctree-l2"><a class="reference internal" href="concrete_rhime_model.html">Standard and multisector RHIME models</a></li>
+<li class="toctree-l2"><a class="reference internal" href="rhime.html">RHIME configuration and prepared-input reference</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cli.html">Running RHIME from the command line</a></li>
+<li class="toctree-l2"><a class="reference internal" href="customising_rhime.html">Customising RHIME</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="co2_model_family.html">CO₂ model family</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="co2_models.html">CO₂ model recipes</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 current active has-children"><a class="reference internal" href="running_and_validating.html">Running and validating inversions</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
+<li class="toctree-l2 current active"><a class="current reference internal" href="#">Staged RHIME workflows</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="shared_scientific_concepts.html">Shared scientific concepts</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="grouped_basis_layout.html">Grouped basis and state metadata</a></li>
+<li class="toctree-l2"><a class="reference internal" href="native_covariance.html">Native Covariance Projection</a></li>
+<li class="toctree-l2"><a class="reference internal" href="coherent_reduction.html">Coherent Gaussian Reduction</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="legacy_and_migration.html">Legacy interfaces and migration</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html">Getting started with OpenGHG Inversions</a></li>
+</ul>
+</details></li>
 </ul>
 </div>
 </nav></div>
@@ -371,6 +388,9 @@
     
     <li class="breadcrumb-item"><a href="usage.html" class="nav-link">Using OpenGHG Inversions</a></li>
     
+    
+    <li class="breadcrumb-item"><a href="running_and_validating.html" class="nav-link">Running and validating inversions</a></li>
+    
     <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Staged RHIME workflows</span></li>
   </ul>
 </nav>
@@ -391,10 +411,10 @@
   <section id="staged-rhime-workflows">
 <h1>Staged RHIME workflows<a class="headerlink" href="#staged-rhime-workflows" title="Link to this heading">#</a></h1>
 <p><code class="docutils literal notranslate"><span class="pre">openghg-inversions</span></code> exposes file-backed stages for schedulers such as
-<code class="docutils literal notranslate"><span class="pre">openghg-run</span></code> (OGR).  The interface composes the same configuration resolver,
+<code class="docutils literal notranslate"><span class="pre">openghg-run</span></code>. The interface composes the same configuration resolver,
 preparation functions, model recipes, sampler and output functions used by
-<code class="docutils literal notranslate"><span class="pre">run_rhime</span></code>.  It is not a second scientific configuration system and OGI does
-not depend on OGR.</p>
+<code class="docutils literal notranslate"><span class="pre">run_rhime</span></code>. It is not a second scientific configuration system, and
+OpenGHG Inversions does not depend on <code class="docutils literal notranslate"><span class="pre">openghg-run</span></code>.</p>
 <p>The first supported recipes are <code class="docutils literal notranslate"><span class="pre">standard</span></code> and <code class="docutils literal notranslate"><span class="pre">multisector</span></code>.  Recipe
 selection is always explicit with <code class="docutils literal notranslate"><span class="pre">--model</span></code>.  It is not inferred from
 <code class="docutils literal notranslate"><span class="pre">species</span></code>, <code class="docutils literal notranslate"><span class="pre">fp_model</span></code> or <code class="docutils literal notranslate"><span class="pre">met_model</span></code>: CH4 and CO2 need not use the same
@@ -408,19 +428,21 @@ CO2 and CO2/O2 prepared-input recipes are not yet routed through these commands.
 <li><p><code class="docutils literal notranslate"><span class="pre">--params-file</span> <span class="pre">/absolute/path/ogi-params.json</span></code>, containing one JSON object
 with the same keyword names accepted by <code class="docutils literal notranslate"><span class="pre">run_rhime</span></code>.</p></li>
 </ul>
-<p><code class="docutils literal notranslate"><span class="pre">--kwargs</span> <span class="pre">'{...}'</span></code> can explicitly override either source.  The JSON form
-supports OGR cases that do not declare an INI <code class="docutils literal notranslate"><span class="pre">CONFIG_FILE</span></code>; it does not add
-new scientific keys.  The existing <code class="docutils literal notranslate"><span class="pre">resolve_rhime_options</span></code> boundary still
+<p><code class="docutils literal notranslate"><span class="pre">--kwargs</span> <span class="pre">'{...}'</span></code> can explicitly override either source. The JSON form
+supports <code class="docutils literal notranslate"><span class="pre">openghg-run</span></code> cases that do not declare an INI <code class="docutils literal notranslate"><span class="pre">CONFIG_FILE</span></code>; it
+does not add new scientific keys. The existing <code class="docutils literal notranslate"><span class="pre">resolve_rhime_options</span></code> boundary still
 normalizes and validates every value.  The staged commands deliberately do not
 read ambient <code class="docutils literal notranslate"><span class="pre">CONFIG_FILE</span></code>.  <code class="docutils literal notranslate"><span class="pre">OUTPUT_DIR</span></code> is the only automatic path
-default, and the effective OGR <code class="docutils literal notranslate"><span class="pre">STAGE</span></code> is the default check-stage label.
+default, and the effective <code class="docutils literal notranslate"><span class="pre">openghg-run</span></code> <code class="docutils literal notranslate"><span class="pre">STAGE</span></code> is the default check-stage
+label.
 Relative filesystem values inside an INI or JSON parameter file are resolved
 against that file’s directory, not the process working directory.</p>
-<p>OGR’s <code class="docutils literal notranslate"><span class="pre">EFFECTIVE_CONFIG</span></code> is a stage-specific OGR TOML envelope, not an OGI
-scientific parameter file, so do not pass it to <code class="docutils literal notranslate"><span class="pre">--params-file</span></code>.  It remains
-orchestration provenance.  A no-INI campaign should explicitly copy or provide
-a canonical OGI JSON parameter file and pass that path (for example beneath
-<code class="docutils literal notranslate"><span class="pre">SOURCE_DIR</span></code> or <code class="docutils literal notranslate"><span class="pre">RUN_ROOT/scripts</span></code>).</p>
+<p><code class="docutils literal notranslate"><span class="pre">openghg-run</span></code>’s <code class="docutils literal notranslate"><span class="pre">EFFECTIVE_CONFIG</span></code> is a stage-specific TOML envelope, not
+an OpenGHG Inversions scientific parameter file, so do not pass it to
+<code class="docutils literal notranslate"><span class="pre">--params-file</span></code>. It remains orchestration provenance. A no-INI campaign
+should explicitly copy or provide a canonical OpenGHG Inversions JSON
+parameter file and pass that path (for example beneath <code class="docutils literal notranslate"><span class="pre">SOURCE_DIR</span></code> or
+<code class="docutils literal notranslate"><span class="pre">RUN_ROOT/scripts</span></code>).</p>
 <p>Legacy fixedbasis-style PARIS INIs contain options such as <code class="docutils literal notranslate"><span class="pre">nit</span></code>, <code class="docutils literal notranslate"><span class="pre">nchain</span></code>,
 <code class="docutils literal notranslate"><span class="pre">xprior</span></code> and <code class="docutils literal notranslate"><span class="pre">mcmc_type</span></code>.  Their translation remains owned by the existing
 <code class="docutils literal notranslate"><span class="pre">run_hbmcmc</span></code> compatibility path.  Do not copy those aliases into a staged
@@ -454,16 +476,18 @@ require <code class="docutils literal notranslate"><span class="pre">--preparati
 prepared-input content digest before model construction.  Preparation also
 treats every configured site as required and fails with the gas and period
 named if the existing acquisition layer could not produce it.</p>
-<p>The manifest also records a content SHA-256 for <code class="docutils literal notranslate"><span class="pre">prepared-inputs.nc</span></code>.  OGR
+<p>The manifest also records a content SHA-256 for <code class="docutils literal notranslate"><span class="pre">prepared-inputs.nc</span></code>.
+<code class="docutils literal notranslate"><span class="pre">openghg-run</span></code>
 independently verifies the declared stage-output directory and records its own
-filesystem identity; the OGI digest gives scientific consumers a compact,
-direct identity for the prepared handoff.</p>
+filesystem identity; the OpenGHG Inversions digest gives scientific consumers
+a compact, direct identity for the prepared handoff.</p>
 </section>
 <section id="commands-and-artifacts">
 <h2>Commands and artifacts<a class="headerlink" href="#commands-and-artifacts" title="Link to this heading">#</a></h2>
-<p>All paths are explicit and outputs are written below <code class="docutils literal notranslate"><span class="pre">--output-dir</span></code> (or OGR’s
-<code class="docutils literal notranslate"><span class="pre">OUTPUT_DIR</span></code>).  Commands do not depend on the caller’s working directory and
-reject pre-existing symlinks beneath a stage output directory.</p>
+<p>All paths are explicit and outputs are written below <code class="docutils literal notranslate"><span class="pre">--output-dir</span></code> (or
+<code class="docutils literal notranslate"><span class="pre">openghg-run</span></code>’s <code class="docutils literal notranslate"><span class="pre">OUTPUT_DIR</span></code>). Commands do not depend on the caller’s
+working directory and reject pre-existing symlinks beneath a stage output
+directory.</p>
 <dl class="simple">
 <dt><code class="docutils literal notranslate"><span class="pre">prepare</span></code></dt><dd><p>Retrieves/reloads merged data, filters observations, constructs basis and
 sensitivities, assembles canonical inputs, and writes an inspectable
@@ -488,7 +512,8 @@ It never silently invokes preparation.</p>
 <code class="docutils literal notranslate"><span class="pre">sampler-convergence</span></code> CheckResult.  Scientific failure exits zero by
 default, keeping scheduler status separate from scientific health.
 <code class="docutils literal notranslate"><span class="pre">--sample-manifest</span></code> authenticates a posterior produced by the staged
-sampler.  It is optional so persisted posteriors from earlier OGI runs can
+sampler. It is optional so persisted posteriors from earlier OpenGHG
+Inversions runs can
 still be diagnosed.  <code class="docutils literal notranslate"><span class="pre">--strict</span></code> is available only for an explicitly
 chosen process policy.</p>
 </dd>
@@ -511,9 +536,9 @@ the otherwise in-memory <code class="docutils literal notranslate"><span class="
 </section>
 <section id="checkresult-contract">
 <h2>CheckResult contract<a class="headerlink" href="#checkresult-contract" title="Link to this heading">#</a></h2>
-<p>Both checks use OGR-compatible schema version 1 and producer
+<p>Both checks use the schema version 1 understood by <code class="docutils literal notranslate"><span class="pre">openghg-run</span></code> and producer
 <code class="docutils literal notranslate"><span class="pre">openghg_inversions</span></code>.  <code class="docutils literal notranslate"><span class="pre">--check-output</span></code> chooses the JSON path and
-<code class="docutils literal notranslate"><span class="pre">--check-stage</span></code> chooses the producing OGR stage name.</p>
+<code class="docutils literal notranslate"><span class="pre">--check-stage</span></code> chooses the producing <code class="docutils literal notranslate"><span class="pre">openghg-run</span></code> stage name.</p>
 <dl class="simple">
 <dt><code class="docutils literal notranslate"><span class="pre">prior-predictive-readiness</span></code></dt><dd><p>Status is <code class="docutils literal notranslate"><span class="pre">pass</span></code> when model construction succeeds, prior and
 prior-predictive variables are produced, and all sampled values are finite.
@@ -529,15 +554,16 @@ minimum bulk ESS 400, minimum tail ESS 400, and maximum divergences 0.
 Thresholds have CLI options.  The result is <code class="docutils literal notranslate"><span class="pre">unknown</span></code> when a signal is not
 assessable (for example R-hat from one chain), <code class="docutils literal notranslate"><span class="pre">fail</span></code> when an available
 signal exceeds policy, and <code class="docutils literal notranslate"><span class="pre">pass</span></code> otherwise.  This is the machine-visible
-convergence outcome requested by issues #656/#667; OGR does not import
-ArviZ or PyMC.</p>
+convergence outcome requested by issues #656/#667; <code class="docutils literal notranslate"><span class="pre">openghg-run</span></code> does not
+import ArviZ or PyMC.</p>
 </dd>
 </dl>
 </section>
 <section id="minimal-command-sequence">
 <h2>Minimal command sequence<a class="headerlink" href="#minimal-command-sequence" title="Link to this heading">#</a></h2>
-<p>The following is a complete run using a canonical JSON parameter file.  An INI
-can be substituted with <code class="docutils literal notranslate"><span class="pre">--config</span></code>.</p>
+<p>The following is a complete run using a canonical JSON parameter file. An INI
+can be substituted with <code class="docutils literal notranslate"><span class="pre">--config</span></code>. Set <code class="docutils literal notranslate"><span class="pre">OGI_PARAMS_FILE</span></code> to the path of
+that OpenGHG Inversions JSON parameter file before running the commands.</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>openghg-inversions<span class="w"> </span>prepare<span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--params-file<span class="w"> </span><span class="s2">"</span><span class="nv">$OGI_PARAMS_FILE</span><span class="s2">"</span><span class="w"> </span>--model<span class="w"> </span>standard<span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--output-dir<span class="w"> </span><span class="s2">"</span><span class="nv">$OUTPUT_DIR</span><span class="s2">/prepare"</span>
@@ -577,8 +603,8 @@ openghg-inversions<span class="w"> </span>postprocess<span class="w"> </span><sp
 </pre></div>
 </div>
 </section>
-<section id="ogr-campaign-stages">
-<h2>OGR campaign stages<a class="headerlink" href="#ogr-campaign-stages" title="Link to this heading">#</a></h2>
+<section id="openghg-run-campaign-stages">
+<h2><code class="docutils literal notranslate"><span class="pre">openghg-run</span></code> campaign stages<a class="headerlink" href="#openghg-run-campaign-stages" title="Link to this heading">#</a></h2>
 <p>A campaign can place the same commands directly in named stages and declare
 their output directories.  No hand-authored SLURM script is required:</p>
 <div class="highlight-toml notranslate"><div class="highlight"><pre><span></span><span class="k">[[stage]]</span>
@@ -612,12 +638,14 @@ their output directories.  No hand-authored SLURM script is required:</p>
 <span class="n">outputs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">"outputs/postprocess"</span><span class="p">]</span>
 </pre></div>
 </div>
-<p>OGR owns campaign matrices, selected tasks, dependencies, scheduler state,
-declared-output hashing, continuation manifests, check recording and gates. OGI
-owns data preparation, model selection, sampling, scientific products, check
-calculations and their threshold policy.  <code class="docutils literal notranslate"><span class="pre">STAGE_INPUTS_MANIFEST</span></code> may be used
+<p><code class="docutils literal notranslate"><span class="pre">openghg-run</span></code> owns campaign matrices, selected tasks, dependencies, scheduler
+state, declared-output hashing, continuation manifests, check recording and
+gates. OpenGHG Inversions owns data preparation, model selection, sampling,
+scientific products, check calculations and their threshold policy.
+<code class="docutils literal notranslate"><span class="pre">STAGE_INPUTS_MANIFEST</span></code> may be used
 by application code to discover continued parent outputs, but it is not needed
-for full-graph submission and is not implicitly interpreted by OGI.  The
+for full-graph submission and is not implicitly interpreted by OpenGHG
+Inversions. The
 predictable explicit paths above work in both modes.</p>
 </section>
 </section>
@@ -633,20 +661,20 @@ predictable explicit paths above work in both modes.</p>
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="rhime_multisector_tutorial.html"
+       href="running_and_validating.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">Multisector RHIME tutorial</p>
+        <p class="prev-next-title">Running and validating inversions</p>
       </div>
     </a>
     <a class="right-next"
-       href="grouped_basis_layout.html"
+       href="shared_scientific_concepts.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">Grouped basis and state metadata</p>
+        <p class="prev-next-title">Shared scientific concepts</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -674,7 +702,7 @@ predictable explicit paths above work in both modes.</p>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#commands-and-artifacts">Commands and artifacts</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#checkresult-contract">CheckResult contract</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#minimal-command-sequence">Minimal command sequence</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#ogr-campaign-stages">OGR campaign stages</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg-run-campaign-stages"><code class="docutils literal notranslate"><span class="pre">openghg-run</span></code> campaign stages</a></li>
 </ul>
   </nav></div>
 
