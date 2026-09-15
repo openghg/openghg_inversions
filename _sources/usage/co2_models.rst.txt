@@ -187,6 +187,89 @@ default additive-sigma likelihood; its scientific options belong in
 callable identity and its explicit options using the ordinary likelihood
 provenance attributes.
 
+.. _co2-scalar-sigma-recipe:
+
+Run the global scalar-sigma CO2 likelihood
+------------------------------------------
+
+Use the scalar-sigma likelihood when one global positive mismatch amplitude
+must augment a fixed, possibly non-diagonal aggregation covariance. It
+evaluates the exact Gaussian covariance
+
+.. math::
+
+   R(\sigma_{global}) = A + D_{obs} + \sigma_{global}^2 I
+
+from one reusable eigendecomposition of ``A + D_obs``. This differs from the
+default CO2 likelihood, which infers site-aligned additive amplitudes in a
+diagonal covariance. It also differs from the
+:ref:`fixed-OU cached-sigma recipe <co2-cached-sigma-recipe>`, which infers
+site amplitudes for a time-correlated OU covariance and owns a matched sampler
+with an accepted-state runtime cache. The scalar-sigma cache is instead an
+external numerical preparation artifact used through the ordinary
+``run_rhime_co2`` likelihood seam.
+
+Prepare and save that artifact once from the same prepared CO2 inputs and
+aggregation-error mode that sampling will use::
+
+   from openghg_inversions.inversion_data import RhimePreparedInputs
+   from openghg_inversions.models import save_scalar_sigma_eigenbasis
+   from openghg_inversions.rhime.co2 import prepare_co2_scalar_sigma_eigenbasis
+
+   prepared = RhimePreparedInputs.load("co2-coherent-dense.zarr")
+   eigenbasis = prepare_co2_scalar_sigma_eigenbasis(
+       prepared,
+       aggregation_error_mode="dense",
+   )
+   save_scalar_sigma_eigenbasis("scalar-sigma-eigenbasis.nc", eigenbasis)
+
+Select the package likelihood through the CO2 runner::
+
+   from openghg_inversions.models import add_scalar_sigma_eigen_likelihood
+   from openghg_inversions.rhime.co2 import run_rhime_co2
+
+   trace = run_rhime_co2(
+       prepared_inputs=prepared,
+       aggregation_error_mode="dense",
+       likelihood_builder=add_scalar_sigma_eigen_likelihood,
+       likelihood_kwargs={
+           "eigenbasis_path": "scalar-sigma-eigenbasis.nc",
+           "sigma_prior": {"pdf": "halfnormal", "sigma": 0.75},
+       },
+   )
+
+The cache stores labelled eigenvectors and eigenvalues, the aggregation-error
+mode, and a fingerprint of the resolved ``A + D_obs``. Loading checks its
+schema, dimensions, labels, cache/observation/reported-error unit labels, mode,
+and current covariance identity before model construction. Regenerate the
+cache after changing ``mf_error`` values, aggregation-error values, or
+``aggregation_error_mode``. Changing the observation order or the unit
+label also makes the cache incompatible. Loading reconstructs the current base
+covariance once, but does not repeat the eigendecomposition or add work to
+likelihood evaluations.
+
+Unit conversion is caller-owned. Neither
+:func:`openghg_inversions.observation_error.resolve_aggregation_error` nor
+scalar-sigma preparation converts or validates units on aggregation-error
+arrays. After numerical conversion, ``mf``, ``mf_error``, ``sigma_global``
+and, when present, ``aggregation_error_sd`` and ``low_rank_factor`` use one
+concentration unit. When present, ``aggregation_error_covariance`` and
+``diagonal_residual_variance`` use that unit squared. Configure
+``sigma_prior`` for the concentration unit; in the HalfNormal example,
+``sigma=0.75`` is in that unit. The cache, ``mf.units``, and
+``mf_error.units`` must carry the same non-empty unit label. A consistent but
+incorrectly scaled aggregation covariance will otherwise be accepted and
+fingerprinted.
+
+This is a same-unit CO2-only likelihood; it does not support the linked
+mixed-unit CO2/O2 vector. A direct
+:func:`openghg_inversions.rhime.co2.build_co2_model` caller may load the cache
+with :func:`openghg_inversions.models.load_scalar_sigma_eigenbasis` and pass
+the resulting ``eigenbasis`` in ``likelihood_kwargs``. See the
+:doc:`scalar-sigma API reference
+<../reference/openghg_inversions.models.scalar_sigma>` for signatures and
+object contracts.
+
 .. _linked-co2-o2-model:
 
 CO2/O2 shared-state model

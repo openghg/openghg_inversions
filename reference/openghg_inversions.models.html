@@ -367,6 +367,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.fixed_ou.html">openghg_inversions.models.fixed_ou</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.pollution_event.html">openghg_inversions.models.pollution_event</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.priors.html">openghg_inversions.models.priors</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.scalar_sigma.html">openghg_inversions.models.scalar_sigma</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.site_sigma.html">openghg_inversions.models.site_sigma</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.state_activity.html">openghg_inversions.models.state_activity</a></li>
 </ul>
@@ -968,6 +969,139 @@ construction.</p></li>
 </dd></dl>
 
 <dl class="py class">
+<dt class="sig sig-object py" id="openghg_inversions.models.ScalarSigmaEigenbasis">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">openghg_inversions.models.</span></span><span class="sig-name descname"><span class="pre">ScalarSigmaEigenbasis</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">eigenvectors</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">eigenvalues</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">concentration_units</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">base_covariance_sha256</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">aggregation_error_mode</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><span class="pre">Literal</span></a><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'none'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'dense'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'low_rank'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'diagonal'</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_dim</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'nmeasure'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.ScalarSigmaEigenbasis" title="Link to this definition">#</a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>Trusted labelled eigenbasis for <code class="docutils literal notranslate"><span class="pre">C0</span> <span class="pre">+</span> <span class="pre">sigma_global**2</span> <span class="pre">I</span></code>.</p>
+<p>Instances returned by <a class="reference internal" href="#openghg_inversions.models.prepare_scalar_sigma_eigenbasis" title="openghg_inversions.models.prepare_scalar_sigma_eigenbasis"><code class="xref py py-func docutils literal notranslate"><span class="pre">prepare_scalar_sigma_eigenbasis()</span></code></a> and
+<a class="reference internal" href="#openghg_inversions.models.load_scalar_sigma_eigenbasis" title="openghg_inversions.models.load_scalar_sigma_eigenbasis"><code class="xref py py-func docutils literal notranslate"><span class="pre">load_scalar_sigma_eigenbasis()</span></code></a> have already crossed their validation
+boundary. Direct construction therefore assumes valid labelled arrays and
+metadata; it only takes an immutable eager copy of the numerical payloads.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>eigenvectors</strong> – Square labelled matrix with dimensions <code class="docutils literal notranslate"><span class="pre">(output_dim,</span>
+<span class="pre">scalar_sigma_mode)</span></code>.</p></li>
+<li><p><strong>eigenvalues</strong> – Non-negative values on <code class="docutils literal notranslate"><span class="pre">scalar_sigma_mode</span></code>.</p></li>
+<li><p><strong>concentration_units</strong> – Physical concentration units shared by the
+observations, reported errors, and scalar mismatch amplitude.</p></li>
+<li><p><strong>base_covariance_sha256</strong> – SHA-256 fingerprint of the resolved
+<code class="docutils literal notranslate"><span class="pre">A</span> <span class="pre">+</span> <span class="pre">D_obs</span></code> covariance represented by this eigenbasis.</p></li>
+<li><p><strong>aggregation_error_mode</strong> – Aggregation-error representation used to
+construct the base covariance.</p></li>
+<li><p><strong>output_dim</strong> – Observation dimension represented by the rows.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="openghg_inversions.models.ScalarSigmaEigenbasis.aggregation_error_mode">
+<span class="sig-name descname"><span class="pre">aggregation_error_mode</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><span class="pre">Literal</span></a><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'none'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'dense'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'low_rank'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'diagonal'</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.models.ScalarSigmaEigenbasis.aggregation_error_mode" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="openghg_inversions.models.ScalarSigmaEigenbasis.base_covariance_sha256">
+<span class="sig-name descname"><span class="pre">base_covariance_sha256</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><a class="headerlink" href="#openghg_inversions.models.ScalarSigmaEigenbasis.base_covariance_sha256" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="openghg_inversions.models.ScalarSigmaEigenbasis.concentration_units">
+<span class="sig-name descname"><span class="pre">concentration_units</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><a class="headerlink" href="#openghg_inversions.models.ScalarSigmaEigenbasis.concentration_units" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="openghg_inversions.models.ScalarSigmaEigenbasis.eigenvalues">
+<span class="sig-name descname"><span class="pre">eigenvalues</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span><a class="headerlink" href="#openghg_inversions.models.ScalarSigmaEigenbasis.eigenvalues" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="openghg_inversions.models.ScalarSigmaEigenbasis.eigenvectors">
+<span class="sig-name descname"><span class="pre">eigenvectors</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span><a class="headerlink" href="#openghg_inversions.models.ScalarSigmaEigenbasis.eigenvectors" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.models.ScalarSigmaEigenbasis.logp">
+<span class="sig-name descname"><span class="pre">logp</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">value</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">TensorVariable</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mean</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">TensorVariable</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sigma</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">TensorVariable</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">TensorVariable</span></span></span><a class="headerlink" href="#openghg_inversions.models.ScalarSigmaEigenbasis.logp" title="Link to this definition">#</a></dt>
+<dd><p>Return the normalized differentiable Gaussian log density.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>value</strong> – Observed concentration vector.</p></li>
+<li><p><strong>mean</strong> – Modelled concentration vector.</p></li>
+<li><p><strong>sigma</strong> – Global IID mismatch standard deviation.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Scalar symbolic log density.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.models.ScalarSigmaEigenbasis.logpdf">
+<span class="sig-name descname"><span class="pre">logpdf</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">residual</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><span class="pre">ndarray</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><span class="pre">Any</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.dtype.html#numpy.dtype" title="(in NumPy v2.5)"><span class="pre">dtype</span></a><span class="p"><span class="pre">[</span></span><span class="pre">float64</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">sigma</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span></span><a class="headerlink" href="#openghg_inversions.models.ScalarSigmaEigenbasis.logpdf" title="Link to this definition">#</a></dt>
+<dd><p>Evaluate the represented Gaussian log density with NumPy.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>residual</strong> – Observation-minus-model residual vector.</p></li>
+<li><p><strong>sigma</strong> – Non-negative global mismatch standard deviation.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Normalized Gaussian log density.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If the residual shape or sigma value is invalid.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="openghg_inversions.models.ScalarSigmaEigenbasis.n_observation">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">n_observation</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><a class="headerlink" href="#openghg_inversions.models.ScalarSigmaEigenbasis.n_observation" title="Link to this definition">#</a></dt>
+<dd><p>Return the number of represented observations.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="openghg_inversions.models.ScalarSigmaEigenbasis.output_dim">
+<span class="sig-name descname"><span class="pre">output_dim</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'nmeasure'</span></span><a class="headerlink" href="#openghg_inversions.models.ScalarSigmaEigenbasis.output_dim" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.models.ScalarSigmaEigenbasis.random">
+<span class="sig-name descname"><span class="pre">random</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mean</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><span class="pre">ndarray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">sigma</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><span class="pre">ndarray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">rng</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://numpy.org/doc/stable/reference/random/generator.html#numpy.random.Generator" title="(in NumPy v2.5)"><span class="pre">Generator</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">size</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence" title="(in Python v3.14)"><span class="pre">Sequence</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><span class="pre">ndarray</span></a></span></span><a class="headerlink" href="#openghg_inversions.models.ScalarSigmaEigenbasis.random" title="Link to this definition">#</a></dt>
+<dd><p>Draw random values for the PyMC custom distribution.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>mean</strong> – Modelled concentration vector.</p></li>
+<li><p><strong>sigma</strong> – Global mismatch standard deviation.</p></li>
+<li><p><strong>rng</strong> – Optional NumPy random generator supplied by PyMC.</p></li>
+<li><p><strong>size</strong> – Optional leading sample shape.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Random concentration vectors with the requested leading shape.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.models.ScalarSigmaEigenbasis.to_dataset">
+<span class="sig-name descname"><span class="pre">to_dataset</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></span><a class="headerlink" href="#openghg_inversions.models.ScalarSigmaEigenbasis.to_dataset" title="Link to this definition">#</a></dt>
+<dd><p>Return the versioned xarray cache representation.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Dataset containing the labelled eigenvectors, eigenvalues, schema,
+units, base-covariance fingerprint, aggregation-error mode, and
+observation-dimension name.</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
 <dt class="sig sig-object py" id="openghg_inversions.models.StateActivity">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">openghg_inversions.models.</span></span><span class="sig-name descname"><span class="pre">StateActivity</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">active</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><span class="pre">ndarray</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fixed_value</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><span class="pre">ndarray</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fixed_groups</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">()</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">group_coord</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'basis_group'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.models.StateActivity" title="Link to this definition">#</a></dt>
 <dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
@@ -1280,6 +1414,39 @@ global scalar latent offset and broadcast it over observations.</p></li>
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.models.add_scalar_sigma_eigen_likelihood">
+<span class="sig-prename descclassname"><span class="pre">openghg_inversions.models.</span></span><span class="sig-name descname"><span class="pre">add_scalar_sigma_eigen_likelihood</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">observations</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">observation_error</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">aggregation_error</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.AggregationError" title="openghg_inversions.observation_error.AggregationError"><span class="pre">AggregationError</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">mean</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">TensorVariable</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">eigenbasis</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.models.scalar_sigma.html#openghg_inversions.models.scalar_sigma.ScalarSigmaEigenbasis" title="openghg_inversions.models.scalar_sigma.ScalarSigmaEigenbasis"><span class="pre">ScalarSigmaEigenbasis</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">sigma_prior</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.14)"><span class="pre">Mapping</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><span class="pre">Any</span></a><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_dim</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'nmeasure'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">TensorVariable</span></span></span><a class="headerlink" href="#openghg_inversions.models.add_scalar_sigma_eigen_likelihood" title="Link to this definition">#</a></dt>
+<dd><p>Add a global scalar-sigma likelihood from a trusted eigenbasis.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>observations</strong> – CO2 observations represented by <code class="docutils literal notranslate"><span class="pre">eigenbasis</span></code>.</p></li>
+<li><p><strong>observation_error</strong> – Reported observation standard deviations with the
+labels, units, and values used to prepare <code class="docutils literal notranslate"><span class="pre">eigenbasis</span></code>. Their
+variance is already represented in the eigenvalues; they are also
+registered as model data and contribute to <code class="docutils literal notranslate"><span class="pre">epsilon</span></code>.</p></li>
+<li><p><strong>aggregation_error</strong> – Validated fixed aggregation error. Its marginal
+variance contributes to <code class="docutils literal notranslate"><span class="pre">epsilon</span></code>; its full covariance is already
+represented by <code class="docutils literal notranslate"><span class="pre">eigenbasis</span></code>.</p></li>
+<li><p><strong>mean</strong> – Completed modelled concentration on <code class="docutils literal notranslate"><span class="pre">output_dim</span></code>.</p></li>
+<li><p><strong>eigenbasis</strong> – Aligned eigenbasis prepared or loaded from the same
+observation/error inputs before entering the registered PyMC model
+context.</p></li>
+<li><p><strong>sigma_prior</strong> – Explicit positive-support prior in the observations’
+concentration units.</p></li>
+<li><p><strong>output_dim</strong> – Observation dimension name.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Observed custom Gaussian variable named <code class="docutils literal notranslate"><span class="pre">y</span></code>.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If <code class="docutils literal notranslate"><span class="pre">sigma_prior</span></code> does not have non-negative support.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.models.add_sigma_component">
 <span class="sig-prename descclassname"><span class="pre">openghg_inversions.models.</span></span><span class="sig-name descname"><span class="pre">add_sigma_component</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">alignment</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.sigma.html#openghg_inversions.sigma.SigmaAlignment" title="openghg_inversions.sigma.SigmaAlignment"><span class="pre">SigmaAlignment</span></a></span></em>, <em class="sig-param"><span class="positional-only-separator o"><abbr title="Positional-only parameter separator (PEP 570)"><span class="pre">/</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">prior_args</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">compute_deterministic</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">TensorVariable</span></span></span><a class="headerlink" href="#openghg_inversions.models.add_sigma_component" title="Link to this definition">#</a></dt>
 <dd><p>Register a latent sigma component and align it to observations.</p>
@@ -1393,6 +1560,39 @@ during model construction.</p>
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.models.load_scalar_sigma_eigenbasis">
+<span class="sig-prename descclassname"><span class="pre">openghg_inversions.models.</span></span><span class="sig-name descname"><span class="pre">load_scalar_sigma_eigenbasis</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><span class="pre">Path</span></a></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">observations</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">observation_error</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">aggregation_error</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.AggregationError" title="openghg_inversions.observation_error.AggregationError"><span class="pre">AggregationError</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="openghg_inversions.models.scalar_sigma.html#openghg_inversions.models.scalar_sigma.ScalarSigmaEigenbasis" title="openghg_inversions.models.scalar_sigma.ScalarSigmaEigenbasis"><span class="pre">ScalarSigmaEigenbasis</span></a></span></span><a class="headerlink" href="#openghg_inversions.models.load_scalar_sigma_eigenbasis" title="Link to this definition">#</a></dt>
+<dd><p>Load and align a versioned scalar-sigma eigenbasis cache.</p>
+<p>Loading is the cache trust boundary. It validates the small xarray schema,
+exact dimensions, units, metadata, and ordered observation/error labels.
+It reconstructs the currently resolved
+<code class="docutils literal notranslate"><span class="pre">A</span> <span class="pre">+</span> <span class="pre">D_obs</span></code> once and verifies its fingerprint and aggregation-error mode
+before model construction.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>path</strong> – NetCDF cache created by <a class="reference internal" href="#openghg_inversions.models.save_scalar_sigma_eigenbasis" title="openghg_inversions.models.save_scalar_sigma_eigenbasis"><code class="xref py py-func docutils literal notranslate"><span class="pre">save_scalar_sigma_eigenbasis()</span></code></a>.</p></li>
+<li><p><strong>observations</strong> – Observations that will consume the cache.</p></li>
+<li><p><strong>observation_error</strong> – Reported errors that will consume the cache, with
+the same ordered labels and concentration units as <code class="docutils literal notranslate"><span class="pre">observations</span></code>.</p></li>
+<li><p><strong>aggregation_error</strong> – Currently resolved aggregation-error representation
+that will consume the cache.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Eager trusted eigenbasis aligned to <code class="docutils literal notranslate"><span class="pre">observations</span></code>.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If schema, dimensions, labels, units, aggregation mode, or
+    numerical base covariance disagree.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#OSError" title="(in Python v3.14)"><strong>OSError</strong></a> – If the cache cannot be opened.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.models.parse_prior">
 <span class="sig-prename descclassname"><span class="pre">openghg_inversions.models.</span></span><span class="sig-name descname"><span class="pre">parse_prior</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">prior_params</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><span class="pre">Any</span></a><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">TensorVariable</span></span></span><a class="headerlink" href="#openghg_inversions.models.parse_prior" title="Link to this definition">#</a></dt>
 <dd><p>Create a continuous PyMC prior from a prior-parameter dictionary.</p>
@@ -1426,6 +1626,31 @@ registers the created variable with the current model.</p>
 returned sensitivity keeps borrowed array data and contains only nonzero
 columns; <code class="docutils literal notranslate"><span class="pre">removed</span></code> retains the complete scientific state coordinate and
 auxiliary state metadata for reconstruction and provenance.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.models.prepare_scalar_sigma_eigenbasis">
+<span class="sig-prename descclassname"><span class="pre">openghg_inversions.models.</span></span><span class="sig-name descname"><span class="pre">prepare_scalar_sigma_eigenbasis</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">observations</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">observation_error</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">aggregation_error</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.observation_error.html#openghg_inversions.observation_error.AggregationError" title="openghg_inversions.observation_error.AggregationError"><span class="pre">AggregationError</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_dim</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'nmeasure'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="openghg_inversions.models.scalar_sigma.html#openghg_inversions.models.scalar_sigma.ScalarSigmaEigenbasis" title="openghg_inversions.models.scalar_sigma.ScalarSigmaEigenbasis"><span class="pre">ScalarSigmaEigenbasis</span></a></span></span><a class="headerlink" href="#openghg_inversions.models.prepare_scalar_sigma_eigenbasis" title="Link to this definition">#</a></dt>
+<dd><p>Prepare the labelled eigenbasis for one fixed CO2 covariance.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>observations</strong> – CO2 observations carrying an indexed observation
+coordinate and explicit concentration units.</p></li>
+<li><p><strong>observation_error</strong> – Reported standard deviations in the same units and
+exact observation order.</p></li>
+<li><p><strong>aggregation_error</strong> – Validated fixed aggregation-error representation.</p></li>
+<li><p><strong>output_dim</strong> – Observation dimension name.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Eager labelled eigenbasis ready for serialization or model building.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If inputs cannot form a finite positive-semidefinite base
+    covariance.</p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py function">
@@ -1492,6 +1717,29 @@ original coordinates keyed by dimension name.</p></li>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>The same <code class="docutils literal notranslate"><span class="pre">InferenceData</span></code> object with compatible original coordinates
 and auxiliary coordinates restored onto its xarray groups.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.models.save_scalar_sigma_eigenbasis">
+<span class="sig-prename descclassname"><span class="pre">openghg_inversions.models.</span></span><span class="sig-name descname"><span class="pre">save_scalar_sigma_eigenbasis</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><span class="pre">Path</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">eigenbasis</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.models.scalar_sigma.html#openghg_inversions.models.scalar_sigma.ScalarSigmaEigenbasis" title="openghg_inversions.models.scalar_sigma.ScalarSigmaEigenbasis"><span class="pre">ScalarSigmaEigenbasis</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><span class="pre">Path</span></a></span></span><a class="headerlink" href="#openghg_inversions.models.save_scalar_sigma_eigenbasis" title="Link to this definition">#</a></dt>
+<dd><p>Save one labelled scalar-sigma cache as NetCDF.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>path</strong> – Destination ending in <code class="docutils literal notranslate"><span class="pre">.nc</span></code>.</p></li>
+<li><p><strong>eigenbasis</strong> – Prepared labelled eigenbasis.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Resolved destination path.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If <code class="docutils literal notranslate"><span class="pre">path</span></code> does not end in <code class="docutils literal notranslate"><span class="pre">.nc</span></code>.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#OSError" title="(in Python v3.14)"><strong>OSError</strong></a> – If the destination cannot be written.</p></li>
+</ul>
 </dd>
 </dl>
 </dd></dl>
@@ -1643,6 +1891,28 @@ and auxiliary coordinates restored onto its xarray groups.</p>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.priors.html#openghg_inversions.models.priors.lognormal_mu_sigma"><code class="docutils literal notranslate"><span class="pre">lognormal_mu_sigma()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.priors.html#openghg_inversions.models.priors.parse_prior"><code class="docutils literal notranslate"><span class="pre">parse_prior()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.priors.html#openghg_inversions.models.priors.positive_prior_args"><code class="docutils literal notranslate"><span class="pre">positive_prior_args()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="openghg_inversions.models.scalar_sigma.html">openghg_inversions.models.scalar_sigma</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.scalar_sigma.html#openghg_inversions.models.scalar_sigma.ScalarSigmaEigenbasis"><code class="docutils literal notranslate"><span class="pre">ScalarSigmaEigenbasis</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.scalar_sigma.html#openghg_inversions.models.scalar_sigma.ScalarSigmaEigenbasis.aggregation_error_mode"><code class="docutils literal notranslate"><span class="pre">ScalarSigmaEigenbasis.aggregation_error_mode</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.scalar_sigma.html#openghg_inversions.models.scalar_sigma.ScalarSigmaEigenbasis.base_covariance_sha256"><code class="docutils literal notranslate"><span class="pre">ScalarSigmaEigenbasis.base_covariance_sha256</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.scalar_sigma.html#openghg_inversions.models.scalar_sigma.ScalarSigmaEigenbasis.concentration_units"><code class="docutils literal notranslate"><span class="pre">ScalarSigmaEigenbasis.concentration_units</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.scalar_sigma.html#openghg_inversions.models.scalar_sigma.ScalarSigmaEigenbasis.eigenvalues"><code class="docutils literal notranslate"><span class="pre">ScalarSigmaEigenbasis.eigenvalues</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.scalar_sigma.html#openghg_inversions.models.scalar_sigma.ScalarSigmaEigenbasis.eigenvectors"><code class="docutils literal notranslate"><span class="pre">ScalarSigmaEigenbasis.eigenvectors</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.scalar_sigma.html#openghg_inversions.models.scalar_sigma.ScalarSigmaEigenbasis.logp"><code class="docutils literal notranslate"><span class="pre">ScalarSigmaEigenbasis.logp()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.scalar_sigma.html#openghg_inversions.models.scalar_sigma.ScalarSigmaEigenbasis.logpdf"><code class="docutils literal notranslate"><span class="pre">ScalarSigmaEigenbasis.logpdf()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.scalar_sigma.html#openghg_inversions.models.scalar_sigma.ScalarSigmaEigenbasis.n_observation"><code class="docutils literal notranslate"><span class="pre">ScalarSigmaEigenbasis.n_observation</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.scalar_sigma.html#openghg_inversions.models.scalar_sigma.ScalarSigmaEigenbasis.output_dim"><code class="docutils literal notranslate"><span class="pre">ScalarSigmaEigenbasis.output_dim</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.scalar_sigma.html#openghg_inversions.models.scalar_sigma.ScalarSigmaEigenbasis.random"><code class="docutils literal notranslate"><span class="pre">ScalarSigmaEigenbasis.random()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.models.scalar_sigma.html#openghg_inversions.models.scalar_sigma.ScalarSigmaEigenbasis.to_dataset"><code class="docutils literal notranslate"><span class="pre">ScalarSigmaEigenbasis.to_dataset()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.scalar_sigma.html#openghg_inversions.models.scalar_sigma.add_scalar_sigma_eigen_likelihood"><code class="docutils literal notranslate"><span class="pre">add_scalar_sigma_eigen_likelihood()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.scalar_sigma.html#openghg_inversions.models.scalar_sigma.load_scalar_sigma_eigenbasis"><code class="docutils literal notranslate"><span class="pre">load_scalar_sigma_eigenbasis()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.scalar_sigma.html#openghg_inversions.models.scalar_sigma.prepare_scalar_sigma_eigenbasis"><code class="docutils literal notranslate"><span class="pre">prepare_scalar_sigma_eigenbasis()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.scalar_sigma.html#openghg_inversions.models.scalar_sigma.save_scalar_sigma_eigenbasis"><code class="docutils literal notranslate"><span class="pre">save_scalar_sigma_eigenbasis()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.models.scalar_sigma.html#openghg_inversions.models.scalar_sigma.scalar_sigma_base_covariance"><code class="docutils literal notranslate"><span class="pre">scalar_sigma_base_covariance()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="openghg_inversions.models.site_sigma.html">openghg_inversions.models.site_sigma</a><ul>
@@ -1809,6 +2079,20 @@ and auxiliary coordinates restored onto its xarray groups.</p>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.ResolvedStateActivity.zero_sensitivity"><code class="docutils literal notranslate"><span class="pre">ResolvedStateActivity.zero_sensitivity</span></code></a></li>
 </ul>
 </li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.ScalarSigmaEigenbasis"><code class="docutils literal notranslate"><span class="pre">ScalarSigmaEigenbasis</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.ScalarSigmaEigenbasis.aggregation_error_mode"><code class="docutils literal notranslate"><span class="pre">ScalarSigmaEigenbasis.aggregation_error_mode</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.ScalarSigmaEigenbasis.base_covariance_sha256"><code class="docutils literal notranslate"><span class="pre">ScalarSigmaEigenbasis.base_covariance_sha256</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.ScalarSigmaEigenbasis.concentration_units"><code class="docutils literal notranslate"><span class="pre">ScalarSigmaEigenbasis.concentration_units</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.ScalarSigmaEigenbasis.eigenvalues"><code class="docutils literal notranslate"><span class="pre">ScalarSigmaEigenbasis.eigenvalues</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.ScalarSigmaEigenbasis.eigenvectors"><code class="docutils literal notranslate"><span class="pre">ScalarSigmaEigenbasis.eigenvectors</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.ScalarSigmaEigenbasis.logp"><code class="docutils literal notranslate"><span class="pre">ScalarSigmaEigenbasis.logp()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.ScalarSigmaEigenbasis.logpdf"><code class="docutils literal notranslate"><span class="pre">ScalarSigmaEigenbasis.logpdf()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.ScalarSigmaEigenbasis.n_observation"><code class="docutils literal notranslate"><span class="pre">ScalarSigmaEigenbasis.n_observation</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.ScalarSigmaEigenbasis.output_dim"><code class="docutils literal notranslate"><span class="pre">ScalarSigmaEigenbasis.output_dim</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.ScalarSigmaEigenbasis.random"><code class="docutils literal notranslate"><span class="pre">ScalarSigmaEigenbasis.random()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.ScalarSigmaEigenbasis.to_dataset"><code class="docutils literal notranslate"><span class="pre">ScalarSigmaEigenbasis.to_dataset()</span></code></a></li>
+</ul>
+</li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.StateActivity"><code class="docutils literal notranslate"><span class="pre">StateActivity</span></code></a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.StateActivity.active"><code class="docutils literal notranslate"><span class="pre">StateActivity.active</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.StateActivity.fixed_groups"><code class="docutils literal notranslate"><span class="pre">StateActivity.fixed_groups</span></code></a></li>
@@ -1826,17 +2110,21 @@ and auxiliary coordinates restored onto its xarray groups.</p>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.add_linked_linear_component"><code class="docutils literal notranslate"><span class="pre">add_linked_linear_component()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.add_model_data"><code class="docutils literal notranslate"><span class="pre">add_model_data()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.add_offset_component"><code class="docutils literal notranslate"><span class="pre">add_offset_component()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.add_scalar_sigma_eigen_likelihood"><code class="docutils literal notranslate"><span class="pre">add_scalar_sigma_eigen_likelihood()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.add_sigma_component"><code class="docutils literal notranslate"><span class="pre">add_sigma_component()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.add_site_sigma_gaussian_likelihood"><code class="docutils literal notranslate"><span class="pre">add_site_sigma_gaussian_likelihood()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.apply_linear_sensitivity"><code class="docutils literal notranslate"><span class="pre">apply_linear_sensitivity()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.attach_coord_registry"><code class="docutils literal notranslate"><span class="pre">attach_coord_registry()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.detect_zero_sensitivity"><code class="docutils literal notranslate"><span class="pre">detect_zero_sensitivity()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.get_coord_registry"><code class="docutils literal notranslate"><span class="pre">get_coord_registry()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.load_scalar_sigma_eigenbasis"><code class="docutils literal notranslate"><span class="pre">load_scalar_sigma_eigenbasis()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.parse_prior"><code class="docutils literal notranslate"><span class="pre">parse_prior()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.prepare_linear_sensitivity"><code class="docutils literal notranslate"><span class="pre">prepare_linear_sensitivity()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.prepare_scalar_sigma_eigenbasis"><code class="docutils literal notranslate"><span class="pre">prepare_scalar_sigma_eigenbasis()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.registered_model"><code class="docutils literal notranslate"><span class="pre">registered_model()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.resolve_state_activity"><code class="docutils literal notranslate"><span class="pre">resolve_state_activity()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.restore_inferencedata_coords"><code class="docutils literal notranslate"><span class="pre">restore_inferencedata_coords()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.models.save_scalar_sigma_eigenbasis"><code class="docutils literal notranslate"><span class="pre">save_scalar_sigma_eigenbasis()</span></code></a></li>
 </ul>
   </nav></div>
 

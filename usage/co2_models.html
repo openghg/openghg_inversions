@@ -567,6 +567,79 @@ callable identity and its explicit options using the ordinary likelihood
 provenance attributes.</p>
 </section>
 </section>
+<section id="run-the-global-scalar-sigma-co2-likelihood">
+<span id="co2-scalar-sigma-recipe"></span><h2>Run the global scalar-sigma CO2 likelihood<a class="headerlink" href="#run-the-global-scalar-sigma-co2-likelihood" title="Link to this heading">#</a></h2>
+<p>Use the scalar-sigma likelihood when one global positive mismatch amplitude
+must augment a fixed, possibly non-diagonal aggregation covariance. It
+evaluates the exact Gaussian covariance</p>
+<div class="math notranslate nohighlight">
+\[R(\sigma_{global}) = A + D_{obs} + \sigma_{global}^2 I\]</div>
+<p>from one reusable eigendecomposition of <code class="docutils literal notranslate"><span class="pre">A</span> <span class="pre">+</span> <span class="pre">D_obs</span></code>. This differs from the
+default CO2 likelihood, which infers site-aligned additive amplitudes in a
+diagonal covariance. It also differs from the
+<a class="reference internal" href="#co2-cached-sigma-recipe"><span class="std std-ref">fixed-OU cached-sigma recipe</span></a>, which infers
+site amplitudes for a time-correlated OU covariance and owns a matched sampler
+with an accepted-state runtime cache. The scalar-sigma cache is instead an
+external numerical preparation artifact used through the ordinary
+<code class="docutils literal notranslate"><span class="pre">run_rhime_co2</span></code> likelihood seam.</p>
+<p>Prepare and save that artifact once from the same prepared CO2 inputs and
+aggregation-error mode that sampling will use:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.inversion_data</span><span class="w"> </span><span class="kn">import</span> <span class="n">RhimePreparedInputs</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">save_scalar_sigma_eigenbasis</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.co2</span><span class="w"> </span><span class="kn">import</span> <span class="n">prepare_co2_scalar_sigma_eigenbasis</span>
+
+<span class="n">prepared</span> <span class="o">=</span> <span class="n">RhimePreparedInputs</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="s2">"co2-coherent-dense.zarr"</span><span class="p">)</span>
+<span class="n">eigenbasis</span> <span class="o">=</span> <span class="n">prepare_co2_scalar_sigma_eigenbasis</span><span class="p">(</span>
+    <span class="n">prepared</span><span class="p">,</span>
+    <span class="n">aggregation_error_mode</span><span class="o">=</span><span class="s2">"dense"</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">save_scalar_sigma_eigenbasis</span><span class="p">(</span><span class="s2">"scalar-sigma-eigenbasis.nc"</span><span class="p">,</span> <span class="n">eigenbasis</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Select the package likelihood through the CO2 runner:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">add_scalar_sigma_eigen_likelihood</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.co2</span><span class="w"> </span><span class="kn">import</span> <span class="n">run_rhime_co2</span>
+
+<span class="n">trace</span> <span class="o">=</span> <span class="n">run_rhime_co2</span><span class="p">(</span>
+    <span class="n">prepared_inputs</span><span class="o">=</span><span class="n">prepared</span><span class="p">,</span>
+    <span class="n">aggregation_error_mode</span><span class="o">=</span><span class="s2">"dense"</span><span class="p">,</span>
+    <span class="n">likelihood_builder</span><span class="o">=</span><span class="n">add_scalar_sigma_eigen_likelihood</span><span class="p">,</span>
+    <span class="n">likelihood_kwargs</span><span class="o">=</span><span class="p">{</span>
+        <span class="s2">"eigenbasis_path"</span><span class="p">:</span> <span class="s2">"scalar-sigma-eigenbasis.nc"</span><span class="p">,</span>
+        <span class="s2">"sigma_prior"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"pdf"</span><span class="p">:</span> <span class="s2">"halfnormal"</span><span class="p">,</span> <span class="s2">"sigma"</span><span class="p">:</span> <span class="mf">0.75</span><span class="p">},</span>
+    <span class="p">},</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p>The cache stores labelled eigenvectors and eigenvalues, the aggregation-error
+mode, and a fingerprint of the resolved <code class="docutils literal notranslate"><span class="pre">A</span> <span class="pre">+</span> <span class="pre">D_obs</span></code>. Loading checks its
+schema, dimensions, labels, cache/observation/reported-error unit labels, mode,
+and current covariance identity before model construction. Regenerate the
+cache after changing <code class="docutils literal notranslate"><span class="pre">mf_error</span></code> values, aggregation-error values, or
+<code class="docutils literal notranslate"><span class="pre">aggregation_error_mode</span></code>. Changing the observation order or the unit
+label also makes the cache incompatible. Loading reconstructs the current base
+covariance once, but does not repeat the eigendecomposition or add work to
+likelihood evaluations.</p>
+<p>Unit conversion is caller-owned. Neither
+<a class="reference internal" href="../reference/openghg_inversions.observation_error.html#openghg_inversions.observation_error.resolve_aggregation_error" title="openghg_inversions.observation_error.resolve_aggregation_error"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.observation_error.resolve_aggregation_error()</span></code></a> nor
+scalar-sigma preparation converts or validates units on aggregation-error
+arrays. After numerical conversion, <code class="docutils literal notranslate"><span class="pre">mf</span></code>, <code class="docutils literal notranslate"><span class="pre">mf_error</span></code>, <code class="docutils literal notranslate"><span class="pre">sigma_global</span></code>
+and, when present, <code class="docutils literal notranslate"><span class="pre">aggregation_error_sd</span></code> and <code class="docutils literal notranslate"><span class="pre">low_rank_factor</span></code> use one
+concentration unit. When present, <code class="docutils literal notranslate"><span class="pre">aggregation_error_covariance</span></code> and
+<code class="docutils literal notranslate"><span class="pre">diagonal_residual_variance</span></code> use that unit squared. Configure
+<code class="docutils literal notranslate"><span class="pre">sigma_prior</span></code> for the concentration unit; in the HalfNormal example,
+<code class="docutils literal notranslate"><span class="pre">sigma=0.75</span></code> is in that unit. The cache, <code class="docutils literal notranslate"><span class="pre">mf.units</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">mf_error.units</span></code> must carry the same non-empty unit label. A consistent but
+incorrectly scaled aggregation covariance will otherwise be accepted and
+fingerprinted.</p>
+<p>This is a same-unit CO2-only likelihood; it does not support the linked
+mixed-unit CO2/O2 vector. A direct
+<a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.build_co2_model" title="openghg_inversions.rhime.co2.build_co2_model"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.build_co2_model()</span></code></a> caller may load the cache
+with <a class="reference internal" href="../reference/openghg_inversions.models.html#openghg_inversions.models.load_scalar_sigma_eigenbasis" title="openghg_inversions.models.load_scalar_sigma_eigenbasis"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.models.load_scalar_sigma_eigenbasis()</span></code></a> and pass
+the resulting <code class="docutils literal notranslate"><span class="pre">eigenbasis</span></code> in <code class="docutils literal notranslate"><span class="pre">likelihood_kwargs</span></code>. See the
+<a class="reference internal" href="../reference/openghg_inversions.models.scalar_sigma.html"><span class="doc">scalar-sigma API reference</span></a> for signatures and
+object contracts.</p>
+</section>
 <section id="co2-o2-shared-state-model">
 <span id="linked-co2-o2-model"></span><h2>CO2/O2 shared-state model<a class="headerlink" href="#co2-o2-shared-state-model" title="Link to this heading">#</a></h2>
 <p>The CO2/O2 recipe applies one retained state to both observation channels.
@@ -847,6 +920,7 @@ there is no separate public complete-covariance validator.</p>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#run-the-ordinary-prepared-input-co2-runner">Run the ordinary prepared-input CO2 runner</a></li>
 </ul>
 </li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#run-the-global-scalar-sigma-co2-likelihood">Run the global scalar-sigma CO2 likelihood</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#co2-o2-shared-state-model">CO2/O2 shared-state model</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#run-the-package-supported-cached-sigma-co2-runner">Run the package-supported cached-sigma CO2 runner</a></li>
 </ul>
