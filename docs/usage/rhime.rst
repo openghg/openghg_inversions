@@ -1,8 +1,13 @@
-RHIME Terminology And Quickstart
-================================
+.. _rhime-terminology-and-quickstart:
 
-RHIME runners use the modern spec vocabulary below. New Python examples and
-new config files should use these names.
+RHIME configuration and prepared-input reference
+================================================
+
+This page is reference material for RHIME vocabulary, configuration, and
+advanced prepared-input boundaries. For a first complete inversion, use the
+:doc:`standard tutorial <rhime_standard_tutorial>` or
+:doc:`multisector tutorial <rhime_multisector_tutorial>` instead. New Python
+examples and configuration files should use the modern spec names below.
 
 Terminology
 -----------

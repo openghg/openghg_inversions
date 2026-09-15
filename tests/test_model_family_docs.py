@@ -64,6 +64,11 @@ def test_standard_reader_path_avoids_detailed_co2_material() -> None:
     assert "standard_model_family" in _toctree_entries("usage.rst")
     assert "rhime_standard_tutorial" in _toctree_entries("standard_model_family.rst")
     assert "rhime_multisector_tutorial" in _toctree_entries("standard_model_family.rst")
+    assert _toctree_entries("shared_scientific_concepts.rst") == [
+        "grouped_basis_layout",
+        "native_covariance",
+        "coherent_reduction",
+    ]
     assert "CO2 coherent-reduction model" not in concrete
     assert "Run the production cached-sigma CO2 recipe" not in customising
 

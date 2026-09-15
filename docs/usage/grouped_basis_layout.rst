@@ -2,10 +2,13 @@ Grouped basis and state metadata
 ================================
 
 Basis functions can be constructed separately for different parts of the full
-domain—for example, a detailed inner region and a coarser outer region—and
-then combined into a single basis array.  The combined array remembers which
-group and partition each basis region came from, so states can still be
-selected and analysed by group after they have been assembled.
+domain—for example, many small basis regions in one area and a few larger basis
+regions in the surrounding area—and then combined into a single basis array.
+Here ``inner`` and ``outer`` are ordinary basis-group labels. They describe the
+number and spatial extent of inferred basis regions, not nested atmospheric
+model domains or grid resolution such as a 6 km inner transport domain. The
+combined array remembers which group and partition each basis region came from,
+so states can still be selected and analysed by group after assembly.
 
 ``BasisLayout`` provides this assembly step.  It combines disjoint,
 partition-local label maps into the one flat basis consumed by a bucket
@@ -24,13 +27,14 @@ to modify and run locally.
 .. jupyter-kernel:: python3
    :id: grouped_basis_layout
 
-Build an inner/outer layout
----------------------------
+Build a grouped basis layout
+----------------------------
 
-Each partition uses positive integers for its own local region labels.  Zero,
-negative, and NaN values mean that a cell is outside that partition.  The two
-arrays below are disjoint, and the explicitly named remainder covers every
-cell outside the inner partition.
+Each partition uses positive integers for its own local region labels. Zero,
+negative, and NaN values mean that a cell is outside that partition. In this
+small example, one partition contains two single-cell basis regions and the
+surrounding remainder contains one larger two-cell basis region. The two arrays
+are disjoint, and the explicitly named remainder covers every other cell.
 
 .. jupyter-execute::
 
@@ -129,7 +133,9 @@ Select states by group
 ----------------------
 
 Because the grouping fields are coordinates on the state dimension, normal
-xarray operations can select an inner or outer subset.
+xarray operations can select a subset. The example retains ``inner`` and
+``outer`` as application-chosen group names; they do not imply separate model
+domains.
 
 .. jupyter-execute::
 
