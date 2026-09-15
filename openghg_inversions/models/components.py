@@ -417,13 +417,13 @@ def add_state_vector(
         active_dim = f"{state_dim}_{var_name}_active"
         active_index = state_coord.to_index()[active_indices]
         if isinstance(active_index, pd.MultiIndex):
-            # Keep tuple labels without re-registering the MultiIndex level
-            # names already owned by the full state dimension.
-            active_coord = np.empty(activity.n_active, dtype=object)
-            active_coord[:] = active_index.tolist()
+            active_index = active_index.set_names(
+                [f"{name}_{var_name}_active" for name in active_index.names]
+            )
+            active_coords = xr.Coordinates.from_pandas_multiindex(active_index, active_dim)
         else:
-            active_coord = active_index.to_numpy()
-        add_coords({active_dim: active_coord})
+            active_coords = {active_dim: active_index.to_numpy()}
+        add_coords(active_coords, model_dims=(active_dim,))
         active_state = parse_prior(
             f"{var_name}_active",
             parsed_prior_args,
