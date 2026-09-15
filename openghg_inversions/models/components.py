@@ -18,8 +18,7 @@ Naming conventions:
 - plain ``name`` is reserved for helpers that truly create only one semantic
   object or where a base name is the clearest API
 
-Frequency indicators may be supplied explicitly or derived from observation
-coordinates using shared helper logic based on
+Model components derive frequency indicators from observation coordinates with
 ``openghg_inversions.inversion_inputs.make_freq_indicator``.
 """
 
@@ -140,72 +139,6 @@ def resolve_model_variable(model: pm.Model, base_name: str) -> TensorVariable | 
     if base_name in model.named_vars:
         return cast(TensorVariable, model.named_vars[base_name])
     return None
-
-
-def _extract_time_coord(data: xr.DataArray, output_dim: str) -> xr.DataArray | None:
-    """Extract a time coordinate aligned to the observation dimension."""
-    if "time" in data.coords:
-        coord = data.coords["time"]
-        if output_dim in coord.dims:
-            return coord
-
-    if output_dim in data.indexes:
-        index = data.indexes[output_dim]
-        if isinstance(index, pd.MultiIndex) and "time" in index.names:
-            return xr.DataArray(
-                index.get_level_values("time").to_numpy(),
-                dims=(output_dim,),
-                coords={output_dim: data.coords[output_dim]},
-                name="time",
-            )
-
-    return None
-
-
-def _resolve_freq_indicator(
-    *,
-    explicit_indicator: xr.DataArray | np.ndarray | None,
-    freq: str | None,
-    data: xr.DataArray,
-    output_dim: str,
-    fallback_name: str,
-) -> xr.DataArray | None:
-    """Return an explicit or derived observation-aligned frequency indicator."""
-    if explicit_indicator is not None:
-        if isinstance(explicit_indicator, xr.DataArray):
-            if explicit_indicator.dims != (output_dim,):
-                raise ValueError(
-                    f"{fallback_name!r} must have dims {(output_dim,)!r}; "
-                    f"got {explicit_indicator.dims!r}."
-                )
-            try:
-                indicator, _ = xr.align(
-                    explicit_indicator,
-                    data,
-                    join="exact",
-                )
-            except ValueError as error:
-                raise ValueError(
-                    f"{fallback_name!r} coordinates must exactly match observations."
-                ) from error
-            return indicator.rename(indicator.name or fallback_name)
-        return xr.DataArray(
-            np.asarray(explicit_indicator, dtype=int),
-            dims=(output_dim,),
-            coords={output_dim: data.coords[output_dim]},
-            name=fallback_name,
-        )
-
-    if freq is None:
-        return None
-
-    time_coord = _extract_time_coord(data, output_dim=output_dim)
-    if time_coord is None:
-        raise ValueError(
-            f"Cannot derive frequency indicator for {fallback_name!r}: no time coordinate found."
-        )
-
-    return make_freq_indicator(time_coord, freq).rename(fallback_name)
 
 
 def add_model_data(data: xr.DataArray, name: str | None = None) -> TensorVariable:
@@ -709,7 +642,6 @@ def _add_offset_component_result(
     observations: xr.DataArray,
     /,
     prior_args: dict,
-    offset_freq_indicator: xr.DataArray | np.ndarray | None = None,
     offset_freq: str | None = None,
     var_name: str = "offset_latent",
     output_name: str = "offset",
@@ -721,7 +653,7 @@ def _add_offset_component_result(
     output_dim = str(output_dim)
     output_coord = observations.coords[output_dim]
     if not per_site:
-        if offset_freq_indicator is not None or offset_freq is not None:
+        if offset_freq is not None:
             raise ValueError("Global offsets do not accept an offset frequency.")
         if drop_first:
             raise ValueError("Global offsets do not support `drop_first=True`.")
@@ -753,13 +685,19 @@ def _add_offset_component_result(
         raise ValueError("Offset observations must have non-missing site labels.")
     site_indicator = make_site_indicator(observations.coords["site"])
     site_indicator = site_indicator.rename("site_indicator").transpose(output_dim)
-    indicator = _resolve_freq_indicator(
-        explicit_indicator=offset_freq_indicator,
-        freq=offset_freq,
-        data=site_indicator,
-        output_dim=output_dim,
-        fallback_name="offset_freq_indicator",
-    )
+    indicator = None
+    if offset_freq is not None:
+        time_coord = observations.coords.get("time")
+        if time_coord is None or time_coord.dims != (output_dim,):
+            raise ValueError(
+                "Cannot derive offset frequency indicator: no observation-aligned "
+                "time coordinate found."
+            )
+        if bool(pd.isna(time_coord.values).any()):
+            raise ValueError("Offset frequencies require complete observation timestamps.")
+        indicator = make_freq_indicator(time_coord, offset_freq).rename(
+            "offset_freq_indicator"
+        )
 
     site_codes = np.asarray(site_indicator.values, dtype=int)
     site_labels = pd.unique(np.asarray(observations.coords["site"].values))
@@ -825,7 +763,6 @@ def add_offset_component(
     observations: xr.DataArray,
     /,
     prior_args: dict,
-    offset_freq_indicator: xr.DataArray | np.ndarray | None = None,
     offset_freq: str | None = None,
     var_name: str = "offset_latent",
     output_name: str = "offset",
@@ -839,11 +776,8 @@ def add_offset_component(
         observations: Observation data carrying an observation-aligned
             ``site`` coordinate.
         prior_args: Prior specification for the offset latent variable.
-        offset_freq_indicator: Optional explicit observation-aligned offset
-            frequency indicator. A labelled array must exactly match the
-            observation coordinates.
-        offset_freq: Optional frequency string used to derive an indicator when
-            ``offset_freq_indicator`` is not provided.
+        offset_freq: Optional frequency string used to derive periods from the
+            observation time coordinate.
         var_name: Name for the latent offset variable.
         output_name: Name for the aligned deterministic offset output.
         output_dim: Observation/output dimension name.
@@ -855,14 +789,12 @@ def add_offset_component(
         The aligned offset deterministic variable.
 
     Raises:
-        ValueError: If ``observations`` does not have an observation-aligned
-            ``site`` coordinate, labelled coordinates do not match, or the
-            selected global or drop-first options cannot form a component.
+        ValueError: If ``observations`` lacks required site or time coordinates,
+            or the selected global or drop-first options cannot form a component.
     """
     return _add_offset_component_result(
         observations,
         prior_args=prior_args,
-        offset_freq_indicator=offset_freq_indicator,
         offset_freq=offset_freq,
         var_name=var_name,
         output_name=output_name,

@@ -218,8 +218,8 @@ def run_rhime_co2(
         bc_state_activity: Optional active/fixed boundary-state policy.
         offset_prior: Optional prior for an offset component. When omitted, no
             offset is added.
-        offset_args: Optional offset settings: ``offset_freq_indicator``,
-            ``offset_freq``, ``drop_first``, and ``per_site``.
+        offset_args: Optional offset settings: ``offset_freq``, ``drop_first``,
+            and ``per_site``.
 
     Returns:
         Sampled inference data annotated with the CO2 variable-role and model

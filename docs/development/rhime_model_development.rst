@@ -139,7 +139,7 @@ general sampler protocol or one runner per ordinary likelihood variation.
 
 A sampler-independent likelihood belongs behind the recipe's ordinary
 likelihood-selection seam. A specialized sampler deserves a separate runner
-only when it requires a matched graph, accepted-state cache, or ordered
+only when it requires a matched graph, state-likelihood cache, or ordered
 ``CompoundStep``. A component should not publish bespoke sampler-capability
 metadata merely to predict whether another PyMC backend supports its graph.
 Let PyMC or PyTensor reject unsupported operations during backend conversion.

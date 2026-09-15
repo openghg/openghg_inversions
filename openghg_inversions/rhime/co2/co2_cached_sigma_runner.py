@@ -1,4 +1,4 @@
-"""Named CO2 runner for accepted-state cached fixed-OU amplitudes."""
+"""Named CO2 runner for cached fixed-OU site-amplitude sampling."""
 
 from __future__ import annotations
 
@@ -298,10 +298,11 @@ def run_rhime_co2_cached_sigma(
 ) -> az.InferenceData:
     """Run the package-supported CO2 fixed-OU cached-amplitude recipe.
 
-    The graph and sampler are a matched pair: site amplitudes are updated first by the
-    exact conditional bridge, the accepted cache is refreshed once, and stock
-    PyMC NUTS then updates the correlated flux and optional boundary and offset
-    states against that cache. ``use_bc=False`` leaves a prepared boundary
+    The graph and sampler are a matched pair: site amplitudes are updated first
+    using the exact conditional likelihood, the state-likelihood quadratic is rebuilt
+    for the values returned by that transition, and stock PyMC NUTS then
+    updates the correlated flux and optional boundary and offset states against
+    that cache. ``use_bc=False`` leaves a prepared boundary
     field unselected and preserves the no-baseline route. An offset is added
     only when ``offset_prior`` is supplied. ``sigma_target_accept`` and
     ``state_target_accept`` tune the two sampler steps independently.
@@ -334,8 +335,8 @@ def run_rhime_co2_cached_sigma(
         bc_state_activity: Optional active/fixed boundary-state policy.
         offset_prior: Optional prior for an offset component. When omitted, no
             offset is added.
-        offset_args: Optional offset settings: ``offset_freq_indicator``,
-            ``offset_freq``, ``drop_first``, and ``per_site``.
+        offset_args: Optional offset settings: ``offset_freq``, ``drop_first``,
+            and ``per_site``.
 
     Returns:
         Sampled inference data with the normalized joint log likelihood as one
@@ -352,12 +353,7 @@ def run_rhime_co2_cached_sigma(
         raise ValueError("bc_prior and bc_state_activity require use_bc=True.")
     if offset_prior is None and offset_args:
         raise ValueError("offset_args require offset_prior.")
-    (
-        offset_freq_indicator,
-        offset_freq,
-        offset_drop_first,
-        offset_per_site,
-    ) = _normalise_offset_args(offset_args)
+    offset_freq, offset_drop_first, offset_per_site = _normalise_offset_args(offset_args)
     prepared = prepared_inputs.validated()
     names = co2_cached_sigma_input_names(
         prepared,
@@ -390,7 +386,6 @@ def run_rhime_co2_cached_sigma(
         bc_prior=bc_prior,
         bc_state_activity=bc_state_activity,
         offset_prior=offset_prior,
-        offset_freq_indicator=offset_freq_indicator,
         offset_freq=offset_freq,
         offset_drop_first=offset_drop_first,
         offset_per_site=offset_per_site,

@@ -304,10 +304,11 @@ class FixedOuLowRank:
     ) -> FixedOuCovarianceSolve:
         """Factorize ``C(site_amplitude)`` once and solve one or many RHS.
 
-        This is an explicit eager numerical boundary for consumers such as an
-        accepted-amplitude state cache. It reuses the generalized eigenbasis
-        prepared by :func:`prepare_fixed_ou_low_rank` and never constructs a
-        second eigensolver.
+        This is an explicit eager numerical boundary for consumers such as a
+        state-likelihood cache conditioned on supplied site amplitudes. It
+        reuses the generalized eigenbasis prepared by
+        :func:`prepare_fixed_ou_low_rank` and never constructs a second
+        eigensolver.
         """
         rhs_value = np.asarray(rhs, dtype=np.float64)
         if rhs_value.ndim not in (1, 2) or rhs_value.shape[0] != self.n_observation:

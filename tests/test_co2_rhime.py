@@ -199,12 +199,9 @@ def test_public_co2_runner_rejects_default_model_error_with_selected_likelihood(
         ({"var_name": "custom_offset"}, ValueError, "Unsupported offset_args"),
         ({"output_name": "custom_output"}, ValueError, "Unsupported offset_args"),
         (
-            {
-                "offset_freq": "monthly",
-                "offset_freq_indicator": np.asarray([0, 1]),
-            },
+            {"offset_freq_indicator": np.asarray([0, 1])},
             ValueError,
-            "Specify only one",
+            "Unsupported offset_args",
         ),
         ({"per_site": 1}, TypeError, "must be booleans"),
     ],

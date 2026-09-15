@@ -1,10 +1,11 @@
-"""Accepted-sigma cached sampling for the fixed-OU CO2 likelihood.
+"""Cache the fixed-OU state likelihood between ordered sigma and state updates.
 
-The compound sweep is deliberately ordered ``sigma -> state``.  A stock PyMC
-NUTS step samples site amplitudes against the exact conditional likelihood,
-then refreshes the accepted state quadratic consumed by the following stock
-state NUTS step.  State leapfrogs therefore do not refactor the observation
-covariance.
+The compound sweep is deliberately ordered ``site amplitude -> state``. A
+stock PyMC NUTS step first updates site amplitudes using their exact
+conditional likelihood. If that transition changes the amplitudes, the
+sampler rebuilds the state-likelihood quadratic for the returned values. The
+following stock state NUTS step holds that quadratic fixed, so its leapfrog
+evaluations do not refactor the observation covariance.
 """
 
 from __future__ import annotations
@@ -71,7 +72,7 @@ class PytensorMarginalQuadraticCache:
         )
 
     def update(self, cache: MarginalQuadraticCache) -> None:
-        """Install one complete accepted-sigma cache between compound steps."""
+        """Install the supplied state-likelihood quadratic between compound steps."""
         self.constant.set_value(np.asarray(cache.constant, dtype=self.constant.dtype))
         self.linear.set_value(np.asarray(cache.linear, dtype=self.linear.dtype))
         self.precision.set_value(np.asarray(cache.precision, dtype=self.precision.dtype))
@@ -415,9 +416,10 @@ def make_cached_sigma_compound_step(  # noqa: PLR0913
 ) -> pm.CompoundStep:
     """Construct the required sigma-then-state stock PyMC compound sweep.
 
-    The sigma step compiles ``modelled_mean`` once and evaluates it at each
-    accepted state point; the following stock NUTS step jointly updates
-    ``states`` against the refreshed quadratic cache.
+    At the start of each sweep, the sigma step evaluates ``modelled_mean`` at
+    the current state point. It then updates sigma and refreshes the quadratic
+    for the value returned by that transition before the following stock NUTS
+    step jointly updates ``states``.
     """
     root_rng = get_random_generator(rng)
     sigma_rng, state_rng = root_rng.spawn(2)

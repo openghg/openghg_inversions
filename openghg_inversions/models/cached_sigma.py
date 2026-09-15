@@ -1,4 +1,4 @@
-"""Accepted-site-sigma state quadratics for the fixed-OU likelihood."""
+"""State-likelihood quadratics for supplied site amplitudes in the fixed-OU likelihood."""
 
 from __future__ import annotations
 
@@ -38,7 +38,7 @@ def _matrix(value: ArrayLike, name: str) -> FloatArray:
 
 @dataclass(frozen=True)
 class MarginalQuadraticCache:
-    """Normalized state likelihood coefficients at one accepted site sigma."""
+    """Normalized state-likelihood coefficients at one site-amplitude vector."""
 
     constant: float
     linear: FloatArray
@@ -68,9 +68,10 @@ class MarginalQuadraticCache:
 class FixedOuCachedSigmaTarget:
     """Build state quadratics from the OGI fixed-OU covariance preparation.
 
-    ``refresh`` performs one rank-space factorization for an accepted sigma and
-    solves the zero-state residual and all state-design columns together. State
-    evaluations on the returned cache are then pure dense quadratic algebra.
+    ``refresh`` performs one rank-space factorization for the supplied site
+    amplitudes and solves the zero-state residual and all state-design columns
+    together. State evaluations on the returned cache are then pure dense
+    quadratic algebra.
     """
 
     def __init__(
@@ -115,7 +116,7 @@ class FixedOuCachedSigmaTarget:
         return self.prepared.n_site
 
     def refresh(self, sigma: ArrayLike | float) -> MarginalQuadraticCache:
-        """Build one exact float64 quadratic for an accepted sigma."""
+        """Build one exact float64 quadratic for the supplied site amplitudes."""
         sigma_value = np.asarray(sigma, dtype=np.float64)
         if sigma_value.ndim == 0:
             sigma_value = np.full(self.n_group, sigma_value.item(), dtype=np.float64)

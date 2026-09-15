@@ -1,4 +1,4 @@
-"""Tests for the accepted-sigma cached PyMC compound sampler."""
+"""Tests for the cached sigma-then-state PyMC compound sampler."""
 
 from __future__ import annotations
 
@@ -106,7 +106,7 @@ def test_sigma_step_reuses_passed_initial_cache() -> None:
     assert step.current_cache is initial_cache
 
 
-def test_sigma_step_refreshes_once_only_when_the_accepted_value_changes(
+def test_sigma_step_refreshes_once_only_when_the_returned_value_changes(
     monkeypatch,
 ) -> None:
     target, shared, _, _, _, _, point, step = _step_context()

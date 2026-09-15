@@ -64,28 +64,23 @@ def _fixed_mismatch_array(
 
 def _normalise_offset_args(
     offset_args: Mapping[str, Any] | None,
-) -> tuple[xr.DataArray | np.ndarray | None, str | None, bool, bool]:
+) -> tuple[str | None, bool, bool]:
     """Validate the small offset option set used by the CO2 runners."""
     options = dict(offset_args or {})
-    supported = {"offset_freq_indicator", "offset_freq", "drop_first", "per_site"}
+    supported = {"offset_freq", "drop_first", "per_site"}
     unknown = sorted(options.keys() - supported)
     if unknown:
         raise ValueError(f"Unsupported offset_args option(s): {unknown!r}.")
 
-    indicator = options.get("offset_freq_indicator")
-    if indicator is not None and not isinstance(indicator, (xr.DataArray, np.ndarray)):
-        raise TypeError("offset_freq_indicator must be an xarray or NumPy array.")
     frequency = options.get("offset_freq")
     if frequency is not None and not isinstance(frequency, str):
         raise TypeError("offset_freq must be a string or None.")
-    if indicator is not None and frequency is not None:
-        raise ValueError("Specify only one of offset_freq_indicator and offset_freq.")
 
     drop_first = options.get("drop_first", False)
     per_site = options.get("per_site", True)
     if not isinstance(drop_first, bool) or not isinstance(per_site, bool):
         raise TypeError("drop_first and per_site must be booleans.")
-    return indicator, frequency, drop_first, per_site
+    return frequency, drop_first, per_site
 
 
 def build_co2_model(
@@ -167,8 +162,8 @@ def build_co2_model(
         offset_prior: Optional prior for an offset component. When omitted, no
             offset is added. Site codes are derived from the ``site`` coordinate
             on ``observations``.
-        offset_args: Optional offset settings: ``offset_freq_indicator``,
-            ``offset_freq``, ``drop_first``, and ``per_site``.
+        offset_args: Optional offset settings: ``offset_freq``, ``drop_first``,
+            and ``per_site``.
 
     Returns:
         A registered PyMC model containing the complete affine concentration
@@ -195,12 +190,7 @@ def build_co2_model(
     bc_prior = dict(DEFAULT_BC_PRIOR if bc_prior is None else bc_prior)
     if offset_prior is not None:
         offset_prior = dict(offset_prior)
-    (
-        offset_freq_indicator,
-        offset_freq,
-        offset_drop_first,
-        offset_per_site,
-    ) = _normalise_offset_args(offset_args)
+    offset_freq, offset_drop_first, offset_per_site = _normalise_offset_args(offset_args)
     fixed_mismatch = _fixed_mismatch_array(observations, fixed_model_mismatch)
     prepared_flux = prepare_linear_sensitivity(flux_sensitivity, output_dim="nmeasure")
     activity = resolve_state_activity(prepared_flux.removed, state_activity)
@@ -241,7 +231,6 @@ def build_co2_model(
             offset = add_offset_component(
                 observations,
                 prior_args=offset_prior,
-                offset_freq_indicator=offset_freq_indicator,
                 offset_freq=offset_freq,
                 output_name="offset",
                 output_dim="nmeasure",

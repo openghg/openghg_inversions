@@ -16,18 +16,15 @@ def make_offset(
     output_dim: str = "nmeasure",
     drop_first: bool = False,
     offset_freq: str | None = None,
-    offset_freq_indicator: xr.DataArray | np.ndarray | None = None,
 ) -> TensorVariable:
     """Create an offset inside a PyMC model.
 
     This compatibility wrapper keeps the historical import path while delegating
-    to the new shared component implementation.
+    to the new shared component implementation. ``offset_freq`` remains an
+    ignored compatibility argument because this site-only interface has no
+    observation times from which to derive periods.
     """
-    # Previously `offset_freq` was ignored, and without adding another argument to this function,
-    # we cannot make use of it
-    if offset_freq_indicator is None:
-        offset_freq = None
-
+    del offset_freq
     observations = xr.DataArray(
         np.empty(site_indicator.size),
         dims=(output_dim,),
@@ -37,8 +34,6 @@ def make_offset(
     return add_offset_component(
         observations,
         prior_args=prior_args,
-        offset_freq_indicator=offset_freq_indicator,
-        offset_freq=offset_freq,
         var_name=f"{name}_latent",
         output_name=name,
         output_dim=output_dim,

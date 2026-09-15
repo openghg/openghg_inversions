@@ -1,4 +1,4 @@
-"""CO2 graph for accepted-state cached fixed-OU amplitude sampling."""
+"""CO2 graph for cached fixed-OU site-amplitude sampling."""
 
 from __future__ import annotations
 
@@ -248,7 +248,6 @@ def build_co2_cached_sigma_model(
     bc_prior: PriorArgs | None = None,
     bc_state_activity: StateActivity | None = None,
     offset_prior: PriorArgs | None = None,
-    offset_freq_indicator: xr.DataArray | np.ndarray | None = None,
     offset_freq: str | None = None,
     offset_drop_first: bool = False,
     offset_per_site: bool = True,
@@ -417,7 +416,6 @@ def build_co2_cached_sigma_model(
             offset_result = _add_offset_component_result(
                 observations,
                 prior_args=dict(offset_prior),
-                offset_freq_indicator=offset_freq_indicator,
                 offset_freq=offset_freq,
                 output_name="offset",
                 output_dim=output_dim,
