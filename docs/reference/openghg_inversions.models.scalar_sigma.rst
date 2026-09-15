@@ -14,9 +14,10 @@ The CO2 scalar-sigma component evaluates the exact Gaussian covariance
 
 The optional cache is a small versioned xarray Dataset stored as NetCDF. It
 contains labelled ``eigenvectors`` and ``eigenvalues``. Loading checks the
-schema, dimensions, finite values, concentration units, and exact ordered
-observation coordinate; it does not create a second content-identity system or
-reconstruct the dense covariance.
+schema, dimensions, finite values, matching cache, observation, and
+reported-error concentration units, and exact ordered observation/error
+coordinates; it does not create a second content-identity system or reconstruct
+the dense covariance.
 
 Prepare and save a reusable cache::
 

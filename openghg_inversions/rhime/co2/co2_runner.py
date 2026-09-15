@@ -224,6 +224,7 @@ def _resolve_co2_likelihood_kwargs(
     likelihood_kwargs: Mapping[str, Any] | None,
     *,
     observations: xr.DataArray,
+    observation_error: xr.DataArray,
 ) -> Mapping[str, Any] | None:
     """Resolve file-backed scalar-sigma options before model construction."""
     if likelihood_builder is not add_scalar_sigma_eigen_likelihood:
@@ -242,6 +243,7 @@ def _resolve_co2_likelihood_kwargs(
         "eigenbasis": load_scalar_sigma_eigenbasis(
             options["eigenbasis_path"],
             observations=observations,
+            observation_error=observation_error,
         ),
         "sigma_prior": options["sigma_prior"],
     }
@@ -352,6 +354,7 @@ def run_rhime_co2(
         likelihood_builder,
         likelihood_kwargs,
         observations=model_inputs["mf"],
+        observation_error=model_inputs["mf_error"],
     )
     prepared_mismatch = (
         model_inputs.get("fixed_model_mismatch")

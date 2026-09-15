@@ -768,9 +768,18 @@ def test_public_co2_runner_resolves_scalar_sigma_cache_before_model(
     )
     load_contexts: list[pm.Model | None] = []
 
-    def recording_load(path: str | Path, *, observations: xr.DataArray) -> Any:
+    def recording_load(
+        path: str | Path,
+        *,
+        observations: xr.DataArray,
+        observation_error: xr.DataArray,
+    ) -> Any:
         load_contexts.append(pm.Model.get_context(error_if_none=False))
-        return load_scalar_sigma_eigenbasis(path, observations=observations)
+        return load_scalar_sigma_eigenbasis(
+            path,
+            observations=observations,
+            observation_error=observation_error,
+        )
 
     monkeypatch.setattr(co2_runner, "load_scalar_sigma_eigenbasis", recording_load)
     built_results: list[Any] = []

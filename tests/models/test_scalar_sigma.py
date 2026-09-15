@@ -294,7 +294,11 @@ def test_cache_round_trip_checks_schema_labels_and_units(tmp_path: Path) -> None
     )
     path = save_scalar_sigma_eigenbasis(tmp_path / "scalar-sigma.nc", basis)
 
-    loaded = load_scalar_sigma_eigenbasis(path, observations=observations)
+    loaded = load_scalar_sigma_eigenbasis(
+        path,
+        observations=observations,
+        observation_error=error,
+    )
     np.testing.assert_allclose(loaded.eigenvectors, basis.eigenvectors)
     np.testing.assert_allclose(loaded.eigenvalues, basis.eigenvalues)
 
@@ -302,11 +306,25 @@ def test_cache_round_trip_checks_schema_labels_and_units(tmp_path: Path) -> None
         load_scalar_sigma_eigenbasis(
             path,
             observations=observations.sel(nmeasure=LABELS[::-1]),
+            observation_error=error.sel(nmeasure=LABELS[::-1]),
+        )
+    with pytest.raises(ValueError, match="exact ordered observation coordinate"):
+        load_scalar_sigma_eigenbasis(
+            path,
+            observations=observations,
+            observation_error=error.sel(nmeasure=LABELS[::-1]),
         )
     with pytest.raises(ValueError, match="matching units"):
         load_scalar_sigma_eigenbasis(
             path,
             observations=observations.assign_attrs(units="ppb"),
+            observation_error=error.assign_attrs(units="ppb"),
+        )
+    with pytest.raises(ValueError, match="matching units"):
+        load_scalar_sigma_eigenbasis(
+            path,
+            observations=observations,
+            observation_error=error.assign_attrs(units="ppb"),
         )
 
     malformed = xr.load_dataset(path)
@@ -316,6 +334,7 @@ def test_cache_round_trip_checks_schema_labels_and_units(tmp_path: Path) -> None
         load_scalar_sigma_eigenbasis(
             tmp_path / "bad-schema.nc",
             observations=observations,
+            observation_error=error,
         )
 
     malformed = xr.load_dataset(path)
@@ -325,6 +344,7 @@ def test_cache_round_trip_checks_schema_labels_and_units(tmp_path: Path) -> None
         load_scalar_sigma_eigenbasis(
             tmp_path / "non-orthogonal.nc",
             observations=observations,
+            observation_error=error,
         )
 
 
@@ -360,7 +380,11 @@ def test_cache_round_trip_preserves_multiindex_labels(tmp_path: Path) -> None:
     )
     path = save_scalar_sigma_eigenbasis(tmp_path / "multiindex.nc", basis)
 
-    loaded = load_scalar_sigma_eigenbasis(path, observations=observations)
+    loaded = load_scalar_sigma_eigenbasis(
+        path,
+        observations=observations,
+        observation_error=error,
+    )
 
     assert loaded.eigenvectors.indexes["nmeasure"].equals(observations.indexes["nmeasure"])
 

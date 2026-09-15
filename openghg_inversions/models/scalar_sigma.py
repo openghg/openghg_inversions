@@ -520,16 +520,20 @@ def load_scalar_sigma_eigenbasis(
     path: str | Path,
     *,
     observations: xr.DataArray,
+    observation_error: xr.DataArray,
 ) -> ScalarSigmaEigenbasis:
     """Load and align a versioned scalar-sigma eigenbasis cache.
 
     Loading is the cache trust boundary. It validates the small xarray schema,
-    exact dimensions, finite values, units, and ordered observation labels.
-    It does not reconstruct or hash the dense covariance.
+    exact dimensions, finite cache values, units, and ordered
+    observation/error labels. It does not reconstruct or hash the dense
+    covariance.
 
     Args:
         path: NetCDF cache created by :func:`save_scalar_sigma_eigenbasis`.
         observations: Observations that will consume the cache.
+        observation_error: Reported errors that will consume the cache, with
+            the same ordered labels and concentration units as ``observations``.
 
     Returns:
         Eager trusted eigenbasis aligned to ``observations``.
@@ -557,6 +561,16 @@ def load_scalar_sigma_eigenbasis(
         raise ValueError(
             f"Scalar-sigma cache expects observations on {output_dim!r}; got {observations.dims!r}."
         )
+    error = _align_observation_array(
+        observations,
+        observation_error,
+        name="observation_error",
+        output_dim=output_dim,
+    )
+    if error.dims != (output_dim,):
+        raise ValueError(
+            f"Scalar-sigma observation_error must have dims ({output_dim!r},); got {error.dims!r}."
+        )
     try:
         _, vectors = xr.align(
             observations,
@@ -567,8 +581,10 @@ def load_scalar_sigma_eigenbasis(
     except (TypeError, ValueError) as error:
         raise ValueError("Scalar-sigma cache must use the exact ordered observation coordinate.") from error
     units = str(dataset.attrs.get("concentration_units", "")).strip()
-    if units != str(observations.attrs.get("units", "")).strip():
-        raise ValueError("Scalar-sigma cache and observations require matching units.")
+    observation_units = str(observations.attrs.get("units", "")).strip()
+    error_units = str(observation_error.attrs.get("units", "")).strip()
+    if not units or units != observation_units or units != error_units:
+        raise ValueError("Scalar-sigma cache, observations, and reported errors require matching units.")
     return ScalarSigmaEigenbasis(
         eigenvectors=vectors,
         eigenvalues=dataset[EIGENVALUES],
@@ -591,14 +607,17 @@ def add_scalar_sigma_eigen_likelihood(
 
     Args:
         observations: CO2 observations represented by ``eigenbasis``.
-        observation_error: Reported observation standard deviations. These are
+        observation_error: Reported observation standard deviations with the
+            labels, units, and values used to prepare ``eigenbasis``. Their
+            variance is already represented in the eigenvalues; they are also
             registered as model data and contribute to ``epsilon``.
         aggregation_error: Validated fixed aggregation error. Its marginal
             variance contributes to ``epsilon``; its full covariance is already
             represented by ``eigenbasis``.
         mean: Completed modelled concentration on ``output_dim``.
-        eigenbasis: Prepared and aligned eigenbasis loaded before entering the
-            registered PyMC model context.
+        eigenbasis: Aligned eigenbasis prepared or loaded from the same
+            observation/error inputs before entering the registered PyMC model
+            context.
         sigma_prior: Explicit positive-support prior in the observations'
             concentration units.
         output_dim: Observation dimension name.
