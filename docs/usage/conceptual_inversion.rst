@@ -50,7 +50,7 @@ The journey has seven parts:
    selected observations update its state parameters. A basis or state
    operator defines how a finite state vector maps onto the gridded field. RHIME
    combines the footprint, reference flux, and basis representation into a
-   sensitivity matrix, conventionally called ``H``. The meaning of one state
+   sensitivity matrix, conventionally called :math:`H`. The meaning of one state
    parameter depends on the selected basis operator; it is not always one
    independently estimated grid cell. Reducing a spatial field to a state
    vector can leave unresolved variability, as discussed by `Kaminski et al. (2001)
@@ -70,9 +70,10 @@ The journey has seven parts:
 
       \mu = Hx + H_{bc}b + o,
 
-   where ``x`` contains the flux-scaling state, ``H_bc b`` is an optional scaled
-   boundary contribution, and ``o`` represents any additional offset selected
-   by the recipe. A multisector recipe sums one ``H x`` contribution per
+   where :math:`x` contains the flux-scaling state, :math:`H_{bc}b` is an
+   optional scaled boundary contribution, and :math:`o` represents any
+   additional offset selected by the recipe. A multisector recipe sums one
+   :math:`Hx` contribution per
    sector. The :doc:`concrete_rhime_model` page gives the equations and exact
    components for current RHIME recipes.
 
@@ -109,7 +110,7 @@ boundary, representation, and shared structural errors do not become uncertain
 merely because the sampler returns a distribution.
 
 Sensitivity is uneven. A state direction with weak or no sensitivity through
-``H`` receives little or no direct likelihood information. Its posterior is
+:math:`H` receives little or no direct likelihood information. Its posterior is
 then governed mainly by its prior structure and by any correlations or
 hierarchy coupling it to informed state directions. Different sectors or
 regions can also produce similar signals at the available sites. Consequently,
@@ -174,7 +175,7 @@ Boundary condition
 Basis function, state, and scaling
    Basis functions define how a finite **state vector** maps onto the flux
    grid. RHIME projects gridded footprint--reference-flux sensitivity into the
-   matching state-space ``H``. A scaling is one possible state parameter that
+   matching state-space :math:`H`. A scaling is one possible state parameter that
    modifies the corresponding reference flux.
 
 Forward model
