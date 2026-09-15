@@ -32,9 +32,11 @@ From observations to a posterior
 The journey has seven parts:
 
 1. **Observe atmospheric mole fractions.** Each observation represents a gas
-   measurement at a site and inlet over a sampling or averaging interval. Its
-   reported uncertainty describes measurement information available to the
-   inversion; it does not include every possible model error.
+   measurement at a site and inlet over a sampling or averaging interval. This
+   introduction focuses on surface observations: direct measurements of
+   atmospheric mole fraction at a fixed location. The reported uncertainty
+   describes measurement information available to the inversion; it does not
+   include every possible model error.
 
 2. **Describe where the sampled air has been.** A transport model supplies a
    footprint for each observation. A footprint is a receptor-oriented
