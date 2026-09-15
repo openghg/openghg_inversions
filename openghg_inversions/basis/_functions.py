@@ -9,7 +9,7 @@ from collections.abc import Hashable
 from functools import partial
 from numbers import Integral
 from pathlib import Path
-from typing import Literal, cast
+from typing import Any, Literal, cast
 
 import numpy as np
 import pandas as pd
@@ -36,6 +36,7 @@ logger = logging.getLogger(__name__)
 
 
 openghginv_path = Paths.openghginv
+_INNER_REGION_LABEL_ATTR = "inner_region_label"
 
 
 def basis(domain: str, basis_case: str, basis_directory: str | None = None) -> xr.Dataset:
@@ -364,8 +365,9 @@ def load_intem_outer_regions(
             ``outer_region_definition_{domain}.nc`` when
             ``outer_regions_path`` is omitted.
         outer_regions_path: Optional direct path to an outer-region NetCDF
-            file. When omitted, the packaged file for ``domain`` in
-            :mod:`openghg_inversions.basis` is used.
+            file. A bare relative filename may name a packaged file in
+            :mod:`openghg_inversions.basis`. When omitted, the packaged file
+            for ``domain`` is used.
 
     Returns:
         Loaded two-dimensional ``region`` field, including its spatial
@@ -380,10 +382,34 @@ def load_intem_outer_regions(
         outer_regions_path = Path(__file__).parent / f"outer_region_definition_{domain}.nc"
     else:
         outer_regions_path = Path(outer_regions_path)
+        if not outer_regions_path.is_absolute() and not outer_regions_path.exists():
+            packaged_path = Path(__file__).parent / outer_regions_path
+            if packaged_path.exists():
+                outer_regions_path = packaged_path
         logger.info(f"Loading InTEM outer region file for domain {domain} from {outer_regions_path}.")
 
     with xr.open_dataset(outer_regions_path, decode_coords="all") as dataset:
-        return dataset["region"].load()
+        regions = dataset["region"].load()
+        for name, value in dataset.attrs.items():
+            regions.attrs.setdefault(name, value)
+        return regions
+
+
+def _fixed_outer_inner_region_label(regions: xr.DataArray) -> int:
+    """Return the explicitly marked inner label, with legacy max-label fallback."""
+    configured_label = regions.attrs.get(_INNER_REGION_LABEL_ATTR)
+    if configured_label is None:
+        return int(regions.max().item())
+    if isinstance(configured_label, bool) or not isinstance(configured_label, Integral):
+        raise ValueError(
+            f"Fixed outer-region map attribute {_INNER_REGION_LABEL_ATTR!r} must be an integer."
+        )
+    inner_label = int(configured_label)
+    if not bool((regions == inner_label).any().item()):
+        raise ValueError(
+            f"Fixed outer-region map marks inner label {inner_label}, but that label is absent."
+        )
+    return inner_label
 
 
 def load_country_region_classes(
@@ -518,6 +544,7 @@ def bucket_basis_from_weights(
     *,
     nbasis: int = 100,
     country_directory: str | None = None,
+    landsea_indices: np.ndarray | None = None,
 ) -> xr.DataArray:
     """Create a legacy weighted bucket basis field from precomputed 2D weights.
 
@@ -531,6 +558,7 @@ def bucket_basis_from_weights(
         domain: Domain across which to calculate basis functions.
         nbasis: Desired number of basis regions.
         country_directory: Optional directory containing land/sea files.
+        landsea_indices: Optional pre-aligned land/sea mask for ``weights``.
 
     Returns:
         Basis field with ``lat``/``lon`` dimensions, a singleton ``time``
@@ -538,13 +566,15 @@ def bucket_basis_from_weights(
     """
     weights = _sanitize_generated_basis_weights(weights, algorithm="weighted bucket", require_nonzero=True)
     weights = _normalise_weights_by_nonzero_max(weights)
-    func = partial(
-        weighted_algorithm,
-        nregion=nbasis,
-        bucket=1,
-        domain=domain,
-        country_directory=country_directory,
-    )
+    algorithm_kwargs: dict[str, Any] = {
+        "nregion": nbasis,
+        "bucket": 1,
+        "domain": domain,
+        "country_directory": country_directory,
+    }
+    if landsea_indices is not None:
+        algorithm_kwargs["landsea_indices"] = landsea_indices
+    func = partial(weighted_algorithm, **algorithm_kwargs)
     bucket_basis = xr.apply_ufunc(func, weights)
     return _finalise_generated_basis(bucket_basis, start_date=start_date, domain=domain)
 
@@ -979,6 +1009,7 @@ def bucket_basis_function(
     country_directory: str | None = None,
     abs_flux: bool = False,
     mask: xr.DataArray | None = None,
+    landsea_indices: np.ndarray | None = None,
 ) -> xr.DataArray:
     """Create a basis field with the legacy weighted bucket algorithm.
 
@@ -1000,6 +1031,8 @@ def bucket_basis_function(
         abs_flux: If true, use absolute flux values when constructing weights.
         mask: Optional Boolean spatial mask for fitting basis functions over a
             sub-region.
+        landsea_indices: Optional pre-aligned land/sea mask for the selected
+            sub-region.
 
     Returns:
         Basis field with ``lat``/``lon`` dimensions, a singleton ``time``
@@ -1012,6 +1045,7 @@ def bucket_basis_function(
         domain,
         nbasis=nbasis,
         country_directory=country_directory,
+        landsea_indices=landsea_indices,
     )
 
 
@@ -1193,6 +1227,7 @@ def fixed_outer_regions_basis(
     country_directory: str | None = None,
     abs_flux: bool = False,
     *,
+    outer_regions_path: str | Path | None = None,
     region_classes: xr.DataArray | None = None,
     region_allocation: AllocationMode = "weight",
     min_regions_per_class: int = 1,
@@ -1204,12 +1239,27 @@ def fixed_outer_regions_basis(
     contrast_tau: float | None = None,
     contrast_sigma_design: float | None = None,
     contrast_s_diag: xr.DataArray | None = None,
+    allow_empty_inner_region: bool = False,
 ) -> xr.DataArray:
     """Use fixed InTEM outer regions and fit inner regions with an algorithm.
 
-    The InTEM outer-region file defines known outer labels. The largest region
-    value is treated as the inner inversion region; this inner mask is passed to
-    ``basis_algorithm`` and then inserted back into the fixed outer map.
+    The InTEM outer-region file defines known outer labels. Its optional
+    ``inner_region_label`` attribute identifies the inner inversion region;
+    legacy files without that metadata continue to use their largest label.
+    This inner mask is passed to ``basis_algorithm`` and then inserted back
+    into the fixed outer map.
+
+    By default (``allow_empty_inner_region=False``), a marked inner region
+    with no non-zero footprint*flux response raises, exactly as it always
+    has: this normally means the map or footprint/flux data are mismatched.
+    A modern nested-domain run is a legitimate exception -- its outer
+    footprint response and prior flux are deliberately zeroed over the same
+    extent the fine inner grid already covers (see
+    ``openghg_inversions.rhime.nested.mask_outer_merged_for_inner_domain``),
+    so an inner-region map built to mark that same extent will correctly find
+    nothing left to subdivide there. Only nested outer-domain preparation
+    should pass ``allow_empty_inner_region=True``; every other caller keeps
+    the strict default.
 
     Args:
         fp_all: Legacy merged-data dictionary produced by the data preparation
@@ -1226,6 +1276,9 @@ def fixed_outer_regions_basis(
             InTEM outer-region file. When omitted, default package files are
             used.
         abs_flux: If true, use absolute flux values when constructing weights.
+        outer_regions_path: Optional direct path to the fixed outer-region
+            NetCDF file. When omitted, the packaged
+            ``outer_region_definition_<domain>.nc`` file is used.
         region_classes: Region or country class field used only with
             ``basis_algorithm="region_constrained"``. File loading should
             happen before calling this helper.
@@ -1245,28 +1298,66 @@ def fixed_outer_regions_basis(
             coefficient. If omitted, ``tau=1`` is uncalibrated.
         contrast_sigma_design: Optional scalar design standard deviation.
         contrast_s_diag: Optional diagonal design covariance entries.
+        allow_empty_inner_region: If true, a marked inner region with no
+            non-zero footprint*flux response is kept as a single fixed label
+            (like the other outer regions) instead of raising. Intended only
+            for nested outer-domain preparation.
 
     Returns:
-        Basis field with fixed outer labels and generated inner labels.
+        Basis field with fixed outer labels and generated inner labels. When
+        ``allow_empty_inner_region`` is true and the inner region has no
+        residual response, its label is kept unsplit.
     """
-    if country_directory is None:
-        logger.info(f"Loading default InTEM outer region file for domain {domain}.")
-        intem_regions_path = Path(__file__).parent / f"outer_region_definition_{domain}.nc"
+    if outer_regions_path is not None:
+        selected_outer_regions_path = Path(outer_regions_path)
+        if not selected_outer_regions_path.is_absolute() and country_directory is not None:
+            country_path = Path(country_directory) / selected_outer_regions_path
+            if country_path.exists():
+                selected_outer_regions_path = country_path
+        intem_regions = load_intem_outer_regions(domain, selected_outer_regions_path)
+    elif country_directory is None:
+        intem_regions = load_intem_outer_regions(domain)
     else:
-        logger.info(f"Loading InTEM outer region file for domain {domain} from {country_directory}.")
-        intem_regions_path = Path(country_directory) / f"outer_region_definition_{domain}.nc"
-    intem_regions = xr.open_dataset(intem_regions_path).region
+        intem_regions = load_intem_outer_regions(
+            domain,
+            Path(country_directory) / f"outer_region_definition_{domain}.nc",
+        )
 
     # force intem_regions to use flux coordinates
     flux, _ = _flux_fp_from_fp_all(fp_all, emissions_name)
     _, intem_regions = xr.align(flux, intem_regions, join="override")
 
-    inner_index = intem_regions.values.max()
+    inner_index = _fixed_outer_inner_region_label(intem_regions)
 
     mask = intem_regions == inner_index
 
+    if allow_empty_inner_region:
+        inner_weights = basis_weights_from_fp_all(fp_all, emissions_name, abs_flux=abs_flux, mask=mask)
+        finite_inner_weights = inner_weights.to_numpy()
+        finite_inner_weights = finite_inner_weights[np.isfinite(finite_inner_weights)]
+        if finite_inner_weights.size and not bool((finite_inner_weights != 0.0).any()):
+            logger.warning(
+                f"Fixed outer-region map's inner label {inner_index} has no non-zero footprint*flux "
+                "response; keeping it as a single fixed region instead of subdividing it further "
+                "(allow_empty_inner_region=True)."
+            )
+            basis = intem_regions.rename("basis")
+            basis += 1  # intem_region_definitions.nc regions start at 0, not 1
+            basis = basis.expand_dims({"time": [pd.to_datetime(start_date)]})
+            return basis
+
     basis_function = basis_functions[basis_algorithm].algorithm
     algorithm_kwargs = {"country_directory": country_directory, "abs_flux": abs_flux, "mask": mask}
+    if basis_algorithm == "weighted":
+        landsea_classes = load_country_region_classes(domain, country_directory=country_directory)
+        landsea_classes = normalize_spatial_grid(
+            intem_regions,
+            landsea_classes,
+            reference_name="fixed outer-region map",
+            candidate_name="land/sea class map",
+        )
+        inner_landsea = landsea_classes.where(mask, drop=True)
+        algorithm_kwargs["landsea_indices"] = inner_landsea.to_numpy()
     if basis_algorithm == "region_constrained":
         algorithm_kwargs.update(
             {
