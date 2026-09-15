@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import defaultdict
 from collections.abc import Mapping
 import json
+from pathlib import Path
 from typing import Any
 
 import arviz as az
@@ -79,6 +80,7 @@ def _annotate_co2_trace(
         "mu_bc": ["boundary_concentration"],
         "offset_latent": ["offset_coefficient"],
         "offset": ["offset_concentration"],
+        "sigma_global": ["global_iid_mismatch_standard_deviation"],
         "epsilon": ["model_error"],
         "y": ["concentration"],
     }
@@ -94,6 +96,7 @@ def _annotate_co2_trace(
         "mu_bc",
         "offset_latent",
         "offset",
+        "sigma_global",
         "epsilon",
         "y",
     }
@@ -233,10 +236,8 @@ def _resolve_co2_likelihood_kwargs(
         raise ValueError(
             "Scalar-sigma likelihood selection requires `eigenbasis_path` and `sigma_prior`."
         )
-    if not isinstance(options["eigenbasis_path"], str):
-        raise TypeError(
-            "Scalar-sigma `eigenbasis_path` must be a JSON-serializable string."
-        )
+    if not isinstance(options["eigenbasis_path"], str | Path):
+        raise TypeError("Scalar-sigma `eigenbasis_path` must be a string or Path.")
     return {
         "eigenbasis": load_scalar_sigma_eigenbasis(
             options["eigenbasis_path"],
@@ -290,9 +291,8 @@ def run_rhime_co2(
         likelihood_builder: Optional ordinary likelihood component replacing
             the default additive-sigma likelihood.
         likelihood_kwargs: Options passed only to the selected likelihood. For
-            the scalar-sigma eigen likelihood, pass a JSON-serializable
-            ``eigenbasis_path`` and ``sigma_prior``; the cache is loaded before
-            model construction.
+            the scalar-sigma eigen likelihood, pass an ``eigenbasis_path`` and
+            ``sigma_prior``; the cache is loaded before model construction.
         sampler: Optional RHIME sampler configuration.
         aggregation_error_mode: Prepared aggregation-error representation to
             use in the likelihood.

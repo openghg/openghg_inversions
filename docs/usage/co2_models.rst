@@ -187,54 +187,6 @@ default additive-sigma likelihood; its scientific options belong in
 callable identity and its explicit options using the ordinary likelihood
 provenance attributes.
 
-For repeated CO2-only runs with one inferred global independent and identically
-distributed (IID) mismatch amplitude, the scalar-sigma component evaluates
-``A + D_obs + sigma_global**2 I`` in a fixed eigenbasis. Prepare and save that
-basis once from the same labelled CO2 inputs used by the runner::
-
-   from openghg_inversions.models import (
-       add_scalar_sigma_eigen_likelihood,
-       save_scalar_sigma_eigenbasis,
-   )
-   from openghg_inversions.rhime.co2 import (
-       prepare_co2_scalar_sigma_eigenbasis,
-       run_rhime_co2,
-   )
-
-   eigenbasis = prepare_co2_scalar_sigma_eigenbasis(
-       prepared_inputs,
-       aggregation_error_mode="dense",
-   )
-   save_scalar_sigma_eigenbasis("scalar-sigma-eigenbasis.nc", eigenbasis)
-
-   trace = run_rhime_co2(
-       prepared_inputs=prepared_inputs,
-       aggregation_error_mode="dense",
-       likelihood_builder=add_scalar_sigma_eigen_likelihood,
-       likelihood_kwargs={
-           "eigenbasis_path": "scalar-sigma-eigenbasis.nc",
-           "sigma_prior": {"pdf": "halfnormal", "sigma": 0.75},
-       },
-   )
-
-Preparation aligns and materializes the reported error and selected
-aggregation covariance together, then performs the dense eigendecomposition.
-The runner loads and checks the small labelled cache before model construction;
-the likelihood component receives only that trusted numerical value and the
-explicit positive-support prior. ``sigma_prior`` has the same physical
-concentration units as ``mf`` and ``mf_error``. Aggregation standard deviations
-must use that unit and aggregation covariance or variance inputs its square.
-See the :doc:`scalar-sigma API reference
-<../reference/openghg_inversions.models.scalar_sigma>` for the cache schema and
-direct-builder interface.
-
-This selection is currently scoped to the CO2-only runner. Do not apply one
-``sigma_global`` to a mixed-unit CO2/O2 vector: the joint prepared-input type
-permits row-wise ``observation_units``, while one scalar variance has only one
-physical unit. Convert every channel to one declared concentration unit at the
-CO2/O2 preparation boundary before implementing or advertising a joint
-scalar-sigma likelihood.
-
 .. _linked-co2-o2-model:
 
 CO2/O2 shared-state model

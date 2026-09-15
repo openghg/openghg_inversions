@@ -130,6 +130,27 @@ The example rejects dense and low-rank aggregation covariance because it uses
 an independent Student-t distribution. Supporting those aggregation-error
 modes would require a multivariate likelihood.
 
+For repeated CO2-only runs with one inferred global IID mismatch amplitude,
+prepare the labelled scalar-sigma eigenbasis once and select its package
+likelihood through the existing CO2 seam::
+
+   from openghg_inversions.models import add_scalar_sigma_eigen_likelihood
+   from openghg_inversions.rhime.co2 import run_rhime_co2
+
+   trace = run_rhime_co2(
+       prepared_inputs=prepared_inputs,
+       likelihood_builder=add_scalar_sigma_eigen_likelihood,
+       likelihood_kwargs={
+           "eigenbasis_path": "scalar-sigma-eigenbasis.nc",
+           "sigma_prior": {"pdf": "halfnormal", "sigma": 0.75},
+       },
+   )
+
+This component requires same-unit CO2 inputs and does not support a mixed-unit
+CO2/O2 vector. See the :doc:`scalar-sigma API reference
+<../reference/openghg_inversions.models.scalar_sigma>` for preparation, cache,
+units, and direct-builder details.
+
 Built-in mismatch equations are direct model components, not examples of this
 custom-callback contract. In particular,
 ``models.additive_sigma.add_additive_sigma_likelihood`` adds an absolute

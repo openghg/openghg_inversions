@@ -768,7 +768,7 @@ def test_public_co2_runner_resolves_scalar_sigma_cache_before_model(
     )
     load_contexts: list[pm.Model | None] = []
 
-    def recording_load(path: str, *, observations: xr.DataArray) -> Any:
+    def recording_load(path: str | Path, *, observations: xr.DataArray) -> Any:
         load_contexts.append(pm.Model.get_context(error_if_none=False))
         return load_scalar_sigma_eigenbasis(path, observations=observations)
 
@@ -777,11 +777,16 @@ def test_public_co2_runner_resolves_scalar_sigma_cache_before_model(
 
     def sample_model(built: Any, _sampler: Any) -> az.InferenceData:
         built_results.append(built)
-        return _empty_sampled_trace(inputs)
+        trace = _empty_sampled_trace(inputs)
+        trace.posterior["sigma_global"] = xr.DataArray(
+            np.ones((1, 2)),
+            dims=("chain", "draw"),
+        )
+        return trace
 
     monkeypatch.setattr(co2_runner, "sample_rhime_model", sample_model)
     likelihood_kwargs = {
-        "eigenbasis_path": str(cache_path),
+        "eigenbasis_path": cache_path,
         "sigma_prior": {"pdf": "halfnormal", "sigma": 0.75},
     }
 
@@ -811,20 +816,17 @@ def test_public_co2_runner_resolves_scalar_sigma_cache_before_model(
         ),
     )
     assert actual_logp == pytest.approx(expected_logp, rel=1.0e-10)
-    assert json.loads(result.attrs["rhime_likelihood_kwargs"]) == likelihood_kwargs
+    assert json.loads(result.attrs["rhime_likelihood_kwargs"]) == {
+        "eigenbasis_path": str(cache_path),
+        "sigma_prior": likelihood_kwargs["sigma_prior"],
+    }
     assert json.loads(result.attrs["rhime_likelihood_builder"])["qualname"] == (
         "add_scalar_sigma_eigen_likelihood"
     )
-
-    with pytest.raises(TypeError, match="JSON-serializable string"):
-        run_rhime_co2(
-            prepared_inputs=cast(Any, PreparedInputsStub()),
-            likelihood_builder=add_scalar_sigma_eigen_likelihood,
-            likelihood_kwargs={
-                "eigenbasis_path": cache_path,
-                "sigma_prior": {"pdf": "halfnormal", "sigma": 0.75},
-            },
-        )
+    assert result.posterior["sigma_global"].attrs["units"] == "ppm"
+    assert json.loads(
+        result.posterior["sigma_global"].attrs["rhime_scientific_roles"]
+    ) == ["global_iid_mismatch_standard_deviation"]
 
 
 def test_public_co2_runner_preserves_materialized_fixed_mismatch(monkeypatch: Any) -> None:
