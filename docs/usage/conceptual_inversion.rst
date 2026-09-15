@@ -74,8 +74,9 @@ The journey has seven parts:
    optional scaled boundary contribution, and :math:`o` represents any
    additional offset selected by the recipe. A multisector recipe sums one
    :math:`Hx` contribution per
-   sector. The :doc:`concrete_rhime_model` page gives the equations and exact
-   components for current RHIME recipes.
+   sector. The :doc:`standard and multisector model page
+   <concrete_rhime_model>` gives the equations and exact components for those
+   recipes; :doc:`co2_model_family` routes advanced CO₂-family readers.
 
 6. **Compare predictions with observations.** The likelihood states how the
    observed mole fractions are distributed around the forward-model mean. Its
@@ -133,13 +134,15 @@ not optional decoration.
 Choose your next page
 ---------------------
 
+* To select standard, multisector, CO₂-only, or linked CO₂/O₂ guidance, use
+  :doc:`model_recipes`.
 * To run a standard one-component or multisector inversion, start with the
   current :doc:`RHIME terminology and Python quickstart <rhime>` and use the
   :doc:`command-line guide <cli>` when you prefer a configuration file.
 * To separate preparation, prior prediction, sampling, diagnosis, and
   postprocessing into inspectable artifacts, follow :doc:`staged_workflow`.
-* To inspect recipe-level equations, variable roles, priors, and likelihood
-  choices, read :doc:`concrete_rhime_model`.
+* To inspect standard or multisector equations, variable roles, priors, and
+  likelihood choices, read :doc:`concrete_rhime_model`.
 * To understand the data expected by established and legacy workflows,
   continue to :doc:`getting_started`.
 
