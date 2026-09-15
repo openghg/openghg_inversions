@@ -594,7 +594,7 @@ precision. Currently all variables are considered iid.</p></li>
 <li><p><strong>bcprior</strong> – Same as xprior but for boundary conditions.</p></li>
 <li><p><strong>sigprior</strong> – Same as xprior but for model error.</p></li>
 <li><p><strong>offsetprior</strong> – Same as xprior but for bias offset. Only used is addoffset=True.</p></li>
-<li><p><strong>offset_args</strong> – Dictionary of args to pass to <cite>make_offset</cite>. For instance
+<li><p><strong>offset_args</strong> – Dictionary of options for the offset component. For instance
 <cite>{“drop_first”: False}</cite> will put an offset on all site (rather than using 0
 offset for the first site). If “offset_freq” is passed, then the
 offset will be applied at the specified frequency (e.g. monthly).</p></li>

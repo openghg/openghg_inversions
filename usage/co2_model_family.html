@@ -451,17 +451,22 @@ CO₂ configuration workflow.</p></td>
 <td><p>Python arguments at the prepared-input boundary; no complete built-in
 linked configuration workflow.</p></td>
 </tr>
-<tr class="row-even"><td><p>Staged workflow</p></td>
+<tr class="row-even"><td><p>Boundary conditions and offsets</p></td>
+<td><p>The ordinary and cached-sigma runners can select prepared <code class="docutils literal notranslate"><span class="pre">H_bc</span></code>
+boundary sensitivity and add global, site, or site-by-period offsets.</p></td>
+<td><p>Not exposed by the linked prepared-input runner.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Staged workflow</p></td>
 <td><p>Not supported by the staged CLI.</p></td>
 <td><p>Not supported by the staged CLI.</p></td>
 </tr>
-<tr class="row-odd"><td><p>Outputs and postprocessing</p></td>
+<tr class="row-even"><td><p>Outputs and postprocessing</p></td>
 <td><p>Returns annotated <code class="docutils literal notranslate"><span class="pre">InferenceData</span></code>. Use the documented serialization
 boundary; the complete RHIME output pipeline is not integrated.</p></td>
 <td><p>Returns annotated <code class="docutils literal notranslate"><span class="pre">InferenceData</span></code>. Use the documented serialization
 boundary; family-specific output and postprocessing are not integrated.</p></td>
 </tr>
-<tr class="row-even"><td><p>Validation and acceptance</p></td>
+<tr class="row-odd"><td><p>Validation and acceptance</p></td>
 <td><p>Model construction, replay, provenance, and cached-sampler behavior have
 automated regression tests. Complete configuration, outputs, staged
 integration, and scientist acceptance remain future work.</p></td>

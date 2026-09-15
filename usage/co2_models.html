@@ -424,7 +424,11 @@ arithmetic prior mean and covariance, and <code class="docutils literal notransl
 contribution. The core retained-state terms are</p>
 <div class="math notranslate nohighlight">
 \[\begin{split}x &amp;\sim \operatorname{LogNormalMoments}(m_\alpha, C_\alpha), \\
-\mu_{CO_2} &amp;= H_\alpha x.\end{split}\]</div>
+\mathtt{co2\_flux\_contribution} &amp;= b_{fixed} + H_\alpha x, \\
+\mathtt{modelled\_concentration}
+   &amp;= \mathtt{co2\_flux\_contribution} + \mu_{bc} + \mathtt{offset}.\end{split}\]</div>
+<p>The boundary and offset terms in the last line are optional. When either is
+omitted, it is also omitted from the sum.</p>
 <p>The covariance projection identities in this reduction are exact for a
 jointly Gaussian native state. The builder reuses the resulting arithmetic
 moments for a correlated LogNormal positive state, which is a moment-matched
@@ -488,9 +492,12 @@ the pruned model-data variable unless an explicit retained-to-full mapping is
 also applied.</p>
 <p>With optional boundary conditions and offset present, the likelihood mean is</p>
 <div class="math notranslate nohighlight">
-\[\mathtt{modelled\_concentration}
+\[\mathtt{co2\_flux\_contribution}
 = \mathtt{fixed\_prior\_contribution}
-+ \mathtt{co2\_flux\_contribution}
++ H\,\mathtt{flux\_scaling},\]</div>
+<div class="math notranslate nohighlight">
+\[\mathtt{modelled\_concentration}
+= \mathtt{co2\_flux\_contribution}
 + \mathtt{mu\_bc}
 + \mathtt{offset}.\]</div>
 <p>An output may report a composite baseline by reconstructing the outer flux view
@@ -498,6 +505,9 @@ and adding it to <code class="docutils literal notranslate"><span class="pre">mu
 conditions, offsets, and outer flux remain distinct scientific terms. Sector
 combinations are likewise a general state-grouping choice rather than an
 outer-region model option.</p>
+</section>
+<section id="run-the-ordinary-prepared-input-co2-runner">
+<h3>Run the ordinary prepared-input CO2 runner<a class="headerlink" href="#run-the-ordinary-prepared-input-co2-runner" title="Link to this heading">#</a></h3>
 <p>The model builder accepts explicit scientific arrays rather than a dataset.
 For durable prepared artifacts, <a class="reference internal" href="../reference/openghg_inversions.rhime.html#openghg_inversions.rhime.run_rhime_co2" title="openghg_inversions.rhime.run_rhime_co2"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.run_rhime_co2()</span></code></a>
 is the public replay seam: it validates and materializes the selected arrays,
@@ -512,6 +522,38 @@ The current prepared-input runner does not accept or construct an
 outer-specific object. It constructs the complete retained prior from the
 prepared arithmetic mean and covariance, then forwards the prepared activity
 policy to the builder.</p>
+<p>Set <code class="docutils literal notranslate"><span class="pre">use_bc=True</span></code> to select <code class="docutils literal notranslate"><span class="pre">H_bc</span></code> from the prepared artifact and add its
+boundary contribution. <code class="docutils literal notranslate"><span class="pre">bc_prior</span></code> overrides the default labelled boundary
+scaling prior, while <code class="docutils literal notranslate"><span class="pre">bc_state_activity</span></code> can mark boundary states as active
+or fixed. Supplying <code class="docutils literal notranslate"><span class="pre">offset_prior</span></code> adds an offset. By default the offset has
+one coefficient per site; <code class="docutils literal notranslate"><span class="pre">offset_args</span></code> can instead select a global offset
+or site-by-period terms using <code class="docutils literal notranslate"><span class="pre">per_site</span></code>, <code class="docutils literal notranslate"><span class="pre">offset_freq</span></code>, and <code class="docutils literal notranslate"><span class="pre">drop_first</span></code>.
+The model derives period indicators from the observation time coordinate.
+Boundary and offset contributions remain separate from
+<code class="docutils literal notranslate"><span class="pre">co2_flux_contribution</span></code> and are included in <code class="docutils literal notranslate"><span class="pre">modelled_concentration</span></code>, the
+likelihood, and sampled outputs.
+The location and scale parameters in <code class="docutils literal notranslate"><span class="pre">offset_prior</span></code> use the observations’
+concentration units.</p>
+<p>For example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.inversion_data</span><span class="w"> </span><span class="kn">import</span> <span class="n">RhimePreparedInputs</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="n">run_rhime_co2</span>
+
+<span class="n">prepared</span> <span class="o">=</span> <span class="n">RhimePreparedInputs</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="s2">"co2-coherent-dense.zarr"</span><span class="p">)</span>
+<span class="n">idata</span> <span class="o">=</span> <span class="n">run_rhime_co2</span><span class="p">(</span>
+    <span class="n">prepared_inputs</span><span class="o">=</span><span class="n">prepared</span><span class="p">,</span>
+    <span class="n">aggregation_error_mode</span><span class="o">=</span><span class="s2">"dense"</span><span class="p">,</span>
+    <span class="n">use_bc</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="n">bc_prior</span><span class="o">=</span><span class="p">{</span>
+        <span class="s2">"pdf"</span><span class="p">:</span> <span class="s2">"truncatednormal"</span><span class="p">,</span>
+        <span class="s2">"mu"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span>
+        <span class="s2">"sigma"</span><span class="p">:</span> <span class="mf">0.05</span><span class="p">,</span>
+        <span class="s2">"lower"</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">,</span>
+    <span class="p">},</span>
+    <span class="n">offset_prior</span><span class="o">=</span><span class="p">{</span><span class="s2">"pdf"</span><span class="p">:</span> <span class="s2">"normal"</span><span class="p">,</span> <span class="s2">"mu"</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">,</span> <span class="s2">"sigma"</span><span class="p">:</span> <span class="mf">0.1</span><span class="p">},</span>
+    <span class="n">offset_args</span><span class="o">=</span><span class="p">{</span><span class="s2">"per_site"</span><span class="p">:</span> <span class="kc">False</span><span class="p">},</span>
+<span class="p">)</span>
+</pre></div>
+</div>
 <p>The CO2 builder and prepared-input runner also accept one ordinary
 <code class="docutils literal notranslate"><span class="pre">likelihood_builder</span></code> with explicit <code class="docutils literal notranslate"><span class="pre">likelihood_kwargs</span></code>. This selects
 package components such as
@@ -656,8 +698,9 @@ ratio. That future CO2/O2 coupling work is tracked in <a class="reference extern
 the prepared-input boundary for the fixed-tau OU likelihood with independently
 inferred site amplitudes. It owns the matched PyMC graph and sampler: the
 sigma-only No-U-Turn Sampler (NUTS) step runs first against
-the exact conditional likelihood, refreshes the accepted state quadratic, and
-stock state NUTS then reads that cache without refactorizing the observation
+the exact conditional likelihood. The sampler then rebuilds the
+state-likelihood quadratic for the site amplitudes returned by that transition,
+and stock state NUTS reads that cache without refactorizing the observation
 covariance during its trajectory.</p>
 <p>The runner begins from an already assembled coherent-reduction
 <code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code> artifact; it does not perform coherent reduction. Its
@@ -676,6 +719,14 @@ may be interleaved or unsorted. Datetime coordinates are converted to elapsed
 hours; numeric time coordinates are interpreted directly as hours. If
 <code class="docutils literal notranslate"><span class="pre">tau_hours</span></code> is a mapping, its keys must exactly match every observed site
 label.</p>
+<p>Boundary and offset selection uses the same prepared-input contract as the
+ordinary runner. Set <code class="docutils literal notranslate"><span class="pre">use_bc=True</span></code> to select a prepared <code class="docutils literal notranslate"><span class="pre">H_bc</span></code>;
+<code class="docutils literal notranslate"><span class="pre">bc_prior</span></code> and <code class="docutils literal notranslate"><span class="pre">bc_state_activity</span></code> configure its labelled scaling state.
+Supplying <code class="docutils literal notranslate"><span class="pre">offset_prior</span></code> adds the offset described by <code class="docutils literal notranslate"><span class="pre">offset_args</span></code>.
+Its location and scale parameters use the observations’ concentration units.
+These coefficients join the flux coefficients only inside the private cached
+likelihood calculation; their public scientific variables and contributions
+remain separate.</p>
 <p><a class="reference internal" href="coherent_reduction.html"><span class="doc">Coherent Gaussian Reduction</span></a> describes the linked retained prior, effective
 operator, affine contribution, and unresolved covariance, but no public
 function currently assembles those products into this durable artifact. That
@@ -692,6 +743,15 @@ Until it lands, callers must supply already-prepared coherent-reduction inputs.<
     <span class="n">tau_hours</span><span class="o">=</span><span class="p">{</span><span class="s2">"BSD"</span><span class="p">:</span> <span class="mf">24.0</span><span class="p">,</span> <span class="s2">"TAC"</span><span class="p">:</span> <span class="mf">18.0</span><span class="p">},</span>
     <span class="n">site_amplitude_prior_scale</span><span class="o">=</span><span class="mf">0.75</span><span class="p">,</span>  <span class="c1"># concentration units</span>
     <span class="n">aggregation_error_mode</span><span class="o">=</span><span class="s2">"low_rank"</span><span class="p">,</span>
+    <span class="n">use_bc</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="n">bc_prior</span><span class="o">=</span><span class="p">{</span>
+        <span class="s2">"pdf"</span><span class="p">:</span> <span class="s2">"truncatednormal"</span><span class="p">,</span>
+        <span class="s2">"mu"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span>
+        <span class="s2">"sigma"</span><span class="p">:</span> <span class="mf">0.05</span><span class="p">,</span>
+        <span class="s2">"lower"</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">,</span>
+    <span class="p">},</span>
+    <span class="n">offset_prior</span><span class="o">=</span><span class="p">{</span><span class="s2">"pdf"</span><span class="p">:</span> <span class="s2">"normal"</span><span class="p">,</span> <span class="s2">"mu"</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">,</span> <span class="s2">"sigma"</span><span class="p">:</span> <span class="mf">0.1</span><span class="p">},</span>
+    <span class="n">offset_args</span><span class="o">=</span><span class="p">{</span><span class="s2">"per_site"</span><span class="p">:</span> <span class="kc">False</span><span class="p">},</span>
     <span class="n">sigma_target_accept</span><span class="o">=</span><span class="mf">0.9</span><span class="p">,</span>
     <span class="n">state_target_accept</span><span class="o">=</span><span class="mf">0.9</span><span class="p">,</span>
     <span class="n">sampler</span><span class="o">=</span><span class="n">RhimeSampler</span><span class="p">(</span>
@@ -709,9 +769,9 @@ Until it lands, callers must supply already-prepared coherent-reduction inputs.<
 uses process spawning for multiple chains. Do not pass another step method in
 <code class="docutils literal notranslate"><span class="pre">sample_kwargs</span></code>. Set <code class="docutils literal notranslate"><span class="pre">sigma_target_accept</span></code> and <code class="docutils literal notranslate"><span class="pre">state_target_accept</span></code> on
 the runner rather than putting a generic <code class="docutils literal notranslate"><span class="pre">target_accept</span></code> in
-<code class="docutils literal notranslate"><span class="pre">RhimeSampler.sample_kwargs</span></code>. The accepted quadratic and fixed-OU generalized
-eigenbasis are runtime numerical state derived from the materialized prepared
-inputs; they are not external cache artifacts.</p>
+<code class="docutils literal notranslate"><span class="pre">RhimeSampler.sample_kwargs</span></code>. The state-likelihood quadratic cache and
+fixed-OU generalized eigenbasis are runtime numerical state derived from the
+materialized prepared inputs; they are not external cache artifacts.</p>
 <p>Because the cached graph uses a normalized joint <code class="docutils literal notranslate"><span class="pre">Potential</span></code>, it does not
 invent an independent observed distribution. After sampling, the same exact
 fixed-OU target adds <code class="docutils literal notranslate"><span class="pre">log_likelihood.y</span></code> as one scalar per complete
@@ -724,7 +784,8 @@ and owns a PyMC <code class="docutils literal notranslate"><span class="pre">Com
 above remains the log-density/gradient oracle and fallback.</p>
 <p>The exponential within-site covariance follows the stationary process of
 <a class="reference external" href="https://doi.org/10.1103/PhysRev.36.823">Uhlenbeck and Ornstein (1930)</a>. The named recipe and its matched
-accepted-state cache are implemented and versioned by OpenGHG Inversions.</p>
+runtime state-likelihood cache are implemented and versioned by OpenGHG
+Inversions.</p>
 <p>Built-in aggregation covariance relies on the guarantees of its construction
 pipeline. The runner selects and validates prepared aggregation-error arrays
 through <a class="reference internal" href="../reference/openghg_inversions.observation_error.html#openghg_inversions.observation_error.resolve_aggregation_error" title="openghg_inversions.observation_error.resolve_aggregation_error"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.observation_error.resolve_aggregation_error()</span></code></a>.
@@ -783,6 +844,7 @@ there is no separate public complete-covariance validator.</p>
     <ul class="pst-show_toc_level nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#co2-coherent-reduction-model">CO2 coherent-reduction model</a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#co2-grouped-inner-and-outer-states">CO2 grouped inner and outer states</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#run-the-ordinary-prepared-input-co2-runner">Run the ordinary prepared-input CO2 runner</a></li>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#co2-o2-shared-state-model">CO2/O2 shared-state model</a></li>

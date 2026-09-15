@@ -20,7 +20,12 @@ contribution. The core retained-state terms are
 .. math::
 
    x &\sim \operatorname{LogNormalMoments}(m_\alpha, C_\alpha), \\
-   \mu_{CO_2} &= H_\alpha x.
+   \mathtt{co2\_flux\_contribution} &= b_{fixed} + H_\alpha x, \\
+   \mathtt{modelled\_concentration}
+      &= \mathtt{co2\_flux\_contribution} + \mu_{bc} + \mathtt{offset}.
+
+The boundary and offset terms in the last line are optional. When either is
+omitted, it is also omitted from the sum.
 
 The covariance projection identities in this reduction are exact for a
 jointly Gaussian native state. The builder reuses the resulting arithmetic
@@ -102,9 +107,14 @@ With optional boundary conditions and offset present, the likelihood mean is
 
 .. math::
 
-   \mathtt{modelled\_concentration}
+   \mathtt{co2\_flux\_contribution}
    = \mathtt{fixed\_prior\_contribution}
-   + \mathtt{co2\_flux\_contribution}
+   + H\,\mathtt{flux\_scaling},
+
+.. math::
+
+   \mathtt{modelled\_concentration}
+   = \mathtt{co2\_flux\_contribution}
    + \mathtt{mu\_bc}
    + \mathtt{offset}.
 
@@ -113,6 +123,9 @@ and adding it to ``mu_bc + offset``. This is an output policy only: boundary
 conditions, offsets, and outer flux remain distinct scientific terms. Sector
 combinations are likewise a general state-grouping choice rather than an
 outer-region model option.
+
+Run the ordinary prepared-input CO2 runner
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 The model builder accepts explicit scientific arrays rather than a dataset.
 For durable prepared artifacts, :func:`openghg_inversions.rhime.run_rhime_co2`
@@ -128,6 +141,39 @@ The current prepared-input runner does not accept or construct an
 outer-specific object. It constructs the complete retained prior from the
 prepared arithmetic mean and covariance, then forwards the prepared activity
 policy to the builder.
+
+Set ``use_bc=True`` to select ``H_bc`` from the prepared artifact and add its
+boundary contribution. ``bc_prior`` overrides the default labelled boundary
+scaling prior, while ``bc_state_activity`` can mark boundary states as active
+or fixed. Supplying ``offset_prior`` adds an offset. By default the offset has
+one coefficient per site; ``offset_args`` can instead select a global offset
+or site-by-period terms using ``per_site``, ``offset_freq``, and ``drop_first``.
+The model derives period indicators from the observation time coordinate.
+Boundary and offset contributions remain separate from
+``co2_flux_contribution`` and are included in ``modelled_concentration``, the
+likelihood, and sampled outputs.
+The location and scale parameters in ``offset_prior`` use the observations'
+concentration units.
+
+For example::
+
+   from openghg_inversions.inversion_data import RhimePreparedInputs
+   from openghg_inversions.rhime import run_rhime_co2
+
+   prepared = RhimePreparedInputs.load("co2-coherent-dense.zarr")
+   idata = run_rhime_co2(
+       prepared_inputs=prepared,
+       aggregation_error_mode="dense",
+       use_bc=True,
+       bc_prior={
+           "pdf": "truncatednormal",
+           "mu": 1.0,
+           "sigma": 0.05,
+           "lower": 0.0,
+       },
+       offset_prior={"pdf": "normal", "mu": 0.0, "sigma": 0.1},
+       offset_args={"per_site": False},
+   )
 
 The CO2 builder and prepared-input runner also accept one ordinary
 ``likelihood_builder`` with explicit ``likelihood_kwargs``. This selects
@@ -310,8 +356,9 @@ Run the package-supported cached-sigma CO2 runner
 the prepared-input boundary for the fixed-tau OU likelihood with independently
 inferred site amplitudes. It owns the matched PyMC graph and sampler: the
 sigma-only No-U-Turn Sampler (NUTS) step runs first against
-the exact conditional likelihood, refreshes the accepted state quadratic, and
-stock state NUTS then reads that cache without refactorizing the observation
+the exact conditional likelihood. The sampler then rebuilds the
+state-likelihood quadratic for the site amplitudes returned by that transition,
+and stock state NUTS reads that cache without refactorizing the observation
 covariance during its trajectory.
 
 The runner begins from an already assembled coherent-reduction
@@ -332,6 +379,15 @@ hours; numeric time coordinates are interpreted directly as hours. If
 ``tau_hours`` is a mapping, its keys must exactly match every observed site
 label.
 
+Boundary and offset selection uses the same prepared-input contract as the
+ordinary runner. Set ``use_bc=True`` to select a prepared ``H_bc``;
+``bc_prior`` and ``bc_state_activity`` configure its labelled scaling state.
+Supplying ``offset_prior`` adds the offset described by ``offset_args``.
+Its location and scale parameters use the observations' concentration units.
+These coefficients join the flux coefficients only inside the private cached
+likelihood calculation; their public scientific variables and contributions
+remain separate.
+
 :doc:`coherent_reduction` describes the linked retained prior, effective
 operator, affine contribution, and unresolved covariance, but no public
 function currently assembles those products into this durable artifact. That
@@ -351,6 +407,15 @@ For example::
        tau_hours={"BSD": 24.0, "TAC": 18.0},
        site_amplitude_prior_scale=0.75,  # concentration units
        aggregation_error_mode="low_rank",
+       use_bc=True,
+       bc_prior={
+           "pdf": "truncatednormal",
+           "mu": 1.0,
+           "sigma": 0.05,
+           "lower": 0.0,
+       },
+       offset_prior={"pdf": "normal", "mu": 0.0, "sigma": 0.1},
+       offset_args={"per_site": False},
        sigma_target_accept=0.9,
        state_target_accept=0.9,
        sampler=RhimeSampler(
@@ -367,9 +432,9 @@ The runner constructs the required ``site amplitude -> state`` ``CompoundStep`` 
 uses process spawning for multiple chains. Do not pass another step method in
 ``sample_kwargs``. Set ``sigma_target_accept`` and ``state_target_accept`` on
 the runner rather than putting a generic ``target_accept`` in
-``RhimeSampler.sample_kwargs``. The accepted quadratic and fixed-OU generalized
-eigenbasis are runtime numerical state derived from the materialized prepared
-inputs; they are not external cache artifacts.
+``RhimeSampler.sample_kwargs``. The state-likelihood quadratic cache and
+fixed-OU generalized eigenbasis are runtime numerical state derived from the
+materialized prepared inputs; they are not external cache artifacts.
 
 Because the cached graph uses a normalized joint ``Potential``, it does not
 invent an independent observed distribution. After sampling, the same exact
@@ -386,7 +451,8 @@ above remains the log-density/gradient oracle and fallback.
 The exponential within-site covariance follows the stationary process of
 `Uhlenbeck and Ornstein (1930)
 <https://doi.org/10.1103/PhysRev.36.823>`_. The named recipe and its matched
-accepted-state cache are implemented and versioned by OpenGHG Inversions.
+runtime state-likelihood cache are implemented and versioned by OpenGHG
+Inversions.
 
 Built-in aggregation covariance relies on the guarantees of its construction
 pipeline. The runner selects and validates prepared aggregation-error arrays
