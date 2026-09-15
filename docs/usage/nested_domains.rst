@@ -1,8 +1,11 @@
-Nested-domain RHIME tutorial
-============================
+.. _nested-domain-rhime-tutorial:
 
-Nested-domain RHIME combines a coarse outer model domain with a finer inner
-domain without counting emissions in the overlap twice. The modern workflow:
+Run a nested-domain RHIME inversion
+===================================
+
+Nested-domain RHIME combines a surrounding outer transport domain with a
+higher-resolution inner transport domain without counting emissions in the
+overlap twice. The workflow:
 
 #. retrieves the outer and inner footprint/flux scenarios independently;
 #. keeps only sites available on both domains, filters the canonical outer
@@ -14,9 +17,45 @@ domain without counting emissions in the overlap twice. The modern workflow:
 #. samples ``H @ x_outer + H_inner @ x_inner`` with the ordinary RHIME
    boundary-condition, model-error, and likelihood components.
 
-The two grids are not RHIME emissions sectors. A sector separates different
-flux sources on one spatial layout; a nested domain separates two resolutions
-of the same flux source and must retain two independent basis operators.
+The two grids are not RHIME emissions sectors or grouped basis regions. A
+sector separates different flux sources on one spatial layout; a nested domain
+separates two transport grids for the same flux source and must retain two
+independent basis operators. See the :doc:`family support summary
+<nested_domain_model_family>` before using this guide.
+
+Model and state semantics
+-------------------------
+
+The outer sensitivity ``H`` has state dimension ``region`` and scales with
+``x_outer``. The inner sensitivity ``H_inner`` has the independent state
+dimension ``inner_region`` and scales with ``x_inner``. They meet only in the
+shared observation dimension:
+
+.. math::
+
+   \mu_{\mathrm{outer},t}
+   = \sum_r H_{r,t} x_{\mathrm{outer},r},
+   \qquad
+   \mu_{\mathrm{inner},t}
+   = \sum_q H_{\mathrm{inner},q,t} x_{\mathrm{inner},q}.
+
+The model records these contributions as ``mu_outer`` and ``mu_inner``. Its
+``mu`` deterministic is their pollution sum:
+
+.. math::
+
+   \mu_t = \mu_{\mathrm{outer},t} + \mu_{\mathrm{inner},t}.
+
+When ``inner_x_prior`` is omitted, ``x_inner`` uses a copy of the outer
+scaling prior; pass ``inner_x_prior`` to choose it independently. Any enabled
+outer boundary-condition or offset contribution is added to this pollution sum
+when constructing the mean passed to the shared likelihood, which applies the
+configured observation error, aggregation error, and model-data mismatch
+treatment.
+
+Both state vectors are sampled jointly. Separating their posterior influence
+therefore depends on the outer and inner footprints producing sufficiently
+distinct observation-space sensitivities.
 
 Surface-site example
 --------------------
@@ -94,6 +133,29 @@ treated as the total outer-plus-inner budget. RHIME splits it using the
 square-root ratio of the retained absolute ``fp_x_flux`` sensitivities, with
 the inner share bounded between 35 and 60 percent. Set ``inner_nbasis``
 explicitly when ``nbasis`` should remain the independent outer target.
+
+Use saved basis files
+---------------------
+
+Saved outer and inner bases remain separate because each belongs to its own
+native grid. Configure the outer file with ``fp_basis_case`` and
+``basis_directory``. Configure the inner file independently with
+``inner_fp_basis_case`` and ``inner_basis_directory``:
+
+.. code-block:: python
+
+   result = run_rhime_nested(
+       config_file="nested_rhime.ini",
+       fp_basis_case="outer_basis",
+       basis_directory="/data/basis/outer",
+       inner_fp_basis_case="inner_6km_basis",
+       inner_basis_directory="/data/basis/inner",
+   )
+
+Do not create one basis artifact spanning both grids. When generating a basis
+instead, ``basis_output_path`` and ``inner_basis_output_path`` save the outer
+and inner artifacts independently. If no inner basis file or algorithm is
+specified, the inner grid uses the quadtree algorithm.
 
 The result exposes the ordinary RHIME objects and both native preparations:
 

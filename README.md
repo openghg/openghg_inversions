@@ -4,9 +4,9 @@
 
 OpenGHG Inversions is a Python package that is being developed as part of the [OpenGHG project](https://openghg.org) with the aim of merging the data-processing and simulation modelling capabilities of OpenGHG with the atmospheric Bayesian inverse models developed by the Atmospheric Chemistry Research Group (ACRG) at the University of Bristol, UK.
 
-Current regional inversion work uses RHIME: the standard and multisector
-recipes provide complete acquisition-to-output runners, while the advanced
-CO₂ family provides prepared-input model-building and replay interfaces.
+Current regional inversion work uses RHIME: the standard, multisector, and
+nested-domain recipes provide complete runners, while the advanced CO₂ family
+provides prepared-input model-building and replay interfaces.
 [Choose a RHIME model recipe](docs/usage/model_recipes.rst) from the supported
 workflows. The fixedbasis and hierarchical Bayesian Markov chain Monte Carlo
 (HBMCMC) interfaces remain compatibility paths for existing scripts,
@@ -235,12 +235,13 @@ result = run_rhime(
 )
 ```
 
-Nested outer/inner grids use the explicit ``run_rhime_nested`` entry point.
+Nested outer/inner grids use the explicit `run_rhime_nested` entry point.
 It masks the outer response over the inner extent, retains separate native
-bases, and samples separate ``x_outer`` and ``x_inner`` state blocks. See the
-[nested-domain RHIME tutorial](docs/usage/nested_domains.rst). Nested output is
-currently sampling-only (``output_format="none"``) so a single-grid writer
-cannot accidentally discard or re-grid the inner posterior.
+bases, and samples separate `x_outer` and `x_inner` state blocks. See the
+[nested-domain model family](docs/usage/nested_domain_model_family.rst).
+Nested runs support `output_format="none"` for an in-memory result and
+`output_format="paris"` for separate outer- and inner-grid flux products plus
+one shared concentration product; single-grid output formats are rejected.
 
 For SLURM batch scripts and installed environments, use the console entry point:
 

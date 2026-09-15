@@ -40,8 +40,9 @@ with a JSON object passed to ``--kwargs``:
 Keep the JSON in single quotes so the shell passes it as one argument. Run
 ``openghg-inversions run-rhime --help`` or
 ``openghg-inversions run-rhime-multisector --help`` for the complete ordinary
-command syntax. See :doc:`nested_domains` for nested configuration and current
-output constraints. New configuration files should use the RHIME vocabulary documented in
+command syntax. See the :doc:`nested-domain model family
+<nested_domain_model_family>` for its support boundary and configuration
+guide. New configuration files should use the RHIME vocabulary documented in
 :doc:`rhime`; the packaged starting point is
 ``openghg_inversions/config/templates/rhime_template.ini``. Complete,
 validated production-shape examples are used by

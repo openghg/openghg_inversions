@@ -1140,8 +1140,9 @@ def run_rhime_nested(
 
     Nested options may be supplied directly or in the INI file. Ordinary
     options use the same modern vocabulary as :func:`run_rhime`.
-    ``output_format='none'`` is required until a dual-grid output schema is
-    available.
+    ``output_format='none'`` returns the sampled result without formatted
+    products; ``output_format='paris'`` creates separate native-grid flux
+    products and one shared concentration product.
     """
     if likelihood_builder is not None and not callable(likelihood_builder):
         raise TypeError(
