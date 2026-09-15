@@ -264,7 +264,71 @@ def build_co2_cached_sigma_model(
     returned target owns exact joint likelihood and predictive evaluation
     after sampling; no independent pointwise likelihood is fabricated in the
     graph.
+
+    Args:
+        flux_sensitivity: Reduced sensitivity with the output dimension and
+            one labelled retained-state dimension, in concentration units per
+            unit dimensionless flux scaling.
+        retained_prior: Complete labelled arithmetic-moment prior for the
+            positive, dimensionless retained flux-scaling state.
+        fixed_prior_contribution: Fixed coherent-reduction affine contribution
+            on the output dimension, in the observations' concentration units.
+        observations: Observed CO2 concentrations on the output dimension,
+            with observation-aligned ``site`` and ``time`` coordinates.
+        observation_error: Reported observation standard deviation, in the
+            observations' concentration units.
+        aggregation_error: Prepared fixed aggregation-error covariance, in
+            squared concentration units.
+        tau_hours: Fixed OU decorrelation time in hours. A scalar applies to
+            every site; a mapping must cover every observed site label.
+        site_amplitude_prior_scale: Scale of the independent HalfNormal site-
+            amplitude priors, in the observations' concentration units.
+        initial_site_amplitudes: Optional positive initial amplitude in the
+            same units, supplied as one scalar or a mapping covering every
+            observed site. Defaults to ``site_amplitude_prior_scale``.
+        state_activity: Optional labelled active/fixed policy for retained flux
+            states. Fixed values are dimensionless flux scalings.
+        boundary_sensitivity: Optional atmospheric boundary-condition
+            sensitivity, in concentration units per unit dimensionless
+            boundary scaling.
+        bc_prior: Optional prior for dimensionless boundary-scaling
+            coefficients. Requires ``boundary_sensitivity``; when omitted for
+            a selected boundary component, the default boundary prior is used.
+        bc_state_activity: Optional labelled active/fixed policy for boundary
+            scalings. Requires ``boundary_sensitivity``.
+        offset_prior: Optional prior for additive offsets. Its location and
+            scale parameters use the observations' concentration units. When
+            omitted, no offset is added.
+        offset_freq: Optional frequency used to derive offset periods from the
+            observation-aligned ``time`` coordinate. Requires ``offset_prior``.
+        offset_drop_first: Whether to omit the first site's offset terms.
+            ``True`` requires ``offset_prior`` and a per-site offset.
+        offset_per_site: Whether offsets vary by site. ``False`` creates one
+            global offset and does not accept ``offset_freq`` or
+            ``offset_drop_first=True``. The non-default value requires
+            ``offset_prior``.
+        output_dim: Name of the shared observation and model-output dimension.
+
+    Returns:
+        The registered model, fixed-OU target and caches, ordered sampler
+        states, and completed concentration mean.
+
+    Raises:
+        ValueError: If scientific arrays, coordinates, covariance inputs,
+            priors, or activity policies are invalid; if boundary options are
+            supplied without ``boundary_sensitivity``; or if non-default
+            offset options are supplied without ``offset_prior``. Also raised
+            for incompatible global-offset options or a model without active
+            affine coefficients.
     """
+    if boundary_sensitivity is None and (
+        bc_prior is not None or bc_state_activity is not None
+    ):
+        raise ValueError("bc_prior and bc_state_activity require boundary_sensitivity.")
+    if offset_prior is None and (
+        offset_freq is not None or offset_drop_first or not offset_per_site
+    ):
+        raise ValueError("Non-default offset options require offset_prior.")
     if not np.isfinite(site_amplitude_prior_scale) or site_amplitude_prior_scale <= 0.0:
         raise ValueError("`site_amplitude_prior_scale` must be finite and strictly positive.")
     validate_observation_error_arrays(

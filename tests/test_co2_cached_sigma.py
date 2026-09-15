@@ -140,7 +140,7 @@ def _dense_fixed_ou_covariance(
     return covariance
 
 
-def _build(*, state_activity: StateActivity | None = None) -> Any:
+def _build(*, state_activity: StateActivity | None = None, **kwargs: Any) -> Any:
     inputs = _inputs()
     prior = CorrelatedLognormalPrior(
         inputs["alpha_prior_mean"],
@@ -158,10 +158,33 @@ def _build(*, state_activity: StateActivity | None = None) -> Any:
         site_amplitude_prior_scale=0.75,
         initial_site_amplitudes={"BBB": 0.4, "unused": 9.0, "AAA": 0.3},
         state_activity=state_activity,
+        **kwargs,
     )
 
 
-def test_cached_input_names_do_not_auto_select_prepared_baseline() -> None:
+@pytest.mark.parametrize(
+    ("options", "required_component"),
+    [
+        (
+            {"bc_prior": {"pdf": "normal", "mu": 1.0, "sigma": 0.1}},
+            "boundary_sensitivity",
+        ),
+        ({"bc_state_activity": StateActivity()}, "boundary_sensitivity"),
+        ({"offset_freq": "monthly"}, "offset_prior"),
+        ({"offset_drop_first": True}, "offset_prior"),
+        ({"offset_per_site": False}, "offset_prior"),
+    ],
+)
+def test_cached_builder_rejects_options_for_absent_components(
+    options: dict[str, Any],
+    required_component: str,
+) -> None:
+    """Component options cannot silently disappear from the public builder."""
+    with pytest.raises(ValueError, match=required_component):
+        _build(**options)
+
+
+def test_cached_input_names_do_not_auto_select_prepared_boundary() -> None:
     """Cached input selection leaves an unrequested prepared boundary untouched."""
     inputs = _boundary_inputs()
 

@@ -303,7 +303,7 @@ def run_rhime_co2_cached_sigma(
     for the values returned by that transition, and stock PyMC NUTS then
     updates the correlated flux and optional boundary and offset states against
     that cache. ``use_bc=False`` leaves a prepared boundary
-    field unselected and preserves the no-baseline route. An offset is added
+    field unselected and preserves the no-boundary route. An offset is added
     only when ``offset_prior`` is supplied. ``sigma_target_accept`` and
     ``state_target_accept`` tune the two sampler steps independently.
 
