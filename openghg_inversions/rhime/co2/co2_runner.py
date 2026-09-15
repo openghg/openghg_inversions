@@ -71,6 +71,7 @@ def _annotate_co2_trace(
         "hbc": ["boundary_sensitivity"],
         "bc": ["boundary_scale"],
         "mu_bc": ["boundary_concentration"],
+        "offset_latent": ["offset_coefficient"],
         "offset": ["offset_concentration"],
         "epsilon": ["model_error"],
         "y": ["concentration"],
@@ -85,6 +86,7 @@ def _annotate_co2_trace(
         "modelled_concentration",
         "co2_flux_contribution",
         "mu_bc",
+        "offset_latent",
         "offset",
         "epsilon",
         "y",
@@ -127,6 +129,7 @@ def co2_model_input_names(
     *,
     aggregation_error_mode: AggregationErrorMode,
     preserve_prepared_fixed_mismatch: bool,
+    use_bc: bool = False,
 ) -> tuple[str, ...]:
     """Declare prepared arrays consumed by the selected CO2 components.
 
@@ -137,6 +140,7 @@ def co2_model_input_names(
             the likelihood.
         preserve_prepared_fixed_mismatch: Include a prepared fixed mismatch
             field when present.
+        use_bc: Include the prepared boundary-condition sensitivity.
 
     Returns:
         Names of the arrays to materialize for model construction.
@@ -146,6 +150,8 @@ def co2_model_input_names(
     """
     inputs = prepared_inputs.inv_inputs
     names = list(_CO2_SCIENTIFIC_INPUT_NAMES)
+    if use_bc:
+        names.append("H_bc")
     names.extend(aggregation_error_input_names(inputs, aggregation_error_mode))
     if "state_is_active" in inputs:
         names.append("state_is_active")
@@ -170,6 +176,11 @@ def run_rhime_co2(
     sampler: RhimeSampler | None = None,
     aggregation_error_mode: AggregationErrorMode = "dense",
     no_model_error: bool = False,
+    use_bc: bool = False,
+    bc_prior: PriorArgs | None = None,
+    bc_state_activity: StateActivity | None = None,
+    offset_prior: PriorArgs | None = None,
+    offset_args: Mapping[str, Any] | None = None,
 ) -> az.InferenceData:
     """Materialize, build, and sample the CO2 coherent-reduction model.
 
@@ -202,6 +213,13 @@ def run_rhime_co2(
         aggregation_error_mode: Prepared aggregation-error representation to
             use in the likelihood.
         no_model_error: If true, omit inferred additive model error.
+        use_bc: Whether to include prepared ``H_bc`` boundary sensitivity.
+        bc_prior: Optional prior for boundary-condition scaling.
+        bc_state_activity: Optional active/fixed boundary-state policy.
+        offset_prior: Optional prior for an offset component. When omitted, no
+            offset is added.
+        offset_args: Optional offset settings: ``offset_freq``, ``drop_first``,
+            and ``per_site``.
 
     Returns:
         Sampled inference data annotated with the CO2 variable-role and model
@@ -218,6 +236,10 @@ def run_rhime_co2(
         )
     if likelihood_builder is None and likelihood_kwargs:
         raise ValueError("likelihood_kwargs require likelihood_builder.")
+    if not use_bc and (bc_prior is not None or bc_state_activity is not None):
+        raise ValueError("bc_prior and bc_state_activity require use_bc=True.")
+    if offset_prior is None and offset_args:
+        raise ValueError("offset_args require offset_prior.")
     if likelihood_builder is not None and (
         no_model_error
         or sigma_alignment is not None
@@ -233,6 +255,7 @@ def run_rhime_co2(
         prepared,
         aggregation_error_mode=aggregation_error_mode,
         preserve_prepared_fixed_mismatch=(likelihood_builder is None and fixed_model_mismatch is None),
+        use_bc=use_bc,
     )
     model_inputs = materialize_pymc_inputs(prepared, variable_names=names)
     if likelihood_builder is None and not no_model_error and sigma_alignment is None:
@@ -265,6 +288,11 @@ def run_rhime_co2(
         sigma_prior=sigma_prior,
         fixed_model_mismatch=prepared_mismatch,
         state_activity=_state_activity_from_inputs(model_inputs),
+        boundary_sensitivity=model_inputs.get("H_bc") if use_bc else None,
+        bc_prior=bc_prior,
+        bc_state_activity=bc_state_activity,
+        offset_prior=offset_prior,
+        offset_args=offset_args,
     )
     variable_roles = {
         "observation": "y",
@@ -278,6 +306,16 @@ def run_rhime_co2(
     }
     if "error" in model.named_vars:
         variable_roles["observation_error"] = "error"
+    if use_bc:
+        variable_roles.update(
+            {
+                "boundary_concentration": "mu_bc",
+                "boundary_scale": "bc",
+                "boundary_sensitivity": "hbc",
+            }
+        )
+    if offset_prior is not None:
+        variable_roles["offset_concentration"] = "offset"
     built = RhimeModelBuildResult(
         model=model,
         variable_roles=variable_roles,

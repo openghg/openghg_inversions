@@ -1,4 +1,4 @@
-"""Accepted-site-sigma state quadratics for the fixed-OU likelihood."""
+"""State-likelihood quadratics for supplied site amplitudes in the fixed-OU likelihood."""
 
 from __future__ import annotations
 
@@ -38,7 +38,7 @@ def _matrix(value: ArrayLike, name: str) -> FloatArray:
 
 @dataclass(frozen=True)
 class MarginalQuadraticCache:
-    """Normalized state likelihood coefficients at one accepted site sigma."""
+    """Normalized state-likelihood coefficients at one site-amplitude vector."""
 
     constant: float
     linear: FloatArray
@@ -68,9 +68,10 @@ class MarginalQuadraticCache:
 class FixedOuCachedSigmaTarget:
     """Build state quadratics from the OGI fixed-OU covariance preparation.
 
-    ``refresh`` performs one rank-space factorization for an accepted sigma and
-    solves the zero-state residual and all state-design columns together. State
-    evaluations on the returned cache are then pure dense quadratic algebra.
+    ``refresh`` performs one rank-space factorization for the supplied site
+    amplitudes and solves the zero-state residual and all state-design columns
+    together. State evaluations on the returned cache are then pure dense
+    quadratic algebra.
     """
 
     def __init__(
@@ -115,7 +116,7 @@ class FixedOuCachedSigmaTarget:
         return self.prepared.n_site
 
     def refresh(self, sigma: ArrayLike | float) -> MarginalQuadraticCache:
-        """Build one exact float64 quadratic for an accepted sigma."""
+        """Build one exact float64 quadratic for the supplied site amplitudes."""
         sigma_value = np.asarray(sigma, dtype=np.float64)
         if sigma_value.ndim == 0:
             sigma_value = np.full(self.n_group, sigma_value.item(), dtype=np.float64)
@@ -158,6 +159,22 @@ class FixedOuCachedSigmaTarget:
         residual = self._residual_at_zero - self.design @ state_value
         return self.evaluate_from_residual(residual, sigma).log_likelihood
 
+    def log_likelihood_from_mean(
+        self,
+        mean: ArrayLike,
+        sigma: ArrayLike | float,
+    ) -> float:
+        """Evaluate the exact likelihood from a completed observation mean."""
+        mean_value = _vector(mean, "mean")
+        if mean_value.shape != (self.n_obs,):
+            raise ValueError(
+                f"mean has shape {mean_value.shape}, expected {(self.n_obs,)}."
+            )
+        return self.evaluate_from_residual(
+            self.observations - mean_value,
+            sigma,
+        ).log_likelihood
+
     def random(
         self,
         state: ArrayLike,
@@ -172,3 +189,24 @@ class FixedOuCachedSigmaTarget:
             raise ValueError(f"state has shape {state_value.shape}, expected {(self.n_state,)}.")
         mean = self.fixed_contribution + self.design @ state_value
         return self.prepared.random(mean, np.asarray(sigma), rng=rng, size=size)
+
+    def random_from_mean(
+        self,
+        mean: ArrayLike,
+        sigma: ArrayLike | float,
+        *,
+        rng: np.random.Generator,
+        size: int | tuple[int, ...] | None = None,
+    ) -> np.ndarray:
+        """Draw a joint observation vector from a completed observation mean."""
+        mean_value = _vector(mean, "mean")
+        if mean_value.shape != (self.n_obs,):
+            raise ValueError(
+                f"mean has shape {mean_value.shape}, expected {(self.n_obs,)}."
+            )
+        return self.prepared.random(
+            mean_value,
+            np.asarray(sigma),
+            rng=rng,
+            size=size,
+        )

@@ -38,6 +38,10 @@ Current support
        CO₂ configuration workflow.
      - Python arguments at the prepared-input boundary; no complete built-in
        linked configuration workflow.
+   * - Boundary conditions and offsets
+     - The ordinary and cached-sigma runners can select prepared ``H_bc``
+       boundary sensitivity and add global, site, or site-by-period offsets.
+     - Not exposed by the linked prepared-input runner.
    * - Staged workflow
      - Not supported by the staged CLI.
      - Not supported by the staged CLI.

@@ -1,4 +1,4 @@
-"""Tests for the accepted-sigma cached PyMC compound sampler."""
+"""Tests for the cached sigma-then-state PyMC compound sampler."""
 
 from __future__ import annotations
 
@@ -53,7 +53,12 @@ def _step_context(
         )
         initial_cache = target.refresh(np.array([0.4, 0.4]))
         shared = PytensorMarginalQuadraticCache(initial_cache)
-        pm.Potential("cached_likelihood", shared.log_likelihood(pt.exp(state)))
+        coefficients = pt.exp(state)
+        modelled_mean = pm.Deterministic(
+            "modelled_mean",
+            target.fixed_contribution + pt.dot(target.design, coefficients),
+        )
+        pm.Potential("cached_likelihood", shared.log_likelihood(coefficients))
     if forbid_constructor_refresh:
         target.refresh = lambda _: (_ for _ in ()).throw(
             AssertionError("Step construction must reuse the installed initial cache.")
@@ -61,13 +66,11 @@ def _step_context(
     point = model.initial_point()
     point["state"] = np.array([0.3])
     step = PymcCachedSigmaNutsStep(
-        [sigma],
+        sigma,
         target=target,
         shared_cache=shared,
         initial_cache=initial_cache,
-        state_value_name="state",
-        state_location=np.zeros(1),
-        state_cholesky=np.eye(1),
+        modelled_mean=modelled_mean,
         prior_scale=0.75,
         initial_point=point,
         model=model,
@@ -103,7 +106,7 @@ def test_sigma_step_reuses_passed_initial_cache() -> None:
     assert step.current_cache is initial_cache
 
 
-def test_sigma_step_refreshes_once_only_when_the_accepted_value_changes(
+def test_sigma_step_refreshes_once_only_when_the_returned_value_changes(
     monkeypatch,
 ) -> None:
     target, shared, _, _, _, _, point, step = _step_context()
@@ -206,13 +209,11 @@ def test_compound_orders_sigma_before_state_without_state_refactorization(
     compound = make_cached_sigma_compound_step(
         model=model,
         sigma=sigma,
-        state=state,
+        states=[state],
+        modelled_mean=model["modelled_mean"],
         target=target,
         shared_cache=shared,
         initial_cache=step.current_cache,
-        state_value_name="state",
-        state_location=np.zeros(1),
-        state_cholesky=np.eye(1),
         prior_scale=0.75,
         initial_point=point,
         rng=np.random.default_rng(703),
@@ -250,17 +251,20 @@ def _sample_two_spawn_chains(seed: int):
         )
         initial_cache = target.refresh(np.array([0.4, 0.4]))
         shared = PytensorMarginalQuadraticCache(initial_cache)
-        pm.Potential("cached_likelihood", shared.log_likelihood(pt.exp(state)))
+        coefficients = pt.exp(state)
+        modelled_mean = pm.Deterministic(
+            "modelled_mean",
+            target.fixed_contribution + pt.dot(target.design, coefficients),
+        )
+        pm.Potential("cached_likelihood", shared.log_likelihood(coefficients))
         step = make_cached_sigma_compound_step(
             model=model,
             sigma=sigma,
-            state=state,
+            states=[state],
+            modelled_mean=modelled_mean,
             target=target,
             shared_cache=shared,
             initial_cache=initial_cache,
-            state_value_name="state",
-            state_location=np.zeros(1),
-            state_cholesky=np.eye(1),
             prior_scale=0.75,
             rng=np.random.default_rng(700),
         )
@@ -290,7 +294,13 @@ def test_two_spawn_chains_are_reproducible_and_emit_cached_diagnostics() -> None
         first.posterior["sigma_site"].isel(chain=0),
         first.posterior["sigma_site"].isel(chain=1),
     )
-    assert first.posterior.sizes == {"chain": 2, "draw": 4, "state_dim_0": 1, "sigma_site_dim_0": 2}
+    assert first.posterior.sizes == {
+        "chain": 2,
+        "draw": 4,
+        "state_dim_0": 1,
+        "sigma_site_dim_0": 2,
+        "modelled_mean_dim_0": 4,
+    }
     assert "sigma_nuts_tree_steps" in first.sample_stats
     assert "cache_refreshes" in first.sample_stats
     assert np.isfinite(first.posterior["sigma_site"]).all()
@@ -365,16 +375,18 @@ def test_compound_sampler_matches_independent_dense_posterior_moments() -> None:
             initval=pm.floatX([0.4]),
         )
         pm.Potential("cached_likelihood", shared.log_likelihood(state))
+        modelled_mean = pm.Deterministic(
+            "modelled_mean",
+            target.fixed_contribution + pt.dot(target.design, state),
+        )
         step = make_cached_sigma_compound_step(
             model=model,
             sigma=amplitude,
-            state=state_white,
+            states=[state_white],
+            modelled_mean=modelled_mean,
             target=target,
             shared_cache=shared,
             initial_cache=initial_cache,
-            state_value_name="state_white",
-            state_location=np.zeros(1),
-            state_cholesky=np.eye(1),
             prior_scale=prior_scale,
             sigma_target_accept=0.9,
             state_target_accept=0.9,

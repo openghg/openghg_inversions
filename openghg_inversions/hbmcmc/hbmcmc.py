@@ -827,7 +827,7 @@ def fixedbasisMCMC(
         bcprior: Same as xprior but for boundary conditions.
         sigprior: Same as xprior but for model error.
         offsetprior: Same as xprior but for bias offset. Only used is addoffset=True.
-        offset_args: Dictionary of args to pass to `make_offset`. For instance
+        offset_args: Dictionary of options for the offset component. For instance
             `{"drop_first": False}` will put an offset on all site (rather than using 0
             offset for the first site). If "offset_freq" is passed, then the
             offset will be applied at the specified frequency (e.g. monthly).
