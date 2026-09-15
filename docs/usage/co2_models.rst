@@ -47,9 +47,11 @@ mismatch ``sigma``, its covariance is
 The lower-level builder adds inferred ``sigma`` only when the caller supplies a
 ``sigma_alignment``. The public :func:`~openghg_inversions.rhime.run_rhime_co2`
 runner creates a site-specific alignment over one shared time period by
-default, and uses an independent HalfNormal prior with ``sigma=1.0`` unless
-``sigma_prior`` overrides it. Set ``no_model_error=True`` to disable this
-inferred term.
+default, and uses an independent HalfNormal prior with ``sigma=1.0`` in the
+observations' concentration units unless ``sigma_prior`` overrides it. Override
+``sigma_prior`` when that scale is inappropriate for the observation units or
+scientific application. Set ``no_model_error=True`` to disable this inferred
+term.
 
 The CO₂ runner does not consume ``min_error`` or apply a minimum-error floor.
 Other recipes and components own their own floor settings; for example, the
@@ -59,8 +61,10 @@ Verification Games fixed-only policy passes ``fixed_model_mismatch=1.0`` and
 ``no_model_error=True`` visibly. A runnable CO2 configuration and resolver are
 tracked in `OPE-79 <https://linear.app/openghg-inversions/issue/OPE-79>`_.
 For the matched fixed-tau Ornstein--Uhlenbeck (OU) likelihood with independently
-inferred site amplitudes, use :ref:`the production cached-sigma CO2 recipe
+inferred site amplitudes, use :ref:`the package-supported cached-sigma CO2 runner
 <co2-cached-sigma-recipe>`.
+
+.. _co2-grouped-states:
 
 CO2 grouped inner and outer states
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -235,13 +239,17 @@ Preparation accepts separate native channel arrays, then gathers their rows on
 one ``(species, channel_observation)`` observation index before the model
 applies the joint sensitivity once. Before calling
 :func:`~openghg_inversions.rhime.co2.prepare_co2_o2_inputs`, callers must
-numerically convert observations, sensitivities, independent errors, and every
+numerically convert observations, prior-forward means, sensitivities, and every
 covariance block into mutually consistent channel units. The ``co2_units`` and
 ``o2_units`` arguments only attach labels; they do not convert or validate
-numerical scales, so incorrectly scaled values can pass preparation. Each row
-then retains its declared native units and numerical scale. Verification-game
-inputs may use ppm for both channels, while real atmospheric O2 observations
-may use per-meg delta(O2/N2).
+numerical scales, so incorrectly scaled values can pass preparation. Before
+calling
+:func:`~openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs`,
+callers must separately convert ``independent_error_sd`` into the corresponding
+observation-row units and attach matching ``observation_units`` labels. Each
+row then retains its declared native units and numerical scale.
+Verification-game inputs may use ppm for both channels, while real atmospheric
+O2 observations may use per-meg delta(O2/N2).
 The prepared channel fields are named ``co2_sensitivity`` and
 ``o2_sensitivity``; their gathered model-data variable is
 ``co2_o2_sensitivity``.
@@ -290,12 +298,13 @@ inferred oxidation ratio were instead explicit model state, the recipe would
 visibly form ``o2_state = oxidation_ratio * co2_state`` before applying the
 ratio-free O2 sensitivity. The :doc:`Ramsden methane/ethane model
 <../experimental/ramsden2022>` follows that explicit pattern for its emission
-ratio. OPE-118 owns that future CO2/O2 coupling work.
+ratio. That future CO2/O2 coupling work is tracked in `OPE-118
+<https://linear.app/openghg-inversions/issue/OPE-118>`_.
 
 .. _co2-cached-sigma-recipe:
 
-Run the production cached-sigma CO2 recipe
-------------------------------------------
+Run the package-supported cached-sigma CO2 runner
+-------------------------------------------------
 
 ``run_rhime_co2_cached_sigma`` is the package-supported cached-sigma runner at
 the prepared-input boundary for the fixed-tau OU likelihood with independently
@@ -317,8 +326,11 @@ instead contains ``aggregation_error_covariance`` and must be selected with
 ``aggregation_error_mode="dense"``. Optional ``state_is_active`` and
 ``state_fixed_value`` variables carry the prepared state-activity policy.
 The observation array must also have observation-aligned ``site`` and ``time``
-coordinates. If ``tau_hours`` is a mapping, its keys must exactly match every
-observed site label.
+coordinates. Times must be finite and unique within each site, although rows
+may be interleaved or unsorted. Datetime coordinates are converted to elapsed
+hours; numeric time coordinates are interpreted directly as hours. If
+``tau_hours`` is a mapping, its keys must exactly match every observed site
+label.
 
 :doc:`coherent_reduction` describes the linked retained prior, effective
 operator, affine contribution, and unresolved covariance, but no public

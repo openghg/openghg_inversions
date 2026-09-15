@@ -101,10 +101,14 @@ def test_moved_recipe_sections_preserve_legacy_fragment_targets() -> None:
     assert ".. _co2-coherent-reduction-model:" in concrete
     assert "<co2-only-model>" in concrete
     assert ".. _co2-only-model:" in recipes
+    assert ".. _co2-grouped-inner-and-outer-states:" in concrete
+    assert "<co2-grouped-states>" in concrete
+    assert ".. _co2-grouped-states:" in recipes
     assert ".. _co2-o2-shared-state-model:" in concrete
     assert "<linked-co2-o2-model>" in concrete
     assert ".. _linked-co2-o2-model:" in recipes
     assert ".. _cached-sigma-co2-recipe:" in customising
+    assert ".. _run-the-production-cached-sigma-co2-recipe:" in customising
     assert "<co2-cached-sigma-recipe>" in customising
 
 

@@ -34,6 +34,7 @@ Choose the smallest starting point that fits the change:
   ``run_rhime_from_prepared_inputs``.
 
 .. _cached-sigma-co2-recipe:
+.. _run-the-production-cached-sigma-co2-recipe:
 
 The cached-sigma CO₂ recipe documentation moved to the
 :ref:`package-supported cached-sigma recipe <co2-cached-sigma-recipe>`.
@@ -187,9 +188,8 @@ An exact zero mode is rejected before applying the low-rank factor, even when
 that factor would make a materialized dense covariance positive definite; a
 positive OU amplitude can lift a zero base mode. The component currently
 requires PyMC's native No-U-Turn Sampler (NUTS) backend. Sampled tau is a
-separate extension; the
-production cached sampler is the matched recipe described in
-:ref:`co2-cached-sigma-recipe`.
+separate extension; the package-supported cached sampler is the matched recipe
+described in :ref:`co2-cached-sigma-recipe`.
 
 Optional project CLI
 ~~~~~~~~~~~~~~~~~~~~

@@ -15,6 +15,11 @@ purposes:
 The CO₂ coherent-reduction model documentation moved to the
 :ref:`CO₂-only model recipe <co2-only-model>`.
 
+.. _co2-grouped-inner-and-outer-states:
+
+The CO₂ grouped inner and outer state documentation moved to the
+:ref:`grouped CO₂ state recipe <co2-grouped-states>`.
+
 .. _co2-o2-shared-state-model:
 
 The CO₂/O₂ shared-state model documentation moved to the
