@@ -53,7 +53,7 @@
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
     <link rel="next" title="Running RHIME from the command line" href="cli.html" />
-    <link rel="prev" title="Installation and Setup" href="installation.html" />
+    <link rel="prev" title="How an Atmospheric Inversion Works" href="conceptual_inversion.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="" />
@@ -317,6 +317,7 @@
   <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">Contents:</span></p>
 <ul class="current nav bd-sidenav">
 <li class="toctree-l1"><a class="reference internal" href="installation.html">Installation and Setup</a></li>
+<li class="toctree-l1"><a class="reference internal" href="conceptual_inversion.html">How an Atmospheric Inversion Works</a></li>
 <li class="toctree-l1 current active"><a class="current reference internal" href="#">Getting started with OpenGHG Inversions</a></li>
 <li class="toctree-l1"><a class="reference internal" href="cli.html">Running RHIME from the command line</a></li>
 <li class="toctree-l1"><a class="reference internal" href="staged_workflow.html">Staged RHIME workflows</a></li>
@@ -388,39 +389,10 @@
                   
   <section id="getting-started-with-openghg-inversions">
 <h1>Getting started with OpenGHG Inversions<a class="headerlink" href="#getting-started-with-openghg-inversions" title="Link to this heading">#</a></h1>
-<p>This is an overview of what OpenGHG Inversions does, and how to use it.</p>
-<section id="overview">
-<h2>Overview<a class="headerlink" href="#overview" title="Link to this heading">#</a></h2>
-<ul class="simple">
-<li><p>Countries are required to create “bottom-up” inventories of emissions.
-These may be totals for a country, or may be a map of estimated
-emissions for a given time period.</p></li>
-<li><p>To check these inventories, we create “top-down” constraints by
-passing emissions/flux maps through a physical model and comparing the
-result with observations. We use a Bayesian model to update the flux
-maps using the given observation data.</p></li>
-<li><p>The model is roughly
-<span class="math notranslate nohighlight">\(\mathrm{obs} \approx \mathrm{sensitivities} \times \mathrm{flux} + \mathrm{baseline} + \mathrm{error}\)</span></p></li>
-<li><p>The baseline is calculated by multiplying the flux at the boundaries
-by a sensivity map for each boundary “curtain” (NESW).</p></li>
-<li><p>Disturbances from the baseline are calculated by multiplying a
-“footprint” (sensitivities for fluxes) times a flux map.</p></li>
-<li><p>The sensitivities are considered deterministic, and the fluxes and
-boundary conditions are modelled as random quantities</p></li>
-<li><p>We place prior distributions on the fluxes and boundary conditions and
-use the observation data and MCMC to sample from their posterior
-distributions. (These are specified by the <code class="docutils literal notranslate"><span class="pre">xprior</span></code> and <code class="docutils literal notranslate"><span class="pre">bcprior</span></code>
-variables in the .ini file below.)</p></li>
-<li><p>Roughly, an inversion attempts to solve
-<span class="math notranslate nohighlight">\(\mathrm{obs} - \mathrm{baseline} \approx \mathrm{sensitivities} \times \mathrm{flux}\)</span>;
-the sensitivity matrix is not invertible, so a method like
-least-squares is necessary. We use a hierarchical Bayesian regression
-approach, which estimates uncertainties in a natural way.</p></li>
-<li><p>The output of an inversion contains prior and posterior: modelled
-observations (“ <span class="math notranslate nohighlight">\(Y\)</span> ” variables), fluxes, and boundary
-conditions.</p></li>
-</ul>
-</section>
+<p>This page describes the data and legacy interfaces used by existing inversion
+workflows. If atmospheric inversions are new to you, first read
+<a class="reference internal" href="conceptual_inversion.html"><span class="doc">How an Atmospheric Inversion Works</span></a> for the scientific concepts and current RHIME
+terminology.</p>
 <section id="what-do-you-need-to-run-an-inversion">
 <h2>What do you need to run an inversion?<a class="headerlink" href="#what-do-you-need-to-run-an-inversion" title="Link to this heading">#</a></h2>
 <p>For an inversion, you need to decide the:</p>
@@ -963,12 +935,12 @@ Gelman-Rubin diagnostic &lt; 1.05</p></li>
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="installation.html"
+       href="conceptual_inversion.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">Installation and Setup</p>
+        <p class="prev-next-title">How an Atmospheric Inversion Works</p>
       </div>
     </a>
     <a class="right-next"
@@ -999,7 +971,6 @@ Gelman-Rubin diagnostic &lt; 1.05</p></li>
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#overview">Overview</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#what-do-you-need-to-run-an-inversion">What do you need to run an inversion?</a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#data-stored-in-openghg">Data stored in OpenGHG</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#data-not-stored-in-openghg">Data not stored in OpenGHG</a></li>
