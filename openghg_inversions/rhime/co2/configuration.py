@@ -42,7 +42,16 @@ Runner = Callable[..., Any]
 
 @dataclass(frozen=True, slots=True)
 class Co2RunSetup:
-    """Resolved artifact, runner, scientific options, and sampler for CO2."""
+    """Resolved execution setup for CO2 prepared-input replay.
+
+    Attributes:
+        preparation_kwargs: Artifact-location values resolved from the
+            configuration. ``path`` is suitable for
+            :meth:`Co2PreparedInputs.load`.
+        runner: Selected public prepared-input runner.
+        runner_kwargs: Validated scientific arguments for ``runner``.
+        sampler: Validated sampling configuration for ``runner``.
+    """
 
     preparation_kwargs: Mapping[str, object]
     runner: Runner
@@ -50,7 +59,14 @@ class Co2RunSetup:
     sampler: RhimeSampler
 
     def runner_arguments(self, prepared_inputs: Co2PreparedInputs) -> Mapping[str, object]:
-        """Bind an in-memory artifact to the exact public runner arguments."""
+        """Bind a prepared artifact to the selected runner.
+
+        Args:
+            prepared_inputs: In-memory CO2 artifact to replay.
+
+        Returns:
+            Exact keyword arguments for :attr:`runner`.
+        """
         return _frozen(
             {
                 "prepared_inputs": prepared_inputs,
@@ -62,7 +78,16 @@ class Co2RunSetup:
 
 @dataclass(frozen=True, slots=True)
 class Co2O2RunSetup:
-    """Resolved artifact and channel options for the linked CO2/O2 replay."""
+    """Resolved execution setup for linked CO2/O2 prepared-input replay.
+
+    Attributes:
+        preparation_kwargs: Validated ``co2_units`` and ``o2_units`` arguments
+            for :func:`prepare_co2_o2_inputs`.
+        runner: Selected public linked prepared-input runner.
+        runner_kwargs: Validated channel error settings used when binding the
+            prepared observations.
+        sampler: Validated sampling configuration for ``runner``.
+    """
 
     preparation_kwargs: Mapping[str, object]
     runner: Runner
@@ -70,7 +95,23 @@ class Co2O2RunSetup:
     sampler: RhimeSampler
 
     def runner_arguments(self, prepared_inputs: Co2O2PreparedInputs) -> Mapping[str, object]:
-        """Bind channel errors to the labelled joint observation axis."""
+        """Bind configured channel errors to the joint observation axis.
+
+        Args:
+            prepared_inputs: In-memory linked artifact whose observations have
+                observation-aligned ``species`` and ``observation_units``
+                coordinates. Species must contain exactly ``co2`` and ``o2``;
+                their unit labels must match the resolved configuration.
+
+        Returns:
+            Exact keyword arguments for :attr:`runner`, including a labelled
+            ``independent_error_sd`` array expanded over the observation axis.
+
+        Raises:
+            ValueError: If the required coordinates are absent or misaligned,
+                the species are not exactly CO2 and O2, or configured and
+                prepared unit labels differ.
+        """
         observations = prepared_inputs.observations
         if "species" not in observations.coords or observations["species"].dims != (
             "observation",

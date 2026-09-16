@@ -103,6 +103,12 @@ def test_advanced_co2_reader_path_exposes_current_boundaries() -> None:
     assert "load_co2_family_config" in recipes
     assert "resolve_co2_family_config" in recipes
     assert "co2_cached_sigma.toml" in recipes
+    assert "Relative values are interpreted from the process" in recipes
+    assert "Ordinary CO2 likelihood configuration" in recipes
+    assert "Exactly one of ``fixed_site_amplitudes``" in recipes
+    assert "prepare_co2_o2_inputs(" in recipes
+    assert 'co2_units=setup.preparation_kwargs["co2_units"]' in recipes
+    assert "A runnable CO2 configuration and resolver are\ntracked" not in recipes
     assert "``co2_o2``" in recipes
     assert "heterogeneous ppm/per-meg" in recipes
     assert "OPE-86" in recipes
