@@ -87,6 +87,9 @@ def posterior_convergence_check(
         else None
     )
     measured = {
+        "assessed_variables": (
+            list(variable_names) if variable_names is not None else [str(name) for name in summary.data_vars]
+        ),
         "chains": chains,
         "draws_per_chain": posterior.sizes.get("draw") if posterior is not None else None,
         "max_rhat": rhat,

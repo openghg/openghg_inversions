@@ -458,6 +458,7 @@ def test_diagnostics_emit_issue_667_convergence_signals(
     assert result["name"] == CONVERGENCE_CHECK_NAME
     assert result["status"] == "fail"
     assert result["measured_values"]["chains"] == 4
+    assert result["measured_values"]["assessed_variables"] == ["x"]
     assert result["measured_values"]["draws_per_chain"] == 500
     assert result["measured_values"]["divergences"] == 1
     assert result["measured_values"]["divergences_by_chain"] == [0, 0, 1, 0]
@@ -587,6 +588,7 @@ def test_healthy_diagnostics_pass_with_identified_extremes(
 
     assert result["status"] == "pass"
     assert set(summary.data_vars) == {"x"}
+    assert result["measured_values"]["assessed_variables"] == ["x"]
     assert result["measured_values"]["max_rhat_variable"] == "x"
     assert result["measured_values"]["min_bulk_ess_variable"] == "x"
     assert result["measured_values"]["min_tail_ess_variable"] == "x"
