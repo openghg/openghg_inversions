@@ -220,6 +220,13 @@ def _drop_nan_and_compute(
     return ds
 
 
+def _drop_unobserved_bc_states(ds: xr.Dataset) -> xr.Dataset:
+    """Drop boundary-condition states with zero sensitivity to every observation."""
+    if "H_bc" not in ds:
+        return ds
+    return ds.sel(bc_region=(ds["H_bc"] != 0).any("nmeasure"))
+
+
 def _check_required_inv_input_vars(
     ds: xr.Dataset, fp_data: dict[str, Any], sites: list[str], required_vars: Iterable[str] = ()
 ) -> None:
@@ -390,5 +397,6 @@ def make_inv_inputs(
     ds = add_min_error(ds, fp_data=fp_data, min_error=min_error, min_error_per_site=min_error_per_site)
 
     ds = _drop_nan_and_compute(ds)
+    ds = _drop_unobserved_bc_states(ds)
 
     return ds

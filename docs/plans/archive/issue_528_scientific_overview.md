@@ -13,8 +13,8 @@ Status snapshot: OpenGHG Inversions `devel` at `7665d41`, 10 August 2026.
 > account of native covariance, coherent reduction, aggregation error, and
 > linked observation channels. Its semantic-model/compiler delivery proposal
 > is superseded by the production
-> [`run_rhime` readability plan](run_rhime_readability_and_modifiability.md)
-> and [model-family expansion plan](rhime_model_family_expansion.md).
+> [`run_rhime` readability plan](../run_rhime_readability_and_modifiability.md)
+> and [model-family expansion plan](../rhime_model_family_expansion.md).
 
 The central proposal is:
 
@@ -861,10 +861,10 @@ suffix conventions, and PyMC graph construction, it is not yet complete.
 
 Within this repository:
 
-- [issues 402/403 builder-strategy design](issues_402_403_builder_strategy_design.md)
+- [issues 402/403 builder-strategy design](../issues_402_403_builder_strategy_design.md)
   — earlier relational design and model-builder pressure tests;
-- [state-vector grouping](state_vector_grouping.md) — labelled state grouping;
-- [concrete RHIME model](../usage/concrete_rhime_model.rst) — current concrete
+- [state-vector grouping](../state_vector_grouping.md) — labelled state grouping;
+- [concrete RHIME model](../../usage/concrete_rhime_model.rst) — current concrete
   reference model;
 - [issue #528](https://github.com/openghg/openghg_inversions/issues/528) —
   backend-neutral semantic-model design; and

@@ -50,6 +50,7 @@ def run_with_likelihood(
         arrays together at the named PyMC boundary without mutating canonical
         prepared inputs, runs sampling, and writes configured outputs.
     """
+    kwargs["mismatch_model"] = None
     return run_rhime(
         config_file=config_file,
         likelihood_builder=likelihood_builder,

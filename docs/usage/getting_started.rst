@@ -1,38 +1,10 @@
 Getting started with OpenGHG Inversions
 =======================================
 
-This is an overview of what OpenGHG Inversions does, and how to use it.
-
-Overview
---------
-
-- Countries are required to create “bottom-up” inventories of emissions.
-  These may be totals for a country, or may be a map of estimated
-  emissions for a given time period.
-- To check these inventories, we create “top-down” constraints by
-  passing emissions/flux maps through a physical model and comparing the
-  result with observations. We use a Bayesian model to update the flux
-  maps using the given observation data.
-- The model is roughly
-  :math:`\mathrm{obs} \approx \mathrm{sensitivities} \times \mathrm{flux} + \mathrm{baseline} + \mathrm{error}`
-- The baseline is calculated by multiplying the flux at the boundaries
-  by a sensivity map for each boundary “curtain” (NESW).
-- Disturbances from the baseline are calculated by multiplying a
-  “footprint” (sensitivities for fluxes) times a flux map.
-- The sensitivities are considered deterministic, and the fluxes and
-  boundary conditions are modelled as random quantities
-- We place prior distributions on the fluxes and boundary conditions and
-  use the observation data and MCMC to sample from their posterior
-  distributions. (These are specified by the ``xprior`` and ``bcprior``
-  variables in the .ini file below.)
-- Roughly, an inversion attempts to solve
-  :math:`\mathrm{obs} - \mathrm{baseline} \approx \mathrm{sensitivities} \times \mathrm{flux}`;
-  the sensitivity matrix is not invertible, so a method like
-  least-squares is necessary. We use a hierarchical Bayesian regression
-  approach, which estimates uncertainties in a natural way.
-- The output of an inversion contains prior and posterior: modelled
-  observations (“ :math:`Y` ” variables), fluxes, and boundary
-  conditions.
+This page describes the data and legacy interfaces used by existing inversion
+workflows. If atmospheric inversions are new to you, first read
+:doc:`conceptual_inversion` for the scientific concepts and current RHIME
+terminology.
 
 What do you need to run an inversion?
 -------------------------------------
@@ -371,7 +343,8 @@ The following file, ``my_hbmcmc_inputs.ini`` can be used to run an
    ; Definitions of PDF shape and parameters for inputs
    ; - xprior (dict) - emissions
    ; - bcprior (dict) - boundary conditions
-   ; - sigprior (dict) - model error
+   ; - sigprior (dict) - historical fractional model error
+   ; - additive_sigma_prior (dict) - additive model error in observation units
 
    ; Each of these inputs should be dictionary with the name of probability distribution and shape parameters.
    ; See https://docs.pymc.io/api/distributions/continuous.html
@@ -379,7 +352,8 @@ The following file, ``my_hbmcmc_inputs.ini`` can be used to run an
 
    xprior   = {"pdf":"lognormal", "stdev":1}  ; lognormal with mean = 1, stdev = 1
    bcprior  = {"pdf":"truncatednormal", "mu":1.0, "sigma":0.02}  ; truncated normal with mean = 1, stdev 0.02
-   sigprior = {"pdf":"uniform", "lower":0.5, "upper":10}
+   sigprior = {"pdf":"uniform", "lower":0.0, "upper":0.2}
+   additive_sigma_prior = {"pdf":"halfnormal", "sigma":5.0}  ; observation units
    ;add_offset = False
    ;offsetprior = {"pdf": "normal"}
    ;offset_args = {"drop_first": False}  ;; set to True if you want first site to have offset 0.0
@@ -413,6 +387,9 @@ The following file, ``my_hbmcmc_inputs.ini`` can be used to run an
    nchain = 4
 
    [MCMC.OPTIONS]
+   ; Select response-independent absolute model error. Omit this option to use
+   ; the historical pollution-event likelihood.
+   likelihood = "additive_sigma"
    ; averaging_error (bool): Add variability in averaging period to the measurement error (Note: currently this
    ;                         doesn't work correctly)
    ; min_error: numeric lower bound for model-measurement mismatch, or "residual"/"percentile"
@@ -438,12 +415,12 @@ The following file, ``my_hbmcmc_inputs.ini`` can be used to run an
    ; sampler_kwargs (dict): Kwargs to pass to the sampler (e.g. sampler_kwargs = {'target_accept': 0.99})
 
    averaging_error = True
-   min_error = "residual"
+   min_error = 0.0
    fix_basis_outer_regions = False
    use_bc = True
    nuts_sampler = "numpyro"
    save_trace = True
-   min_error_options = {"by_site": True}  ; mapping; only supported key is boolean by_site (residual only)
+   ;min_error_options = {"by_site": True}  ; mapping; only supported key is boolean by_site (residual only)
    pollution_events_from_obs = True
    no_model_error = False
    reparameterise_log_normal = False
@@ -460,6 +437,54 @@ The following file, ``my_hbmcmc_inputs.ini`` can be used to run an
 
    outputpath = '/user/work/ab12345/my_inversions'  ; (required)
    outputname = 'ch4_TAC_test'  ; (required)
+
+Additive-sigma likelihood
+-------------------------
+
+The ``run_hbmcmc.py`` INI route can select a response-independent additive
+Gaussian model-error term with::
+
+   [MCMC.PDF]
+   additive_sigma_prior = {"pdf": "halfnormal", "sigma": {"MHD": 5.0, "TAC": 2.0}}
+
+   [MCMC.BC_SPLIT]
+   sigma_freq = "monthly"
+   sigma_per_site = True
+
+   [MCMC.OPTIONS]
+   likelihood = "additive_sigma"
+   min_error = 0.0
+
+This gives the independent likelihood variance
+:math:`s_y^2 + \sigma_{site,period}^2`. It does not use the pollution
+enhancement and does not add aggregation error. ``min_error`` works as before
+as an optional floor on the total standard deviation; it defaults to ``0.0``.
+We recommend first trying the half-normal model with ``min_error = 0.0``.
+``aggregation_error_mode`` is unavailable for this ``run_hbmcmc.py`` option.
+``additive_sigma_prior`` takes precedence for this likelihood; when it is
+omitted, the compatibility entry point falls back to ``sigprior``. A mapping
+from site name to scale gives each retained site its own half-normal prior
+scale. Every retained site must be present; entries for sites removed during
+preparation are ignored. Site mappings require ``sigma_per_site = True``.
+
+A half-normal prior is the recommended starting family. Its ``sigma`` input is
+the half-normal *scale*, and
+
+.. math::
+
+   E[\sigma_{site,period}] = \sigma_{prior}\sqrt{2/\pi},
+   \qquad
+   \sigma_{prior} = E[\sigma_{site,period}]\sqrt{\pi/2}.
+
+Thus the scale which exactly matches a desired prior mean is about 1.25 times
+that mean. If the empirical "average model error" is only a rough upper
+starting point, choosing a somewhat smaller scale gives a correspondingly
+smaller prior mean. This scale is in the same physical units and on the same
+numerical scale as the observations (for example, ppt). It is not the
+dimensionless fractional ``sigma`` used by the pollution-event scaling
+options. ``additive_sigma_prior`` avoids overloading the historical,
+dimensionless ``sigprior``; the latter remains available as a compatibility
+fallback for additive-sigma configurations.
 
 Description of HBMCMC output file
 ---------------------------------

@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, cast
 
 import dask.array as da
 from dask.callbacks import Callback
 import numpy as np
+import pandas as pd
 import pymc as pm
 import pytest
 import xarray as xr
@@ -19,9 +21,11 @@ from openghg_inversions.models import (
     active_prior_args,
     attach_coord_registry,
     detect_zero_sensitivity,
+    get_coord_registry,
     prepare_linear_sensitivity,
     registered_model,
     resolve_state_activity,
+    restore_inferencedata_coords,
 )
 from openghg_inversions.models.components import add_linear_component, resolve_model_variable
 from openghg_inversions.models.components import add_state_vector
@@ -30,8 +34,9 @@ from openghg_inversions.rhime.multisector import (
     _prepare_multisector_flux_components,
     build_multisector_rhime_model as _build_multisector_model,
 )
-from openghg_inversions.rhime.specs import SectorSpec
+from openghg_inversions.rhime.specs import FixedErrorSettings, PollutionEventSettings, SectorSpec
 from openghg_inversions.rhime.standard import build_standard_rhime_model as _build_standard_model
+from openghg_inversions.serialization import load_inferencedata, save_inferencedata
 from openghg_inversions.sigma import SigmaAlignment
 
 
@@ -74,29 +79,43 @@ def _sigma_alignment(inputs: xr.Dataset) -> SigmaAlignment:
 
 def build_rhime_model(inputs: xr.Dataset, **kwargs: Any) -> pm.Model:
     """Adapt test datasets to the standard builder's named-array contract."""
+    _select_pollution_event_likelihood(inputs, kwargs)
     return _build_standard_model(
         inputs["H"],
         observations=inputs["mf"],
         observation_error=inputs["mf_error"],
-        minimum_error=inputs["min_error"],
         aggregation_error=resolve_aggregation_error(inputs, "none"),
+        minimum_error=inputs.get("min_error"),
         boundary_sensitivity=inputs.get("H_bc"),
-        site_indicator=inputs.get("site_indicator"),
         **kwargs,
     )
 
 
 def build_rhime_multisector_model(inputs: xr.Dataset, **kwargs: Any) -> pm.Model:
     """Adapt test datasets to the multisector builder's named-array contract."""
+    _select_pollution_event_likelihood(inputs, kwargs)
     return _build_multisector_model(
         inputs["H"],
         observations=inputs["mf"],
         observation_error=inputs["mf_error"],
-        minimum_error=inputs["min_error"],
         aggregation_error=resolve_aggregation_error(inputs, "none"),
+        minimum_error=inputs.get("min_error"),
         boundary_sensitivity=inputs.get("H_bc"),
-        site_indicator=inputs.get("site_indicator"),
         **kwargs,
+    )
+
+
+def _select_pollution_event_likelihood(inputs: xr.Dataset, kwargs: dict[str, Any]) -> None:
+    """Supply the explicit PEFO component used by these direct-recipe tests."""
+    kwargs["sigma_alignment"] = kwargs.pop("sigma_alignment")
+    no_model_error = kwargs.pop("no_model_error", False)
+    kwargs["likelihood_settings"] = FixedErrorSettings() if no_model_error else PollutionEventSettings(
+        sigma_prior=kwargs.pop(
+            "sigma_prior",
+            {"pdf": "uniform", "lower": 0.0, "upper": 0.1},
+        ),
+        power=kwargs.pop("power", 1.99),
+        pollution_events_from_obs=kwargs.pop("pollution_events_from_obs", False),
     )
 
 
@@ -455,6 +474,63 @@ def test_add_state_vector_registers_full_state_coord_in_a_fresh_model() -> None:
 
     assert result.state in model.free_RVs
     assert model.coords["region"] == (0, 1, 2, 3)
+
+
+@pytest.mark.parametrize("suffix", [".nc", ".zarr"])
+def test_active_multiindex_state_roundtrips(
+    tmp_path: Path,
+    suffix: str,
+) -> None:
+    """Keep active gathered-state identity through the shared trace boundary."""
+    state_index = pd.MultiIndex.from_tuples(
+        [
+            ("ff", "shared", "north"),
+            ("ff", "shared", "south"),
+            ("ocean", "co2", "atlantic"),
+            ("bio", "shared", "temperate"),
+        ],
+        names=("source", "tracer_scope", "region_in_source"),
+    )
+    sensitivity = (
+        _sensitivity()
+        .drop_vars(["region", "basis_group"])
+        .rename(region="state")
+        .assign_coords(xr.Coordinates.from_pandas_multiindex(state_index, "state"))
+    )
+    activity = resolve_state_activity(detect_zero_sensitivity(sensitivity))
+
+    with registered_model() as model:
+        add_state_vector(
+            activity,
+            prior_args={"pdf": "normal", "mu": 1.0, "sigma": 0.1},
+            var_name="flux_scaling",
+        )
+        idata = pm.sample_prior_predictive(draws=2, random_seed=42)
+    registry = get_coord_registry(model)
+    assert registry is not None
+    restored = restore_inferencedata_coords(idata, registry)
+
+    active_index = restored.prior.indexes["state_flux_scaling_active"]
+    assert isinstance(active_index, pd.MultiIndex)
+    assert active_index.names == [
+        "source_flux_scaling_active",
+        "tracer_scope_flux_scaling_active",
+        "region_in_source_flux_scaling_active",
+    ]
+    assert active_index.tolist() == [
+        ("ff", "shared", "north"),
+        ("ocean", "co2", "atlantic"),
+        ("bio", "shared", "temperate"),
+    ]
+    assert sensitivity.indexes["state"].equals(state_index)
+
+    path = tmp_path / f"active-state{suffix}"
+    save_inferencedata(restored, path)
+    reloaded = load_inferencedata(path)
+
+    assert reloaded.prior.indexes["state"].equals(state_index)
+    assert reloaded.prior.indexes["state_flux_scaling_active"].equals(active_index)
+    assert restored.prior.indexes["state_flux_scaling_active"].equals(active_index)
 
 
 def test_linear_component_preserves_plain_graph_when_all_states_are_retained() -> None:

@@ -28,6 +28,7 @@ _CO2_O2_VARIABLE_ROLES = {
     "flux_contribution": "co2_o2_flux_contribution",
     "coherent_prior_contribution": "fixed_prior_contribution",
     "independent_error": "fixed_independent_error_sd",
+    "total_marginal_error": "epsilon",
 }
 
 
@@ -158,6 +159,7 @@ def _annotate_co2_o2_trace(
         "co2_o2_flux_contribution",
         "fixed_prior_contribution",
         "fixed_independent_error_sd",
+        "epsilon",
     }
     state_variables = {
         "flux_scaling",

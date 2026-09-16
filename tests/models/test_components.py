@@ -5,6 +5,7 @@ import pytest
 import xarray as xr
 from pytensor.compile.mode import Mode
 
+from openghg_inversions.hbmcmc.components import make_offset
 from openghg_inversions.models import add_coherent_affine_component
 from openghg_inversions.models.components import (
     LinearComponentResult,
@@ -16,7 +17,11 @@ from openghg_inversions.models.components import (
     add_sigma_component,
     resolve_model_variable,
 )
-from openghg_inversions.models.coords import CoordRegistry, attach_coord_registry
+from openghg_inversions.models.coords import (
+    CoordRegistry,
+    attach_coord_registry,
+    get_coord_registry,
+)
 from openghg_inversions.models.state_activity import prepare_linear_sensitivity
 from openghg_inversions.sigma import SigmaAlignment
 
@@ -35,16 +40,6 @@ def _obs_index() -> pd.MultiIndex:
 def _obs_coords() -> xr.Coordinates:
     """Create explicit xarray coordinates for the stacked observation index."""
     return xr.Coordinates.from_pandas_multiindex(_obs_index(), "nmeasure")
-
-
-def _site_indicator() -> xr.DataArray:
-    """Create a simple site-indicator DataArray aligned to the test index."""
-    return xr.DataArray(
-        np.array([0, 0, 1, 1]),
-        dims=("nmeasure",),
-        coords=_obs_coords(),
-        name="site_indicator",
-    )
 
 
 def _likelihood_dataset() -> xr.Dataset:
@@ -253,26 +248,24 @@ def test_add_sigma_component_uses_prepared_alignment() -> None:
         assert "sigma_period_index" in model.named_vars
 
 
-def test_add_offset_component_supports_manual_and_derived_freq() -> None:
-    """Check offsets accept explicit or internally derived frequency indicators."""
-    site_indicator = _site_indicator()
-    manual_freq = xr.DataArray([0, 0, 1, 1], dims=("nmeasure",), coords=site_indicator.coords)
+def test_add_offset_component_derives_frequency_indicator() -> None:
+    """Check offsets derive their frequency indicator from observation time."""
+    observations = xr.DataArray(
+        np.ones(4),
+        dims="nmeasure",
+        coords={
+            "site": ("nmeasure", ["MHD", "MHD", "TAC", "TAC"]),
+            "time": (
+                "nmeasure",
+                pd.to_datetime(["2019-01-01", "2019-01-02", "2019-02-01", "2019-02-02"]),
+            ),
+        },
+    )
 
     with pm.Model(coords={"nmeasure": np.arange(4)}) as model:
         attach_coord_registry(model, CoordRegistry())
         add_offset_component(
-            site_indicator,
-            prior_args={"pdf": "normal", "mu": 0.0, "sigma": 1.0},
-            offset_freq_indicator=manual_freq,
-            output_name="offset",
-        )
-        assert "offset" in model.named_vars
-        assert "offset_freq_indicator" in model.named_vars
-
-    with pm.Model(coords={"nmeasure": np.arange(4)}) as model:
-        attach_coord_registry(model, CoordRegistry())
-        add_offset_component(
-            site_indicator,
+            observations,
             prior_args={"pdf": "normal", "mu": 0.0, "sigma": 1.0},
             offset_freq="monthly",
             output_name="offset",
@@ -280,15 +273,108 @@ def test_add_offset_component_supports_manual_and_derived_freq() -> None:
         assert "offset" in model.named_vars
         assert "offset_freq_indicator" in model.named_vars
 
+    np.testing.assert_array_equal(model["offset_freq_indicator"].eval(), [0, 0, 1, 1])
+
+
+def test_add_offset_component_requires_time_for_frequency() -> None:
+    """Frequency-based offsets require an observation-aligned time coordinate."""
+    observations = xr.DataArray(
+        np.ones(4),
+        dims="nmeasure",
+        coords={"site": ("nmeasure", ["MHD", "MHD", "TAC", "TAC"])},
+    )
+
+    with pm.Model(coords={"nmeasure": np.arange(4)}) as model:
+        attach_coord_registry(model, CoordRegistry())
+        with pytest.raises(ValueError, match="no observation-aligned time coordinate"):
+            add_offset_component(
+                observations,
+                prior_args={"pdf": "normal", "mu": 0.0, "sigma": 1.0},
+                offset_freq="monthly",
+            )
+        assert "site_indicator" not in model.named_vars
+
+
+def test_add_offset_component_requires_complete_times_for_frequency() -> None:
+    """Reject missing timestamps before registering offset graph state."""
+    observations = xr.DataArray(
+        np.ones(2),
+        dims="nmeasure",
+        coords={
+            "site": ("nmeasure", ["MHD", "MHD"]),
+            "time": ("nmeasure", [np.datetime64("2019-01-01"), np.datetime64("NaT")]),
+        },
+    )
+
+    with pm.Model(coords={"nmeasure": np.arange(2)}) as model:
+        attach_coord_registry(model, CoordRegistry())
+        with pytest.raises(ValueError, match="complete observation timestamps"):
+            add_offset_component(
+                observations,
+                prior_args={"pdf": "normal", "mu": 0.0, "sigma": 1.0},
+                offset_freq="monthly",
+            )
+        assert "site_indicator" not in model.named_vars
+
+
+def test_add_offset_component_derives_site_indicator_from_observations() -> None:
+    """Check the offset owns site coding from labelled observations."""
+    observations = xr.DataArray(
+        np.ones(4),
+        dims="nmeasure",
+        coords=_obs_coords(),
+        name="mf",
+    )
+
+    with pm.Model(coords={"nmeasure": np.arange(4)}) as model:
+        attach_coord_registry(model, CoordRegistry())
+        add_offset_component(
+            observations,
+            prior_args={"pdf": "normal", "mu": 0.0, "sigma": 1.0},
+        )
+
+    np.testing.assert_array_equal(model["site_indicator"].eval(), [0, 0, 1, 1])
+    assert model.named_vars_to_dims["offset_latent"] == ("offset_term",)
+    registry = get_coord_registry(model)
+    assert registry is not None
+    np.testing.assert_array_equal(registry.original_coords["offset_term"], ["MHD", "TAC"])
+
+
+def test_hbmcmc_make_offset_preserves_site_indicator_call() -> None:
+    """Keep the released HBMCMC wrapper accepting a numeric site indicator."""
+    with pm.Model(coords={"nmeasure": np.arange(3)}) as model:
+        attach_coord_registry(model, CoordRegistry())
+        offset = make_offset(
+            np.array([0, 0, 1]),
+            {"pdf": "normal", "mu": 0.0, "sigma": 1.0},
+            offset_freq="monthly",
+        )
+
+    np.testing.assert_array_equal(model["site_indicator"].eval(), [0, 0, 1])
+    assert offset.eval().shape == (3,)
+
+
+def test_add_offset_component_requires_observation_sites() -> None:
+    """Reject offset inputs without labelled observation sites."""
+    observations = xr.DataArray(np.ones(4), dims="nmeasure", name="mf")
+
+    with pm.Model(coords={"nmeasure": np.arange(4)}) as model:
+        attach_coord_registry(model, CoordRegistry())
+        with pytest.raises(ValueError, match="observation-aligned `site`"):
+            add_offset_component(
+                observations,
+                prior_args={"pdf": "normal", "mu": 0.0, "sigma": 1.0},
+            )
+
 
 def test_add_offset_component_supports_one_global_scalar() -> None:
-    """A global offset has one latent value broadcast over observations."""
-    site_indicator = _site_indicator()
+    """A global offset needs only observation length, not site metadata."""
+    observations = xr.DataArray(np.ones(4), dims="nmeasure", name="mf")
 
     with pm.Model(coords={"nmeasure": np.arange(4)}) as model:
         attach_coord_registry(model, CoordRegistry())
         offset = add_offset_component(
-            site_indicator,
+            observations,
             prior_args={"pdf": "normal", "mu": 0.0, "sigma": 1.0},
             per_site=False,
         )
@@ -296,6 +382,7 @@ def test_add_offset_component_supports_one_global_scalar() -> None:
     assert model.named_vars["offset_latent"].ndim == 0
     assert offset.eval().shape == (4,)
     assert "offset_design" not in model.named_vars
+    assert "site_indicator" not in model.named_vars
 
 
 @pytest.mark.parametrize("invalid_args", [{"offset_freq": "monthly"}, {"drop_first": True}])
@@ -305,21 +392,40 @@ def test_global_offset_rejects_site_period_options(invalid_args: dict[str, objec
         attach_coord_registry(model, CoordRegistry())
         with pytest.raises(ValueError, match="Global offsets"):
             add_offset_component(
-                _site_indicator(),
+                _likelihood_dataset()["mf"],
                 prior_args={"pdf": "normal", "mu": 0.0, "sigma": 1.0},
                 per_site=False,
                 **invalid_args,
             )
 
 
+def test_site_offset_rejects_drop_first_when_only_one_site_exists() -> None:
+    """Do not allow drop-first coding to remove the only offset site."""
+    observations = xr.DataArray(
+        np.ones(2),
+        dims="nmeasure",
+        coords={"nmeasure": [0, 1], "site": ("nmeasure", ["MHD", "MHD"])},
+        name="mf",
+    )
+
+    with pm.Model(coords={"nmeasure": np.arange(2)}) as model:
+        attach_coord_registry(model, CoordRegistry())
+        with pytest.raises(ValueError, match="removes the only available offset site"):
+            add_offset_component(
+                observations,
+                prior_args={"pdf": "normal", "mu": 0.0, "sigma": 1.0},
+                drop_first=True,
+            )
+
+
 def test_add_offset_component_drop_first_and_freq_builds_expected_design() -> None:
     """Check drop-first offsets still build the expected site-period design."""
-    site_indicator = _site_indicator()
+    observations = _likelihood_dataset()["mf"]
 
     with pm.Model(coords={"nmeasure": np.arange(4)}) as model:
         attach_coord_registry(model, CoordRegistry())
         add_offset_component(
-            site_indicator,
+            observations,
             prior_args={"pdf": "normal", "mu": 0.0, "sigma": 1.0},
             offset_freq="monthly",
             output_name="offset",
@@ -330,6 +436,14 @@ def test_add_offset_component_drop_first_and_freq_builds_expected_design() -> No
     assert offset_design.shape == (4, 2)
     np.testing.assert_array_equal(offset_design[:2], np.zeros((2, 2)))
     np.testing.assert_array_equal(offset_design[2:], np.array([[0, 1], [0, 1]]))
+    registry = get_coord_registry(model)
+    assert registry is not None
+    assert registry.original_coords["offset_term"].equals(
+        pd.MultiIndex.from_tuples(
+            [("TAC", 0), ("TAC", 1)],
+            names=("offset_site", "offset_period"),
+        )
+    )
 
 
 def test_add_inferpymc_likelihood_component_adds_epsilon_and_y() -> None:
@@ -406,7 +520,7 @@ def test_likelihood_samples_prior_predictive_with_shared_sigma_and_registered_si
         mu = pm.Data("mu_input", np.ones(4), dims="nmeasure")
         mu_bc = pm.Data("mu_bc_input", np.zeros(4), dims="nmeasure")
         offset = add_offset_component(
-            ds["site_indicator"],
+            ds["mf"],
             prior_args={"pdf": "normal", "mu": 0.0, "sigma": 1.0},
             output_name="offset",
         )

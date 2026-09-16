@@ -1,13 +1,17 @@
+import json
+
 import numpy as np
 import dask.array as da
 from dask import delayed
 import pytest
+import sparse
 import xarray as xr
 
-from openghg_inversions.rhime.specs import RhimeModelSpec
+import openghg_inversions.observation_error as observation_error_module
 from openghg_inversions.observation_error import (
+    aggregation_error_as_low_rank,
+    prepare_low_rank_aggregation_error,
     resolve_aggregation_error,
-    validate_complete_observation_covariance,
 )
 
 
@@ -53,6 +57,8 @@ def test_dense_covariance_labels_an_unlabelled_second_axis() -> None:
 
     assert result.covariance is not None
     np.testing.assert_array_equal(result.covariance["nmeasure_cov"], ["A", "B"])
+
+
 def test_low_rank_covariance_uses_factor_and_residual_diagonal() -> None:
     factor = np.array([[1.0, 0.0], [0.5, 0.25], [0.0, 0.5]])
     residual = np.array([0.2, 0.3, 0.4])
@@ -66,41 +72,29 @@ def test_low_rank_covariance_uses_factor_and_residual_diagonal() -> None:
     np.testing.assert_allclose(result.marginal_variance, np.sum(factor**2, axis=1) + residual)
 
 
-def test_optional_complete_covariance_check_uses_lrpd_structure() -> None:
-    data = xr.Dataset(coords={"nmeasure": ["A", "B"]})
-    data["low_rank_factor"] = (("nmeasure", "agg_rank"), np.eye(2))
-    data["diagonal_residual_variance"] = ("nmeasure", np.zeros(2))
+@pytest.mark.parametrize("mode", ["dense", "low_rank", "diagonal", "none"])
+def test_aggregation_error_low_rank_conversion_preserves_covariance(mode: str) -> None:
+    """The model-owned conversion retains each validated covariance exactly."""
+    factor = np.array([[0.3], [0.1], [0.2]])
+    diagonal = np.array([0.2, 0.3, 0.4])
+    covariance = factor @ factor.T + np.diag(diagonal)
+    data = _inputs()
+    if mode == "dense":
+        data["aggregation_error_covariance"] = (("nmeasure", "nmeasure_cov"), covariance)
+    elif mode == "low_rank":
+        data["low_rank_factor"] = (("nmeasure", "agg_rank"), factor)
+        data["diagonal_residual_variance"] = ("nmeasure", diagonal)
+    elif mode == "diagonal":
+        data["aggregation_error_sd"] = ("nmeasure", np.sqrt(diagonal))
 
-    validate_complete_observation_covariance(
-        resolve_aggregation_error(data),
-        np.zeros(2),
+    result = resolve_aggregation_error(data, mode)
+    converted_factor, converted_diagonal = aggregation_error_as_low_rank(result)
+    expected = (
+        covariance
+        if mode in ("dense", "low_rank")
+        else np.diag(diagonal if mode == "diagonal" else np.zeros(3))
     )
-
-
-def test_optional_complete_covariance_check_rejects_singular_lrpd() -> None:
-    data = xr.Dataset(coords={"nmeasure": ["A", "B"]})
-    data["low_rank_factor"] = (("nmeasure", "agg_rank"), np.ones((2, 1)))
-    data["diagonal_residual_variance"] = ("nmeasure", np.zeros(2))
-
-    with pytest.raises(ValueError, match="positive definite"):
-        validate_complete_observation_covariance(
-            resolve_aggregation_error(data),
-            np.zeros(2),
-        )
-
-
-def test_optional_complete_covariance_check_rejects_singular_dense() -> None:
-    data = xr.Dataset(coords={"nmeasure": ["A", "B"]})
-    data["aggregation_error_covariance"] = (
-        ("nmeasure", "nmeasure_cov"),
-        np.ones((2, 2)),
-    )
-
-    with pytest.raises(ValueError, match="positive definite"):
-        validate_complete_observation_covariance(
-            resolve_aggregation_error(data),
-            np.zeros(2),
-        )
+    np.testing.assert_allclose(converted_factor @ converted_factor.T + np.diag(converted_diagonal), expected)
 
 
 def test_low_rank_payloads_materialize_together_and_remain_eager() -> None:
@@ -210,11 +204,324 @@ def test_explicit_none_ignores_available_diagnostic() -> None:
     np.testing.assert_array_equal(result.marginal_variance, np.zeros(3))
 
 
-def test_model_spec_rejects_unknown_aggregation_error_mode() -> None:
-    with pytest.raises(ValueError, match="aggregation_error_mode.*dense.*low_rank"):
-        RhimeModelSpec(
-            species="ch4",
-            domain="EUROPE",
-            sectors=(),
-            aggregation_error_mode="factorized",  # type: ignore[arg-type]
+def test_prepare_low_rank_aggregation_error_preserves_diagonal() -> None:
+    """Truncated LRPD preparation preserves marginal variance and diagnostics."""
+    covariance_values = np.array(
+        [
+            [2.0, 0.8, 0.3],
+            [0.8, 1.5, 0.2],
+            [0.3, 0.2, 0.7],
+        ]
+    )
+    covariance = xr.DataArray(
+        da.from_array(covariance_values, chunks=(2, 2)),
+        dims=("nmeasure", "nmeasure_cov"),
+        coords={"nmeasure": ["A", "B", "C"], "nmeasure_cov": ["A", "B", "C"]},
+    )
+
+    result = prepare_low_rank_aggregation_error(covariance, rank=2)
+
+    aggregation_error = result.aggregation_error
+    assert aggregation_error.mode == "low_rank"
+    assert aggregation_error.factor is not None
+    assert aggregation_error.diagonal_variance is not None
+    assert isinstance(aggregation_error.factor.data, np.ndarray)
+    assert aggregation_error.factor.dims == ("nmeasure", "agg_rank")
+    assert aggregation_error.factor.shape == (3, 2)
+    reconstructed = aggregation_error.factor.values @ aggregation_error.factor.values.T + np.diag(
+        aggregation_error.diagonal_variance.values
+    )
+    eigenvalues, eigenvectors = np.linalg.eigh(covariance_values)
+    expected_low_rank = (eigenvectors[:, -2:] * np.sqrt(eigenvalues[-2:])) @ (
+        eigenvectors[:, -2:] * np.sqrt(eigenvalues[-2:])
+    ).T
+    np.testing.assert_allclose(
+        aggregation_error.factor.values @ aggregation_error.factor.values.T,
+        expected_low_rank,
+        atol=1e-12,
+    )
+    np.testing.assert_allclose(np.diag(reconstructed), np.diag(covariance_values), atol=1e-12)
+    np.testing.assert_allclose(aggregation_error.marginal_variance, np.diag(reconstructed))
+    np.linalg.cholesky(reconstructed)
+    assert result.diagnostics["requested_rank"] == 2
+    assert result.diagnostics["actual_rank"] == 2
+    assert 0.0 < result.diagnostics["retained_positive_spectral_fraction"] <= 1.0
+    assert result.diagnostics["diagonal_preservation_error"] < 1e-12
+    json.dumps(result.diagnostics, allow_nan=False)
+
+
+@pytest.mark.parametrize("dask_backed", [False, True])
+def test_prepare_low_rank_aggregation_error_accepts_sparse_covariance(dask_backed: bool) -> None:
+    """LRPD preparation densifies eager and Dask-backed sparse covariance safely."""
+    covariance_values = np.array(
+        [
+            [2.0, 0.4, 0.0],
+            [0.4, 1.5, 0.2],
+            [0.0, 0.2, 0.8],
+        ]
+    )
+    payload = sparse.COO.from_numpy(covariance_values)
+    if dask_backed:
+        payload = da.from_array(payload, chunks=(2, 2), asarray=False)
+    covariance = xr.DataArray(
+        payload,
+        dims=("nmeasure", "nmeasure_cov"),
+        coords={"nmeasure": ["A", "B", "C"], "nmeasure_cov": ["A", "B", "C"]},
+    )
+
+    result = prepare_low_rank_aggregation_error(covariance, rank=2)
+
+    aggregation_error = result.aggregation_error
+    assert aggregation_error.factor is not None
+    assert aggregation_error.diagonal_variance is not None
+    reconstructed = aggregation_error.factor.values @ aggregation_error.factor.values.T + np.diag(
+        aggregation_error.diagonal_variance.values
+    )
+    np.testing.assert_allclose(np.diag(reconstructed), np.diag(covariance_values), atol=1e-12)
+
+
+def test_rank_deficient_covariance_stores_only_positive_modes() -> None:
+    """Requested rank is capped at the covariance's positive numerical rank."""
+    vector = np.array([1.0, 2.0, -0.5])
+    covariance_values = np.outer(vector, vector)
+    covariance = xr.DataArray(
+        covariance_values,
+        dims=("nmeasure", "nmeasure_cov"),
+        coords={"nmeasure": ["A", "B", "C"], "nmeasure_cov": ["A", "B", "C"]},
+    )
+
+    prepared = prepare_low_rank_aggregation_error(covariance, rank=3)
+    resolved = resolve_aggregation_error(
+        xr.Dataset(
+            {
+                "aggregation_error_covariance": covariance,
+            }
+        ),
+        "dense",
+    )
+    exact_factor, exact_diagonal = aggregation_error_as_low_rank(resolved)
+
+    aggregation_error = prepared.aggregation_error
+    assert aggregation_error.factor is not None
+    assert aggregation_error.diagonal_variance is not None
+    assert aggregation_error.factor.shape == (3, 1)
+    assert prepared.diagnostics["actual_rank"] == 1
+    assert exact_factor.shape == aggregation_error.factor.shape
+    np.testing.assert_allclose(exact_diagonal, aggregation_error.diagonal_variance.values, atol=1e-12)
+    np.testing.assert_allclose(
+        aggregation_error.factor.values @ aggregation_error.factor.values.T
+        + np.diag(aggregation_error.diagonal_variance.values),
+        covariance_values,
+        atol=1e-12,
+    )
+    np.testing.assert_allclose(exact_factor @ exact_factor.T, covariance_values, atol=1e-12)
+
+
+def test_roundoff_mode_moves_to_diagonal_tail_and_preserves_positive_definiteness() -> None:
+    """Discarded positive roundoff modes still produce a positive-definite LRPD covariance."""
+    eigenvectors = np.array([[1.0, -1.0], [1.0, 1.0]]) / np.sqrt(2.0)
+    covariance_values = eigenvectors @ np.diag([1.0, 1.0e-12]) @ eigenvectors.T
+    covariance = xr.DataArray(
+        covariance_values,
+        dims=("nmeasure", "nmeasure_cov"),
+        coords={"nmeasure": ["A", "B"], "nmeasure_cov": ["A", "B"]},
+    )
+    resolved = resolve_aggregation_error(
+        xr.Dataset({"aggregation_error_covariance": covariance}),
+        "dense",
+    )
+
+    factor, diagonal = aggregation_error_as_low_rank(resolved)
+
+    reconstructed = factor @ factor.T + np.diag(diagonal)
+    assert factor.shape == (2, 1)
+    assert np.all(diagonal > 0.0)
+    np.testing.assert_allclose(np.diag(reconstructed), np.diag(covariance_values), atol=1e-15)
+    np.linalg.cholesky(reconstructed)
+
+
+def test_zero_covariance_has_valid_zero_rank_representation() -> None:
+    """A zero covariance resolves as an empty factor and zero diagonal tail."""
+    covariance = xr.DataArray(
+        np.zeros((3, 3)),
+        dims=("nmeasure", "nmeasure_cov"),
+        coords={"nmeasure": ["A", "B", "C"], "nmeasure_cov": ["A", "B", "C"]},
+    )
+
+    prepared = prepare_low_rank_aggregation_error(covariance, rank=2)
+
+    aggregation_error = prepared.aggregation_error
+    assert aggregation_error.factor is not None
+    assert aggregation_error.diagonal_variance is not None
+    assert aggregation_error.factor.shape == (3, 0)
+    assert prepared.diagnostics["actual_rank"] == 0
+    np.testing.assert_array_equal(aggregation_error.diagonal_variance, np.zeros(3))
+
+
+def test_prepare_low_rank_aggregation_error_trusts_its_constructed_payload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """LRPD preparation trusts its coupled factor and diagonal construction."""
+    eigenvectors = np.array([[1.0, -1.0], [1.0, 1.0]]) / np.sqrt(2.0)
+    covariance_values = eigenvectors @ np.diag([1.0, -1.0e-12]) @ eigenvectors.T
+    covariance = xr.DataArray(
+        covariance_values,
+        dims=("nmeasure", "nmeasure_cov"),
+        coords={"nmeasure": ["A", "B"], "nmeasure_cov": ["A", "B"]},
+    )
+
+    def unexpected_resolve(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("package-constructed LRPD payload was resolved again")
+
+    monkeypatch.setattr(observation_error_module, "resolve_aggregation_error", unexpected_resolve)
+
+    prepared = prepare_low_rank_aggregation_error(covariance, rank=2)
+
+    aggregation_error = prepared.aggregation_error
+    assert aggregation_error.factor is not None
+    assert aggregation_error.diagonal_variance is not None
+    represented_marginal_variance = (
+        np.einsum(
+            "ij,ij->i",
+            aggregation_error.factor.values,
+            aggregation_error.factor.values,
         )
+        + aggregation_error.diagonal_variance.values
+    )
+    np.testing.assert_array_equal(aggregation_error.marginal_variance, represented_marginal_variance)
+    assert prepared.diagnostics["diagonal_tail_clipped_count"] == 2
+    assert prepared.diagnostics["diagonal_tail_max_clipped_magnitude"] > 0.0
+    assert prepared.diagnostics["diagonal_preservation_error"] <= prepared.diagnostics["roundoff_tolerance"]
+
+
+def test_prepare_low_rank_aggregation_error_uses_one_eigendecomposition(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """LRPD preparation performs one eigendecomposition after boundary validation."""
+    covariance = xr.DataArray(
+        np.array([[2.0, 0.4], [0.4, 1.0]]),
+        dims=("nmeasure", "nmeasure_cov"),
+        coords={"nmeasure": ["A", "B"], "nmeasure_cov": ["A", "B"]},
+    )
+    original_eigh = np.linalg.eigh
+    calls = 0
+
+    def counted_eigh(values: np.ndarray, **kwargs: str) -> tuple[np.ndarray, np.ndarray]:
+        nonlocal calls
+        calls += 1
+        return original_eigh(values, **kwargs)
+
+    def unexpected_eigvalsh(_values: np.ndarray, **_kwargs: str) -> np.ndarray:
+        raise AssertionError("prepare_low_rank_aggregation_error repeated the eigendecomposition")
+
+    monkeypatch.setattr(np.linalg, "eigh", counted_eigh)
+    monkeypatch.setattr(np.linalg, "eigvalsh", unexpected_eigvalsh)
+
+    prepare_low_rank_aggregation_error(covariance, rank=1)
+
+    assert calls == 1
+
+
+def test_prepare_low_rank_aggregation_error_rejects_asymmetry_before_eigendecomposition(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """LRPD preparation rejects asymmetry before eigendecomposition."""
+    covariance = xr.DataArray(
+        np.array([[1.0, 0.2], [0.1, 1.0]]),
+        dims=("nmeasure", "nmeasure_cov"),
+        coords={"nmeasure": ["A", "B"], "nmeasure_cov": ["A", "B"]},
+    )
+
+    def unexpected_eigh(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("asymmetric covariance reached eigendecomposition")
+
+    monkeypatch.setattr(np.linalg, "eigh", unexpected_eigh)
+
+    with pytest.raises(ValueError, match="symmetric"):
+        prepare_low_rank_aggregation_error(covariance, rank=1)
+
+
+def test_full_rank_aggregation_error_approximation_is_exact() -> None:
+    """A full-rank LRPD factor reconstructs the source covariance exactly."""
+    covariance_values = np.array([[2.0, 0.4], [0.4, 1.0]])
+    covariance = xr.DataArray(
+        covariance_values,
+        dims=("observation", "observation_cov"),
+        coords={"observation": ["A", "B"], "observation_cov": ["A", "B"]},
+    )
+
+    result = prepare_low_rank_aggregation_error(
+        covariance,
+        rank=2,
+        output_dim="observation",
+        covariance_dim="observation_cov",
+    )
+
+    aggregation_error = result.aggregation_error
+    assert aggregation_error.factor is not None
+    assert aggregation_error.diagonal_variance is not None
+    reconstructed = aggregation_error.factor.values @ aggregation_error.factor.values.T + np.diag(
+        aggregation_error.diagonal_variance.values
+    )
+    np.testing.assert_allclose(reconstructed, covariance_values, atol=1e-12)
+    assert result.diagnostics["relative_frobenius_reconstruction_error"] < 1e-12
+
+
+@pytest.mark.parametrize("rank", [0, 4, True, 1.5])
+def test_prepare_low_rank_aggregation_error_rejects_invalid_rank(rank: object) -> None:
+    """LRPD preparation rejects ranks outside its positive integer bounds."""
+    covariance = xr.DataArray(
+        np.eye(3),
+        dims=("nmeasure", "nmeasure_cov"),
+        coords={"nmeasure": ["A", "B", "C"], "nmeasure_cov": ["A", "B", "C"]},
+    )
+
+    with pytest.raises(ValueError, match="rank"):
+        prepare_low_rank_aggregation_error(covariance, rank=rank)  # type: ignore[arg-type]
+
+
+def test_prepare_low_rank_aggregation_error_requires_exact_covariance_labels() -> None:
+    """LRPD preparation requires identical ordered row and column labels."""
+    covariance = xr.DataArray(
+        np.eye(2),
+        dims=("nmeasure", "nmeasure_cov"),
+        coords={"nmeasure": ["A", "B"], "nmeasure_cov": ["B", "A"]},
+    )
+
+    with pytest.raises(ValueError, match="same values in the same order"):
+        prepare_low_rank_aggregation_error(covariance, rank=1)
+
+
+@pytest.mark.parametrize(
+    ("covariance_values", "match"),
+    [
+        (np.array([[1.0, 0.2], [0.1, 1.0]]), "symmetric"),
+        (np.array([[1.0, 2.0], [2.0, 1.0]]), "positive semidefinite"),
+        (np.array([[1.0, np.nan], [np.nan, 1.0]]), "finite"),
+    ],
+)
+def test_prepare_low_rank_aggregation_error_validates_values(
+    covariance_values: np.ndarray,
+    match: str,
+) -> None:
+    """LRPD preparation rejects non-finite, asymmetric, or indefinite values."""
+    covariance = xr.DataArray(
+        covariance_values,
+        dims=("nmeasure", "nmeasure_cov"),
+        coords={"nmeasure": ["A", "B"], "nmeasure_cov": ["A", "B"]},
+    )
+
+    with pytest.raises(ValueError, match=match):
+        prepare_low_rank_aggregation_error(covariance, rank=1)
+
+
+def test_low_rank_psd_tolerance_scales_with_covariance_magnitude() -> None:
+    """PSD tolerance still rejects tiny covariances with material indefiniteness."""
+    covariance = xr.DataArray(
+        np.array([[1.0, 2.0], [2.0, 1.0]]) * 1.0e-20,
+        dims=("nmeasure", "nmeasure_cov"),
+        coords={"nmeasure": ["A", "B"], "nmeasure_cov": ["A", "B"]},
+    )
+
+    with pytest.raises(ValueError, match="positive semidefinite"):
+        prepare_low_rank_aggregation_error(covariance, rank=1)

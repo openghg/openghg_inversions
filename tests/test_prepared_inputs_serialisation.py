@@ -25,6 +25,7 @@ from openghg_inversions.basis.operators import MultiSourceBucketBasisOperator
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.inversion_data import RhimePreparedInputs, prepare_rhime_inputs
 from openghg_inversions.rhime import (
+    PollutionEventSettings,
     RhimeModelSpec,
     RhimeOutputSpec,
     RhimeRunSpec,
@@ -155,6 +156,7 @@ def test_derived_outputs_reject_aggregation_error_until_reconstruction_lands() -
     model_spec = RhimeModelSpec(
         species="ch4",
         domain="EUROPE",
+        likelihood=PollutionEventSettings(),
         sectors=(
             SectorSpec(
                 name="total",
@@ -566,6 +568,7 @@ def test_real_prepared_inputs_save_load_and_run_without_repreparation(
     model_spec = RhimeModelSpec(
         species="ch4",
         domain="EUROPE",
+        likelihood=PollutionEventSettings(),
         sectors=(
             SectorSpec(
                 name="total",
@@ -598,6 +601,7 @@ def test_real_prepared_inputs_save_load_and_run_without_repreparation(
     ) -> pm.Model:
         """Record the loaded builder inputs and build the real canonical graph."""
         assert kwargs["likelihood_builder"] is None
+        assert kwargs["likelihood_settings"] is model_spec.likelihood
         assert kwargs["preserve_legacy_likelihood"] is False
         observed["builder_inputs"] = flux_sensitivity
         observed["observations"] = kwargs["observations"]
@@ -659,6 +663,41 @@ def test_inferencedata_datatree_roundtrip_preserves_root_attrs() -> None:
     restored = inferencedata_from_datatree(inferencedata_to_datatree(idata))
 
     assert restored.attrs == idata.attrs
+
+
+def test_inferencedata_netcdf_roundtrip_uses_xarray_default_engine(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The shared boundary must not switch HDF5 bindings within a process."""
+    idata = az.InferenceData(
+        posterior=xr.Dataset(
+            {"x": (("chain", "draw"), [[1.0]])},
+            coords={"chain": [0], "draw": [0]},
+        )
+    )
+    path = tmp_path / "trace.nc"
+    write_engines: list[str | None] = []
+    read_engines: list[str | None] = []
+    original_write = xr.DataTree.to_netcdf
+    original_open = xr.open_datatree
+
+    def record_write(tree: xr.DataTree, *args: Any, **kwargs: Any):
+        write_engines.append(kwargs.get("engine"))
+        return original_write(tree, *args, **kwargs)
+
+    def record_open(*args: Any, **kwargs: Any):
+        read_engines.append(kwargs.get("engine"))
+        return original_open(*args, **kwargs)
+
+    monkeypatch.setattr(xr.DataTree, "to_netcdf", record_write)
+    monkeypatch.setattr(xr, "open_datatree", record_open)
+
+    save_inferencedata(idata, path)
+    load_inferencedata(path)
+
+    assert write_engines == [None]
+    assert read_engines == [None]
 
 
 @pytest.mark.parametrize("suffix", [".nc", ".zarr"])
@@ -923,6 +962,7 @@ def test_loaded_prepared_inputs_run_through_existing_seam(
     model_spec = RhimeModelSpec(
         species="ch4",
         domain="EUROPE",
+        likelihood=PollutionEventSettings(),
         sectors=(
             SectorSpec(
                 name="total",
@@ -960,6 +1000,7 @@ def test_loaded_prepared_inputs_run_through_existing_seam(
     ) -> pm.Model:
         """Record model-builder inputs and build the real canonical graph."""
         assert kwargs["likelihood_builder"] is None
+        assert kwargs["likelihood_settings"] is model_spec.likelihood
         assert kwargs["preserve_legacy_likelihood"] is False
         observed["builder_inputs"] = flux_sensitivity
         observed["observations"] = kwargs["observations"]
@@ -1042,6 +1083,7 @@ def test_multisource_order_survives_load_run_and_reconstruction(
     model_spec = RhimeModelSpec(
         species="ch4",
         domain="EUROPE",
+        likelihood=PollutionEventSettings(),
         sectors=tuple(
             SectorSpec(
                 name=source,
@@ -1072,6 +1114,7 @@ def test_multisource_order_survives_load_run_and_reconstruction(
     ) -> pm.Model:
         """Record ordered builder inputs and build the real canonical graph."""
         assert kwargs["likelihood_builder"] is None
+        assert kwargs["likelihood_settings"] is model_spec.likelihood
         observed["source_order"] = tuple(flux_sensitivity.source.values)
         observed["sectors"] = kwargs["sectors"]
         return original_builder(flux_sensitivity, **kwargs)

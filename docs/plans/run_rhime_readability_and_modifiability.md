@@ -186,10 +186,12 @@ def run_rhime(
     prepared = assemble_rhime_inputs(filtered, basis, options.model)
 
     model_inputs = materialize_pymc_inputs(prepared)
+    likelihood, likelihood_options = resolve_likelihood(options.model, likelihood_builder)
     built_model = build_standard_rhime_model(
         model_inputs,
         options.model,
-        likelihood_builder=likelihood_builder,
+        likelihood_builder=likelihood,
+        likelihood_kwargs=likelihood_options,
     )
     idata = sample_rhime_model(built_model, options.sampling)
 

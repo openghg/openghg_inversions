@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
+from datetime import date, datetime, time, timedelta
+import json
 from pathlib import Path
 from typing import Any, cast
 
@@ -45,15 +48,45 @@ class RhimeResult:
     model_build_result: RhimeModelBuildResult | None = None
 
 
+def annotate_likelihood_trace(
+    idata: az.InferenceData,
+    *,
+    builder_identity: dict[str, str],
+    likelihood_kwargs: Mapping[str, Any] | None,
+) -> None:
+    """Persist custom-likelihood provenance in place.
+
+    Array-valued options are converted to JSON-compatible values; labelled
+    arrays cross an explicit eager serialization boundary.
+
+    Args:
+        idata: Inference data to annotate in place.
+        builder_identity: Importable module and qualified-name provenance for
+            the likelihood builder.
+        likelihood_kwargs: Resolved builder options to preserve as structured
+            JSON metadata.
+
+    Returns:
+        None. The input inference data and matching variable attributes are
+        annotated in place.
+    """
+    idata.attrs["rhime_likelihood_builder"] = json.dumps(builder_identity, sort_keys=True)
+    idata.attrs["rhime_likelihood_kwargs"] = json.dumps(
+        _structured_metadata(dict(likelihood_kwargs or {})), sort_keys=True
+    )
+
+
 def _structured_metadata(value: Any) -> Any:
-    """Convert array-backed spec values to lossless JSON-compatible metadata.
+    """Convert array-backed spec values to JSON-compatible metadata.
 
     Args:
         value: Nested metadata value, possibly backed by NumPy or xarray.
 
     Returns:
         Scalars and recursively structured dictionaries/lists. DataArrays keep
-        explicit dimensions, dimension coordinates, and values.
+        explicit dimensions, dimension coordinates, and values. Paths become
+        strings, Python and NumPy dates/times become ISO strings, and timedeltas
+        become strings.
     """
     if isinstance(value, xr.DataArray):
         materialized = value.compute()
@@ -66,10 +99,18 @@ def _structured_metadata(value: Any) -> Any:
             },
             "values": _structured_metadata(materialized.to_numpy()),
         }
+    if isinstance(value, np.datetime64 | np.timedelta64):
+        return str(value)
+    if isinstance(value, datetime | date | time):
+        return value.isoformat()
+    if isinstance(value, timedelta):
+        return str(value)
+    if isinstance(value, Path):
+        return str(value)
     if isinstance(value, np.ndarray):
         if value.ndim == 0:
-            return _structured_metadata(value.item())
-        return [_structured_metadata(item) for item in value.tolist()]
+            return _structured_metadata(value[()])
+        return [_structured_metadata(item) for item in value]
     if isinstance(value, np.generic):
         return value.item()
     if isinstance(value, dict):
@@ -427,6 +468,25 @@ def make_multisector_rhime_outputs(
     if output_spec.output_format == "none":
         return
 
+    paris_kwargs = dict(output_spec.paris_postprocessing_kwargs or {})
+    if output_spec.output_format == "paris":
+        template_version = paris_kwargs.pop("template_version", "latest")
+        if template_version != "latest":
+            raise ValueError(
+                "Multi-sector PARIS output supports only template_version='latest'."
+            )
+        supported = {
+            "country_selections",
+            "flux_frequency",
+            "inversion_grid",
+            "report_mode",
+            "time_point",
+        }
+        if unexpected := ", ".join(sorted(paris_kwargs.keys() - supported)):
+            raise ValueError(
+                f"Unsupported multi-sector latest PARIS postprocessing kwargs: {unexpected}."
+            )
+
     run_spec = result.run_spec
     model_spec = result.model_spec
     with timed("rhime.output.inversion_output_create", output_format=output_spec.output_format):
@@ -434,7 +494,12 @@ def make_multisector_rhime_outputs(
             result=result,
             prepared=prepared,
         )
-    outputs: dict[str, Any] = {"inversion_output": inv_out}
+    with timed("rhime.output.multisector_diagnostics"):
+        diagnostics = _make_multisector_flux_diagnostics(inv_out)
+    outputs: dict[str, Any] = {
+        "inversion_output": inv_out,
+        "sector_flux_diagnostics": diagnostics,
+    }
     output_metadata: dict[str, Any] = {"inversion_output_contract": "modern"}
     inv_out_path = _resolve_output_path(
         output_spec.save_inversion_output,
@@ -443,12 +508,6 @@ def make_multisector_rhime_outputs(
     )
 
     if output_spec.output_format == "paris":
-        paris_kwargs = dict(output_spec.paris_postprocessing_kwargs or {})
-        template_version = paris_kwargs.pop("template_version", "latest")
-        if template_version != "latest":
-            raise ValueError(
-                "Multi-sector PARIS output supports only template_version='latest'."
-            )
         from openghg_inversions.postprocessing.make_paris_outputs import (
             infer_flux_frequency,
             paris_concentration_outputs,
@@ -464,14 +523,7 @@ def make_multisector_rhime_outputs(
         country_selection_kwargs = {}
         if "country_selections" in paris_kwargs:
             country_selection_kwargs["country_selections"] = paris_kwargs.pop("country_selections")
-        if paris_kwargs:
-            unexpected = ", ".join(sorted(paris_kwargs))
-            raise ValueError(
-                f"Unsupported multi-sector latest PARIS postprocessing kwargs: {unexpected}."
-            )
 
-        with timed("rhime.output.multisector_diagnostics"):
-            diagnostics = _make_multisector_flux_diagnostics(inv_out)
         obs_avg_period = prepared.averaging_period[0] or "0h"
         conc_outs = paris_concentration_outputs(
             inv_out,
@@ -493,7 +545,6 @@ def make_multisector_rhime_outputs(
             {
                 "paris_flux": flux_outs,
                 "paris_concentration": conc_outs,
-                "sector_flux_diagnostics": diagnostics,
             }
         )
         output_metadata["paris_note"] = (
@@ -516,21 +567,24 @@ def make_multisector_rhime_outputs(
                 output_name=output_spec.output_name + "_flux",
                 start_date=run_spec.start_date,
             )
-            diagnostics_path = (
-                Path(output_spec.output_path)
-                / f"{output_spec.output_name}{run_spec.start_date}_sector_flux_diagnostics.nc"
-            )
             write_netcdf_preserving_bounds_attrs(conc_outs, conc_file, unlimited_dims=["index"])
             write_netcdf_preserving_bounds_attrs(flux_outs, flux_file, unlimited_dims=["time"])
-            with timed("rhime.output.multisector_diagnostics_netcdf_write", path=diagnostics_path):
-                diagnostics.to_netcdf(diagnostics_path, mode="w", encoding=ncdf_encoding(diagnostics))
             output_metadata.update(
                 {
                     "paris_concentration_path": str(conc_file),
                     "paris_flux_path": str(flux_file),
-                    "sector_flux_diagnostics_path": str(diagnostics_path),
                 }
             )
+
+    if output_spec.output_path is not None:
+        Path(output_spec.output_path).mkdir(parents=True, exist_ok=True)
+        diagnostics_path = (
+            Path(output_spec.output_path)
+            / f"{output_spec.output_name}{run_spec.start_date}_sector_flux_diagnostics.nc"
+        )
+        with timed("rhime.output.multisector_diagnostics_netcdf_write", path=diagnostics_path):
+            diagnostics.to_netcdf(diagnostics_path, mode="w", encoding=ncdf_encoding(diagnostics))
+        output_metadata["sector_flux_diagnostics_path"] = str(diagnostics_path)
 
     if inv_out_path is not None:
         inv_out_path.parent.mkdir(parents=True, exist_ok=True)

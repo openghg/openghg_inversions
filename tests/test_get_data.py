@@ -429,15 +429,46 @@ def test_merged_scenario_forwards_requested_output_units(
 
     monkeypatch.setattr(scenario_module, "ModelScenario", FakeModelScenario)
 
+    footprint = SimpleNamespace(data=xr.Dataset())
     result = scenario_module.merged_scenario_data(
         obs_data=object(),  # type: ignore[arg-type]
-        footprint_data=object(),  # type: ignore[arg-type]
+        footprint_data=footprint,  # type: ignore[arg-type]
         flux_dict={},
         output_units="ppb",
     )
 
     assert result is expected
     assert merge_kwargs["output_units"] == "ppb"
+
+
+def test_merged_scenario_preserves_footprint_max_level_provenance(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Footprint extent survives an OpenGHG merge that replaces ``max_level``."""
+    expected = xr.Dataset(attrs={"max_level": 3})
+
+    class FakeModelScenario:
+        """Return a merged dataset whose attrs represent the observations."""
+
+        def __init__(self, **kwargs: object) -> None:
+            """Accept construction arguments without using them."""
+
+        def footprints_data_merge(self, **kwargs: object) -> xr.Dataset:
+            """Return the simulated merged dataset."""
+            return expected
+
+    monkeypatch.setattr(scenario_module, "ModelScenario", FakeModelScenario)
+    footprint = SimpleNamespace(data=xr.Dataset(attrs={"max_level": 17}))
+
+    result = scenario_module.merged_scenario_data(
+        obs_data=object(),  # type: ignore[arg-type]
+        footprint_data=footprint,  # type: ignore[arg-type]
+        flux_dict={},
+        max_level=3,
+    )
+
+    assert result.attrs["max_level"] == 3
+    assert result.attrs["footprint_max_level"] == 17
 
 
 def test_missing_data_at_all_sites(openghg_test_store):

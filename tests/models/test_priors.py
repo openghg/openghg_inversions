@@ -4,7 +4,11 @@ import pytest
 import xarray as xr
 from pymc.distributions import continuous
 
-from openghg_inversions.models.priors import lognormal_mu_sigma, parse_prior
+from openghg_inversions.models.priors import (
+    lognormal_mu_sigma,
+    parse_prior,
+    positive_prior_args,
+)
 
 
 def test_lognormal_mu_sigma_matches_requested_moments() -> None:
@@ -44,6 +48,25 @@ def test_parse_prior_rejects_unknown_distribution() -> None:
     with pm.Model():
         with pytest.raises(ValueError, match="continuous distribution"):
             parse_prior("bad", {"pdf": "definitely_not_real"})
+
+
+@pytest.mark.parametrize(
+    "prior",
+    [
+        {"pdf": "normal", "mu": 0.0, "sigma": 1.0},
+        {"pdf": "uniform", "lower": -1.0, "upper": 1.0},
+    ],
+)
+def test_positive_prior_args_rejects_negative_support(prior: dict[str, object]) -> None:
+    with pytest.raises(ValueError, match="positive|lower bound"):
+        positive_prior_args(prior)
+
+
+def test_positive_prior_args_normalises_distribution_name() -> None:
+    assert positive_prior_args({"pdf": "Half-Normal", "sigma": 1.0}) == {
+        "pdf": "halfnormal",
+        "sigma": 1.0,
+    }
 
 
 def test_parse_prior_does_not_globally_strip_xarray_labels(monkeypatch: pytest.MonkeyPatch) -> None:

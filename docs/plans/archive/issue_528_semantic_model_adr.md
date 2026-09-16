@@ -4,7 +4,7 @@
 - **Date:** 2026-08-10
 - **Decision issue:** [#528](https://github.com/openghg/openghg_inversions/issues/528)
 - **Supersedes:** The speculative semantic-kernel part of
-  [the issues 402/403 design note](issues_402_403_builder_strategy_design.md),
+  [the issues 402/403 design note](../issues_402_403_builder_strategy_design.md),
   while retaining its completed narrow compiler work and the conceptual
   distinctions that remain valid
 - **Scope:** Scientific model identity, mathematical preparation, backend
@@ -14,9 +14,9 @@
   [delivery plan](issue_528_delivery_plan.md)
 
 > **Production architecture update:** The
-> [`run_rhime` readability and modifiability plan](run_rhime_readability_and_modifiability.md)
+> [`run_rhime` readability and modifiability plan](../run_rhime_readability_and_modifiability.md)
 > and the
-> [model-family expansion plan](rhime_model_family_expansion.md) are
+> [model-family expansion plan](../rhime_model_family_expansion.md) are
 > authoritative. Production RHIME uses readable named recipes and concrete
 > model builders rather than the semantic-model/compiler architecture proposed
 > below. This ADR remains a research record and source of scientific concepts,
@@ -1065,7 +1065,7 @@ linked-observation-model implementations.
 
 ### `openghg_inversions`
 
-- [Issues 402/403 builder strategy design](issues_402_403_builder_strategy_design.md)
+- [Issues 402/403 builder strategy design](../issues_402_403_builder_strategy_design.md)
   supplies the earlier source/component/state/term/channel/output vocabulary
   and the original pressure tests. This ADR replaces “channel” with the more
   explicit observation-model terminology for active design work.

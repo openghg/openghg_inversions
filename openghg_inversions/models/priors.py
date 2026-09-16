@@ -8,6 +8,7 @@ the user-facing deterministic variable.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any, TypeAlias
 
 import numpy as np
@@ -17,6 +18,15 @@ from pymc.distributions import continuous
 from pytensor.tensor.variable import TensorVariable
 
 PriorArgs: TypeAlias = dict[str, Any]
+
+_POSITIVE_PRIOR_FAMILIES = {
+    "exponential",
+    "gamma",
+    "halfnormal",
+    "halfstudentt",
+    "lognormal",
+    "uniform",
+}
 
 
 def lognormal_mu_sigma(
@@ -62,6 +72,26 @@ def _update_log_normal_prior(prior_params: PriorArgs) -> None:
     del prior_params["stdev"]
     if "mean" in prior_params:
         del prior_params["mean"]
+
+
+def positive_prior_args(prior_params: Mapping[str, Any]) -> PriorArgs:
+    """Return prior arguments whose distribution has non-negative support."""
+    params = dict(prior_params)
+    family = str(params.get("pdf", "")).casefold().replace("-", "")
+    if family not in _POSITIVE_PRIOR_FAMILIES:
+        raise ValueError(
+            "A positive prior must use HalfNormal, HalfStudentT, Exponential, "
+            "Gamma, LogNormal, or Uniform."
+        )
+    params["pdf"] = family
+    if family == "uniform":
+        try:
+            lower = np.asarray(params.get("lower", 0.0), dtype=float)
+        except (TypeError, ValueError) as error:
+            raise ValueError("A positive Uniform prior requires a numeric lower bound.") from error
+        if not np.isfinite(lower).all() or (lower < 0.0).any():
+            raise ValueError("A positive Uniform prior requires a finite lower bound >= 0.")
+    return params
 
 
 def parse_prior(name: str, prior_params: PriorArgs, **kwargs) -> TensorVariable:

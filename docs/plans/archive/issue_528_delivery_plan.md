@@ -3,8 +3,8 @@
 Date: 2026-08-11
 
 Status: archived as a production delivery sequence on 2026-08-18. The
-[`run_rhime` readability plan](run_rhime_readability_and_modifiability.md) and
-the [model-family expansion plan](rhime_model_family_expansion.md) are the
+[`run_rhime` readability plan](../run_rhime_readability_and_modifiability.md) and
+the [model-family expansion plan](../rhime_model_family_expansion.md) are the
 active production roadmaps. This document remains evidence for the scientific
 native-covariance, coherent-reduction, aggregation-error, and linked-channel
 work; its semantic-model and compiler sequence is not being adopted.
