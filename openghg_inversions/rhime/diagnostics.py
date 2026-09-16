@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+import json
 from typing import Any
 
 import arviz as az
@@ -23,10 +24,17 @@ def posterior_convergence_check(
     stage: str = "posterior",
     artifact_paths: Sequence[str] = (),
     summary: xr.Dataset | None = None,
+    variable_names: Sequence[str] | None = None,
 ) -> tuple[xr.Dataset, dict[str, Any]]:
     """Calculate a detailed ArviZ summary and compact convergence check."""
+    if variable_names is None and "sampler_convergence_variables" in idata.attrs:
+        variable_names = json.loads(idata.attrs["sampler_convergence_variables"])
     if summary is None:
-        summary = az.summary(idata, kind="diagnostics", fmt="xarray")
+        summary = az.summary(idata, var_names=variable_names, kind="diagnostics", fmt="xarray")
+
+    posterior = getattr(idata, "posterior", None)
+    sample_stats = getattr(idata, "sample_stats", None)
+    chains = posterior.sizes.get("chain") if posterior is not None else None
 
     def finite_extreme(name: str, operation: str) -> tuple[float | None, str | None, list[str]]:
         candidates = []
@@ -66,23 +74,18 @@ def posterior_convergence_check(
             return None, None, unassessable
         return best[0], best[1], unassessable
 
-    rhat, rhat_variable, unassessable_rhat = finite_extreme("r_hat", "max")
+    if chains == 1:
+        rhat, rhat_variable = None, None
+        unassessable_rhat = ["between-chain convergence requires at least two chains"]
+    else:
+        rhat, rhat_variable, unassessable_rhat = finite_extreme("r_hat", "max")
     bulk_ess, bulk_ess_variable, unassessable_bulk_ess = finite_extreme("ess_bulk", "min")
     tail_ess, tail_ess_variable, unassessable_tail_ess = finite_extreme("ess_tail", "min")
-    posterior = getattr(idata, "posterior", None)
-    sample_stats = getattr(idata, "sample_stats", None)
-    chains = posterior.sizes.get("chain") if posterior is not None else None
     divergences_by_chain = (
         np.asarray(sample_stats["diverging"].sum("draw").values, dtype=int).tolist()
         if sample_stats is not None and "diverging" in sample_stats
         else None
     )
-    if chains == 1:
-        rhat = None
-        rhat_variable = None
-        if not unassessable_rhat:
-            unassessable_rhat = ["between-chain convergence requires at least two chains"]
-
     measured = {
         "chains": chains,
         "draws_per_chain": posterior.sizes.get("draw") if posterior is not None else None,

@@ -640,7 +640,12 @@ def diagnose_rhime_stage(
         _verify_sample_manifest(sample_manifest, posterior=posterior_path)
     idata = load_inferencedata(posterior_path)
     summary_path = _output_path(destination, None, "posterior-diagnostics.nc")
-    summary = az.summary(idata, kind="diagnostics", fmt="xarray")
+    variable_names = (
+        json.loads(idata.attrs["sampler_convergence_variables"])
+        if "sampler_convergence_variables" in idata.attrs
+        else None
+    )
+    summary = az.summary(idata, var_names=variable_names, kind="diagnostics", fmt="xarray")
     summary, result = posterior_convergence_check(
         idata,
         max_rhat=max_rhat,
@@ -650,6 +655,7 @@ def diagnose_rhime_stage(
         stage=stage,
         artifact_paths=[_artifact_path(summary_path)],
         summary=summary,
+        variable_names=variable_names,
     )
     reset_serialisation_multiindexes(summary).to_netcdf(summary_path)
     _write_json(_output_path(destination, check_output, "sampler-convergence.json"), result)

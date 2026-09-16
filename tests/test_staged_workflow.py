@@ -536,54 +536,57 @@ def test_diagnostics_handle_unassessable_scalar_metric(
 
 
 def test_one_chain_diagnostics_explicitly_report_between_chain_limit(
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A one-chain trace cannot silently present R-hat as assessed."""
-    from openghg_inversions.rhime import diagnostics
-
+    rng = np.random.default_rng(42)
     idata = az.InferenceData(
-        posterior=xr.Dataset({"x": (("chain", "draw"), np.ones((1, 4)))}),
-        sample_stats=xr.Dataset({"diverging": (("chain", "draw"), np.zeros((1, 4), dtype=bool))}),
-    )
-    monkeypatch.setattr(
-        diagnostics.az,
-        "summary",
-        lambda *args, **kwargs: xr.Dataset(
-            {"x": ("metric", [1.0, 800.0, 700.0])},
-            coords={"metric": ["r_hat", "ess_bulk", "ess_tail"]},
+        posterior=xr.Dataset(
+            {
+                "x": (("chain", "draw"), rng.normal(size=(1, 100))),
+                "epsilon": (("chain", "draw", "nmeasure"), np.ones((1, 100, 500))),
+            },
+        ),
+        sample_stats=xr.Dataset(
+            {"diverging": (("chain", "draw"), np.zeros((1, 100), dtype=bool))}
         ),
     )
 
-    _, result = posterior_convergence_check(idata)
+    _, result = posterior_convergence_check(
+        idata,
+        variable_names=["x"],
+        min_bulk_ess=10,
+        min_tail_ess=10,
+    )
 
     assert result["status"] == "unknown"
     assert result["measured_values"]["chains"] == 1
     assert result["measured_values"]["max_rhat"] is None
+    assert result["measured_values"]["unassessable_rhat"] == [
+        "between-chain convergence requires at least two chains"
+    ]
     assert "Between-chain convergence is not assessable" in result["message"]
 
 
 def test_healthy_diagnostics_pass_with_identified_extremes(
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A fully assessed healthy trace emits an isolated passing check."""
-    from openghg_inversions.rhime import diagnostics
-
+    """Constant deterministics do not obscure a healthy latent posterior."""
+    rng = np.random.default_rng(42)
     idata = az.InferenceData(
-        posterior=xr.Dataset({"x": (("chain", "draw"), np.ones((2, 4)))}),
-        sample_stats=xr.Dataset({"diverging": (("chain", "draw"), np.zeros((2, 4), dtype=bool))}),
-    )
-    monkeypatch.setattr(
-        diagnostics.az,
-        "summary",
-        lambda *args, **kwargs: xr.Dataset(
-            {"x": ("metric", [1.0, 800.0, 700.0])},
-            coords={"metric": ["r_hat", "ess_bulk", "ess_tail"]},
+        posterior=xr.Dataset(
+            {
+                "x": (("chain", "draw"), rng.normal(size=(4, 500))),
+                "epsilon": (("chain", "draw", "nmeasure"), np.ones((4, 500, 50))),
+            },
+        ),
+        sample_stats=xr.Dataset(
+            {"diverging": (("chain", "draw"), np.zeros((4, 500), dtype=bool))}
         ),
     )
 
-    _, result = posterior_convergence_check(idata)
+    summary, result = posterior_convergence_check(idata, variable_names=["x"])
 
     assert result["status"] == "pass"
+    assert set(summary.data_vars) == {"x"}
     assert result["measured_values"]["max_rhat_variable"] == "x"
     assert result["measured_values"]["min_bulk_ess_variable"] == "x"
     assert result["measured_values"]["min_tail_ess_variable"] == "x"

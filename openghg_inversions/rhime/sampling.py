@@ -273,18 +273,6 @@ class RhimeSampler:
         trace = _reset_retained_draws(trace, burn=self.burn)
         log_timing("rhime.sampler.burn_slicing", timer_seconds(timing_start), burn=self.burn)
 
-        if isinstance(trace, az.InferenceData):
-            timing_start = timer_start()
-            _, convergence = posterior_convergence_check(trace)
-            trace.attrs["sampler_convergence"] = json.dumps(convergence, sort_keys=True)
-            log_timing(
-                "rhime.sampler.convergence",
-                timer_seconds(timing_start),
-                status=convergence["status"],
-                message=convergence["message"],
-                **convergence["measured_values"],
-            )
-
         trace = self._extend_predictive(trace, model=model, variable_roles=variable_roles)
         timing_start = timer_start()
         registry = get_coord_registry(model)
@@ -295,6 +283,19 @@ class RhimeSampler:
             timer_seconds(timing_start),
             restored=registry is not None,
         )
+        if isinstance(trace, az.InferenceData):
+            timing_start = timer_start()
+            variable_names = [variable.name for variable in model.free_RVs]
+            trace.attrs["sampler_convergence_variables"] = json.dumps(variable_names)
+            _, convergence = posterior_convergence_check(trace, variable_names=variable_names)
+            trace.attrs["sampler_convergence"] = json.dumps(convergence, sort_keys=True)
+            log_timing(
+                "rhime.sampler.convergence",
+                timer_seconds(timing_start),
+                status=convergence["status"],
+                message=convergence["message"],
+                **convergence["measured_values"],
+            )
         return trace
 
     def _extend_predictive(
