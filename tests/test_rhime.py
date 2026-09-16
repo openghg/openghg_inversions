@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+import json
 import subprocess
 import sys
 from dataclasses import replace
@@ -4689,6 +4690,16 @@ def test_rhime_sampler_preserves_disabled_log_likelihood(
         return trace
 
     monkeypatch.setattr("openghg_inversions.rhime.sampling.pm.sample", fake_sample)
+    convergence = {
+        "status": "unknown",
+        "message": "Between-chain convergence is not assessable with one chain.",
+        "measured_values": {"chains": 1, "draws_per_chain": 2},
+    }
+    monkeypatch.setattr(
+        rhime_sampling,
+        "posterior_convergence_check",
+        lambda idata: (xr.Dataset(), convergence),
+    )
     sampler = RhimeSampler(
         draws=2,
         tune=0,
@@ -4702,11 +4713,12 @@ def test_rhime_sampler_preserves_disabled_log_likelihood(
         sample_posterior_predictive=False,
     )
 
-    sampler.sample(pm.Model())
+    result = sampler.sample(pm.Model())
 
     assert seen["nuts_sampler"] == "pymc"
     assert seen["compute_convergence_checks"] is False
     assert seen["idata_kwargs"] == {"log_likelihood": False}
+    assert json.loads(result.attrs["sampler_convergence"]) == convergence
 
 
 def test_rhime_sampler_resets_retained_draws_before_extending_predictive_groups(

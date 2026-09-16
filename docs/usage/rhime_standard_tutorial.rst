@@ -181,6 +181,16 @@ array position. The complete role and model-variable contract is described in
 
 Inspect diagnostics before interpreting any posterior quantity:
 
+Every completed ``RhimeSampler`` NUTS run calculates a compact
+``sampler-convergence`` check after burn slicing.  The check is reported in
+the timing log and preserved as JSON in
+``result.idata.attrs["sampler_convergence"]``.  It records chain and retained
+draw counts, worst R-hat and effective sample sizes, their variables, and
+divergences by chain.  One-chain output explicitly reports that between-chain
+convergence is not assessable.
+
+Use ArviZ when you need the detailed per-variable table:
+
 .. jupyter-input::
 
    import arviz as az

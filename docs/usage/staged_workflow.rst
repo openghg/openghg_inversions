@@ -108,7 +108,9 @@ directory.
   resolved ``RhimeSampler``, and writes ``posterior.nc`` plus
   ``sample-manifest.json``.  The manifest records the effective sampling
   configuration and content identities for the posterior and prepared input.
-  It never silently invokes preparation.
+  The posterior preserves the automatically calculated compact convergence
+  check in its ``sampler_convergence`` attribute.  It never silently invokes
+  preparation.
 
 ``diagnose``
   Loads ``--posterior``, writes ``posterior-diagnostics.nc`` and emits the

@@ -28,6 +28,8 @@ from openghg_inversions.serialization import (
     save_inferencedata,
 )
 
+from .diagnostics import CONVERGENCE_CHECK_NAME as CONVERGENCE_CHECK_NAME
+from .diagnostics import posterior_convergence_check
 from .multisector import (
     build_multisector_rhime_model_result,
     make_multisector_rhime_result,
@@ -54,7 +56,6 @@ from .materialization import materialize_pymc_inputs
 ModelKind = Literal["standard", "multisector"]
 
 PREPARATION_CHECK_NAME = "prior-predictive-readiness"
-CONVERGENCE_CHECK_NAME = "sampler-convergence"
 CHECK_SCHEMA_VERSION = 1
 
 _STAGE_PATH_OPTIONS = frozenset(
@@ -638,111 +639,19 @@ def diagnose_rhime_stage(
     if sample_manifest is not None:
         _verify_sample_manifest(sample_manifest, posterior=posterior_path)
     idata = load_inferencedata(posterior_path)
-    summary = az.summary(idata, kind="diagnostics", fmt="xarray")
     summary_path = _output_path(destination, None, "posterior-diagnostics.nc")
-    reset_serialisation_multiindexes(summary).to_netcdf(summary_path)
-
-    def finite_extreme(name: str, operation: str) -> tuple[float | None, str | None, list[str]]:
-        candidates = []
-        if name in summary:
-            candidates.append((name, summary[name]))
-        else:
-            for variable, values in summary.data_vars.items():
-                if "metric" in values.dims and name in values.coords["metric"]:
-                    candidates.append((str(variable), values.sel(metric=name, drop=True)))
-        best: tuple[float, str] | None = None
-        unassessable: list[str] = []
-        for variable, values in candidates:
-            array = np.asarray(values.values, dtype=float)
-            finite = np.isfinite(array)
-            for positions in np.argwhere(~finite):
-                index = tuple(positions)
-                labels = [
-                    f"{dim}={values.coords[dim].values[position]}"
-                    for dim, position in zip(values.dims, index)
-                    if dim in values.coords
-                ]
-                unassessable.append(",".join([variable, *labels]))
-            if not finite.any():
-                continue
-            masked = np.where(finite, array, -np.inf if operation == "max" else np.inf)
-            flat_index = int(masked.argmax() if operation == "max" else masked.argmin())
-            index = np.unravel_index(flat_index, array.shape)
-            labels = [
-                f"{dim}={values.coords[dim].values[position]}"
-                for dim, position in zip(values.dims, index)
-                if dim in values.coords
-            ]
-            candidate = (float(array[index]), ",".join([variable, *labels]))
-            if best is None or (candidate[0] > best[0] if operation == "max" else candidate[0] < best[0]):
-                best = candidate
-        if best is None:
-            return None, None, unassessable
-        return best[0], best[1], unassessable
-
-    rhat, rhat_variable, unassessable_rhat = finite_extreme("r_hat", "max")
-    bulk_ess, bulk_ess_variable, unassessable_bulk_ess = finite_extreme("ess_bulk", "min")
-    tail_ess, tail_ess_variable, unassessable_tail_ess = finite_extreme("ess_tail", "min")
-    posterior_group = getattr(idata, "posterior", None)
-    sample_stats = getattr(idata, "sample_stats", None)
-    divergences_by_chain = (
-        np.asarray(sample_stats["diverging"].sum("draw").values, dtype=int).tolist()
-        if sample_stats is not None and "diverging" in sample_stats
-        else None
-    )
-
-    measured = {
-        "chains": posterior_group.sizes.get("chain") if posterior_group is not None else None,
-        "draws_per_chain": posterior_group.sizes.get("draw") if posterior_group is not None else None,
-        "max_rhat": rhat,
-        "max_rhat_variable": rhat_variable,
-        "unassessable_rhat": unassessable_rhat,
-        "min_bulk_ess": bulk_ess,
-        "min_bulk_ess_variable": bulk_ess_variable,
-        "unassessable_bulk_ess": unassessable_bulk_ess,
-        "min_tail_ess": tail_ess,
-        "min_tail_ess_variable": tail_ess_variable,
-        "unassessable_tail_ess": unassessable_tail_ess,
-        "divergences": sum(divergences_by_chain) if divergences_by_chain is not None else None,
-        "divergences_by_chain": divergences_by_chain,
-    }
-    thresholds = {
-        "max_rhat": max_rhat,
-        "min_bulk_ess": min_bulk_ess,
-        "min_tail_ess": min_tail_ess,
-        "divergences": max_divergences,
-    }
-    assessed_names = ("max_rhat", "min_bulk_ess", "min_tail_ess", "divergences")
-    partial = {
-        "max_rhat": unassessable_rhat,
-        "min_bulk_ess": unassessable_bulk_ess,
-        "min_tail_ess": unassessable_tail_ess,
-    }
-    missing = [name for name in assessed_names if measured[name] is None or partial.get(name)]
-    failed = (
-        (measured["max_rhat"] is not None and measured["max_rhat"] > max_rhat)
-        or (measured["min_bulk_ess"] is not None and measured["min_bulk_ess"] < min_bulk_ess)
-        or (measured["min_tail_ess"] is not None and measured["min_tail_ess"] < min_tail_ess)
-        or (measured["divergences"] is not None and measured["divergences"] > max_divergences)
-    )
-    status = "fail" if failed else "unknown" if missing else "pass"
-    if failed:
-        message = "Posterior convergence thresholds were exceeded."
-        if missing:
-            message += f" Also unavailable: {', '.join(missing)}."
-    elif missing:
-        message = f"Convergence metrics unavailable: {', '.join(missing)}."
-    else:
-        message = "Posterior convergence thresholds were met."
-    result = _check_result(
-        name=CONVERGENCE_CHECK_NAME,
-        status=status,
-        measured_values=measured,
-        thresholds=thresholds,
-        message=message,
-        artifact_paths=[_artifact_path(summary_path)],
+    summary = az.summary(idata, kind="diagnostics", fmt="xarray")
+    summary, result = posterior_convergence_check(
+        idata,
+        max_rhat=max_rhat,
+        min_bulk_ess=min_bulk_ess,
+        min_tail_ess=min_tail_ess,
+        max_divergences=max_divergences,
         stage=stage,
+        artifact_paths=[_artifact_path(summary_path)],
+        summary=summary,
     )
+    reset_serialisation_multiindexes(summary).to_netcdf(summary_path)
     _write_json(_output_path(destination, check_output, "sampler-convergence.json"), result)
     return result
 
