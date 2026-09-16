@@ -9,7 +9,6 @@ covariance, or diagnostically as independent standard deviations.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from hashlib import sha256
 from typing import Literal, TypeAlias
 
 from dask import compute as dask_compute
@@ -32,12 +31,14 @@ OBSERVATION_ERROR_INPUT_NAMES = ("mf", "mf_error", "min_error")
 class AggregationError:
     """Validated aggregation-error representation selected for a likelihood.
 
-    Model builders trust this value as already validated. Scientific runners
-    should construct it through :func:`resolve_aggregation_error`, which
-    selects and validates a coherent-reduction representation. Direct
-    construction is an expert seam, primarily useful when testing model
-    components, and the caller then owns the coherence of the mode, payload,
-    marginal variance, coordinates, and numerical covariance properties.
+    Model builders trust this value as already validated. Externally supplied
+    representations should be constructed through
+    :func:`resolve_aggregation_error`, which selects and validates a
+    coherent-reduction representation. Package preparation helpers may also
+    construct it directly from values they have just produced. Other direct
+    construction is an expert seam, and the caller then owns the coherence of
+    the mode, payload, marginal variance, coordinates, and numerical
+    covariance properties.
 
     Args:
         mode: Concrete covariance representation.
@@ -57,13 +58,11 @@ class AggregationError:
 
 @dataclass(frozen=True)
 class LowRankAggregationErrorApproximation:
-    """A validated LRPD view tied to one dense source covariance.
+    """A prepared LRPD representation and its approximation diagnostics.
 
     Attributes:
         aggregation_error: Labelled low-rank factor and non-negative diagonal
             residual accepted by the shared likelihood components.
-        source_covariance_sha256: Stable identity of the labelled dense
-            covariance from which the approximation was constructed.
         diagnostics: JSON-safe method, rank, tolerance, spectral, Frobenius,
             and diagonal-preservation diagnostics. These values describe the
             approximation but do not certify a rank for a particular
@@ -71,7 +70,6 @@ class LowRankAggregationErrorApproximation:
     """
 
     aggregation_error: AggregationError
-    source_covariance_sha256: str
     diagnostics: dict[str, str | int | float]
 
 
@@ -89,8 +87,6 @@ class _SpectralLrpd:
         source_frobenius_norm: Frobenius norm of the source covariance.
         reconstruction_error: Frobenius norm of the difference between the
             source covariance and the factor-plus-diagonal approximation.
-        roundoff_tolerance: Scale-relative absolute tolerance used to discard
-            numerical modes and reject materially negative values.
         diagonal_tail_clipped_count: Number of small negative diagonal-tail
             entries clipped to zero.
         diagonal_tail_max_clipped_magnitude: Largest magnitude clipped from
@@ -103,82 +99,8 @@ class _SpectralLrpd:
     positive_spectrum: float
     source_frobenius_norm: float
     reconstruction_error: float
-    roundoff_tolerance: float
     diagonal_tail_clipped_count: int
     diagonal_tail_max_clipped_magnitude: float
-
-
-def aggregation_error_covariance_sha256(
-    covariance: xr.DataArray,
-    *,
-    output_dim: str = "nmeasure",
-    covariance_dim: str = "nmeasure_cov",
-) -> str:
-    """Return a stable content identity for a labelled aggregation covariance.
-
-    This function eagerly materializes the covariance. The identity covers
-    dimension names and order, shape, the two dimension-coordinate values,
-    and numeric values normalized to big-endian float64. It excludes the array
-    name, attributes, auxiliary coordinates, chunks, and storage backend.
-
-    Args:
-        covariance: Square covariance with identical ordered axis labels.
-        output_dim: Observation dimension on the covariance rows.
-        covariance_dim: Repeated observation dimension on the columns.
-
-    Returns:
-        SHA-256 identity covering dimensions, coordinates, and numeric values.
-
-    Raises:
-        ValueError: If the covariance structure or numeric values are invalid.
-    """
-    validate_covariance_coordinates(
-        covariance,
-        dim=output_dim,
-        covariance_dim=covariance_dim,
-    )
-    (covariance,) = _materialize_together(covariance)
-    values = _numeric_finite(
-        "covariance",
-        covariance,
-        owner="Aggregation-error covariance identity input",
-    )
-    return _aggregation_error_covariance_sha256(
-        covariance,
-        values,
-        output_dim=output_dim,
-        covariance_dim=covariance_dim,
-    )
-
-
-def _aggregation_error_covariance_sha256(
-    covariance: xr.DataArray,
-    values: np.ndarray,
-    *,
-    output_dim: str,
-    covariance_dim: str,
-) -> str:
-    """Hash an already materialized covariance without a matrix-sized copy.
-
-    Args:
-        covariance: Labelled covariance whose dimensions and coordinates are
-            included in the identity.
-        values: Eager, finite, square values aligned with ``covariance``.
-        output_dim: Observation dimension on the covariance rows.
-        covariance_dim: Repeated observation dimension on the columns.
-
-    Returns:
-        SHA-256 identity whose numeric bytes are normalized to big-endian
-        float64 in row-major order.
-    """
-    coordinate_content = tuple(
-        (dim, np.asarray(covariance.coords[dim].values).tolist()) for dim in (output_dim, covariance_dim)
-    )
-    digest = sha256()
-    digest.update(repr((covariance.dims, covariance.shape, coordinate_content)).encode("utf-8"))
-    for row in values:
-        digest.update(np.asarray(row, dtype=">f8").tobytes(order="C"))
-    return f"sha256:{digest.hexdigest()}"
 
 
 def prepare_low_rank_aggregation_error(
@@ -203,8 +125,8 @@ def prepare_low_rank_aggregation_error(
         covariance_dim: Repeated observation dimension on the columns.
 
     Returns:
-        Validated aggregation error together with source identity and
-        JSON-safe approximation diagnostics.
+        Constructed low-rank aggregation error and JSON-safe approximation
+        diagnostics.
 
     Raises:
         ValueError: If dimensions, coordinates, rank, or numerical covariance
@@ -224,10 +146,15 @@ def prepare_low_rank_aggregation_error(
         _numeric_finite("covariance", covariance, owner="Low-rank approximation input"),
         dtype=float,
     )
-    approximation = _diagonal_preserving_spectral_lrpd(
+    roundoff_tolerance = _validate_dense_covariance_symmetry(
         values,
         owner="Low-rank approximation input covariance",
+    )
+    approximation = _diagonal_preserving_spectral_lrpd(
+        values,
         rank=rank,
+        roundoff_tolerance=roundoff_tolerance,
+        owner="Low-rank approximation input covariance",
     )
 
     labels = covariance.coords[output_dim]
@@ -243,11 +170,14 @@ def prepare_low_rank_aggregation_error(
         coords={output_dim: labels},
         name=DIAGONAL_RESIDUAL_VARIANCE,
     )
-    aggregation_error = resolve_aggregation_error(
-        xr.Dataset({LOW_RANK_FACTOR: factor, DIAGONAL_RESIDUAL_VARIANCE: diagonal}),
-        "low_rank",
-        output_dim=output_dim,
-        covariance_dim=covariance_dim,
+    marginal_variance = (
+        np.einsum("ij,ij->i", approximation.factor, approximation.factor) + approximation.diagonal
+    )
+    aggregation_error = AggregationError(
+        mode="low_rank",
+        marginal_variance=marginal_variance,
+        factor=factor,
+        diagonal_variance=diagonal,
     )
 
     retained_fraction = (
@@ -257,12 +187,6 @@ def prepare_low_rank_aggregation_error(
     )
     return LowRankAggregationErrorApproximation(
         aggregation_error=aggregation_error,
-        source_covariance_sha256=_aggregation_error_covariance_sha256(
-            covariance,
-            values,
-            output_dim=output_dim,
-            covariance_dim=covariance_dim,
-        ),
         diagnostics={
             "method": "descending_eigendecomposition_with_diagonal_tail",
             "requested_rank": rank,
@@ -273,18 +197,10 @@ def prepare_low_rank_aggregation_error(
                 if approximation.source_frobenius_norm
                 else 0.0
             ),
-            "diagonal_preservation_error": float(
-                np.max(
-                    np.abs(
-                        np.diag(values)
-                        - np.einsum("ij,ij->i", approximation.factor, approximation.factor)
-                        - approximation.diagonal
-                    )
-                )
-            ),
-            "roundoff_tolerance": approximation.roundoff_tolerance,
+            "diagonal_preservation_error": float(np.max(np.abs(np.diag(values) - marginal_variance))),
+            "roundoff_tolerance": roundoff_tolerance,
             "symmetry_relative_tolerance": 1e-10,
-            "psd_absolute_tolerance": approximation.roundoff_tolerance,
+            "psd_absolute_tolerance": roundoff_tolerance,
             "diagonal_tail_clipped_count": approximation.diagonal_tail_clipped_count,
             "diagonal_tail_max_clipped_magnitude": approximation.diagonal_tail_max_clipped_magnitude,
         },
@@ -316,6 +232,7 @@ def aggregation_error_as_low_rank(
         approximation = _diagonal_preserving_spectral_lrpd(
             covariance,
             rank=None,
+            roundoff_tolerance=_covariance_roundoff_tolerance(covariance),
             owner="Dense aggregation-error covariance",
         )
         return approximation.factor, approximation.diagonal
@@ -335,29 +252,29 @@ def _diagonal_preserving_spectral_lrpd(
     values: np.ndarray,
     *,
     rank: int | None,
+    roundoff_tolerance: float,
     owner: str,
 ) -> _SpectralLrpd:
     """Construct a coupled spectral factor and diagonal covariance tail.
 
     Args:
-        values: Eager dense covariance values.
+        values: Eager finite symmetric covariance values.
         rank: Maximum retained numerical rank, or ``None`` for every
             numerically positive mode.
+        roundoff_tolerance: Scale-relative absolute tolerance established at
+            the covariance boundary.
         owner: Scientific owner named in validation errors.
 
     Returns:
         Factor, diagonal tail, and algebraic approximation diagnostics.
 
     Raises:
-        ValueError: If the covariance is asymmetric, materially indefinite,
-            or produces a materially negative diagonal tail.
+        ValueError: If the covariance is materially indefinite or produces a
+            materially negative diagonal tail.
     """
     eigenvalues, eigenvectors = np.linalg.eigh(values, UPLO="L")
-    roundoff_tolerance = _validate_dense_covariance_values(
-        values,
-        owner=owner,
-        eigenvalues=eigenvalues,
-    )
+    if float(eigenvalues.min()) < -roundoff_tolerance:
+        raise ValueError(f"{owner} must be positive semidefinite.")
     positive_count = int(np.count_nonzero(eigenvalues > roundoff_tolerance))
     keep_count = positive_count if rank is None else min(rank, positive_count)
     if keep_count:
@@ -391,39 +308,36 @@ def _diagonal_preserving_spectral_lrpd(
         positive_spectrum=float(np.maximum(eigenvalues, 0.0).sum()),
         source_frobenius_norm=source_norm,
         reconstruction_error=reconstruction_error,
-        roundoff_tolerance=roundoff_tolerance,
         diagonal_tail_clipped_count=clipped_count,
         diagonal_tail_max_clipped_magnitude=max_clipped_magnitude,
     )
 
 
-def _validate_dense_covariance_values(
+def _covariance_roundoff_tolerance(values: np.ndarray) -> float:
+    """Return the covariance-scale absolute numerical tolerance."""
+    scale = float(np.max(np.abs(values)))
+    return 1e-10 * scale if scale else 0.0
+
+
+def _validate_dense_covariance_symmetry(
     values: np.ndarray,
     *,
     owner: str,
-    eigenvalues: np.ndarray | None = None,
 ) -> float:
-    """Require a materialized dense covariance to be symmetric and PSD.
-
-    When supplied, ``eigenvalues`` must be the eigenvalues obtained from the
-    validated matrix's lower triangle; callers may pass them to avoid a
-    second decomposition.
+    """Require a materialized dense covariance to be symmetric.
 
     Args:
         values: Materialized square covariance values.
         owner: Scientific owner named in validation errors.
-        eigenvalues: Optional eigenvalues already computed from the lower
-            triangle of the validated covariance.
 
     Returns:
         Scale-relative absolute roundoff tolerance.
 
     Raises:
-        ValueError: If ``values`` is not symmetric or positive semidefinite
-            within the scale-based numerical tolerance.
+        ValueError: If ``values`` is not symmetric within the scale-based
+            numerical tolerance.
     """
-    scale = float(np.max(np.abs(values)))
-    tolerance = 1e-10 * scale if scale else 0.0
+    tolerance = _covariance_roundoff_tolerance(values)
     block_rows = 256
     for start in range(0, values.shape[0], block_rows):
         stop = min(start + block_rows, values.shape[0])
@@ -434,8 +348,29 @@ def _validate_dense_covariance_values(
             atol=tolerance,
         ):
             raise ValueError(f"{owner} must be symmetric.")
-    if eigenvalues is None:
-        eigenvalues = np.linalg.eigvalsh(values, UPLO="L")
+    return tolerance
+
+
+def _validate_dense_covariance_values(
+    values: np.ndarray,
+    *,
+    owner: str,
+) -> float:
+    """Require a materialized dense covariance to be symmetric and PSD.
+
+    Args:
+        values: Materialized square covariance values.
+        owner: Scientific owner named in validation errors.
+
+    Returns:
+        Scale-relative absolute roundoff tolerance.
+
+    Raises:
+        ValueError: If ``values`` is not symmetric or positive semidefinite
+            within the scale-based numerical tolerance.
+    """
+    tolerance = _validate_dense_covariance_symmetry(values, owner=owner)
+    eigenvalues = np.linalg.eigvalsh(values, UPLO="L")
     if float(eigenvalues.min()) < -tolerance:
         raise ValueError(f"{owner} must be positive semidefinite.")
     return tolerance

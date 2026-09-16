@@ -7,6 +7,7 @@ import pytest
 import sparse
 import xarray as xr
 
+import openghg_inversions.observation_error as observation_error_module
 from openghg_inversions.observation_error import (
     aggregation_error_as_low_rank,
     prepare_low_rank_aggregation_error,
@@ -240,8 +241,8 @@ def test_prepare_low_rank_aggregation_error_preserves_diagonal() -> None:
         atol=1e-12,
     )
     np.testing.assert_allclose(np.diag(reconstructed), np.diag(covariance_values), atol=1e-12)
+    np.testing.assert_allclose(aggregation_error.marginal_variance, np.diag(reconstructed))
     np.linalg.cholesky(reconstructed)
-    assert result.source_covariance_sha256.startswith("sha256:")
     assert result.diagnostics["requested_rank"] == 2
     assert result.diagnostics["actual_rank"] == 2
     assert 0.0 < result.diagnostics["retained_positive_spectral_fraction"] <= 1.0
@@ -357,10 +358,46 @@ def test_zero_covariance_has_valid_zero_rank_representation() -> None:
     np.testing.assert_array_equal(aggregation_error.diagonal_variance, np.zeros(3))
 
 
+def test_prepare_low_rank_aggregation_error_trusts_its_constructed_payload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """LRPD preparation trusts its coupled factor and diagonal construction."""
+    eigenvectors = np.array([[1.0, -1.0], [1.0, 1.0]]) / np.sqrt(2.0)
+    covariance_values = eigenvectors @ np.diag([1.0, -1.0e-12]) @ eigenvectors.T
+    covariance = xr.DataArray(
+        covariance_values,
+        dims=("nmeasure", "nmeasure_cov"),
+        coords={"nmeasure": ["A", "B"], "nmeasure_cov": ["A", "B"]},
+    )
+
+    def unexpected_resolve(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("package-constructed LRPD payload was resolved again")
+
+    monkeypatch.setattr(observation_error_module, "resolve_aggregation_error", unexpected_resolve)
+
+    prepared = prepare_low_rank_aggregation_error(covariance, rank=2)
+
+    aggregation_error = prepared.aggregation_error
+    assert aggregation_error.factor is not None
+    assert aggregation_error.diagonal_variance is not None
+    represented_marginal_variance = (
+        np.einsum(
+            "ij,ij->i",
+            aggregation_error.factor.values,
+            aggregation_error.factor.values,
+        )
+        + aggregation_error.diagonal_variance.values
+    )
+    np.testing.assert_array_equal(aggregation_error.marginal_variance, represented_marginal_variance)
+    assert prepared.diagnostics["diagonal_tail_clipped_count"] == 2
+    assert prepared.diagnostics["diagonal_tail_max_clipped_magnitude"] > 0.0
+    assert prepared.diagnostics["diagonal_preservation_error"] <= prepared.diagnostics["roundoff_tolerance"]
+
+
 def test_prepare_low_rank_aggregation_error_uses_one_eigendecomposition(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """LRPD preparation reuses one eigendecomposition for validation and factors."""
+    """LRPD preparation performs one eigendecomposition after boundary validation."""
     covariance = xr.DataArray(
         np.array([[2.0, 0.4], [0.4, 1.0]]),
         dims=("nmeasure", "nmeasure_cov"),
@@ -383,6 +420,25 @@ def test_prepare_low_rank_aggregation_error_uses_one_eigendecomposition(
     prepare_low_rank_aggregation_error(covariance, rank=1)
 
     assert calls == 1
+
+
+def test_prepare_low_rank_aggregation_error_rejects_asymmetry_before_eigendecomposition(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """LRPD preparation rejects asymmetry before eigendecomposition."""
+    covariance = xr.DataArray(
+        np.array([[1.0, 0.2], [0.1, 1.0]]),
+        dims=("nmeasure", "nmeasure_cov"),
+        coords={"nmeasure": ["A", "B"], "nmeasure_cov": ["A", "B"]},
+    )
+
+    def unexpected_eigh(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("asymmetric covariance reached eigendecomposition")
+
+    monkeypatch.setattr(np.linalg, "eigh", unexpected_eigh)
+
+    with pytest.raises(ValueError, match="symmetric"):
+        prepare_low_rank_aggregation_error(covariance, rank=1)
 
 
 def test_full_rank_aggregation_error_approximation_is_exact() -> None:

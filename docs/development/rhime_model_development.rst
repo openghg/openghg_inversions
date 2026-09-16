@@ -299,11 +299,6 @@ components as honest named arguments.
 A scientifically distinct recipe may define a dedicated prepared-input type.
 Prefer composition of the reusable canonical boundary over inheritance when
 the recipe is not substitutable for the standard model.
-``Co2PreparedInputs`` follows this pattern by owning a public ``rhime_inputs``
-member, explicitly forwarding the small set of canonical properties used by
-CO2 callers, and passing the inner object to generic RHIME consumers. It does
-not use ``__getattr__`` delegation, so the supported surface remains visible
-to readers, generated documentation, static typing, and repository searches.
 
 .. list-table:: Current ``inv_inputs`` inventory
    :header-rows: 1

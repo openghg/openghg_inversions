@@ -291,8 +291,7 @@ class Co2PreparedInputs:
         aggregation_error_mode: Concrete dense or low-rank representation
             stored in :attr:`inv_inputs` and consumed by both CO2 runners.
         provenance: Top-level read-only JSON-safe preparation record. Low-rank
-            artifacts include the source-covariance identity and approximation
-            diagnostics.
+            artifacts include approximation diagnostics.
     """
 
     rhime_inputs: RhimePreparedInputs
@@ -725,9 +724,6 @@ def prepare_co2_inputs(
     metadata["projection_strategy"] = reduction.projection_strategy
     if approximation is not None:
         metadata["aggregation_error"] = dict(approximation.diagnostics)
-        metadata["aggregation_error"]["source_covariance_sha256"] = (
-            approximation.source_covariance_sha256
-        )
     return Co2PreparedInputs(
         RhimePreparedInputs(
             inv_inputs=mapped,
