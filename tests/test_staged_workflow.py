@@ -14,7 +14,8 @@ import pytest
 import xarray as xr
 
 from openghg_inversions.basis.basis_functions import BasisFunctions
-from openghg_inversions.cli import build_parser
+from openghg_inversions.cli import build_parser, main
+from openghg_inversions.inference.diagnostics import posterior_convergence_check
 from openghg_inversions.inversion_data import RhimePreparedInputs
 from openghg_inversions.inference import diagnostics as inference_diagnostics
 from openghg_inversions.rhime.stages import (
@@ -430,7 +431,10 @@ def test_diagnostics_emit_issue_667_convergence_signals(
 ) -> None:
     rng = np.random.default_rng(42)
     posterior = xr.Dataset(
-        {"x": (("chain", "draw", "region"), rng.normal(size=(4, 500, 2)))},
+        {
+            "x": (("chain", "draw", "region"), rng.normal(size=(4, 500, 2))),
+            "epsilon": (("chain", "draw", "nmeasure"), np.ones((4, 500, 20))),
+        },
         coords={"chain": range(4), "draw": range(500), "region": ["north", "south"]},
     )
     diverging = np.zeros((4, 500), dtype=bool)
@@ -442,6 +446,7 @@ def test_diagnostics_emit_issue_667_convergence_signals(
             coords={"chain": range(4), "draw": range(500)},
         ),
     )
+    idata.attrs["sampler_convergence_variables"] = json.dumps(["x"])
     posterior_path = tmp_path / "posterior.nc"
     save_trace(idata, posterior_path)
     engines: list[str | None] = []
@@ -458,6 +463,7 @@ def test_diagnostics_emit_issue_667_convergence_signals(
     assert result["name"] == CONVERGENCE_CHECK_NAME
     assert result["status"] == "fail"
     assert result["measured_values"]["chains"] == 4
+    assert result["measured_values"]["assessed_variables"] == ["x"]
     assert result["measured_values"]["draws_per_chain"] == 500
     assert result["measured_values"]["divergences"] == 1
     assert result["measured_values"]["divergences_by_chain"] == [0, 0, 1, 0]
@@ -562,6 +568,103 @@ def test_diagnostics_handle_unassessable_scalar_metric(
 
     assert result["status"] == "unknown"
     assert result["measured_values"]["unassessable_rhat"] == ["x"]
+
+
+def test_one_chain_diagnostics_explicitly_report_between_chain_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A one-chain trace reports one concise between-chain limitation."""
+    trace = make_trace(
+        posterior=xr.Dataset({"x": (("chain", "draw"), np.ones((1, 4)))}),
+        sample_stats=xr.Dataset({"diverging": (("chain", "draw"), np.zeros((1, 4), dtype=bool))}),
+    )
+    monkeypatch.setattr(
+        inference_diagnostics.az,
+        "summary",
+        lambda *args, **kwargs: xr.Dataset(
+            {"x": ("metric", [np.nan, 800.0, 700.0])},
+            coords={"metric": ["r_hat", "ess_bulk", "ess_tail"]},
+        ),
+    )
+
+    _, result = posterior_convergence_check(trace, variable_names=["x"])
+
+    assert result["status"] == "unknown"
+    assert result["measured_values"]["chains"] == 1
+    assert result["measured_values"]["max_rhat"] is None
+    assert result["measured_values"]["unassessable_rhat"] == [
+        "between-chain convergence requires at least two chains"
+    ]
+    assert "Between-chain convergence is not assessable" in result["message"]
+
+
+def test_healthy_diagnostics_pass_with_identified_extremes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Constant deterministic outputs do not obscure a healthy latent posterior."""
+    rng = np.random.default_rng(42)
+    trace = make_trace(
+        posterior=xr.Dataset(
+            {
+                "x": (("chain", "draw"), rng.normal(size=(4, 500))),
+                "epsilon": (("chain", "draw", "nmeasure"), np.ones((4, 500, 20))),
+            }
+        ),
+        sample_stats=xr.Dataset({"diverging": (("chain", "draw"), np.zeros((4, 500), dtype=bool))}),
+    )
+
+    def healthy_summary(_posterior: xr.Dataset, *, var_names: list[str], **_kwargs: Any) -> xr.Dataset:
+        assert var_names == ["x"]
+        return xr.Dataset(
+            {"x": ("metric", [1.0, 800.0, 700.0])},
+            coords={"metric": ["r_hat", "ess_bulk", "ess_tail"]},
+        )
+
+    monkeypatch.setattr(inference_diagnostics.az, "summary", healthy_summary)
+    summary, result = posterior_convergence_check(trace, variable_names=["x"])
+
+    assert result["status"] == "pass"
+    assert set(summary.data_vars) == {"x"}
+    assert result["measured_values"]["assessed_variables"] == ["x"]
+    assert result["measured_values"]["max_rhat_variable"] == "x"
+    assert result["measured_values"]["min_bulk_ess_variable"] == "x"
+    assert result["measured_values"]["min_tail_ess_variable"] == "x"
+
+
+@pytest.mark.parametrize(("strict", "raises"), [(False, False), (True, True)])
+def test_diagnose_cli_prints_json_and_strict_failure_exit(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    strict: bool,
+    raises: bool,
+) -> None:
+    """The CLI always prints CheckResult JSON and opts into failure exits."""
+    result = {
+        "schema_version": 1,
+        "name": "sampler-convergence",
+        "status": "fail",
+        "producer": "openghg_inversions",
+        "measured_values": {},
+        "thresholds": {},
+        "message": "failed",
+        "artifact_paths": [],
+        "stage": "posterior",
+    }
+    monkeypatch.setattr(
+        "openghg_inversions.rhime.stages.diagnose_rhime_stage",
+        lambda **kwargs: result,
+    )
+    args = ["diagnose", "--posterior", "posterior.nc", "--output-dir", "diagnostics"]
+    if strict:
+        args.append("--strict")
+
+    if raises:
+        with pytest.raises(SystemExit, match="1"):
+            main(args)
+    else:
+        main(args)
+
+    assert json.loads(capsys.readouterr().out) == result
 
 
 @pytest.mark.parametrize(

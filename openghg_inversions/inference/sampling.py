@@ -13,6 +13,7 @@ from openghg_inversions._pymc_config import configure_pytensor
 configure_pytensor()
 
 from collections.abc import Mapping, Sequence
+import json
 from typing import Any, Literal, cast
 
 import numpy as np
@@ -21,6 +22,8 @@ import xarray as xr
 
 from openghg_inversions._timing import log_timing, timer_seconds, timer_start
 from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords
+
+from .diagnostics import posterior_convergence_check
 
 NutsSampler = Literal["pymc", "nutpie", "numpyro", "blackjax"]
 
@@ -265,6 +268,19 @@ class RhimeSampler:
             "rhime.sampler.coord_restore",
             timer_seconds(timing_start),
             restored=registry is not None,
+        )
+
+        variable_names = [variable.name for variable in model.free_RVs]
+        trace.attrs["sampler_convergence_variables"] = json.dumps(variable_names)
+        timing_start = timer_start()
+        _, convergence = posterior_convergence_check(trace, variable_names=variable_names)
+        trace.attrs["sampler_convergence"] = json.dumps(convergence, sort_keys=True)
+        log_timing(
+            "rhime.sampler.convergence",
+            timer_seconds(timing_start),
+            status=convergence["status"],
+            message=convergence["message"],
+            **convergence["measured_values"],
         )
         return trace
 

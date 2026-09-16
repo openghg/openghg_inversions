@@ -139,7 +139,11 @@ directory.
   identities. Keep the binding beside its sample manifest when moving a run.
   CO2 writes ``posterior.nc`` and a schema-version-1 sample manifest, retaining
   saved trace roles and any authenticated affine-reconstruction identity.
-  No family silently invokes preparation.
+  No family silently invokes preparation. Every completed ``RhimeSampler``
+  run also preserves its compact convergence CheckResult as JSON in the
+  posterior trace's ``sampler_convergence`` attribute after burn slicing.
+  It assesses sampled latent variables only, names them in
+  ``assessed_variables``, and excludes deterministic posterior outputs.
 
 ``diagnose``
   Loads ``--posterior``, writes ``posterior-diagnostics.nc`` and emits the
@@ -201,7 +205,9 @@ Both checks use the schema version 1 understood by ``openghg-run`` and producer
 .. _staged-convergence-check:
 
 ``sampler-convergence``
-  Reports retained chain and draw counts, maximum R-hat and its variable,
+  Assesses only sampled scientific latent variables; ``assessed_variables``
+  names them and deterministic posterior outputs are excluded. Reports
+  retained chain and draw counts, maximum R-hat and its variable,
   minimum bulk ESS and its variable, minimum tail ESS and its variable, total
   divergences, divergences per chain, and labels for unassessable R-hat/ESS
   elements.  Defaults are maximum R-hat 1.01,
