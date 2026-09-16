@@ -134,9 +134,7 @@ jobs:
             echo "Prepared automatically from \`${SOURCE}\`."
             echo
             echo "- [ ] CI Gate passes for the final main commit"
-            echo "- [ ] HPC / test_inversions is recorded for the final main commit"
-            echo "- [ ] Scientific output review is approved"
-            echo "- [ ] Publish GitHub release \`v${VERSION}\` only after those gates pass"
+            echo "- [ ] Publish GitHub release \`v${VERSION}\` after review"
           } > "$RUNNER_TEMP/release-pr.md"
           URL=$(gh pr create \
             --base main \

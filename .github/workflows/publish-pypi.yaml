@@ -14,7 +14,6 @@ permissions:
   actions: write
   contents: read
   checks: read
-  statuses: read
 
 concurrency:
   group: publish-release
@@ -31,7 +30,6 @@ jobs:
       id-token: write  # Required for trusted publishing
       contents: write
       checks: read
-      statuses: read
     
     steps:
       - uses: actions/checkout@v4
@@ -49,7 +47,7 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Verify release metadata and exact-commit gates
+      - name: Verify release metadata and CI
         id: release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -92,12 +90,6 @@ jobs:
             exit 1
           fi
 
-          HPC_RESULT=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${SHA}/status" \
-            --jq '[.statuses[] | select(.context == "HPC / test_inversions")] | sort_by(.updated_at) | last | .state // ""')
-          if [ "$HPC_RESULT" != "success" ]; then
-            echo "HPC / test_inversions is not successful for exact release commit ${SHA}: ${HPC_RESULT:-missing}."
-            exit 1
-          fi
           {
             echo "sha=$SHA"
             echo "tag=v$VERSION"

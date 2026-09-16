@@ -548,8 +548,8 @@ with the `auto-sync-devel` label. Current-line hotfixes start from `main`, are
 released as patch versions, and are then forwarded to `devel`.
 
 See the [release and branch maintenance guide](docs/development/releasing.rst)
-for the automated monthly release, HPC approval, hotfix, synchronization, and
-stale-PR workflows.
+for the automated monthly release, hotfix, synchronization, and stale-PR
+workflows.
 
 ## Citation and contributors
 

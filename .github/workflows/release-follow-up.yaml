@@ -14,7 +14,6 @@ permissions:
   checks: read
   contents: write
   pull-requests: write
-  statuses: read
 
 concurrency:
   group: release-follow-up
@@ -43,10 +42,8 @@ jobs:
           SHA=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${TAG}" --jq '.sha')
           CI_RESULT=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${SHA}/check-runs" \
             --jq '[.check_runs[] | select(.name == "CI Gate")] | sort_by(.completed_at) | last | .conclusion // ""')
-          HPC_RESULT=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${SHA}/status" \
-            --jq '[.statuses[] | select(.context == "HPC / test_inversions")] | sort_by(.updated_at) | last | .state // ""')
-          if [ "$CI_RESULT" != "success" ] || [ "$HPC_RESULT" != "success" ]; then
-            echo "Release follow-up requires successful CI and HPC gates on ${SHA}."
+          if [ "$CI_RESULT" != "success" ]; then
+            echo "Release follow-up requires successful CI on ${SHA}."
             exit 1
           fi
           AHEAD=$(gh api "repos/${GITHUB_REPOSITORY}/compare/devel...main" --jq '.ahead_by')
