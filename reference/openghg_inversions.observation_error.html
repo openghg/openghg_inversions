@@ -393,6 +393,7 @@
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_model.html">openghg_inversions.rhime.co2.co2_o2_model</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_preparation.html">openghg_inversions.rhime.co2.co2_o2_preparation</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_o2_runner.html">openghg_inversions.rhime.co2.co2_o2_runner</a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_preparation.html">openghg_inversions.rhime.co2.co2_preparation</a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.rhime.co2.co2_runner.html">openghg_inversions.rhime.co2.co2_runner</a></li>
 </ul>
 </details></li>
@@ -504,12 +505,14 @@ covariance, or diagnostically as independent standard deviations.</p>
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">openghg_inversions.observation_error.</span></span><span class="sig-name descname"><span class="pre">AggregationError</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mode</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><span class="pre">Literal</span></a><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'none'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'dense'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'low_rank'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'diagonal'</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">marginal_variance</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><span class="pre">ndarray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">covariance</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">factor</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">diagonal_variance</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.observation_error.AggregationError" title="Link to this definition">#</a></dt>
 <dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
 <p>Validated aggregation-error representation selected for a likelihood.</p>
-<p>Model builders trust this value as already validated. Scientific runners
-should construct it through <a class="reference internal" href="#openghg_inversions.observation_error.resolve_aggregation_error" title="openghg_inversions.observation_error.resolve_aggregation_error"><code class="xref py py-func docutils literal notranslate"><span class="pre">resolve_aggregation_error()</span></code></a>, which
-selects and validates a coherent-reduction representation. Direct
-construction is an expert seam, primarily useful when testing model
-components, and the caller then owns the coherence of the mode, payload,
-marginal variance, coordinates, and numerical covariance properties.</p>
+<p>Model builders trust this value as already validated. Externally supplied
+representations should be constructed through
+<a class="reference internal" href="#openghg_inversions.observation_error.resolve_aggregation_error" title="openghg_inversions.observation_error.resolve_aggregation_error"><code class="xref py py-func docutils literal notranslate"><span class="pre">resolve_aggregation_error()</span></code></a>, which selects and validates a
+coherent-reduction representation. Package preparation helpers may also
+construct it directly from values they have just produced. Other direct
+construction is an expert seam, and the caller then owns the coherence of
+the mode, payload, marginal variance, coordinates, and numerical
+covariance properties.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -549,13 +552,55 @@ low-rank representation.</p></li>
 
 </dd></dl>
 
+<dl class="py class">
+<dt class="sig sig-object py" id="openghg_inversions.observation_error.LowRankAggregationErrorApproximation">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">openghg_inversions.observation_error.</span></span><span class="sig-name descname"><span class="pre">LowRankAggregationErrorApproximation</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">aggregation_error</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#openghg_inversions.observation_error.AggregationError" title="openghg_inversions.observation_error.AggregationError"><span class="pre">AggregationError</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">diagnostics</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.observation_error.LowRankAggregationErrorApproximation" title="Link to this definition">#</a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>A prepared LRPD representation and its approximation diagnostics.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Variables<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>aggregation_error</strong> (<a class="reference internal" href="#openghg_inversions.observation_error.AggregationError" title="openghg_inversions.observation_error.AggregationError"><em>openghg_inversions.observation_error.AggregationError</em></a>) – Labelled low-rank factor and non-negative diagonal
+residual accepted by the shared likelihood components.</p></li>
+<li><p><strong>diagnostics</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><em>float</em></a><em>]</em>) – JSON-safe mapping containing the method, requested rank,
+actual retained factor width, retained spectral fraction, relative
+Frobenius error, diagonal-preservation error, tolerances, and
+diagonal-tail clipping diagnostics. These values describe the
+approximation but do not certify a rank for a particular
+likelihood.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="openghg_inversions.observation_error.LowRankAggregationErrorApproximation.aggregation_error">
+<span class="sig-name descname"><span class="pre">aggregation_error</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#openghg_inversions.observation_error.AggregationError" title="openghg_inversions.observation_error.AggregationError"><span class="pre">AggregationError</span></a></span><a class="headerlink" href="#openghg_inversions.observation_error.LowRankAggregationErrorApproximation.aggregation_error" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="openghg_inversions.observation_error.LowRankAggregationErrorApproximation.diagnostics">
+<span class="sig-name descname"><span class="pre">diagnostics</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.observation_error.LowRankAggregationErrorApproximation.diagnostics" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.observation_error.aggregation_error_as_low_rank">
 <span class="sig-prename descclassname"><span class="pre">openghg_inversions.observation_error.</span></span><span class="sig-name descname"><span class="pre">aggregation_error_as_low_rank</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">aggregation_error</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#openghg_inversions.observation_error.AggregationError" title="openghg_inversions.observation_error.AggregationError"><span class="pre">AggregationError</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><span class="pre">ndarray</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.5)"><span class="pre">ndarray</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#openghg_inversions.observation_error.aggregation_error_as_low_rank" title="Link to this definition">#</a></dt>
 <dd><p>Materialize fixed aggregation covariance as factor-plus-diagonal data.</p>
-<p>Dense covariance inputs use their positive eigenmodes, so this fallback is
-generally full rank. It is therefore an exact representation for positive
-semidefinite inputs, but not the low-rank performance path.</p>
+<p>Dense inputs use every eigenmode above the scale-relative numerical
+tolerance and retain the remaining marginal variance on the diagonal.
+This is exact when every positive mode exceeds that tolerance, but it is
+not the low-rank performance path.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>aggregation_error</strong> – Validated fixed aggregation-error representation.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A factor with shape <code class="docutils literal notranslate"><span class="pre">(nmeasure,</span> <span class="pre">actual_rank)</span></code> and non-negative
+diagonal variance with shape <code class="docutils literal notranslate"><span class="pre">(nmeasure,)</span></code>. The factor may have zero
+columns.</p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py function">
@@ -575,6 +620,40 @@ semidefinite inputs, but not the low-rank performance path.</p>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If the requested mode is invalid or automatic selection is
     ambiguous.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.observation_error.prepare_low_rank_aggregation_error">
+<span class="sig-prename descclassname"><span class="pre">openghg_inversions.observation_error.</span></span><span class="sig-name descname"><span class="pre">prepare_low_rank_aggregation_error</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">covariance</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">rank</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_dim</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'nmeasure'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">covariance_dim</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'nmeasure_cov'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#openghg_inversions.observation_error.LowRankAggregationErrorApproximation" title="openghg_inversions.observation_error.LowRankAggregationErrorApproximation"><span class="pre">LowRankAggregationErrorApproximation</span></a></span></span><a class="headerlink" href="#openghg_inversions.observation_error.prepare_low_rank_aggregation_error" title="Link to this definition">#</a></dt>
+<dd><p>Approximate a labelled covariance by a low-rank-plus-diagonal form.</p>
+<p>This is an eager numerical boundary. Sparse payloads are densified, Dask
+payloads are materialized, and the complete dense covariance receives one
+eigendecomposition. The leading eigenmodes form the low-rank factor and
+the discarded marginal variance is retained on the diagonal, so the source
+covariance diagonal is preserved up to accepted roundoff and tail
+clipping. The factor width is the lesser of <code class="docutils literal notranslate"><span class="pre">rank</span></code> and the numerical
+positive rank, and may be zero when the covariance has no positive
+numerical modes. The factor has square-root covariance units and the
+diagonal tail has covariance units, but this helper does not attach unit
+attributes to the returned arrays.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>covariance</strong> – Symmetric positive-semidefinite covariance matrix.</p></li>
+<li><p><strong>rank</strong> – Maximum number of leading eigenmodes to retain.</p></li>
+<li><p><strong>output_dim</strong> – Observation dimension on the covariance rows.</p></li>
+<li><p><strong>covariance_dim</strong> – Repeated observation dimension on the columns.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Constructed low-rank aggregation error and JSON-safe approximation
+diagnostics.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If dimensions, coordinates, rank, or numerical covariance
+    properties are invalid.</p>
 </dd>
 </dl>
 </dd></dl>
@@ -710,8 +789,14 @@ the available inputs.</p></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.observation_error.AggregationError.mode"><code class="docutils literal notranslate"><span class="pre">AggregationError.mode</span></code></a></li>
 </ul>
 </li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.observation_error.LowRankAggregationErrorApproximation"><code class="docutils literal notranslate"><span class="pre">LowRankAggregationErrorApproximation</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.observation_error.LowRankAggregationErrorApproximation.aggregation_error"><code class="docutils literal notranslate"><span class="pre">LowRankAggregationErrorApproximation.aggregation_error</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.observation_error.LowRankAggregationErrorApproximation.diagnostics"><code class="docutils literal notranslate"><span class="pre">LowRankAggregationErrorApproximation.diagnostics</span></code></a></li>
+</ul>
+</li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.observation_error.aggregation_error_as_low_rank"><code class="docutils literal notranslate"><span class="pre">aggregation_error_as_low_rank()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.observation_error.aggregation_error_input_names"><code class="docutils literal notranslate"><span class="pre">aggregation_error_input_names()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.observation_error.prepare_low_rank_aggregation_error"><code class="docutils literal notranslate"><span class="pre">prepare_low_rank_aggregation_error()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.observation_error.resolve_aggregation_error"><code class="docutils literal notranslate"><span class="pre">resolve_aggregation_error()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.observation_error.select_aggregation_error_mode"><code class="docutils literal notranslate"><span class="pre">select_aggregation_error_mode()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.observation_error.validate_observation_error_arrays"><code class="docutils literal notranslate"><span class="pre">validate_observation_error_arrays()</span></code></a></li>

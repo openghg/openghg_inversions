@@ -475,6 +475,65 @@ and basis-prolongation data. Related arrays are computed together, and the
 returned xarray arrays are eager with explicit retained-state and observation
 labels.</p>
 </section>
+<section id="preparing-co2-model-inputs">
+<h2>Preparing CO2 model inputs<a class="headerlink" href="#preparing-co2-model-inputs" title="Link to this heading">#</a></h2>
+<p>The CO2-only model has a dedicated public handoff that keeps the linked
+reduction products together with canonical RHIME observations, basis data,
+and site metadata. Load the canonical inputs from a checkpoint produced by
+the <a class="reference internal" href="rhime.html"><span class="doc">RHIME configuration and prepared-input reference</span></a> workflow:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.inversion_data</span><span class="w"> </span><span class="kn">import</span> <span class="n">RhimePreparedInputs</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.co2</span><span class="w"> </span><span class="kn">import</span> <span class="n">prepare_co2_inputs</span>
+
+<span class="n">canonical_inputs</span> <span class="o">=</span> <span class="n">RhimePreparedInputs</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="s2">"base-prepared-inputs.zarr"</span><span class="p">)</span>
+<span class="n">co2_inputs</span> <span class="o">=</span> <span class="n">prepare_co2_inputs</span><span class="p">(</span><span class="n">canonical_inputs</span><span class="p">,</span> <span class="n">reduction</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>The returned
+<a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2PreparedInputs" title="openghg_inversions.rhime.co2.Co2PreparedInputs"><code class="xref py py-class docutils literal notranslate"><span class="pre">Co2PreparedInputs</span></code></a> artifact uses at most
+512 low-rank modes by default, capped at the observation count. Pass
+<code class="docutils literal notranslate"><span class="pre">aggregation_error_rank=None</span></code> to keep
+<code class="docutils literal notranslate"><span class="pre">reduction.unresolved_observation_covariance</span></code> as an exact dense aggregation
+covariance. The artifact records one representation, and the CO2 runners use
+it without a separate mode argument.
+This handoff does not alter the prepared-input contracts of the standard,
+multisector, or <code class="docutils literal notranslate"><span class="pre">run_hbmcmc.py</span></code> paths.</p>
+<p>For larger cases, request an explicit low-rank-plus-diagonal (LRPD) rank at the
+handoff:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">co2_inputs</span> <span class="o">=</span> <span class="n">prepare_co2_inputs</span><span class="p">(</span>
+    <span class="n">canonical_inputs</span><span class="p">,</span>
+    <span class="n">reduction</span><span class="p">,</span>
+    <span class="n">aggregation_error_rank</span><span class="o">=</span><span class="mi">40</span><span class="p">,</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p>This factorization is downstream of coherent reduction: it does not make the
+reduction approximate or change the retained prior and effective operator.
+Let <span class="math notranslate nohighlight">\(n\)</span> be the observation count and <span class="math notranslate nohighlight">\(r\)</span> the retained rank. The
+current preparation path first materializes the complete dense
+<span class="math notranslate nohighlight">\(n \times n\)</span> covariance and computes a full dense eigendecomposition,
+requiring <span class="math notranslate nohighlight">\(O(n^2)\)</span> peak storage and <span class="math notranslate nohighlight">\(O(n^3)\)</span> decomposition work.
+The saved factor and diagonal use <span class="math notranslate nohighlight">\(O(nr+n)\)</span> storage. For an ordinary
+diagonal-plus-factor likelihood, Woodbury evaluation uses
+<span class="math notranslate nohighlight">\(O(nr^2+r^3)\)</span> work. Reducing <span class="math notranslate nohighlight">\(r\)</span> therefore shrinks the artifact and
+downstream structured-likelihood work; it does not make preparation
+matrix-free or avoid the dense eigendecomposition.</p>
+<p>The default 512-mode cap is not an adequacy claim; selecting or overriding the
+LRPD rank remains a caller-owned numerical and scientific decision. LRPD
+preparation preserves the dense covariance diagonal up to accepted roundoff
+and diagonal-tail clipping, reported by <code class="docutils literal notranslate"><span class="pre">diagonal_preservation_error</span></code>. It
+does not automatically certify that a rank is adequate for a particular
+likelihood. Compare the approximate and dense total likelihood covariance or
+log density over representative error profiles.
+Inspect the recorded retained-spectrum and reconstruction metrics directly:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">diagnostics</span> <span class="o">=</span> <span class="n">co2_inputs</span><span class="o">.</span><span class="n">provenance</span><span class="p">[</span><span class="s2">"aggregation_error"</span><span class="p">]</span>
+<span class="n">retained_fraction</span> <span class="o">=</span> <span class="n">diagnostics</span><span class="p">[</span><span class="s2">"retained_positive_spectral_fraction"</span><span class="p">]</span>
+<span class="n">relative_error</span> <span class="o">=</span> <span class="n">diagnostics</span><span class="p">[</span><span class="s2">"relative_frobenius_reconstruction_error"</span><span class="p">]</span>
+<span class="n">diagonal_error</span> <span class="o">=</span> <span class="n">diagnostics</span><span class="p">[</span><span class="s2">"diagonal_preservation_error"</span><span class="p">]</span>
+</pre></div>
+</div>
+<p>These diagnostics describe the covariance approximation; they do not certify
+that the chosen rank is adequate for a particular likelihood.</p>
+</section>
 <section id="assumptions-and-limitations">
 <h2>Assumptions and limitations<a class="headerlink" href="#assumptions-and-limitations" title="Link to this heading">#</a></h2>
 <p>The native coordinates of the mean, sensitivity, and basis prolongation must
@@ -493,12 +552,17 @@ ill-conditioned retained covariance. This usually means that two or more
 retained basis states describe nearly the same native variation.</p>
 <p>For the Gaussian model above, <span class="math notranslate nohighlight">\(A\)</span> is the aggregation-error covariance.
 The function does not add observation or model-error covariance <span class="math notranslate nohighlight">\(R\)</span>;
-likelihood construction must use the total <span class="math notranslate nohighlight">\(R + A\)</span>. Small numerical
-negative eigenvalues in <span class="math notranslate nohighlight">\(A\)</span> may be harmless once a suitable <span class="math notranslate nohighlight">\(R\)</span> is
-included, but observation error cannot repair an unstable retained-state
-solve. Assess any low-rank-plus-diagonal approximation using the total
-likelihood covariance and its log density, particularly when model-mismatch
-error is small.</p>
+likelihood construction must use the total <span class="math notranslate nohighlight">\(R + A\)</span>. The reduction does
+not validate <span class="math notranslate nohighlight">\(A\)</span> independently. When <span class="math notranslate nohighlight">\(A\)</span> is converted to LRPD
+during CO2 preparation, or resolved as dense input at runner and serialization
+boundaries, it must be symmetric and positive semidefinite within its
+scale-based numerical tolerance; it may be singular. <span class="math notranslate nohighlight">\(R\)</span> is not used to
+rescue a materially indefinite <span class="math notranslate nohighlight">\(A\)</span>. LRPD preparation retains only modes
+above that tolerance and carries the discarded marginal variance in the
+diagonal tail. Small negative tail entries caused by accepted roundoff are
+clipped to zero. Assess any low-rank-plus-diagonal approximation using the
+total likelihood covariance and its log density, particularly when
+model-mismatch error is small.</p>
 <p>The conditional model is exact for a Gaussian native state and error
 independent of that state. Using the resulting moments with a LogNormal
 retained state is a moment-matched approximation. A positive sampled state
@@ -561,6 +625,7 @@ are included explicitly.</p>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#preparing-the-exact-result">Preparing the exact result</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#preparing-co2-model-inputs">Preparing CO2 model inputs</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#assumptions-and-limitations">Assumptions and limitations</a></li>
 </ul>
   </nav></div>

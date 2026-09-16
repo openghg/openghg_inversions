@@ -439,8 +439,10 @@ cross-channel covariance.</p></td>
 A complete <code class="docutils literal notranslate"><span class="pre">run_rhime_co2_o2</span></code> entry point is not available.</p></td>
 </tr>
 <tr class="row-even"><td><p>Acquisition and preparation</p></td>
-<td><p>Consumes a prepared coherent-reduction <code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code> artifact.
-The public handoff that assembles that artifact is incomplete.</p></td>
+<td><p><a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.prepare_co2_inputs" title="openghg_inversions.rhime.co2.prepare_co2_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.prepare_co2_inputs()</span></code></a> combines
+canonical RHIME observations and metadata with one coherent reduction
+in a dedicated
+<a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2PreparedInputs" title="openghg_inversions.rhime.co2.Co2PreparedInputs"><code class="xref py py-class docutils literal notranslate"><span class="pre">Co2PreparedInputs</span></code></a> artifact.</p></td>
 <td><p><a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.prepare_co2_o2_inputs" title="openghg_inversions.rhime.co2.prepare_co2_o2_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.prepare_co2_o2_inputs()</span></code></a> gathers
 caller-supplied, channel-native prepared arrays; it does not acquire
 OpenGHG data.</p></td>
@@ -467,9 +469,10 @@ boundary; the complete RHIME output pipeline is not integrated.</p></td>
 boundary; family-specific output and postprocessing are not integrated.</p></td>
 </tr>
 <tr class="row-odd"><td><p>Validation and acceptance</p></td>
-<td><p>Model construction, replay, provenance, and cached-sampler behavior have
-automated regression tests. Complete configuration, outputs, staged
-integration, and scientist acceptance remain future work.</p></td>
+<td><p>Coherent preparation, dedicated serialization, model construction,
+replay, provenance, and cached-sampler behavior have automated
+regression tests. Complete configuration, outputs, staged integration,
+and scientist acceptance remain future work.</p></td>
 <td><p>Preparation, graph construction, mixed-unit metadata, replay, and
 provenance have automated regression tests. Production scientist
 acceptance remains future work.</p></td>
@@ -489,6 +492,10 @@ making those concepts specific to CO₂.</p>
 recipe is scientifically suitable for a particular inversion. Complete
 configuration, outputs, staged integration, and scientist acceptance are
 tracked in <a class="reference external" href="https://linear.app/openghg-inversions/issue/OPE-79">OPE-79</a>.</p>
+<p>The CO2-only handoff is intentionally separate from both the generic
+<code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code> boundary and the linked CO2/O2 preparation contract.
+It does not add coherent-reduction or aggregation-error options to the
+standard and multisector runners or to <code class="docutils literal notranslate"><span class="pre">run_hbmcmc.py</span></code>.</p>
 <div class="toctree-wrapper compound">
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="co2_models.html">CO₂ model recipes</a></li>

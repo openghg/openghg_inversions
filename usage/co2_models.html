@@ -510,10 +510,14 @@ outer-region model option.</p>
 <h3>Run the ordinary prepared-input CO2 runner<a class="headerlink" href="#run-the-ordinary-prepared-input-co2-runner" title="Link to this heading">#</a></h3>
 <p>The model builder accepts explicit scientific arrays rather than a dataset.
 For durable prepared artifacts, <a class="reference internal" href="../reference/openghg_inversions.rhime.html#openghg_inversions.rhime.run_rhime_co2" title="openghg_inversions.rhime.run_rhime_co2"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.run_rhime_co2()</span></code></a>
-is the public replay seam: it validates and materializes the selected arrays,
-resolves aggregation error, calls the explicit builder, samples, and stores a
-JSON variable-role and model-provenance manifest on the returned
-<code class="docutils literal notranslate"><span class="pre">InferenceData</span></code>. A prepared <code class="docutils literal notranslate"><span class="pre">fixed_model_mismatch</span></code> is preserved when the
+is the public replay seam. It accepts only a
+<a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2PreparedInputs" title="openghg_inversions.rhime.co2.Co2PreparedInputs"><code class="xref py py-class docutils literal notranslate"><span class="pre">Co2PreparedInputs</span></code></a> artifact, validates
+and materializes its selected arrays, resolves its declared aggregation-error
+representation, calls the explicit builder, samples, and stores a JSON
+variable-role and model-provenance manifest on the returned <code class="docutils literal notranslate"><span class="pre">InferenceData</span></code>.
+The artifact, rather than a runner argument, owns whether aggregation error is
+stored as an exact dense covariance or as a low-rank-plus-diagonal (LRPD)
+approximation. A prepared <code class="docutils literal notranslate"><span class="pre">fixed_model_mismatch</span></code> is preserved when the
 runner argument is <code class="docutils literal notranslate"><span class="pre">None</span></code>; an explicit scalar or labelled vector overrides
 it. Persist gathered-state traces with
 <a class="reference internal" href="../reference/openghg_inversions.serialization.html#openghg_inversions.serialization.save_inferencedata" title="openghg_inversions.serialization.save_inferencedata"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.serialization.save_inferencedata()</span></code></a>, which uses the
@@ -534,14 +538,28 @@ Boundary and offset contributions remain separate from
 likelihood, and sampled outputs.
 The location and scale parameters in <code class="docutils literal notranslate"><span class="pre">offset_prior</span></code> use the observations’
 concentration units.</p>
-<p>For example:</p>
+<p>Construct the CO2-specific artifact by pairing canonical RHIME inputs with all
+linked products from one
+<a class="reference internal" href="../reference/openghg_inversions.coherent_reduction.html#openghg_inversions.coherent_reduction.CoherentGaussianReduction" title="openghg_inversions.coherent_reduction.CoherentGaussianReduction"><code class="xref py py-class docutils literal notranslate"><span class="pre">CoherentGaussianReduction</span></code></a>.
+The <a class="reference internal" href="rhime.html"><span class="doc">canonical RHIME workflow</span></a> produces the durable base inputs,
+and <a class="reference internal" href="coherent_reduction.html"><span class="doc">Coherent Gaussian Reduction</span></a> shows how to construct <code class="docutils literal notranslate"><span class="pre">reduction</span></code> from the
+native covariance products.
+Pass <code class="docutils literal notranslate"><span class="pre">aggregation_error_rank=None</span></code> to keep the reduction’s exact dense
+unresolved covariance:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.inversion_data</span><span class="w"> </span><span class="kn">import</span> <span class="n">RhimePreparedInputs</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.co2</span><span class="w"> </span><span class="kn">import</span> <span class="n">prepare_co2_inputs</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="n">run_rhime_co2</span>
 
-<span class="n">prepared</span> <span class="o">=</span> <span class="n">RhimePreparedInputs</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="s2">"co2-coherent-dense.zarr"</span><span class="p">)</span>
+<span class="n">canonical_inputs</span> <span class="o">=</span> <span class="n">RhimePreparedInputs</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="s2">"base-prepared-inputs.zarr"</span><span class="p">)</span>
+<span class="n">prepared</span> <span class="o">=</span> <span class="n">prepare_co2_inputs</span><span class="p">(</span>
+    <span class="n">canonical_inputs</span><span class="p">,</span>
+    <span class="n">reduction</span><span class="p">,</span>
+    <span class="n">aggregation_error_rank</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">prepared</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="s2">"co2-coherent-dense.zarr"</span><span class="p">)</span>
+
 <span class="n">idata</span> <span class="o">=</span> <span class="n">run_rhime_co2</span><span class="p">(</span>
     <span class="n">prepared_inputs</span><span class="o">=</span><span class="n">prepared</span><span class="p">,</span>
-    <span class="n">aggregation_error_mode</span><span class="o">=</span><span class="s2">"dense"</span><span class="p">,</span>
     <span class="n">use_bc</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
     <span class="n">bc_prior</span><span class="o">=</span><span class="p">{</span>
         <span class="s2">"pdf"</span><span class="p">:</span> <span class="s2">"truncatednormal"</span><span class="p">,</span>
@@ -554,6 +572,10 @@ concentration units.</p>
 <span class="p">)</span>
 </pre></div>
 </div>
+<p>Reload a durable artifact with
+<a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2PreparedInputs.load" title="openghg_inversions.rhime.co2.Co2PreparedInputs.load"><code class="xref py py-meth docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.Co2PreparedInputs.load()</span></code></a>. The loaded
+artifact retains the selected representation, so replay does not require or
+accept <code class="docutils literal notranslate"><span class="pre">aggregation_error_mode</span></code>.</p>
 <p>The CO2 builder and prepared-input runner also accept one ordinary
 <code class="docutils literal notranslate"><span class="pre">likelihood_builder</span></code> with explicit <code class="docutils literal notranslate"><span class="pre">likelihood_kwargs</span></code>. This selects
 package components such as
@@ -582,17 +604,16 @@ site amplitudes for a time-correlated OU covariance and owns a matched sampler
 with an accepted-state runtime cache. The scalar-sigma cache is instead an
 external numerical preparation artifact used through the ordinary
 <code class="docutils literal notranslate"><span class="pre">run_rhime_co2</span></code> likelihood seam.</p>
-<p>Prepare and save that artifact once from the same prepared CO2 inputs and
-aggregation-error mode that sampling will use:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.inversion_data</span><span class="w"> </span><span class="kn">import</span> <span class="n">RhimePreparedInputs</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">save_scalar_sigma_eigenbasis</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.co2</span><span class="w"> </span><span class="kn">import</span> <span class="n">prepare_co2_scalar_sigma_eigenbasis</span>
-
-<span class="n">prepared</span> <span class="o">=</span> <span class="n">RhimePreparedInputs</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="s2">"co2-coherent-dense.zarr"</span><span class="p">)</span>
-<span class="n">eigenbasis</span> <span class="o">=</span> <span class="n">prepare_co2_scalar_sigma_eigenbasis</span><span class="p">(</span>
-    <span class="n">prepared</span><span class="p">,</span>
-    <span class="n">aggregation_error_mode</span><span class="o">=</span><span class="s2">"dense"</span><span class="p">,</span>
+<p>Prepare and save that artifact once from the same prepared CO2 inputs that
+sampling will use:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">save_scalar_sigma_eigenbasis</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.co2</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">Co2PreparedInputs</span><span class="p">,</span>
+    <span class="n">prepare_co2_scalar_sigma_eigenbasis</span><span class="p">,</span>
 <span class="p">)</span>
+
+<span class="n">prepared</span> <span class="o">=</span> <span class="n">Co2PreparedInputs</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="s2">"co2-coherent-dense.zarr"</span><span class="p">)</span>
+<span class="n">eigenbasis</span> <span class="o">=</span> <span class="n">prepare_co2_scalar_sigma_eigenbasis</span><span class="p">(</span><span class="n">prepared</span><span class="p">)</span>
 <span class="n">save_scalar_sigma_eigenbasis</span><span class="p">(</span><span class="s2">"scalar-sigma-eigenbasis.nc"</span><span class="p">,</span> <span class="n">eigenbasis</span><span class="p">)</span>
 </pre></div>
 </div>
@@ -602,7 +623,6 @@ aggregation-error mode that sampling will use:</p>
 
 <span class="n">trace</span> <span class="o">=</span> <span class="n">run_rhime_co2</span><span class="p">(</span>
     <span class="n">prepared_inputs</span><span class="o">=</span><span class="n">prepared</span><span class="p">,</span>
-    <span class="n">aggregation_error_mode</span><span class="o">=</span><span class="s2">"dense"</span><span class="p">,</span>
     <span class="n">likelihood_builder</span><span class="o">=</span><span class="n">add_scalar_sigma_eigen_likelihood</span><span class="p">,</span>
     <span class="n">likelihood_kwargs</span><span class="o">=</span><span class="p">{</span>
         <span class="s2">"eigenbasis_path"</span><span class="p">:</span> <span class="s2">"scalar-sigma-eigenbasis.nc"</span><span class="p">,</span>
@@ -615,17 +635,16 @@ aggregation-error mode that sampling will use:</p>
 mode, and a fingerprint of the resolved <code class="docutils literal notranslate"><span class="pre">A</span> <span class="pre">+</span> <span class="pre">D_obs</span></code>. Loading checks its
 schema, dimensions, labels, cache/observation/reported-error unit labels, mode,
 and current covariance identity before model construction. Regenerate the
-cache after changing <code class="docutils literal notranslate"><span class="pre">mf_error</span></code> values, aggregation-error values, or
-<code class="docutils literal notranslate"><span class="pre">aggregation_error_mode</span></code>. Changing the observation order or the unit
-label also makes the cache incompatible. Loading reconstructs the current base
-covariance once, but does not repeat the eigendecomposition or add work to
-likelihood evaluations.</p>
-<p>Unit conversion is caller-owned. Neither
-<a class="reference internal" href="../reference/openghg_inversions.observation_error.html#openghg_inversions.observation_error.resolve_aggregation_error" title="openghg_inversions.observation_error.resolve_aggregation_error"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.observation_error.resolve_aggregation_error()</span></code></a> nor
-scalar-sigma preparation converts or validates units on aggregation-error
-arrays. After numerical conversion, <code class="docutils literal notranslate"><span class="pre">mf</span></code>, <code class="docutils literal notranslate"><span class="pre">mf_error</span></code>, <code class="docutils literal notranslate"><span class="pre">sigma_global</span></code>
-and, when present, <code class="docutils literal notranslate"><span class="pre">aggregation_error_sd</span></code> and <code class="docutils literal notranslate"><span class="pre">low_rank_factor</span></code> use one
-concentration unit. When present, <code class="docutils literal notranslate"><span class="pre">aggregation_error_covariance</span></code> and
+cache after changing <code class="docutils literal notranslate"><span class="pre">mf_error</span></code> values, aggregation-error values, or the
+artifact’s aggregation-error representation. Changing the observation order
+or the unit label also makes the cache incompatible. Loading reconstructs the
+current base covariance once, but does not repeat the eigendecomposition or
+add work to likelihood evaluations.</p>
+<p>Unit conversion is caller-owned. CO2 preparation validates compatible units
+at the same numeric scale but does not convert values. After numerical
+conversion, <code class="docutils literal notranslate"><span class="pre">mf</span></code>, <code class="docutils literal notranslate"><span class="pre">mf_error</span></code>, <code class="docutils literal notranslate"><span class="pre">sigma_global</span></code>
+and, when present, <code class="docutils literal notranslate"><span class="pre">low_rank_factor</span></code> use one concentration unit. When
+present, <code class="docutils literal notranslate"><span class="pre">aggregation_error_covariance</span></code> and
 <code class="docutils literal notranslate"><span class="pre">diagonal_residual_variance</span></code> use that unit squared. Configure
 <code class="docutils literal notranslate"><span class="pre">sigma_prior</span></code> for the concentration unit; in the HalfNormal example,
 <code class="docutils literal notranslate"><span class="pre">sigma=0.75</span></code> is in that unit. The cache, <code class="docutils literal notranslate"><span class="pre">mf.units</span></code>, and
@@ -776,15 +795,15 @@ state-likelihood quadratic for the site amplitudes returned by that transition,
 and stock state NUTS reads that cache without refactorizing the observation
 covariance during its trajectory.</p>
 <p>The runner begins from an already assembled coherent-reduction
-<code class="docutils literal notranslate"><span class="pre">RhimePreparedInputs</span></code> artifact; it does not perform coherent reduction. Its
-<code class="docutils literal notranslate"><span class="pre">inv_inputs</span></code> must contain <code class="docutils literal notranslate"><span class="pre">H</span></code>, <code class="docutils literal notranslate"><span class="pre">alpha_prior_mean</span></code>,
+<a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2PreparedInputs" title="openghg_inversions.rhime.co2.Co2PreparedInputs"><code class="xref py py-class docutils literal notranslate"><span class="pre">Co2PreparedInputs</span></code></a> artifact; it does not
+perform coherent reduction. Its <code class="docutils literal notranslate"><span class="pre">inv_inputs</span></code> must contain <code class="docutils literal notranslate"><span class="pre">H</span></code>,
+<code class="docutils literal notranslate"><span class="pre">alpha_prior_mean</span></code>,
 <code class="docutils literal notranslate"><span class="pre">alpha_prior_covariance</span></code>, <code class="docutils literal notranslate"><span class="pre">fixed_prior_contribution</span></code>, <code class="docutils literal notranslate"><span class="pre">mf</span></code>, and
 <code class="docutils literal notranslate"><span class="pre">mf_error</span></code>. The observation arrays share one <code class="docutils literal notranslate"><span class="pre">nmeasure</span></code> row order, while
-the prior arrays share <code class="docutils literal notranslate"><span class="pre">H</span></code>’s state labels. With the <code class="docutils literal notranslate"><span class="pre">&quot;low_rank&quot;</span></code>
-aggregation-error mode used below, the artifact must also contain
-<code class="docutils literal notranslate"><span class="pre">low_rank_factor</span></code> and <code class="docutils literal notranslate"><span class="pre">diagonal_residual_variance</span></code>. A dense artifact
-instead contains <code class="docutils literal notranslate"><span class="pre">aggregation_error_covariance</span></code> and must be selected with
-<code class="docutils literal notranslate"><span class="pre">aggregation_error_mode=&quot;dense&quot;</span></code>. Optional <code class="docutils literal notranslate"><span class="pre">state_is_active</span></code> and
+the prior arrays share <code class="docutils literal notranslate"><span class="pre">H</span></code>’s state labels. A low-rank artifact contains
+<code class="docutils literal notranslate"><span class="pre">low_rank_factor</span></code> and <code class="docutils literal notranslate"><span class="pre">diagonal_residual_variance</span></code>; a dense artifact
+instead contains <code class="docutils literal notranslate"><span class="pre">aggregation_error_covariance</span></code>. The artifact records which
+one representation its runner must use. Optional <code class="docutils literal notranslate"><span class="pre">state_is_active</span></code> and
 <code class="docutils literal notranslate"><span class="pre">state_fixed_value</span></code> variables carry the prepared state-activity policy.
 The observation array must also have observation-aligned <code class="docutils literal notranslate"><span class="pre">site</span></code> and <code class="docutils literal notranslate"><span class="pre">time</span></code>
 coordinates. Times must be finite and unique within each site, although rows
@@ -801,21 +820,47 @@ These coefficients join the flux coefficients only inside the private cached
 likelihood calculation; their public scientific variables and contributions
 remain separate.</p>
 <p><a class="reference internal" href="coherent_reduction.html"><span class="doc">Coherent Gaussian Reduction</span></a> describes the linked retained prior, effective
-operator, affine contribution, and unresolved covariance, but no public
-function currently assembles those products into this durable artifact. That
-handoff is tracked in <a class="reference external" href="https://linear.app/openghg-inversions/issue/OPE-153/add-a-public-coherent-reduction-handoff-for-co-prepared-inputs">OPE-153</a>.
-Until it lands, callers must supply already-prepared coherent-reduction inputs.</p>
-<p>For example:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.inversion_data</span><span class="w"> </span><span class="kn">import</span> <span class="n">RhimePreparedInputs</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="n">RhimeSampler</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.co2</span><span class="w"> </span><span class="kn">import</span> <span class="n">run_rhime_co2_cached_sigma</span>
+operator, affine contribution, and unresolved covariance.
+<a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.prepare_co2_inputs" title="openghg_inversions.rhime.co2.prepare_co2_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.prepare_co2_inputs()</span></code></a> assembles those
+products with canonical observations and metadata at the durable CO2 boundary.</p>
+<p>The reduction itself is exact under its stated Gaussian assumptions. An LRPD
+artifact is a separate downstream numerical approximation of its unresolved
+covariance. The cached runner can retain every mode above the scale-relative
+numerical tolerance and carry the remaining marginal variance in the diagonal
+tail. This is exact when every positive mode exceeds that tolerance, but it
+generally produces a full numerical-rank factor and is not the intended
+scaling path. The default retains at most 512 modes; override it when a
+different retained rank is scientifically justified:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.co2</span><span class="w"> </span><span class="kn">import</span> <span class="n">prepare_co2_inputs</span>
 
-<span class="n">prepared</span> <span class="o">=</span> <span class="n">RhimePreparedInputs</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="s2">"co2-coherent-low-rank.zarr"</span><span class="p">)</span>
+<span class="n">prepared</span> <span class="o">=</span> <span class="n">prepare_co2_inputs</span><span class="p">(</span>
+    <span class="n">canonical_inputs</span><span class="p">,</span>
+    <span class="n">reduction</span><span class="p">,</span>
+    <span class="n">aggregation_error_rank</span><span class="o">=</span><span class="mi">40</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">prepared</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="s2">"co2-coherent-low-rank.zarr"</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>The approximation preserves the dense covariance diagonal up to accepted
+roundoff and diagonal-tail clipping, recorded by
+<code class="docutils literal notranslate"><span class="pre">diagonal_preservation_error</span></code>. A chosen rank is not evidence that the
+approximation is adequate for an inversion. Assess the resulting total
+likelihood covariance and log density for representative observation-error,
+site-amplitude, and OU profiles, especially when model-mismatch error is
+small. See <a class="reference internal" href="coherent_reduction.html"><span class="doc">Coherent Gaussian Reduction</span></a> for the dense preparation cost and the
+other retained-spectrum and reconstruction diagnostics.</p>
+<p>For example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="n">RhimeSampler</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.co2</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">Co2PreparedInputs</span><span class="p">,</span>
+    <span class="n">run_rhime_co2_cached_sigma</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">prepared</span> <span class="o">=</span> <span class="n">Co2PreparedInputs</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="s2">"co2-coherent-low-rank.zarr"</span><span class="p">)</span>
 <span class="n">idata</span> <span class="o">=</span> <span class="n">run_rhime_co2_cached_sigma</span><span class="p">(</span>
     <span class="n">prepared_inputs</span><span class="o">=</span><span class="n">prepared</span><span class="p">,</span>
     <span class="n">tau_hours</span><span class="o">=</span><span class="p">{</span><span class="s2">"BSD"</span><span class="p">:</span> <span class="mf">24.0</span><span class="p">,</span> <span class="s2">"TAC"</span><span class="p">:</span> <span class="mf">18.0</span><span class="p">},</span>
     <span class="n">site_amplitude_prior_scale</span><span class="o">=</span><span class="mf">0.75</span><span class="p">,</span>  <span class="c1"># concentration units</span>
-    <span class="n">aggregation_error_mode</span><span class="o">=</span><span class="s2">"low_rank"</span><span class="p">,</span>
     <span class="n">use_bc</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
     <span class="n">bc_prior</span><span class="o">=</span><span class="p">{</span>
         <span class="s2">"pdf"</span><span class="p">:</span> <span class="s2">"truncatednormal"</span><span class="p">,</span>
