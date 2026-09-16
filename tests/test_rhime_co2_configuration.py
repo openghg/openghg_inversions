@@ -200,7 +200,7 @@ def test_boundary_offset_and_cached_variant_lower_to_runner_arguments() -> None:
         "offset": {
             "prior": {"pdf": "normal", "mu": 0.0, "sigma": 0.1},
             "frequency": "monthly",
-            "per_site": False,
+            "per_site": True,
             "drop_first": True,
         },
     }
@@ -221,7 +221,7 @@ def test_boundary_offset_and_cached_variant_lower_to_runner_arguments() -> None:
         "use_bc": True,
         "bc_prior": {"pdf": "truncatednormal", "mu": 1.0, "sigma": 0.1, "lower": 0.0},
         "offset_prior": {"pdf": "normal", "mu": 0.0, "sigma": 0.1},
-        "offset_args": {"offset_freq": "monthly", "per_site": False, "drop_first": True},
+        "offset_args": {"offset_freq": "monthly", "per_site": True, "drop_first": True},
         "tau_hours": {"MHD": 24.0},
         "site_amplitude_prior_scale": 1.5,
         "initial_site_amplitudes": 0.5,
@@ -368,6 +368,90 @@ def test_cached_variant_rejects_generic_sampler_controls() -> None:
 
     with pytest.raises(ValueError, match="sigma_target_accept"):
         resolve_co2_family_config(config)
+
+
+@pytest.mark.parametrize(
+    "sampling",
+    [
+        {"draws": 1, "burn": 1},
+        {"burn": 1000},
+    ],
+)
+def test_sampling_rejects_burn_that_removes_every_draw(
+    sampling: dict[str, object],
+) -> None:
+    config = _ordinary()
+    config["sampling"] = sampling
+
+    with pytest.raises(ValueError, match="burn must be less than"):
+        resolve_co2_family_config(config)
+
+
+def test_cached_variant_rejects_unsupported_posterior_predictive_names() -> None:
+    config = _ordinary()
+    config["variant"] = "cached_fixed_ou"
+    config["likelihood"] = {
+        "kind": "fixed_ou",
+        "tau_hours": 24.0,
+        "site_amplitude_prior_scale": 1.0,
+    }
+    config["sampling"] = {
+        "nuts_sampler": "pymc",
+        "sample_posterior_predictive": ["y", "flux_scaling"],
+    }
+
+    with pytest.raises(ValueError, match="supports only"):
+        resolve_co2_family_config(config)
+
+
+@pytest.mark.parametrize(
+    ("offset_options", "message"),
+    [
+        ({"per_site": False, "frequency": "monthly"}, "does not accept frequency"),
+        ({"per_site": False, "drop_first": True}, "does not support drop_first"),
+    ],
+)
+def test_global_offset_rejects_site_specific_options_during_resolution(
+    offset_options: dict[str, object], message: str
+) -> None:
+    config = _ordinary()
+    config["model"] = {
+        "offset": {
+            "prior": {"pdf": "normal", "mu": 0.0, "sigma": 0.1},
+            **offset_options,
+        }
+    }
+
+    with pytest.raises(ValueError, match=message):
+        resolve_co2_family_config(config)
+
+
+@pytest.mark.parametrize(
+    ("sampling", "expected"),
+    [
+        (None, RhimeSampler(nuts_sampler="numpyro", sample_kwargs={"target_accept": 0.95})),
+        (
+            {"draws": 20},
+            RhimeSampler(
+                draws=20,
+                nuts_sampler="numpyro",
+                sample_kwargs={"target_accept": 0.95},
+            ),
+        ),
+    ],
+)
+def test_linked_sampling_preserves_recipe_defaults(
+    sampling: dict[str, object] | None, expected: RhimeSampler
+) -> None:
+    config = _linked()
+    if sampling is None:
+        config.pop("sampling")
+    else:
+        config["sampling"] = sampling
+
+    setup = cast(Co2O2RunSetup, resolve_co2_family_config(config))
+
+    assert setup.sampler == expected
 
 
 @pytest.mark.parametrize(

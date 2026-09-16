@@ -308,8 +308,18 @@ def _sampling(value: object, *, cached: bool) -> RhimeSampler:
     if posterior_kwargs:
         kwargs["posterior_predictive_kwargs"] = posterior_kwargs
     sampler = RhimeSampler(**kwargs)
+    if sampler.burn >= sampler.draws:
+        raise ValueError("sampling.burn must be less than sampling.draws.")
     if cached and sampler.nuts_sampler != "pymc":
         raise ValueError("The cached_fixed_ou variant requires sampling.nuts_sampler='pymc'.")
+    posterior_predictive = sampler.sample_posterior_predictive
+    if cached and not isinstance(posterior_predictive, bool):
+        unsupported = set(posterior_predictive) - {"y", "concentration"}
+        if unsupported:
+            raise ValueError(
+                "cached_fixed_ou sampling.sample_posterior_predictive supports only "
+                f"'y' or 'concentration'; got {sorted(unsupported)!r}."
+            )
     return sampler
 
 
@@ -347,6 +357,11 @@ def _model(value: object) -> dict[str, object]:
                     offset.pop(config_name), f"model.offset.{config_name}"
                 )
         _reject_unknown(offset, "model.offset")
+        if offset_args.get("per_site") is False:
+            if offset_args.get("offset_freq") is not None:
+                raise ValueError("A global model.offset does not accept frequency.")
+            if offset_args.get("drop_first") is True:
+                raise ValueError("A global model.offset does not support drop_first=true.")
         result["offset_args"] = _frozen(offset_args)
     _reject_unknown(options, "model")
     return result
@@ -533,7 +548,10 @@ def _resolve_linked(options: dict[str, object], variant: str) -> Co2O2RunSetup:
         raise ValueError(
             "The linked configuration currently requires identical CO2 and O2 channel units."
         )
-    sampler = _sampling(options.pop("sampling", {}), cached=False)
+    sampling = _table(options.pop("sampling", {}), "sampling")
+    sampling.setdefault("nuts_sampler", "numpyro")
+    sampling.setdefault("target_accept", 0.95)
+    sampler = _sampling(sampling, cached=False)
     _reject_unknown(options, "config")
     preparation_kwargs = {
         "co2_units": units["co2"],
