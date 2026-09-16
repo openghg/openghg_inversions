@@ -104,44 +104,10 @@ jobs:
             echo "version=$VERSION"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Check for an existing PyPI publication
-        id: pypi
-        env:
-          VERSION: ${{ steps.release.outputs.version }}
-        run: |
-          python - <<'PY'
-          import os
-          from urllib.error import HTTPError
-          from urllib.request import urlopen
-
-          version = os.environ["VERSION"]
-          try:
-              with urlopen(
-                  f"https://pypi.org/pypi/openghg-inversions/{version}/json",
-                  timeout=30,
-              ):
-                  published = True
-          except HTTPError as error:
-              if error.code != 404:
-                  raise
-              published = False
-
-          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
-              print(f"published={str(published).lower()}", file=output)
-          PY
-
-      - name: Note existing publication
-        if: steps.pypi.outputs.published == 'true'
-        env:
-          VERSION: ${{ steps.release.outputs.version }}
-        run: echo "PyPI already contains ${VERSION}; skipping build and upload." >> "$GITHUB_STEP_SUMMARY"
-      
       - name: Build package
-        if: steps.pypi.outputs.published != 'true'
         run: uv build
 
       - name: Smoke-test the built wheel
-        if: steps.pypi.outputs.published != 'true'
         env:
           VERSION: ${{ steps.release.outputs.version }}
         run: |
@@ -159,8 +125,10 @@ jobs:
           PY
       
       - name: Publish to PyPI
-        if: steps.pypi.outputs.published != 'true'
-        run: uv publish --trusted-publishing always
+        run: >-
+          uv publish
+          --check-url https://pypi.org/simple/openghg-inversions/
+          --trusted-publishing always
 
       - name: Create GitHub release for an automated publication
         if: github.event_name == 'workflow_dispatch'

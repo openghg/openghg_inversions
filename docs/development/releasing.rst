@@ -30,6 +30,20 @@ Branch roles
    pull-request target. While 0.6 is current, for example, a 0.6 hotfix targets
    ``main`` rather than ``v0.6.0``.
 
+One-time repository setup
+-------------------------
+
+Before using the release workflows, configure both GitHub environments under
+**Settings > Environments**:
+
+* ``pypi`` must require approval from a designated maintainer and retain the
+  repository's PyPI trusted-publishing setup; and
+* ``hpc-release-review`` must require approval from a designated maintainer.
+
+Do not publish or record the scientific gate while either environment has no
+required-reviewer protection rule. Recheck these settings when maintainer
+access changes.
+
 Monthly release
 ---------------
 
@@ -49,16 +63,22 @@ release-blocking fix to the release branch and ``devel``; do not leave a fix on
 only one side.
 
 After the release pull request merges, run the real-data ``test_inversions``
-suite on the exact resulting ``main`` commit. The local tests marked ``slow``
-are development contracts, not a substitute for this release assessment.
+cases selected in the release tracking issue on the exact resulting ``main``
+commit. The local tests marked ``slow`` are development contracts, not a
+substitute for this release assessment.
 
 HPC evidence and scientific approval
 ------------------------------------
 
-Run the agreed real-data inversion cases for the final merged commit and verify
-that the tested SHA matches ``git rev-parse origin/main``. Keep the
-configuration and data identity, Slurm job references, summaries, and
-interpretable scientific outputs together as compact evidence.
+Until OPE-166 defines a canonical case set, the release tracking issue is the
+authority for each release. Before starting HPC work, record the selected case
+IDs, exact commands, configuration and data identities, why the set covers the
+release's scientific risks, and the acceptance criteria. Run every recorded
+case for the final merged commit and verify that the tested SHA matches
+``git rev-parse origin/main``. Record each result and the scientific acceptance
+rationale with the Slurm job references, summaries, and interpretable outputs
+as compact evidence. Do not attest success if a selected case or its rationale
+is missing.
 
 Upload or link the compact evidence somewhere reachable by HTTPS, normally the
 release tracking issue or release pull request. A maintainer reviews the real
@@ -93,12 +113,15 @@ pull request. Auto-merge is enabled when repository settings and required
 checks allow it. The release branch is deleted only after publication.
 
 If automated publication fails after PyPI accepts the artifact, do not publish
-the same version again. Creating the missing GitHub release safely re-enters
-the publication workflow: it detects the existing PyPI version and skips the
-upload. Then run **Forward released main to devel** manually. If publication
-fails before PyPI accepts the artifact, correct the workflow or release
-commit, rerun the exact-SHA tests when the commit changes, and dispatch
-publication again.
+the same file again. Creating the missing GitHub release re-enters the
+publication workflow, which rebuilds and smoke-tests both distributions before
+``uv publish --check-url`` skips matching files already on PyPI and uploads any
+missing distribution. A same-named file with different contents remains an
+error and requires manual investigation; never overwrite or replace a PyPI
+artifact. Then run **Forward released main to devel** manually. If publication
+fails before PyPI accepts an artifact, correct the workflow or release commit,
+rerun the exact-SHA tests when the commit changes, and dispatch publication
+again.
 
 Current-line hotfix
 -------------------
