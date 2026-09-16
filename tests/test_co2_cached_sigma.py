@@ -727,6 +727,7 @@ def test_joint_outputs_are_exact_and_predict_complete_correlated_vectors() -> No
 def test_named_runner_samples_real_graph_and_labels_cached_outputs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """The named runner samples the real graph and labels every cached output."""
     inputs = _boundary_inputs()
     step_settings: dict[str, float] = {}
     original_make_step = co2_cached_sigma_runner.make_cached_sigma_compound_step
@@ -847,6 +848,7 @@ def test_named_runner_samples_real_graph_and_labels_cached_outputs(
 
 
 def test_cached_runner_rejects_generic_target_accept() -> None:
+    """The cached runner rejects one target acceptance rate for its two samplers."""
     class PreparedInputsStub:
         inv_inputs = _inputs()
         aggregation_error_mode = "dense"

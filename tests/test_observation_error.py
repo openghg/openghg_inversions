@@ -197,6 +197,7 @@ def test_explicit_none_ignores_available_diagnostic() -> None:
 
 
 def test_prepare_low_rank_aggregation_error_preserves_diagonal() -> None:
+    """Truncated LRPD preparation preserves marginal variance and diagnostics."""
     covariance_values = np.array(
         [
             [2.0, 0.8, 0.3],
@@ -235,6 +236,7 @@ def test_prepare_low_rank_aggregation_error_preserves_diagonal() -> None:
 def test_prepare_low_rank_aggregation_error_uses_one_eigendecomposition(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """LRPD preparation reuses one eigendecomposition for validation and factors."""
     covariance = xr.DataArray(
         np.array([[2.0, 0.4], [0.4, 1.0]]),
         dims=("nmeasure", "nmeasure_cov"),
@@ -260,6 +262,7 @@ def test_prepare_low_rank_aggregation_error_uses_one_eigendecomposition(
 
 
 def test_full_rank_aggregation_error_approximation_is_exact() -> None:
+    """A full-rank LRPD factor reconstructs the source covariance exactly."""
     covariance_values = np.array([[2.0, 0.4], [0.4, 1.0]])
     covariance = xr.DataArray(
         covariance_values,
@@ -287,6 +290,7 @@ def test_full_rank_aggregation_error_approximation_is_exact() -> None:
 
 @pytest.mark.parametrize("rank", [0, 4, True, 1.5])
 def test_prepare_low_rank_aggregation_error_rejects_invalid_rank(rank: object) -> None:
+    """LRPD preparation rejects ranks outside its positive integer bounds."""
     covariance = xr.DataArray(
         np.eye(3),
         dims=("nmeasure", "nmeasure_cov"),
@@ -298,6 +302,7 @@ def test_prepare_low_rank_aggregation_error_rejects_invalid_rank(rank: object) -
 
 
 def test_prepare_low_rank_aggregation_error_requires_exact_covariance_labels() -> None:
+    """LRPD preparation requires identical ordered row and column labels."""
     covariance = xr.DataArray(
         np.eye(2),
         dims=("nmeasure", "nmeasure_cov"),
@@ -320,6 +325,7 @@ def test_prepare_low_rank_aggregation_error_validates_values(
     covariance_values: np.ndarray,
     match: str,
 ) -> None:
+    """LRPD preparation rejects non-finite, asymmetric, or indefinite values."""
     covariance = xr.DataArray(
         covariance_values,
         dims=("nmeasure", "nmeasure_cov"),
@@ -331,6 +337,7 @@ def test_prepare_low_rank_aggregation_error_validates_values(
 
 
 def test_low_rank_psd_tolerance_scales_with_covariance_magnitude() -> None:
+    """PSD tolerance still rejects tiny covariances with material indefiniteness."""
     covariance = xr.DataArray(
         np.array([[1.0, 2.0], [2.0, 1.0]]) * 1.0e-20,
         dims=("nmeasure", "nmeasure_cov"),

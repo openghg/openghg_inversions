@@ -119,6 +119,14 @@ def _without_aggregation_payload(inputs: xr.Dataset, *, target_dim: str) -> xr.D
     are owned by that dimension and are removed with it. Data variables and
     multidimensional coordinates using that dimension are rejected.
 
+    Args:
+        inputs: Dataset that may contain an existing aggregation payload.
+        target_dim: Representation dimension required by the replacement
+            payload.
+
+    Returns:
+        A dataset without the old aggregation payload or its owned dimensions.
+
     Raises:
         ValueError: If an owned or target representation dimension has a
             non-aggregation consumer.

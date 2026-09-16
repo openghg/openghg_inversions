@@ -140,6 +140,7 @@ def _reduction(canonical: RhimePreparedInputs) -> CoherentGaussianReduction:
 
 
 def test_prepare_co2_inputs_maps_reduction_and_preserves_canonical_metadata() -> None:
+    """Preparation maps linked reduction products and preserves canonical metadata."""
     canonical = _canonical_inputs()
     reduction = _reduction(canonical)
 
@@ -178,6 +179,7 @@ def test_prepare_co2_inputs_maps_reduction_and_preserves_canonical_metadata() ->
 
 
 def test_prepare_co2_inputs_constructs_truncated_low_rank_representation() -> None:
+    """A requested rank creates a diagonal-preserving truncated LRPD payload."""
     canonical = _canonical_inputs()
     reduction = _reduction(canonical)
 
@@ -197,6 +199,7 @@ def test_prepare_co2_inputs_constructs_truncated_low_rank_representation() -> No
 
 
 def test_prepare_co2_inputs_caps_default_low_rank_at_observation_count() -> None:
+    """The default LRPD rank is capped at the available observation count."""
     canonical = _canonical_inputs()
 
     prepared = prepare_co2_inputs(canonical, _reduction(canonical))
@@ -210,6 +213,7 @@ def test_prepare_co2_inputs_replaces_stale_aggregation_rank_coordinate(
     existing_rank: int,
     requested_rank: int,
 ) -> None:
+    """Re-preparation replaces stale factor values and aggregation-rank labels."""
     canonical = _canonical_inputs()
     canonical.inv_inputs["low_rank_factor"] = xr.DataArray(
         np.ones((3, existing_rank)),
@@ -243,6 +247,7 @@ def test_prepare_co2_inputs_reprepares_dense_multiindex_payload(
     target_rank: int | None,
     expected_mode: str,
 ) -> None:
+    """Dense re-preparation safely replaces a real MultiIndex covariance payload."""
     canonical = _canonical_inputs()
     reduction = _reduction(canonical)
     dense = prepare_co2_inputs(canonical, reduction, aggregation_error_rank=None)
@@ -285,6 +290,7 @@ def test_prepare_co2_inputs_rejects_non_aggregation_representation_dim_consumer(
     rank: int | None,
     representation_dim: str,
 ) -> None:
+    """Re-preparation rejects recipe variables sharing a representation dimension."""
     canonical = _canonical_inputs()
     reduction = _reduction(canonical)
     prepared = prepare_co2_inputs(canonical, reduction, aggregation_error_rank=rank)
@@ -302,6 +308,7 @@ def test_prepare_co2_inputs_rejects_non_aggregation_representation_dim_consumer(
 
 
 def test_prepare_co2_inputs_rejects_shared_representation_dim_coordinate() -> None:
+    """Re-preparation rejects multidimensional coordinates shared with retained data."""
     canonical = _canonical_inputs()
     reduction = _reduction(canonical)
     prepared = prepare_co2_inputs(canonical, reduction, aggregation_error_rank=None)
@@ -325,6 +332,7 @@ def test_co2_prepared_inputs_round_trip(
     suffix: str,
     representation: str,
 ) -> None:
+    """Dense and LRPD artifacts round-trip through NetCDF and Zarr."""
     canonical = _canonical_inputs()
     reduction = _reduction(canonical)
     prepared = prepare_co2_inputs(
@@ -344,6 +352,7 @@ def test_co2_prepared_inputs_round_trip(
 
 
 def test_prepare_co2_inputs_rejects_conflicting_projection_strategy() -> None:
+    """User provenance cannot contradict the reduction projection strategy."""
     canonical = _canonical_inputs()
     reduction = _reduction(canonical)
 
@@ -356,6 +365,7 @@ def test_prepare_co2_inputs_rejects_conflicting_projection_strategy() -> None:
 
 
 def test_prepare_co2_inputs_rejects_wrong_covariance_units() -> None:
+    """Preparation rejects covariance units at a different numeric scale."""
     canonical = _canonical_inputs()
     reduction = _reduction(canonical)
     reduction.unresolved_observation_covariance.attrs["units"] = "(ppb)^2"
@@ -373,6 +383,7 @@ def test_prepare_co2_inputs_rejects_wrong_covariance_units() -> None:
     ],
 )
 def test_prepare_co2_inputs_accepts_same_scale_concentration_unit_alias(field: str) -> None:
+    """Preparation accepts equivalent concentration spellings at the same scale."""
     canonical = _canonical_inputs()
     reduction = _reduction(canonical)
     getattr(reduction, field).attrs["units"] = "umol/mol"
@@ -395,6 +406,7 @@ def test_dimensionless_concentration_units_prepare_and_round_trip(
     covariance_units: str,
     tmp_path: Path,
 ) -> None:
+    """Dimensionless concentration expressions survive preparation and reload."""
     canonical = _canonical_inputs()
     canonical.inv_inputs["mf"].attrs["units"] = canonical_units
     canonical.inv_inputs["mf_error"].attrs["units"] = canonical_units
@@ -416,6 +428,7 @@ def test_dimensionless_concentration_units_prepare_and_round_trip(
 
 
 def test_co2_prepared_inputs_load_rejects_wrong_low_rank_units() -> None:
+    """Loading rejects an LRPD factor whose unit scale differs from observations."""
     canonical = _canonical_inputs()
     reduction = _reduction(canonical)
     prepared = prepare_co2_inputs(canonical, reduction, aggregation_error_rank=1)
@@ -436,6 +449,7 @@ def test_co2_prepared_inputs_load_rejects_wrong_low_rank_units() -> None:
 def test_co2_prepared_inputs_load_rejects_half_present_low_rank_payload(
     missing_name: str,
 ) -> None:
+    """Loading reports which member of an incomplete LRPD pair is missing."""
     canonical = _canonical_inputs()
     prepared = prepare_co2_inputs(canonical, _reduction(canonical), aggregation_error_rank=1)
     tree = prepared.to_datatree()
@@ -450,6 +464,7 @@ def test_reloaded_truncated_low_rank_artifact_drives_cached_runner_selection(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    """A reloaded LRPD artifact selects low-rank cached-runner inputs."""
     canonical = _canonical_inputs()
     reduction = _reduction(canonical)
     prepared = prepare_co2_inputs(canonical, reduction, aggregation_error_rank=1)
@@ -485,6 +500,7 @@ def test_reloaded_truncated_low_rank_artifact_drives_cached_runner_selection(
 
 
 def test_standard_runner_uses_real_co2_prepared_inputs(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The standard CO2 runner resolves aggregation error from its real artifact."""
     canonical = _canonical_inputs()
     prepared = prepare_co2_inputs(canonical, _reduction(canonical), aggregation_error_rank=1)
     received: dict[str, Any] = {}
@@ -509,6 +525,7 @@ def test_standard_runner_uses_real_co2_prepared_inputs(monkeypatch: pytest.Monke
 
 
 def test_scalar_sigma_preparation_uses_artifact_aggregation_mode() -> None:
+    """Scalar-sigma preparation resolves the aggregation mode from the artifact."""
     canonical = _canonical_inputs()
     prepared = prepare_co2_inputs(canonical, _reduction(canonical), aggregation_error_rank=1)
 
@@ -520,6 +537,7 @@ def test_scalar_sigma_preparation_uses_artifact_aggregation_mode() -> None:
 def test_standard_runner_materializes_aggregation_payload_once(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """The standard runner materializes linked LRPD arrays in one computation."""
     canonical = _canonical_inputs()
     prepared = prepare_co2_inputs(
         canonical,

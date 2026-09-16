@@ -269,6 +269,12 @@ def _validate_dense_covariance_values(
     When supplied, ``eigenvalues`` must be the eigenvalues of the symmetrized
     ``values`` matrix; callers may pass them to avoid a second decomposition.
 
+    Args:
+        values: Materialized square covariance values.
+        owner: Scientific owner named in validation errors.
+        eigenvalues: Optional eigenvalues already computed from the
+            symmetrized covariance.
+
     Raises:
         ValueError: If ``values`` is not symmetric or positive semidefinite
             within the scale-based numerical tolerance.
