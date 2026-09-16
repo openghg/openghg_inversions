@@ -10,3 +10,4 @@ sparse
 tfp-nightly
 flox
 opt_einsum
+tomli>=2; python_version < "3.11"

@@ -1,0 +1,21 @@
+# Linked CO2/O2 replay from an in-memory prepared-input artifact.
+# The current configuration requires one shared concentration-unit label.
+format_version = 1
+recipe = "co2_o2"
+variant = "linked"
+
+[channels.co2]
+units = "ppm"
+independent_error_sd = 1.0
+
+[channels.o2]
+units = "ppm"
+independent_error_sd = 1.0
+
+[sampling]
+draws = 1000
+tune = 1000
+chains = 4
+nuts_sampler = "numpyro"
+target_accept = 0.95
+random_seed = 12345

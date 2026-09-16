@@ -159,6 +159,127 @@ likelihood, and sampled outputs.
 The location and scale parameters in ``offset_prior`` use the observations'
 concentration units.
 
+Configure prepared-input replay from TOML
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The CO2 family provides three installed TOML templates:
+``co2.toml``, ``co2_cached_sigma.toml``, and ``co2_o2.toml``. Use
+:func:`openghg_inversions.rhime.co2.co2_config_templates` to discover their
+installed paths. Copy the closest template for a run; do not edit the installed
+resource. The templates configure the existing prepared-input Python seams.
+They do not make CO2 available through the staged CLI.
+
+:func:`openghg_inversions.rhime.co2.load_co2_family_config` reads TOML, while
+:func:`openghg_inversions.rhime.co2.resolve_co2_family_config` accepts an
+ordinary mapping and returns a frozen
+:class:`~openghg_inversions.rhime.co2.Co2RunSetup` or
+:class:`~openghg_inversions.rhime.co2.Co2O2RunSetup`. Keeping parsing separate
+from resolution makes the scientific choices independent of the file format.
+The setup identifies the runner and contains explicit ``preparation_kwargs``,
+``runner_kwargs``, and :class:`~openghg_inversions.rhime.RhimeSampler` values;
+it does not retain an ambient configuration mapping. After preparing or
+loading the appropriate artifact, ``setup.runner_arguments(prepared)`` binds
+it to the exact arguments accepted by ``setup.runner``. For the linked recipe,
+this step expands the two configured error scalars over the labelled joint
+observation axis and verifies its species and unit labels.
+
+For example, the ordinary TOML settings::
+
+   format_version = 1
+   recipe = "co2"
+   variant = "ordinary"
+
+   [prepared_inputs]
+   path = "co2-coherent-dense.zarr"
+
+   [likelihood]
+   kind = "additive_sigma"
+   sigma_prior = { pdf = "halfnormal", sigma = 0.75 }
+
+   [sampling]
+   draws = 1000
+   tune = 1000
+   chains = 4
+   nuts_sampler = "numpyro"
+
+resolve to the same scientific runner choices as this direct Python call::
+
+   from openghg_inversions.rhime import RhimeSampler, run_rhime_co2
+   from openghg_inversions.rhime.co2 import Co2PreparedInputs
+
+   prepared = Co2PreparedInputs.load("co2-coherent-dense.zarr")
+   idata = run_rhime_co2(
+       prepared_inputs=prepared,
+       sigma_prior={"pdf": "halfnormal", "sigma": 0.75},
+       sampler=RhimeSampler(
+           draws=1000,
+           tune=1000,
+           chains=4,
+           nuts_sampler="numpyro",
+       ),
+   )
+
+The resolved ordinary setup can execute that same call through its explicit
+binding method::
+
+   from openghg_inversions.rhime.co2 import (
+       Co2PreparedInputs,
+       load_co2_family_config,
+       resolve_co2_family_config,
+   )
+
+   config = load_co2_family_config("my-co2.toml")
+   setup = resolve_co2_family_config(config)
+   prepared = Co2PreparedInputs.load(setup.preparation_kwargs["path"])
+   idata = setup.runner(**setup.runner_arguments(prepared))
+
+The resolver deliberately supports a closed matrix rather than arbitrary
+callable imports:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 18 22 22 38
+
+   * - Recipe
+     - Variant
+     - Runner
+     - Configuration boundary
+   * - ``co2``
+     - ``ordinary``
+     - ``run_rhime_co2``
+     - ``additive_sigma``, ``site_sigma``, ``fixed_ou``, or ``scalar_sigma``
+       likelihood; boundary conditions and offsets are available.
+   * - ``co2``
+     - ``cached_fixed_ou``
+     - ``run_rhime_co2_cached_sigma``
+     - Fixed positive OU timescales and HalfNormal site amplitudes, using the
+       runner-owned PyMC sampler.
+   * - ``co2_o2``
+     - ``linked``
+     - ``run_rhime_co2_o2_from_prepared_inputs``
+     - Fixed independent error with one shared channel-unit label.
+
+Standalone O2, arbitrary Python callables, and additional recipe or variant
+names are rejected. The linked configuration also rejects boundary conditions,
+offsets, ordinary likelihood selection, cached/scalar likelihoods, and unequal
+CO2 and O2 unit labels. The lower-level linked prepared-input API continues to
+represent row-specific mixed units; configuring a heterogeneous ppm/per-meg
+run is deferred until the scaling contract tracked in `OPE-86
+<https://linear.app/openghg-inversions/issue/OPE-86>`_ is available. Use the
+direct Python interfaces for experimental combinations outside this matrix.
+The linked :class:`~openghg_inversions.rhime.co2.Co2O2PreparedInputs` artifact
+does not yet have a durable ``load`` method. Construct it through the documented
+preparation boundary and bind the resulting in-memory artifact; linked staged
+artifact loading remains follow-up work in `OPE-165
+<https://linear.app/openghg-inversions/issue/OPE-165>`_.
+
+Unknown or unused keys are errors, reported by their dotted path. Resolution
+also rejects incompatible component choices before an artifact is loaded or a
+model is built. This section defines the available recipe combinations, not a
+complete parameter catalogue. That reference work is tracked in `OPE-159
+<https://linear.app/openghg-inversions/issue/OPE-159>`_; the package templates
+are the runnable starting points.
+
 Construct the CO2-specific artifact by pairing canonical RHIME inputs with all
 linked products from one
 :class:`~openghg_inversions.coherent_reduction.CoherentGaussianReduction`.
