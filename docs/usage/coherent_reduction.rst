@@ -88,10 +88,13 @@ Preparing CO2 model inputs
 
 The CO2-only model has a dedicated public handoff that keeps the linked
 reduction products together with canonical RHIME observations, basis data,
-and site metadata::
+and site metadata. Load the canonical inputs from a checkpoint produced by
+the :doc:`rhime` workflow::
 
+   from openghg_inversions.inversion_data import RhimePreparedInputs
    from openghg_inversions.rhime.co2 import prepare_co2_inputs
 
+   canonical_inputs = RhimePreparedInputs.load("base-prepared-inputs.zarr")
    co2_inputs = prepare_co2_inputs(canonical_inputs, reduction)
 
 The returned
@@ -115,12 +118,31 @@ handoff::
 
 This factorization is downstream of coherent reduction: it does not make the
 reduction approximate or change the retained prior and effective operator.
+Let :math:`n` be the observation count and :math:`r` the retained rank. The
+current preparation path first materializes the complete dense
+:math:`n \times n` covariance and computes a full dense eigendecomposition,
+requiring :math:`O(n^2)` peak storage and :math:`O(n^3)` decomposition work.
+The saved factor and diagonal use :math:`O(nr+n)` storage. For an ordinary
+diagonal-plus-factor likelihood, Woodbury evaluation uses
+:math:`O(nr^2+r^3)` work. Reducing :math:`r` therefore shrinks the artifact and
+downstream structured-likelihood work; it does not make preparation
+matrix-free or avoid the dense eigendecomposition.
+
 The default 512-mode cap is not an adequacy claim; selecting or overriding the
 rank remains a caller-owned numerical and scientific decision.
 The constructor preserves the dense covariance diagonal and reports
 approximation diagnostics; it does not automatically certify that a rank is
 adequate for a particular likelihood. Compare the approximate and dense total
 likelihood covariance or log density over representative error profiles.
+Inspect the recorded retained-spectrum and reconstruction metrics directly::
+
+   diagnostics = co2_inputs.provenance["aggregation_error"]
+   retained_fraction = diagnostics["retained_positive_spectral_fraction"]
+   relative_error = diagnostics["relative_frobenius_reconstruction_error"]
+   diagonal_error = diagnostics["diagonal_preservation_error"]
+
+These diagnostics describe the covariance approximation; they do not certify
+that the chosen rank is adequate for a particular likelihood.
 
 Assumptions and limitations
 ---------------------------
@@ -144,12 +166,13 @@ retained basis states describe nearly the same native variation.
 
 For the Gaussian model above, :math:`A` is the aggregation-error covariance.
 The function does not add observation or model-error covariance :math:`R`;
-likelihood construction must use the total :math:`R + A`. Small numerical
-negative eigenvalues in :math:`A` may be harmless once a suitable :math:`R` is
-included, but observation error cannot repair an unstable retained-state
-solve. Assess any low-rank-plus-diagonal approximation using the total
-likelihood covariance and its log density, particularly when model-mismatch
-error is small.
+likelihood construction must use the total :math:`R + A`. The current software
+requires :math:`A` itself to be symmetric and positive semidefinite within its
+scale-based numerical tolerance; it may be singular. :math:`R` is not used to
+rescue a materially indefinite :math:`A`. Low-rank preparation clips only the
+small negative modes accepted as numerical roundoff. Assess any
+low-rank-plus-diagonal approximation using the total likelihood covariance and
+its log density, particularly when model-mismatch error is small.
 
 The conditional model is exact for a Gaussian native state and error
 independent of that state. Using the resulting moments with a LogNormal

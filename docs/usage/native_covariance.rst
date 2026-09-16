@@ -152,8 +152,10 @@ estimate while its Cholesky factor is already available. A restriction whose
 retained covariance is numerically ill-conditioned is rejected with a
 basis-design diagnostic. This is not an eigendecomposition of the
 observation-sized covariance, nor a requirement that the unresolved
-aggregation covariance be independently factorable before observation and
-model-error covariance are added.
+aggregation covariance be positive definite or Cholesky-factorable before
+observation and model-error covariance are added. The unresolved covariance
+may be singular, but the current downstream representation still requires it
+to be positive semidefinite within numerical tolerance.
 
 What projection does not construct
 ----------------------------------

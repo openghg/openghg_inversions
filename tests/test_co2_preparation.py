@@ -57,7 +57,11 @@ def _canonical_inputs() -> RhimePreparedInputs:
             "state_is_active": ("region", [True, False]),
             "state_fixed_value": ("region", [1.0, 0.9]),
         },
-        coords={"region": [1, 2], **observation_coords},
+        coords={
+            "region": [1, 2],
+            **observation_coords,
+            "release_lat": ("nmeasure", [50.1, 51.2, 52.3]),
+        },
     )
     inv_inputs["mf"].attrs["units"] = "ppm"
     inv_inputs["mf_error"].attrs["units"] = "ppm"
@@ -85,7 +89,10 @@ def _reduction(canonical: RhimePreparedInputs) -> CoherentGaussianReduction:
     observations = xr.DataArray(
         [401.0, 402.0, 403.0],
         dims="observation",
-        coords=observation_coords,
+        coords={
+            **observation_coords,
+            "release_lat": ("observation", canonical.inv_inputs["release_lat"].values),
+        },
         attrs={"units": "ppm"},
     )
     covariance_values = np.asarray([[0.5, 0.12, 0.04], [0.12, 0.4, 0.08], [0.04, 0.08, 0.3]])
@@ -93,7 +100,7 @@ def _reduction(canonical: RhimePreparedInputs) -> CoherentGaussianReduction:
         covariance_values,
         dims=("observation", "observation_cov"),
         coords={
-            **{str(name): coord for name, coord in observation_coords.items()},
+            **{str(name): coord for name, coord in observations.coords.items()},
             **renamed_column_coordinates(
                 observations,
                 row_dim="observation",
@@ -238,6 +245,7 @@ def test_prepare_co2_inputs_reprepares_dense_multiindex_payload(
     reduction = _reduction(canonical)
     dense = prepare_co2_inputs(canonical, reduction, aggregation_error_rank=None)
     assert isinstance(dense.inv_inputs.indexes["nmeasure_cov"], pd.MultiIndex)
+    assert "release_lat_cov" in dense.inv_inputs.coords
 
     with warnings.catch_warnings():
         warnings.simplefilter("error", DeprecationWarning)
@@ -248,14 +256,23 @@ def test_prepare_co2_inputs_reprepares_dense_multiindex_payload(
         )
 
     assert reprepared.aggregation_error_mode == expected_mode
+    xr.testing.assert_identical(
+        reprepared.inv_inputs["release_lat"],
+        canonical.inv_inputs["release_lat"],
+    )
     if target_rank is None:
         covariance_index = reprepared.inv_inputs.indexes["nmeasure_cov"]
         assert isinstance(covariance_index, pd.MultiIndex)
         assert covariance_index.names == ["site_cov", "time_cov"]
+        np.testing.assert_array_equal(
+            reprepared.inv_inputs["release_lat_cov"],
+            canonical.inv_inputs["release_lat"],
+        )
     else:
         assert "nmeasure_cov" not in reprepared.inv_inputs.dims
         assert "site_cov" not in reprepared.inv_inputs.coords
         assert "time_cov" not in reprepared.inv_inputs.coords
+        assert "release_lat_cov" not in reprepared.inv_inputs.coords
 
 
 @pytest.mark.parametrize(
@@ -279,6 +296,23 @@ def test_prepare_co2_inputs_rejects_non_aggregation_representation_dim_consumer(
             prepared.rhime_inputs,
             reduction,
             aggregation_error_rank=rank,
+        )
+
+
+def test_prepare_co2_inputs_rejects_shared_representation_dim_coordinate() -> None:
+    canonical = _canonical_inputs()
+    reduction = _reduction(canonical)
+    prepared = prepare_co2_inputs(canonical, reduction, aggregation_error_rank=None)
+    prepared.inv_inputs.coords["shared_coordinate"] = (
+        ("region", "nmeasure_cov"),
+        np.ones((2, 3)),
+    )
+
+    with pytest.raises(ValueError, match="shared_coordinate"):
+        prepare_co2_inputs(
+            prepared.rhime_inputs,
+            reduction,
+            aggregation_error_rank=None,
         )
 
 
@@ -326,6 +360,24 @@ def test_prepare_co2_inputs_rejects_wrong_covariance_units() -> None:
 
     with pytest.raises(ValueError, match="same numeric scale"):
         prepare_co2_inputs(canonical, reduction)
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "effective_observation_operator",
+        "native_observation_mean",
+        "observation_intercept",
+    ],
+)
+def test_prepare_co2_inputs_accepts_same_scale_concentration_unit_alias(field: str) -> None:
+    canonical = _canonical_inputs()
+    reduction = _reduction(canonical)
+    getattr(reduction, field).attrs["units"] = "umol/mol"
+
+    prepared = prepare_co2_inputs(canonical, reduction, aggregation_error_rank=None)
+
+    assert prepared.aggregation_error_mode == "dense"
 
 
 def test_co2_prepared_inputs_load_rejects_wrong_low_rank_units() -> None:

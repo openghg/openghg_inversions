@@ -105,7 +105,7 @@ def _borrow_without_axis_coordinates(array: xr.DataArray, dim: str) -> xr.DataAr
 
 
 def _without_aggregation_payload(inputs: xr.Dataset, *, target_dim: str) -> xr.Dataset:
-    """Remove aggregation-owned dimensions without dropping other consumers."""
+    """Remove owned dimensions after rejecting other data-variable consumers."""
     owned_dims = {
         dim
         for name in _AGGREGATION_PAYLOAD_NAMES
@@ -119,19 +119,15 @@ def _without_aggregation_payload(inputs: xr.Dataset, *, target_dim: str) -> xr.D
             for name, value in inputs.data_vars.items()
             if name not in _AGGREGATION_PAYLOAD_NAMES and dim in value.dims
         ]
-        index_coords = {dim}
-        index = inputs.indexes.get(dim)
-        if isinstance(index, pd.MultiIndex):
-            index_coords.update(name for name in index.names if name is not None)
-        extra_coords = [
+        coordinate_consumers = [
             name
             for name, value in inputs.coords.items()
-            if dim in value.dims and name not in index_coords
+            if dim in value.dims and value.dims != (dim,)
         ]
-        if consumers or extra_coords:
+        if consumers or coordinate_consumers:
             raise ValueError(
                 f"Aggregation representation dimension {dim!r} is also used by "
-                f"non-aggregation variable(s): {consumers + extra_coords!r}."
+                f"non-aggregation variable(s): {consumers + coordinate_consumers!r}."
             )
 
     cleaned = inputs
@@ -261,8 +257,8 @@ class Co2PreparedInputs:
             boundary and passed directly to shared RHIME consumers.
         aggregation_error_mode: Concrete dense or low-rank representation
             stored in :attr:`inv_inputs` and consumed by both CO2 runners.
-        provenance: Immutable JSON-safe preparation record. Low-rank artifacts
-            include the source-covariance identity and approximation
+        provenance: Top-level read-only JSON-safe preparation record. Low-rank
+            artifacts include the source-covariance identity and approximation
             diagnostics.
     """
 
@@ -340,11 +336,22 @@ class Co2PreparedInputs:
         return self.rhime_inputs.basis_artifact_path
 
     def validated(self) -> Self:
-        """Return this structurally validated immutable wrapper."""
+        """Return this structurally validated frozen wrapper."""
         return self
 
     def to_datatree(self) -> xr.DataTree:
-        """Validate and materialize aggregation error into the versioned schema."""
+        """Build the versioned in-memory serialization tree.
+
+        Aggregation-error arrays are validated and materialized together at
+        this serialization boundary. This method performs no file I/O.
+
+        Returns:
+            A versioned DataTree containing the CO2 artifact.
+
+        Raises:
+            ValueError: If the aggregation-error representation is invalid or
+                provenance cannot be serialized.
+        """
         aggregation_error = resolve_aggregation_error(
             self.inv_inputs,
             self.aggregation_error_mode,
@@ -380,7 +387,19 @@ class Co2PreparedInputs:
 
     @classmethod
     def from_datatree(cls, tree: xr.DataTree) -> Self:
-        """Restore CO2 inputs from the dedicated version-1 schema."""
+        """Restore CO2 inputs from the dedicated version-1 schema.
+
+        Args:
+            tree: In-memory tree using the CO2 prepared-input schema.
+
+        Returns:
+            The validated prepared CO2 artifact.
+
+        Raises:
+            KeyError: If the required ``rhime_inputs`` node is absent.
+            ValueError: If schema metadata, provenance, or the aggregation
+                representation is invalid.
+        """
         if tree.attrs.get("schema") != CO2_PREPARED_INPUTS_SCHEMA:
             raise ValueError(
                 f"Expected Co2PreparedInputs schema {CO2_PREPARED_INPUTS_SCHEMA!r}, "
@@ -414,12 +433,32 @@ class Co2PreparedInputs:
         output_file: str | Path,
         output_format: Literal["netcdf", "zarr"] | None = None,
     ) -> None:
-        """Save the prepared CO2 artifact to NetCDF or Zarr."""
+        """Materialize and save the prepared CO2 artifact.
+
+        Args:
+            output_file: Destination NetCDF file or Zarr store.
+            output_format: Explicit ``"netcdf"`` or ``"zarr"`` format. When
+                omitted, infer the format from ``output_file``.
+
+        Raises:
+            ValueError: If the artifact or requested output format is invalid.
+        """
         save_datatree(self.to_datatree(), output_file, output_format)
 
     @classmethod
     def load(cls, file_path: str | Path) -> Self:
-        """Load a fully materialized prepared CO2 artifact."""
+        """Load and validate a prepared CO2 artifact from disk.
+
+        Args:
+            file_path: NetCDF file or Zarr store to load eagerly.
+
+        Returns:
+            The fully materialized prepared CO2 artifact.
+
+        Raises:
+            KeyError: If a required schema node is absent.
+            ValueError: If schema metadata or scientific contents are invalid.
+        """
         return cls.from_datatree(open_datatree_loaded(file_path))
 
 
@@ -440,7 +479,15 @@ def prepare_co2_inputs(
 
     Inputs are borrowed and are not mutated. The returned artifact retains the
     canonical observations, observation error, optional boundary data, state
-    activity, basis functions, and site metadata.
+    activity, basis functions, and site metadata. Observation and retained-state
+    dimensions must be labelled and aligned between the canonical inputs and
+    reduction. Concentration units must be compatible at the same numeric scale;
+    values are not converted.
+
+    Selecting LRPD storage eagerly materializes the complete unresolved
+    covariance and computes its full dense eigendecomposition. The retained
+    rank reduces the saved payload and downstream structured-likelihood cost,
+    not this preparation cost.
 
     Args:
         canonical_inputs: Canonical RHIME observations and metadata whose
@@ -530,8 +577,11 @@ def prepare_co2_inputs(
         ("native_observation_mean", reduction.native_observation_mean),
         ("observation_intercept", intercept),
     ):
-        if array.attrs.get("units") != observation_units:
-            raise ValueError(f"Coherent {name} units must match the canonical observations.")
+        _require_equivalent_units(
+            array.attrs.get("units"),
+            str(observation_units),
+            name=f"Coherent {name}",
+        )
     if reduced_mean.attrs.get("units") != "1" or retained_covariance.attrs.get("units") != "1":
         raise ValueError("Coherent retained prior mean and covariance must be dimensionless.")
     _require_equivalent_units(

@@ -52,7 +52,18 @@ def co2_cached_sigma_input_names(
     *,
     use_bc: bool = False,
 ) -> tuple[str, ...]:
-    """Declare arrays consumed by the named cached fixed-OU recipe."""
+    """Declare arrays consumed by the named cached fixed-OU recipe.
+
+    Args:
+        prepared_inputs: Validated CO2 artifact to inspect.
+        use_bc: Include the boundary-condition sensitivity ``H_bc``.
+
+    Returns:
+        Ordered input-variable names required by the recipe.
+
+    Raises:
+        ValueError: If a selected input is missing from the artifact.
+    """
     inputs = prepared_inputs.inv_inputs
     names = list(_CO2_CACHED_SIGMA_INPUT_NAMES)
     if use_bc:

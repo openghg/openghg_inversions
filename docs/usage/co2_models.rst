@@ -162,12 +162,17 @@ concentration units.
 Construct the CO2-specific artifact by pairing canonical RHIME inputs with all
 linked products from one
 :class:`~openghg_inversions.coherent_reduction.CoherentGaussianReduction`.
+The :doc:`canonical RHIME workflow <rhime>` produces the durable base inputs,
+and :doc:`coherent_reduction` shows how to construct ``reduction`` from the
+native covariance products.
 Pass ``aggregation_error_rank=None`` to keep the reduction's exact dense
 unresolved covariance::
 
+   from openghg_inversions.inversion_data import RhimePreparedInputs
    from openghg_inversions.rhime.co2 import prepare_co2_inputs
    from openghg_inversions.rhime import run_rhime_co2
 
+   canonical_inputs = RhimePreparedInputs.load("base-prepared-inputs.zarr")
    prepared = prepare_co2_inputs(
        canonical_inputs,
        reduction,
@@ -511,7 +516,9 @@ The approximation preserves the dense covariance diagonal and records
 diagnostics, but a chosen rank is not evidence that the approximation is
 adequate for an inversion. Assess the resulting total likelihood covariance
 and log density for representative observation-error, site-amplitude, and OU
-profiles, especially when model-mismatch error is small.
+profiles, especially when model-mismatch error is small. See
+:doc:`coherent_reduction` for the dense preparation cost and the provenance
+fields used to inspect retained-spectrum and reconstruction diagnostics.
 
 For example::
 
