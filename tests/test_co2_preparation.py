@@ -123,7 +123,7 @@ def _reduction(canonical: RhimePreparedInputs) -> CoherentGaussianReduction:
         native_observation_mean=observations.rename("native_observation_mean"),
         observation_intercept=(observations - xr.DataArray([0.8, 0.7, 0.9], dims="observation")).rename(
             "observation_intercept"
-        ),
+        ).assign_attrs(units="ppm"),
         unresolved_observation_covariance=unresolved,
         projection_strategy="unit-test-projection",
     )
