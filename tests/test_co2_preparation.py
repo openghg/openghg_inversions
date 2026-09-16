@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, cast
+import warnings
 
 import dask.array as da
 from dask import delayed
@@ -225,6 +226,62 @@ def test_prepare_co2_inputs_replaces_stale_aggregation_rank_coordinate(
     assert np.isfinite(factor).all()
 
 
+@pytest.mark.parametrize(
+    ("target_rank", "expected_mode"),
+    [(None, "dense"), (1, "low_rank")],
+)
+def test_prepare_co2_inputs_reprepares_dense_multiindex_payload(
+    target_rank: int | None,
+    expected_mode: str,
+) -> None:
+    canonical = _canonical_inputs()
+    reduction = _reduction(canonical)
+    dense = prepare_co2_inputs(canonical, reduction, aggregation_error_rank=None)
+    assert isinstance(dense.inv_inputs.indexes["nmeasure_cov"], pd.MultiIndex)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", DeprecationWarning)
+        reprepared = prepare_co2_inputs(
+            dense.rhime_inputs,
+            reduction,
+            aggregation_error_rank=target_rank,
+        )
+
+    assert reprepared.aggregation_error_mode == expected_mode
+    if target_rank is None:
+        covariance_index = reprepared.inv_inputs.indexes["nmeasure_cov"]
+        assert isinstance(covariance_index, pd.MultiIndex)
+        assert covariance_index.names == ["site_cov", "time_cov"]
+    else:
+        assert "nmeasure_cov" not in reprepared.inv_inputs.dims
+        assert "site_cov" not in reprepared.inv_inputs.coords
+        assert "time_cov" not in reprepared.inv_inputs.coords
+
+
+@pytest.mark.parametrize(
+    ("rank", "representation_dim"),
+    [(None, "nmeasure_cov"), (1, "agg_rank")],
+)
+def test_prepare_co2_inputs_rejects_non_aggregation_representation_dim_consumer(
+    rank: int | None,
+    representation_dim: str,
+) -> None:
+    canonical = _canonical_inputs()
+    reduction = _reduction(canonical)
+    prepared = prepare_co2_inputs(canonical, reduction, aggregation_error_rank=rank)
+    prepared.inv_inputs["recipe_specific"] = xr.DataArray(
+        np.ones(prepared.inv_inputs.sizes[representation_dim]),
+        dims=representation_dim,
+    )
+
+    with pytest.raises(ValueError, match="non-aggregation variable"):
+        prepare_co2_inputs(
+            prepared.rhime_inputs,
+            reduction,
+            aggregation_error_rank=rank,
+        )
+
+
 @pytest.mark.parametrize("suffix", [".nc", ".zarr"])
 @pytest.mark.parametrize("representation", ["dense", "low_rank"])
 def test_co2_prepared_inputs_round_trip(
@@ -282,6 +339,23 @@ def test_co2_prepared_inputs_load_rejects_wrong_low_rank_units() -> None:
     node.ds = dataset
 
     with pytest.raises(ValueError, match="same numeric scale"):
+        Co2PreparedInputs.from_datatree(tree)
+
+
+@pytest.mark.parametrize(
+    "missing_name",
+    ["low_rank_factor", "diagonal_residual_variance"],
+)
+def test_co2_prepared_inputs_load_rejects_half_present_low_rank_payload(
+    missing_name: str,
+) -> None:
+    canonical = _canonical_inputs()
+    prepared = prepare_co2_inputs(canonical, _reduction(canonical), aggregation_error_rank=1)
+    tree = prepared.to_datatree()
+    node = cast(xr.DataTree, tree["rhime_inputs/inv_inputs"])
+    node.ds = node.to_dataset().drop_vars(missing_name)
+
+    with pytest.raises(ValueError, match="require low_rank_factor and diagonal_residual_variance together"):
         Co2PreparedInputs.from_datatree(tree)
 
 

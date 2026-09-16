@@ -156,12 +156,15 @@ def prepare_low_rank_aggregation_error(
         _numeric_finite("covariance", covariance, owner="Low-rank approximation input"),
         dtype=float,
     )
-    _validate_dense_covariance_values(values, owner="Low-rank approximation input covariance")
-
     scale = float(np.max(np.abs(values)))
     roundoff_tolerance = 1e-10 * scale if scale else 0.0
     symmetric = (values + values.T) * 0.5
     eigenvalues, eigenvectors = np.linalg.eigh(symmetric)
+    _validate_dense_covariance_values(
+        values,
+        owner="Low-rank approximation input covariance",
+        eigenvalues=eigenvalues,
+    )
     order = np.argsort(eigenvalues)[::-1]
     eigenvalues = np.maximum(eigenvalues[order], 0.0)
     eigenvectors = eigenvectors[:, order]
@@ -254,13 +257,16 @@ def _validate_dense_covariance_values(
     values: np.ndarray,
     *,
     owner: str,
+    eigenvalues: np.ndarray | None = None,
 ) -> None:
     """Require a materialized dense covariance to be symmetric and PSD."""
     scale = float(np.max(np.abs(values)))
     tolerance = 1e-10 * scale if scale else 0.0
     if not np.allclose(values, values.T, rtol=1e-10, atol=tolerance):
         raise ValueError(f"{owner} must be symmetric.")
-    if float(np.linalg.eigvalsh(values).min()) < -tolerance:
+    if eigenvalues is None:
+        eigenvalues = np.linalg.eigvalsh(values)
+    if float(eigenvalues.min()) < -tolerance:
         raise ValueError(f"{owner} must be positive semidefinite.")
 
 

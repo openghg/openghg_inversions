@@ -36,6 +36,13 @@ from openghg_inversions.serialization import open_datatree_loaded, save_datatree
 CO2_PREPARED_INPUTS_SCHEMA = "openghg_inversions.co2_prepared_inputs"
 CO2_PREPARED_INPUTS_SCHEMA_VERSION = 1
 Co2AggregationErrorMode = Literal["dense", "low_rank"]
+_AGGREGATION_PAYLOAD_NAMES = (
+    AGGREGATION_ERROR_COVARIANCE,
+    AGGREGATION_ERROR_SD,
+    LOW_RANK_FACTOR,
+    DIAGONAL_RESIDUAL_VARIANCE,
+)
+_AGGREGATION_REPRESENTATION_DIMS = {"agg_rank", "nmeasure_cov"}
 
 
 def _json_mapping(value: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -95,6 +102,53 @@ def _borrow_without_axis_coordinates(array: xr.DataArray, dim: str) -> xr.DataAr
         attrs=array.attrs,
         name=array.name,
     )
+
+
+def _without_aggregation_payload(inputs: xr.Dataset, *, target_dim: str) -> xr.Dataset:
+    """Remove aggregation-owned dimensions without dropping other consumers."""
+    owned_dims = {
+        dim
+        for name in _AGGREGATION_PAYLOAD_NAMES
+        if name in inputs
+        for dim in inputs[name].dims
+        if dim in _AGGREGATION_REPRESENTATION_DIMS
+    }
+    for dim in owned_dims:
+        consumers = [
+            name
+            for name, value in inputs.data_vars.items()
+            if name not in _AGGREGATION_PAYLOAD_NAMES and dim in value.dims
+        ]
+        index_coords = {dim}
+        index = inputs.indexes.get(dim)
+        if isinstance(index, pd.MultiIndex):
+            index_coords.update(name for name in index.names if name is not None)
+        extra_coords = [
+            name
+            for name, value in inputs.coords.items()
+            if dim in value.dims and name not in index_coords
+        ]
+        if consumers or extra_coords:
+            raise ValueError(
+                f"Aggregation representation dimension {dim!r} is also used by "
+                f"non-aggregation variable(s): {consumers + extra_coords!r}."
+            )
+
+    cleaned = inputs
+    for dim in owned_dims:
+        cleaned = cleaned.drop_dims(dim)
+    cleaned = cleaned.drop_vars(_AGGREGATION_PAYLOAD_NAMES, errors="ignore")
+    if target_dim in cleaned.dims:
+        consumers = [
+            name
+            for name, value in cleaned.variables.items()
+            if target_dim in value.dims
+        ]
+        raise ValueError(
+            f"Aggregation representation dimension {target_dim!r} is already used by "
+            f"non-aggregation variable(s): {consumers!r}."
+        )
+    return cleaned
 
 
 def _require_equivalent_units(actual: Any, expected: str, *, name: str) -> None:
@@ -222,7 +276,15 @@ class Co2PreparedInputs:
         inputs = self.rhime_inputs.inv_inputs
         _validate_co2_dataset(inputs)
         dense = AGGREGATION_ERROR_COVARIANCE in inputs
-        low_rank = LOW_RANK_FACTOR in inputs or DIAGONAL_RESIDUAL_VARIANCE in inputs
+        factor_present = LOW_RANK_FACTOR in inputs
+        diagonal_present = DIAGONAL_RESIDUAL_VARIANCE in inputs
+        if factor_present != diagonal_present:
+            missing = DIAGONAL_RESIDUAL_VARIANCE if factor_present else LOW_RANK_FACTOR
+            raise ValueError(
+                "Low-rank CO2 inputs require low_rank_factor and "
+                f"diagonal_residual_variance together; missing {missing!r}."
+            )
+        low_rank = factor_present and diagonal_present
         if self.aggregation_error_mode == "dense" and (not dense or low_rank):
             raise ValueError("Dense CO2 inputs must contain only the dense aggregation covariance.")
         if self.aggregation_error_mode == "low_rank" and (dense or not low_rank):
@@ -487,18 +549,16 @@ def prepare_co2_inputs(
     ):
         raise ValueError("aggregation_error_rank must be a positive integer or None.")
 
-    mapped = inputs.drop_vars(
+    target_representation_dim = "nmeasure_cov" if aggregation_error_rank is None else "agg_rank"
+    mapped = _without_aggregation_payload(
+        inputs,
+        target_dim=target_representation_dim,
+    ).drop_vars(
         (
             "H",
             "alpha_prior_mean",
             "alpha_prior_covariance",
             "fixed_prior_contribution",
-            AGGREGATION_ERROR_COVARIANCE,
-            AGGREGATION_ERROR_SD,
-            LOW_RANK_FACTOR,
-            DIAGONAL_RESIDUAL_VARIANCE,
-            "agg_rank",
-            "nmeasure_cov",
         ),
         errors="ignore",
     )

@@ -232,6 +232,33 @@ def test_prepare_low_rank_aggregation_error_preserves_diagonal() -> None:
     json.dumps(result.diagnostics, allow_nan=False)
 
 
+def test_prepare_low_rank_aggregation_error_uses_one_eigendecomposition(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    covariance = xr.DataArray(
+        np.array([[2.0, 0.4], [0.4, 1.0]]),
+        dims=("nmeasure", "nmeasure_cov"),
+        coords={"nmeasure": ["A", "B"], "nmeasure_cov": ["A", "B"]},
+    )
+    original_eigh = np.linalg.eigh
+    calls = 0
+
+    def counted_eigh(values: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        nonlocal calls
+        calls += 1
+        return original_eigh(values)
+
+    def unexpected_eigvalsh(_values: np.ndarray) -> np.ndarray:
+        raise AssertionError("prepare_low_rank_aggregation_error repeated the eigendecomposition")
+
+    monkeypatch.setattr(np.linalg, "eigh", counted_eigh)
+    monkeypatch.setattr(np.linalg, "eigvalsh", unexpected_eigvalsh)
+
+    prepare_low_rank_aggregation_error(covariance, rank=1)
+
+    assert calls == 1
+
+
 def test_full_rank_aggregation_error_approximation_is_exact() -> None:
     covariance_values = np.array([[2.0, 0.4], [0.4, 1.0]])
     covariance = xr.DataArray(
