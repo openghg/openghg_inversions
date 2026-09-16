@@ -83,6 +83,11 @@ def aggregation_error_covariance_sha256(
 ) -> str:
     """Return a stable content identity for a labelled aggregation covariance.
 
+    This function eagerly materializes the covariance. The identity covers
+    dimension names and order, shape, the two dimension-coordinate values,
+    and numeric values normalized to big-endian float64. It excludes the array
+    name, attributes, auxiliary coordinates, chunks, and storage backend.
+
     Args:
         covariance: Square covariance with identical ordered axis labels.
         output_dim: Observation dimension on the covariance rows.
@@ -259,7 +264,15 @@ def _validate_dense_covariance_values(
     owner: str,
     eigenvalues: np.ndarray | None = None,
 ) -> None:
-    """Require a materialized dense covariance to be symmetric and PSD."""
+    """Require a materialized dense covariance to be symmetric and PSD.
+
+    When supplied, ``eigenvalues`` must be the eigenvalues of the symmetrized
+    ``values`` matrix; callers may pass them to avoid a second decomposition.
+
+    Raises:
+        ValueError: If ``values`` is not symmetric or positive semidefinite
+            within the scale-based numerical tolerance.
+    """
     scale = float(np.max(np.abs(values)))
     tolerance = 1e-10 * scale if scale else 0.0
     if not np.allclose(values, values.T, rtol=1e-10, atol=tolerance):

@@ -1,4 +1,10 @@
-"""Recipe-specific prepared inputs for coherent CO2 reductions."""
+"""Prepare durable inputs for the coherent CO2 model recipes.
+
+This module composes canonical RHIME inputs with one coherent reduction and
+owns the selected dense or low-rank aggregation-error representation. Inputs
+are borrowed; serialization and low-rank factorization are explicit eager
+boundaries.
+"""
 
 from __future__ import annotations
 
@@ -69,6 +75,7 @@ def _same_index(left: pd.Index, right: pd.Index) -> bool:
 
 
 def _require_axis(array: xr.DataArray, dim: str, *, name: str) -> pd.Index:
+    """Return one labelled, unique axis or raise a caller-labelled error."""
     if dim not in array.dims or dim not in array.indexes:
         raise ValueError(f"{name} requires a labelled {dim!r} dimension.")
     index = array.indexes[dim]
@@ -84,6 +91,7 @@ def _require_same_axis(
     *,
     name: str,
 ) -> None:
+    """Require exact axis labels, including MultiIndex level names."""
     if not _same_index(_require_axis(array, dim, name=name), expected):
         raise ValueError(f"{name} labels must exactly match the canonical inputs.")
 
@@ -105,7 +113,16 @@ def _borrow_without_axis_coordinates(array: xr.DataArray, dim: str) -> xr.DataAr
 
 
 def _without_aggregation_payload(inputs: xr.Dataset, *, target_dim: str) -> xr.Dataset:
-    """Remove owned dimensions after rejecting other data-variable consumers."""
+    """Remove the old aggregation payload without discarding shared consumers.
+
+    One-dimensional coordinates on an aggregation representation dimension
+    are owned by that dimension and are removed with it. Data variables and
+    multidimensional coordinates using that dimension are rejected.
+
+    Raises:
+        ValueError: If an owned or target representation dimension has a
+            non-aggregation consumer.
+    """
     owned_dims = {
         dim
         for name in _AGGREGATION_PAYLOAD_NAMES
@@ -154,6 +171,10 @@ def _require_equivalent_units(actual: Any, expected: str, *, name: str) -> None:
     try:
         actual_quantity = cf_ureg.parse_expression(actual)
         expected_quantity = cf_ureg.parse_expression(expected)
+        if not hasattr(actual_quantity, "to"):
+            actual_quantity = cf_ureg.Quantity(actual_quantity)
+        if not hasattr(expected_quantity, "to"):
+            expected_quantity = cf_ureg.Quantity(expected_quantity)
         scale = float(actual_quantity.to(expected_quantity.units).magnitude / expected_quantity.magnitude)
     except Exception as exc:
         raise ValueError(f"{name} units {actual!r} are incompatible with {expected!r}.") from exc
@@ -251,6 +272,10 @@ class Co2PreparedInputs:
 
     Callers should normally construct this value with
     :func:`prepare_co2_inputs` rather than calling the dataclass constructor.
+    The frozen dataclass prevents attribute rebinding, but its composed xarray
+    objects are borrowed and may remain mutable. Construction raises
+    ``ValueError`` when the selected representation, labels, units, or
+    provenance violate this boundary's contract.
 
     Attributes:
         rhime_inputs: Canonical RHIME inputs composed into this recipe-specific

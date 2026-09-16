@@ -1,4 +1,8 @@
-"""Public CO2-family RHIME recipes."""
+"""Public preparation, model-building, and runner APIs for the CO2 family.
+
+The package exposes separate CO2-only, cached fixed-OU, and linked CO2/O2
+recipes while reusing canonical RHIME inputs through explicit composition.
+"""
 
 from .co2_model import build_co2_model
 from .co2_preparation import Co2PreparedInputs, prepare_co2_inputs

@@ -28,6 +28,7 @@ from openghg_inversions.rhime.co2 import (
 
 
 def _canonical_inputs() -> RhimePreparedInputs:
+    """Build canonical inputs with a labelled observation MultiIndex."""
     observations = pd.MultiIndex.from_arrays(
         [
             ["MHD", "TAC", "MHD"],
@@ -80,6 +81,7 @@ def _canonical_inputs() -> RhimePreparedInputs:
 
 
 def _reduction(canonical: RhimePreparedInputs) -> CoherentGaussianReduction:
+    """Build a coherent reduction aligned to the canonical test inputs."""
     observation_index = canonical.inv_inputs.indexes["nmeasure"]
     observation_coords = xr.Coordinates.from_pandas_multiindex(
         observation_index,
@@ -378,6 +380,39 @@ def test_prepare_co2_inputs_accepts_same_scale_concentration_unit_alias(field: s
     prepared = prepare_co2_inputs(canonical, reduction, aggregation_error_rank=None)
 
     assert prepared.aggregation_error_mode == "dense"
+
+
+@pytest.mark.parametrize(
+    ("canonical_units", "reduction_units", "covariance_units"),
+    [
+        ("mol/mol", "1", "(1)**2"),
+        ("ppm", "1e-6", "(1e-6)**2"),
+    ],
+)
+def test_dimensionless_concentration_units_prepare_and_round_trip(
+    canonical_units: str,
+    reduction_units: str,
+    covariance_units: str,
+    tmp_path: Path,
+) -> None:
+    canonical = _canonical_inputs()
+    canonical.inv_inputs["mf"].attrs["units"] = canonical_units
+    canonical.inv_inputs["mf_error"].attrs["units"] = canonical_units
+    reduction = _reduction(canonical)
+    for field in (
+        "effective_observation_operator",
+        "native_observation_mean",
+        "observation_intercept",
+    ):
+        getattr(reduction, field).attrs["units"] = reduction_units
+    reduction.unresolved_observation_covariance.attrs["units"] = covariance_units
+
+    prepared = prepare_co2_inputs(canonical, reduction, aggregation_error_rank=None)
+    path = tmp_path / "dimensionless-units.nc"
+    prepared.save(path)
+    restored = Co2PreparedInputs.load(path)
+
+    xr.testing.assert_identical(restored.inv_inputs, prepared.inv_inputs)
 
 
 def test_co2_prepared_inputs_load_rejects_wrong_low_rank_units() -> None:

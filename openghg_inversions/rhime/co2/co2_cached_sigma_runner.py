@@ -1,4 +1,9 @@
-"""Named CO2 runner for cached fixed-OU site-amplitude sampling."""
+"""Run the cached fixed-OU CO2 recipe from dedicated prepared inputs.
+
+This boundary validates the named input inventory, materializes related
+arrays together, restores the cached covariance basis during model building,
+and coordinates the compound sampler for site amplitudes and model states.
+"""
 
 from __future__ import annotations
 

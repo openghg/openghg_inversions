@@ -1,4 +1,9 @@
-"""Readable prepared-input runner for the CO2 RHIME recipe."""
+"""Run the CO2 recipe from its dedicated prepared-input artifact.
+
+The runner selects and jointly materializes only the declared scientific
+arrays, constructs the readable CO2 model, samples it, and annotates the
+result. It also owns preparation of the optional scalar-sigma eigenbasis.
+"""
 
 from __future__ import annotations
 
