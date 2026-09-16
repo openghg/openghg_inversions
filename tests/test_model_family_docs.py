@@ -88,8 +88,8 @@ def test_advanced_co2_reader_path_exposes_current_boundaries() -> None:
     assert "co2_model_family" in _toctree_entries("usage.rst")
     assert _toctree_entries("co2_model_family.rst") == ["co2_models"]
     assert "Not supported by the staged CLI" in family
-    assert "no complete built-in" in family
-    assert "CO₂ configuration workflow" in family
+    assert "packaged TOML template" in family
+    assert "configuration boundary for the existing Python runners" in family
     assert "scientist acceptance" in family
     assert "remain future work" in family
     assert "CO2 coherent-reduction model" in recipes
@@ -99,6 +99,25 @@ def test_advanced_co2_reader_path_exposes_current_boundaries() -> None:
     assert "Unit conversion is caller-owned" in recipes
     assert ".. _co2-cached-sigma-recipe:" in recipes
     assert "Run the ordinary prepared-input CO2 runner" in recipes
+    assert "Configure prepared-input replay from TOML" in recipes
+    assert "load_co2_family_config" in recipes
+    assert "resolve_co2_family_config" in recipes
+    assert "co2_cached_sigma.toml" in recipes
+    assert "Relative values are interpreted from the process" in recipes
+    assert "Ordinary CO2 likelihood configuration" in recipes
+    assert "Exactly one of ``fixed_site_amplitudes``" in recipes
+    assert "Sampling configuration" in recipes
+    assert "Non-negative integer strictly less than ``draws``" in recipes
+    assert "the linked recipe overrides the\ntwo defaults" in recipes
+    assert "``[channels.co2]`` and ``[channels.o2]``" in recipes
+    assert "standard deviations are 1 ppm\nand 2 ppm" in recipes
+    assert "The resolver does not convert these values" in recipes
+    assert "prepare_co2_o2_inputs(" in recipes
+    assert 'co2_units=setup.preparation_kwargs["co2_units"]' in recipes
+    assert "A runnable CO2 configuration and resolver are\ntracked" not in recipes
+    assert "``co2_o2``" in recipes
+    assert "heterogeneous ppm/per-meg" in recipes
+    assert "OPE-86" in recipes
     assert "idata = run_rhime_co2(" in recipes
     assert "idata = run_rhime_co2_cached_sigma(" in recipes
     assert recipes.count("use_bc=True") >= 2

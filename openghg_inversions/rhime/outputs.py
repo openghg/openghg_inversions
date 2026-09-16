@@ -113,7 +113,7 @@ def _structured_metadata(value: Any) -> Any:
         return [_structured_metadata(item) for item in value]
     if isinstance(value, np.generic):
         return value.item()
-    if isinstance(value, dict):
+    if isinstance(value, Mapping):
         return {str(key): _structured_metadata(item) for key, item in value.items()}
     if isinstance(value, tuple | list):
         return [_structured_metadata(item) for item in value]
