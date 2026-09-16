@@ -129,11 +129,12 @@ downstream structured-likelihood work; it does not make preparation
 matrix-free or avoid the dense eigendecomposition.
 
 The default 512-mode cap is not an adequacy claim; selecting or overriding the
-rank remains a caller-owned numerical and scientific decision.
-The constructor preserves the dense covariance diagonal and reports
-approximation diagnostics; it does not automatically certify that a rank is
-adequate for a particular likelihood. Compare the approximate and dense total
-likelihood covariance or log density over representative error profiles.
+LRPD rank remains a caller-owned numerical and scientific decision. LRPD
+preparation preserves the dense covariance diagonal up to accepted roundoff
+and diagonal-tail clipping, reported by ``diagonal_preservation_error``. It
+does not automatically certify that a rank is adequate for a particular
+likelihood. Compare the approximate and dense total likelihood covariance or
+log density over representative error profiles.
 Inspect the recorded retained-spectrum and reconstruction metrics directly::
 
    diagnostics = co2_inputs.provenance["aggregation_error"]
@@ -166,13 +167,17 @@ retained basis states describe nearly the same native variation.
 
 For the Gaussian model above, :math:`A` is the aggregation-error covariance.
 The function does not add observation or model-error covariance :math:`R`;
-likelihood construction must use the total :math:`R + A`. The current software
-requires :math:`A` itself to be symmetric and positive semidefinite within its
+likelihood construction must use the total :math:`R + A`. The reduction does
+not validate :math:`A` independently. When :math:`A` is converted to LRPD
+during CO2 preparation, or resolved as dense input at runner and serialization
+boundaries, it must be symmetric and positive semidefinite within its
 scale-based numerical tolerance; it may be singular. :math:`R` is not used to
-rescue a materially indefinite :math:`A`. Low-rank preparation clips only the
-small negative modes accepted as numerical roundoff. Assess any
-low-rank-plus-diagonal approximation using the total likelihood covariance and
-its log density, particularly when model-mismatch error is small.
+rescue a materially indefinite :math:`A`. LRPD preparation retains only modes
+above that tolerance and carries the discarded marginal variance in the
+diagonal tail. Small negative tail entries caused by accepted roundoff are
+clipped to zero. Assess any low-rank-plus-diagonal approximation using the
+total likelihood covariance and its log density, particularly when
+model-mismatch error is small.
 
 The conditional model is exact for a Gaussian native state and error
 independent of that state. Using the resulting moments with a LogNormal

@@ -63,8 +63,10 @@ class LowRankAggregationErrorApproximation:
     Attributes:
         aggregation_error: Labelled low-rank factor and non-negative diagonal
             residual accepted by the shared likelihood components.
-        diagnostics: JSON-safe method, rank, tolerance, spectral, Frobenius,
-            and diagonal-preservation diagnostics. These values describe the
+        diagnostics: JSON-safe mapping containing the method, requested rank,
+            actual retained factor width, retained spectral fraction, relative
+            Frobenius error, diagonal-preservation error, tolerances, and
+            diagonal-tail clipping diagnostics. These values describe the
             approximation but do not certify a rank for a particular
             likelihood.
     """
@@ -112,11 +114,16 @@ def prepare_low_rank_aggregation_error(
 ) -> LowRankAggregationErrorApproximation:
     """Approximate a labelled covariance by a low-rank-plus-diagonal form.
 
-    This is an eager numerical boundary. The leading eigenmodes form the
-    low-rank factor and the discarded marginal variance is retained on the
-    diagonal, so the source covariance diagonal is preserved up to roundoff.
-    The factor width is the lesser of ``rank`` and the numerical positive
-    rank, and may be zero when the covariance has no positive numerical modes.
+    This is an eager numerical boundary. Sparse payloads are densified, Dask
+    payloads are materialized, and the complete dense covariance receives one
+    eigendecomposition. The leading eigenmodes form the low-rank factor and
+    the discarded marginal variance is retained on the diagonal, so the source
+    covariance diagonal is preserved up to accepted roundoff and tail
+    clipping. The factor width is the lesser of ``rank`` and the numerical
+    positive rank, and may be zero when the covariance has no positive
+    numerical modes. The factor has square-root covariance units and the
+    diagonal tail has covariance units, but this helper does not attach unit
+    attributes to the returned arrays.
 
     Args:
         covariance: Symmetric positive-semidefinite covariance matrix.

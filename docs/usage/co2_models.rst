@@ -265,15 +265,15 @@ schema, dimensions, labels, cache/observation/reported-error unit labels, mode,
 and current covariance identity before model construction. Regenerate the
 cache after changing ``mf_error`` values, aggregation-error values, or the
 artifact's aggregation-error representation. Changing the observation order
-or the unit label also makes the cache incompatible. Loading reconstructs the current base
-covariance once, but does not repeat the eigendecomposition or add work to
-likelihood evaluations.
+or the unit label also makes the cache incompatible. Loading reconstructs the
+current base covariance once, but does not repeat the eigendecomposition or
+add work to likelihood evaluations.
 
 Unit conversion is caller-owned. CO2 preparation validates compatible units
 at the same numeric scale but does not convert values. After numerical
 conversion, ``mf``, ``mf_error``, ``sigma_global``
-and, when present, ``aggregation_error_sd`` and ``low_rank_factor`` use one
-concentration unit. When present, ``aggregation_error_covariance`` and
+and, when present, ``low_rank_factor`` use one concentration unit. When
+present, ``aggregation_error_covariance`` and
 ``diagonal_residual_variance`` use that unit squared. Configure
 ``sigma_prior`` for the concentration unit; in the HalfNormal example,
 ``sigma=0.75`` is in that unit. The cache, ``mf.units``, and
@@ -498,10 +498,12 @@ products with canonical observations and metadata at the durable CO2 boundary.
 
 The reduction itself is exact under its stated Gaussian assumptions. An LRPD
 artifact is a separate downstream numerical approximation of its unresolved
-covariance. The cached runner can represent an exact dense covariance through
-all of its positive eigenmodes, but that generally produces a full-rank factor
-and is not its intended scaling path. The default retains at most 512 modes;
-override it when a different retained rank is scientifically justified::
+covariance. The cached runner can retain every mode above the scale-relative
+numerical tolerance and carry the remaining marginal variance in the diagonal
+tail. This is exact when every positive mode exceeds that tolerance, but it
+generally produces a full numerical-rank factor and is not the intended
+scaling path. The default retains at most 512 modes; override it when a
+different retained rank is scientifically justified::
 
    from openghg_inversions.rhime.co2 import prepare_co2_inputs
 
@@ -512,13 +514,14 @@ override it when a different retained rank is scientifically justified::
    )
    prepared.save("co2-coherent-low-rank.zarr")
 
-The approximation preserves the dense covariance diagonal and records
-diagnostics, but a chosen rank is not evidence that the approximation is
-adequate for an inversion. Assess the resulting total likelihood covariance
-and log density for representative observation-error, site-amplitude, and OU
-profiles, especially when model-mismatch error is small. See
-:doc:`coherent_reduction` for the dense preparation cost and the provenance
-fields used to inspect retained-spectrum and reconstruction diagnostics.
+The approximation preserves the dense covariance diagonal up to accepted
+roundoff and diagonal-tail clipping, recorded by
+``diagonal_preservation_error``. A chosen rank is not evidence that the
+approximation is adequate for an inversion. Assess the resulting total
+likelihood covariance and log density for representative observation-error,
+site-amplitude, and OU profiles, especially when model-mismatch error is
+small. See :doc:`coherent_reduction` for the dense preparation cost and the
+other retained-spectrum and reconstruction diagnostics.
 
 For example::
 

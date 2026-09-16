@@ -507,7 +507,8 @@ def prepare_co2_inputs(
     operator and supplies the linked retained prior, affine intercept, and
     unresolved covariance. By default, the handoff retains at most 512 LRPD
     modes. ``None`` stores the unresolved covariance exactly; requested ranks
-    larger than the observation count use full rank.
+    larger than the observation count are capped at that count, and the actual
+    factor width may be smaller when the covariance has lower numerical rank.
 
     Inputs are borrowed and are not mutated. The returned artifact retains the
     canonical observations, observation error, optional boundary data, state
@@ -527,14 +528,16 @@ def prepare_co2_inputs(
         reduction: One coherent Gaussian reduction containing all linked
             retained-prior and observation products.
         aggregation_error_rank: Positive LRPD rank, defaulting to 512. Values
-            larger than the observation count are capped at that count. Pass
-            ``None`` to store the exact dense covariance.
+            larger than the observation count are capped at that count; the
+            actual factor width is further limited by numerical positive rank.
+            Pass ``None`` to store the exact dense covariance.
         provenance: Optional JSON-serializable project or preparation
             provenance. The reduction strategy and LRPD diagnostics are added
             by this boundary.
 
     Returns:
-        A validated, serializable artifact accepted by both CO2 runners.
+        A structurally validated, serializable artifact accepted by both CO2
+        runners.
 
     Raises:
         ValueError: If labels, dimensions, units, rank, covariance
