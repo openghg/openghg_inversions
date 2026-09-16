@@ -17,7 +17,7 @@ from dask.array import Array as DaskArray
 import numpy as np
 import xarray as xr
 
-from openghg_inversions.array_ops import validate_covariance_coordinates
+from openghg_inversions.array_ops import to_dense, validate_covariance_coordinates
 
 AggregationErrorMode: TypeAlias = Literal["auto", "none", "dense", "low_rank", "diagonal"]
 
@@ -75,6 +75,39 @@ class LowRankAggregationErrorApproximation:
     diagnostics: dict[str, str | int | float]
 
 
+@dataclass(frozen=True)
+class _SpectralLrpd:
+    """Numerical outputs from diagonal-preserving spectral truncation.
+
+    Attributes:
+        factor: Retained spectral factor with shape
+            ``(nmeasure, actual_rank)``.
+        diagonal: Non-negative diagonal covariance tail with shape
+            ``(nmeasure,)``.
+        retained_spectrum: Sum of the retained eigenvalues.
+        positive_spectrum: Sum of all positive source eigenvalues.
+        source_frobenius_norm: Frobenius norm of the source covariance.
+        reconstruction_error: Frobenius norm of the difference between the
+            source covariance and the factor-plus-diagonal approximation.
+        roundoff_tolerance: Scale-relative absolute tolerance used to discard
+            numerical modes and reject materially negative values.
+        diagonal_tail_clipped_count: Number of small negative diagonal-tail
+            entries clipped to zero.
+        diagonal_tail_max_clipped_magnitude: Largest magnitude clipped from
+            the diagonal tail.
+    """
+
+    factor: np.ndarray
+    diagonal: np.ndarray
+    retained_spectrum: float
+    positive_spectrum: float
+    source_frobenius_norm: float
+    reconstruction_error: float
+    roundoff_tolerance: float
+    diagonal_tail_clipped_count: int
+    diagonal_tail_max_clipped_magnitude: float
+
+
 def aggregation_error_covariance_sha256(
     covariance: xr.DataArray,
     *,
@@ -110,13 +143,41 @@ def aggregation_error_covariance_sha256(
         covariance,
         owner="Aggregation-error covariance identity input",
     )
+    return _aggregation_error_covariance_sha256(
+        covariance,
+        values,
+        output_dim=output_dim,
+        covariance_dim=covariance_dim,
+    )
+
+
+def _aggregation_error_covariance_sha256(
+    covariance: xr.DataArray,
+    values: np.ndarray,
+    *,
+    output_dim: str,
+    covariance_dim: str,
+) -> str:
+    """Hash an already materialized covariance without a matrix-sized copy.
+
+    Args:
+        covariance: Labelled covariance whose dimensions and coordinates are
+            included in the identity.
+        values: Eager, finite, square values aligned with ``covariance``.
+        output_dim: Observation dimension on the covariance rows.
+        covariance_dim: Repeated observation dimension on the columns.
+
+    Returns:
+        SHA-256 identity whose numeric bytes are normalized to big-endian
+        float64 in row-major order.
+    """
     coordinate_content = tuple(
-        (dim, np.asarray(covariance.coords[dim].values).tolist())
-        for dim in (output_dim, covariance_dim)
+        (dim, np.asarray(covariance.coords[dim].values).tolist()) for dim in (output_dim, covariance_dim)
     )
     digest = sha256()
     digest.update(repr((covariance.dims, covariance.shape, coordinate_content)).encode("utf-8"))
-    digest.update(np.asarray(values, dtype=">f8").tobytes(order="C"))
+    for row in values:
+        digest.update(np.asarray(row, dtype=">f8").tobytes(order="C"))
     return f"sha256:{digest.hexdigest()}"
 
 
@@ -132,6 +193,8 @@ def prepare_low_rank_aggregation_error(
     This is an eager numerical boundary. The leading eigenmodes form the
     low-rank factor and the discarded marginal variance is retained on the
     diagonal, so the source covariance diagonal is preserved up to roundoff.
+    The factor width is the lesser of ``rank`` and the numerical positive
+    rank, and may be zero when the covariance has no positive numerical modes.
 
     Args:
         covariance: Symmetric positive-semidefinite covariance matrix.
@@ -161,34 +224,21 @@ def prepare_low_rank_aggregation_error(
         _numeric_finite("covariance", covariance, owner="Low-rank approximation input"),
         dtype=float,
     )
-    scale = float(np.max(np.abs(values)))
-    roundoff_tolerance = 1e-10 * scale if scale else 0.0
-    symmetric = (values + values.T) * 0.5
-    eigenvalues, eigenvectors = np.linalg.eigh(symmetric)
-    _validate_dense_covariance_values(
+    approximation = _diagonal_preserving_spectral_lrpd(
         values,
         owner="Low-rank approximation input covariance",
-        eigenvalues=eigenvalues,
+        rank=rank,
     )
-    order = np.argsort(eigenvalues)[::-1]
-    eigenvalues = np.maximum(eigenvalues[order], 0.0)
-    eigenvectors = eigenvectors[:, order]
-    retained = eigenvalues[:rank]
-    factor_values = eigenvectors[:, :rank] * np.sqrt(retained)
-    diagonal_values = np.diag(symmetric) - np.sum(factor_values**2, axis=1)
-    if float(diagonal_values.min()) < -roundoff_tolerance:
-        raise ValueError("Low-rank approximation produced a negative diagonal residual variance.")
-    diagonal_values = np.maximum(diagonal_values, 0.0)
 
     labels = covariance.coords[output_dim]
     factor = xr.DataArray(
-        factor_values,
+        approximation.factor,
         dims=(output_dim, "agg_rank"),
-        coords={output_dim: labels, "agg_rank": np.arange(rank)},
+        coords={output_dim: labels, "agg_rank": np.arange(approximation.factor.shape[1])},
         name=LOW_RANK_FACTOR,
     )
     diagonal = xr.DataArray(
-        diagonal_values,
+        approximation.diagonal,
         dims=(output_dim,),
         coords={output_dim: labels},
         name=DIAGONAL_RESIDUAL_VARIANCE,
@@ -200,32 +250,43 @@ def prepare_low_rank_aggregation_error(
         covariance_dim=covariance_dim,
     )
 
-    reconstructed = factor_values @ factor_values.T + np.diag(diagonal_values)
-    source_norm = float(np.linalg.norm(symmetric, ord="fro"))
-    reconstruction_error = float(np.linalg.norm(symmetric - reconstructed, ord="fro"))
-    positive_spectrum = float(eigenvalues.sum())
-    retained_fraction = float(retained.sum() / positive_spectrum) if positive_spectrum else 1.0
+    retained_fraction = (
+        approximation.retained_spectrum / approximation.positive_spectrum
+        if approximation.positive_spectrum
+        else 1.0
+    )
     return LowRankAggregationErrorApproximation(
         aggregation_error=aggregation_error,
-        source_covariance_sha256=aggregation_error_covariance_sha256(
+        source_covariance_sha256=_aggregation_error_covariance_sha256(
             covariance,
+            values,
             output_dim=output_dim,
             covariance_dim=covariance_dim,
         ),
         diagnostics={
             "method": "descending_eigendecomposition_with_diagonal_tail",
             "requested_rank": rank,
-            "actual_rank": int(np.count_nonzero(retained > roundoff_tolerance)),
+            "actual_rank": approximation.factor.shape[1],
             "retained_positive_spectral_fraction": retained_fraction,
             "relative_frobenius_reconstruction_error": (
-                reconstruction_error / source_norm if source_norm else 0.0
+                approximation.reconstruction_error / approximation.source_frobenius_norm
+                if approximation.source_frobenius_norm
+                else 0.0
             ),
             "diagonal_preservation_error": float(
-                np.max(np.abs(np.diag(symmetric) - np.diag(reconstructed)))
+                np.max(
+                    np.abs(
+                        np.diag(values)
+                        - np.einsum("ij,ij->i", approximation.factor, approximation.factor)
+                        - approximation.diagonal
+                    )
+                )
             ),
-            "roundoff_tolerance": roundoff_tolerance,
+            "roundoff_tolerance": approximation.roundoff_tolerance,
             "symmetry_relative_tolerance": 1e-10,
-            "psd_absolute_tolerance": roundoff_tolerance,
+            "psd_absolute_tolerance": approximation.roundoff_tolerance,
+            "diagonal_tail_clipped_count": approximation.diagonal_tail_clipped_count,
+            "diagonal_tail_max_clipped_magnitude": approximation.diagonal_tail_max_clipped_magnitude,
         },
     )
 
@@ -235,17 +296,29 @@ def aggregation_error_as_low_rank(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Materialize fixed aggregation covariance as factor-plus-diagonal data.
 
-    Dense covariance inputs use their positive eigenmodes, so this fallback is
-    generally full rank. It is therefore an exact representation for positive
-    semidefinite inputs, but not the low-rank performance path.
+    Dense inputs use every eigenmode above the scale-relative numerical
+    tolerance and retain the remaining marginal variance on the diagonal.
+    This is exact when every positive mode exceeds that tolerance, but it is
+    not the low-rank performance path.
+
+    Args:
+        aggregation_error: Validated fixed aggregation-error representation.
+
+    Returns:
+        A factor with shape ``(nmeasure, actual_rank)`` and non-negative
+        diagonal variance with shape ``(nmeasure,)``. The factor may have zero
+        columns.
     """
     nmeasure = aggregation_error.marginal_variance.size
     if aggregation_error.mode == "dense":
         assert aggregation_error.covariance is not None
         covariance = np.asarray(aggregation_error.covariance.values, dtype=float)
-        eigenvalues, eigenvectors = np.linalg.eigh((covariance + covariance.T) * 0.5)
-        positive = eigenvalues > 0.0
-        return eigenvectors[:, positive] * np.sqrt(eigenvalues[positive]), np.zeros(nmeasure)
+        approximation = _diagonal_preserving_spectral_lrpd(
+            covariance,
+            rank=None,
+            owner="Dense aggregation-error covariance",
+        )
+        return approximation.factor, approximation.diagonal
     if aggregation_error.mode == "low_rank":
         assert aggregation_error.factor is not None and aggregation_error.diagonal_variance is not None
         return (
@@ -258,22 +331,92 @@ def aggregation_error_as_low_rank(
     return np.empty((nmeasure, 0)), np.zeros(nmeasure)
 
 
+def _diagonal_preserving_spectral_lrpd(
+    values: np.ndarray,
+    *,
+    rank: int | None,
+    owner: str,
+) -> _SpectralLrpd:
+    """Construct a coupled spectral factor and diagonal covariance tail.
+
+    Args:
+        values: Eager dense covariance values.
+        rank: Maximum retained numerical rank, or ``None`` for every
+            numerically positive mode.
+        owner: Scientific owner named in validation errors.
+
+    Returns:
+        Factor, diagonal tail, and algebraic approximation diagnostics.
+
+    Raises:
+        ValueError: If the covariance is asymmetric, materially indefinite,
+            or produces a materially negative diagonal tail.
+    """
+    eigenvalues, eigenvectors = np.linalg.eigh(values, UPLO="L")
+    roundoff_tolerance = _validate_dense_covariance_values(
+        values,
+        owner=owner,
+        eigenvalues=eigenvalues,
+    )
+    positive_count = int(np.count_nonzero(eigenvalues > roundoff_tolerance))
+    keep_count = positive_count if rank is None else min(rank, positive_count)
+    if keep_count:
+        retained = eigenvalues[-keep_count:][::-1]
+        factor = eigenvectors[:, -keep_count:][:, ::-1] * np.sqrt(retained)
+        retained_diagonal = np.einsum("ij,ij->i", factor, factor)
+        discarded = eigenvalues[:-keep_count]
+    else:
+        retained = eigenvalues[:0]
+        factor = np.empty((values.shape[0], 0), dtype=float)
+        retained_diagonal = np.zeros(values.shape[0], dtype=float)
+        discarded = eigenvalues
+    del eigenvectors
+
+    raw_diagonal = np.diag(values) - retained_diagonal
+    if float(raw_diagonal.min()) < -roundoff_tolerance:
+        raise ValueError("Low-rank approximation produced a negative diagonal residual variance.")
+    clipped = raw_diagonal < 0.0
+    clipped_count = int(np.count_nonzero(clipped))
+    max_clipped_magnitude = float(np.max(-raw_diagonal[clipped])) if clipped_count else 0.0
+    diagonal = np.maximum(raw_diagonal, 0.0)
+    source_norm = float(np.sqrt(np.dot(eigenvalues, eigenvalues)))
+    error_squared = float(
+        np.dot(discarded, discarded) - 2.0 * np.dot(raw_diagonal, diagonal) + np.dot(diagonal, diagonal)
+    )
+    reconstruction_error = float(np.sqrt(max(error_squared, 0.0)))
+    return _SpectralLrpd(
+        factor=factor,
+        diagonal=diagonal,
+        retained_spectrum=float(retained.sum()),
+        positive_spectrum=float(np.maximum(eigenvalues, 0.0).sum()),
+        source_frobenius_norm=source_norm,
+        reconstruction_error=reconstruction_error,
+        roundoff_tolerance=roundoff_tolerance,
+        diagonal_tail_clipped_count=clipped_count,
+        diagonal_tail_max_clipped_magnitude=max_clipped_magnitude,
+    )
+
+
 def _validate_dense_covariance_values(
     values: np.ndarray,
     *,
     owner: str,
     eigenvalues: np.ndarray | None = None,
-) -> None:
+) -> float:
     """Require a materialized dense covariance to be symmetric and PSD.
 
-    When supplied, ``eigenvalues`` must be the eigenvalues of the symmetrized
-    ``values`` matrix; callers may pass them to avoid a second decomposition.
+    When supplied, ``eigenvalues`` must be the eigenvalues obtained from the
+    validated matrix's lower triangle; callers may pass them to avoid a
+    second decomposition.
 
     Args:
         values: Materialized square covariance values.
         owner: Scientific owner named in validation errors.
-        eigenvalues: Optional eigenvalues already computed from the
-            symmetrized covariance.
+        eigenvalues: Optional eigenvalues already computed from the lower
+            triangle of the validated covariance.
+
+    Returns:
+        Scale-relative absolute roundoff tolerance.
 
     Raises:
         ValueError: If ``values`` is not symmetric or positive semidefinite
@@ -281,12 +424,21 @@ def _validate_dense_covariance_values(
     """
     scale = float(np.max(np.abs(values)))
     tolerance = 1e-10 * scale if scale else 0.0
-    if not np.allclose(values, values.T, rtol=1e-10, atol=tolerance):
-        raise ValueError(f"{owner} must be symmetric.")
+    block_rows = 256
+    for start in range(0, values.shape[0], block_rows):
+        stop = min(start + block_rows, values.shape[0])
+        if not np.allclose(
+            values[start:stop],
+            values[:, start:stop].T,
+            rtol=1e-10,
+            atol=tolerance,
+        ):
+            raise ValueError(f"{owner} must be symmetric.")
     if eigenvalues is None:
-        eigenvalues = np.linalg.eigvalsh(values)
+        eigenvalues = np.linalg.eigvalsh(values, UPLO="L")
     if float(eigenvalues.min()) < -tolerance:
         raise ValueError(f"{owner} must be positive semidefinite.")
+    return tolerance
 
 
 def _numeric_finite(
@@ -317,13 +469,24 @@ def _numeric_finite(
 
 
 def _materialize_together(*arrays: xr.DataArray) -> tuple[xr.DataArray, ...]:
-    """Return shallow labelled copies whose related payloads are eager."""
-    if all(not isinstance(array.data, DaskArray) for array in arrays):
-        return arrays
-    computed = dask_compute(*(array.data for array in arrays))
+    """Densify sparse payloads and eagerly materialize related arrays.
+
+    Related Dask payloads are computed together to preserve shared graphs.
+    Borrowed inputs are not mutated; eager returns are either the original
+    labelled arrays or shallow copies containing the computed dense values.
+
+    Args:
+        *arrays: Labelled arrays that share a materialization boundary.
+
+    Returns:
+        Arrays with eager dense payloads in the original order.
+    """
+    dense_arrays = tuple(to_dense(array) for array in arrays)
+    if all(not isinstance(array.data, DaskArray) for array in dense_arrays):
+        return dense_arrays
+    computed = dask_compute(*(array.data for array in dense_arrays))
     return tuple(
-        array.copy(deep=False, data=values)
-        for array, values in zip(arrays, computed, strict=True)
+        array.copy(deep=False, data=values) for array, values in zip(dense_arrays, computed, strict=True)
     )
 
 
@@ -352,8 +515,7 @@ def _validate_vector(
     array = data[name]
     if array.dims != (output_dim,):
         raise ValueError(
-            f"Aggregation-error input {name!r} must have dims ({output_dim!r},); "
-            f"got {array.dims!r}."
+            f"Aggregation-error input {name!r} must have dims ({output_dim!r},); got {array.dims!r}."
         )
     if array.sizes[output_dim] != data.sizes[output_dim]:
         raise ValueError(f"Aggregation-error input {name!r} is not observation-aligned.")
@@ -386,8 +548,7 @@ def validate_observation_error_arrays(
     """
     if observations.dims != (output_dim,):
         raise ValueError(
-            f"{owner} input 'observations' must have dims "
-            f"({output_dim!r},); got {observations.dims!r}."
+            f"{owner} input 'observations' must have dims ({output_dim!r},); got {observations.dims!r}."
         )
     _numeric_finite("observations", observations, owner=f"{owner} input")
     nmeasure = observations.sizes[output_dim]
@@ -396,10 +557,7 @@ def validate_observation_error_arrays(
         arrays.append(("minimum_error", minimum_error))
     for name, array in arrays:
         if array.dims != (output_dim,):
-            raise ValueError(
-                f"{owner} input {name!r} must have dims "
-                f"({output_dim!r},); got {array.dims!r}."
-            )
+            raise ValueError(f"{owner} input {name!r} must have dims ({output_dim!r},); got {array.dims!r}.")
         if array.sizes[output_dim] != nmeasure:
             raise ValueError(f"{owner} input {name!r} is not observation-aligned.")
         values = _numeric_finite(name, array, owner=f"{owner} input")
@@ -532,15 +690,12 @@ def resolve_aggregation_error(
                 f"({output_dim!r},); got {standard_deviation.dims!r}."
             )
         if standard_deviation.sizes[output_dim] != nmeasure:
-            raise ValueError(
-                f"Aggregation-error input {AGGREGATION_ERROR_SD!r} is not observation-aligned."
-            )
+            raise ValueError(f"Aggregation-error input {AGGREGATION_ERROR_SD!r} is not observation-aligned.")
         (standard_deviation,) = _materialize_together(standard_deviation)
         values = _numeric_finite(AGGREGATION_ERROR_SD, standard_deviation)
         if (values < 0).any():
             raise ValueError(
-                f"Aggregation-error input {AGGREGATION_ERROR_SD!r} must contain only "
-                "non-negative values."
+                f"Aggregation-error input {AGGREGATION_ERROR_SD!r} must contain only non-negative values."
             )
         return AggregationError(
             mode="diagonal",
@@ -566,9 +721,7 @@ def resolve_aggregation_error(
             )
         observation_labels = np.asarray(data.get_index(output_dim).values)
         missing_coords = {
-            name: observation_labels
-            for name in (output_dim, covariance_dim)
-            if name not in covariance.coords
+            name: observation_labels for name in (output_dim, covariance_dim) if name not in covariance.coords
         }
         if missing_coords:
             covariance = covariance.assign_coords(missing_coords)
@@ -591,9 +744,7 @@ def resolve_aggregation_error(
             covariance=covariance,
         )
 
-    missing = [
-        name for name in (LOW_RANK_FACTOR, DIAGONAL_RESIDUAL_VARIANCE) if name not in data
-    ]
+    missing = [name for name in (LOW_RANK_FACTOR, DIAGONAL_RESIDUAL_VARIANCE) if name not in data]
     if missing:
         raise ValueError(f"Low-rank aggregation error is missing input(s): {missing!r}.")
     factor = data[LOW_RANK_FACTOR]
@@ -604,8 +755,6 @@ def resolve_aggregation_error(
         )
     if factor.sizes[output_dim] != nmeasure:
         raise ValueError(f"Aggregation-error input {LOW_RANK_FACTOR!r} is not observation-aligned.")
-    if factor.shape[1] < 1:
-        raise ValueError(f"Aggregation-error input {LOW_RANK_FACTOR!r} must contain at least one rank column.")
     diagonal = data[DIAGONAL_RESIDUAL_VARIANCE]
     if diagonal.dims != (output_dim,):
         raise ValueError(
@@ -622,8 +771,7 @@ def resolve_aggregation_error(
     diagonal_values = _numeric_finite(DIAGONAL_RESIDUAL_VARIANCE, diagonal)
     if (diagonal_values < 0).any():
         raise ValueError(
-            f"Aggregation-error input {DIAGONAL_RESIDUAL_VARIANCE!r} must contain only "
-            "non-negative values."
+            f"Aggregation-error input {DIAGONAL_RESIDUAL_VARIANCE!r} must contain only non-negative values."
         )
     marginal_variance = np.sum(factor_values**2, axis=1) + diagonal_values
     _validate_marginal_sd(data, marginal_variance, output_dim=output_dim)

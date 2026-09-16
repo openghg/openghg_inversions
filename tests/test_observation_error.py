@@ -4,6 +4,7 @@ import numpy as np
 import dask.array as da
 from dask import delayed
 import pytest
+import sparse
 import xarray as xr
 
 from openghg_inversions.observation_error import (
@@ -55,6 +56,8 @@ def test_dense_covariance_labels_an_unlabelled_second_axis() -> None:
 
     assert result.covariance is not None
     np.testing.assert_array_equal(result.covariance["nmeasure_cov"], ["A", "B"])
+
+
 def test_low_rank_covariance_uses_factor_and_residual_diagonal() -> None:
     factor = np.array([[1.0, 0.0], [0.5, 0.25], [0.0, 0.5]])
     residual = np.array([0.2, 0.3, 0.4])
@@ -85,7 +88,11 @@ def test_aggregation_error_low_rank_conversion_preserves_covariance(mode: str) -
 
     result = resolve_aggregation_error(data, mode)
     converted_factor, converted_diagonal = aggregation_error_as_low_rank(result)
-    expected = covariance if mode in ("dense", "low_rank") else np.diag(diagonal if mode == "diagonal" else np.zeros(3))
+    expected = (
+        covariance
+        if mode in ("dense", "low_rank")
+        else np.diag(diagonal if mode == "diagonal" else np.zeros(3))
+    )
     np.testing.assert_allclose(converted_factor @ converted_factor.T + np.diag(converted_diagonal), expected)
 
 
@@ -220,17 +227,134 @@ def test_prepare_low_rank_aggregation_error_preserves_diagonal() -> None:
     assert isinstance(aggregation_error.factor.data, np.ndarray)
     assert aggregation_error.factor.dims == ("nmeasure", "agg_rank")
     assert aggregation_error.factor.shape == (3, 2)
-    reconstructed = (
-        aggregation_error.factor.values @ aggregation_error.factor.values.T
-        + np.diag(aggregation_error.diagonal_variance.values)
+    reconstructed = aggregation_error.factor.values @ aggregation_error.factor.values.T + np.diag(
+        aggregation_error.diagonal_variance.values
+    )
+    eigenvalues, eigenvectors = np.linalg.eigh(covariance_values)
+    expected_low_rank = (eigenvectors[:, -2:] * np.sqrt(eigenvalues[-2:])) @ (
+        eigenvectors[:, -2:] * np.sqrt(eigenvalues[-2:])
+    ).T
+    np.testing.assert_allclose(
+        aggregation_error.factor.values @ aggregation_error.factor.values.T,
+        expected_low_rank,
+        atol=1e-12,
     )
     np.testing.assert_allclose(np.diag(reconstructed), np.diag(covariance_values), atol=1e-12)
+    np.linalg.cholesky(reconstructed)
     assert result.source_covariance_sha256.startswith("sha256:")
     assert result.diagnostics["requested_rank"] == 2
     assert result.diagnostics["actual_rank"] == 2
     assert 0.0 < result.diagnostics["retained_positive_spectral_fraction"] <= 1.0
     assert result.diagnostics["diagonal_preservation_error"] < 1e-12
     json.dumps(result.diagnostics, allow_nan=False)
+
+
+@pytest.mark.parametrize("dask_backed", [False, True])
+def test_prepare_low_rank_aggregation_error_accepts_sparse_covariance(dask_backed: bool) -> None:
+    """LRPD preparation densifies eager and Dask-backed sparse covariance safely."""
+    covariance_values = np.array(
+        [
+            [2.0, 0.4, 0.0],
+            [0.4, 1.5, 0.2],
+            [0.0, 0.2, 0.8],
+        ]
+    )
+    payload = sparse.COO.from_numpy(covariance_values)
+    if dask_backed:
+        payload = da.from_array(payload, chunks=(2, 2), asarray=False)
+    covariance = xr.DataArray(
+        payload,
+        dims=("nmeasure", "nmeasure_cov"),
+        coords={"nmeasure": ["A", "B", "C"], "nmeasure_cov": ["A", "B", "C"]},
+    )
+
+    result = prepare_low_rank_aggregation_error(covariance, rank=2)
+
+    aggregation_error = result.aggregation_error
+    assert aggregation_error.factor is not None
+    assert aggregation_error.diagonal_variance is not None
+    reconstructed = aggregation_error.factor.values @ aggregation_error.factor.values.T + np.diag(
+        aggregation_error.diagonal_variance.values
+    )
+    np.testing.assert_allclose(np.diag(reconstructed), np.diag(covariance_values), atol=1e-12)
+
+
+def test_rank_deficient_covariance_stores_only_positive_modes() -> None:
+    """Requested rank is capped at the covariance's positive numerical rank."""
+    vector = np.array([1.0, 2.0, -0.5])
+    covariance_values = np.outer(vector, vector)
+    covariance = xr.DataArray(
+        covariance_values,
+        dims=("nmeasure", "nmeasure_cov"),
+        coords={"nmeasure": ["A", "B", "C"], "nmeasure_cov": ["A", "B", "C"]},
+    )
+
+    prepared = prepare_low_rank_aggregation_error(covariance, rank=3)
+    resolved = resolve_aggregation_error(
+        xr.Dataset(
+            {
+                "aggregation_error_covariance": covariance,
+            }
+        ),
+        "dense",
+    )
+    exact_factor, exact_diagonal = aggregation_error_as_low_rank(resolved)
+
+    aggregation_error = prepared.aggregation_error
+    assert aggregation_error.factor is not None
+    assert aggregation_error.diagonal_variance is not None
+    assert aggregation_error.factor.shape == (3, 1)
+    assert prepared.diagnostics["actual_rank"] == 1
+    assert exact_factor.shape == aggregation_error.factor.shape
+    np.testing.assert_allclose(exact_diagonal, aggregation_error.diagonal_variance.values, atol=1e-12)
+    np.testing.assert_allclose(
+        aggregation_error.factor.values @ aggregation_error.factor.values.T
+        + np.diag(aggregation_error.diagonal_variance.values),
+        covariance_values,
+        atol=1e-12,
+    )
+    np.testing.assert_allclose(exact_factor @ exact_factor.T, covariance_values, atol=1e-12)
+
+
+def test_roundoff_mode_moves_to_diagonal_tail_and_preserves_positive_definiteness() -> None:
+    """Discarded positive roundoff modes still produce a positive-definite LRPD covariance."""
+    eigenvectors = np.array([[1.0, -1.0], [1.0, 1.0]]) / np.sqrt(2.0)
+    covariance_values = eigenvectors @ np.diag([1.0, 1.0e-12]) @ eigenvectors.T
+    covariance = xr.DataArray(
+        covariance_values,
+        dims=("nmeasure", "nmeasure_cov"),
+        coords={"nmeasure": ["A", "B"], "nmeasure_cov": ["A", "B"]},
+    )
+    resolved = resolve_aggregation_error(
+        xr.Dataset({"aggregation_error_covariance": covariance}),
+        "dense",
+    )
+
+    factor, diagonal = aggregation_error_as_low_rank(resolved)
+
+    reconstructed = factor @ factor.T + np.diag(diagonal)
+    assert factor.shape == (2, 1)
+    assert np.all(diagonal > 0.0)
+    np.testing.assert_allclose(np.diag(reconstructed), np.diag(covariance_values), atol=1e-15)
+    np.linalg.cholesky(reconstructed)
+
+
+def test_zero_covariance_has_valid_zero_rank_representation() -> None:
+    """A zero covariance resolves as an empty factor and zero diagonal tail."""
+    covariance = xr.DataArray(
+        np.zeros((3, 3)),
+        dims=("nmeasure", "nmeasure_cov"),
+        coords={"nmeasure": ["A", "B", "C"], "nmeasure_cov": ["A", "B", "C"]},
+    )
+
+    prepared = prepare_low_rank_aggregation_error(covariance, rank=2)
+
+    aggregation_error = prepared.aggregation_error
+    assert aggregation_error.factor is not None
+    assert aggregation_error.diagonal_variance is not None
+    assert aggregation_error.factor.shape == (3, 0)
+    assert prepared.diagnostics["actual_rank"] == 0
+    np.testing.assert_array_equal(aggregation_error.diagonal_variance, np.zeros(3))
 
 
 def test_prepare_low_rank_aggregation_error_uses_one_eigendecomposition(
@@ -245,12 +369,12 @@ def test_prepare_low_rank_aggregation_error_uses_one_eigendecomposition(
     original_eigh = np.linalg.eigh
     calls = 0
 
-    def counted_eigh(values: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    def counted_eigh(values: np.ndarray, **kwargs: str) -> tuple[np.ndarray, np.ndarray]:
         nonlocal calls
         calls += 1
-        return original_eigh(values)
+        return original_eigh(values, **kwargs)
 
-    def unexpected_eigvalsh(_values: np.ndarray) -> np.ndarray:
+    def unexpected_eigvalsh(_values: np.ndarray, **_kwargs: str) -> np.ndarray:
         raise AssertionError("prepare_low_rank_aggregation_error repeated the eigendecomposition")
 
     monkeypatch.setattr(np.linalg, "eigh", counted_eigh)
@@ -280,9 +404,8 @@ def test_full_rank_aggregation_error_approximation_is_exact() -> None:
     aggregation_error = result.aggregation_error
     assert aggregation_error.factor is not None
     assert aggregation_error.diagonal_variance is not None
-    reconstructed = (
-        aggregation_error.factor.values @ aggregation_error.factor.values.T
-        + np.diag(aggregation_error.diagonal_variance.values)
+    reconstructed = aggregation_error.factor.values @ aggregation_error.factor.values.T + np.diag(
+        aggregation_error.diagonal_variance.values
     )
     np.testing.assert_allclose(reconstructed, covariance_values, atol=1e-12)
     assert result.diagnostics["relative_frobenius_reconstruction_error"] < 1e-12
