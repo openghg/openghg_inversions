@@ -9,7 +9,7 @@ from collections.abc import Mapping
 
 from openghg_inversions.inference.diagnostics import (
     CHECK_SCHEMA_VERSION,
-    CONVERGENCE_CHECK_NAME,
+    CONVERGENCE_CHECK_NAME as CONVERGENCE_CHECK_NAME,
     posterior_convergence_check,
 )
 import numpy as np

@@ -4928,6 +4928,7 @@ def test_rhime_sampler_restores_registered_coords_after_predictive_steps(
 
 def test_rhime_sampler_diagnoses_free_variables_after_restoring_coords(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     """Automatic diagnostics use latent names and restored scientific labels."""
     trace = make_trace(
@@ -4978,6 +4979,14 @@ def test_rhime_sampler_diagnoses_free_variables_after_restoring_coords(
     assert seen == {"region": ["north", "south"], "variable_names": ["x"]}
     assert json.loads(result.attrs["sampler_convergence_variables"]) == ["x"]
     assert json.loads(result.attrs["sampler_convergence"]) == convergence
+
+    from openghg_inversions.serialization import load_trace, save_trace
+
+    posterior_path = tmp_path / "posterior.nc"
+    save_trace(result, posterior_path)
+    restored = load_trace(posterior_path)
+    assert json.loads(restored.attrs["sampler_convergence"]) == convergence
+    assert json.loads(restored.attrs["sampler_convergence_variables"]) == ["x"]
 
 
 def test_params_from_config_maps_legacy_emissions_name(tmp_path: Path) -> None:

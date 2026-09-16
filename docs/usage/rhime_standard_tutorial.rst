@@ -192,11 +192,22 @@ Inspect diagnostics before interpreting any posterior quantity:
 Every completed ``RhimeSampler`` NUTS run calculates a compact
 ``sampler-convergence`` check after burn slicing.  The check is reported in
 the timing log and preserved as JSON in
-``result.idata.attrs["sampler_convergence"]``.  It records chain and retained draw counts, the worst R-hat and effective
-sample sizes with their variables, and divergences by chain. It assesses only
+``result.idata.attrs["sampler_convergence"]``.  It records chain and retained
+draw counts, the worst R-hat and effective sample sizes with their variables,
+and divergences by chain. It assesses only
 sampled latent variables, names them in ``assessed_variables``, and excludes
 deterministic posterior outputs. One-chain output explicitly reports that
 between-chain convergence is not assessable.
+
+Parse the preserved JSON to inspect the compact check and the latent variables
+it assessed:
+
+.. jupyter-input::
+
+   import json
+
+   convergence = json.loads(result.idata.attrs["sampler_convergence"])
+   convergence["measured_values"]["assessed_variables"]
 
 Use ArviZ when you need the detailed per-variable table:
 
