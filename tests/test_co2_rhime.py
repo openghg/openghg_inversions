@@ -356,10 +356,13 @@ def test_public_co2_runner_persists_fixed_mismatch_manifest(
     monkeypatch: Any,
     tmp_path: Path,
 ) -> None:
+    """The runner persists fixed mismatch, roles, units, and recipe metadata."""
     inputs = _golden_inputs()
 
     class PreparedInputsStub:
         inv_inputs = inputs
+        rhime_inputs = None
+        aggregation_error_mode = "dense"
 
         def validated(self) -> "PreparedInputsStub":
             return self
@@ -436,6 +439,7 @@ def test_public_co2_runner_persists_fixed_mismatch_manifest(
 
 
 def test_public_co2_runner_derives_default_model_error_alignment(monkeypatch: Any) -> None:
+    """The runner derives default site-by-period mismatch alignment from labels."""
     inputs = _golden_inputs()
     inputs = inputs.assign_coords(
         site=("nmeasure", [f"site-{index}" for index in range(inputs.sizes["nmeasure"])])
@@ -443,6 +447,8 @@ def test_public_co2_runner_derives_default_model_error_alignment(monkeypatch: An
 
     class PreparedInputsStub:
         inv_inputs = inputs
+        rhime_inputs = None
+        aggregation_error_mode = "dense"
 
         def validated(self) -> "PreparedInputsStub":
             return self
@@ -482,6 +488,8 @@ def test_public_co2_runner_selects_boundary_and_offset_once(monkeypatch: Any) ->
 
     class PreparedInputsStub:
         inv_inputs = inputs
+        rhime_inputs = None
+        aggregation_error_mode = "dense"
 
         def validated(self) -> "PreparedInputsStub":
             return self
@@ -566,6 +574,8 @@ def test_public_co2_runner_does_not_auto_select_prepared_baseline(monkeypatch: A
 
     class PreparedInputsStub:
         inv_inputs = inputs
+        rhime_inputs = None
+        aggregation_error_mode = "dense"
 
         def validated(self) -> "PreparedInputsStub":
             return self
@@ -612,6 +622,8 @@ def _run_selected_co2_likelihood(
 
     class PreparedInputsStub:
         inv_inputs = inputs
+        rhime_inputs = None
+        aggregation_error_mode = "dense"
 
         def validated(self) -> "PreparedInputsStub":
             return self
@@ -757,6 +769,8 @@ def test_public_co2_runner_resolves_scalar_sigma_cache_before_model(
 
     class PreparedInputsStub:
         inv_inputs = inputs
+        rhime_inputs = None
+        aggregation_error_mode = "dense"
 
         def validated(self) -> "PreparedInputsStub":
             return self
@@ -841,11 +855,14 @@ def test_public_co2_runner_resolves_scalar_sigma_cache_before_model(
 
 
 def test_public_co2_runner_preserves_materialized_fixed_mismatch(monkeypatch: Any) -> None:
+    """A materialized fixed mismatch is forwarded without replacement."""
     inputs = _golden_inputs()
     inputs["fixed_model_mismatch"] = xr.full_like(inputs["mf"], 0.75)
 
     class PreparedInputsStub:
         inv_inputs = inputs
+        rhime_inputs = None
+        aggregation_error_mode = "dense"
 
         def validated(self) -> "PreparedInputsStub":
             return self

@@ -290,10 +290,15 @@ labelled component boundary.
 Prepared-input inventory and ownership
 --------------------------------------
 
-``RhimePreparedInputs`` is the durable, backend-neutral labelled-data
-boundary. It may retain project-specific arrays that no current PyMC recipe
-uses. Concrete recipes declare only the names they select, materialize those
-arrays together, and pass them to components as honest named arguments.
+``RhimePreparedInputs`` is the durable, backend-neutral labelled-data boundary
+for the standard and multisector recipes. It may retain project-specific
+arrays that no current PyMC recipe uses. Concrete recipes declare only the
+names they select, materialize those arrays together, and pass them to
+components as honest named arguments.
+
+A scientifically distinct recipe may define a dedicated prepared-input type.
+Prefer composition of the reusable canonical boundary over inheritance when
+the recipe is not substitutable for the standard model.
 
 .. list-table:: Current ``inv_inputs`` inventory
    :header-rows: 1
