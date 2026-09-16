@@ -106,6 +106,12 @@ def test_advanced_co2_reader_path_exposes_current_boundaries() -> None:
     assert "Relative values are interpreted from the process" in recipes
     assert "Ordinary CO2 likelihood configuration" in recipes
     assert "Exactly one of ``fixed_site_amplitudes``" in recipes
+    assert "Sampling configuration" in recipes
+    assert "Non-negative integer strictly less than ``draws``" in recipes
+    assert "the linked recipe overrides the\ntwo defaults" in recipes
+    assert "``[channels.co2]`` and ``[channels.o2]``" in recipes
+    assert "standard deviations are 1 ppm\nand 2 ppm" in recipes
+    assert "The resolver does not convert these values" in recipes
     assert "prepare_co2_o2_inputs(" in recipes
     assert 'co2_units=setup.preparation_kwargs["co2_units"]' in recipes
     assert "A runnable CO2 configuration and resolver are\ntracked" not in recipes

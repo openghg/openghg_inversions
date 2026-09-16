@@ -322,6 +322,83 @@ For ``variant = "cached_fixed_ou"``, ``[likelihood]`` requires
 must use ``nuts_sampler = "pymc"``; posterior-predictive name lists may contain
 only ``y`` or ``concentration``.
 
+The optional ``[sampling]`` table is shared by all three supported setups.
+Defaults below apply when an option is omitted; the linked recipe overrides the
+two defaults shown in its column.
+
+.. list-table:: Sampling configuration
+   :header-rows: 1
+   :widths: 23 18 19 40
+
+   * - Option
+     - Ordinary/cached default
+     - Linked default
+     - Accepted value and constraint
+   * - ``draws``
+     - ``1000``
+     - ``1000``
+     - Positive integer.
+   * - ``burn``
+     - ``0``
+     - ``0``
+     - Non-negative integer strictly less than ``draws``.
+   * - ``tune``
+     - ``1000``
+     - ``1000``
+     - Non-negative integer.
+   * - ``chains``
+     - ``4``
+     - ``4``
+     - Positive integer.
+   * - ``nuts_sampler``
+     - ``"pymc"``
+     - ``"numpyro"``
+     - One of ``"pymc"``, ``"nutpie"``, ``"numpyro"``, or ``"blackjax"``;
+       the cached variant requires ``"pymc"``.
+   * - ``progressbar``
+     - ``false``
+     - ``false``
+     - Boolean.
+   * - ``sample_prior_predictive``
+     - ``true``
+     - ``true``
+     - Boolean or non-negative integer number of prior-predictive samples.
+   * - ``sample_posterior_predictive``
+     - ``["y"]``
+     - ``["y"]``
+     - Boolean or list of non-empty variable names. For the cached variant,
+       listed names are restricted to ``"y"`` and ``"concentration"``.
+   * - ``target_accept``
+     - Not set
+     - ``0.95``
+     - Number strictly between zero and one. It is not accepted for the cached
+       variant; use the two likelihood target-accept controls described above.
+   * - ``random_seed``
+     - Not set
+     - Not set
+     - Non-negative integer, applied to both posterior and
+       posterior-predictive sampling.
+
+For ``recipe = "co2_o2"``, ``[channels]`` must contain exactly the two tables
+``[channels.co2]`` and ``[channels.o2]``. Each table requires a non-empty
+``units`` string convertible to ``mol/mol`` and a finite, positive
+``independent_error_sd`` number::
+
+   [channels.co2]
+   units = "ppm"
+   independent_error_sd = 1.0
+
+   [channels.o2]
+   units = "ppm"
+   independent_error_sd = 2.0
+
+Each ``independent_error_sd`` is numerically expressed in its sibling
+``units`` scale: in this example the CO2 and O2 standard deviations are 1 ppm
+and 2 ppm, respectively. The resolver does not convert these values. During
+binding it expands each scalar over that channel's observation rows. The two
+``units`` strings must currently be identical, although the two error values
+may differ.
+
 Standalone O2, arbitrary Python callables, and additional recipe or variant
 names are rejected. The linked configuration also rejects boundary conditions,
 offsets, ordinary likelihood selection, cached/scalar likelihoods, and unequal
