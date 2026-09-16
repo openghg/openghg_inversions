@@ -460,8 +460,9 @@ standard additive-sigma likelihood can opt into <code class="docutils literal no
 OpenGHG Inversions does not default <code class="docutils literal notranslate"><span class="pre">s_fixed</span></code> to 1 ppm. The
 Verification Games fixed-only policy passes <code class="docutils literal notranslate"><span class="pre">fixed_model_mismatch=1.0</span></code> and
 <code class="docutils literal notranslate"><span class="pre">no_model_error=True</span></code> visibly. A runnable CO2 configuration and resolver are
-tracked in <a class="reference external" href="https://linear.app/openghg-inversions/issue/OPE-79">OPE-79</a>.
-For the matched fixed-tau Ornstein–Uhlenbeck (OU) likelihood with independently
+described below; staged routing and common output integration remain tracked in
+<a class="reference external" href="https://linear.app/openghg-inversions/issue/OPE-79">OPE-79</a>.</p>
+<p>For the matched fixed-tau Ornstein–Uhlenbeck (OU) likelihood with independently
 inferred site amplitudes, use <a class="reference internal" href="#co2-cached-sigma-recipe"><span class="std std-ref">the package-supported cached-sigma CO2 runner</span></a>.</p>
 <section id="co2-grouped-inner-and-outer-states">
 <span id="co2-grouped-states"></span><h3>CO2 grouped inner and outer states<a class="headerlink" href="#co2-grouped-inner-and-outer-states" title="Link to this heading">#</a></h3>
@@ -538,6 +539,329 @@ Boundary and offset contributions remain separate from
 likelihood, and sampled outputs.
 The location and scale parameters in <code class="docutils literal notranslate"><span class="pre">offset_prior</span></code> use the observations’
 concentration units.</p>
+</section>
+<section id="configure-prepared-input-replay-from-toml">
+<h3>Configure prepared-input replay from TOML<a class="headerlink" href="#configure-prepared-input-replay-from-toml" title="Link to this heading">#</a></h3>
+<p>The CO2 family provides three installed TOML templates:
+<code class="docutils literal notranslate"><span class="pre">co2.toml</span></code>, <code class="docutils literal notranslate"><span class="pre">co2_cached_sigma.toml</span></code>, and <code class="docutils literal notranslate"><span class="pre">co2_o2.toml</span></code>. Use
+<a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.co2_config_templates" title="openghg_inversions.rhime.co2.co2_config_templates"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.co2_config_templates()</span></code></a> to discover their
+installed paths. Copy the closest template for a run; do not edit the installed
+resource. The templates configure the existing prepared-input Python seams.
+They do not make CO2 available through the staged CLI.</p>
+<p><a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.load_co2_family_config" title="openghg_inversions.rhime.co2.load_co2_family_config"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.load_co2_family_config()</span></code></a> reads TOML, while
+<a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.resolve_co2_family_config" title="openghg_inversions.rhime.co2.resolve_co2_family_config"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.co2.resolve_co2_family_config()</span></code></a> accepts an
+ordinary mapping and returns a frozen
+<a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2RunSetup" title="openghg_inversions.rhime.co2.Co2RunSetup"><code class="xref py py-class docutils literal notranslate"><span class="pre">Co2RunSetup</span></code></a> or
+<a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2O2RunSetup" title="openghg_inversions.rhime.co2.Co2O2RunSetup"><code class="xref py py-class docutils literal notranslate"><span class="pre">Co2O2RunSetup</span></code></a>. Keeping parsing separate
+from resolution makes the scientific choices independent of the file format.
+The setup identifies the runner and contains explicit <code class="docutils literal notranslate"><span class="pre">preparation_kwargs</span></code>,
+<code class="docutils literal notranslate"><span class="pre">runner_kwargs</span></code>, and <a class="reference internal" href="../reference/openghg_inversions.rhime.html#openghg_inversions.rhime.RhimeSampler" title="openghg_inversions.rhime.RhimeSampler"><code class="xref py py-class docutils literal notranslate"><span class="pre">RhimeSampler</span></code></a> values;
+it does not retain an ambient configuration mapping. After preparing or
+loading the appropriate artifact, <code class="docutils literal notranslate"><span class="pre">setup.runner_arguments(prepared)</span></code> binds
+it to the exact arguments accepted by <code class="docutils literal notranslate"><span class="pre">setup.runner</span></code>. For the linked recipe,
+this step expands the two configured error scalars over the labelled joint
+observation axis and verifies its species and unit labels.</p>
+<p>For example, the ordinary TOML settings:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">format_version</span> <span class="o">=</span> <span class="mi">1</span>
+<span class="n">recipe</span> <span class="o">=</span> <span class="s2">"co2"</span>
+<span class="n">variant</span> <span class="o">=</span> <span class="s2">"ordinary"</span>
+
+<span class="p">[</span><span class="n">prepared_inputs</span><span class="p">]</span>
+<span class="n">path</span> <span class="o">=</span> <span class="s2">"co2-coherent-dense.zarr"</span>
+
+<span class="p">[</span><span class="n">likelihood</span><span class="p">]</span>
+<span class="n">kind</span> <span class="o">=</span> <span class="s2">"additive_sigma"</span>
+<span class="n">sigma_prior</span> <span class="o">=</span> <span class="p">{</span> <span class="n">pdf</span> <span class="o">=</span> <span class="s2">"halfnormal"</span><span class="p">,</span> <span class="n">sigma</span> <span class="o">=</span> <span class="mf">0.75</span> <span class="p">}</span>
+
+<span class="p">[</span><span class="n">sampling</span><span class="p">]</span>
+<span class="n">draws</span> <span class="o">=</span> <span class="mi">1000</span>
+<span class="n">tune</span> <span class="o">=</span> <span class="mi">1000</span>
+<span class="n">chains</span> <span class="o">=</span> <span class="mi">4</span>
+<span class="n">nuts_sampler</span> <span class="o">=</span> <span class="s2">"numpyro"</span>
+</pre></div>
+</div>
+<p>resolve to the same scientific runner choices as this direct Python call:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="n">RhimeSampler</span><span class="p">,</span> <span class="n">run_rhime_co2</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.co2</span><span class="w"> </span><span class="kn">import</span> <span class="n">Co2PreparedInputs</span>
+
+<span class="n">prepared</span> <span class="o">=</span> <span class="n">Co2PreparedInputs</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="s2">"co2-coherent-dense.zarr"</span><span class="p">)</span>
+<span class="n">idata</span> <span class="o">=</span> <span class="n">run_rhime_co2</span><span class="p">(</span>
+    <span class="n">prepared_inputs</span><span class="o">=</span><span class="n">prepared</span><span class="p">,</span>
+    <span class="n">sigma_prior</span><span class="o">=</span><span class="p">{</span><span class="s2">"pdf"</span><span class="p">:</span> <span class="s2">"halfnormal"</span><span class="p">,</span> <span class="s2">"sigma"</span><span class="p">:</span> <span class="mf">0.75</span><span class="p">},</span>
+    <span class="n">sampler</span><span class="o">=</span><span class="n">RhimeSampler</span><span class="p">(</span>
+        <span class="n">draws</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span>
+        <span class="n">tune</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span>
+        <span class="n">chains</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span>
+        <span class="n">nuts_sampler</span><span class="o">=</span><span class="s2">"numpyro"</span><span class="p">,</span>
+    <span class="p">),</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p>The resolved ordinary setup can execute that same call through its explicit
+binding method:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.co2</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">Co2PreparedInputs</span><span class="p">,</span>
+    <span class="n">load_co2_family_config</span><span class="p">,</span>
+    <span class="n">resolve_co2_family_config</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">config</span> <span class="o">=</span> <span class="n">load_co2_family_config</span><span class="p">(</span><span class="s2">"my-co2.toml"</span><span class="p">)</span>
+<span class="n">setup</span> <span class="o">=</span> <span class="n">resolve_co2_family_config</span><span class="p">(</span><span class="n">config</span><span class="p">)</span>
+<span class="n">prepared</span> <span class="o">=</span> <span class="n">Co2PreparedInputs</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">setup</span><span class="o">.</span><span class="n">preparation_kwargs</span><span class="p">[</span><span class="s2">"path"</span><span class="p">])</span>
+<span class="n">idata</span> <span class="o">=</span> <span class="n">setup</span><span class="o">.</span><span class="n">runner</span><span class="p">(</span><span class="o">**</span><span class="n">setup</span><span class="o">.</span><span class="n">runner_arguments</span><span class="p">(</span><span class="n">prepared</span><span class="p">))</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">prepared_inputs.path</span></code> and <code class="docutils literal notranslate"><span class="pre">likelihood.eigenbasis_path</span></code> become ordinary
+<code class="docutils literal notranslate"><span class="pre">pathlib.Path</span></code> values. Relative values are interpreted from the process
+working directory, not from the directory containing the TOML file. Use
+absolute paths when the run may start from another directory.</p>
+<p>The resolver deliberately supports a closed matrix rather than arbitrary
+callable imports:</p>
+<div class="pst-scrollable-table-container"><table class="table">
+<colgroup>
+<col style="width: 18.0%" />
+<col style="width: 22.0%" />
+<col style="width: 22.0%" />
+<col style="width: 38.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Recipe</p></th>
+<th class="head"><p>Variant</p></th>
+<th class="head"><p>Runner</p></th>
+<th class="head"><p>Configuration boundary</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">co2</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">ordinary</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">run_rhime_co2</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">additive_sigma</span></code>, <code class="docutils literal notranslate"><span class="pre">site_sigma</span></code>, <code class="docutils literal notranslate"><span class="pre">fixed_ou</span></code>, or <code class="docutils literal notranslate"><span class="pre">scalar_sigma</span></code>
+likelihood; boundary conditions and offsets are available.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">co2</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">cached_fixed_ou</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">run_rhime_co2_cached_sigma</span></code></p></td>
+<td><p>Fixed positive OU timescales and HalfNormal site amplitudes, using the
+runner-owned PyMC sampler.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">co2_o2</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">linked</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">run_rhime_co2_o2_from_prepared_inputs</span></code></p></td>
+<td><p>Fixed independent error with one shared channel-unit label.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>For <code class="docutils literal notranslate"><span class="pre">variant</span> <span class="pre">=</span> <span class="pre">&quot;ordinary&quot;</span></code>, the <code class="docutils literal notranslate"><span class="pre">[likelihood]</span></code> table accepts these closed
+forms. Scalar-or-site-map values use either one positive number or an inline
+table such as <code class="docutils literal notranslate"><span class="pre">{</span> <span class="pre">MHD</span> <span class="pre">=</span> <span class="pre">24.0,</span> <span class="pre">TAC</span> <span class="pre">=</span> <span class="pre">12.0</span> <span class="pre">}</span></code>.</p>
+<div class="pst-scrollable-table-container"><table class="table" id="id1">
+<caption><span class="caption-text">Ordinary CO2 likelihood configuration</span><a class="headerlink" href="#id1" title="Link to this table">#</a></caption>
+<colgroup>
+<col style="width: 18.0%" />
+<col style="width: 34.0%" />
+<col style="width: 48.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p><code class="docutils literal notranslate"><span class="pre">kind</span></code></p></th>
+<th class="head"><p>Required keys</p></th>
+<th class="head"><p>Optional keys and constraints</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">additive_sigma</span></code></p></td>
+<td><p>None</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">sigma_prior</span></code>; non-negative <code class="docutils literal notranslate"><span class="pre">fixed_model_mismatch</span></code>;
+<code class="docutils literal notranslate"><span class="pre">no_model_error</span></code> (default false). <code class="docutils literal notranslate"><span class="pre">sigma_prior</span></code> and
+<code class="docutils literal notranslate"><span class="pre">no_model_error</span> <span class="pre">=</span> <span class="pre">true</span></code> are mutually exclusive.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">site_sigma</span></code></p></td>
+<td><p>Exactly one of <code class="docutils literal notranslate"><span class="pre">fixed_site_amplitudes</span></code> or <code class="docutils literal notranslate"><span class="pre">site_amplitude_prior</span></code></p></td>
+<td><p>Fixed amplitudes are a non-negative site map; the inferred-amplitude
+prior must have positive support.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">fixed_ou</span></code></p></td>
+<td><p>Positive scalar-or-site-map <code class="docutils literal notranslate"><span class="pre">tau_hours</span></code> and exactly one of
+<code class="docutils literal notranslate"><span class="pre">fixed_site_amplitudes</span></code> or <code class="docutils literal notranslate"><span class="pre">site_amplitude_prior</span></code></p></td>
+<td><p>Fixed amplitudes are non-negative; the inferred-amplitude prior must
+have positive support.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">scalar_sigma</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">eigenbasis_path</span></code> and positive-support <code class="docutils literal notranslate"><span class="pre">sigma_prior</span></code></p></td>
+<td><p>The eigenbasis must match the prepared artifact as described in
+<a class="reference internal" href="#co2-scalar-sigma-recipe"><span class="std std-ref">the scalar-sigma recipe</span></a>.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>Prior tables use <code class="docutils literal notranslate"><span class="pre">pdf</span></code> plus the parameters for that family: <code class="docutils literal notranslate"><span class="pre">normal</span></code> uses
+<code class="docutils literal notranslate"><span class="pre">mu</span></code> and positive <code class="docutils literal notranslate"><span class="pre">sigma</span></code>; <code class="docutils literal notranslate"><span class="pre">truncatednormal</span></code> also requires <code class="docutils literal notranslate"><span class="pre">lower</span></code> and
+optionally accepts <code class="docutils literal notranslate"><span class="pre">upper</span></code>; <code class="docutils literal notranslate"><span class="pre">halfnormal</span></code> uses positive <code class="docutils literal notranslate"><span class="pre">sigma</span></code>;
+<code class="docutils literal notranslate"><span class="pre">halfstudentt</span></code> uses positive <code class="docutils literal notranslate"><span class="pre">nu</span></code> and <code class="docutils literal notranslate"><span class="pre">sigma</span></code>; <code class="docutils literal notranslate"><span class="pre">gamma</span></code> uses positive
+<code class="docutils literal notranslate"><span class="pre">alpha</span></code> and <code class="docutils literal notranslate"><span class="pre">beta</span></code>; <code class="docutils literal notranslate"><span class="pre">exponential</span></code> uses positive <code class="docutils literal notranslate"><span class="pre">lam</span></code>; and <code class="docutils literal notranslate"><span class="pre">uniform</span></code>
+uses ordered <code class="docutils literal notranslate"><span class="pre">lower</span></code> and <code class="docutils literal notranslate"><span class="pre">upper</span></code>. <code class="docutils literal notranslate"><span class="pre">lognormal</span></code> accepts exactly one of
+<code class="docutils literal notranslate"><span class="pre">mu</span></code>/<code class="docutils literal notranslate"><span class="pre">sigma</span></code> or positive <code class="docutils literal notranslate"><span class="pre">mean</span></code>/<code class="docutils literal notranslate"><span class="pre">stdev</span></code>, plus optional boolean
+<code class="docutils literal notranslate"><span class="pre">reparameterise</span></code>. Positive-support prior positions accept only HalfNormal,
+HalfStudentT, Gamma, Exponential, Uniform with a non-negative lower bound, or
+LogNormal.</p>
+<p>Optional model components belong in their own tables. <code class="docutils literal notranslate"><span class="pre">[model.boundary]</span></code>
+accepts boolean <code class="docutils literal notranslate"><span class="pre">enabled</span></code> (default true) and <code class="docutils literal notranslate"><span class="pre">prior</span></code>; a disabled boundary
+cannot specify a prior. <code class="docutils literal notranslate"><span class="pre">[model.offset]</span></code> requires <code class="docutils literal notranslate"><span class="pre">prior</span></code> and optionally
+accepts <code class="docutils literal notranslate"><span class="pre">frequency</span></code>, <code class="docutils literal notranslate"><span class="pre">per_site</span></code> (default true), and <code class="docutils literal notranslate"><span class="pre">drop_first</span></code> (default
+false). A global offset (<code class="docutils literal notranslate"><span class="pre">per_site</span> <span class="pre">=</span> <span class="pre">false</span></code>) cannot set a frequency or use
+<code class="docutils literal notranslate"><span class="pre">drop_first</span> <span class="pre">=</span> <span class="pre">true</span></code>.</p>
+<p>For <code class="docutils literal notranslate"><span class="pre">variant</span> <span class="pre">=</span> <span class="pre">&quot;cached_fixed_ou&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">[likelihood]</span></code> requires
+<code class="docutils literal notranslate"><span class="pre">kind</span> <span class="pre">=</span> <span class="pre">&quot;fixed_ou&quot;</span></code>, positive scalar-or-site-map <code class="docutils literal notranslate"><span class="pre">tau_hours</span></code>, and positive
+<code class="docutils literal notranslate"><span class="pre">site_amplitude_prior_scale</span></code>. It optionally accepts positive
+<code class="docutils literal notranslate"><span class="pre">initial_site_amplitudes</span></code> and the zero-to-one controls
+<code class="docutils literal notranslate"><span class="pre">sigma_target_accept</span></code> and <code class="docutils literal notranslate"><span class="pre">state_target_accept</span></code>. Its <code class="docutils literal notranslate"><span class="pre">[sampling]</span></code> table
+must use <code class="docutils literal notranslate"><span class="pre">nuts_sampler</span> <span class="pre">=</span> <span class="pre">&quot;pymc&quot;</span></code>; posterior-predictive name lists may contain
+only <code class="docutils literal notranslate"><span class="pre">y</span></code> or <code class="docutils literal notranslate"><span class="pre">concentration</span></code>.</p>
+<p>The optional <code class="docutils literal notranslate"><span class="pre">[sampling]</span></code> table is shared by all three supported setups.
+Defaults below apply when an option is omitted; the linked recipe overrides the
+two defaults shown in its column.</p>
+<div class="pst-scrollable-table-container"><table class="table" id="id2">
+<caption><span class="caption-text">Sampling configuration</span><a class="headerlink" href="#id2" title="Link to this table">#</a></caption>
+<colgroup>
+<col style="width: 23.0%" />
+<col style="width: 18.0%" />
+<col style="width: 19.0%" />
+<col style="width: 40.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Option</p></th>
+<th class="head"><p>Ordinary/cached default</p></th>
+<th class="head"><p>Linked default</p></th>
+<th class="head"><p>Accepted value and constraint</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">draws</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">1000</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">1000</span></code></p></td>
+<td><p>Positive integer.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">burn</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">0</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">0</span></code></p></td>
+<td><p>Non-negative integer strictly less than <code class="docutils literal notranslate"><span class="pre">draws</span></code>.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">tune</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">1000</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">1000</span></code></p></td>
+<td><p>Non-negative integer.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">chains</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">4</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">4</span></code></p></td>
+<td><p>Positive integer.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">nuts_sampler</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;pymc&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;numpyro&quot;</span></code></p></td>
+<td><p>One of <code class="docutils literal notranslate"><span class="pre">&quot;pymc&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;nutpie&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;numpyro&quot;</span></code>, or <code class="docutils literal notranslate"><span class="pre">&quot;blackjax&quot;</span></code>;
+the cached variant requires <code class="docutils literal notranslate"><span class="pre">&quot;pymc&quot;</span></code>.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">progressbar</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
+<td><p>Boolean.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">sample_prior_predictive</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">true</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">true</span></code></p></td>
+<td><p>Boolean or non-negative integer number of prior-predictive samples.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">sample_posterior_predictive</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">[&quot;y&quot;]</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">[&quot;y&quot;]</span></code></p></td>
+<td><p>Boolean or list of non-empty variable names. For the cached variant,
+listed names are restricted to <code class="docutils literal notranslate"><span class="pre">&quot;y&quot;</span></code> and <code class="docutils literal notranslate"><span class="pre">&quot;concentration&quot;</span></code>.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">target_accept</span></code></p></td>
+<td><p>Not set</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">0.95</span></code></p></td>
+<td><p>Number strictly between zero and one. It is not accepted for the cached
+variant; use the two likelihood target-accept controls described above.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">random_seed</span></code></p></td>
+<td><p>Not set</p></td>
+<td><p>Not set</p></td>
+<td><p>Non-negative integer, applied to both posterior and
+posterior-predictive sampling.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>For <code class="docutils literal notranslate"><span class="pre">recipe</span> <span class="pre">=</span> <span class="pre">&quot;co2_o2&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">[channels]</span></code> must contain exactly the two tables
+<code class="docutils literal notranslate"><span class="pre">[channels.co2]</span></code> and <code class="docutils literal notranslate"><span class="pre">[channels.o2]</span></code>. Each table requires a non-empty
+<code class="docutils literal notranslate"><span class="pre">units</span></code> string convertible to <code class="docutils literal notranslate"><span class="pre">mol/mol</span></code> and a finite, positive
+<code class="docutils literal notranslate"><span class="pre">independent_error_sd</span></code> number:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">[</span><span class="n">channels</span><span class="o">.</span><span class="n">co2</span><span class="p">]</span>
+<span class="n">units</span> <span class="o">=</span> <span class="s2">"ppm"</span>
+<span class="n">independent_error_sd</span> <span class="o">=</span> <span class="mf">1.0</span>
+
+<span class="p">[</span><span class="n">channels</span><span class="o">.</span><span class="n">o2</span><span class="p">]</span>
+<span class="n">units</span> <span class="o">=</span> <span class="s2">"ppm"</span>
+<span class="n">independent_error_sd</span> <span class="o">=</span> <span class="mf">2.0</span>
+</pre></div>
+</div>
+<p>Each <code class="docutils literal notranslate"><span class="pre">independent_error_sd</span></code> is numerically expressed in its sibling
+<code class="docutils literal notranslate"><span class="pre">units</span></code> scale: in this example the CO2 and O2 standard deviations are 1 ppm
+and 2 ppm, respectively. The resolver does not convert these values. During
+binding it expands each scalar over that channel’s observation rows. The two
+<code class="docutils literal notranslate"><span class="pre">units</span></code> strings must currently be identical, although the two error values
+may differ.</p>
+<p>Standalone O2, arbitrary Python callables, and additional recipe or variant
+names are rejected. The linked configuration also rejects boundary conditions,
+offsets, ordinary likelihood selection, cached/scalar likelihoods, and unequal
+CO2 and O2 unit labels. The lower-level linked prepared-input API continues to
+represent row-specific mixed units; configuring a heterogeneous ppm/per-meg
+run is deferred until the scaling contract tracked in <a class="reference external" href="https://linear.app/openghg-inversions/issue/OPE-86">OPE-86</a> is available. Use the
+direct Python interfaces for experimental combinations outside this matrix.
+The linked <a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.Co2O2PreparedInputs" title="openghg_inversions.rhime.co2.Co2O2PreparedInputs"><code class="xref py py-class docutils literal notranslate"><span class="pre">Co2O2PreparedInputs</span></code></a> artifact
+does not yet have a durable <code class="docutils literal notranslate"><span class="pre">load</span></code> method. Construct it through the documented
+preparation boundary and bind the resulting in-memory artifact; linked staged
+artifact loading remains follow-up work in <a class="reference external" href="https://linear.app/openghg-inversions/issue/OPE-165">OPE-165</a>.</p>
+<p>The linked template therefore follows a prepare, bind, and run sequence. The
+scientific array names below are the labelled inputs documented by
+<a class="reference internal" href="../reference/openghg_inversions.rhime.co2.html#openghg_inversions.rhime.co2.prepare_co2_o2_inputs" title="openghg_inversions.rhime.co2.prepare_co2_o2_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">prepare_co2_o2_inputs()</span></code></a>; replace them with
+the products from one coherent reduction. Exactly one of
+<code class="docutils literal notranslate"><span class="pre">o2_co2_flux_ratio</span></code> and <code class="docutils literal notranslate"><span class="pre">o2_co2_flux_ratio_unavailable_reason</span></code> must be
+non-null:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime.co2</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">load_co2_family_config</span><span class="p">,</span>
+    <span class="n">prepare_co2_o2_inputs</span><span class="p">,</span>
+    <span class="n">resolve_co2_family_config</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">config</span> <span class="o">=</span> <span class="n">load_co2_family_config</span><span class="p">(</span><span class="s2">"my-co2-o2.toml"</span><span class="p">)</span>
+<span class="n">setup</span> <span class="o">=</span> <span class="n">resolve_co2_family_config</span><span class="p">(</span><span class="n">config</span><span class="p">)</span>
+
+<span class="n">prepared</span> <span class="o">=</span> <span class="n">prepare_co2_o2_inputs</span><span class="p">(</span>
+    <span class="n">co2_observations</span><span class="o">=</span><span class="n">co2_observations</span><span class="p">,</span>
+    <span class="n">o2_observations</span><span class="o">=</span><span class="n">o2_observations</span><span class="p">,</span>
+    <span class="n">co2_prior_forward_mean</span><span class="o">=</span><span class="n">co2_prior_forward_mean</span><span class="p">,</span>
+    <span class="n">o2_prior_forward_mean</span><span class="o">=</span><span class="n">o2_prior_forward_mean</span><span class="p">,</span>
+    <span class="n">co2_sensitivity</span><span class="o">=</span><span class="n">co2_sensitivity</span><span class="p">,</span>
+    <span class="n">o2_sensitivity</span><span class="o">=</span><span class="n">o2_sensitivity</span><span class="p">,</span>
+    <span class="n">o2_co2_flux_ratio</span><span class="o">=</span><span class="n">o2_co2_flux_ratio</span><span class="p">,</span>
+    <span class="n">o2_co2_flux_ratio_unavailable_reason</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+    <span class="n">co2_aggregation_covariance</span><span class="o">=</span><span class="n">co2_aggregation_covariance</span><span class="p">,</span>
+    <span class="n">co2_o2_aggregation_covariance</span><span class="o">=</span><span class="n">co2_o2_aggregation_covariance</span><span class="p">,</span>
+    <span class="n">o2_aggregation_covariance</span><span class="o">=</span><span class="n">o2_aggregation_covariance</span><span class="p">,</span>
+    <span class="n">retained_prior</span><span class="o">=</span><span class="n">retained_prior</span><span class="p">,</span>
+    <span class="n">co2_units</span><span class="o">=</span><span class="n">setup</span><span class="o">.</span><span class="n">preparation_kwargs</span><span class="p">[</span><span class="s2">"co2_units"</span><span class="p">],</span>
+    <span class="n">o2_units</span><span class="o">=</span><span class="n">setup</span><span class="o">.</span><span class="n">preparation_kwargs</span><span class="p">[</span><span class="s2">"o2_units"</span><span class="p">],</span>
+<span class="p">)</span>
+<span class="n">idata</span> <span class="o">=</span> <span class="n">setup</span><span class="o">.</span><span class="n">runner</span><span class="p">(</span><span class="o">**</span><span class="n">setup</span><span class="o">.</span><span class="n">runner_arguments</span><span class="p">(</span><span class="n">prepared</span><span class="p">))</span>
+</pre></div>
+</div>
+<p>Unknown or unused keys are errors, reported by their dotted path. Resolution
+also rejects incompatible component choices before an artifact is loaded or a
+model is built. This section defines the local CO2-family configuration
+surface, not the cross-family configuration and CLI catalogue. That reference
+work is tracked in <a class="reference external" href="https://linear.app/openghg-inversions/issue/OPE-159">OPE-159</a>.</p>
 <p>Construct the CO2-specific artifact by pairing canonical RHIME inputs with all
 linked products from one
 <a class="reference internal" href="../reference/openghg_inversions.coherent_reduction.html#openghg_inversions.coherent_reduction.CoherentGaussianReduction" title="openghg_inversions.coherent_reduction.CoherentGaussianReduction"><code class="xref py py-class docutils literal notranslate"><span class="pre">CoherentGaussianReduction</span></code></a>.
@@ -963,6 +1287,7 @@ there is no separate public complete-covariance validator.</p>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#co2-coherent-reduction-model">CO2 coherent-reduction model</a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#co2-grouped-inner-and-outer-states">CO2 grouped inner and outer states</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#run-the-ordinary-prepared-input-co2-runner">Run the ordinary prepared-input CO2 runner</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#configure-prepared-input-replay-from-toml">Configure prepared-input replay from TOML</a></li>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#run-the-global-scalar-sigma-co2-likelihood">Run the global scalar-sigma CO2 likelihood</a></li>

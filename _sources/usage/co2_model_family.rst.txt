@@ -36,10 +36,10 @@ Current support
        caller-supplied, channel-native prepared arrays; it does not acquire
        OpenGHG data.
    * - Configuration
-     - Python arguments at the prepared-input boundary; no complete built-in
-       CO₂ configuration workflow.
-     - Python arguments at the prepared-input boundary; no complete built-in
-       linked configuration workflow.
+     - A packaged TOML template and strict resolver produce explicit arguments
+       for the ordinary or cached fixed-OU prepared-input Python runner.
+     - A packaged TOML template and strict resolver produce explicit arguments
+       for the linked prepared-input Python runner.
    * - Boundary conditions and offsets
      - The ordinary and cached-sigma runners can select prepared ``H_bc``
        boundary sensitivity and add global, site, or site-by-period offsets.
@@ -54,12 +54,13 @@ Current support
        boundary; family-specific output and postprocessing are not integrated.
    * - Validation and acceptance
      - Coherent preparation, dedicated serialization, model construction,
-       replay, provenance, and cached-sampler behavior have automated
-       regression tests. Complete configuration, outputs, staged integration,
-       and scientist acceptance remain future work.
+       configuration resolution, replay, provenance, and cached-sampler
+       behavior have automated regression tests. Complete outputs, staged
+       integration, and scientist acceptance remain future work.
      - Preparation, graph construction, mixed-unit metadata, replay, and
-       provenance have automated regression tests. Production scientist
-       acceptance remains future work.
+       provenance have automated regression tests. Configuration currently
+       limits linked replay to one shared concentration-unit label. Production
+       scientist acceptance remains future work.
 
 Prerequisites
 -------------
@@ -73,8 +74,10 @@ making those concepts specific to CO₂.
 
 The family page records present software support, not evidence that a selected
 recipe is scientifically suitable for a particular inversion. Complete
-configuration, outputs, staged integration, and scientist acceptance are
-tracked in `OPE-79 <https://linear.app/openghg-inversions/issue/OPE-79>`_.
+outputs, staged integration, and scientist acceptance are tracked in `OPE-79
+<https://linear.app/openghg-inversions/issue/OPE-79>`_. The TOML resolver is a
+configuration boundary for the existing Python runners; it does not add a
+CO₂ command to the staged CLI.
 
 The CO2-only handoff is intentionally separate from both the generic
 ``RhimePreparedInputs`` boundary and the linked CO2/O2 preparation contract.
