@@ -296,14 +296,9 @@ arrays that no current PyMC recipe uses. Concrete recipes declare only the
 names they select, materialize those arrays together, and pass them to
 components as honest named arguments.
 
-A scientifically distinct recipe may compose that canonical boundary into a
-dedicated prepared-input type instead of extending the generic schema. For
-example, ``Co2PreparedInputs`` couples canonical observations, basis and site
-metadata to the linked products of one coherent Gaussian reduction. It also
-owns one declared aggregation-covariance representation, so its runners do not
-accept a separate mode that could disagree with the serialized artifact.
-This recipe-specific contract does not change the standard, multisector, or
-``run_hbmcmc.py`` preparation paths.
+A scientifically distinct recipe may define a dedicated prepared-input type.
+Prefer composition of the reusable canonical boundary over inheritance when
+the recipe is not substitutable for the standard model.
 
 .. list-table:: Current ``inv_inputs`` inventory
    :header-rows: 1

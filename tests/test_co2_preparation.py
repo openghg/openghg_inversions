@@ -5,6 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, cast
 
+import dask.array as da
+from dask import delayed
 import numpy as np
 import pandas as pd
 import pytest
@@ -14,10 +16,12 @@ from openghg_inversions._labelled_matrices import renamed_column_coordinates
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.coherent_reduction import CoherentGaussianReduction
 from openghg_inversions.inversion_data import RhimePreparedInputs
-from openghg_inversions.observation_error import prepare_low_rank_aggregation_error
 from openghg_inversions.rhime.co2 import Co2PreparedInputs, prepare_co2_inputs
 from openghg_inversions.rhime.co2 import (
     co2_cached_sigma_runner,
+    co2_runner,
+    prepare_co2_scalar_sigma_eigenbasis,
+    run_rhime_co2,
     run_rhime_co2_cached_sigma,
 )
 
@@ -129,7 +133,12 @@ def test_prepare_co2_inputs_maps_reduction_and_preserves_canonical_metadata() ->
     canonical = _canonical_inputs()
     reduction = _reduction(canonical)
 
-    prepared = prepare_co2_inputs(canonical, reduction, provenance={"source": "test"})
+    prepared = prepare_co2_inputs(
+        canonical,
+        reduction,
+        aggregation_error_rank=None,
+        provenance={"source": "test"},
+    )
 
     assert prepared.aggregation_error_mode == "dense"
     assert prepared.provenance == {
@@ -158,17 +167,11 @@ def test_prepare_co2_inputs_maps_reduction_and_preserves_canonical_metadata() ->
     assert "aggregation_error_covariance" not in canonical.inv_inputs
 
 
-def test_prepare_co2_inputs_accepts_bound_truncated_low_rank_representation() -> None:
+def test_prepare_co2_inputs_constructs_truncated_low_rank_representation() -> None:
     canonical = _canonical_inputs()
     reduction = _reduction(canonical)
-    approximation = prepare_low_rank_aggregation_error(
-        reduction.unresolved_observation_covariance,
-        rank=1,
-        output_dim="observation",
-        covariance_dim="observation_cov",
-    )
 
-    prepared = prepare_co2_inputs(canonical, reduction, aggregation_error=approximation)
+    prepared = prepare_co2_inputs(canonical, reduction, aggregation_error_rank=1)
 
     assert prepared.aggregation_error_mode == "low_rank"
     assert prepared.inv_inputs["low_rank_factor"].shape == (3, 1)
@@ -183,6 +186,45 @@ def test_prepare_co2_inputs_accepts_bound_truncated_low_rank_representation() ->
     assert prepared.provenance["aggregation_error"]["requested_rank"] == 1
 
 
+def test_prepare_co2_inputs_caps_default_low_rank_at_observation_count() -> None:
+    canonical = _canonical_inputs()
+
+    prepared = prepare_co2_inputs(canonical, _reduction(canonical))
+
+    assert prepared.inv_inputs["low_rank_factor"].shape == (3, 3)
+    assert prepared.provenance["aggregation_error"]["requested_rank"] == 3
+
+
+@pytest.mark.parametrize(("existing_rank", "requested_rank"), [(1, 2), (2, 1)])
+def test_prepare_co2_inputs_replaces_stale_aggregation_rank_coordinate(
+    existing_rank: int,
+    requested_rank: int,
+) -> None:
+    canonical = _canonical_inputs()
+    canonical.inv_inputs["low_rank_factor"] = xr.DataArray(
+        np.ones((3, existing_rank)),
+        dims=("nmeasure", "agg_rank"),
+        coords={"agg_rank": np.arange(10, 10 + existing_rank)},
+        attrs={"units": "ppm"},
+    )
+    canonical.inv_inputs["diagonal_residual_variance"] = xr.DataArray(
+        np.ones(3),
+        dims="nmeasure",
+        attrs={"units": "(ppm)^2"},
+    )
+
+    prepared = prepare_co2_inputs(
+        canonical,
+        _reduction(canonical),
+        aggregation_error_rank=requested_rank,
+    )
+
+    factor = prepared.inv_inputs["low_rank_factor"]
+    assert factor.shape == (3, requested_rank)
+    np.testing.assert_array_equal(factor["agg_rank"], np.arange(requested_rank))
+    assert np.isfinite(factor).all()
+
+
 @pytest.mark.parametrize("suffix", [".nc", ".zarr"])
 @pytest.mark.parametrize("representation", ["dense", "low_rank"])
 def test_co2_prepared_inputs_round_trip(
@@ -192,20 +234,10 @@ def test_co2_prepared_inputs_round_trip(
 ) -> None:
     canonical = _canonical_inputs()
     reduction = _reduction(canonical)
-    approximation = (
-        prepare_low_rank_aggregation_error(
-            reduction.unresolved_observation_covariance,
-            rank=1,
-            output_dim="observation",
-            covariance_dim="observation_cov",
-        )
-        if representation == "low_rank"
-        else None
-    )
     prepared = prepare_co2_inputs(
         canonical,
         reduction,
-        aggregation_error=approximation,
+        aggregation_error_rank=1 if representation == "low_rank" else None,
         provenance={"source": "round-trip"},
     )
     path = tmp_path / f"co2-prepared{suffix}"
@@ -216,71 +248,6 @@ def test_co2_prepared_inputs_round_trip(
     assert restored.aggregation_error_mode == representation
     assert restored.provenance == prepared.provenance
     xr.testing.assert_identical(restored.inv_inputs, prepared.inv_inputs)
-
-
-def test_prepare_co2_inputs_rejects_approximation_from_another_reduction() -> None:
-    canonical = _canonical_inputs()
-    reduction = _reduction(canonical)
-    other_covariance = reduction.unresolved_observation_covariance.copy(
-        data=reduction.unresolved_observation_covariance.values * 2.0
-    )
-    approximation = prepare_low_rank_aggregation_error(
-        other_covariance,
-        rank=1,
-        output_dim="observation",
-        covariance_dim="observation_cov",
-    )
-
-    with pytest.raises(ValueError, match="not derived from this coherent reduction"):
-        prepare_co2_inputs(canonical, reduction, aggregation_error=approximation)
-
-
-def test_prepare_co2_inputs_rejects_mutated_low_rank_marginal() -> None:
-    canonical = _canonical_inputs()
-    reduction = _reduction(canonical)
-    approximation = prepare_low_rank_aggregation_error(
-        reduction.unresolved_observation_covariance,
-        rank=1,
-        output_dim="observation",
-        covariance_dim="observation_cov",
-    )
-    assert approximation.aggregation_error.factor is not None
-    approximation.aggregation_error.factor.values[0, 0] += 1.0
-
-    with pytest.raises(ValueError, match="preserve the coherent covariance diagonal"):
-        prepare_co2_inputs(canonical, reduction, aggregation_error=approximation)
-
-
-def test_prepare_co2_inputs_rejects_mutated_low_rank_off_diagonal() -> None:
-    canonical = _canonical_inputs()
-    reduction = _reduction(canonical)
-    approximation = prepare_low_rank_aggregation_error(
-        reduction.unresolved_observation_covariance,
-        rank=1,
-        output_dim="observation",
-        covariance_dim="observation_cov",
-    )
-    assert approximation.aggregation_error.factor is not None
-    approximation.aggregation_error.factor.values[0] *= -1.0
-
-    with pytest.raises(ValueError, match="payload does not match"):
-        prepare_co2_inputs(canonical, reduction, aggregation_error=approximation)
-
-
-def test_co2_prepared_inputs_rechecks_mutated_payload_identity() -> None:
-    canonical = _canonical_inputs()
-    reduction = _reduction(canonical)
-    approximation = prepare_low_rank_aggregation_error(
-        reduction.unresolved_observation_covariance,
-        rank=1,
-        output_dim="observation",
-        covariance_dim="observation_cov",
-    )
-    prepared = prepare_co2_inputs(canonical, reduction, aggregation_error=approximation)
-    prepared.inv_inputs["low_rank_factor"].values[0] *= -1.0
-
-    with pytest.raises(ValueError, match="recorded identity"):
-        prepared.validated()
 
 
 def test_prepare_co2_inputs_rejects_conflicting_projection_strategy() -> None:
@@ -307,13 +274,7 @@ def test_prepare_co2_inputs_rejects_wrong_covariance_units() -> None:
 def test_co2_prepared_inputs_load_rejects_wrong_low_rank_units() -> None:
     canonical = _canonical_inputs()
     reduction = _reduction(canonical)
-    approximation = prepare_low_rank_aggregation_error(
-        reduction.unresolved_observation_covariance,
-        rank=1,
-        output_dim="observation",
-        covariance_dim="observation_cov",
-    )
-    prepared = prepare_co2_inputs(canonical, reduction, aggregation_error=approximation)
+    prepared = prepare_co2_inputs(canonical, reduction, aggregation_error_rank=1)
     tree = prepared.to_datatree()
     node = cast(xr.DataTree, tree["rhime_inputs/inv_inputs"])
     dataset = node.to_dataset()
@@ -330,13 +291,7 @@ def test_reloaded_truncated_low_rank_artifact_drives_cached_runner_selection(
 ) -> None:
     canonical = _canonical_inputs()
     reduction = _reduction(canonical)
-    approximation = prepare_low_rank_aggregation_error(
-        reduction.unresolved_observation_covariance,
-        rank=1,
-        output_dim="observation",
-        covariance_dim="observation_cov",
-    )
-    prepared = prepare_co2_inputs(canonical, reduction, aggregation_error=approximation)
+    prepared = prepare_co2_inputs(canonical, reduction, aggregation_error_rank=1)
     path = tmp_path / "co2-low-rank.nc"
     prepared.save(path)
     restored = Co2PreparedInputs.load(path)
@@ -366,3 +321,79 @@ def test_reloaded_truncated_low_rank_artifact_drives_cached_runner_selection(
     assert selected.mode == "low_rank"
     assert selected.factor is not None
     assert selected.factor.shape == (3, 1)
+
+
+def test_standard_runner_uses_real_co2_prepared_inputs(monkeypatch: pytest.MonkeyPatch) -> None:
+    canonical = _canonical_inputs()
+    prepared = prepare_co2_inputs(canonical, _reduction(canonical), aggregation_error_rank=1)
+    received: dict[str, Any] = {}
+
+    class ModelBoundaryReached(Exception):
+        pass
+
+    def build_model(_sensitivity: xr.DataArray, **kwargs: Any) -> None:
+        received.update(kwargs)
+        raise ModelBoundaryReached
+
+    monkeypatch.setattr(co2_runner, "build_co2_model", build_model)
+
+    with pytest.raises(ModelBoundaryReached):
+        run_rhime_co2(
+            prepared_inputs=prepared,
+            fixed_model_mismatch=0.0,
+            no_model_error=True,
+        )
+
+    assert received["aggregation_error"].mode == "low_rank"
+
+
+def test_scalar_sigma_preparation_uses_artifact_aggregation_mode() -> None:
+    canonical = _canonical_inputs()
+    prepared = prepare_co2_inputs(canonical, _reduction(canonical), aggregation_error_rank=1)
+
+    eigenbasis = prepare_co2_scalar_sigma_eigenbasis(prepared)
+
+    assert eigenbasis.aggregation_error_mode == "low_rank"
+
+
+def test_standard_runner_materializes_aggregation_payload_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    canonical = _canonical_inputs()
+    prepared = prepare_co2_inputs(
+        canonical,
+        _reduction(canonical),
+        aggregation_error_rank=1,
+    )
+    factor = prepared.inv_inputs["low_rank_factor"]
+    diagonal = prepared.inv_inputs["diagonal_residual_variance"]
+    factor_values = np.asarray(factor.values)
+    diagonal_values = np.asarray(diagonal.values)
+    executions = 0
+
+    @delayed
+    def aggregation_payload() -> tuple[np.ndarray, np.ndarray]:
+        nonlocal executions
+        executions += 1
+        return factor_values, diagonal_values
+
+    payload = aggregation_payload()
+    factor.data = da.from_delayed(payload[0], shape=factor.shape, dtype=float)
+    diagonal.data = da.from_delayed(payload[1], shape=diagonal.shape, dtype=float)
+
+    class ModelBoundaryReached(Exception):
+        pass
+
+    def build_model(_sensitivity: xr.DataArray, **_kwargs: Any) -> None:
+        raise ModelBoundaryReached
+
+    monkeypatch.setattr(co2_runner, "build_co2_model", build_model)
+
+    with pytest.raises(ModelBoundaryReached):
+        run_rhime_co2(
+            prepared_inputs=prepared,
+            fixed_model_mismatch=0.0,
+            no_model_error=True,
+        )
+
+    assert executions == 1

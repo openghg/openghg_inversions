@@ -95,31 +95,28 @@ and site metadata::
    co2_inputs = prepare_co2_inputs(canonical_inputs, reduction)
 
 The returned
-:class:`~openghg_inversions.rhime.co2.Co2PreparedInputs` artifact uses
+:class:`~openghg_inversions.rhime.co2.Co2PreparedInputs` artifact uses at most
+512 low-rank modes by default, capped at the observation count. Pass
+``aggregation_error_rank=None`` to keep
 ``reduction.unresolved_observation_covariance`` as an exact dense aggregation
-covariance by default. It records one aggregation-error representation, and
-the CO2 runners use that representation without a separate mode argument.
+covariance. The artifact records one representation, and the CO2 runners use
+it without a separate mode argument.
 This handoff does not alter the prepared-input contracts of the standard,
 multisector, or ``run_hbmcmc.py`` paths.
 
-For larger cases, an explicit low-rank-plus-diagonal (LRPD) approximation can
-be prepared before the handoff::
+For larger cases, request an explicit low-rank-plus-diagonal (LRPD) rank at the
+handoff::
 
-   from openghg_inversions.observation_error import prepare_low_rank_aggregation_error
-
-   aggregation_error = prepare_low_rank_aggregation_error(
-       reduction.unresolved_observation_covariance,
-       rank=40,
-   )
    co2_inputs = prepare_co2_inputs(
        canonical_inputs,
        reduction,
-       aggregation_error=aggregation_error,
+       aggregation_error_rank=40,
    )
 
 This factorization is downstream of coherent reduction: it does not make the
 reduction approximate or change the retained prior and effective operator.
-The required ``rank`` is a caller-owned numerical and scientific decision.
+The default 512-mode cap is not an adequacy claim; selecting or overriding the
+rank remains a caller-owned numerical and scientific decision.
 The constructor preserves the dense covariance diagonal and reports
 approximation diagnostics; it does not automatically certify that a rank is
 adequate for a particular likelihood. Compare the approximate and dense total

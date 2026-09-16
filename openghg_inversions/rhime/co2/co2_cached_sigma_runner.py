@@ -12,7 +12,6 @@ import numpy as np
 import xarray as xr
 
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
-from openghg_inversions.inversion_data import RhimePreparedInputs
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.models.state_activity import StateActivity
 from openghg_inversions.observation_error import (
@@ -356,10 +355,7 @@ def run_rhime_co2_cached_sigma(
         prepared,
         use_bc=use_bc,
     )
-    model_inputs = materialize_pymc_inputs(
-        cast(RhimePreparedInputs, prepared),
-        variable_names=names,
-    )
+    model_inputs = materialize_pymc_inputs(prepared.rhime_inputs, variable_names=names)
     aggregation_error = resolve_aggregation_error(
         model_inputs,
         prepared.aggregation_error_mode,

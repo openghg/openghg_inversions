@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from hashlib import sha256
 from numbers import Integral
 import json
 from pathlib import Path
@@ -28,8 +27,6 @@ from openghg_inversions.observation_error import (
     AGGREGATION_ERROR_SD,
     DIAGONAL_RESIDUAL_VARIANCE,
     LOW_RANK_FACTOR,
-    LowRankAggregationErrorApproximation,
-    aggregation_error_covariance_sha256,
     prepare_low_rank_aggregation_error,
     resolve_aggregation_error,
 )
@@ -112,37 +109,6 @@ def _require_equivalent_units(actual: Any, expected: str, *, name: str) -> None:
         raise ValueError(f"{name} units {actual!r} are incompatible with {expected!r}.") from exc
     if not np.isclose(scale, 1.0, rtol=1e-12, atol=0.0):
         raise ValueError(f"{name} units {actual!r} do not have the same numeric scale as {expected!r}.")
-
-
-def _aggregation_error_payload_sha256(
-    inputs: xr.Dataset,
-    mode: Co2AggregationErrorMode,
-) -> str:
-    """Bind one concrete labelled covariance payload, including its units."""
-    names = (
-        (AGGREGATION_ERROR_COVARIANCE,) if mode == "dense" else (LOW_RANK_FACTOR, DIAGONAL_RESIDUAL_VARIANCE)
-    )
-    digest = sha256()
-    digest.update(mode.encode("utf-8"))
-    for name in names:
-        array = inputs[name]
-        coordinate_content = []
-        for dim in array.dims:
-            index = array.indexes.get(dim)
-            coordinate_content.append((dim, None if index is None else index.tolist()))
-        digest.update(
-            repr(
-                (
-                    name,
-                    array.dims,
-                    array.shape,
-                    coordinate_content,
-                    array.attrs.get("units"),
-                )
-            ).encode("utf-8")
-        )
-        digest.update(np.asarray(array.values, dtype=">f8").tobytes(order="C"))
-    return f"sha256:{digest.hexdigest()}"
 
 
 def _validate_co2_dataset(inputs: xr.Dataset) -> None:
@@ -229,14 +195,16 @@ def _validate_co2_dataset(inputs: xr.Dataset) -> None:
 class Co2PreparedInputs:
     """Durable coherent-reduction inputs for the CO2 model recipes.
 
-    The generic RHIME artifact is deliberately an implementation detail. The
-    public CO2 boundary additionally owns one unambiguous aggregation-error
-    representation and preparation provenance.
+    The public :attr:`rhime_inputs` member makes composition explicit for
+    shared RHIME consumers. This CO2 boundary additionally owns one
+    unambiguous aggregation-error representation and preparation provenance.
 
     Callers should normally construct this value with
     :func:`prepare_co2_inputs` rather than calling the dataclass constructor.
 
     Attributes:
+        rhime_inputs: Canonical RHIME inputs composed into this recipe-specific
+            boundary and passed directly to shared RHIME consumers.
         aggregation_error_mode: Concrete dense or low-rank representation
             stored in :attr:`inv_inputs` and consumed by both CO2 runners.
         provenance: Immutable JSON-safe preparation record. Low-rank artifacts
@@ -244,16 +212,14 @@ class Co2PreparedInputs:
             diagnostics.
     """
 
-    _rhime_inputs: RhimePreparedInputs
+    rhime_inputs: RhimePreparedInputs
     aggregation_error_mode: Co2AggregationErrorMode
     provenance: Mapping[str, Any] = field(default_factory=dict)
-    _aggregation_error_payload_digest: str | None = None
 
     def __post_init__(self) -> None:
         if self.aggregation_error_mode not in ("dense", "low_rank"):
             raise ValueError("CO2 aggregation_error_mode must be 'dense' or 'low_rank'.")
-        prepared = self._rhime_inputs.validated()
-        inputs = prepared.inv_inputs
+        inputs = self.rhime_inputs.inv_inputs
         _validate_co2_dataset(inputs)
         dense = AGGREGATION_ERROR_COVARIANCE in inputs
         low_rank = LOW_RANK_FACTOR in inputs or DIAGONAL_RESIDUAL_VARIANCE in inputs
@@ -261,71 +227,92 @@ class Co2PreparedInputs:
             raise ValueError("Dense CO2 inputs must contain only the dense aggregation covariance.")
         if self.aggregation_error_mode == "low_rank" and (dense or not low_rank):
             raise ValueError("Low-rank CO2 inputs must contain only the factor and diagonal residual.")
-        resolve_aggregation_error(inputs, self.aggregation_error_mode)
-        payload_digest = _aggregation_error_payload_sha256(inputs, self.aggregation_error_mode)
-        if (
-            self._aggregation_error_payload_digest is not None
-            and self._aggregation_error_payload_digest != payload_digest
-        ):
-            raise ValueError("CO2 aggregation-error payload does not match its recorded identity.")
-        object.__setattr__(self, "_rhime_inputs", prepared)
+        if dense:
+            validate_covariance_coordinates(
+                inputs[AGGREGATION_ERROR_COVARIANCE],
+                dim="nmeasure",
+                covariance_dim="nmeasure_cov",
+            )
+        if low_rank:
+            factor = inputs[LOW_RANK_FACTOR]
+            diagonal = inputs[DIAGONAL_RESIDUAL_VARIANCE]
+            if factor.dims != ("nmeasure", "agg_rank"):
+                raise ValueError("CO2 low_rank_factor must have dimensions ('nmeasure', 'agg_rank').")
+            if diagonal.dims != ("nmeasure",):
+                raise ValueError("CO2 diagonal_residual_variance must have dimensions ('nmeasure',).")
         object.__setattr__(self, "provenance", _json_mapping(self.provenance))
-        object.__setattr__(self, "_aggregation_error_payload_digest", payload_digest)
 
     @property
     def inv_inputs(self) -> xr.Dataset:
         """Return the labelled dataset consumed by CO2 runners."""
-        return self._rhime_inputs.inv_inputs
+        return self.rhime_inputs.inv_inputs
 
     @property
     def basis_functions(self) -> Any:
         """Return the retained basis object."""
-        return self._rhime_inputs.basis_functions
+        return self.rhime_inputs.basis_functions
 
     @property
     def site_metadata(self) -> xr.Dataset:
         """Return authoritative site metadata."""
-        return self._rhime_inputs.site_metadata
+        return self.rhime_inputs.site_metadata
 
     @property
     def sites(self) -> tuple[str, ...]:
         """Return site labels in indicator-decoding order."""
-        return self._rhime_inputs.sites
+        return self.rhime_inputs.sites
 
     @property
     def averaging_period(self) -> tuple[str | None, ...]:
         """Return averaging periods aligned to :attr:`sites`."""
-        return self._rhime_inputs.averaging_period
+        return self.rhime_inputs.averaging_period
 
     @property
     def basis_artifact_source(self) -> str:
         """Return retained basis provenance."""
-        return self._rhime_inputs.basis_artifact_source
+        return self.rhime_inputs.basis_artifact_source
 
     @property
     def basis_artifact_path(self) -> str | None:
         """Return the provenance-only basis artifact path."""
-        return self._rhime_inputs.basis_artifact_path
+        return self.rhime_inputs.basis_artifact_path
 
     def validated(self) -> Self:
-        """Return a freshly validated copy."""
-        return type(self)(
-            self._rhime_inputs,
-            aggregation_error_mode=self.aggregation_error_mode,
-            provenance=self.provenance,
-            _aggregation_error_payload_digest=self._aggregation_error_payload_digest,
-        )
+        """Return this structurally validated immutable wrapper."""
+        return self
 
     def to_datatree(self) -> xr.DataTree:
-        """Convert these inputs to the dedicated versioned schema."""
-        prepared = self.validated()
-        tree = xr.DataTree.from_dict({"rhime_inputs": prepared._rhime_inputs.to_datatree()})
+        """Validate and materialize aggregation error into the versioned schema."""
+        aggregation_error = resolve_aggregation_error(
+            self.inv_inputs,
+            self.aggregation_error_mode,
+        )
+        variables = dict(self.inv_inputs.variables)
+        if aggregation_error.covariance is not None:
+            variables[AGGREGATION_ERROR_COVARIANCE] = variables[
+                AGGREGATION_ERROR_COVARIANCE
+            ].copy(deep=False, data=aggregation_error.covariance.data)
+        if aggregation_error.factor is not None:
+            variables[LOW_RANK_FACTOR] = variables[LOW_RANK_FACTOR].copy(
+                deep=False,
+                data=aggregation_error.factor.data,
+            )
+        if aggregation_error.diagonal_variance is not None:
+            variables[DIAGONAL_RESIDUAL_VARIANCE] = variables[
+                DIAGONAL_RESIDUAL_VARIANCE
+            ].copy(deep=False, data=aggregation_error.diagonal_variance.data)
+        serializable_inputs = self.inv_inputs._replace(variables=variables)
+        serializable = RhimePreparedInputs(
+            inv_inputs=serializable_inputs,
+            basis_functions=self.basis_functions,
+            site_metadata=self.site_metadata,
+        )
+        tree = xr.DataTree.from_dict({"rhime_inputs": serializable.to_datatree()})
         tree.attrs = {
             "schema": CO2_PREPARED_INPUTS_SCHEMA,
             "schema_version": CO2_PREPARED_INPUTS_SCHEMA_VERSION,
-            "aggregation_error_mode": prepared.aggregation_error_mode,
-            "provenance_json": json.dumps(dict(prepared.provenance), sort_keys=True, allow_nan=False),
-            "aggregation_error_payload_sha256": prepared._aggregation_error_payload_digest,
+            "aggregation_error_mode": self.aggregation_error_mode,
+            "provenance_json": json.dumps(dict(self.provenance), sort_keys=True, allow_nan=False),
         }
         return tree
 
@@ -352,15 +339,13 @@ class Co2PreparedInputs:
             provenance = json.loads(str(tree.attrs.get("provenance_json", "{}")))
         except json.JSONDecodeError as exc:
             raise ValueError("Serialized CO2 provenance is not valid JSON.") from exc
-        payload_digest = tree.attrs.get("aggregation_error_payload_sha256")
-        if not isinstance(payload_digest, str) or not payload_digest.startswith("sha256:"):
-            raise ValueError("Serialized CO2 aggregation-error payload identity is missing or invalid.")
-        return cls(
+        prepared = cls(
             RhimePreparedInputs.from_datatree(cast(xr.DataTree, tree["rhime_inputs"])),
             aggregation_error_mode=cast(Co2AggregationErrorMode, mode),
             provenance=provenance,
-            _aggregation_error_payload_digest=payload_digest,
         )
+        resolve_aggregation_error(prepared.inv_inputs, prepared.aggregation_error_mode)
+        return prepared
 
     def save(
         self,
@@ -380,16 +365,16 @@ def prepare_co2_inputs(
     canonical_inputs: RhimePreparedInputs,
     reduction: CoherentGaussianReduction,
     *,
-    aggregation_error: LowRankAggregationErrorApproximation | None = None,
+    aggregation_error_rank: int | None = 512,
     provenance: Mapping[str, Any] | None = None,
 ) -> Co2PreparedInputs:
     """Map one coherent Gaussian reduction into the CO2 replay contract.
 
     The reduction replaces the canonical sensitivity with its effective
     operator and supplies the linked retained prior, affine intercept, and
-    unresolved covariance. With no approximation, the unresolved covariance
-    is stored exactly. A supplied LRPD approximation must be tied to the same
-    labelled covariance and preserve its marginal variance.
+    unresolved covariance. By default, the handoff retains at most 512 LRPD
+    modes. ``None`` stores the unresolved covariance exactly; requested ranks
+    larger than the observation count use full rank.
 
     Inputs are borrowed and are not mutated. The returned artifact retains the
     canonical observations, observation error, optional boundary data, state
@@ -400,9 +385,9 @@ def prepare_co2_inputs(
             observation and retained-state labels match ``reduction``.
         reduction: One coherent Gaussian reduction containing all linked
             retained-prior and observation products.
-        aggregation_error: Optional validated LRPD approximation prepared from
-            ``reduction.unresolved_observation_covariance``. Omit it to store
-            the exact dense covariance.
+        aggregation_error_rank: Positive LRPD rank, defaulting to 512. Values
+            larger than the observation count are capped at that count. Pass
+            ``None`` to store the exact dense covariance.
         provenance: Optional JSON-serializable project or preparation
             provenance. The reduction strategy and LRPD diagnostics are added
             by this boundary.
@@ -411,8 +396,8 @@ def prepare_co2_inputs(
         A validated, serializable artifact accepted by both CO2 runners.
 
     Raises:
-        ValueError: If labels, dimensions, units, covariance representation,
-            source identity, marginal variance, or provenance are invalid.
+        ValueError: If labels, dimensions, units, rank, covariance
+            representation, or provenance are invalid.
     """
     canonical = canonical_inputs.validated()
     inputs = canonical.inv_inputs
@@ -492,6 +477,15 @@ def prepare_co2_inputs(
         f"({observation_units})**2",
         name="Coherent unresolved_observation_covariance",
     )
+    if (
+        aggregation_error_rank is not None
+        and (
+            isinstance(aggregation_error_rank, bool)
+            or not isinstance(aggregation_error_rank, int)
+            or aggregation_error_rank < 1
+        )
+    ):
+        raise ValueError("aggregation_error_rank must be a positive integer or None.")
 
     mapped = inputs.drop_vars(
         (
@@ -503,6 +497,8 @@ def prepare_co2_inputs(
             AGGREGATION_ERROR_SD,
             LOW_RANK_FACTOR,
             DIAGONAL_RESIDUAL_VARIANCE,
+            "agg_rank",
+            "nmeasure_cov",
         ),
         errors="ignore",
     )
@@ -534,7 +530,8 @@ def prepare_co2_inputs(
         "nmeasure",
     )
 
-    if aggregation_error is None:
+    approximation = None
+    if aggregation_error_rank is None:
         mode: Co2AggregationErrorMode = "dense"
         mapped[AGGREGATION_ERROR_COVARIANCE] = _borrow_without_axis_coordinates(
             _renamed(
@@ -545,63 +542,16 @@ def prepare_co2_inputs(
             "nmeasure",
         )
     else:
-        selected = aggregation_error.aggregation_error
-        if selected.mode != "low_rank" or selected.factor is None or selected.diagonal_variance is None:
-            raise ValueError("CO2 aggregation_error must contain a low-rank-plus-diagonal representation.")
-        expected_identity = aggregation_error_covariance_sha256(
+        approximation = prepare_low_rank_aggregation_error(
             unresolved,
+            rank=min(aggregation_error_rank, unresolved.sizes[observation_dim]),
             output_dim=observation_dim,
             covariance_dim=observation_covariance_dim,
         )
-        if aggregation_error.source_covariance_sha256 != expected_identity:
-            raise ValueError("Low-rank aggregation error was not derived from this coherent reduction.")
-        factor_values = np.asarray(selected.factor.values, dtype=float)
-        diagonal_values = np.asarray(selected.diagonal_variance.values, dtype=float)
-        unresolved_values = np.asarray(unresolved.values, dtype=float)
-        expected_marginal = np.diag(unresolved_values)
-        actual_marginal = np.sum(factor_values**2, axis=1) + diagonal_values
-        marginal_tolerance = 1e-10 * max(float(np.max(np.abs(expected_marginal))), 1.0)
-        if not np.allclose(
-            actual_marginal,
-            expected_marginal,
-            rtol=1e-10,
-            atol=marginal_tolerance,
-        ):
-            raise ValueError("Low-rank aggregation error must preserve the coherent covariance diagonal.")
-        requested_rank = aggregation_error.diagnostics.get("requested_rank")
-        if isinstance(requested_rank, bool) or not isinstance(requested_rank, int):
-            raise ValueError("Low-rank aggregation-error diagnostics require an integer requested_rank.")
-        expected_approximation = prepare_low_rank_aggregation_error(
-            unresolved,
-            rank=requested_rank,
-            output_dim=observation_dim,
-            covariance_dim=observation_covariance_dim,
-        ).aggregation_error
-        assert expected_approximation.factor is not None
-        assert expected_approximation.diagonal_variance is not None
-        expected_payload = np.asarray(expected_approximation.factor.values, dtype=float) @ np.asarray(
-            expected_approximation.factor.values, dtype=float
-        ).T + np.diag(np.asarray(expected_approximation.diagonal_variance.values, dtype=float))
-        actual_payload = factor_values @ factor_values.T + np.diag(diagonal_values)
-        payload_tolerance = 1e-10 * max(float(np.max(np.abs(expected_payload))), 1.0)
-        if not np.allclose(
-            actual_payload,
-            expected_payload,
-            rtol=1e-10,
-            atol=payload_tolerance,
-        ):
-            raise ValueError(
-                "Low-rank aggregation-error payload does not match its source covariance and diagnostics."
-            )
+        selected = approximation.aggregation_error
+        assert selected.factor is not None and selected.diagonal_variance is not None
         factor_dim = str(selected.factor.dims[0])
         diagonal_dim = str(selected.diagonal_variance.dims[0])
-        _require_same_axis(selected.factor, factor_dim, observation_index, name="Low-rank factor")
-        _require_same_axis(
-            selected.diagonal_variance,
-            diagonal_dim,
-            observation_index,
-            name="Low-rank diagonal residual",
-        )
         mapped[LOW_RANK_FACTOR] = _borrow_without_axis_coordinates(
             _renamed(
                 selected.factor,
@@ -630,9 +580,11 @@ def prepare_co2_inputs(
     if declared_strategy is not None and declared_strategy != reduction.projection_strategy:
         raise ValueError("CO2 provenance projection_strategy conflicts with the coherent reduction.")
     metadata["projection_strategy"] = reduction.projection_strategy
-    if aggregation_error is not None:
-        metadata["aggregation_error"] = dict(aggregation_error.diagnostics)
-        metadata["aggregation_error"]["source_covariance_sha256"] = aggregation_error.source_covariance_sha256
+    if approximation is not None:
+        metadata["aggregation_error"] = dict(approximation.diagnostics)
+        metadata["aggregation_error"]["source_covariance_sha256"] = (
+            approximation.source_covariance_sha256
+        )
     return Co2PreparedInputs(
         RhimePreparedInputs(
             inv_inputs=mapped,

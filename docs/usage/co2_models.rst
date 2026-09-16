@@ -162,12 +162,17 @@ concentration units.
 Construct the CO2-specific artifact by pairing canonical RHIME inputs with all
 linked products from one
 :class:`~openghg_inversions.coherent_reduction.CoherentGaussianReduction`.
-The default keeps the reduction's exact dense unresolved covariance::
+Pass ``aggregation_error_rank=None`` to keep the reduction's exact dense
+unresolved covariance::
 
    from openghg_inversions.rhime.co2 import prepare_co2_inputs
    from openghg_inversions.rhime import run_rhime_co2
 
-   prepared = prepare_co2_inputs(canonical_inputs, reduction)
+   prepared = prepare_co2_inputs(
+       canonical_inputs,
+       reduction,
+       aggregation_error_rank=None,
+   )
    prepared.save("co2-coherent-dense.zarr")
 
    idata = run_rhime_co2(
@@ -222,18 +227,17 @@ with an accepted-state runtime cache. The scalar-sigma cache is instead an
 external numerical preparation artifact used through the ordinary
 ``run_rhime_co2`` likelihood seam.
 
-Prepare and save that artifact once from the same prepared CO2 inputs and
-aggregation-error mode that sampling will use::
+Prepare and save that artifact once from the same prepared CO2 inputs that
+sampling will use::
 
-   from openghg_inversions.inversion_data import RhimePreparedInputs
    from openghg_inversions.models import save_scalar_sigma_eigenbasis
-   from openghg_inversions.rhime.co2 import prepare_co2_scalar_sigma_eigenbasis
-
-   prepared = RhimePreparedInputs.load("co2-coherent-dense.zarr")
-   eigenbasis = prepare_co2_scalar_sigma_eigenbasis(
-       prepared,
-       aggregation_error_mode="dense",
+   from openghg_inversions.rhime.co2 import (
+       Co2PreparedInputs,
+       prepare_co2_scalar_sigma_eigenbasis,
    )
+
+   prepared = Co2PreparedInputs.load("co2-coherent-dense.zarr")
+   eigenbasis = prepare_co2_scalar_sigma_eigenbasis(prepared)
    save_scalar_sigma_eigenbasis("scalar-sigma-eigenbasis.nc", eigenbasis)
 
 Select the package likelihood through the CO2 runner::
@@ -243,7 +247,6 @@ Select the package likelihood through the CO2 runner::
 
    trace = run_rhime_co2(
        prepared_inputs=prepared,
-       aggregation_error_mode="dense",
        likelihood_builder=add_scalar_sigma_eigen_likelihood,
        likelihood_kwargs={
            "eigenbasis_path": "scalar-sigma-eigenbasis.nc",
@@ -255,16 +258,15 @@ The cache stores labelled eigenvectors and eigenvalues, the aggregation-error
 mode, and a fingerprint of the resolved ``A + D_obs``. Loading checks its
 schema, dimensions, labels, cache/observation/reported-error unit labels, mode,
 and current covariance identity before model construction. Regenerate the
-cache after changing ``mf_error`` values, aggregation-error values, or
-``aggregation_error_mode``. Changing the observation order or the unit
-label also makes the cache incompatible. Loading reconstructs the current base
+cache after changing ``mf_error`` values, aggregation-error values, or the
+artifact's aggregation-error representation. Changing the observation order
+or the unit label also makes the cache incompatible. Loading reconstructs the current base
 covariance once, but does not repeat the eigendecomposition or add work to
 likelihood evaluations.
 
-Unit conversion is caller-owned. Neither
-:func:`openghg_inversions.observation_error.resolve_aggregation_error` nor
-scalar-sigma preparation converts or validates units on aggregation-error
-arrays. After numerical conversion, ``mf``, ``mf_error``, ``sigma_global``
+Unit conversion is caller-owned. CO2 preparation validates compatible units
+at the same numeric scale but does not convert values. After numerical
+conversion, ``mf``, ``mf_error``, ``sigma_global``
 and, when present, ``aggregation_error_sd`` and ``low_rank_factor`` use one
 concentration unit. When present, ``aggregation_error_covariance`` and
 ``diagonal_residual_variance`` use that unit squared. Configure
@@ -493,25 +495,20 @@ The reduction itself is exact under its stated Gaussian assumptions. An LRPD
 artifact is a separate downstream numerical approximation of its unresolved
 covariance. The cached runner can represent an exact dense covariance through
 all of its positive eigenmodes, but that generally produces a full-rank factor
-and is not its intended scaling path. Construct a genuine LRPD approximation
-only with an explicit retained rank::
+and is not its intended scaling path. The default retains at most 512 modes;
+override it when a different retained rank is scientifically justified::
 
-   from openghg_inversions.observation_error import prepare_low_rank_aggregation_error
    from openghg_inversions.rhime.co2 import prepare_co2_inputs
 
-   aggregation_error = prepare_low_rank_aggregation_error(
-       reduction.unresolved_observation_covariance,
-       rank=40,
-   )
    prepared = prepare_co2_inputs(
        canonical_inputs,
        reduction,
-       aggregation_error=aggregation_error,
+       aggregation_error_rank=40,
    )
    prepared.save("co2-coherent-low-rank.zarr")
 
 The approximation preserves the dense covariance diagonal and records
-diagnostics, but an explicit rank is not evidence that the approximation is
+diagnostics, but a chosen rank is not evidence that the approximation is
 adequate for an inversion. Assess the resulting total likelihood covariance
 and log density for representative observation-error, site-amplitude, and OU
 profiles, especially when model-mismatch error is small.

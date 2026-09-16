@@ -6,13 +6,12 @@ from collections import defaultdict
 from collections.abc import Mapping
 import json
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 import arviz as az
 import xarray as xr
 
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
-from openghg_inversions.inversion_data import RhimePreparedInputs
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.models.scalar_sigma import (
     ScalarSigmaEigenbasis,
@@ -23,7 +22,6 @@ from openghg_inversions.models.scalar_sigma import (
 from openghg_inversions.models.state_activity import StateActivity
 from openghg_inversions.observation_error import (
     AggregationError,
-    AggregationErrorMode,
     aggregation_error_input_names,
     resolve_aggregation_error,
 )
@@ -176,9 +174,7 @@ def co2_model_input_names(
 
 
 def prepare_co2_scalar_sigma_eigenbasis(
-    prepared_inputs: RhimePreparedInputs,
-    *,
-    aggregation_error_mode: AggregationErrorMode = "dense",
+    prepared_inputs: Co2PreparedInputs,
 ) -> ScalarSigmaEigenbasis:
     """Prepare the scalar-sigma cache value from labelled CO2 inputs.
 
@@ -188,8 +184,6 @@ def prepare_co2_scalar_sigma_eigenbasis(
 
     Args:
         prepared_inputs: Validated prepared inputs for the CO2-only recipe.
-        aggregation_error_mode: Aggregation-error representation to include in
-            the fixed base covariance.
 
     Returns:
         Labelled eigenbasis ready to save or pass to
@@ -205,13 +199,13 @@ def prepare_co2_scalar_sigma_eigenbasis(
         "mf_error",
         *aggregation_error_input_names(
             prepared.inv_inputs,
-            aggregation_error_mode,
+            prepared.aggregation_error_mode,
         ),
     )
-    model_inputs = materialize_pymc_inputs(prepared, variable_names=names)
+    model_inputs = materialize_pymc_inputs(prepared.rhime_inputs, variable_names=names)
     aggregation_error = resolve_aggregation_error(
         model_inputs,
-        aggregation_error_mode,
+        prepared.aggregation_error_mode,
     )
     return prepare_scalar_sigma_eigenbasis(
         observations=model_inputs["mf"],
@@ -342,10 +336,7 @@ def run_rhime_co2(
         preserve_prepared_fixed_mismatch=(likelihood_builder is None and fixed_model_mismatch is None),
         use_bc=use_bc,
     )
-    model_inputs = materialize_pymc_inputs(
-        cast(RhimePreparedInputs, prepared),
-        variable_names=names,
-    )
+    model_inputs = materialize_pymc_inputs(prepared.rhime_inputs, variable_names=names)
     if likelihood_builder is None and not no_model_error and sigma_alignment is None:
         sigma_alignment = SigmaAlignment.from_observations(model_inputs["mf"])
     aggregation_error = resolve_aggregation_error(

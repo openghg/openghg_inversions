@@ -301,3 +301,14 @@ def test_prepare_low_rank_aggregation_error_validates_values(
 
     with pytest.raises(ValueError, match=match):
         prepare_low_rank_aggregation_error(covariance, rank=1)
+
+
+def test_low_rank_psd_tolerance_scales_with_covariance_magnitude() -> None:
+    covariance = xr.DataArray(
+        np.array([[1.0, 2.0], [2.0, 1.0]]) * 1.0e-20,
+        dims=("nmeasure", "nmeasure_cov"),
+        coords={"nmeasure": ["A", "B"], "nmeasure_cov": ["A", "B"]},
+    )
+
+    with pytest.raises(ValueError, match="positive semidefinite"):
+        prepare_low_rank_aggregation_error(covariance, rank=1)
