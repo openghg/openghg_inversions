@@ -83,6 +83,48 @@ and basis-prolongation data. Related arrays are computed together, and the
 returned xarray arrays are eager with explicit retained-state and observation
 labels.
 
+Preparing CO2 model inputs
+--------------------------
+
+The CO2-only model has a dedicated public handoff that keeps the linked
+reduction products together with canonical RHIME observations, basis data,
+and site metadata::
+
+   from openghg_inversions.rhime.co2 import prepare_co2_inputs
+
+   co2_inputs = prepare_co2_inputs(canonical_inputs, reduction)
+
+The returned
+:class:`~openghg_inversions.rhime.co2.Co2PreparedInputs` artifact uses
+``reduction.unresolved_observation_covariance`` as an exact dense aggregation
+covariance by default. It records one aggregation-error representation, and
+the CO2 runners use that representation without a separate mode argument.
+This handoff does not alter the prepared-input contracts of the standard,
+multisector, or ``run_hbmcmc.py`` paths.
+
+For larger cases, an explicit low-rank-plus-diagonal (LRPD) approximation can
+be prepared before the handoff::
+
+   from openghg_inversions.observation_error import prepare_low_rank_aggregation_error
+
+   aggregation_error = prepare_low_rank_aggregation_error(
+       reduction.unresolved_observation_covariance,
+       rank=40,
+   )
+   co2_inputs = prepare_co2_inputs(
+       canonical_inputs,
+       reduction,
+       aggregation_error=aggregation_error,
+   )
+
+This factorization is downstream of coherent reduction: it does not make the
+reduction approximate or change the retained prior and effective operator.
+The required ``rank`` is a caller-owned numerical and scientific decision.
+The constructor preserves the dense covariance diagonal and reports
+approximation diagnostics; it does not automatically certify that a rank is
+adequate for a particular likelihood. Compare the approximate and dense total
+likelihood covariance or log density over representative error profiles.
+
 Assumptions and limitations
 ---------------------------
 

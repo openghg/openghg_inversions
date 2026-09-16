@@ -9,6 +9,7 @@ covariance, or diagnostically as independent standard deviations.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from hashlib import sha256
 from typing import Literal, TypeAlias
 
 from dask import compute as dask_compute
@@ -52,6 +53,173 @@ class AggregationError:
     covariance: xr.DataArray | None = None
     factor: xr.DataArray | None = None
     diagonal_variance: xr.DataArray | None = None
+
+
+@dataclass(frozen=True)
+class LowRankAggregationErrorApproximation:
+    """A validated LRPD view tied to one dense source covariance.
+
+    Attributes:
+        aggregation_error: Labelled low-rank factor and non-negative diagonal
+            residual accepted by the shared likelihood components.
+        source_covariance_sha256: Stable identity of the labelled dense
+            covariance from which the approximation was constructed.
+        diagnostics: JSON-safe method, rank, tolerance, spectral, Frobenius,
+            and diagonal-preservation diagnostics. These values describe the
+            approximation but do not certify a rank for a particular
+            likelihood.
+    """
+
+    aggregation_error: AggregationError
+    source_covariance_sha256: str
+    diagnostics: dict[str, str | int | float]
+
+
+def aggregation_error_covariance_sha256(
+    covariance: xr.DataArray,
+    *,
+    output_dim: str = "nmeasure",
+    covariance_dim: str = "nmeasure_cov",
+) -> str:
+    """Return a stable content identity for a labelled aggregation covariance.
+
+    Args:
+        covariance: Square covariance with identical ordered axis labels.
+        output_dim: Observation dimension on the covariance rows.
+        covariance_dim: Repeated observation dimension on the columns.
+
+    Returns:
+        SHA-256 identity covering dimensions, coordinates, and numeric values.
+
+    Raises:
+        ValueError: If the covariance structure or numeric values are invalid.
+    """
+    validate_covariance_coordinates(
+        covariance,
+        dim=output_dim,
+        covariance_dim=covariance_dim,
+    )
+    (covariance,) = _materialize_together(covariance)
+    values = _numeric_finite(
+        "covariance",
+        covariance,
+        owner="Aggregation-error covariance identity input",
+    )
+    coordinate_content = tuple(
+        (dim, np.asarray(covariance.coords[dim].values).tolist())
+        for dim in (output_dim, covariance_dim)
+    )
+    digest = sha256()
+    digest.update(repr((covariance.dims, covariance.shape, coordinate_content)).encode("utf-8"))
+    digest.update(np.asarray(values, dtype=">f8").tobytes(order="C"))
+    return f"sha256:{digest.hexdigest()}"
+
+
+def prepare_low_rank_aggregation_error(
+    covariance: xr.DataArray,
+    *,
+    rank: int,
+    output_dim: str = "nmeasure",
+    covariance_dim: str = "nmeasure_cov",
+) -> LowRankAggregationErrorApproximation:
+    """Approximate a labelled covariance by a low-rank-plus-diagonal form.
+
+    This is an eager numerical boundary. The leading eigenmodes form the
+    low-rank factor and the discarded marginal variance is retained on the
+    diagonal, so the source covariance diagonal is preserved up to roundoff.
+
+    Args:
+        covariance: Symmetric positive-semidefinite covariance matrix.
+        rank: Maximum number of leading eigenmodes to retain.
+        output_dim: Observation dimension on the covariance rows.
+        covariance_dim: Repeated observation dimension on the columns.
+
+    Returns:
+        Validated aggregation error together with source identity and
+        JSON-safe approximation diagnostics.
+
+    Raises:
+        ValueError: If dimensions, coordinates, rank, or numerical covariance
+            properties are invalid.
+    """
+    validate_covariance_coordinates(
+        covariance,
+        dim=output_dim,
+        covariance_dim=covariance_dim,
+    )
+    nmeasure = covariance.sizes[output_dim]
+    if isinstance(rank, bool) or not isinstance(rank, int) or not 1 <= rank <= nmeasure:
+        raise ValueError(f"`rank` must be an integer from 1 to {nmeasure}; got {rank!r}.")
+
+    (covariance,) = _materialize_together(covariance)
+    values = np.asarray(
+        _numeric_finite("covariance", covariance, owner="Low-rank approximation input"),
+        dtype=float,
+    )
+    _validate_dense_covariance_values(values, owner="Low-rank approximation input covariance")
+
+    scale = max(float(np.max(np.abs(values))), 1.0)
+    roundoff_tolerance = 1e-10 * scale
+    symmetric = (values + values.T) * 0.5
+    eigenvalues, eigenvectors = np.linalg.eigh(symmetric)
+    order = np.argsort(eigenvalues)[::-1]
+    eigenvalues = np.maximum(eigenvalues[order], 0.0)
+    eigenvectors = eigenvectors[:, order]
+    retained = eigenvalues[:rank]
+    factor_values = eigenvectors[:, :rank] * np.sqrt(retained)
+    diagonal_values = np.diag(symmetric) - np.sum(factor_values**2, axis=1)
+    if float(diagonal_values.min()) < -roundoff_tolerance:
+        raise ValueError("Low-rank approximation produced a negative diagonal residual variance.")
+    diagonal_values = np.maximum(diagonal_values, 0.0)
+
+    labels = covariance.coords[output_dim]
+    factor = xr.DataArray(
+        factor_values,
+        dims=(output_dim, "agg_rank"),
+        coords={output_dim: labels, "agg_rank": np.arange(rank)},
+        name=LOW_RANK_FACTOR,
+    )
+    diagonal = xr.DataArray(
+        diagonal_values,
+        dims=(output_dim,),
+        coords={output_dim: labels},
+        name=DIAGONAL_RESIDUAL_VARIANCE,
+    )
+    aggregation_error = resolve_aggregation_error(
+        xr.Dataset({LOW_RANK_FACTOR: factor, DIAGONAL_RESIDUAL_VARIANCE: diagonal}),
+        "low_rank",
+        output_dim=output_dim,
+        covariance_dim=covariance_dim,
+    )
+
+    reconstructed = factor_values @ factor_values.T + np.diag(diagonal_values)
+    source_norm = float(np.linalg.norm(symmetric, ord="fro"))
+    reconstruction_error = float(np.linalg.norm(symmetric - reconstructed, ord="fro"))
+    positive_spectrum = float(eigenvalues.sum())
+    retained_fraction = float(retained.sum() / positive_spectrum) if positive_spectrum else 1.0
+    return LowRankAggregationErrorApproximation(
+        aggregation_error=aggregation_error,
+        source_covariance_sha256=aggregation_error_covariance_sha256(
+            covariance,
+            output_dim=output_dim,
+            covariance_dim=covariance_dim,
+        ),
+        diagnostics={
+            "method": "descending_eigendecomposition_with_diagonal_tail",
+            "requested_rank": rank,
+            "actual_rank": int(np.count_nonzero(retained > roundoff_tolerance)),
+            "retained_positive_spectral_fraction": retained_fraction,
+            "relative_frobenius_reconstruction_error": (
+                reconstruction_error / source_norm if source_norm else 0.0
+            ),
+            "diagonal_preservation_error": float(
+                np.max(np.abs(np.diag(symmetric) - np.diag(reconstructed)))
+            ),
+            "roundoff_tolerance": roundoff_tolerance,
+            "symmetry_relative_tolerance": 1e-10,
+            "psd_absolute_tolerance": roundoff_tolerance,
+        },
+    )
 
 
 def aggregation_error_as_low_rank(

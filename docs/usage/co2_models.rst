@@ -129,10 +129,14 @@ Run the ordinary prepared-input CO2 runner
 
 The model builder accepts explicit scientific arrays rather than a dataset.
 For durable prepared artifacts, :func:`openghg_inversions.rhime.run_rhime_co2`
-is the public replay seam: it validates and materializes the selected arrays,
-resolves aggregation error, calls the explicit builder, samples, and stores a
-JSON variable-role and model-provenance manifest on the returned
-``InferenceData``. A prepared ``fixed_model_mismatch`` is preserved when the
+is the public replay seam. It accepts only a
+:class:`~openghg_inversions.rhime.co2.Co2PreparedInputs` artifact, validates
+and materializes its selected arrays, resolves its declared aggregation-error
+representation, calls the explicit builder, samples, and stores a JSON
+variable-role and model-provenance manifest on the returned ``InferenceData``.
+The artifact, rather than a runner argument, owns whether aggregation error is
+stored as an exact dense covariance or as a low-rank-plus-diagonal (LRPD)
+approximation. A prepared ``fixed_model_mismatch`` is preserved when the
 runner argument is ``None``; an explicit scalar or labelled vector overrides
 it. Persist gathered-state traces with
 :func:`openghg_inversions.serialization.save_inferencedata`, which uses the
@@ -155,15 +159,19 @@ likelihood, and sampled outputs.
 The location and scale parameters in ``offset_prior`` use the observations'
 concentration units.
 
-For example::
+Construct the CO2-specific artifact by pairing canonical RHIME inputs with all
+linked products from one
+:class:`~openghg_inversions.coherent_reduction.CoherentGaussianReduction`.
+The default keeps the reduction's exact dense unresolved covariance::
 
-   from openghg_inversions.inversion_data import RhimePreparedInputs
+   from openghg_inversions.rhime.co2 import prepare_co2_inputs
    from openghg_inversions.rhime import run_rhime_co2
 
-   prepared = RhimePreparedInputs.load("co2-coherent-dense.zarr")
+   prepared = prepare_co2_inputs(canonical_inputs, reduction)
+   prepared.save("co2-coherent-dense.zarr")
+
    idata = run_rhime_co2(
        prepared_inputs=prepared,
-       aggregation_error_mode="dense",
        use_bc=True,
        bc_prior={
            "pdf": "truncatednormal",
@@ -174,6 +182,11 @@ For example::
        offset_prior={"pdf": "normal", "mu": 0.0, "sigma": 0.1},
        offset_args={"per_site": False},
    )
+
+Reload a durable artifact with
+:meth:`openghg_inversions.rhime.co2.Co2PreparedInputs.load`. The loaded
+artifact retains the selected representation, so replay does not require or
+accept ``aggregation_error_mode``.
 
 The CO2 builder and prepared-input runner also accept one ordinary
 ``likelihood_builder`` with explicit ``likelihood_kwargs``. This selects
@@ -445,15 +458,15 @@ and stock state NUTS reads that cache without refactorizing the observation
 covariance during its trajectory.
 
 The runner begins from an already assembled coherent-reduction
-``RhimePreparedInputs`` artifact; it does not perform coherent reduction. Its
-``inv_inputs`` must contain ``H``, ``alpha_prior_mean``,
+:class:`~openghg_inversions.rhime.co2.Co2PreparedInputs` artifact; it does not
+perform coherent reduction. Its ``inv_inputs`` must contain ``H``,
+``alpha_prior_mean``,
 ``alpha_prior_covariance``, ``fixed_prior_contribution``, ``mf``, and
 ``mf_error``. The observation arrays share one ``nmeasure`` row order, while
-the prior arrays share ``H``'s state labels. With the ``"low_rank"``
-aggregation-error mode used below, the artifact must also contain
-``low_rank_factor`` and ``diagonal_residual_variance``. A dense artifact
-instead contains ``aggregation_error_covariance`` and must be selected with
-``aggregation_error_mode="dense"``. Optional ``state_is_active`` and
+the prior arrays share ``H``'s state labels. A low-rank artifact contains
+``low_rank_factor`` and ``diagonal_residual_variance``; a dense artifact
+instead contains ``aggregation_error_covariance``. The artifact records which
+one representation its runner must use. Optional ``state_is_active`` and
 ``state_fixed_value`` variables carry the prepared state-activity policy.
 The observation array must also have observation-aligned ``site`` and ``time``
 coordinates. Times must be finite and unique within each site, although rows
@@ -472,24 +485,50 @@ likelihood calculation; their public scientific variables and contributions
 remain separate.
 
 :doc:`coherent_reduction` describes the linked retained prior, effective
-operator, affine contribution, and unresolved covariance, but no public
-function currently assembles those products into this durable artifact. That
-handoff is tracked in `OPE-153
-<https://linear.app/openghg-inversions/issue/OPE-153/add-a-public-coherent-reduction-handoff-for-co-prepared-inputs>`_.
-Until it lands, callers must supply already-prepared coherent-reduction inputs.
+operator, affine contribution, and unresolved covariance.
+:func:`openghg_inversions.rhime.co2.prepare_co2_inputs` assembles those
+products with canonical observations and metadata at the durable CO2 boundary.
+
+The reduction itself is exact under its stated Gaussian assumptions. An LRPD
+artifact is a separate downstream numerical approximation of its unresolved
+covariance. The cached runner can represent an exact dense covariance through
+all of its positive eigenmodes, but that generally produces a full-rank factor
+and is not its intended scaling path. Construct a genuine LRPD approximation
+only with an explicit retained rank::
+
+   from openghg_inversions.observation_error import prepare_low_rank_aggregation_error
+   from openghg_inversions.rhime.co2 import prepare_co2_inputs
+
+   aggregation_error = prepare_low_rank_aggregation_error(
+       reduction.unresolved_observation_covariance,
+       rank=40,
+   )
+   prepared = prepare_co2_inputs(
+       canonical_inputs,
+       reduction,
+       aggregation_error=aggregation_error,
+   )
+   prepared.save("co2-coherent-low-rank.zarr")
+
+The approximation preserves the dense covariance diagonal and records
+diagnostics, but an explicit rank is not evidence that the approximation is
+adequate for an inversion. Assess the resulting total likelihood covariance
+and log density for representative observation-error, site-amplitude, and OU
+profiles, especially when model-mismatch error is small.
 
 For example::
 
-   from openghg_inversions.inversion_data import RhimePreparedInputs
    from openghg_inversions.rhime import RhimeSampler
-   from openghg_inversions.rhime.co2 import run_rhime_co2_cached_sigma
+   from openghg_inversions.rhime.co2 import (
+       Co2PreparedInputs,
+       run_rhime_co2_cached_sigma,
+   )
 
-   prepared = RhimePreparedInputs.load("co2-coherent-low-rank.zarr")
+   prepared = Co2PreparedInputs.load("co2-coherent-low-rank.zarr")
    idata = run_rhime_co2_cached_sigma(
        prepared_inputs=prepared,
        tau_hours={"BSD": 24.0, "TAC": 18.0},
        site_amplitude_prior_scale=0.75,  # concentration units
-       aggregation_error_mode="low_rank",
        use_bc=True,
        bc_prior={
            "pdf": "truncatednormal",

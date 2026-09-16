@@ -1,3 +1,5 @@
+import json
+
 import numpy as np
 import dask.array as da
 from dask import delayed
@@ -6,6 +8,7 @@ import xarray as xr
 
 from openghg_inversions.observation_error import (
     aggregation_error_as_low_rank,
+    prepare_low_rank_aggregation_error,
     resolve_aggregation_error,
 )
 
@@ -191,3 +194,110 @@ def test_explicit_none_ignores_available_diagnostic() -> None:
 
     assert result.mode == "none"
     np.testing.assert_array_equal(result.marginal_variance, np.zeros(3))
+
+
+def test_prepare_low_rank_aggregation_error_preserves_diagonal() -> None:
+    covariance_values = np.array(
+        [
+            [2.0, 0.8, 0.3],
+            [0.8, 1.5, 0.2],
+            [0.3, 0.2, 0.7],
+        ]
+    )
+    covariance = xr.DataArray(
+        da.from_array(covariance_values, chunks=(2, 2)),
+        dims=("nmeasure", "nmeasure_cov"),
+        coords={"nmeasure": ["A", "B", "C"], "nmeasure_cov": ["A", "B", "C"]},
+    )
+
+    result = prepare_low_rank_aggregation_error(covariance, rank=2)
+
+    aggregation_error = result.aggregation_error
+    assert aggregation_error.mode == "low_rank"
+    assert aggregation_error.factor is not None
+    assert aggregation_error.diagonal_variance is not None
+    assert isinstance(aggregation_error.factor.data, np.ndarray)
+    assert aggregation_error.factor.dims == ("nmeasure", "agg_rank")
+    assert aggregation_error.factor.shape == (3, 2)
+    reconstructed = (
+        aggregation_error.factor.values @ aggregation_error.factor.values.T
+        + np.diag(aggregation_error.diagonal_variance.values)
+    )
+    np.testing.assert_allclose(np.diag(reconstructed), np.diag(covariance_values), atol=1e-12)
+    assert result.source_covariance_sha256.startswith("sha256:")
+    assert result.diagnostics["requested_rank"] == 2
+    assert result.diagnostics["actual_rank"] == 2
+    assert 0.0 < result.diagnostics["retained_positive_spectral_fraction"] <= 1.0
+    assert result.diagnostics["diagonal_preservation_error"] < 1e-12
+    json.dumps(result.diagnostics, allow_nan=False)
+
+
+def test_full_rank_aggregation_error_approximation_is_exact() -> None:
+    covariance_values = np.array([[2.0, 0.4], [0.4, 1.0]])
+    covariance = xr.DataArray(
+        covariance_values,
+        dims=("observation", "observation_cov"),
+        coords={"observation": ["A", "B"], "observation_cov": ["A", "B"]},
+    )
+
+    result = prepare_low_rank_aggregation_error(
+        covariance,
+        rank=2,
+        output_dim="observation",
+        covariance_dim="observation_cov",
+    )
+
+    aggregation_error = result.aggregation_error
+    assert aggregation_error.factor is not None
+    assert aggregation_error.diagonal_variance is not None
+    reconstructed = (
+        aggregation_error.factor.values @ aggregation_error.factor.values.T
+        + np.diag(aggregation_error.diagonal_variance.values)
+    )
+    np.testing.assert_allclose(reconstructed, covariance_values, atol=1e-12)
+    assert result.diagnostics["relative_frobenius_reconstruction_error"] < 1e-12
+
+
+@pytest.mark.parametrize("rank", [0, 4, True, 1.5])
+def test_prepare_low_rank_aggregation_error_rejects_invalid_rank(rank: object) -> None:
+    covariance = xr.DataArray(
+        np.eye(3),
+        dims=("nmeasure", "nmeasure_cov"),
+        coords={"nmeasure": ["A", "B", "C"], "nmeasure_cov": ["A", "B", "C"]},
+    )
+
+    with pytest.raises(ValueError, match="rank"):
+        prepare_low_rank_aggregation_error(covariance, rank=rank)  # type: ignore[arg-type]
+
+
+def test_prepare_low_rank_aggregation_error_requires_exact_covariance_labels() -> None:
+    covariance = xr.DataArray(
+        np.eye(2),
+        dims=("nmeasure", "nmeasure_cov"),
+        coords={"nmeasure": ["A", "B"], "nmeasure_cov": ["B", "A"]},
+    )
+
+    with pytest.raises(ValueError, match="same values in the same order"):
+        prepare_low_rank_aggregation_error(covariance, rank=1)
+
+
+@pytest.mark.parametrize(
+    ("covariance_values", "match"),
+    [
+        (np.array([[1.0, 0.2], [0.1, 1.0]]), "symmetric"),
+        (np.array([[1.0, 2.0], [2.0, 1.0]]), "positive semidefinite"),
+        (np.array([[1.0, np.nan], [np.nan, 1.0]]), "finite"),
+    ],
+)
+def test_prepare_low_rank_aggregation_error_validates_values(
+    covariance_values: np.ndarray,
+    match: str,
+) -> None:
+    covariance = xr.DataArray(
+        covariance_values,
+        dims=("nmeasure", "nmeasure_cov"),
+        coords={"nmeasure": ["A", "B"], "nmeasure_cov": ["A", "B"]},
+    )
+
+    with pytest.raises(ValueError, match=match):
+        prepare_low_rank_aggregation_error(covariance, rank=1)

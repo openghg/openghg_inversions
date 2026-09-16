@@ -409,6 +409,13 @@ needs. ``materialize_pymc_inputs`` converts only those arrays, together,
 immediately before model construction; project-owned lazy extensions in
 ``RhimePreparedInputs`` remain untouched.
 
+This generic extension mechanism is not the preparation contract for the
+coherent-reduction CO2 recipe. That recipe uses a dedicated
+``Co2PreparedInputs`` artifact constructed by ``prepare_co2_inputs``. It keeps
+the exact reduction products and selected dense or low-rank-plus-diagonal
+aggregation covariance coupled at one validated boundary; the standard and
+multisector recipes continue to use ``RhimePreparedInputs`` unchanged.
+
 The customisation is concentrated in ``_guarded_basis``. The runner's one
 deliberate substitution is marked by an inline comment where
 ``build_project_basis`` replaces the standard ``build_rhime_basis`` call. The

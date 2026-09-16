@@ -360,6 +360,7 @@ def test_public_co2_runner_persists_fixed_mismatch_manifest(
 
     class PreparedInputsStub:
         inv_inputs = inputs
+        aggregation_error_mode = "dense"
 
         def validated(self) -> "PreparedInputsStub":
             return self
@@ -443,6 +444,7 @@ def test_public_co2_runner_derives_default_model_error_alignment(monkeypatch: An
 
     class PreparedInputsStub:
         inv_inputs = inputs
+        aggregation_error_mode = "dense"
 
         def validated(self) -> "PreparedInputsStub":
             return self
@@ -482,6 +484,7 @@ def test_public_co2_runner_selects_boundary_and_offset_once(monkeypatch: Any) ->
 
     class PreparedInputsStub:
         inv_inputs = inputs
+        aggregation_error_mode = "dense"
 
         def validated(self) -> "PreparedInputsStub":
             return self
@@ -566,6 +569,7 @@ def test_public_co2_runner_does_not_auto_select_prepared_baseline(monkeypatch: A
 
     class PreparedInputsStub:
         inv_inputs = inputs
+        aggregation_error_mode = "dense"
 
         def validated(self) -> "PreparedInputsStub":
             return self
@@ -612,6 +616,7 @@ def _run_selected_co2_likelihood(
 
     class PreparedInputsStub:
         inv_inputs = inputs
+        aggregation_error_mode = "dense"
 
         def validated(self) -> "PreparedInputsStub":
             return self
@@ -846,6 +851,7 @@ def test_public_co2_runner_preserves_materialized_fixed_mismatch(monkeypatch: An
 
     class PreparedInputsStub:
         inv_inputs = inputs
+        aggregation_error_mode = "dense"
 
         def validated(self) -> "PreparedInputsStub":
             return self

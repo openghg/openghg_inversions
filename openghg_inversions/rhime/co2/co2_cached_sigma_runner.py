@@ -16,7 +16,6 @@ from openghg_inversions.inversion_data import RhimePreparedInputs
 from openghg_inversions.models.priors import PriorArgs
 from openghg_inversions.models.state_activity import StateActivity
 from openghg_inversions.observation_error import (
-    AggregationErrorMode,
     aggregation_error_input_names,
     resolve_aggregation_error,
 )
@@ -32,6 +31,7 @@ from .co2_cached_sigma_model import (
     build_co2_cached_sigma_model,
 )
 from .co2_model import _normalise_offset_args
+from .co2_preparation import Co2PreparedInputs
 from .co2_runner import (
     _annotate_co2_trace,
     _state_activity_from_inputs,
@@ -49,9 +49,8 @@ _CO2_CACHED_SIGMA_INPUT_NAMES = (
 
 
 def co2_cached_sigma_input_names(
-    prepared_inputs: RhimePreparedInputs,
+    prepared_inputs: Co2PreparedInputs,
     *,
-    aggregation_error_mode: AggregationErrorMode,
     use_bc: bool = False,
 ) -> tuple[str, ...]:
     """Declare arrays consumed by the named cached fixed-OU recipe."""
@@ -59,7 +58,9 @@ def co2_cached_sigma_input_names(
     names = list(_CO2_CACHED_SIGMA_INPUT_NAMES)
     if use_bc:
         names.append("H_bc")
-    names.extend(aggregation_error_input_names(inputs, aggregation_error_mode))
+    names.extend(
+        aggregation_error_input_names(inputs, prepared_inputs.aggregation_error_mode)
+    )
     if "state_is_active" in inputs:
         names.append("state_is_active")
         if "state_fixed_value" in inputs:
@@ -282,14 +283,13 @@ def _annotate_cached_co2_trace(
 
 def run_rhime_co2_cached_sigma(
     *,
-    prepared_inputs: RhimePreparedInputs,
+    prepared_inputs: Co2PreparedInputs,
     tau_hours: float | Mapping[str, float],
     site_amplitude_prior_scale: float,
     initial_site_amplitudes: float | Mapping[str, float] | None = None,
     sampler: RhimeSampler | None = None,
     sigma_target_accept: float = 0.8,
     state_target_accept: float = 0.9,
-    aggregation_error_mode: AggregationErrorMode = "low_rank",
     use_bc: bool = False,
     bc_prior: PriorArgs | None = None,
     bc_state_activity: StateActivity | None = None,
@@ -327,9 +327,6 @@ def run_rhime_co2_cached_sigma(
             amplitude transition.
         state_target_accept: NUTS target acceptance probability for the joint
             flux, boundary, and offset state transition.
-        aggregation_error_mode: Prepared aggregation-error representation.
-            The default ``"low_rank"`` requires ``low_rank_factor`` and
-            ``diagonal_residual_variance``.
         use_bc: Whether to include prepared ``H_bc`` boundary sensitivity.
         bc_prior: Optional prior for boundary-condition scaling.
         bc_state_activity: Optional active/fixed boundary-state policy.
@@ -357,13 +354,15 @@ def run_rhime_co2_cached_sigma(
     prepared = prepared_inputs.validated()
     names = co2_cached_sigma_input_names(
         prepared,
-        aggregation_error_mode=aggregation_error_mode,
         use_bc=use_bc,
     )
-    model_inputs = materialize_pymc_inputs(prepared, variable_names=names)
+    model_inputs = materialize_pymc_inputs(
+        cast(RhimePreparedInputs, prepared),
+        variable_names=names,
+    )
     aggregation_error = resolve_aggregation_error(
         model_inputs,
-        aggregation_error_mode,
+        prepared.aggregation_error_mode,
     )
     prior_covariance = model_inputs["alpha_prior_covariance"]
     retained_prior = CorrelatedLognormalPrior(

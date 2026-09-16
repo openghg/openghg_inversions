@@ -6,7 +6,7 @@ from collections import defaultdict
 from collections.abc import Mapping
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import arviz as az
 import xarray as xr
@@ -38,6 +38,7 @@ from openghg_inversions.rhime.sampling import RhimeSampler, sample_rhime_model
 from openghg_inversions.sigma import SigmaAlignment
 
 from .co2_model import build_co2_model
+from .co2_preparation import Co2PreparedInputs
 
 
 _CO2_SCIENTIFIC_INPUT_NAMES = (
@@ -135,9 +136,8 @@ def _state_activity_from_inputs(model_inputs: xr.Dataset) -> StateActivity | Non
 
 
 def co2_model_input_names(
-    prepared_inputs: RhimePreparedInputs,
+    prepared_inputs: Co2PreparedInputs,
     *,
-    aggregation_error_mode: AggregationErrorMode,
     preserve_prepared_fixed_mismatch: bool,
     use_bc: bool = False,
 ) -> tuple[str, ...]:
@@ -146,8 +146,6 @@ def co2_model_input_names(
     Args:
         prepared_inputs: Prepared RHIME artifact containing the candidate
             inversion inputs.
-        aggregation_error_mode: Aggregation-error representation selected for
-            the likelihood.
         preserve_prepared_fixed_mismatch: Include a prepared fixed mismatch
             field when present.
         use_bc: Include the prepared boundary-condition sensitivity.
@@ -162,7 +160,9 @@ def co2_model_input_names(
     names = list(_CO2_SCIENTIFIC_INPUT_NAMES)
     if use_bc:
         names.append("H_bc")
-    names.extend(aggregation_error_input_names(inputs, aggregation_error_mode))
+    names.extend(
+        aggregation_error_input_names(inputs, prepared_inputs.aggregation_error_mode)
+    )
     if "state_is_active" in inputs:
         names.append("state_is_active")
         if "state_fixed_value" in inputs:
@@ -254,14 +254,13 @@ def _resolve_co2_likelihood_kwargs(
 
 def run_rhime_co2(
     *,
-    prepared_inputs: RhimePreparedInputs,
+    prepared_inputs: Co2PreparedInputs,
     sigma_alignment: SigmaAlignment | None = None,
     sigma_prior: PriorArgs | None = None,
     fixed_model_mismatch: float | xr.DataArray | None = None,
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
     likelihood_kwargs: Mapping[str, Any] | None = None,
     sampler: RhimeSampler | None = None,
-    aggregation_error_mode: AggregationErrorMode = "dense",
     no_model_error: bool = False,
     use_bc: bool = False,
     bc_prior: PriorArgs | None = None,
@@ -272,7 +271,7 @@ def run_rhime_co2(
     """Materialize, build, and sample the CO2 coherent-reduction model.
 
     This callable is the public production replay seam for an already
-    validated :class:`RhimePreparedInputs` artifact. It alone unpacks the
+    validated :class:`Co2PreparedInputs` artifact. It alone unpacks the
     prepared dataset and constructs the complete retained prior; the model
     builder receives named scientific values.
 
@@ -299,8 +298,6 @@ def run_rhime_co2(
             the scalar-sigma eigen likelihood, pass an ``eigenbasis_path`` and
             ``sigma_prior``; the cache is loaded before model construction.
         sampler: Optional RHIME sampler configuration.
-        aggregation_error_mode: Prepared aggregation-error representation to
-            use in the likelihood.
         no_model_error: If true, omit inferred additive model error.
         use_bc: Whether to include prepared ``H_bc`` boundary sensitivity.
         bc_prior: Optional prior for boundary-condition scaling.
@@ -342,16 +339,18 @@ def run_rhime_co2(
     prepared = prepared_inputs.validated()
     names = co2_model_input_names(
         prepared,
-        aggregation_error_mode=aggregation_error_mode,
         preserve_prepared_fixed_mismatch=(likelihood_builder is None and fixed_model_mismatch is None),
         use_bc=use_bc,
     )
-    model_inputs = materialize_pymc_inputs(prepared, variable_names=names)
+    model_inputs = materialize_pymc_inputs(
+        cast(RhimePreparedInputs, prepared),
+        variable_names=names,
+    )
     if likelihood_builder is None and not no_model_error and sigma_alignment is None:
         sigma_alignment = SigmaAlignment.from_observations(model_inputs["mf"])
     aggregation_error = resolve_aggregation_error(
         model_inputs,
-        aggregation_error_mode,
+        prepared.aggregation_error_mode,
     )
     model_likelihood_kwargs = _resolve_co2_likelihood_kwargs(
         likelihood_builder,

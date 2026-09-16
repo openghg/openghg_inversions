@@ -1,6 +1,7 @@
 """Public CO2-family RHIME recipes."""
 
 from .co2_model import build_co2_model
+from .co2_preparation import Co2PreparedInputs, prepare_co2_inputs
 from .co2_runner import (
     co2_model_input_names,
     prepare_co2_scalar_sigma_eigenbasis,
@@ -20,6 +21,7 @@ from .co2_o2_runner import run_rhime_co2_o2_from_prepared_inputs
 
 __all__ = [
     "Co2O2PreparedInputs",
+    "Co2PreparedInputs",
     "Co2CachedSigmaModel",
     "build_co2_cached_sigma_model",
     "build_co2_model",
@@ -29,6 +31,7 @@ __all__ = [
     "co2_cached_sigma_input_names",
     "evaluate_co2_o2_prior_forward_mean",
     "prepare_co2_o2_inputs",
+    "prepare_co2_inputs",
     "run_rhime_co2",
     "run_rhime_co2_cached_sigma",
     "run_rhime_co2_o2_from_prepared_inputs",

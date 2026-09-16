@@ -28,8 +28,10 @@ Current support
      - :func:`openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs`.
        A complete ``run_rhime_co2_o2`` entry point is not available.
    * - Acquisition and preparation
-     - Consumes a prepared coherent-reduction ``RhimePreparedInputs`` artifact.
-       The public handoff that assembles that artifact is incomplete.
+     - :func:`openghg_inversions.rhime.co2.prepare_co2_inputs` combines
+       canonical RHIME observations and metadata with one coherent reduction
+       in a dedicated
+       :class:`~openghg_inversions.rhime.co2.Co2PreparedInputs` artifact.
      - :func:`openghg_inversions.rhime.co2.prepare_co2_o2_inputs` gathers
        caller-supplied, channel-native prepared arrays; it does not acquire
        OpenGHG data.
@@ -51,9 +53,10 @@ Current support
      - Returns annotated ``InferenceData``. Use the documented serialization
        boundary; family-specific output and postprocessing are not integrated.
    * - Validation and acceptance
-     - Model construction, replay, provenance, and cached-sampler behavior have
-       automated regression tests. Complete configuration, outputs, staged
-       integration, and scientist acceptance remain future work.
+     - Coherent preparation, dedicated serialization, model construction,
+       replay, provenance, and cached-sampler behavior have automated
+       regression tests. Complete configuration, outputs, staged integration,
+       and scientist acceptance remain future work.
      - Preparation, graph construction, mixed-unit metadata, replay, and
        provenance have automated regression tests. Production scientist
        acceptance remains future work.
@@ -72,6 +75,11 @@ The family page records present software support, not evidence that a selected
 recipe is scientifically suitable for a particular inversion. Complete
 configuration, outputs, staged integration, and scientist acceptance are
 tracked in `OPE-79 <https://linear.app/openghg-inversions/issue/OPE-79>`_.
+
+The CO2-only handoff is intentionally separate from both the generic
+``RhimePreparedInputs`` boundary and the linked CO2/O2 preparation contract.
+It does not add coherent-reduction or aggregation-error options to the
+standard and multisector runners or to ``run_hbmcmc.py``.
 
 .. toctree::
    :maxdepth: 1
