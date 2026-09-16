@@ -16,22 +16,19 @@ on:
           - failure
           - error
       evidence_url:
-        description: HTTPS URL for the compact hpc-ci evidence and scientific review
+        description: HTTPS URL for the compact test evidence and scientific review
         required: true
         type: string
       description:
         description: Short result summary
         required: true
         type: string
-  repository_dispatch:
-    types: [hpc-test-inversions-result]
-
 permissions:
   contents: read
   statuses: write
 
 concurrency:
-  group: hpc-release-review-${{ github.event.client_payload.sha || inputs.sha }}
+  group: hpc-release-review-${{ inputs.sha }}
   cancel-in-progress: false
 
 jobs:
@@ -47,27 +44,11 @@ jobs:
       - name: Read and validate attestation
         id: attestation
         env:
-          DISPATCH_DESCRIPTION: ${{ github.event.client_payload.description }}
-          DISPATCH_EVIDENCE_URL: ${{ github.event.client_payload.evidence_url }}
-          DISPATCH_SHA: ${{ github.event.client_payload.sha }}
-          DISPATCH_STATE: ${{ github.event.client_payload.state }}
-          MANUAL_DESCRIPTION: ${{ inputs.description }}
-          MANUAL_EVIDENCE_URL: ${{ inputs.evidence_url }}
-          MANUAL_SHA: ${{ inputs.sha }}
-          MANUAL_STATE: ${{ inputs.state }}
+          DESCRIPTION: ${{ inputs.description }}
+          EVIDENCE_URL: ${{ inputs.evidence_url }}
+          SHA: ${{ inputs.sha }}
+          STATE: ${{ inputs.state }}
         run: |
-          if [ "$GITHUB_EVENT_NAME" = "repository_dispatch" ]; then
-            SHA=$DISPATCH_SHA
-            STATE=$DISPATCH_STATE
-            EVIDENCE_URL=$DISPATCH_EVIDENCE_URL
-            DESCRIPTION=$DISPATCH_DESCRIPTION
-          else
-            SHA=$MANUAL_SHA
-            STATE=$MANUAL_STATE
-            EVIDENCE_URL=$MANUAL_EVIDENCE_URL
-            DESCRIPTION=$MANUAL_DESCRIPTION
-          fi
-
           if ! [[ "$SHA" =~ ^[0-9a-f]{40}$ ]]; then
             echo "A full lowercase commit SHA is required."
             exit 1

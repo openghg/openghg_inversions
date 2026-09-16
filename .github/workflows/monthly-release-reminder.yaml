@@ -3,7 +3,7 @@ name: Monthly release reminder
 on:
   schedule:
     # First Monday of each month at 09:00 UTC.
-    - cron: '0 9 1-7 * 1'
+    - cron: '0 9 * * 1'
   workflow_dispatch:
 
 permissions:
@@ -21,6 +21,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          if [ "$GITHUB_EVENT_NAME" = "schedule" ] && [ "$(date -u +%d)" -gt 7 ]; then
+            echo "Not the first Monday of the month." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           MONTH=$(date -u +%Y-%m)
           TITLE="Release ${MONTH}"
           EXISTING=$(gh issue list \

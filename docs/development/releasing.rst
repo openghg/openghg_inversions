@@ -55,12 +55,10 @@ are development contracts, not a substitute for this release assessment.
 HPC evidence and scientific approval
 ------------------------------------
 
-The external ``hpc-ci`` tool pins the tested Git SHA and collects compact
-evidence. For a release pull request, its manual trigger can fetch the PR ref;
-for the final merged commit, pass an explicit ``main`` ref and verify that the
-reported SHA matches ``git rev-parse origin/main``. Keep the ``hpc-ci``
-collection, configuration/data identity, Slurm job references, summaries and
-interpretable scientific outputs together.
+Run the agreed real-data inversion cases for the final merged commit and verify
+that the tested SHA matches ``git rev-parse origin/main``. Keep the
+configuration and data identity, Slurm job references, summaries, and
+interpretable scientific outputs together as compact evidence.
 
 Upload or link the compact evidence somewhere reachable by HTTPS, normally the
 release tracking issue or release pull request. A maintainer reviews the real
@@ -73,9 +71,8 @@ results and runs **Record HPC release check** with:
 
 The workflow refuses commits outside ``main`` history and records the fixed
 ``HPC / test_inversions`` status against that exact SHA. Configure the
-``hpc-release-review`` GitHub environment with required reviewers so both
-manual attestations and future ``hpc-ci`` ``repository_dispatch`` callbacks
-pause for scientific approval.
+``hpc-release-review`` GitHub environment with required reviewers so recording
+the manual attestation pauses for scientific approval.
 
 Publication
 -----------
@@ -96,10 +93,12 @@ pull request. Auto-merge is enabled when repository settings and required
 checks allow it. The release branch is deleted only after publication.
 
 If automated publication fails after PyPI accepts the artifact, do not publish
-the same version again. Create the missing GitHub release for that tag and run
-**Forward released main to devel** manually. If it fails before PyPI accepts
-the artifact, correct the workflow or release commit, rerun the exact-SHA
-tests when the commit changes, and dispatch publication again.
+the same version again. Creating the missing GitHub release safely re-enters
+the publication workflow: it detects the existing PyPI version and skips the
+upload. Then run **Forward released main to devel** manually. If publication
+fails before PyPI accepts the artifact, correct the workflow or release
+commit, rerun the exact-SHA tests when the commit changes, and dispatch
+publication again.
 
 Current-line hotfix
 -------------------
