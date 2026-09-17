@@ -154,15 +154,15 @@ pip install -e ".[dev]"
 ```
 
 ## Installation and Setup
-As OpenGHG Inversions is dependent on OpenGHG, please ensure that when running locally you are using Python 3.10 or later on Linux or MacOS. Please see the [OpenGHG project](https://github.com/openghg/openghg/) for further installation instructions of OpenGHG and setting up an object store.
+As OpenGHG Inversions is dependent on OpenGHG, please ensure that when running locally you are using Python 3.12 or later on Linux or MacOS. Please see the [OpenGHG project](https://github.com/openghg/openghg/) for further installation instructions of OpenGHG and setting up an object store.
 
 ### Setup a virtual environment
 
-Check that you have Python 3.10 or greater:
+Check that you have Python 3.12 or greater:
 ```bash
 python --version
 ```
-(Note for Bristol ACRG group: If you are on Blue Pebble, the default anaconda module `lang/python/anaconda` is Python 3.9. Use `module avail` to list other options; `lang/python/miniconda/3.10.10.cuda-12` or `lang/python/miniconda/3.12.2.inc-perl-5.30.0` will work.)
+(Note for Bristol ACRG group: If you are on Blue Pebble, the default anaconda module `lang/python/anaconda` is Python 3.9. Use `module avail` to list other options; `lang/python/miniconda/3.12.2.inc-perl-5.30.0` will work.)
 
 Make a virtual environment
 ```bash
@@ -491,7 +491,7 @@ comma-separated `PYTENSOR_FLAGS` entries when adding it:
 
 ```bash
 PYTENSOR_FLAGS="${PYTENSOR_FLAGS:+${PYTENSOR_FLAGS},}base_compiledir=${TMPDIR:-/tmp}/pytensor-${USER}" \
-  tox -e py310-openghgCur
+  tox -e py312-openghgCur
 ```
 
 If `PYTENSOR_FLAGS` already defines `base_compiledir`, update that entry
@@ -501,14 +501,14 @@ For final review or release-sensitive dependency changes, run the full
 compatibility matrix:
 
 ```bash
-tox -p --parallel-no-spinner -e py310-openghgCur,py310-openghgPrev,py310-openghgDev,lint
+tox -p --parallel-no-spinner -e py312-openghgCur,py312-openghgPrev,py312-openghgDev,lint
 ```
 
 The previous-release environment defaults to `openghg==0.18.0`. Override it
 with a deterministic package spec when needed, for example:
 
 ```bash
-OPENGHG_PREV_SPEC='openghg==0.17.1' tox -e py310-openghgPrev
+OPENGHG_PREV_SPEC='openghg==0.17.1' tox -e py312-openghgPrev
 ```
 
 When a new OpenGHG minor release is published, update the default
@@ -520,7 +520,7 @@ tox configuration does not require network access.
 To specify individual jobs, you can use, e.g.:
 
 ```bash
-tox -e py310-openghgDev
+tox -e py312-openghgDev
 ```
 
 to run the tests against the devel branch.
