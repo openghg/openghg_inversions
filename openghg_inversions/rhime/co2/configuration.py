@@ -2,26 +2,17 @@
 
 from __future__ import annotations
 
-import sys
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from importlib.resources import files
+from importlib.resources.abc import Traversable
 from math import isfinite
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any
-
-if sys.version_info >= (3, 11):
-    from importlib.resources.abc import Traversable
-else:  # pragma: no cover - exercised on supported Python 3.10
-    from importlib.abc import Traversable
+import tomllib
 
 import numpy as np
-
-try:
-    import tomllib
-except ModuleNotFoundError:  # pragma: no cover - exercised on supported Python 3.10
-    import tomli as tomllib
 
 from openghg_inversions.models.fixed_ou import add_fixed_ou_gaussian_likelihood
 from openghg_inversions.models.priors import positive_prior_args

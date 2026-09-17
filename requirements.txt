@@ -1,5 +1,6 @@
 numpyro[cpu]
-pymc
+pymc<6
+arviz<1
 xarray >= 2025.06
 pandas
 matplotlib
@@ -10,4 +11,3 @@ sparse
 tfp-nightly
 flox
 opt_einsum
-tomli>=2; python_version < "3.11"
