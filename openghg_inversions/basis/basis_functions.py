@@ -446,7 +446,8 @@ class FluxWeightedBasis:
             ValueError: If the serialized schema, metadata, labels, or
                 operator state is invalid.
         """
-        with xr.open_datatree(file_path) as dt:
+        engine = "zarr" if Path(file_path).suffix.lower() == ".zarr" else None
+        with xr.open_datatree(file_path, engine=engine) as dt:
             return cast(Self, cls.from_datatree(dt.load()))
 
     def interpolate(self, state: xr.DataArray, *, flux: bool = False) -> xr.DataArray:
