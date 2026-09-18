@@ -40,6 +40,7 @@ dependencies = [
     "sparse",
     "flox",
     "opt_einsum",
+    "tomli>=2; python_version < '3.11'",
 ]
 
 [project.optional-dependencies]
@@ -149,6 +150,7 @@ openghg_inversions = [
     "postprocessing/*.json",
     "config/templates/*.ini",
     "rhime/config/*.ini",
+    "rhime/config/*.toml",
     "hbmcmc/config/*.ini",
 ]
 

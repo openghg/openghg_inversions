@@ -64,7 +64,9 @@ standard additive-sigma likelihood can opt into ``min_error`` explicitly.
 OpenGHG Inversions does not default ``s_fixed`` to 1 ppm. The
 Verification Games fixed-only policy passes ``fixed_model_mismatch=1.0`` and
 ``no_model_error=True`` visibly. A runnable CO2 configuration and resolver are
-tracked in `OPE-79 <https://linear.app/openghg-inversions/issue/OPE-79>`_.
+described below; staged routing and common output integration remain tracked in
+`OPE-79 <https://linear.app/openghg-inversions/issue/OPE-79>`_.
+
 For the matched fixed-tau Ornstein--Uhlenbeck (OU) likelihood with independently
 inferred site amplitudes, use :ref:`the package-supported cached-sigma CO2 runner
 <co2-cached-sigma-recipe>`.
@@ -158,6 +160,299 @@ Boundary and offset contributions remain separate from
 likelihood, and sampled outputs.
 The location and scale parameters in ``offset_prior`` use the observations'
 concentration units.
+
+Configure prepared-input replay from TOML
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The CO2 family provides three installed TOML templates:
+``co2.toml``, ``co2_cached_sigma.toml``, and ``co2_o2.toml``. Use
+:func:`openghg_inversions.rhime.co2.co2_config_templates` to discover their
+installed paths. Copy the closest template for a run; do not edit the installed
+resource. The templates configure the existing prepared-input Python seams.
+They do not make CO2 available through the staged CLI.
+
+:func:`openghg_inversions.rhime.co2.load_co2_family_config` reads TOML, while
+:func:`openghg_inversions.rhime.co2.resolve_co2_family_config` accepts an
+ordinary mapping and returns a frozen
+:class:`~openghg_inversions.rhime.co2.Co2RunSetup` or
+:class:`~openghg_inversions.rhime.co2.Co2O2RunSetup`. Keeping parsing separate
+from resolution makes the scientific choices independent of the file format.
+The setup identifies the runner and contains explicit ``preparation_kwargs``,
+``runner_kwargs``, and :class:`~openghg_inversions.rhime.RhimeSampler` values;
+it does not retain an ambient configuration mapping. After preparing or
+loading the appropriate artifact, ``setup.runner_arguments(prepared)`` binds
+it to the exact arguments accepted by ``setup.runner``. For the linked recipe,
+this step expands the two configured error scalars over the labelled joint
+observation axis and verifies its species and unit labels.
+
+For example, the ordinary TOML settings::
+
+   format_version = 1
+   recipe = "co2"
+   variant = "ordinary"
+
+   [prepared_inputs]
+   path = "co2-coherent-dense.zarr"
+
+   [likelihood]
+   kind = "additive_sigma"
+   sigma_prior = { pdf = "halfnormal", sigma = 0.75 }
+
+   [sampling]
+   draws = 1000
+   tune = 1000
+   chains = 4
+   nuts_sampler = "numpyro"
+
+resolve to the same scientific runner choices as this direct Python call::
+
+   from openghg_inversions.rhime import RhimeSampler, run_rhime_co2
+   from openghg_inversions.rhime.co2 import Co2PreparedInputs
+
+   prepared = Co2PreparedInputs.load("co2-coherent-dense.zarr")
+   idata = run_rhime_co2(
+       prepared_inputs=prepared,
+       sigma_prior={"pdf": "halfnormal", "sigma": 0.75},
+       sampler=RhimeSampler(
+           draws=1000,
+           tune=1000,
+           chains=4,
+           nuts_sampler="numpyro",
+       ),
+   )
+
+The resolved ordinary setup can execute that same call through its explicit
+binding method::
+
+   from openghg_inversions.rhime.co2 import (
+       Co2PreparedInputs,
+       load_co2_family_config,
+       resolve_co2_family_config,
+   )
+
+   config = load_co2_family_config("my-co2.toml")
+   setup = resolve_co2_family_config(config)
+   prepared = Co2PreparedInputs.load(setup.preparation_kwargs["path"])
+   idata = setup.runner(**setup.runner_arguments(prepared))
+
+``prepared_inputs.path`` and ``likelihood.eigenbasis_path`` become ordinary
+``pathlib.Path`` values. Relative values are interpreted from the process
+working directory, not from the directory containing the TOML file. Use
+absolute paths when the run may start from another directory.
+
+The resolver deliberately supports a closed matrix rather than arbitrary
+callable imports:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 18 22 22 38
+
+   * - Recipe
+     - Variant
+     - Runner
+     - Configuration boundary
+   * - ``co2``
+     - ``ordinary``
+     - ``run_rhime_co2``
+     - ``additive_sigma``, ``site_sigma``, ``fixed_ou``, or ``scalar_sigma``
+       likelihood; boundary conditions and offsets are available.
+   * - ``co2``
+     - ``cached_fixed_ou``
+     - ``run_rhime_co2_cached_sigma``
+     - Fixed positive OU timescales and HalfNormal site amplitudes, using the
+       runner-owned PyMC sampler.
+   * - ``co2_o2``
+     - ``linked``
+     - ``run_rhime_co2_o2_from_prepared_inputs``
+     - Fixed independent error with one shared channel-unit label.
+
+For ``variant = "ordinary"``, the ``[likelihood]`` table accepts these closed
+forms. Scalar-or-site-map values use either one positive number or an inline
+table such as ``{ MHD = 24.0, TAC = 12.0 }``.
+
+.. list-table:: Ordinary CO2 likelihood configuration
+   :header-rows: 1
+   :widths: 18 34 48
+
+   * - ``kind``
+     - Required keys
+     - Optional keys and constraints
+   * - ``additive_sigma``
+     - None
+     - ``sigma_prior``; non-negative ``fixed_model_mismatch``;
+       ``no_model_error`` (default false). ``sigma_prior`` and
+       ``no_model_error = true`` are mutually exclusive.
+   * - ``site_sigma``
+     - Exactly one of ``fixed_site_amplitudes`` or ``site_amplitude_prior``
+     - Fixed amplitudes are a non-negative site map; the inferred-amplitude
+       prior must have positive support.
+   * - ``fixed_ou``
+     - Positive scalar-or-site-map ``tau_hours`` and exactly one of
+       ``fixed_site_amplitudes`` or ``site_amplitude_prior``
+     - Fixed amplitudes are non-negative; the inferred-amplitude prior must
+       have positive support.
+   * - ``scalar_sigma``
+     - ``eigenbasis_path`` and positive-support ``sigma_prior``
+     - The eigenbasis must match the prepared artifact as described in
+       :ref:`the scalar-sigma recipe <co2-scalar-sigma-recipe>`.
+
+Prior tables use ``pdf`` plus the parameters for that family: ``normal`` uses
+``mu`` and positive ``sigma``; ``truncatednormal`` also requires ``lower`` and
+optionally accepts ``upper``; ``halfnormal`` uses positive ``sigma``;
+``halfstudentt`` uses positive ``nu`` and ``sigma``; ``gamma`` uses positive
+``alpha`` and ``beta``; ``exponential`` uses positive ``lam``; and ``uniform``
+uses ordered ``lower`` and ``upper``. ``lognormal`` accepts exactly one of
+``mu``/``sigma`` or positive ``mean``/``stdev``, plus optional boolean
+``reparameterise``. Positive-support prior positions accept only HalfNormal,
+HalfStudentT, Gamma, Exponential, Uniform with a non-negative lower bound, or
+LogNormal.
+
+Optional model components belong in their own tables. ``[model.boundary]``
+accepts boolean ``enabled`` (default true) and ``prior``; a disabled boundary
+cannot specify a prior. ``[model.offset]`` requires ``prior`` and optionally
+accepts ``frequency``, ``per_site`` (default true), and ``drop_first`` (default
+false). A global offset (``per_site = false``) cannot set a frequency or use
+``drop_first = true``.
+
+For ``variant = "cached_fixed_ou"``, ``[likelihood]`` requires
+``kind = "fixed_ou"``, positive scalar-or-site-map ``tau_hours``, and positive
+``site_amplitude_prior_scale``. It optionally accepts positive
+``initial_site_amplitudes`` and the zero-to-one controls
+``sigma_target_accept`` and ``state_target_accept``. Its ``[sampling]`` table
+must use ``nuts_sampler = "pymc"``; posterior-predictive name lists may contain
+only ``y`` or ``concentration``.
+
+The optional ``[sampling]`` table is shared by all three supported setups.
+Defaults below apply when an option is omitted; the linked recipe overrides the
+two defaults shown in its column.
+
+.. list-table:: Sampling configuration
+   :header-rows: 1
+   :widths: 23 18 19 40
+
+   * - Option
+     - Ordinary/cached default
+     - Linked default
+     - Accepted value and constraint
+   * - ``draws``
+     - ``1000``
+     - ``1000``
+     - Positive integer.
+   * - ``burn``
+     - ``0``
+     - ``0``
+     - Non-negative integer strictly less than ``draws``.
+   * - ``tune``
+     - ``1000``
+     - ``1000``
+     - Non-negative integer.
+   * - ``chains``
+     - ``4``
+     - ``4``
+     - Positive integer.
+   * - ``nuts_sampler``
+     - ``"pymc"``
+     - ``"numpyro"``
+     - One of ``"pymc"``, ``"nutpie"``, ``"numpyro"``, or ``"blackjax"``;
+       the cached variant requires ``"pymc"``.
+   * - ``progressbar``
+     - ``false``
+     - ``false``
+     - Boolean.
+   * - ``sample_prior_predictive``
+     - ``true``
+     - ``true``
+     - Boolean or non-negative integer number of prior-predictive samples.
+   * - ``sample_posterior_predictive``
+     - ``["y"]``
+     - ``["y"]``
+     - Boolean or list of non-empty variable names. For the cached variant,
+       listed names are restricted to ``"y"`` and ``"concentration"``.
+   * - ``target_accept``
+     - Not set
+     - ``0.95``
+     - Number strictly between zero and one. It is not accepted for the cached
+       variant; use the two likelihood target-accept controls described above.
+   * - ``random_seed``
+     - Not set
+     - Not set
+     - Non-negative integer, applied to both posterior and
+       posterior-predictive sampling.
+
+For ``recipe = "co2_o2"``, ``[channels]`` must contain exactly the two tables
+``[channels.co2]`` and ``[channels.o2]``. Each table requires a non-empty
+``units`` string convertible to ``mol/mol`` and a finite, positive
+``independent_error_sd`` number::
+
+   [channels.co2]
+   units = "ppm"
+   independent_error_sd = 1.0
+
+   [channels.o2]
+   units = "ppm"
+   independent_error_sd = 2.0
+
+Each ``independent_error_sd`` is numerically expressed in its sibling
+``units`` scale: in this example the CO2 and O2 standard deviations are 1 ppm
+and 2 ppm, respectively. The resolver does not convert these values. During
+binding it expands each scalar over that channel's observation rows. The two
+``units`` strings must currently be identical, although the two error values
+may differ.
+
+Standalone O2, arbitrary Python callables, and additional recipe or variant
+names are rejected. The linked configuration also rejects boundary conditions,
+offsets, ordinary likelihood selection, cached/scalar likelihoods, and unequal
+CO2 and O2 unit labels. The lower-level linked prepared-input API continues to
+represent row-specific mixed units; configuring a heterogeneous ppm/per-meg
+run is deferred until the scaling contract tracked in `OPE-86
+<https://linear.app/openghg-inversions/issue/OPE-86>`_ is available. Use the
+direct Python interfaces for experimental combinations outside this matrix.
+The linked :class:`~openghg_inversions.rhime.co2.Co2O2PreparedInputs` artifact
+does not yet have a durable ``load`` method. Construct it through the documented
+preparation boundary and bind the resulting in-memory artifact; linked staged
+artifact loading remains follow-up work in `OPE-165
+<https://linear.app/openghg-inversions/issue/OPE-165>`_.
+
+The linked template therefore follows a prepare, bind, and run sequence. The
+scientific array names below are the labelled inputs documented by
+:func:`~openghg_inversions.rhime.co2.prepare_co2_o2_inputs`; replace them with
+the products from one coherent reduction. Exactly one of
+``o2_co2_flux_ratio`` and ``o2_co2_flux_ratio_unavailable_reason`` must be
+non-null::
+
+   from openghg_inversions.rhime.co2 import (
+       load_co2_family_config,
+       prepare_co2_o2_inputs,
+       resolve_co2_family_config,
+   )
+
+   config = load_co2_family_config("my-co2-o2.toml")
+   setup = resolve_co2_family_config(config)
+
+   prepared = prepare_co2_o2_inputs(
+       co2_observations=co2_observations,
+       o2_observations=o2_observations,
+       co2_prior_forward_mean=co2_prior_forward_mean,
+       o2_prior_forward_mean=o2_prior_forward_mean,
+       co2_sensitivity=co2_sensitivity,
+       o2_sensitivity=o2_sensitivity,
+       o2_co2_flux_ratio=o2_co2_flux_ratio,
+       o2_co2_flux_ratio_unavailable_reason=None,
+       co2_aggregation_covariance=co2_aggregation_covariance,
+       co2_o2_aggregation_covariance=co2_o2_aggregation_covariance,
+       o2_aggregation_covariance=o2_aggregation_covariance,
+       retained_prior=retained_prior,
+       co2_units=setup.preparation_kwargs["co2_units"],
+       o2_units=setup.preparation_kwargs["o2_units"],
+   )
+   idata = setup.runner(**setup.runner_arguments(prepared))
+
+Unknown or unused keys are errors, reported by their dotted path. Resolution
+also rejects incompatible component choices before an artifact is loaded or a
+model is built. This section defines the local CO2-family configuration
+surface, not the cross-family configuration and CLI catalogue. That reference
+work is tracked in `OPE-159
+<https://linear.app/openghg-inversions/issue/OPE-159>`_.
 
 Construct the CO2-specific artifact by pairing canonical RHIME inputs with all
 linked products from one
