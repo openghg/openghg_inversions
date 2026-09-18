@@ -1,5 +1,12 @@
 # Repository Guidance
 
+## Work Tracking
+
+GitHub Issues track work that needs project discussion. Linear may also be used
+for implementation tasks, especially personal or subdivided work.
+
+- For Linear issue IDs such as `OPE-17`, use the Linear MCP integration.
+
 ## RHIME architecture and scientific model development
 
 New RHIME work must follow the simplicity and locality rules in
