@@ -1,7 +1,7 @@
 """Public RHIME runners, specifications, builders, and orchestration stages.
 
-Use ``run_rhime``, ``run_rhime_multisector``, or
-``run_rhime_from_prepared_inputs`` for complete runs. Copied runners may use
+Use ``run_rhime``, ``run_rhime_multisector``, ``run_rhime_nested``, or the
+prepared-input entry points for complete runs. Copied runners may use
 the supported resolve, retrieve/reload, filter, basis, sensitivity, assembly,
 alignment, materialization, build, sample, result, and output stages directly.
 Alignment is pure; acquisition may access data, model materialization crosses
@@ -43,6 +43,19 @@ from .multisector import (
     multisector_model_input_names,
     run_rhime_multisector,
 )
+from .nested import (
+    NestedRhimePreparedInputs,
+    NestedRhimeResult,
+    align_inner_merged_to_outer_observations,
+    build_nested_rhime_model,
+    build_nested_rhime_model_result,
+    combine_nested_rhime_inputs,
+    mask_outer_merged_for_inner_domain,
+    nested_model_input_names,
+    prepare_nested_rhime_inputs,
+    run_rhime_nested,
+    run_rhime_nested_from_prepared_inputs,
+)
 from .outputs import RhimeResult, make_multisector_rhime_outputs, make_standard_rhime_outputs
 from .prepared import run_rhime_from_prepared_inputs
 from .sampling import RhimeSampler, sample_rhime_model
@@ -83,6 +96,8 @@ __all__ = [
     "PollutionEventSettings",
     "RhimeModelSpec",
     "RhimeLikelihoodBuilder",
+    "NestedRhimePreparedInputs",
+    "NestedRhimeResult",
     "RhimeModelBuilder",
     "RhimeModelBuilderContext",
     "RhimeModelBuildResult",
@@ -94,9 +109,12 @@ __all__ = [
     "PREPARATION_CHECK_NAME",
     "params_from_config",
     "assemble_rhime_inputs",
+    "align_inner_merged_to_outer_observations",
     "build_multisector_rhime_model",
     "build_co2_model",
     "build_multisector_rhime_model_result",
+    "build_nested_rhime_model",
+    "build_nested_rhime_model_result",
     "build_rhime_basis",
     "build_rhime_sensitivities",
     "build_standard_rhime_model",
@@ -106,6 +124,10 @@ __all__ = [
     "diagnose_rhime_stage",
     "effective_configuration",
     "load_stage_params",
+    "combine_nested_rhime_inputs",
+    "mask_outer_merged_for_inner_domain",
+    "nested_model_input_names",
+    "prepare_nested_rhime_inputs",
     "make_multisector_rhime_result",
     "make_multisector_rhime_outputs",
     "make_standard_rhime_result",
@@ -124,6 +146,8 @@ __all__ = [
     "run_rhime_co2",
     "run_rhime_from_prepared_inputs",
     "run_rhime_multisector",
+    "run_rhime_nested",
+    "run_rhime_nested_from_prepared_inputs",
     "sample_rhime_model",
     "sample_rhime_stage",
     "standard_model_input_names",
