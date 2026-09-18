@@ -1,3 +1,97 @@
+## 0.7.0 (2026-09-18)
+
+
+### Bug fixes
+
+- Project multisource sensitivities source by source, avoiding a state-by-grid temporary array that made large prepared-input builds exhaust memory. ([#OPE-87](https://github.com/openghg/openghg_inversions/issues/OPE-87))
+
+- Preserve active subsets of MultiIndex-backed RHIME states through NetCDF and Zarr trace round trips. ([#OPE-163](https://github.com/openghg/openghg_inversions/issues/OPE-163))
+
+- Preserve footprint vertical-extent provenance so satellite boundary sensitivities are only left unscaled when their observation and footprint max levels agree. ([#631](https://github.com/openghg/openghg_inversions/issues/631))
+
+- Drop boundary-condition states that have no sensitivity to any retained observation, avoiding prior-only dimensions in monthly inversions. ([#637](https://github.com/openghg/openghg_inversions/issues/637))
+
+- Preserve observation positions and inlet-height associations when automatically matching varying inlet heights to footprints, preventing unmatched observations or empty footprint retrievals from shifting valid later matches. ([#689](https://github.com/openghg/openghg_inversions/issues/689))
+
+- Percentile minimum error is now calculated independently per site and accepts non-monotonically ordered timestamps, avoiding cross-site alignment artifacts for sparse observations; validation also reports NaN and infinite values separately from negative values.
+
+### Deprecations and removals
+
+- Stop storing the redundant observation-level site-sigma variance and bespoke fixed-OU/site-sigma trace annotations. The variance remains directly recoverable by squaring ``sigma_observation``; custom likelihood identity and arguments remain in the trace metadata.
+
+### Features
+
+- Add an opt-in diagnostic for custom pipelines to check complete dense or low-rank-plus-diagonal observation covariance. ([#OPE-13](https://github.com/openghg/openghg_inversions/issues/OPE-13))
+
+- Add a labelled fixed-timescale, within-site Ornstein--Uhlenbeck mismatch likelihood with fixed or inferred site amplitudes and low-rank Woodbury evaluation. ([#OPE-22](https://github.com/openghg/openghg_inversions/issues/OPE-22))
+
+- Expose RHIME result and requested-output stages, add multisector trace and total-concentration PARIS outputs, and reject unsupported multisector basic output before sampling. ([#OPE-48](https://github.com/openghg/openghg_inversions/issues/OPE-48))
+
+- Add a readable CO2-only RHIME recipe for correlated retained states, coherent affine prior contributions, activity-aware prior closure, fixed model-data mismatch, and aggregation-error covariance. ([#OPE-75](https://github.com/openghg/openghg_inversions/issues/OPE-75))
+
+- Add an explicit labelled CO2/O2 preparation, model, and prepared-input replay seam with shared land states, tracer-specific ocean states, and a joint aggregation-error covariance. ([#OPE-77](https://github.com/openghg/openghg_inversions/issues/OPE-77))
+
+- RHIME model recipes and likelihoods now expose their scientific arrays as named inputs, while recipe-local declarations preserve lazy externally prepared products until their selected model boundary. ([#OPE-82](https://github.com/openghg/openghg_inversions/issues/OPE-82))
+
+- Consolidate minimum-error preparation, validation, alignment, and provenance in a typed ``MinimumError`` value. ([#OPE-92](https://github.com/openghg/openghg_inversions/issues/OPE-92))
+
+- Consolidate labelled boundary-period alignment and transform provenance behind one backend-neutral preparation API. ([#OPE-93](https://github.com/openghg/openghg_inversions/issues/OPE-93))
+
+- Use one prepared linear PyMC component path, removing exact-zero sensitivity columns before graph construction while retaining full labelled-state reconstruction. ([#OPE-94](https://github.com/openghg/openghg_inversions/issues/OPE-94))
+
+- Add a named CO2 fixed-OU cached-amplitude recipe with an ordered PyMC CompoundStep and exact joint outputs. ([#OPE-115](https://github.com/openghg/openghg_inversions/issues/OPE-115))
+
+- Use one labelled correlated CO2 flux state for same-grid inner and outer regions, with fixed groups handled by state activity and group metadata retained for output reporting. ([#OPE-119](https://github.com/openghg/openghg_inversions/issues/OPE-119))
+
+- Allow the public ordinary and cached-sigma CO2 runners to select labelled boundary-condition states and add an explicit optional offset, while defining ``co2_flux_contribution`` as the sum of ``fixed_prior_contribution`` and the scaled flux sensitivity. ([#OPE-150](https://github.com/openghg/openghg_inversions/issues/OPE-150))
+
+- Add a dedicated prepared-input and serialization boundary for coherent-reduction CO2 models, with exact dense and explicit low-rank-plus-diagonal aggregation covariance support, without changing the standard, multisector, or ``run_hbmcmc`` preparation paths. ([#OPE-153](https://github.com/openghg/openghg_inversions/issues/OPE-153))
+
+- Add readable TOML templates and a strict resolver for configuring CO₂-only and linked CO₂/O₂ prepared-input model recipes. ([#OPE-162](https://github.com/openghg/openghg_inversions/issues/OPE-162))
+
+- Add a labelled per-site IID mismatch likelihood, with explicit fixed or inferred amplitudes and pinned Verification Games model provenance. ([#114](https://github.com/openghg/openghg_inversions/issues/114))
+
+- Allow the CO2 model builder and prepared-input runner to select an ordinary covariance-aware likelihood after constructing the completed model mean. CO2 likelihoods no longer require or apply the pollution-event `min_error` input. ([#146](https://github.com/openghg/openghg_inversions/issues/146))
+
+- Add CENTRALASIA weighted-basis support and the INDIA-JK and EASTASIA country aggregations used by Asian inversions. ([#637](https://github.com/openghg/openghg_inversions/issues/637))
+
+- Add a reusable absolute additive-sigma Gaussian likelihood with an optional minimum-error floor, including an INI-selectable ``run_hbmcmc.py`` option, labelled per-site prior scales, and fixed-error reuse by the CO2 and CO2/O2 recipes. ([#639](https://github.com/openghg/openghg_inversions/issues/639))
+
+- Add automated monthly release preparation, guarded PyPI publication, current-line hotfix forwarding, and feature-PR maintenance workflows. ([#644](https://github.com/openghg/openghg_inversions/issues/644))
+
+- Add a ``merge-paris-outputs`` CLI command that safely merges sequential legacy or latest PARIS flux and concentration files.
+
+- Add a reusable labelled eigenbasis and CO2 likelihood component for an inferred global scalar mismatch scale, with cache validation against the current reported and aggregation errors.
+
+- Add file-backed RHIME preparation, prior-predictive, sampling, convergence-diagnostic, and postprocessing commands for staged workflow orchestrators.
+
+### Miscellaneous
+
+- Move the temporary fixed-basis preparation contract under ``hbmcmc`` while preserving deprecated compatibility imports from ``inversion_data``. ([#OPE-83](https://github.com/openghg/openghg_inversions/issues/OPE-83))
+
+- Validated source labels, warned before large explicit MultiIndex-level broadcasts, and fused source pairing with the sparse native prolongation during multisource sensitivity projection. ([#OPE-121](https://github.com/openghg/openghg_inversions/issues/OPE-121))
+
+- Make additive, fixed-error, and pollution-event mismatch equations first-class peer model components, load minimum-error floors only for components which own them, narrow custom likelihood inputs to universal observation terms, and translate legacy ``run_hbmcmc`` additive configuration directly into explicit model options. Narrow the modern fallback pollution-event scaling-sigma prior from Uniform(0.1, 3.0) to Uniform(0.0, 0.1). ([#OPE-124](https://github.com/openghg/openghg_inversions/issues/OPE-124))
+
+- Keep Sphinx's cached doctrees between local documentation previews, add a fresh-build option, and separate API reference generation from ordinary preview builds. ([#629](https://github.com/openghg/openghg_inversions/issues/629))
+
+- Adopt Towncrier fragments for unreleased user-visible changes while retaining
+  the generated `CHANGELOG.md` as the published changelog.
+
+- Credit Matthew Rigby and Anita Ganesan as creators in the Zenodo release metadata.
+
+### Documentation
+
+- Add downloadable standard and multisector RHIME tutorials with validated packaged configurations, committed outputs, and an opt-in output-recording workflow. ([#OPE-108](https://github.com/openghg/openghg_inversions/issues/OPE-108))
+
+- Organize user documentation around standard and CO₂ RHIME model families, with a recipe chooser and explicit support boundaries. ([#OPE-139](https://github.com/openghg/openghg_inversions/issues/OPE-139))
+
+- Add a conceptual introduction to atmospheric inversions, including an accessible source-to-posterior schematic, limitations, glossary, and routes into RHIME workflows. ([#OPE-154](https://github.com/openghg/openghg_inversions/issues/OPE-154))
+
+- Correct the concrete RHIME model heading hierarchy so strict Sphinx builds accept its alternative-likelihood subsections.
+
+- Preserve fixed and uncertain cross-channel coupling guidance in the active RHIME model-family plan and remove a stale semantic-model roadmap reference.
+
 # OpenGHG Inversions Change Log
 
 # Unreleased
