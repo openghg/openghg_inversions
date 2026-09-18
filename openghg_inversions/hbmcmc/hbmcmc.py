@@ -750,6 +750,7 @@ def fixedbasisMCMC(
     paris_postprocessing_kwargs: dict | None = None,
     power: dict | float = 1.99,
     return_basis_objects: bool = False,
+    time_resolved: Sequence[bool | None] | bool | None = None,
     **kwargs,
 ) -> xr.Dataset | dict | InversionOutput:
     """Script to run hierarchical Bayesian MCMC (RHIME) for inference of emissions.
@@ -896,6 +897,8 @@ def fixedbasisMCMC(
         return_basis_objects: If True, include retained basis objects in ``output_format="mcmc_args"``
             debug output. Fixedbasis output modes that construct modern inversion output retain them
             internally regardless of this setting. They are not passed to ``inferpymc``.
+        time_resolved: Footprint time-resolution selector, either scalar or
+            aligned to ``sites``.
         **kwargs: Additional sampler arguments. The compatibility-only
             ``flux_non_finite_check`` key selects ``"lazy"`` or ``"count"``
             flux sanitization before the remaining values are forwarded.
@@ -958,6 +961,7 @@ def fixedbasisMCMC(
         fp_model=fp_model,
         fp_height=fp_height,
         fp_species=fp_species,
+        time_resolved=time_resolved,
         inlet=inlet,
         instrument=instrument,
         max_level=max_level,
