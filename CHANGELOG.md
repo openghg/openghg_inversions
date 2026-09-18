@@ -1,3 +1,10 @@
+## 0.7.1 (2026-09-18)
+
+
+### Miscellaneous
+
+- Use Matt Rigby's preferred name in the Zenodo creator metadata.
+
 ## 0.7.0 (2026-09-18)
 
 
