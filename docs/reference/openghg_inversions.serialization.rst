@@ -1,0 +1,7 @@
+openghg\_inversions.serialization
+==================================
+
+.. automodule:: openghg_inversions.serialization
+   :members:
+   :show-inheritance:
+   :undoc-members:

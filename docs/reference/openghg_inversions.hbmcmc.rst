@@ -18,4 +18,5 @@ openghg\_inversions.hbmcmc
    openghg_inversions.hbmcmc.inversion_pymc
    openghg_inversions.hbmcmc.inversionsetup
    openghg_inversions.hbmcmc.post_process_inputs
+   openghg_inversions.hbmcmc.preparation
    openghg_inversions.hbmcmc.run_hbmcmc

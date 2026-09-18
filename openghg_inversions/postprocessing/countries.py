@@ -3,18 +3,21 @@
 from __future__ import annotations
 
 import json
+import warnings
 from collections import defaultdict
+from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import cast, Literal, TypeVar
-from collections.abc import Iterable, Mapping, Sequence
 from typing_extensions import Self
 
 import xarray as xr
 from openghg_inversions import convert, utils
 
-from openghg_inversions.array_ops import align_sparse_lat_lon, get_xr_dummies, sparse_xr_dot
+from openghg_inversions._country_file import load_country_dataset
+from openghg_inversions.array_ops import get_xr_dummies, sparse_xr_dot
 from openghg_inversions.utils import get_country_file_path
 from ._country_codes import CountryInfoList
+from ._basis_products import make_x_to_country_matrix
 from .inversion_output import InversionOutput
 
 # type for xr.Dataset *or* xr.DataArray
@@ -39,7 +42,7 @@ def get_area_grid(lat: xr.DataArray, lon: xr.DataArray) -> xr.DataArray:
 
 
 paris_regions_dict = {
-    "europe":{
+    "europe": {
         "BELUX": ["BEL", "LUX"],
         "BENELUX": ["BEL", "LUX", "NLD"],
         "CW_EU": [
@@ -67,10 +70,40 @@ paris_regions_dict = {
         "NW_EU2": ["BEL", "DEU", "FRA", "GBR", "IRL", "LUX", "NLD"],
         "NW_EU_CONTINENT": ["BEL", "DEU", "FRA", "LUX", "NLD"],
     },
-    "eastasia":{
-        "EASTERN_ASIA":["EChi1", "PRK", "KOR", "JPN"]
-    }
-    }
+    "eastasia": {
+        "EASTERN_ASIA": ["EChi1", "PRK", "KOR", "JPN"],
+        "WMC": ["EChi2", "NChina", "WChina"],
+        "WESTERN_JPN": ["WJP", "CJP"],
+        "EASTERN_JPN": ["CJP", "NJP"],
+        "CHN_EC": ["CHN_E", "CHN_C"],
+        "CHN": ["CHN_E", "CHN_C", "CHN_W", "CHN_N"],
+        "JPN_WC": ["JPN_W", "JPN_C"],
+        "JPN": ["JPN_W", "JPN_C", "JPN_N"],
+        "NEA": ["KOR", "PRK", "JPN_W", "JPN_C", "CHN_E", "CHN_C"],
+        "NEA_C": ["KOR", "PRK", "JPN_W", "CHN_E"],
+    },
+    "westusa": {},
+    "saussie": {},
+    "centralasia": {
+        "INDIA": ["INDIA-SOUTH", "INDIA-NORTH", "INDIA-EAST", "INDIA-WEST", "INDIA-JK", "INDIA-ANDAMAN"],
+        "INDIA-noJK": ["INDIA-SOUTH", "INDIA-NORTH", "INDIA-EAST", "INDIA-WEST", "INDIA-ANDAMAN"],
+        "INDIA-NS": ["INDIA-NORTH", "INDIA-SOUTH"],
+        "INDIA-NSE": ["INDIA-NORTH", "INDIA-SOUTH", "INDIA-EAST"],
+        "INDIA-NSW": ["INDIA-NORTH", "INDIA-SOUTH", "INDIA-WEST"],
+        "INDIA-NSEW": ["INDIA-NORTH", "INDIA-SOUTH", "INDIA-EAST", "INDIA-WEST"],
+    },
+}
+
+
+def _require_country_species(inv_out: InversionOutput) -> str:
+    """Return species metadata required for country totals."""
+    if inv_out.is_multisector:
+        raise ValueError("Country postprocessing supports only single-sector RHIME outputs.")
+
+    species = inv_out.species
+    if species is None:
+        raise ValueError("Country postprocessing requires InversionOutput metadata field 'species'.")
+    return species
 
 
 class CountryRegions:
@@ -167,16 +200,53 @@ class CountryRegions:
 
         return missing
 
-    def align(self, country_list: CountryInfoList) -> Self:
+    def align(
+        self,
+        country_list: CountryInfoList,
+        drop_missing: bool = False,
+        warn_on_drop: bool = True,
+    ) -> Self:
         """Return CountryRegions with values aligned to a given list of countries.
 
         This is used to make sure that the region definitions have the same "input names"
         as the given country list, which is necessary if country codes are not being used.
+
+        Args:
+            country_list: list to align countries against.
+            drop_missing: if True, skip any region for which one or more countries are
+              missing from `country_list`.
+            warn_on_drop: if True and `drop_missing` is True, emit a warning listing
+              dropped regions and missing countries.
         """
-        aligned_country_regions = {
-            region: country_list.select_by_country_info(region_countries)
-            for region, region_countries in self._regions.items()
-        }
+        missing_by_region = self.region_countries_missing_from(country_list)
+
+        if missing_by_region and not drop_missing:
+            msg = "\n".join(
+                f"{region}: {list(missing_countries)}"
+                for region, missing_countries in missing_by_region.items()
+                if missing_countries
+            )
+            raise ValueError(f"Could not find the following countries needed for regions:\n{msg}")
+
+        if missing_by_region and drop_missing and warn_on_drop:
+            msg = "; ".join(
+                f"{region} (missing: {list(missing_countries)})"
+                for region, missing_countries in missing_by_region.items()
+                if missing_countries
+            )
+            warnings.warn(
+                "Dropping country regions with unmatched countries in `country_regions`: " + msg,
+                UserWarning,
+            )
+
+        aligned_country_regions = {}
+
+        for region, region_countries in self._regions.items():
+            if region in missing_by_region:
+                continue
+
+            aligned_country_regions[region] = country_list.select_by_country_info(region_countries)
+
         return type(self)(aligned_country_regions)
 
     def all_region_countries_present_in(self, country_list: CountryInfoList) -> bool:
@@ -201,7 +271,8 @@ class Countries:
         countries: xr.Dataset,
         country_selections: list[str] | None = None,
         country_code: Literal["alpha2", "alpha3"] | None = None,
-        country_regions: dict[str, list[str]] | str | Path | None = None
+        country_regions: dict[str, list[str]] | str | Path | None = None,
+        drop_missing_regions: bool = False,
     ) -> None:
         """Create Countries object given country map Dataset and optional list of countries to select.
 
@@ -214,6 +285,9 @@ class Countries:
               list of (country codes) of the countries comprising that regions (e.g.
               `["BEL", "NLD", "LUX"]`). Alternatively, a path (or string representing a path)
               to a JSON file with a similar specification can be passed.
+            drop_missing_regions: if True, region definitions containing countries not
+                found in the country file are dropped with a warning. If False, missing
+                countries in region definitions raise a ValueError.
 
         """
         self.country_code = country_code
@@ -225,7 +299,9 @@ class Countries:
         else:
             self.country_regions = CountryRegions(country_regions)
 
-        self.country_regions = self.country_regions.align(self.country_labels)
+        self.country_regions = self.country_regions.align(
+            self.country_labels, drop_missing=drop_missing_regions
+        )
 
         # check that country regions are specified in correct country code
         missing_countries = self.country_regions.region_countries_missing_from(self.country_labels)
@@ -292,6 +368,7 @@ class Countries:
         country_selections: list[str] | None = None,
         country_code: Literal["alpha2", "alpha3"] | None = None,
         country_regions: dict[str, list[str]] | str | Path | None = None,
+        drop_missing_regions: bool = False,
     ) -> Self:
         """Create Countries object given country map Dataset and optional list of countries to select.
 
@@ -305,14 +382,18 @@ class Countries:
               list of (country codes) of the countries comprising that regions (e.g.
               `["BEL", "NLD", "LUX"]`). Alternatively, a path (or string representing a path)
               to a JSON file with a similar specification can be passed.
+            drop_missing_regions: if True, region definitions containing countries not
+                found in the country file are dropped with a warning. If False, missing
+                countries in region definitions raise a ValueError.
 
         """
         country_file_path = get_country_file_path(country_file=country_file, domain=domain)
         return cls(
-            xr.open_dataset(country_file_path, engine="h5netcdf"),
+            load_country_dataset(country_file_path),
             country_code=country_code,
             country_selections=country_selections,
             country_regions=country_regions,
+            drop_missing_regions=drop_missing_regions,
         )
 
     def get_x_to_country_mat(
@@ -323,24 +404,21 @@ class Countries:
         """Construct a sparse matrix mapping from x sensitivities to country totals.
 
         Args:
-            inv_out: InversionOutput object, used to get basis functions and flux.
+            inv_out: Inversion output, used to get basis functions and flux.
             sparse: if True, values of returned DataArray are `sparse.COO` array.
 
         Returns:
             xr.DataArray with coordinate dimensions ("country", "basis_region")
         """
-        # multiply flux and basis and align to country lat/lon
-        basis = align_sparse_lat_lon(inv_out.basis, inv_out.flux)
-        flux_x_basis = align_sparse_lat_lon(inv_out.flux * basis, self.area_grid)
-
-        # compute matrix/tensor product: country_mat.T @ (area_grid * flux * basis_mat)
-        # transpose doesn't need to be taken explicitly because alignment is done by dimension name
-        result = sparse_xr_dot(self.matrix, (self.area_grid * flux_x_basis))
-
-        if sparse:
-            return result
-
-        return result.as_numpy()
+        x_trace = inv_out.trace_dataset(var_roles="flux_scale")
+        return make_x_to_country_matrix(
+            inv_out.basis_functions,
+            inv_out.flux,
+            x_trace,
+            country_matrix=self.matrix,
+            area_grid=self.area_grid,
+            sparse=sparse,
+        )
 
     @staticmethod
     def _get_country_trace(
@@ -377,18 +455,25 @@ class Countries:
 
         Args:
             species: name of species, e.g. "co2", "ch4", "sf6", etc.
-            inv_out: InversionOutput
+            inv_out: Inversion output.
 
         Returns:
             xr.Dataset with coordinate dimensions ("country", "draw")
 
-        TODO: there is a "country unit" conversion in the old code, but it seems to always product
+        TODO: there is a "country unit" conversion in the old code, but it seems to always produce
               1.0, based on how it is used in hbmcmc
         """
+        species = _require_country_species(inv_out)
         x_to_country_mat = self.get_x_to_country_mat(inv_out)
-        x_trace = inv_out.get_trace_dataset(var_names="x")
-
-        species = inv_out.species
+        x_trace = inv_out.trace_dataset(var_roles="flux_scale")
+        flux_scale_name = inv_out.variable_name("flux_scale")
+        x_trace = x_trace.rename(
+            {
+                data_var: str(data_var).replace(f"{flux_scale_name}_", "x_", 1)
+                for data_var in x_trace.data_vars
+                if str(data_var).startswith(f"{flux_scale_name}_")
+            }
+        )
 
         country_traces = Countries._get_country_trace(species, x_trace, x_to_country_mat)
 

@@ -1,5 +1,6 @@
 # Required for testing
-flake8
 pytest >= 6.2.5
-black
+pytest-xdist
+ruff==0.16.0
 tox >= 4.24
+tox-uv

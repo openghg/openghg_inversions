@@ -1,78 +1,104 @@
-Installation and Setup
-======================
+.. _installation-and-setup:
 
-As OpenGHG Inversions is dependent on OpenGHG, please ensure that when
-running locally you are using Python 3.10 or later on Linux or MacOS.
-Please see the `OpenGHG project <https://github.com/openghg/openghg/>`__
-for further installation instructions of OpenGHG and setting up an
-object store.
+Install and set up OpenGHG Inversions
+=====================================
 
-Setup a virtual environment
+Choose the setup that matches your task:
+
+* To run inversions with a released version, install the package in a virtual
+  environment.
+* To contribute to OpenGHG Inversions, use the repository's Pixi environment.
+
+OpenGHG Inversions supports Python 3.10 or later on Linux and macOS. Inversions
+that acquire data through OpenGHG also need access to a configured OpenGHG
+object store; see the `OpenGHG project documentation
+<https://docs.openghg.org/>`_ for that separate setup.
+
+Install the released package
+----------------------------
+
+Create and activate a virtual environment, then install the package from PyPI:
+
+.. code-block:: bash
+
+   python3 -m venv .venv
+   source .venv/bin/activate
+   python -m pip install --upgrade pip
+   python -m pip install openghg-inversions
+
+Confirm that the installed package imports and report its version:
+
+.. code-block:: bash
+
+   python -c "import importlib.metadata; print(importlib.metadata.version('openghg-inversions'))"
+
+Start with :doc:`conceptual_inversion`, then use the
+:doc:`model recipe chooser <model_recipes>` to select a runnable workflow.
+
+Contributor setup with Pixi
 ---------------------------
 
-Check that you have Python 3.10 or greater:
+The repository's recommended contributor environment uses `Pixi
+<https://pixi.prefix.dev/latest/installation/>`_. Pixi keeps the compiled
+NetCDF/HDF5 stack from conda-forge consistent across OpenGHG, xarray,
+``h5netcdf``, ``h5py``, and ``netcdf4``.
 
-.. code:: bash
+Clone the repository, install the development environment, and verify its core
+imports:
 
-   python --version
-
-(Note for Bristol ACRG group: If you are on Blue Pebble, the default
-anaconda module ``lang/python/anaconda`` is Python 3.9. Use
-``module avail`` to list other options;
-``lang/python/miniconda/3.10.10.cuda-12`` or
-``lang/python/miniconda/3.12.2.inc-perl-5.30.0`` will work.)
-
-Make a virtual environment
-
-.. code:: bash
-
-   python -m venv openghg_inv
-
-Next activate the environment
-
-.. code:: bash
-
-   source openghg_inv/bin/activate
-
-Installation using ``pip``
---------------------------
-
-First you’ll need to clone the repository
-
-.. code:: bash
+.. code-block:: bash
 
    git clone https://github.com/openghg/openghg_inversions.git
+   cd openghg_inversions
+   pixi install -e dev
+   pixi run -e dev python -c "import openghg_inversions, h5py, h5netcdf, netCDF4"
 
-Next make sure ``pip`` and related install tools are up to date and then
-install OpenGHG Inversions using the editable install flag (``-e``)
+The main contributor checks are:
 
-.. code:: bash
+.. code-block:: bash
 
-   pip install --upgrade pip setuptools wheel
-   pip install -e openghg_inversions
+   pixi run -e dev test
+   pixi run -e dev lint
+   pixi run -e dev typecheck
 
-Optionally, install the developer requirements (there is more
-information about this in the “Contributing” section below):
+Build and preview the documentation with:
 
-.. code:: bash
+.. code-block:: bash
 
-   pip install -r requirements-dev.txt
+   pixi run -e dev docs-preview
 
-Verify that PyMC is using fast linear algebra libraries
--------------------------------------------------------
+The preview is served at ``http://127.0.0.1:8765/`` and opens in Safari on
+macOS. Use ``--no-open`` to keep it in the terminal or ``--fresh`` to discard
+cached Sphinx doctrees:
 
-At this point, run
+.. code-block:: bash
 
-.. code:: bash
+   pixi run -e dev docs-preview --no-open
+   pixi run -e dev docs-preview --fresh
 
-   python -c "import pymc"
+The `repository README
+<https://github.com/openghg/openghg_inversions#installation>`_ documents
+additional contributor tasks, including the optional country-file smoke test
+and the larger ``uv_dev`` environment.
 
-This should run without printing any messages. If you receive a message
-about ``pymc`` or ``pytensor`` using the ``numpy`` C-API, then your
-inversions might run slowly because the fast linear algebra libraries
-used by ``numpy`` haven’t been found.
+Use a local OpenGHG checkout
+----------------------------
 
-Solutions to this are: 1. try ``python -m pip install numpy`` after
-upgrading ``pip, setuptools, wheel`` 2. create a ``conda`` env, install
-``numpy`` using ``conda``, then use ``pip`` to upgrade
-``pip, setuptools, wheel`` and install ``openghg_inversions``
+To test repository code against a local OpenGHG checkout, replace only the
+OpenGHG package code inside the Pixi environment:
+
+.. code-block:: bash
+
+   pixi run -e dev python -m pip install --no-deps -e /path/to/openghg
+
+The ``--no-deps`` flag prevents ``pip`` from replacing Pixi's conda-forge
+NetCDF/HDF5 libraries with unrelated wheels.
+
+Troubleshoot compiled dependencies
+----------------------------------
+
+If importing ``h5py``, ``h5netcdf``, or ``netCDF4`` reports an HDF5 library
+error, recreate the Pixi development environment before changing individual
+packages. Avoid upgrading those compiled packages separately with ``pip``
+inside the Pixi environment, because doing so can mix incompatible binary
+libraries.

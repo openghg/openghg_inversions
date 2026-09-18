@@ -1,6 +1,429 @@
+## 0.7.0 (2026-09-18)
+
+
+### Bug fixes
+
+- Project multisource sensitivities source by source, avoiding a state-by-grid temporary array that made large prepared-input builds exhaust memory. ([#OPE-87](https://github.com/openghg/openghg_inversions/issues/OPE-87))
+
+- Preserve active subsets of MultiIndex-backed RHIME states through NetCDF and Zarr trace round trips. ([#OPE-163](https://github.com/openghg/openghg_inversions/issues/OPE-163))
+
+- Preserve footprint vertical-extent provenance so satellite boundary sensitivities are only left unscaled when their observation and footprint max levels agree. ([#631](https://github.com/openghg/openghg_inversions/issues/631))
+
+- Drop boundary-condition states that have no sensitivity to any retained observation, avoiding prior-only dimensions in monthly inversions. ([#637](https://github.com/openghg/openghg_inversions/issues/637))
+
+- Preserve observation positions and inlet-height associations when automatically matching varying inlet heights to footprints, preventing unmatched observations or empty footprint retrievals from shifting valid later matches. ([#689](https://github.com/openghg/openghg_inversions/issues/689))
+
+- Percentile minimum error is now calculated independently per site and accepts non-monotonically ordered timestamps, avoiding cross-site alignment artifacts for sparse observations; validation also reports NaN and infinite values separately from negative values.
+
+### Deprecations and removals
+
+- Stop storing the redundant observation-level site-sigma variance and bespoke fixed-OU/site-sigma trace annotations. The variance remains directly recoverable by squaring ``sigma_observation``; custom likelihood identity and arguments remain in the trace metadata.
+
+### Features
+
+- Add an opt-in diagnostic for custom pipelines to check complete dense or low-rank-plus-diagonal observation covariance. ([#OPE-13](https://github.com/openghg/openghg_inversions/issues/OPE-13))
+
+- Add a labelled fixed-timescale, within-site Ornstein--Uhlenbeck mismatch likelihood with fixed or inferred site amplitudes and low-rank Woodbury evaluation. ([#OPE-22](https://github.com/openghg/openghg_inversions/issues/OPE-22))
+
+- Expose RHIME result and requested-output stages, add multisector trace and total-concentration PARIS outputs, and reject unsupported multisector basic output before sampling. ([#OPE-48](https://github.com/openghg/openghg_inversions/issues/OPE-48))
+
+- Add a readable CO2-only RHIME recipe for correlated retained states, coherent affine prior contributions, activity-aware prior closure, fixed model-data mismatch, and aggregation-error covariance. ([#OPE-75](https://github.com/openghg/openghg_inversions/issues/OPE-75))
+
+- Add an explicit labelled CO2/O2 preparation, model, and prepared-input replay seam with shared land states, tracer-specific ocean states, and a joint aggregation-error covariance. ([#OPE-77](https://github.com/openghg/openghg_inversions/issues/OPE-77))
+
+- RHIME model recipes and likelihoods now expose their scientific arrays as named inputs, while recipe-local declarations preserve lazy externally prepared products until their selected model boundary. ([#OPE-82](https://github.com/openghg/openghg_inversions/issues/OPE-82))
+
+- Consolidate minimum-error preparation, validation, alignment, and provenance in a typed ``MinimumError`` value. ([#OPE-92](https://github.com/openghg/openghg_inversions/issues/OPE-92))
+
+- Consolidate labelled boundary-period alignment and transform provenance behind one backend-neutral preparation API. ([#OPE-93](https://github.com/openghg/openghg_inversions/issues/OPE-93))
+
+- Use one prepared linear PyMC component path, removing exact-zero sensitivity columns before graph construction while retaining full labelled-state reconstruction. ([#OPE-94](https://github.com/openghg/openghg_inversions/issues/OPE-94))
+
+- Add a named CO2 fixed-OU cached-amplitude recipe with an ordered PyMC CompoundStep and exact joint outputs. ([#OPE-115](https://github.com/openghg/openghg_inversions/issues/OPE-115))
+
+- Use one labelled correlated CO2 flux state for same-grid inner and outer regions, with fixed groups handled by state activity and group metadata retained for output reporting. ([#OPE-119](https://github.com/openghg/openghg_inversions/issues/OPE-119))
+
+- Allow the public ordinary and cached-sigma CO2 runners to select labelled boundary-condition states and add an explicit optional offset, while defining ``co2_flux_contribution`` as the sum of ``fixed_prior_contribution`` and the scaled flux sensitivity. ([#OPE-150](https://github.com/openghg/openghg_inversions/issues/OPE-150))
+
+- Add a dedicated prepared-input and serialization boundary for coherent-reduction CO2 models, with exact dense and explicit low-rank-plus-diagonal aggregation covariance support, without changing the standard, multisector, or ``run_hbmcmc`` preparation paths. ([#OPE-153](https://github.com/openghg/openghg_inversions/issues/OPE-153))
+
+- Add readable TOML templates and a strict resolver for configuring CO₂-only and linked CO₂/O₂ prepared-input model recipes. ([#OPE-162](https://github.com/openghg/openghg_inversions/issues/OPE-162))
+
+- Add a labelled per-site IID mismatch likelihood, with explicit fixed or inferred amplitudes and pinned Verification Games model provenance. ([#114](https://github.com/openghg/openghg_inversions/issues/114))
+
+- Allow the CO2 model builder and prepared-input runner to select an ordinary covariance-aware likelihood after constructing the completed model mean. CO2 likelihoods no longer require or apply the pollution-event `min_error` input. ([#146](https://github.com/openghg/openghg_inversions/issues/146))
+
+- Add CENTRALASIA weighted-basis support and the INDIA-JK and EASTASIA country aggregations used by Asian inversions. ([#637](https://github.com/openghg/openghg_inversions/issues/637))
+
+- Add a reusable absolute additive-sigma Gaussian likelihood with an optional minimum-error floor, including an INI-selectable ``run_hbmcmc.py`` option, labelled per-site prior scales, and fixed-error reuse by the CO2 and CO2/O2 recipes. ([#639](https://github.com/openghg/openghg_inversions/issues/639))
+
+- Add automated monthly release preparation, guarded PyPI publication, current-line hotfix forwarding, and feature-PR maintenance workflows. ([#644](https://github.com/openghg/openghg_inversions/issues/644))
+
+- Add a ``merge-paris-outputs`` CLI command that safely merges sequential legacy or latest PARIS flux and concentration files.
+
+- Add a reusable labelled eigenbasis and CO2 likelihood component for an inferred global scalar mismatch scale, with cache validation against the current reported and aggregation errors.
+
+- Add file-backed RHIME preparation, prior-predictive, sampling, convergence-diagnostic, and postprocessing commands for staged workflow orchestrators.
+
+### Miscellaneous
+
+- Move the temporary fixed-basis preparation contract under ``hbmcmc`` while preserving deprecated compatibility imports from ``inversion_data``. ([#OPE-83](https://github.com/openghg/openghg_inversions/issues/OPE-83))
+
+- Validated source labels, warned before large explicit MultiIndex-level broadcasts, and fused source pairing with the sparse native prolongation during multisource sensitivity projection. ([#OPE-121](https://github.com/openghg/openghg_inversions/issues/OPE-121))
+
+- Make additive, fixed-error, and pollution-event mismatch equations first-class peer model components, load minimum-error floors only for components which own them, narrow custom likelihood inputs to universal observation terms, and translate legacy ``run_hbmcmc`` additive configuration directly into explicit model options. Narrow the modern fallback pollution-event scaling-sigma prior from Uniform(0.1, 3.0) to Uniform(0.0, 0.1). ([#OPE-124](https://github.com/openghg/openghg_inversions/issues/OPE-124))
+
+- Keep Sphinx's cached doctrees between local documentation previews, add a fresh-build option, and separate API reference generation from ordinary preview builds. ([#629](https://github.com/openghg/openghg_inversions/issues/629))
+
+- Adopt Towncrier fragments for unreleased user-visible changes while retaining
+  the generated `CHANGELOG.md` as the published changelog.
+
+- Credit Matthew Rigby and Anita Ganesan as creators in the Zenodo release metadata.
+
+### Documentation
+
+- Add downloadable standard and multisector RHIME tutorials with validated packaged configurations, committed outputs, and an opt-in output-recording workflow. ([#OPE-108](https://github.com/openghg/openghg_inversions/issues/OPE-108))
+
+- Organize user documentation around standard and CO₂ RHIME model families, with a recipe chooser and explicit support boundaries. ([#OPE-139](https://github.com/openghg/openghg_inversions/issues/OPE-139))
+
+- Add a conceptual introduction to atmospheric inversions, including an accessible source-to-posterior schematic, limitations, glossary, and routes into RHIME workflows. ([#OPE-154](https://github.com/openghg/openghg_inversions/issues/OPE-154))
+
+- Correct the concrete RHIME model heading hierarchy so strict Sphinx builds accept its alternative-likelihood subsections.
+
+- Preserve fixed and uncertain cross-channel coupling guidance in the active RHIME model-family plan and remove a stale semantic-model roadmap reference.
+
 # OpenGHG Inversions Change Log
 
 # Unreleased
+
+## Code changes
+
+- Made PyTensor precision ownership explicit at process startup. Fresh
+  OpenGHG Inversions PyMC processes retain the memory-conscious float32
+  default, while explicit `PYTENSOR_FLAGS` precision and already-initialized
+  PyTensor or PyMC runtimes are left unchanged. Future component-level
+  mixed-precision accumulation work is tracked in
+  [#607](https://github.com/openghg/openghg_inversions/issues/607).
+
+- Moved RHIME retrieval, filtering, basis, sensitivity, labelled assembly, and
+  PyMC materialization into a cohesive preparation module while keeping their
+  scientific order visible in the runners. `run_rhime` and
+  `run_rhime_multisector` can now resume from borrowed external
+  `RhimeMergedData` without OpenGHG or cache I/O while preserving the existing
+  prepared-input serialization contract.
+  [OPE-46](https://linear.app/openghg-inversions/issue/OPE-46/p0-w4-split-rhime-preparation-into-named-scientific-stages)
+
+- Updated the latest PARIS flux and concentration NetCDF outputs to follow the
+  revised CF schema, including canonical dimension order, distinct secondary
+  covariance axes, valid `cell_methods`, positive-up altitude metadata,
+  attribute-free time bounds, the case-sensitive CF `Conventions` attribute,
+  template-declared coordinate types, and non-empty global metadata. Legacy
+  PARIS templates remain unchanged.
+  [#597](https://github.com/openghg/openghg_inversions/pull/597),
+  [OPE-56](https://linear.app/openghg-inversions/issue/OPE-56)
+
+- Added an exact labelled coherent Gaussian reduction that constructs and
+  consumes native covariance product blocks atomically and returns the retained
+  mean/covariance, centred effective observation model, and unresolved
+  observation covariance. The eager backend-neutral boundary exactly aligns
+  the labelled native inputs once, materializes related Dask graphs together,
+  and trusts the linked products it constructs locally. It preserves gathered
+  state and observation labels without adding a second validation layer to the
+  scientific equations.
+  Approximation, model adapters, and durable persistence remain separate
+  follow-up boundaries. [OPE-18](https://linear.app/openghg-inversions/issue/OPE-18/foundation-coherent-native-to-reduced-preparation-artifact)
+- Added a package-shaped RHIME consumer example for projects generated by the
+  OpenGHG project cookiecutter. It keeps the custom likelihood in downstream
+  code, calls the public `run_rhime(..., likelihood_builder=...)` seam from a
+  complete project CLI, and documents the generated `src` layout and optional
+  console-script entry point. The acceptance test exercises controlled
+  acquisition through a supported output using only public RHIME imports.
+  [OPE-53](https://linear.app/openghg-inversions/issue/OPE-53/p0-w2b-prove-run-rhime-reuse-in-an-openghg-cookiecutter-package)
+
+- Added experimental static borrowed-reference markers for NumPy arrays and
+  xarray data arrays. The markers preserve runtime identity and lazy backing
+  while allowing Pyright and Mypy to diagnose selected in-place mutations;
+  they deliberately do not claim runtime immutability. [OPE-38](https://linear.app/openghg-inversions/issue/OPE-38/add-experimental-borrowed-numpyxarray-type-markers)
+
+- Added labelled, matrix-free native covariance actions and
+  covariance-compatible retained product blocks for bucket scaling states. The
+  new preparation API
+  supports separable spatial kernels, class-blocked and independent-source
+  covariance, covariance-compatible restriction/prolongation operators,
+  dense or diagonal observation covariance products, a basis-owned canonical
+  multisource expansion, explicit eager execution boundaries, and a units
+  contract for dimensionless scaling states. The numerical path uses one
+  explicit xarray alignment/materialization boundary and trusts the products
+  constructed within it; repository guidance now documents this validation
+  policy and common labelled-array patterns. Product persistence and durable
+  identities are deferred to OPE-40. This is the low-level native covariance
+  foundation tracked by Linear OPE-17; centred coherent reduction, unresolved
+  covariance, and likelihood integration are follow-up work.
+
+- Separated basis-group constraints from the algorithms applied within each
+  group. The constrained module now owns masks, target allocation, per-group
+  dispatch, and global relabelling; partition geometry, steps, policies, and
+  greedy orchestration live in the partition module, while the weighted bucket
+  adapter lives with the weighted algorithm. The public `greedy_partitioning`
+  engine composes with an explicit `PartitionStep`, malformed child partitions
+  are rejected before refinement, and the unreleased axis-specific strategy
+  name has been removed.
+  [#455](https://github.com/openghg/openghg_inversions/issues/455)
+
+- Added direct-Python RHIME likelihood and complete-model builder contracts.
+  The top-level `run_rhime` and `run_rhime_multisector` entry points now accept
+  a keyword-only `likelihood_builder` callable, so ordinary acquisition-to-output
+  runs can replace the observation component without constructing prepared
+  inputs or a complete model.
+  Ordinary likelihood builders receive explicit scientific inputs, add the
+  canonical ``y`` and ``epsilon`` variables, and return ``y``. Complete-model
+  builders instead return a result declaring semantic variable roles,
+  supported output formats, and serializable provenance metadata; built-in
+  standard and multisector graphs use the same complete-model result contract.
+  The runner records custom likelihood-builder identity in inversion outputs.
+  An opt-in additive-sigma Gaussian implements observation variance from
+  measurement, aggregation, and inferred sigma terms with a minimum-error
+  floor, and offsets can use one global scalar as an alternative to the
+  existing site designs. The tox workflow now runs PyTensor tests without
+  requiring or loading a C++ compiler module.
+  [#533](https://github.com/openghg/openghg_inversions/issues/533)
+
+- Added pure-xarray basis prior-uncertainty helpers that project scalar,
+  source-labelled, or gridded cell-scale uncertainty through retained
+  `BasisFunctions` operators and calibrate caller-defined aggregate targets.
+  The API preserves labelled and ragged source/state coordinates, returns
+  labelled `x_prior_stdev` arrays plus target diagnostics, supports explicit
+  median-relative and mean-total calibration statistics, and accepts active
+  state masks so target uncertainty matches sampled states. Stable weight
+  scaling avoids overflow, and zero totals, signed-flux cancellation, and
+  invalid widths are handled explicitly without embedding project countries or
+  target-width defaults. [#493](https://github.com/openghg/openghg_inversions/issues/493),
+  [#509](https://github.com/openghg/openghg_inversions/issues/509)
+
+- Added a shared, versioned MultiIndex storage boundary. NetCDF and Zarr
+  artifacts now declare each owning dimension, ordered level names, uniqueness,
+  reconstruction, and ordering expectations; declared expanded coordinates are
+  restored with explicit xarray MultiIndex construction and focused validation.
+  Public InferenceData save/load helpers preserve these semantics across both
+  storage backends. [#555](https://github.com/openghg/openghg_inversions/issues/555)
+
+- Fixed the weights-first fixed-outer adapter to reorder physically equivalent
+  reversed coordinates for both outer-region and inner-class maps before
+  strict grid validation. Genuinely incompatible coordinates still fail.
+  [PR #525 follow-up](https://github.com/openghg/openghg_inversions/pull/525).
+
+- Temporarily constrained PyMC to versions below 6 and ArviZ to versions below
+  1 while the runtime trace representation migrates from ``InferenceData`` to
+  ``xarray.DataTree``. ArviZ is now declared directly because it is imported by
+  the package. [#443](https://github.com/openghg/openghg_inversions/issues/443)
+
+- Added modern RHIME likelihood support for fixed aggregation-error covariance
+  supplied after input preparation: exact dense, low-rank-plus-diagonal, and
+  independent diagonal representations. Structured likelihoods retain the
+  observed ``y`` variable and predictive sampling, preserve the total-marginal
+  minimum-error floor, and leave legacy HBMCMC paths unchanged. Derived basic,
+  PARIS, and legacy products reject these inputs pending representation-neutral
+  postprocessing reconstruction. [PR #516](https://github.com/openghg/openghg_inversions/pull/516)
+
+- Added coordinate-preserving loaders and a weights-first region-constrained
+  fixed-outer adapter. Packaged InTEM and raw country/land-sea class maps are
+  normalized to the weights grid, outer classes retain one target each, and
+  the requested basis count is allocated only across bounded inner classes.
+  Class values are factorized once before splitting, and callers may select a
+  class-local generator. The legacy weighted fixed-outer output is unchanged.
+  This advances
+  [#452](https://github.com/openghg/openghg_inversions/issues/452).
+
+- Added a source-neutral inner/outer region-class combinator for constrained
+  basis construction. It tags class provenance, interns repeated composite
+  labels, and normalizes physically equivalent rectilinear and curvilinear
+  grids while rejecting conflicting spatial metadata or CRS definitions. A
+  companion selector handles tuple-valued classes reliably. This advances
+  [#449](https://github.com/openghg/openghg_inversions/issues/449).
+
+- Enforced the class-local `SplitStrategy` label-array contract at the
+  constrained-basis boundary while allowing strategies to stop before their
+  requested region target. [#455](https://github.com/openghg/openghg_inversions/issues/455)
+
+- Hardened satellite-column preparation and PARIS outputs: footprint timestamps
+  are aligned to observations at nanosecond precision, and filtered site
+  metadata now retains the correct satellite platform for boundary-condition
+  scaling. PARIS column prior factors are applied to total columns rather than
+  boundary-condition-only values.
+  [PR #541](https://github.com/openghg/openghg_inversions/pull/541)
+- Preserve retrieved flux periods instead of inferring them from inversion
+  duration, including annual priors used by mid-year monthly inversions.
+  Calendar-aware PARIS postprocessing and legacy merged-data round trips now
+  retain the original flux timestamps and per-source period metadata.
+  [#539](https://github.com/openghg/openghg_inversions/issues/539)
+- Kept all site-aligned retrieval options paired with retained sites across
+  merged-data reloads, retrieval failures, and observation filtering. Explicit
+  empty site selections now fail instead of expanding to every loaded site,
+  calculated minimum-error options have a validated ``{"by_site": bool}``
+  schema, and legacy migration warnings remain visible under default warning
+  filters. Retained calibration scales now follow site pruning, and
+  fresh scenarios delegate common-unit conversion to OpenGHG
+  ``ModelScenario``; saved merged datasets already carry those common units.
+  Explicit site order is preserved during input assembly, and mixed
+  surface/column inputs retain their column correction factors.
+  [#427](https://github.com/openghg/openghg_inversions/issues/427)
+- Extended `MaxChildPCAEccentricity` with an optional
+  `min_child_target_weight_share` materiality threshold. The default zero keeps
+  the strict all-child eccentricity veto. Positive values allow only children
+  below that share of the class/source-local equal-target weight,
+  `weights.sum() / target_regions`, to bypass the veto; material children remain
+  guarded. This affects split acceptance only and does not reconnect, freeze,
+  prune, or marginalize the accepted low-weight child.
+  [PR #546](https://github.com/openghg/openghg_inversions/pull/546)
+- Added the opt-in `ConnectedBinaryPartitionStep` for repairing provisional
+  binary cuts whose sides contain disconnected components. Repair candidates
+  preserve the parent exactly, return two connected children, and are selected
+  deterministically by minimum moved weight and then child-weight balance. The
+  existing `ConnectedComponentPartitionStep` behavior is unchanged, and the
+  new wrapper falls back to its historical multi-child component decomposition
+  when no valid binary repair exists.
+  [#545](https://github.com/openghg/openghg_inversions/issues/545)
+- Moved the concrete standard and multisector RHIME graphs beside their
+  procedural recipe runners and removed the semantic flux compiler and
+  `builder_strategy` dispatch. Pure source, sector, prior, and state-activity
+  resolution remains shared inside the RHIME package, while each production
+  graph stays readable in scientific order in its owning recipe module. The
+  recipes now compose pollution, baseline, and offset contributions before the
+  likelihood seam, and expose one clearly named concrete builder per recipe.
+- Added a tox PyTensor compiler preflight that automatically loads
+  `gcc/12.3.0-sknc` on Rocky Linux or recognized Blue Pebble hosts when the
+  compiler setting is empty, supports configurable module/compiler overrides,
+  and fails before pytest when `pytensor.config.cxx` remains empty instead of
+  allowing extremely slow C++-free PyMC test runs.
+- Routed explicit sector-to-source mappings plus complete
+  per-sector priors through multisector preparation and model specifications.
+  Source-specific ragged state blocks remain gathered over
+  `(source, region_in_source)`, scalar source provenance remains single-sector,
+  and rectangular multisource adaptation is confined to the legacy
+  `fixedbasisMCMC` boundary.
+  [#402](https://github.com/openghg/openghg_inversions/issues/402),
+  [#403](https://github.com/openghg/openghg_inversions/issues/403),
+  [PR #529](https://github.com/openghg/openghg_inversions/pull/529)
+
+- Added a source-neutral xarray adapter that creates retained-basis RHIME
+  prepared inputs from direct-child DataTrees and ordered per-site mappings.
+  It projects cached footprint-times-flux fields before
+  gathering unequal per-site time axes, excludes large caches from canonical
+  inputs, and retains the existing sampled ``H_bc`` boundary-condition path.
+  Multisector inputs require source-compatible retained prior flux and basis
+  metadata rather than silently broadcasting a total flux across sectors;
+  source-specific ragged states retain their gathered
+  ``(source, region_in_source)`` layout. Direct and dense Datasets, padded
+  arrays, pre-stacked ``nmeasure`` layouts, unit conversion, source-label
+  coercion are intentionally deferred until a concrete consumer establishes
+  their semantics; canonical prepared artifacts should instead be reopened
+  with ``RhimePreparedInputs.load``. Deterministic fixed-baseline ingress is
+  deferred until a reusable semantic Baseline component is available; legacy
+  HBMCMC model/output behavior is unchanged.
+
+- Reset retained posterior draw labels after burn-in before attaching predictive
+  groups in both modern RHIME and fixed-basis sampling, and preserve the
+  discarded burn count through trace and `InversionOutput` round trips.
+  Trace-group merging still explicitly retains outer alignment for genuinely
+  unequal external groups, while multisector totals require a value from every
+  sector so padded draws cannot be interpreted as zero flux. Single- and
+  multisector PARIS country samples are now promoted to float64 before totals
+  and uncertainty statistics are calculated, then cast at the template
+  boundary, keeping posterior stdev and covariance calculations consistent.
+
+- Added versioned NetCDF and Zarr persistence for ``RhimePreparedInputs``,
+  including CF compression-by-gathering for canonical MultiIndex inversion
+  inputs, labeled site metadata decoded by integer site indicators, and the
+  retained operator-backed basis and reference flux. Static multisource bases
+  now use an ordered xarray ``source`` coordinate; basis provenance remains
+  owned by ``BasisFunctions``. Site indicators are regenerated from labeled
+  measurement sites, avoiding a second user-maintained source of site truth.
+  Observation-varying release locations remain aligned to measurements rather
+  than being reduced to site scalars. Repeated Zarr saves replace the previous
+  artifact rather than retaining stale groups.
+  Generic DataTree, InferenceData, and MultiIndex serialization helpers now
+  have shared ownership outside postprocessing.
+
+- Added `run_rhime_from_prepared_inputs` so modern standard and multisector
+  RHIME models can run from an existing `RhimePreparedInputs` object without
+  repeating OpenGHG-backed data preparation. Existing `run_rhime` entry points
+  now share the same post-preparation execution path.
+  [#509](https://github.com/openghg/openghg_inversions/issues/509)
+
+- Added a label-aware active/fixed state-vector contract to the modern RHIME
+  model builders. Exact-zero sensitivity columns are now fixed at scaling one
+  by default while every nonzero column remains active; explicit labelled
+  masks and ``basis_group`` freezes can retain other fixed states or sectors.
+  Models sample active states only but retain full ordered deterministic
+  ``x``/``x_<sector>`` vectors, and flux-scaling prior parameters may now be
+  scalar, full array-valued, or labelled xarray values. Programmatic model specs
+  can set shared activity and per-sector overrides, and sampled ``H_bc @ bc``
+  components can use the same mechanism to fix some or all BC scaling states.
+  Config-file syntax and persisted activity-reason reports remain follow-up
+  work; legacy ``inferpymc`` remains single-sector and retains its full sampled
+  state. This API bridge addresses
+  [#509](https://github.com/openghg/openghg_inversions/issues/509), following the
+  state-contract context in
+  [#456](https://github.com/openghg/openghg_inversions/issues/456) and
+  [#493](https://github.com/openghg/openghg_inversions/issues/493).
+
+- Made retained `BasisFunctions` / `BasisOperator` metadata the primary basis
+  contract for RHIME preparation and modern postprocessing outputs. Derived
+  flux, country, PARIS, and legacy-format products now record stable basis
+  reconstruction metadata, retained basis artifacts record loaded/saved paths,
+  and source-specific multisector flux reconstruction no longer reaches through
+  the legacy flat-basis view. Legacy flat basis artifacts remain readable as an
+  explicit compatibility fallback but are deprecated for new workflows.
+  [#429](https://github.com/openghg/openghg_inversions/issues/429)
+- Added a modern `output_format="legacy"` compatibility product, routed deprecated
+  `hbmcmc` / `hbmcmc_postprocessing` output requests to it, and made
+  `run_hbmcmc.py` translate fixedbasis-style configs into `run_rhime` calls while
+  preserving legacy output filenames. The shim now validates translated arguments
+  before copying configs, translates deprecated `calculate_min_error` and
+  `reparameterise_log_normal` options where possible, old HBMCMC output attrs
+  are produced from modern `InversionOutput`, legacy KDE mode statistics now
+  handle all-NaN and partially-NaN rows without dropping every draw, derived
+  RHIME products no longer save large `InversionOutput` sidecars unless
+  `save_inversion_output` is requested, and user docs mark historical
+  `fixedbasisMCMC` behavior as available from release 0.6 or earlier.
+  Country-file loading in modern country and legacy-format
+  postprocessing now falls back to direct HDF5 reads when h5netcdf dimension-scale
+  decoding fails on cluster nodes, and floating legacy-format output variables
+  are written as `float32` to avoid footprint-alignment upcasts. Modern PARIS
+  compatibility outputs also cast floating data variables to `float32` to match
+  the historical fixedbasis-style file contract. RHIME and the `run_hbmcmc.py`
+  compatibility shim now emit grep-friendly `TIMING ... seconds=... maxrss_kb=...`
+  lines for setup, preparation, sampling, sampler statistics, postprocessing,
+  and output writes so batch logs can identify runtime regressions. Modern
+  RHIME model imports also apply the same PyTensor `floatX=float32` default as
+  the historical fixedbasis PyMC path, avoiding accidental float64 sampling
+  after the `run_hbmcmc.py` route switch.
+  [#416](https://github.com/openghg/openghg_inversions/issues/416)
+- Routed modern RHIME and fixedbasis postprocessing through modern `InversionOutput` semantics, retained `BasisFunctions` / `BasisOperator` products, variable-role lookups, and product-local capability checks; removed the transitional postprocessing protocol/view layer and deleted `LegacyInversionOutput` plus the dead legacy inversion-output builder helpers. [#383](https://github.com/openghg/openghg_inversions/issues/383)
+- Migrated standard RHIME `basic` and `paris` postprocessing toward modern `InversionOutput` as an intermediate step before the final #383 product-local postprocessing contract. [#435](https://github.com/openghg/openghg_inversions/issues/435)
+- Introduced the temporary modern/legacy output split and modern `InversionOutput` serialization; the transitional `LegacyInversionOutput` carrier was removed by #383. [#401](https://github.com/openghg/openghg_inversions/issues/401)
+- Moved public RHIME model-builder exports into `openghg_inversions.models` and shared data preparation between `fixedbasisMCMC`, `run_rhime`, and `run_rhime_multisector`. [#399](https://github.com/openghg/openghg_inversions/issues/399), [#425](https://github.com/openghg/openghg_inversions/issues/425)
+- Retained `BasisFunctions` objects through shared inversion preparation, RHIME results, and opt-in `fixedbasisMCMC` debug output; DataTree basis artifacts are loaded when available while legacy flat basis artifacts remain supported. [#428](https://github.com/openghg/openghg_inversions/issues/428)
+- Added modern `run_rhime` and shared-basis `run_rhime_multisector` pipelines, RHIME CLI entry points, RHIME config template, modern result/spec objects, and focused tests for the new public runners. [#398](https://github.com/openghg/openghg_inversions/issues/398)
+- Made concat-gather handling of mismatched site data variables order-independent, added an opt-in drop policy used by `make_inv_inputs`, and added lightweight regression tests for issue #394. [#394](https://github.com/openghg/openghg_inversions/issues/394)
+- Fix bug which was assigninig the wrong times to inversion flux outputs in non-standard cases, such as 3-monthly inversions. [#PR 387](https://github.com/openghg/openghg_inversions/pull/387)
+- Fix small bug where postprocessing was failing if country codes in file didn't match exactly those in `paris_regions_dict`. [#PR 377](https://github.com/openghg/openghg_inversions/pull/377)
+- More flexibility for new inversion domains. [#PR 333](https://github.com/openghg/openghg_inversions/pull/333)
+- More flexibility for types of boundary condition basis functions. [#PR 333](https://github.com/openghg/openghg_inversions/pull/333)
+- Bug fix for quadtree algorithm. [#PR 333](https://github.com/openghg/openghg_inversions/pull/333)
+- Fixed minor bugs in code for storing merged data. Added option to change merged data format by including an extension in `merged_data_name`, e.g. `merged_data_name="my_merged_data.nc"` will save to netCDF, while `merged_data_name="my_merged_data"` will save to zipped Zarr. [#PR 345](https://github.com/openghg/openghg_inversions/pull/345) 
+- Added the ability to process TCCON data, along with additional output variables `obs_prior_factor` and `obs_prior_upper_level_factor`. [PR #327](https://github.com/openghg/openghg_inversions/pull/327)
+- Fixed bug introduced by PR 327, which caused "prior factor" variables filled with None values to be passed to post-processing. [PR #353](https://github.com/openghg/openghg_inversions/pull/353)
+- Added new `inversion_inputs.py` with helper functions for creating the inputs to the PyMC code. Tests added to check compatibility with older `inversionsetup.py` helpers. [PR #356](https://github.com/openghg/openghg_inversions/pull/356)
+- Added `BasisFunctions` object (backed by `BasisOperator` objects) and tests to confirm that these preserve existing behaviour when computing H matrices. These classes will be used to refactor the basis functions wrapper in a future PR. [PR #358](https://github.com/openghg/openghg_inversions/pull/358)
+- Fixed issue that raised `IndexError` in `inferpymc` when a monthly of data was missing an `sigam_freq` is "monthly". (Code accidentally merged into devel instea of PR, so this is a placeholder PR)[PR #365](https://github.com/openghg/openghg_inversions/pull/365)
+- Added opt-in `basis_functions_wrapper` support for returning `BasisFunctions` objects and saving basis artifacts in DataTree format while keeping legacy flat-basis output as the default. [PR #367](https://github.com/openghg/openghg_inversions/pull/367)
+- Stage A of PyMC model refactor. Added regression tests for `inferpymc` and extracted function to build the PyMC model. [PR #378](https://github.com/openghg/openghg_inversions/pull/378)
+- Stage B of PyMC model refactor. Updated `inferpymc` to accept current/legacy inputs as well as xarray `Dataset`. [PR #380](https://github.com/openghg/openghg_inversions/pull/380)
+- Stage C of PyMC model refactor. Added function for building PyMC "model components". The model building code from Stage B is still used by default, but the new code can be selected by adding `model_builder="components"` to the .ini file. [PR #382](https://github.com/openghg/openghg_inversions/pull/382)
+- Stage D of PyMC model refactor. Removed temporary scaffolding to preserve legacy model building code. `inferpymc` now only accepts inversion inputs as `xr.Dataset`, and `fixedbasisMCMC` has been updated to reflect this. [PR #389](https://github.com/openghg/openghg_inversions/pull/389)
+- Neutral refactor of `fixedbasisMCMC` output handling to make the end-of-run logic clearer, whichis now split into explicit stages for artefact creation, `InversionOutput` construction, and output mode dispatch. [PR #390](https://github.com/openghg/openghg_inversions/pull/390)
+- Stage E follow-up PyMC refactor tidy-up. `inferpymc` is now a thinner compatibility wrapper over model building, modern `InferenceData` sampling, and explicit legacy adaptation; legacy trace renaming moved out of model construction; `InversionOutput` no longer carries a PyMC model; and the current latent/step compatibility logic is more clearly isolated ahead of a future modern run-inversion path. [PR #391](https://github.com/openghg/openghg_inversions/pull/391)
 
 # Version 0.6.0
 
@@ -26,6 +449,8 @@
 # Version 0.4.0
 
 ## Model updates
+
+- Offsets can be applied and solved for on a monthly basis, as well as for the entire inversion period (ini option `offset_args = {"offset_freq": "M"}` for monthly, although other frequencies can be passed). 
 
 - Offsets can be applied to all but one site (ini option `offset_args = {"drop_first": True}`) or to all sites, which is the default option (ini option `offset_args = {"drop_first": False}`). [#PR 285](https://github.com/openghg/openghg_inversions/pull/285)
 

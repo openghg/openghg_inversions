@@ -16,6 +16,14 @@ variables:
 		Yobs:units = "mol mol-1" ;
 		Yobs:_FillValue = NaNf ;
 		Yobs:long_name = "observed_mole_fraction" ;
+	float Yobs_prior_factor(time, nsite) ;
+		Yobs_prior_factor:units = "mol mol-1" ;
+		Yobs_prior_factor:_FillValue = NaNf ;
+		Yobs_prior_factor:long_name = "prior_factor_mole_fraction" ;
+	float Yobs_prior_upper_level_factor(time, nsite) ;
+		Yobs_prior_upper_level_factor:units = "mol mol-1" ;
+		Yobs_prior_upper_level_factor:_FillValue = NaNf ;
+		Yobs_prior_upper_level_factor:long_name = "prior_upper_level_factor_mole_fraction" ;
 	float uYobs_repeatability(time, nsite) ;
 		uYobs_repeatability:units = "mol mol-1" ;
 		uYobs_repeatability:_FillValue = NaNf ;

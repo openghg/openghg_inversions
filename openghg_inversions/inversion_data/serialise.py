@@ -4,22 +4,44 @@
   to disk (either as a pickle file, netCDF, or zarr)
 - `load_merged_data` restores the `fp_all` dict from these saved formats
 - `make_combined_scenario` converts the `fp_all` dict into a xr.Dataset
+
+DataTree and pickle loads restore stored ``.units`` metadata unchanged.
+``fp_all_from_dataset`` derives the numeric scale from the combined dataset's
+common ``mf`` units.
 """
 
+import json
 import pickle
+import warnings
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, cast, Literal
+from typing import Any, Literal, cast
 
 import numpy as np
 import xarray as xr
-
+import zarr
+from numcodecs import Blosc
 from openghg.dataobjects import BoundaryConditionsData, FluxData
+from openghg.dataobjects._basedata import _BaseData
 from openghg.util import timestamp_now
+
+from openghg_inversions.utils import _flux_period_is_missing, datatree_ncdf_encoding
+from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
+
+OutputFormat = Literal["pickle", "netcdf", "zarr", "zarr.zip"]  # for internal type hints
 
 
 def _make_merged_data_name(species: str, start_date: str, output_name: str) -> str:
     return f"{species}_{start_date}_{output_name}_merged-data"
+
+
+def _split_suffix(merged_data_name: str) -> tuple[str, OutputFormat | None]:
+    for suffix in ("pickle", "nc", "zarr", "zarr.zip"):
+        if merged_data_name.endswith("." + suffix):
+            if suffix == "nc":
+                return merged_data_name.removesuffix("." + suffix), "netcdf"
+            return merged_data_name.removesuffix("." + suffix), suffix
+    return merged_data_name, None
 
 
 def _save_merged_data(
@@ -38,8 +60,13 @@ def _save_merged_data(
 
     If `merged_data_name` is not given, then `species`, `start_date`, and `output_name` must be provided.
 
-    The default output format is a zarr store. If zarr is not installed, then netCDF is used.
-    Alternatively, "pickle" can be specified.
+    If `merged_data_name` ends with one of "pickle", "nc", "zarr", or "zarr.zip", the output format
+    will be set accordingly. Otherwise, the output format defaults to zipped zarr store. If zarr is
+    not installed, then netCDF is used.
+
+    The output can be saved to a pickle file, but this isn't
+    recommended because data can only be unpickled reliably with the exact same environment that created
+    the pickle.
 
     Args:
         fp_all: dictionary of merged data to save
@@ -61,30 +88,45 @@ def _save_merged_data(
             )
         merged_data_name = _make_merged_data_name(species, start_date, output_name)  # type: ignore
 
-    if isinstance(merged_data_dir, str):
-        merged_data_dir = Path(merged_data_dir)
+    # if suffix corresponds to an output format, strip the suffix and set the output
+    # format accordingly
+    merged_data_name, suffix = _split_suffix(merged_data_name)
+    output_format = suffix or output_format
+
+    merged_data_dir = Path(merged_data_dir)
+
+    if not merged_data_dir.exists():
+        merged_data_dir.mkdir(parents=True)
 
     # write to specified output
     if output_format == "pickle":
         with open(merged_data_dir / (merged_data_name + ".pickle"), "wb") as f:
             pickle.dump(fp_all, f)
     elif output_format in {"netcdf", "zarr", "zarr.zip"}:
-        ds = make_combined_scenario(fp_all)
+        dt = fp_all_to_datatree(fp_all, netcdf_safe_attrs=(output_format == "netcdf"))
+        dt = clear_datatree_encoding(dt)
+        dt = clear_datatree_time_attrs(dt)
 
         if "zarr" in output_format:
-            try:
-                import zarr
-            except ModuleNotFoundError:
-                # zarr not found
-                ds.to_netcdf(merged_data_dir / (merged_data_name + ".nc"))
+            # make sure chunks are reasonable and uniform
+            dt = dt.chunk({"time": 600})
+            dt = dt.map_over_datasets(
+                lambda x: xr.unify_chunks(x)[0]
+            )  # unify_chunks returns a tuple, select first item
+
+            assert isinstance(dt, xr.DataTree)  # narrow type since the previous operation could return tuple
+
+            # update encoding
+            comp = Blosc(cname="zstd", clevel=5, shuffle=Blosc.SHUFFLE)
+            encoding = datatree_compression_encoding(dt, comp)
+
+            if output_format == "zarr":
+                dt.to_zarr(merged_data_dir / (merged_data_name + ".zarr"), mode="w-", encoding=encoding)
             else:
-                if output_format == "zarr":
-                    ds.to_zarr(merged_data_dir / (merged_data_name + ".zarr"), mode="w")
-                else:
-                    with zarr.ZipStore(merged_data_dir / (merged_data_name + ".zarr.zip"), mode="w") as store:
-                        ds.to_zarr(store, mode="w")
+                with zarr.ZipStore(merged_data_dir / (merged_data_name + ".zarr.zip"), mode="w") as store:
+                    dt.to_zarr(store, mode="w-", encoding=encoding)
         else:
-            ds.to_netcdf(merged_data_dir / (merged_data_name + ".nc"))
+            dt.to_netcdf(merged_data_dir / (merged_data_name + ".nc"), encoding=datatree_ncdf_encoding(dt))
     else:
         raise ValueError(
             f"Output format should be 'pickle', 'netcdf', 'zarr', or 'zarr.zip'. Given '{output_format}'."
@@ -107,7 +149,10 @@ def load_merged_data(
     If `merged_data_name` is not given, then `species`, `start_date`, and `output_name` must be provided.
 
     This function tries to automatically find a compatible format of merged data, if a format is not specified.
-    First, it checks for data in "zarr" format, then in netCDF, and finally in pickle.
+    First, it checks for data in "zarr" (or zipped zarr) format, then in netCDF, and finally in pickle.
+
+    Note: if data is stored in a zarr ZipStore, then the data is eagerly loaded, since the data needs to
+    loaded before the zip file is closed.
 
     Args:
         merged_data_dir: path to directory where merged data will be saved
@@ -120,8 +165,7 @@ def load_merged_data(
     Returns:
         `fp_all` dictionary
     """
-    if isinstance(merged_data_dir, str):
-        merged_data_dir = Path(merged_data_dir)
+    merged_data_dir = Path(merged_data_dir)
 
     if merged_data_name is not None:
         err_msg = (
@@ -139,20 +183,18 @@ def load_merged_data(
             f"output name {output_name} found in merged data directory {merged_data_dir}"
         )
 
+    # if suffix corresponds to an output format, strip the suffix and set the output
+    # format accordingly
+    merged_data_name, suffix = _split_suffix(merged_data_name)
+    output_format = suffix or output_format
+
     if output_format is not None:
-        ext = output_format
+        ext = "nc" if output_format == "netcdf" else output_format
         merged_data_file = merged_data_dir / (merged_data_name + "." + ext)
         if not merged_data_file.exists():
             raise ValueError(f"No merged data found at {merged_data_file}.")
     else:
         for ext in ["zarr.zip", "zarr", "nc", "pickle"]:
-            # skip "zarr" if zarr not installed...
-            if "zarr" in ext:
-                try:
-                    import zarr
-                except ModuleNotFoundError:
-                    continue
-
             merged_data_file = merged_data_dir / (merged_data_name + "." + ext)
             if merged_data_file.exists():
                 break
@@ -161,25 +203,27 @@ def load_merged_data(
             raise ValueError(err_msg)
 
     # load merged data
-    if merged_data_file.suffix == "pickle":
+    if merged_data_file.suffix == ".pickle":
         with open(merged_data_file, "rb") as f:
-            fp_all = pickle.load(f)
+            return pickle.load(f)
+    elif merged_data_file.suffixes == [".zarr", ".zip"]:
+        with zarr.ZipStore(merged_data_file, mode="r") as store:
+            with xr.open_datatree(store, engine="zarr") as dt:  # type: ignore[arg-type, unused-ignore]
+                if dt.is_leaf:
+                    return fp_all_from_dataset(dt.to_dataset().load())
+                return datatree_to_fp_all(dt.load())
+    elif merged_data_file.suffix == ".zarr":
+        with xr.open_datatree(merged_data_file, engine="zarr") as dt:
+            if dt.is_leaf:
+                return fp_all_from_dataset(dt.to_dataset())
+            return datatree_to_fp_all(dt)
     else:
-        if merged_data_file.suffixes == [".zarr", ".zip"]:
-            import zarr
-
-            with zarr.ZipStore(merged_data_file, mode="r") as store:
-                ds = xr.open_zarr(store).load()
-        elif merged_data_file.suffix == ".zarr":
-            ds = xr.open_zarr(merged_data_file)
-        else:
-            # suffix is probably ".nc", but could be something else if name passed directly
-            # try `open_dataset`
-            ds = xr.open_dataset(merged_data_file)
-
-        fp_all = fp_all_from_dataset(ds)
-
-    return fp_all
+        # suffix is probably ".nc", but could be something else if name passed directly
+        # try `open_dataset`
+        with xr.open_datatree(merged_data_file) as dt:
+            if dt.is_leaf:
+                return fp_all_from_dataset(dt.to_dataset())
+            return datatree_to_fp_all(dt)
 
 
 list_keys = [
@@ -249,11 +293,18 @@ def combine_scenario_attrs(attrs_list: list[dict[str, Any]], context) -> dict[st
 def make_combined_scenario(fp_all: dict) -> xr.Dataset:
     """Combine scenarios and merge in fluxes and boundary conditions.
 
-    If fluxes and boundary conditions only have one coordinate for their
-    "time" dimension, then "time" will be dropped.
+    Flux time coordinates are stored on a separate ``flux_time`` dimension,
+    with explicit per-source timestamp presence, so that source periods
+    beginning before the observations and all-NaN slices are preserved.
+    Singleton boundary-condition time dimensions are still dropped.
 
-    Otherwise, it is assumed that the time axis for fluxes and boundary conditions
-    have the same length as the time axis for the model scenarios.
+    Args:
+        fp_all: Inversion data keyed by site, with flux sources under
+            ``".flux"`` and optional boundary conditions under ``".bc"``.
+
+    Returns:
+        A combined dataset containing site scenarios, source-specific flux
+        periods, and optional boundary conditions.
 
     """
     # combine scenarios by site
@@ -269,15 +320,37 @@ def make_combined_scenario(fp_all: dict) -> xr.Dataset:
     # make dtype of 'site' coordinate "<U3" (little-endian Unicode string of length 3)
     combined_scenario = combined_scenario.assign_coords(site=combined_scenario.site.astype(np.dtype("<U3")))
 
+    # Record which timestamps belong to each source before concat introduces
+    # outer-join padding. Flux values cannot serve as this mask because a
+    # legitimate flux slice may itself contain only NaNs.
+    fluxes = []
+    for source, flux_data in fp_all[".flux"].items():
+        source_flux = flux_data.data
+        if "time" in source_flux.dims:
+            source_flux = source_flux.assign(
+                flux_time_present=("time", np.ones(source_flux.sizes["time"], dtype=np.int8))
+            )
+        fluxes.append(source_flux.expand_dims({"source": [source]}))
+
     # concat fluxes over source before merging into combined scenario
-    fluxes = [v.data.expand_dims({"source": [k]}) for k, v in fp_all[".flux"].items()]
     combined_fluxes = xr.concat(fluxes, dim="source")
+    if "flux_time_present" in combined_fluxes:
+        combined_fluxes["flux_time_present"] = combined_fluxes["flux_time_present"].fillna(0).astype(np.int8)
+        combined_fluxes["flux_time_present"].attrs["long_name"] = "flux source includes this timestamp"
+    flux_time_periods = []
+    for flux_data in fp_all[".flux"].values():
+        variable_period = flux_data.data["flux"].attrs.get("time_period")
+        dataset_period = flux_data.data.attrs.get("time_period")
+        source_period = dataset_period if _flux_period_is_missing(variable_period) else variable_period
+        flux_time_periods.append("" if _flux_period_is_missing(source_period) else str(source_period))
+    combined_fluxes["flux_time_period"] = ("source", np.asarray(flux_time_periods, dtype=str))
+    combined_fluxes["flux"].attrs.pop("time_period", None)
 
-    if "time" in combined_fluxes.dims and combined_fluxes.sizes["time"] == 1:
-        combined_fluxes = combined_fluxes.squeeze("time")
+    if "time" in combined_fluxes.dims:
+        combined_fluxes = combined_fluxes.rename(time="flux_time")
 
-    # merge with override in case coordinates slightly off
-    # (data should already be aligned by `ModelScenario`)
+    # Merge with override in case coordinates are slightly off. Fresh data are
+    # already unit-aligned by ModelScenario.
     combined_scenario = combined_scenario.merge(combined_fluxes, join="override")
 
     # merge in boundary conditions
@@ -288,6 +361,8 @@ def make_combined_scenario(fp_all: dict) -> xr.Dataset:
         bc = bc.reindex_like(combined_scenario, method="nearest")
         combined_scenario = combined_scenario.merge(bc)
 
+    combined_scenario.attrs["split_by_sectors"] = bool(fp_all.get(".split_by_sectors", False))
+
     return combined_scenario
 
 
@@ -295,13 +370,20 @@ def fp_all_from_dataset(ds: xr.Dataset) -> dict:
     """Recover "fp_all" dictionary from "combined scenario" dataset.
 
     This is the inverse of `make_combined_scenario`, except that the attributes of the
-    scenarios, fluxes, and boundary conditions may be different.
+    scenarios, fluxes, and boundary conditions may be different. New datasets
+    retain source timestamps on ``flux_time`` with explicit source presence;
+    older datasets without that metadata use value-based padding removal or
+    fall back to the first observation time for compatibility.
 
     Args:
         ds: dataset created by `make_combined_scenario`
 
     Returns:
         dictionary containing model scenarios keyed by site, as well as flux and boundary conditions.
+
+    Raises:
+        ValueError: If serialized ``mf`` units are invalid or are not a molar
+            mixing ratio. Missing units default to ``mol/mol``.
     """
     fp_all = {}
 
@@ -313,7 +395,9 @@ def fp_all_from_dataset(ds: xr.Dataset) -> dict:
 
     for i, site in enumerate(ds.site.values):
         scenario = (
-            ds.sel(site=site, drop=True).drop_vars(["flux", *bc_vars], errors="ignore").drop_dims("source")
+            ds.sel(site=site, drop=True)
+            .drop_vars(["flux", "flux_time_period", "flux_time_present", *bc_vars], errors="ignore")
+            .drop_dims(["source", "flux_time"], errors="ignore")
         )
 
         # extract attributes that were gathered into a list
@@ -334,12 +418,31 @@ def fp_all_from_dataset(ds: xr.Dataset) -> dict:
     fp_all[".flux"] = {}
 
     for i, source in enumerate(ds.source.values):
-        flux_ds = (
-            ds[["flux"]]  # double brackets to get dataset
-            .sel(source=source, drop=True)
-            .expand_dims({"time": [ds.time.min().values]})
-            .transpose(..., "time")
-        )
+        flux_time_present = None
+        if "flux_time_present" in ds:
+            flux_time_present = ds["flux_time_present"].sel(source=source, drop=True)
+
+        flux_ds = ds[["flux"]].sel(source=source, drop=True)
+        if "flux_time" in flux_ds.dims:
+            flux_ds = flux_ds.rename(flux_time="time")
+            if flux_time_present is not None:
+                flux_time_present = flux_time_present.rename(flux_time="time")
+        elif "time" not in flux_ds.dims:
+            # Backward compatibility for old combined datasets that squeezed a
+            # singleton flux time coordinate during serialization.
+            flux_ds = flux_ds.expand_dims({"time": [ds.time.min().values]})
+
+        if flux_time_present is not None:
+            flux_ds = flux_ds.isel(time=flux_time_present.load().values.astype(bool))
+        else:
+            # Older stores did not record timestamp presence, so retain their
+            # best-effort value-based padding removal.
+            flux_ds = flux_ds.dropna("time", how="all", subset=["flux"])
+        flux_ds = flux_ds.transpose(..., "time")
+        if "flux_time_period" in ds:
+            time_period = str(ds["flux_time_period"].sel(source=source).load().item())
+            if time_period:
+                flux_ds["flux"].attrs["time_period"] = time_period
 
         # extract attributes that were gathered into a list
         for k in list_keys:
@@ -366,10 +469,159 @@ def fp_all_from_dataset(ds: xr.Dataset) -> dict:
         species = species.upper()
     fp_all[".species"] = species
 
-    try:
-        fp_all[".units"] = float(ds.mf.attrs.get("units", 1.0))
-    except ValueError:
-        # conversion to float failed
-        fp_all[".units"] = 1.0
+    fp_all[".units"] = mole_fraction_unit_scale(
+        ds.mf.attrs.get("units", "mol/mol"),
+        context="serialized merged observations",
+    )
+
+    if bool(ds.attrs.get("split_by_sectors", False)):
+        warnings.warn(
+            "Legacy `fp_all_from_dataset` drops scenario `source` dimensions, so sector-resolved "
+            "state cannot be reconstructed. Setting `fp_all['.split_by_sectors'] = False` on load.",
+            UserWarning,
+        )
+    fp_all[".split_by_sectors"] = False
 
     return fp_all
+
+
+# ----------------------------------------
+# DataTree conversions
+# ----------------------------------------
+
+
+def openghg_data_to_dataset(openghg_data: _BaseData, netcdf_safe_attrs: bool = False) -> xr.Dataset:
+    ds = openghg_data.data
+
+    if netcdf_safe_attrs:
+        ds.attrs["openghg_metadata"] = json.dumps(openghg_data.metadata)
+    else:
+        ds.attrs["openghg_metadata"] = openghg_data.metadata
+    return ds
+
+
+def dataset_to_flux_data(ds: xr.Dataset) -> FluxData:
+    if "flux" not in ds.data_vars:
+        raise ValueError("Dataset must have `flux` data variable to convert to FluxData.")
+    ds = ds.copy()
+    metadata = ds.attrs.pop("openghg_metadata")
+
+    if isinstance(metadata, str):
+        metadata = json.loads(metadata)
+
+    return FluxData(metadata=metadata, data=ds)
+
+
+def dataset_to_bc_data(ds: xr.Dataset) -> BoundaryConditionsData:
+    if any(f"vmr_{d}" not in ds.data_vars for d in "nesw"):
+        raise ValueError(
+            "Dataset must have `vmr_n`, `vmr_e`, `vmr_s`, `vmr_w` data "
+            "variables to convert to BoundaryConditionsData."
+        )
+    ds = ds.copy()
+    metadata = ds.attrs.pop("openghg_metadata")
+
+    if isinstance(metadata, str):
+        metadata = json.loads(metadata)
+
+    return BoundaryConditionsData(metadata=metadata, data=ds)
+
+
+def flux_dict_to_datatree(flux_dict: dict[str, FluxData], netcdf_safe_attrs: bool = False) -> xr.DataTree:
+    dt_dict = {k: openghg_data_to_dataset(v, netcdf_safe_attrs) for k, v in flux_dict.items()}
+    return xr.DataTree.from_dict(dt_dict)
+
+
+def datatree_to_flux_dict(dt: xr.DataTree) -> dict[str, FluxData]:
+    """Convert an xarray DataTree to a dict of FluxData objects.
+
+    Args:
+        dt: DataTree whose child nodes are converted to datasets and then to FluxData.
+
+    Returns:
+        Mapping from node keys (as strings) to FluxData instances.
+    """
+    return {str(k): dataset_to_flux_data(v.to_dataset()) for k, v in dt.items()}
+
+
+def fp_all_to_datatree(fp_all: dict, netcdf_safe_attrs: bool = False) -> xr.DataTree:
+    dt_dict: dict[str, xr.Dataset | xr.DataTree] = {}
+    scenario_dict = {}
+    dt_attrs = {}
+
+    if ".flux" in fp_all:
+        dt_dict["fluxes"] = flux_dict_to_datatree(fp_all[".flux"], netcdf_safe_attrs)
+
+    for k, v in fp_all.items():
+        if k == ".flux":
+            continue
+        if isinstance(v, BoundaryConditionsData):
+            dt_dict[k.removeprefix(".")] = openghg_data_to_dataset(v, netcdf_safe_attrs)
+        elif not k.startswith(".") and isinstance(v, xr.Dataset):
+            scenario_dict[k] = v
+        else:
+            dt_attrs[k] = v
+
+    dt_dict["scenarios"] = xr.DataTree.from_dict(scenario_dict)
+
+    dt = xr.DataTree.from_dict(dt_dict)
+    dt.attrs = dt_attrs
+
+    return dt
+
+
+def datatree_to_fp_all(dt: xr.DataTree) -> dict:
+    if "scenarios" not in dt:
+        raise ValueError("Can only convert DataTree to fp_all if 'scenarios' group is present.")
+
+    fp_all = {}
+
+    if "fluxes" in dt:
+        fp_all[".flux"] = datatree_to_flux_dict(dt.fluxes)
+
+    if "bc" in dt:
+        fp_all[".bc"] = dataset_to_bc_data(dt.bc.to_dataset())
+
+    for k, v in dt.scenarios.items():
+        fp_all[str(k)] = v.to_dataset()
+
+    fp_all.update({str(k): v for k, v in dt.attrs.items()})
+
+    return fp_all
+
+
+def datatree_compression_encoding(dt: xr.DataTree, compressor: Blosc) -> dict:
+    """Creating encoding dictionary for saving DataTree to zarr."""
+    encoding = defaultdict(dict)
+
+    for g in dt.groups:
+        if not dt[g].data_vars:
+            continue
+        for dv in dt[g].data_vars:
+            encoding[g][dv] = {"compressor": compressor, "compressors": (compressor,)}
+
+    return encoding
+
+
+def clear_datatree_encoding(dt: xr.DataTree) -> xr.DataTree:
+    """Clean encoding attribute of variables to avoid issues when writing."""
+    result = dt.copy()
+
+    for g in result.groups:
+        for v in result[g].data_vars.values():
+            v.encoding = {}
+
+        for c in result[g].coords.values():
+            c.encoding = {}
+
+    return result
+
+
+def clear_datatree_time_attrs(dt: xr.DataTree) -> xr.DataTree:
+    result = dt.copy()
+
+    for g in result.groups:
+        if "time" in result[g].coords:
+            result[g].coords["time"].attrs.pop("units", None)
+
+    return result

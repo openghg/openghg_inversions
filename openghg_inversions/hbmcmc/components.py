@@ -1,34 +1,41 @@
-"""Classes and functions to making self-contained parts of the RHIME model."""
+"""Compatibility wrappers for HBMCMC model components."""
+
+from __future__ import annotations
+
 import numpy as np
-import pandas as pd
-import pymc as pm
-import pytensor.tensor as pt
-from pytensor.tensor import TensorVariable
+import xarray as xr
+from pytensor.tensor.variable import TensorVariable
+
+from openghg_inversions.models.components import add_offset_component
 
 
-def make_offset(site_indicator: np.ndarray, prior_args: dict, name: str = "offset", output_dim: str = "nmeasure", drop_first: bool = False) -> TensorVariable:
+def make_offset(
+    site_indicator: np.ndarray,
+    prior_args: dict,
+    name: str = "offset",
+    output_dim: str = "nmeasure",
+    drop_first: bool = False,
+    offset_freq: str | None = None,
+) -> TensorVariable:
     """Create an offset inside a PyMC model.
 
-    Note: this *must* be called from inside a PyMC `model` context.
-
-    Args:
-        site_indicator: array with same length as obs, with integers to indicator which site
-          an observation belongs to
-        prior_args: dict of prior args for offset prior
-        name: name for offset in PyMC model
-        output_dim: name of dimension for output
-        drop_first: if True, set first site's offset to zero
-
-    Returns:
-        TensorVariable containing offset vector (to add to modelled observations).
+    This compatibility wrapper keeps the historical import path while delegating
+    to the new shared component implementation. ``offset_freq`` remains an
+    ignored compatibility argument because this site-only interface has no
+    observation times from which to derive periods.
     """
-    from .inversion_pymc import parse_prior  # TODO move parse_prior into this file?
+    del offset_freq
+    observations = xr.DataArray(
+        np.empty(site_indicator.size),
+        dims=(output_dim,),
+        coords={"site": (output_dim, site_indicator)},
+    )
 
-    sites = np.unique(site_indicator)
-
-    n_sites = len(sites) - 1 if drop_first else len(sites)
-
-    matrix = pd.get_dummies(site_indicator, drop_first=drop_first, dtype=int).values
-    offset_x = parse_prior(name + "0", prior_args, shape=n_sites)
-
-    return pm.Deterministic(name, pt.dot(matrix, offset_x), dims=output_dim)
+    return add_offset_component(
+        observations,
+        prior_args=prior_args,
+        var_name=f"{name}_latent",
+        output_name=name,
+        output_dim=output_dim,
+        drop_first=drop_first,
+    )

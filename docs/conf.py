@@ -21,6 +21,7 @@ extensions = [
     "sphinx.ext.autosummary",
     "sphinx.ext.autosectionlabel",
     "sphinx.ext.mathjax",
+    "jupyter_sphinx",
 ]
 
 intersphinx_mapping = {
@@ -35,6 +36,7 @@ intersphinx_mapping = {
 }
 
 autosectionlabel_prefix_document = True
+jupyter_execute_kwargs = {"timeout": 120, "allow_errors": False}
 
 # napoleon settings (for google docstring style)
 napoleon_google_docstring = True
@@ -79,4 +81,10 @@ exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 
 # html_theme = 'alabaster'
 html_theme = 'pydata_sphinx_theme'
+html_theme_options = {
+    # Keep family and concept landing pages as visible parents on leaf pages.
+    "navigation_depth": 4,
+    "show_nav_level": 1,
+}
 html_static_path = ['_static']
+html_css_files = ['custom.css']

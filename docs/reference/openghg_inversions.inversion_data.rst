@@ -13,5 +13,7 @@ openghg\_inversions.inversion\_data
 
    openghg_inversions.inversion_data.get_data
    openghg_inversions.inversion_data.getters
+   openghg_inversions.inversion_data.preparation
    openghg_inversions.inversion_data.scenario
    openghg_inversions.inversion_data.serialise
+   openghg_inversions.inversion_data.xarray_adapter

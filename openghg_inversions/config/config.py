@@ -472,11 +472,11 @@ def get_value(name, config, section, param_type=None):
         value_type = None
 
     # For int, float and bool object functions within config module exist to cast directly to these types
-    if value_type == int:
+    if value_type is int:
         value = config.getint(section, option=name)
-    elif value_type == float:
+    elif value_type is float:
         value = config.getfloat(section, option=name)
-    elif value_type == bool:
+    elif value_type is bool:
         value = config.getboolean(section, option=name)
     else:  # For lists, np.ndarrays and str objects we extract as a string and manually format
         value = config.get(section, option=name)

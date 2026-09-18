@@ -7,6 +7,7 @@ import pandas as pd
 import xarray as xr
 
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
+from openghg_inversions.postprocessing.make_outputs import observation_inputs_for_outputs
 from openghg_inversions.postprocessing.utils import add_suffix, get_parameters
 
 Diagnostic = namedtuple("Diagnostic", ["func", "params"])
@@ -45,7 +46,7 @@ def summary(inv_out: InversionOutput) -> xr.Dataset:
           greater than 1. Ideally, all r_hat values should be below 1.01
 
     Args:
-        inv_out: InversionOutput to summarise.
+        inv_out: Inversion output to summarise.
 
     Returns:
         xr.Dataset: Dataset with diagnostic summary.
@@ -103,6 +104,19 @@ def _r2_by_site(ds: xr.Dataset, report_prior: bool = False) -> xr.Dataset:
     return ds.groupby("site").map(func).to_dataset("new").rename({0: "r2_bayes", 1: "r2_bayes_std"})
 
 
+def _concentration_trace(inv_out: InversionOutput) -> xr.Dataset:
+    """Return concentration traces using diagnostic product names."""
+    trace = inv_out.trace_dataset(var_roles="concentration")
+    concentration_name = inv_out.variable_name("concentration")
+    return trace.rename(
+        {
+            data_var: str(data_var).replace(f"{concentration_name}_", "y_", 1)
+            for data_var in trace.data_vars
+            if str(data_var).startswith(f"{concentration_name}_")
+        }
+    )
+
+
 @register_diagnostic
 def bayes_r2_by_site(inv_out: InversionOutput, report_prior: bool = False) -> xr.Dataset:
     """Compute Bayesian R2 scores grouped by site.
@@ -115,7 +129,7 @@ def bayes_r2_by_site(inv_out: InversionOutput, report_prior: bool = False) -> xr
     normalised to always fall between 0 and 1.
 
     Args:
-        inv_out: InversionOutput object containing obs and trace
+        inv_out: Inversion output containing obs and trace
         report_prior: if True, return prior R2 in addition to posterior R2
 
     Returns:
@@ -123,8 +137,8 @@ def bayes_r2_by_site(inv_out: InversionOutput, report_prior: bool = False) -> xr
             with uncertainties.
 
     """
-    y_true = inv_out.obs.unstack("nmeasure")
-    y_pred = inv_out.get_trace_dataset(var_names="y").unstack("nmeasure")
+    y_true = observation_inputs_for_outputs(inv_out)["y_obs"].unstack("nmeasure")
+    y_pred = _concentration_trace(inv_out).unstack("nmeasure")
     ds = xr.merge([y_true, y_pred])
 
     return _r2_by_site(ds, report_prior=report_prior)
@@ -144,7 +158,7 @@ def bayes_r2_by_site_resample(
     normalised to always fall between 0 and 1.
 
     Args:
-        inv_out: InversionOutput object containing obs and trace
+        inv_out: Inversion output containing obs and trace
         freq: frequency to resample to (should be a pandas freq. str that
           can be passed to `xr.Dataset.resample`)
         report_prior: if True, return prior R2 in addition to posterior R2
@@ -154,8 +168,8 @@ def bayes_r2_by_site_resample(
             with uncertainties.
 
     """
-    y_true = inv_out.obs.unstack("nmeasure")
-    y_pred = inv_out.get_trace_dataset(var_names="y").unstack("nmeasure")
+    y_true = observation_inputs_for_outputs(inv_out)["y_obs"].unstack("nmeasure")
+    y_pred = _concentration_trace(inv_out).unstack("nmeasure")
     ds = xr.merge([y_true, y_pred])
 
     results = []

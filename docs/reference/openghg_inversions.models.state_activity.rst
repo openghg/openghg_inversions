@@ -1,0 +1,7 @@
+openghg\_inversions.models.state\_activity
+===========================================
+
+.. automodule:: openghg_inversions.models.state_activity
+   :members:
+   :show-inheritance:
+   :undoc-members:

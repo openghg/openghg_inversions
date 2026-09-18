@@ -32,15 +32,18 @@ jobs:
           fetch-depth: 0
 
       - name: Set up Python 3.11
-        uses: actions/setup-python@v3
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Install dependencies
-        run: python -m pip install --upgrade pip tox
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+          enable-cache: true
 
       - name: Build docs using tox
-        run: tox -e docs
+        run: uvx --with tox-uv tox -e docs-full
         
       - name: Show built docs (debug)
         run: |
@@ -62,8 +65,8 @@ jobs:
 
       - name: Fail if publish dir empty
         run: |
-          if [ ! -d docs/_build/ ] || [ -z "$(ls -A docs/_build/ 2>/dev/null)" ]; then
-            echo "ERROR: publish_dir docs/_build/ is empty or missing. Aborting deploy."
+          if [ ! -d docs/_build/html/ ] || [ -z "$(ls -A docs/_build/html/ 2>/dev/null)" ]; then
+            echo "ERROR: publish_dir docs/_build/html/ is empty or missing. Aborting deploy."
             exit 1
           fi
 
@@ -71,5 +74,5 @@ jobs:
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: docs/_build/
+          publish_dir: docs/_build/html/
           publish_branch: gh-pages

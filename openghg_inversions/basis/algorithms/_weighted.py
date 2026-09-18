@@ -1,13 +1,17 @@
-"""Module to create basis regions used in the inversion using an algorithm that splits regions
-by input data.
+"""Weighted bucket algorithms for basis-region construction.
 
 If the total (sum) of the input data in a region exceeds a certain threshold, then the region
 is split in two. This continues recursively until we have a collection of regions whose totals
 are all below the threshold.
 
 The threshold is optimised to create a specific number of regions.
+:class:`AxisAlignedWeightedSplitStrategy` adapts this recursion to one Boolean
+basis-group mask without loading land/sea data. The legacy
+:func:`nregion_landsea_basis` path instead uses :func:`load_landsea_indices`,
+which reads and caches a NetCDF land/sea field.
 """
 
+from dataclasses import dataclass
 from functools import lru_cache
 import logging
 from pathlib import Path
@@ -23,25 +27,29 @@ class OptimizationError(Exception): ...
 
 
 @lru_cache
-def load_landsea_indices(domain: str) -> np.ndarray:
+def load_landsea_indices(domain: str, country_directory: str | None = None) -> np.ndarray:
     """Load array with indices that separate land and sea regions in specified domain.
 
     Args:
-        domain: Domain for which to load landsea indices. Currently only "EASTASIA" or "EUROPE".
+        domain: Domain for which to load landsea indices.
+        country_directory: Directory containing land-sea files. If None, will use default files.
 
     Returns:
         np.ndarray: Array containing 0 (where there is sea) and 1 (where there is land).
     """
-    if domain == "EASTASIA":
-        landsea_indices = xr.open_dataset(Path(__file__).parent / "country-land-sea_EASTASIA.nc")
+    default_dir = Path(__file__).parent
+    if country_directory is not None:
+        landsea_path = Path(country_directory) / f"country-land-sea_{domain}.nc"
     elif domain == "EUROPE":
-        landsea_indices = xr.open_dataset(Path(__file__).parent / "country-EUROPE-UKMO-landsea-2023.nc")
+        landsea_path = default_dir / "country-EUROPE-UKMO-landsea-2023.nc"
     else:
-        logger.warning(
-            f"No land-sea file found for domain {domain}. Defaulting to EUROPE (country-EUROPE-UKMO-landsea-2023.nc)"
-        )
-        landsea_indices = xr.open_dataset(Path(__file__).parent / "country-EUROPE-UKMO-landsea-2023.nc")
-    return landsea_indices["country"].values
+        landsea_path = default_dir / f"country-land-sea_{domain}.nc"
+        if not landsea_path.exists():
+            logger.warning(
+                f"No land-sea file found for domain {domain}. Defaulting to EUROPE (country-EUROPE-UKMO-landsea-2023.nc)"
+            )
+            landsea_path = default_dir / "country-EUROPE-UKMO-landsea-2023.nc"
+    return xr.open_dataset(landsea_path)["country"].values
 
 
 def bucket_value_split(
@@ -51,15 +59,15 @@ def bucket_value_split(
     offset_y: int = 0,
 ) -> list[tuple]:
     """Algorithm that will split the input grid (e.g. fp * flux).
-    
-    Split such that the sum of each basis function region will equal the bucket value 
+
+    Split such that the sum of each basis function region will equal the bucket value
     or by a single array element.
 
     The number of regions will be determined by the bucket value:
     i.e. smaller bucket value ==> more regions, larger bucket value ==> fewer regions.
 
     Args:
-        grid: 2D grid of footprints * flux, or whatever grid you want to split. 
+        grid: 2D grid of footprints * flux, or whatever grid you want to split.
             Could be: population data, spatial distribution of bakeries, you chose!
         bucket: Maximum value for each basis function region.
         offset_x: Start index of the region on first axis of the grid. Default 0.
@@ -86,7 +94,113 @@ def bucket_value_split(
     )
 
 
-def get_nregions(bucket: float, grid: np.ndarray, domain: str) -> int:
+def _labels_for_bucket(weights: np.ndarray, class_mask: np.ndarray, bucket: float) -> np.ndarray:
+    """Apply the rectangular weighted splitter and mask labels to one class.
+
+    Args:
+        weights: Class-local weight field, with cells outside the class normally
+            set to zero.
+        class_mask: Boolean mask selecting cells in the current class.
+        bucket: Maximum rectangular bucket weight passed to
+            :func:`bucket_value_split`.
+
+    Returns:
+        Integer label array with positive labels only inside ``class_mask``.
+    """
+    labels = np.zeros(weights.shape, dtype=np.int64)
+    label = 1
+    for ymin, ymax, xmin, xmax in bucket_value_split(weights, bucket):
+        region_mask = class_mask[ymin:ymax, xmin:xmax]
+        if not region_mask.any():
+            continue
+        label_slice = labels[ymin:ymax, xmin:xmax]
+        label_slice[region_mask] = label
+        label += 1
+    return labels
+
+
+def _count_positive_labels(labels: np.ndarray) -> int:
+    """Return the number of positive labels in an integer label array."""
+    return int(np.count_nonzero(np.unique(labels) > 0))
+
+
+@dataclass(frozen=True)
+class AxisAlignedWeightedSplitStrategy:
+    """Class-local strategy derived from recursive weighted bucket splitting.
+
+    This applies the existing bucket splitter independently to the masked
+    weights for one class. It recursively splits rectangles along the longer
+    axis until each rectangle is below a searched threshold. It is not a
+    compatibility implementation of the legacy weighted land/sea pipeline,
+    which optimizes the bucket layout before applying the land/sea split. New
+    the default region-constrained strategy is
+    :class:`~openghg_inversions.basis.algorithms.GreedySplitStrategy` composed
+    with :class:`~openghg_inversions.basis.algorithms.AxisParallelSplitStep`
+    instead.
+
+    Attributes:
+        max_iter: Maximum number of threshold-search iterations.
+    """
+
+    max_iter: int = 32
+
+    def __call__(
+        self,
+        weights: np.ndarray,
+        class_mask: np.ndarray,
+        target_regions: int,
+    ) -> np.ndarray:
+        """Return class-local labels using recursive weighted bucket splits.
+
+        Args:
+            weights: Non-negative weight field for the full grid.
+            class_mask: Boolean mask selecting the cells in the class being
+                split.
+            target_regions: Target number of local labels for this class.
+
+        Returns:
+            Integer label array with positive class-local labels inside
+            ``class_mask`` and zero outside it.
+
+        Raises:
+            ValueError: If ``target_regions`` is less than one.
+        """
+        if target_regions < 1:
+            raise ValueError("target_regions must be at least 1.")
+        if not class_mask.any():
+            return np.zeros(weights.shape, dtype=np.int64)
+
+        class_weights = np.where(class_mask, weights, 0.0)
+        total_weight = float(class_weights.sum())
+        if total_weight == 0.0:
+            class_weights = class_mask.astype(np.float64)
+            total_weight = float(class_weights.sum())
+
+        low = 0.0
+        high = total_weight
+        best = _labels_for_bucket(class_weights, class_mask, bucket=high)
+        best_error = abs(_count_positive_labels(best) - target_regions)
+
+        for _ in range(self.max_iter):
+            bucket = (low + high) / 2.0
+            labels = _labels_for_bucket(class_weights, class_mask, bucket=bucket)
+            nregions = _count_positive_labels(labels)
+            error = abs(nregions - target_regions)
+            if error < best_error:
+                best = labels
+                best_error = error
+                if error == 0:
+                    break
+
+            if nregions > target_regions:
+                low = bucket
+            else:
+                high = bucket
+
+        return best
+
+
+def get_nregions(bucket: float, grid: np.ndarray, domain: str, country_directory: str | None = None) -> int:
     """Optimize bucket value to number of desired regions.
 
     Args:
@@ -98,15 +212,18 @@ def get_nregions(bucket: float, grid: np.ndarray, domain: str) -> int:
             data, spatial distribution of bakeries, you choose!
         domain:
             Domain across which to calculate basis functions.
-            Currently limited to "EUROPE" or "EASTASIA"
+        country_directory:
+            Directory containing land-sea files. If None, will use default files.
 
     Return :
         number of basis functions for bucket value
     """
-    return np.max(bucket_split_landsea_basis(grid, bucket, domain))
+    return np.max(bucket_split_landsea_basis(grid, bucket, domain, country_directory))
 
 
-def optimize_nregions(bucket: float, grid: np.ndarray, nregion: int, tol: int, domain: str) -> float:
+def optimize_nregions(
+    bucket: float, grid: np.ndarray, nregion: int, tol: int, domain: str, country_directory: str | None = None
+) -> float:
     """Optimize bucket value to obtain nregion basis functions
     within +/- tol.
 
@@ -124,7 +241,8 @@ def optimize_nregions(bucket: float, grid: np.ndarray, nregion: int, tol: int, d
             i.e. optimizes nregions to +/- tol
         domain:
             Domain across which to calculate basis functions.
-            Currently limited to "EUROPE" or "EASTASIA"
+        country_directory:
+            Directory containing land-sea files. If None, will use default files.
 
     Return :
         Optimized bucket value
@@ -136,7 +254,7 @@ def optimize_nregions(bucket: float, grid: np.ndarray, nregion: int, tol: int, d
     for _ in range(10):
         # try 1000 iterations
         for j in range(1000):
-            current_nregion = get_nregions(current_bucket, grid, domain)
+            current_nregion = get_nregions(current_bucket, grid, domain, country_directory)
 
             if current_nregion <= nregion + current_tol and current_nregion >= nregion - current_tol:
                 print(
@@ -157,7 +275,9 @@ def optimize_nregions(bucket: float, grid: np.ndarray, nregion: int, tol: int, d
     )
 
 
-def bucket_split_landsea_basis(grid: np.ndarray, bucket: float, domain: str) -> np.ndarray:
+def bucket_split_landsea_basis(
+    grid: np.ndarray, bucket: float, domain: str, country_directory: str | None = None
+) -> np.ndarray:
     """Same as bucket_split_basis but includes
     land-sea split. i.e. basis functions cannot overlap sea and land.
 
@@ -170,13 +290,14 @@ def bucket_split_landsea_basis(grid: np.ndarray, bucket: float, domain: str) -> 
             Maximum value for each basis function region
         domain:
             Domain across which to calculate basis functions.
-            Currently limited to "EUROPE" or "EASTASIA"
+        country_directory:
+            Directory containing land-sea files. If None, will use default files.
 
     Returns:
         2D array with basis function values
 
     """
-    landsea_indices = load_landsea_indices(domain)
+    landsea_indices = load_landsea_indices(domain, country_directory=country_directory)
     myregions = bucket_value_split(grid, bucket)
 
     mybasis_function = np.zeros(shape=grid.shape)
@@ -204,7 +325,12 @@ def bucket_split_landsea_basis(grid: np.ndarray, bucket: float, domain: str) -> 
 
 
 def nregion_landsea_basis(
-    grid: np.ndarray, bucket: float = 1, nregion: int = 100, tol: int = 1, domain: str = "EUROPE"
+    grid: np.ndarray,
+    bucket: float = 1,
+    nregion: int = 100,
+    tol: int = 1,
+    domain: str = "EUROPE",
+    country_directory: str | None = None,
 ) -> np.ndarray:
     """Obtain basis function with nregions (for land-sea split).
 
@@ -225,11 +351,12 @@ def nregion_landsea_basis(
             Defaults to 1
         domain:
             Domain across which to calculate basis functions.
-            Currently limited to "EUROPE" or "EASTASIA"
+        country_directory:
+            Directory containing land-sea files. If None, will use default files.
 
     Returns:
         basis_function: 2D basis function array
     """
-    bucket_opt = optimize_nregions(bucket, grid, nregion, tol, domain)
-    basis_function = bucket_split_landsea_basis(grid, bucket_opt, domain)
+    bucket_opt = optimize_nregions(bucket, grid, nregion, tol, domain, country_directory)
+    basis_function = bucket_split_landsea_basis(grid, bucket_opt, domain, country_directory)
     return basis_function

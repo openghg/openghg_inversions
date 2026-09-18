@@ -1,41 +1,13 @@
 Getting started with OpenGHG Inversions
 =======================================
 
-This is an overview of what OpenGHG Inversions does, and how to use it.
-
-Overview
---------
-
-- Countries are required to create “bottom-up” inventories of emissions.
-  These may be totals for a country, or may be a map of estimated
-  emissions for a given time period.
-- To check these inventories, we create “top-down” constraints by
-  passing emissions/flux maps through a physical model and comparing the
-  result with observations. We use a Bayesian model to update the flux
-  maps using the given observation data.
-- The model is roughly
-  :math:`\mathrm{obs} \approx \mathrm{sensitivities} \times \mathrm{flux} + \mathrm{baseline} + \mathrm{error}`
-- The baseline is calculated by multiplying the flux at the boundaries
-  by a sensivity map for each boundary “curtain” (NESW).
-- Disturbances from the baseline are calculated by multiplying a
-  “footprint” (sensitivities for fluxes) times a flux map.
-- The sensitivities are considered deterministic, and the fluxes and
-  boundary conditions are modelled as random quantities
-- We place prior distributions on the fluxes and boundary conditions and
-  use the observation data and MCMC to sample from their posterior
-  distributions. (These are specified by the ``xprior`` and ``bcprior``
-  variables in the .ini file below.)
-- Roughly, an inversion attempts to solve
-  :math:`\mathrm{obs} - \mathrm{baseline} \approx \mathrm{sensitivities} \times \mathrm{flux}`;
-  the sensitivity matrix is not invertible, so a method like
-  least-squares is necessary. We use a hierarchical Bayesian regression
-  approach, which estimates uncertainties in a natural way.
-- The output of an inversion contains prior and posterior: modelled
-  observations (“ :math:`Y` ” variables), fluxes, and boundary
-  conditions.
+This page describes the data and legacy interfaces used by existing inversion
+workflows. If atmospheric inversions are new to you, first read
+:doc:`conceptual_inversion` for the scientific concepts and current RHIME
+terminology.
 
 What do you need to run an inversion?
----------------------------
+-------------------------------------
 
 For an inversion, you need to decide the:
 
@@ -79,11 +51,32 @@ Data not stored in OpenGHG
   - “basis function” usually means a netCDF file with latitude and
     longitude coordinates, with integer values. So all of the
     coordinates with value 1 are in region 1, and so on.
-  - basis functions for fluxes are created on the fly by a “quadtree
-    basis” algorithm. You can also read in pre-defined basis functions.
-    Default location: ``openghg_inversions/basis_functions``
+  - basis functions for fluxes can be created on the fly with the
+    ``quadtree`` or ``weighted`` algorithms. You can also read in
+    pre-defined basis functions. Default location:
+    ``openghg_inversions/basis_functions``
+  - region-constrained basis generation is available through the Python
+    basis API when the caller supplies an already loaded ``region_classes``
+    ``DataArray``. This is intended for land/sea, country, or other
+    region-class masks, and keeps labels from crossing those classes. The
+    current ``.ini``/``run_hbmcmc.py`` route does not yet load
+    ``region_classes`` from a file, so use a saved basis file or the Python
+    wrapper for this case.
+  - region-constrained splitting can optionally use
+    ``split_acceptance="contrast_score"`` with a design contribution array.
+    This uses a fixed design covariance ``S`` and a prior split-contrast
+    standard deviation ``tau``; the default ``tau=1``, ``S=I`` is only an
+    uncalibrated ranking/debugging score, not calibrated expected information
+    gain. Do not build this score from observed mole fractions or residuals.
+  - lower-level region-constrained algorithms also support split-stopping
+    policies. ``MinChildWeightShare`` is a parent-relative balance guard,
+    while ``MinChildTargetWeightShare`` rejects children below a share of the
+    class-local equal-target region weight, ``weights.sum() / target_regions``.
+    Their thresholds are not interchangeable; with stopping enabled,
+    ``nbasis`` is an upper target. These child-share policies are not yet
+    routed through ``.ini``, ``run_hbmcmc.py``, or RHIME config options.
   - basis functions for the boundary conditions have a similar format.
-    Defaul location ``openghg_inversions/bc_basis_functions``
+    Default location ``openghg_inversions/bc_basis_functions``
 
 Summary
 
@@ -98,18 +91,32 @@ How do you run an inversion?
 Method 1: python script or notebook
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Assuming you have the necessary data, you just need to run the
-``fixedbasisMCMC`` function from ``hbmcmc.py`` in
-``openghg_inversions.hbmbmc``.
+New scripts should call ``run_rhime`` from ``openghg_inversions.rhime``.
+``fixedbasisMCMC`` remains only as a temporary direct legacy Python path, not
+as the RHIME-backed compatibility route.
+It no longer preserves the exact historical ``fixedbasisMCMC`` / ``inferpymc``
+passthrough behaviour; use release ``0.6`` or earlier if you need the old
+fixedbasis implementation.
 
 Method 2: ini file
 ~~~~~~~~~~~~~~~~~~
 
 - Create a ``my_inversion.ini`` file based on the template in
   ``openghg_inversions/hbmcmc/config/``.
-- Activate a conda or venv environment with inversions installed, and
+- Activate a Pixi, conda, or venv environment with inversions installed, and
   call
   ``python <path to openghg_inversions>/openghg_inversions/hbmcmc/run_hbmcmc.py -c my_inversion.ini``
+  for old fixedbasis-style INI files. The script now translates those configs
+  and runs the modern ``run_rhime`` pathway. New INI files should use
+  ``openghg-inversions run-rhime`` and the RHIME config vocabulary.
+  Unsupported fixedbasis-only options now raise targeted errors instead of
+  being passed through to ``inferpymc``.
+- Existing INI workflows that temporarily require the historical
+  ``fixedbasisMCMC`` / ``inferpymc_postprocessouts`` product can add
+  ``--legacy-fixedbasis``. This explicit opt-in keeps legacy parameter names;
+  it does not translate them or fall back to RHIME. A missing output format or
+  ``hbmcmc`` / ``hbmcmc_postprocessing`` selects the historical product, while
+  ``output_format="legacy"`` continues to select the modern adapter.
 - A sample ``.ini`` script is at the bottom of this document.
 
 Method 3: as a job on Blue Pebble
@@ -119,6 +126,10 @@ Method 3: as a job on Blue Pebble
   SLURM <https://www.acrc.bris.ac.uk/protected/hpc-docs/job_types/serial.html>`__
   using ``sbatch``.
 - This file will specify:
+
+  - the same ``run_hbmcmc.py`` command as above; add
+    ``--legacy-fixedbasis`` after the script path only when the submitted job
+    must reproduce the historical fixedbasis product;
 
   - the name of the job
   - resources required (number of nodes, number of tasks per node,
@@ -165,14 +176,23 @@ TODO: update conda instructions
   ``module load lang/python/anaconda``.
 - To make your own environment for ``openghg_inversions``, you should:
 
-  1. make a conda env ``conda create --name inv_env numpy`` (note:
+  1. Prefer the repository Pixi environment for new development installs:
+     ``git clone https://github.com/openghg/openghg_inversions.git``,
+     ``cd openghg_inversions``, then ``pixi install -e dev``. This keeps
+     ``h5py``, ``h5netcdf``, ``netcdf4``, and HDF5 on a single conda-forge
+     binary stack.
+     On systems with access to the ACRG country files, run
+     ``OPENGHG_COUNTRY_FILE_SMOKE_DIR=/group/chem/acrg/LPDM/countries pixi run -e dev country-file-smoke``
+     to check the real country-file HDF5 backends.
+  2. If Pixi is not available, make a conda env
+     ``conda create --name inv_env numpy`` (note:
      installing ``numpy`` from ``conda`` will install ``openblas``,
      which is a fast linear algebra library; these libraries are in
      non-standard locations on Blue Pebble, and ``pip install numpy``
      will not find them.)
-  2. clone openghg_inversions:
+  3. clone openghg_inversions:
      ``git clone https://github.com/openghg/openghg_inversions.git``
-  3. ``pip install openghg_inversions`` (in the same directory where you
+  4. ``pip install openghg_inversions`` (in the same directory where you
      just cloned ``openghg_inversions``)
 
 Example batch job script
@@ -278,20 +298,23 @@ The following file, ``my_hbmcmc_inputs.ini`` can be used to run an
 
 
    [INPUT.PRIORS]
-   ; Input values for extracting footprints, emissions and boundary conditions files (also uses values from INPUT.MEASUREMENTS)
+   ; Legacy fixedbasis input values for extracting footprints, fluxes and boundary conditions files (also uses values from INPUT.MEASUREMENTS)
+   ; New RHIME configs use flux_sources for OpenGHG flux source values.
    ; domain (str) - Name of inversion spatial domain
    ; fp_height (list) - Release height for footprints (must match number of sites).
-   ; emissions_name (list/None) - Name for specific emissions source.
+   ; emissions_name (list/None) - Legacy key for a specific flux source.
 
    domain = 'EUROPE'  ; (required)
    fp_height = ["185m"]  ; typically the same as inlet, but may differ slightly (e.g. if instrument moved to 180m, for instance)
    fp_model = "NAME"  ; LPDM model, usually NAME
-   emissions_name = ["total-ukghg-edgar7"]  ; total = all emissions sources; agric-ukghg-edgar7 would be agricultural sources only
+   emissions_name = ["total-ukghg-edgar7"]  ; legacy fixedbasis key; new RHIME configs use flux_sources
    met_model = 'UKV'  ; or None if not specified, check the metadata for your footprint
 
    [INPUT.BASIS_CASE]
-   ; Input values to extract the basis cases to use within the inversion for boundary conditions nd emissions
-   ; basis_algorithm (str): Choice of basis function algorithm to use. One of "quadtree" or "weighted"
+   ; Input values to extract the basis cases to use within the inversion for boundary conditions and emissions
+   ; basis_algorithm (str): Choice of basis function algorithm to use. One of "quadtree" or "weighted".
+   ; The Python basis API also supports "region_constrained" when the caller supplies a region_classes DataArray;
+   ; this .ini route does not currently load region_classes from file or route child-share split-stopping policies.
    ; bc_basis_case (str): Boundary conditions basis, defaults to "NESW" (looks for file format {bc_basis_case}_{domain}_*.nc)
    ; bc_basis_directory (str/None): Directory for bc_basis functions. If None provided, creates new folder in openghg_inversions expecting to find bc_basis_function files there.
    ; fp_basis_case (str/None): Emissions bases:
@@ -320,7 +343,8 @@ The following file, ``my_hbmcmc_inputs.ini`` can be used to run an
    ; Definitions of PDF shape and parameters for inputs
    ; - xprior (dict) - emissions
    ; - bcprior (dict) - boundary conditions
-   ; - sigprior (dict) - model error
+   ; - sigprior (dict) - historical fractional model error
+   ; - additive_sigma_prior (dict) - additive model error in observation units
 
    ; Each of these inputs should be dictionary with the name of probability distribution and shape parameters.
    ; See https://docs.pymc.io/api/distributions/continuous.html
@@ -328,7 +352,8 @@ The following file, ``my_hbmcmc_inputs.ini`` can be used to run an
 
    xprior   = {"pdf":"lognormal", "stdev":1}  ; lognormal with mean = 1, stdev = 1
    bcprior  = {"pdf":"truncatednormal", "mu":1.0, "sigma":0.02}  ; truncated normal with mean = 1, stdev 0.02
-   sigprior = {"pdf":"uniform", "lower":0.5, "upper":10}
+   sigprior = {"pdf":"uniform", "lower":0.0, "upper":0.2}
+   additive_sigma_prior = {"pdf":"halfnormal", "sigma":5.0}  ; observation units
    ;add_offset = False
    ;offsetprior = {"pdf": "normal"}
    ;offset_args = {"drop_first": False}  ;; set to True if you want first site to have offset 0.0
@@ -362,10 +387,13 @@ The following file, ``my_hbmcmc_inputs.ini`` can be used to run an
    nchain = 4
 
    [MCMC.OPTIONS]
+   ; Select response-independent absolute model error. Omit this option to use
+   ; the historical pollution-event likelihood.
+   likelihood = "additive_sigma"
    ; averaging_error (bool): Add variability in averaging period to the measurement error (Note: currently this
    ;                         doesn't work correctly)
-   ; min_error (float): value specifying a lower bound for the model-measurement mismatch error (i.e. the error on
-   ;                    (y - y_mod)). Ignored if compute_min_error = True.
+   ; min_error: numeric lower bound for model-measurement mismatch, or "residual"/"percentile"
+   ;            to calculate the bound from the prepared observations.
    ; fix_basis_outer_regions (bool): If True, the "outer regions" of the domain use basis regions specified by a
    ;                                 file provided by the Met Office (from their "InTem" model), and the "inner
    ;                                 region", which includes the UK, is fit using our basis algorithms.
@@ -377,14 +405,13 @@ The following file, ``my_hbmcmc_inputs.ini`` can be used to run an
    ; save_trace (bool): If True, the arviz InferenceData output from sampling will be saved to the output path of
    ;                    the inversion, with a file name of the form f"{outputname}{start_data}_trace.nc.
    ;                    Alternatively, you can pass a path (including filename), and that path will be used.
-   ; calculate_min_error: computes min_error on the fly using the "residual error method" or a method based on percentiles.
-   ;                      values can be: "residual", "percentile", None. If value is None, then value passed to `min_error`
-   ;                      is used.
+   ; calculate_min_error: deprecated legacy spelling. The run_hbmcmc compatibility shim translates
+   ;                      "residual" or "percentile" to `min_error`; prefer `min_error` directly.
    ; pollution_events_from_obs (bool): Determines whether the model error is calculated as a fraction of:
    ;                                   - the measured enhancement above the modelled baseline (if True)
    ;                                   - the prior modelled enhancement (if False)
-   ; reparameterise_log_normal (bool): If True, rewrite log normal prior samples as a function of standard normal samples.
-   ;                                   This may reduce divergences when sampling.
+   ; reparameterise_log_normal (bool): Deprecated compatibility flag. Set reparameterise=True in
+   ;                                   the relevant lognormal prior mapping instead.
    ; sampler_kwargs (dict): Kwargs to pass to the sampler (e.g. sampler_kwargs = {'target_accept': 0.99})
 
    averaging_error = True
@@ -393,16 +420,16 @@ The following file, ``my_hbmcmc_inputs.ini`` can be used to run an
    use_bc = True
    nuts_sampler = "numpyro"
    save_trace = True
-   min_error_options = {"by_site": True}  ; options to pass to function used to compute min error
+   ;min_error_options = {"by_site": True}  ; mapping; only supported key is boolean by_site (residual only)
    pollution_events_from_obs = True
    no_model_error = False
    reparameterise_log_normal = False
 
    [MCMC.OUTPUT]
    ; Format of output
-   ; See docs for openghg_inversions.hbmcmc.hbmcmc.fixedbasisMCMC
-   ; for full list of options
-   output_format = "hbmcmc"  ; default option, but "paris" tends to be used more
+   ; "legacy" writes the old HBMCMC-compatible output through modern RHIME.
+   ; Deprecated aliases "hbmcmc" and "hbmcmc_postprocessing" are accepted.
+   output_format = "legacy"
 
    ; Details of where to write the output
    ; outputpath (str) - directory to write output
@@ -411,11 +438,60 @@ The following file, ``my_hbmcmc_inputs.ini`` can be used to run an
    outputpath = '/user/work/ab12345/my_inversions'  ; (required)
    outputname = 'ch4_TAC_test'  ; (required)
 
+Additive-sigma likelihood
+-------------------------
+
+The ``run_hbmcmc.py`` INI route can select a response-independent additive
+Gaussian model-error term with::
+
+   [MCMC.PDF]
+   additive_sigma_prior = {"pdf": "halfnormal", "sigma": {"MHD": 5.0, "TAC": 2.0}}
+
+   [MCMC.BC_SPLIT]
+   sigma_freq = "monthly"
+   sigma_per_site = True
+
+   [MCMC.OPTIONS]
+   likelihood = "additive_sigma"
+   min_error = 0.0
+
+This gives the independent likelihood variance
+:math:`s_y^2 + \sigma_{site,period}^2`. It does not use the pollution
+enhancement and does not add aggregation error. ``min_error`` works as before
+as an optional floor on the total standard deviation; it defaults to ``0.0``.
+We recommend first trying the half-normal model with ``min_error = 0.0``.
+``aggregation_error_mode`` is unavailable for this ``run_hbmcmc.py`` option.
+``additive_sigma_prior`` takes precedence for this likelihood; when it is
+omitted, the compatibility entry point falls back to ``sigprior``. A mapping
+from site name to scale gives each retained site its own half-normal prior
+scale. Every retained site must be present; entries for sites removed during
+preparation are ignored. Site mappings require ``sigma_per_site = True``.
+
+A half-normal prior is the recommended starting family. Its ``sigma`` input is
+the half-normal *scale*, and
+
+.. math::
+
+   E[\sigma_{site,period}] = \sigma_{prior}\sqrt{2/\pi},
+   \qquad
+   \sigma_{prior} = E[\sigma_{site,period}]\sqrt{\pi/2}.
+
+Thus the scale which exactly matches a desired prior mean is about 1.25 times
+that mean. If the empirical "average model error" is only a rough upper
+starting point, choosing a somewhat smaller scale gives a correspondingly
+smaller prior mean. This scale is in the same physical units and on the same
+numerical scale as the observations (for example, ppt). It is not the
+dimensionless fractional ``sigma`` used by the pollution-event scaling
+options. ``additive_sigma_prior`` avoids overloading the historical,
+dimensionless ``sigprior``; the latter remains available as a compatibility
+fallback for additive-sigma configurations.
+
 Description of HBMCMC output file
 ---------------------------------
 
-The output of ``run_hbmcmc`` (and ``fixedbasisMCMC``) is an xarray
-Dataset with the following variables and attributes:
+The legacy compatibility output from ``run_hbmcmc`` (and
+``fixedbasisMCMC(output_format="legacy")``) is an xarray Dataset with the
+following variables and attributes:
 
 HMCMC output data variables:
 

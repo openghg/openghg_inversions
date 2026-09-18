@@ -4,6 +4,11 @@ import numpy as np
 import pandas as pd
 
 
+def _normalise_pandas_freq(freq: str) -> str:
+    """Return a pandas frequency string without deprecated hour aliases."""
+    return freq.replace("H", "h")
+
+
 def monthly_bcs(start_date: str, end_date: str, site: str, fp_data: dict) -> np.ndarray:
     """Creates a sensitivity matrix (H-matrix) for the boundary
     conditions, which will map monthly boundary condition
@@ -27,9 +32,10 @@ def monthly_bcs(start_date: str, end_date: str, site: str, fp_data: dict) -> np.
     nmonth = len(allmonth)
     curtime = pd.to_datetime(fp_data[site].time.values).to_period("M")
     pmonth = pd.to_datetime(fp_data[site].resample(time="MS").mean().time.values)
-    hmbc = np.zeros((4 * nmonth, len(fp_data[site].time.values)))
+    nregions = fp_data[site].sizes["bc_region"]
+    hmbc = np.zeros((nregions * nmonth, len(fp_data[site].time.values)))
     count = 0
-    for cord in range(4):
+    for cord in range(nregions):
         for m in range(0, nmonth):
             if allmonth[m] not in pmonth:
                 count += 1
@@ -69,15 +75,17 @@ def create_bc_sensitivity(start_date: str, end_date: str, site: str, fp_data: di
       hmbc:
         Sensitivity matrix by for observations to boundary conditions
     """
+    freq = _normalise_pandas_freq(freq)
     dys = int("".join([s for s in freq if s.isdigit()]))
     alldates = pd.date_range(
         pd.to_datetime(start_date), pd.to_datetime(end_date) + pd.DateOffset(days=dys), freq=freq
     )
     ndates = np.sum(alldates < pd.to_datetime(end_date))
     curdates = fp_data[site].time.values
-    hmbc = np.zeros((4 * ndates, len(fp_data[site].time.values)))
+    nregions = fp_data[site].sizes["bc_region"]
+    hmbc = np.zeros((nregions * ndates, len(fp_data[site].time.values)))
     count = 0
-    for cord in range(4):
+    for cord in range(nregions):
         for m in range(0, ndates):
             dateloc = np.where(
                 np.logical_and(
@@ -124,14 +132,15 @@ def sigma_freq_indicies(ytime: np.ndarray, sigma_freq: str | None) -> np.ndarray
             for m in months_u:
                 indicies = (years == y) & (months == m)
                 if not np.any(indicies):
-                  continue
+                    continue
                 else:
-                  output[indicies] = count
-                  count += 1
+                    output[indicies] = count
+                    count += 1
     else:
         # divide the time between t0 and ti by sigma_freq, then floor
         # to calculate number of integer intervals the calculation is
         # performed in seconds as division by pd time_delta is not allowed
+        sigma_freq = _normalise_pandas_freq(sigma_freq)
         time_delta = pd.to_timedelta(sigma_freq)
         fractional_freq_time = (ydt - np.amin(ydt)).total_seconds() / time_delta.total_seconds()
         output[:] = np.floor(fractional_freq_time.values).astype(int)
