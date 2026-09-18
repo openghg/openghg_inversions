@@ -7,6 +7,7 @@ matplotlib
 scipy
 numpy
 openghg
+openghg-defs!=0.0.13
 sparse
 tfp-nightly
 flox

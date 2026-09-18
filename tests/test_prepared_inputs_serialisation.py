@@ -700,6 +700,33 @@ def test_inferencedata_netcdf_roundtrip_uses_xarray_default_engine(
     assert read_engines == [None]
 
 
+def test_inferencedata_zarr_roundtrip_selects_zarr_engine(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The shared boundary must not rely on backend guessing for Zarr stores."""
+    idata = az.InferenceData(
+        posterior=xr.Dataset(
+            {"x": (("chain", "draw"), [[1.0]])},
+            coords={"chain": [0], "draw": [0]},
+        )
+    )
+    path = tmp_path / "trace.zarr"
+    read_engines: list[str | None] = []
+    original_open = xr.open_datatree
+
+    def record_open(*args: Any, **kwargs: Any):
+        read_engines.append(kwargs.get("engine"))
+        return original_open(*args, **kwargs)
+
+    monkeypatch.setattr(xr, "open_datatree", record_open)
+
+    save_inferencedata(idata, path)
+    load_inferencedata(path)
+
+    assert read_engines == ["zarr"]
+
+
 @pytest.mark.parametrize("suffix", [".nc", ".zarr"])
 def test_supported_inferencedata_roundtrip_restores_multiindex(
     tmp_path: Path,

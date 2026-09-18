@@ -38,6 +38,7 @@ dependencies = [
     "matplotlib",
     "scipy",
     "openghg",
+    "openghg-defs!=0.0.13",
     "cf_xarray>=0.10.6",
     "sparse",
     "flox",

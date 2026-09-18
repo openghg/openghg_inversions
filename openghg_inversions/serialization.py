@@ -318,7 +318,8 @@ def open_datatree_loaded(file_path: str | Path) -> xr.DataTree:
         RuntimeError: If opening fails due to a backend runtime error.
         ValueError: If no backend can interpret the artifact.
     """
-    with xr.open_datatree(file_path) as dt:
+    engine = "zarr" if Path(file_path).suffix.lower() == ".zarr" else None
+    with xr.open_datatree(file_path, engine=engine) as dt:
         return dt.load()
 
 
