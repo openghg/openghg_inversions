@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>Experimental code &#8212; openghg_inversions  documentation</title>
+    <title>Releases and branch maintenance &#8212; openghg_inversions  documentation</title>
   
   
   
@@ -47,12 +47,12 @@
     <script src="../_static/thebelab-helper.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
-    <script>DOCUMENTATION_OPTIONS.pagename = 'experimental/index';</script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'development/releasing';</script>
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="Ramsden methane/ethane model" href="ramsden2022.html" />
-    <link rel="prev" title="Releases and branch maintenance" href="../development/releasing.html" />
+    <link rel="next" title="Experimental code" href="../experimental/index.html" />
+    <link rel="prev" title="Validation and labelled-array patterns" href="validation_and_xarray.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="" />
@@ -144,15 +144,15 @@
 </li>
 
 
-<li class="nav-item ">
-  <a class="nav-link nav-internal" href="../development/index.html">
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="index.html">
     Developing OpenGHG Inversions
   </a>
 </li>
 
 
-<li class="nav-item current active">
-  <a class="nav-link nav-internal" href="#">
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../experimental/index.html">
     Experimental code
   </a>
 </li>
@@ -251,15 +251,15 @@
 </li>
 
 
-<li class="nav-item ">
-  <a class="nav-link nav-internal" href="../development/index.html">
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="index.html">
     Developing OpenGHG Inversions
   </a>
 </li>
 
 
-<li class="nav-item current active">
-  <a class="nav-link nav-internal" href="#">
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../experimental/index.html">
     Experimental code
   </a>
 </li>
@@ -313,9 +313,10 @@
 <nav class="bd-docs-nav bd-links"
      aria-label="Section Navigation">
   <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
-  <div class="bd-toc-item navbar-nav"><ul class="nav bd-sidenav">
-<li class="toctree-l1"><a class="reference internal" href="ramsden2022.html">Ramsden methane/ethane model</a></li>
-<li class="toctree-l1"><a class="reference internal" href="ramsden2022_validation.html">Ramsden real-data validation</a></li>
+  <div class="bd-toc-item navbar-nav"><ul class="current nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="rhime_model_development.html">Developing RHIME models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="validation_and_xarray.html">Validation and labelled-array patterns</a></li>
+<li class="toctree-l1 current active"><a class="current reference internal" href="#">Releases and branch maintenance</a></li>
 </ul>
 </div>
 </nav></div>
@@ -356,7 +357,10 @@
         <i class="fa-solid fa-home"></i>
       </a>
     </li>
-    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Experimental code</span></li>
+    
+    <li class="breadcrumb-item"><a href="index.html" class="nav-link">Developing OpenGHG Inversions</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Releases and branch maintenance</span></li>
   </ul>
 </nav>
 </div>
@@ -373,63 +377,125 @@
 <div id="searchbox"></div>
                 <article class="bd-article">
                   
-  <section id="experimental-code">
-<h1>Experimental code<a class="headerlink" href="#experimental-code" title="Link to this heading">#</a></h1>
-<p>The <a class="reference internal" href="../reference/openghg_inversions.experimental.html#module-openghg_inversions.experimental" title="openghg_inversions.experimental"><code class="xref py py-mod docutils literal notranslate"><span class="pre">openghg_inversions.experimental</span></code></a> namespace contains runnable model
-variants and integration prototypes that are useful for scientific comparison
-and future API design, but are not part of the stable public API.</p>
-<div class="admonition warning">
-<p class="admonition-title">Warning</p>
-<p>Experimental modules may change or be removed without a deprecation period.
-Their inputs and results should be treated as research interfaces rather
-than production contracts. Importing the namespace does not retrieve data or
-start sampling.</p>
-</div>
-<p>Experimental code is kept separate from production model builders so that it
-can:</p>
+  <section id="releases-and-branch-maintenance">
+<h1>Releases and branch maintenance<a class="headerlink" href="#releases-and-branch-maintenance" title="Link to this heading">#</a></h1>
+<p>OpenGHG Inversions supports published PyPI packages and tagged releases. The
+<code class="docutils literal notranslate"><span class="pre">devel</span></code> branch is an unsupported integration branch: users should not depend
+on it for scientific work.</p>
+<section id="branch-roles">
+<h2>Branch roles<a class="headerlink" href="#branch-roles" title="Link to this heading">#</a></h2>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">main</span></code></dt><dd><p>The current stable release line. Current-line hotfixes start here. We do not
+maintain branches for older minor releases.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">devel</span></code></dt><dd><p>Integration for the next monthly release. Only reviewed, release-ready
+changes merge here.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">feature/*</span></code></dt><dd><p>Work that is not ready to release. Open a draft pull request for visibility.
+Feature branches track <code class="docutils literal notranslate"><span class="pre">devel</span></code> only; do not merge both <code class="docutils literal notranslate"><span class="pre">main</span></code> and
+<code class="docutils literal notranslate"><span class="pre">devel</span></code> into them.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">release/vX.Y.Z</span></code></dt><dd><p>A short-lived branch created by the release-preparation workflow. It is
+deleted after publication.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">hotfix/X.Y.Z-description</span></code></dt><dd><p>A short-lived fix branch from <code class="docutils literal notranslate"><span class="pre">main</span></code>. A tag is immutable and cannot be a
+pull-request target. While 0.6 is current, for example, a 0.6 hotfix targets
+<code class="docutils literal notranslate"><span class="pre">main</span></code> rather than <code class="docutils literal notranslate"><span class="pre">v0.6.0</span></code>.</p>
+</dd>
+</dl>
+</section>
+<section id="one-time-repository-setup">
+<h2>One-time repository setup<a class="headerlink" href="#one-time-repository-setup" title="Link to this heading">#</a></h2>
+<p>Before using the release workflows, configure the <code class="docutils literal notranslate"><span class="pre">pypi</span></code> GitHub environment
+under <strong>Settings &gt; Environments</strong>. It must require approval from a designated
+maintainer and retain the repository’s PyPI trusted-publishing setup. Do not
+publish while the environment has no required-reviewer protection rule.
+Recheck these settings when maintainer access changes.</p>
+</section>
+<section id="monthly-release">
+<h2>Monthly release<a class="headerlink" href="#monthly-release" title="Link to this heading">#</a></h2>
+<p>The monthly reminder opens a tracking issue on the first Monday of each month.
+From the Actions page, run <strong>Prepare release</strong> with the next minor version and
+<code class="docutils literal notranslate"><span class="pre">source=devel</span></code>. The workflow:</p>
 <ul class="simple">
-<li><p>preserve scientifically useful historical behavior;</p></li>
-<li><p>test requirements for planned generic interfaces;</p></li>
-<li><p>use current preparation, coordinate, prior, and sampling infrastructure; and</p></li>
-<li><p>carry focused tests and validation evidence without changing stable results.</p></li>
+<li><p>creates <code class="docutils literal notranslate"><span class="pre">release/vX.Y.0</span></code>;</p></li>
+<li><p>updates <code class="docutils literal notranslate"><span class="pre">pyproject.toml</span></code>;</p></li>
+<li><p>assembles Towncrier fragments into <code class="docutils literal notranslate"><span class="pre">CHANGELOG.md</span></code>;</p></li>
+<li><p>commits and pushes the result;</p></li>
+<li><p>opens a pull request to <code class="docutils literal notranslate"><span class="pre">main</span></code>; and</p></li>
+<li><p>dispatches ordinary CI for the generated commit.</p></li>
 </ul>
-<section id="available-experiments">
-<h2>Available experiments<a class="headerlink" href="#available-experiments" title="Link to this heading">#</a></h2>
-<p>The first experiment is the Ramsden et al. (2022) methane/ethane shared-state
-model. It ports the paper-shaped two-gas likelihood to the modern RHIME stack
-without restoring the obsolete historical loader, sampler, or output system.</p>
-<div class="toctree-wrapper compound">
-<ul>
-<li class="toctree-l1"><a class="reference internal" href="ramsden2022.html">Ramsden methane/ethane model</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="ramsden2022.html#status">Status</a></li>
-<li class="toctree-l2"><a class="reference internal" href="ramsden2022.html#scientific-model">Scientific model</a></li>
-<li class="toctree-l2"><a class="reference internal" href="ramsden2022.html#prepared-inputs">Prepared inputs</a></li>
-<li class="toctree-l2"><a class="reference internal" href="ramsden2022.html#ratio-contracts">Ratio contracts</a></li>
-<li class="toctree-l2"><a class="reference internal" href="ramsden2022.html#units">Units</a></li>
-<li class="toctree-l2"><a class="reference internal" href="ramsden2022.html#api-reference">API reference</a></li>
-<li class="toctree-l2"><a class="reference internal" href="ramsden2022.html#design-history">Design history</a></li>
+<p><code class="docutils literal notranslate"><span class="pre">devel</span></code> remains open while the release pull request is stabilized. Apply a
+release-blocking fix to the release branch and <code class="docutils literal notranslate"><span class="pre">devel</span></code>; do not leave a fix on
+only one side.</p>
+<p>HPC checks are deliberately outside this release automation for now. A
+maintainer may run and review <code class="docutils literal notranslate"><span class="pre">test_inversions</span></code> separately, but no HPC status
+or environment approval is required to prepare or publish a release. OPE-166
+tracks a future reviewed HPC handoff.</p>
+</section>
+<section id="publication">
+<h2>Publication<a class="headerlink" href="#publication" title="Link to this heading">#</a></h2>
+<p>Run <strong>Publish to PyPI</strong> with the version on the approved <code class="docutils literal notranslate"><span class="pre">main</span></code> commit. The
+workflow refuses to publish unless:</p>
+<ul class="simple">
+<li><p>the requested version, <code class="docutils literal notranslate"><span class="pre">pyproject.toml</span></code> and Towncrier heading agree;</p></li>
+<li><p>no unassembled news fragments remain;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">CI</span> <span class="pre">Gate</span></code> succeeded on the exact commit; and</p></li>
+<li><p>the protected <code class="docutils literal notranslate"><span class="pre">pypi</span></code> environment is approved.</p></li>
 </ul>
-</li>
-<li class="toctree-l1"><a class="reference internal" href="ramsden2022_validation.html">Ramsden real-data validation</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="ramsden2022_validation.html#outcome">Outcome</a></li>
-<li class="toctree-l2"><a class="reference internal" href="ramsden2022_validation.html#what-was-tested">What was tested</a></li>
-<li class="toctree-l2"><a class="reference internal" href="ramsden2022_validation.html#terminology-and-truth">Terminology and truth</a></li>
-<li class="toctree-l2"><a class="reference internal" href="ramsden2022_validation.html#input-provenance-and-limitations">Input provenance and limitations</a></li>
-<li class="toctree-l2"><a class="reference internal" href="ramsden2022_validation.html#sampling-diagnostics">Sampling diagnostics</a></li>
-<li class="toctree-l2"><a class="reference internal" href="ramsden2022_validation.html#flux-space-results">Flux-space results</a></li>
-<li class="toctree-l2"><a class="reference internal" href="ramsden2022_validation.html#regional-state-results">Regional state results</a></li>
-<li class="toctree-l2"><a class="reference internal" href="ramsden2022_validation.html#observation-space-results">Observation-space results</a></li>
-<li class="toctree-l2"><a class="reference internal" href="ramsden2022_validation.html#model-error-and-boundary-results">Model-error and boundary results</a></li>
-<li class="toctree-l2"><a class="reference internal" href="ramsden2022_validation.html#primary-figure">Primary figure</a></li>
-<li class="toctree-l2"><a class="reference internal" href="ramsden2022_validation.html#comparison-with-ramsden-et-al-2022">Comparison with Ramsden et al. (2022)</a></li>
-<li class="toctree-l2"><a class="reference internal" href="ramsden2022_validation.html#paper-inconsistencies-affecting-interpretation">Paper inconsistencies affecting interpretation</a></li>
-<li class="toctree-l2"><a class="reference internal" href="ramsden2022_validation.html#implementation-differences">Implementation differences</a></li>
-<li class="toctree-l2"><a class="reference internal" href="ramsden2022_validation.html#assessment-and-follow-up">Assessment and follow-up</a></li>
-<li class="toctree-l2"><a class="reference internal" href="ramsden2022_validation.html#reference">Reference</a></li>
+<p>It builds and clean-installs the wheel, checks the installed metadata version,
+publishes through PyPI trusted publishing, creates the GitHub release, rebuilds
+the released documentation, and opens a <code class="docutils literal notranslate"><span class="pre">main</span></code> to <code class="docutils literal notranslate"><span class="pre">devel</span></code> forward-port
+pull request. Auto-merge is enabled when repository settings and required
+checks allow it. The release branch is deleted only after publication.</p>
+<p>If automated publication fails after PyPI accepts the artifact, do not publish
+the same file again. Creating the missing GitHub release re-enters the
+publication workflow, which rebuilds and smoke-tests both distributions before
+<code class="docutils literal notranslate"><span class="pre">uv</span> <span class="pre">publish</span> <span class="pre">--check-url</span></code> skips matching files already on PyPI and uploads any
+missing distribution. A same-named file with different contents remains an
+error and requires manual investigation; never overwrite or replace a PyPI
+artifact. Then run <strong>Forward released main to devel</strong> manually. If publication
+fails before PyPI accepts an artifact, correct the workflow or release commit,
+rerun the exact-SHA tests when the commit changes, and dispatch publication
+again.</p>
+</section>
+<section id="current-line-hotfix">
+<h2>Current-line hotfix<a class="headerlink" href="#current-line-hotfix" title="Link to this heading">#</a></h2>
+<p>For an urgent bug affecting the published version:</p>
+<ol class="arabic simple">
+<li><p>Create <code class="docutils literal notranslate"><span class="pre">hotfix/X.Y.Z-description</span></code> from <code class="docutils literal notranslate"><span class="pre">main</span></code>.</p></li>
+<li><p>Add the fix, a focused regression test, and a Towncrier bugfix fragment.</p></li>
+<li><p>Merge the reviewed pull request to <code class="docutils literal notranslate"><span class="pre">main</span></code>.</p></li>
+<li><p>Run <strong>Prepare release</strong> with the patch version and <code class="docutils literal notranslate"><span class="pre">source=main</span></code>.</p></li>
+<li><p>Merge the generated release pull request.</p></li>
+<li><p>Run <strong>Publish to PyPI</strong>.</p></li>
+<li><p>Confirm that the automatic <code class="docutils literal notranslate"><span class="pre">main</span></code> to <code class="docutils literal notranslate"><span class="pre">devel</span></code> pull request merges.</p></li>
+</ol>
+<p>Once <code class="docutils literal notranslate"><span class="pre">main</span></code> advances to a new minor version, the older minor is unsupported.
+Do not create a maintenance branch without first changing this policy.</p>
+</section>
+<section id="feature-drift-and-inactive-pull-requests">
+<h2>Feature drift and inactive pull requests<a class="headerlink" href="#feature-drift-and-inactive-pull-requests" title="Link to this heading">#</a></h2>
+<p>Every Monday, <strong>Pull request maintenance</strong> checks open pull requests targeting
+<code class="docutils literal notranslate"><span class="pre">devel</span></code>. A branch behind <code class="docutils literal notranslate"><span class="pre">devel</span></code> receives <code class="docutils literal notranslate"><span class="pre">needs-devel-sync</span></code> and one bot
+comment that is updated in place. Apply <code class="docutils literal notranslate"><span class="pre">auto-sync-devel</span></code> to a same-repository
+pull request to opt into GitHub’s clean update-branch operation. Conflicts get
+<code class="docutils literal notranslate"><span class="pre">devel-sync-conflict</span></code> and remain for a person to resolve. Forks receive a
+reminder but are never mutated.</p>
+<p>Inactive pull requests receive <code class="docutils literal notranslate"><span class="pre">stale</span></code> after 30 days and close after another
+14 days. Activity removes the stale state. <code class="docutils literal notranslate"><span class="pre">keep-open</span></code> exempts a pull request.
+Closing never deletes its branch, and work can be reopened later.</p>
+</section>
+<section id="manual-fallbacks">
+<h2>Manual fallbacks<a class="headerlink" href="#manual-fallbacks" title="Link to this heading">#</a></h2>
+<p>Every automation leaves ordinary Git and GitHub operations available:</p>
+<ul class="simple">
+<li><p>prepare a release branch locally, update the version, and run
+<code class="docutils literal notranslate"><span class="pre">towncrier</span> <span class="pre">build</span> <span class="pre">--version</span> <span class="pre">X.Y.Z</span> <span class="pre">--yes</span></code>;</p></li>
+<li><p>open release and forward-port pull requests manually;</p></li>
+<li><p>create a GitHub release manually only after the same CI gate passes.</p></li>
 </ul>
-</li>
-</ul>
-</div>
+<p>Never bypass or recreate a successful PyPI publication.</p>
 </section>
 </section>
 
@@ -444,20 +510,20 @@ without restoring the obsolete historical loader, sampler, or output system.</p>
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="../development/releasing.html"
+       href="validation_and_xarray.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">Releases and branch maintenance</p>
+        <p class="prev-next-title">Validation and labelled-array patterns</p>
       </div>
     </a>
     <a class="right-next"
-       href="ramsden2022.html"
+       href="../experimental/index.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">Ramsden methane/ethane model</p>
+        <p class="prev-next-title">Experimental code</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -480,14 +546,20 @@ without restoring the obsolete historical loader, sampler, or output system.</p>
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#available-experiments">Available experiments</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#branch-roles">Branch roles</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#one-time-repository-setup">One-time repository setup</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#monthly-release">Monthly release</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#publication">Publication</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#current-line-hotfix">Current-line hotfix</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#feature-drift-and-inactive-pull-requests">Feature drift and inactive pull requests</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#manual-fallbacks">Manual fallbacks</a></li>
 </ul>
   </nav></div>
 
   <div class="sidebar-secondary-item">
 
   <div class="tocsection sourcelink">
-    <a href="../_sources/experimental/index.rst.txt">
+    <a href="../_sources/development/releasing.rst.txt">
       <i class="fa-solid fa-file-lines"></i> Show Source
     </a>
   </div>
