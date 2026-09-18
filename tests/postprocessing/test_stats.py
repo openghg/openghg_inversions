@@ -3,11 +3,23 @@
 from __future__ import annotations
 
 import numpy as np
+import arviz as az
 import pytest
 import sparse
 import xarray as xr
 
-from openghg_inversions.postprocessing.stats import hdi, mean, median, mode, mode_kde, quantiles, stdev
+from openghg_inversions.postprocessing.inversion_output import convert_idata_to_dataset
+from openghg_inversions.postprocessing.stats import (
+    calculate_stats,
+    combine_chain_draw,
+    hdi,
+    mean,
+    median,
+    mode,
+    mode_kde,
+    quantiles,
+    stdev,
+)
 
 
 def _sparse_dataset(*, draw_chunk_size: int | None = None) -> xr.Dataset:
@@ -100,3 +112,68 @@ def test_mode_kde_handles_single_finite_value() -> None:
     result = mode_kde(ds, chunk_dim="nmeasure", chunk_size=1).compute()
 
     np.testing.assert_allclose(result["y_mode"].values, [4.2])
+
+
+def test_calculate_stats_pools_all_chains() -> None:
+    """A deliberately discrepant second chain contributes to derived statistics."""
+    ds = xr.Dataset(
+        {"value": (("chain", "draw"), [[0.0, 2.0], [10.0, 12.0]])},
+        coords={"chain": [0, 1], "draw": [0, 1]},
+    )
+
+    result = calculate_stats(ds, stats=["mean", "quantiles", "hdi"])
+
+    assert result["value_mean"].item() == 6.0
+    assert "chain" not in result.dims
+    assert "draw" not in result.dims
+
+
+def test_combine_chain_draw_preserves_flattened_sample_identity() -> None:
+    """Independent missing-sample filtering retains positions for later alignment."""
+    ds = xr.Dataset(
+        {"value": (("chain", "draw"), [[np.nan, 1.0], [np.nan, 2.0]])},
+        coords={"chain": [0, 1], "draw": [0, 1]},
+    )
+
+    combined, sample_dim = combine_chain_draw(ds)
+    filtered = combined.dropna(sample_dim, how="all")
+
+    np.testing.assert_array_equal(filtered[sample_dim], [1, 3])
+
+
+def test_prior_and_posterior_samples_are_reduced_independently() -> None:
+    """Different group coordinates cannot make one group's samples replace another's."""
+    idata = az.InferenceData(
+        prior=xr.Dataset(
+            {"x": (("chain", "draw"), [[2.0, 4.0, 6.0]])},
+            coords={"chain": [7], "draw": [10, 11, 12]},
+        ),
+        posterior=xr.Dataset(
+            {"x": (("chain", "draw"), [[0.0, 2.0], [10.0, 12.0]])},
+            coords={"chain": [0, 1], "draw": [0, 1]},
+        ),
+    )
+
+    result = calculate_stats(convert_idata_to_dataset(idata), stats=["mean", "mode", "hdi"])
+
+    assert result["x_prior_mean"].item() == 4.0
+    assert result["x_posterior_mean"].item() == 6.0
+    assert result["x_prior_mode"].item() == 4.0
+    assert result["x_posterior_mode"].item() == 6.0
+
+
+def test_mode_uses_each_variables_finite_sample_count() -> None:
+    """Outer-alignment padding must not change another variable's mode."""
+    prior = xr.Dataset(
+        {"x": (("chain", "draw"), [[0.0, 0.0, 1.0, 2.0, 100.0]])},
+        coords={"chain": [0], "draw": np.arange(5)},
+    )
+    posterior = xr.Dataset(
+        {"x": (("chain", "draw"), np.arange(30.0).reshape(2, 15))},
+        coords={"chain": [1, 2], "draw": np.arange(10, 25)},
+    )
+    idata = az.InferenceData(prior=prior, posterior=posterior)
+
+    result = calculate_stats(convert_idata_to_dataset(idata), stats=["mode"])
+
+    assert result["x_prior_mode"].item() == mode(prior)["x_mode"].item()
