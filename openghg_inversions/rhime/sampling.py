@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+import json
 from typing import Any, Literal, cast
 
 import arviz as az
@@ -14,6 +15,7 @@ from openghg_inversions._timing import log_timing, timer_seconds, timer_start
 from openghg_inversions._sampling import _reset_retained_draws as _shared_reset_retained_draws
 from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords
 from openghg_inversions.rhime.builders import RhimeModelBuildResult
+from openghg_inversions.rhime.diagnostics import posterior_convergence_check
 
 NutsSampler = Literal["pymc", "nutpie", "numpyro", "blackjax"]
 
@@ -281,6 +283,19 @@ class RhimeSampler:
             timer_seconds(timing_start),
             restored=registry is not None,
         )
+        if isinstance(trace, az.InferenceData):
+            timing_start = timer_start()
+            variable_names = [variable.name for variable in model.free_RVs]
+            trace.attrs["sampler_convergence_variables"] = json.dumps(variable_names)
+            _, convergence = posterior_convergence_check(trace, variable_names=variable_names)
+            trace.attrs["sampler_convergence"] = json.dumps(convergence, sort_keys=True)
+            log_timing(
+                "rhime.sampler.convergence",
+                timer_seconds(timing_start),
+                status=convergence["status"],
+                message=convergence["message"],
+                **convergence["measured_values"],
+            )
         return trace
 
     def _extend_predictive(

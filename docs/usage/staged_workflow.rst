@@ -108,7 +108,9 @@ directory.
   resolved ``RhimeSampler``, and writes ``posterior.nc`` plus
   ``sample-manifest.json``.  The manifest records the effective sampling
   configuration and content identities for the posterior and prepared input.
-  It never silently invokes preparation.
+  The posterior preserves the automatically calculated compact convergence
+  check in its ``sampler_convergence`` attribute.  It never silently invokes
+  preparation.
 
 ``diagnose``
   Loads ``--posterior``, writes ``posterior-diagnostics.nc`` and emits the
@@ -151,10 +153,13 @@ Both checks use the schema version 1 understood by ``openghg-run`` and producer
   become a readable ``fail`` result.
 
 ``sampler-convergence``
-  Reports retained chain and draw counts, maximum R-hat and its variable,
-  minimum bulk ESS and its variable, minimum tail ESS and its variable, total
-  divergences, divergences per chain, and labels for unassessable R-hat/ESS
-  elements.  Defaults are maximum R-hat 1.01,
+  Assesses only the sampled scientific latent variables, excluding deterministic
+  posterior outputs.  The ``assessed_variables`` measured value names those
+  latent variables in the standalone CheckResult.  The check also reports
+  retained chain and draw counts, maximum R-hat and its variable, minimum bulk
+  ESS and its variable, minimum tail ESS and its variable, total divergences,
+  divergences per chain, and labels for unassessable R-hat/ESS elements.
+  Defaults are maximum R-hat 1.01,
   minimum bulk ESS 400, minimum tail ESS 400, and maximum divergences 0.
   Thresholds have CLI options.  The result is ``unknown`` when a signal is not
   assessable (for example R-hat from one chain), ``fail`` when an available
