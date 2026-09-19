@@ -1,13 +1,14 @@
 numpyro[cpu]
-pymc
+pymc<6
+arviz<1
 xarray >= 2025.06
 pandas
 matplotlib
 scipy
 numpy
 openghg
+openghg-defs!=0.0.13
 sparse
 tfp-nightly
 flox
 opt_einsum
-tomli>=2; python_version < "3.11"

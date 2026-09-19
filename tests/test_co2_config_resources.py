@@ -2,11 +2,7 @@
 
 from importlib.resources import files
 from pathlib import Path
-
-try:
-    import tomllib
-except ModuleNotFoundError:  # pragma: no cover - Python 3.10
-    import tomli as tomllib
+import tomllib
 
 
 _CONFIG_DIRECTORY = files("openghg_inversions.rhime").joinpath("config")
@@ -43,4 +39,4 @@ def test_co2_family_templates_are_declared_as_package_data() -> None:
     assert "rhime/config/*.toml" in project["tool"]["setuptools"]["package-data"][
         "openghg_inversions"
     ]
-    assert "tomli>=2; python_version < '3.11'" in project["project"]["dependencies"]
+    assert not any(dependency.startswith("tomli") for dependency in project["project"]["dependencies"])

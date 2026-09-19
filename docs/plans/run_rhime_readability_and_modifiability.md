@@ -301,7 +301,7 @@ W1 merged in PR
 `docs/plans/rhime_w1_contracts.md`, selected by:
 
 ```bash
-tox -e py310-openghgCur -- -m rhime_contract
+tox -e py312-openghgCur -- -m rhime_contract
 ```
 
 It freezes the Python/config/CLI paths, prepared layouts, Dask boundaries,
