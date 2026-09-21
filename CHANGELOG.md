@@ -1,3 +1,10 @@
+## 0.7.2 (2026-09-21)
+
+
+### Bug fixes
+
+- Restore Luke Western's Zenodo contributor role and reject releases with missing contributor roles.
+
 ## 0.7.1 (2026-09-18)
 
 
