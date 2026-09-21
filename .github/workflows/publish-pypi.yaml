@@ -63,7 +63,21 @@ jobs:
             exit 1
           fi
           PACKAGE_VERSION=$(python - <<'PY'
+          import json
           import tomllib
+
+          with open(".zenodo.json", encoding="utf-8") as stream:
+              zenodo_metadata = json.load(stream)
+
+          missing_types = [
+              contributor.get("name", "<unnamed>")
+              for contributor in zenodo_metadata.get("contributors", [])
+              if not contributor.get("type")
+          ]
+          if missing_types:
+              raise SystemExit(
+                  "Zenodo contributors missing type: " + ", ".join(missing_types)
+              )
 
           with open("pyproject.toml", "rb") as stream:
               print(tomllib.load(stream)["project"]["version"])
