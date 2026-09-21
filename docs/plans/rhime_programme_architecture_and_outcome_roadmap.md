@@ -944,7 +944,7 @@ Before every releasable cut:
 
 - advertised recipes have passed the trustworthy-core and applicable
   production-recipe gates;
-- focused, full/slow, supported Python (3.12+), supported OpenGHG
+- focused, full/slow, supported Python (3.12-3.13), supported OpenGHG
   compatibility, type, and lint checks pass at an immutable revision;
 - relevant reviewed/registered real inversion cases pass with documented
   scientific tolerances;

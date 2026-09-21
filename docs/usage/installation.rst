@@ -9,7 +9,7 @@ Choose the setup that matches your task:
   environment.
 * To contribute to OpenGHG Inversions, use the repository's Pixi environment.
 
-OpenGHG Inversions supports Python 3.12 or later on Linux and macOS. Inversions
+OpenGHG Inversions supports Python 3.12 and 3.13 on Linux and macOS. Inversions
 that acquire data through OpenGHG also need access to a configured OpenGHG
 object store; see the `OpenGHG project documentation
 <https://docs.openghg.org/>`_ for that separate setup.

@@ -154,11 +154,11 @@ pip install -e ".[dev]"
 ```
 
 ## Installation and Setup
-As OpenGHG Inversions is dependent on OpenGHG, please ensure that when running locally you are using Python 3.12 or later on Linux or MacOS. Please see the [OpenGHG project](https://github.com/openghg/openghg/) for further installation instructions of OpenGHG and setting up an object store.
+As OpenGHG Inversions is dependent on OpenGHG, please ensure that when running locally you are using Python 3.12 or 3.13 on Linux or MacOS. Please see the [OpenGHG project](https://github.com/openghg/openghg/) for further installation instructions of OpenGHG and setting up an object store.
 
 ### Setup a virtual environment
 
-Check that you have Python 3.12 or greater:
+Check that you have Python 3.12 or 3.13:
 ```bash
 python --version
 ```
