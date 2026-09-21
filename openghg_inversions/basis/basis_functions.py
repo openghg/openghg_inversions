@@ -46,6 +46,7 @@ from openghg_inversions.basis.operators import (
     RegionLabels,
 )
 from openghg_inversions.flux_sanitization import sanitize_flux_nonfinite
+from openghg_inversions.serialization import open_datatree_loaded
 
 BASIS_METADATA_ATTR_PREFIX = "openghg_inversions:"
 BASIS_ARTIFACT_SOURCE_ATTR = f"{BASIS_METADATA_ATTR_PREFIX}basis_artifact_source"
@@ -446,9 +447,7 @@ class FluxWeightedBasis:
             ValueError: If the serialized schema, metadata, labels, or
                 operator state is invalid.
         """
-        engine = "zarr" if Path(file_path).suffix.lower() == ".zarr" else None
-        with xr.open_datatree(file_path, engine=engine) as dt:
-            return cast(Self, cls.from_datatree(dt.load()))
+        return cast(Self, cls.from_datatree(open_datatree_loaded(file_path)))
 
     def interpolate(self, state: xr.DataArray, *, flux: bool = False) -> xr.DataArray:
         """Interpolate from state vector to the grid.
