@@ -37,7 +37,6 @@ from ._functions import (
     region_constrained_basis_function,
 )
 from ._wrapper import (
-    basis_functions_wrapper,
     load_basis_functions,
     make_basis_functions,
 )
@@ -57,7 +56,6 @@ from .covariance_products import (
 )
 
 __all__ = [
-    "basis_functions_wrapper",
     "basis_functions_from_fp_all_flat_basis",
     "basis_weights_from_fp_all",
     "BasisFunctions",

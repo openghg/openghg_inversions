@@ -18,7 +18,6 @@ from openghg_inversions.basis._functions import (
 )
 from openghg_inversions.basis import (
     basis_weights_from_fp_all,
-    basis_functions_wrapper,
     bucket_basis_from_weights,
     bucket_basis_function,
     fixed_outer_regions_basis,
@@ -48,11 +47,6 @@ from openghg_inversions.basis.operators import (
     BucketBasisOperator,
     MultiSourceBucketBasisOperator,
 )
-from openghg_inversions.basis._helpers import (
-    _legacy_multisource_h_if_needed,
-    apply_fp_basis_functions,
-    fp_sensitivity,
-)
 from openghg_inversions.flux_sanitization import (
     FluxNonFiniteMetadata,
     NONFINITE_CHECKED_COMPUTED,
@@ -61,7 +55,6 @@ from openghg_inversions.flux_sanitization import (
 )
 from openghg_inversions.inversion_data import data_processing_surface_notracer
 
-from helpers import basis_function, footprint
 from helpers import (
     convert_old_multisector_H_to_gathered,
     make_basis_flat_from_blocks,
@@ -1830,84 +1823,6 @@ def test_packaged_fixed_outer_and_landsea_fields_compose_on_weights_grid(domain)
     assert set(np.unique(labels)) == set(range(1, 9))
 
 
-def test_fp_sensitivity_one_flux():
-    """Test fp_sensitivity with one flux sector."""
-    nlat, nlon = 10, 12
-    nbasis = 3
-    basis_func = basis_function(nlat, nlon, nbasis)
-    fp = footprint(nlat, nlon, "2019-01-01", "2019-01-02", 2)
-
-    fp_and_data = {"TAC": xr.Dataset({"fp_x_flux": fp}), ".flux": {"a": 1}}
-
-    fp_and_data = fp_sensitivity(fp_and_data, basis_func)
-
-    h = fp_and_data["TAC"].H
-
-    # the footprint values at time 0 are 1, and at time 1 are 2
-    np.testing.assert_allclose(2 * h.isel(time=0), h.isel(time=1))
-
-
-def test_fp_sensitivity_two_flux_sectors():
-    """Check that we can apply a common basis function to two separate sources."""
-    nlat, nlon = 10, 12
-    nbasis = 3
-    basis_func = basis_function(nlat, nlon, nbasis)
-
-    fp1 = footprint(nlat, nlon, "2019-01-01", "2019-01-02", 2)
-    fp2 = footprint(nlat, nlon, "2019-01-01", "2019-01-02", 2)
-    fp = xr.concat([fp1.expand_dims({"source": ["a"]}), fp2.expand_dims({"source": ["b"]})], dim="source")
-    fp_and_data = {"TAC": xr.Dataset({"fp_x_flux_sectoral": fp}), ".flux": {"a": 1, "b": 2}}
-
-    fp_and_data = fp_sensitivity(fp_and_data, basis_func)
-
-    for source in ["a", "b"]:
-        h = fp_and_data["TAC"].H.sel(source=source).dropna("region")
-
-        # the footprint values at time 0 are 1, and at time 1 are 2
-        np.testing.assert_allclose(2 * h.isel(time=0), h.isel(time=1))
-
-
-def test_fp_sensitivity_two_flux_sources_combined_mode():
-    """If split_by_sectors is False, use combined `fp_x_flux` even with multiple flux entries."""
-    nlat, nlon = 10, 12
-    nbasis = 3
-    basis_func = basis_function(nlat, nlon, nbasis)
-    fp = footprint(nlat, nlon, "2019-01-01", "2019-01-02", 2)
-
-    fp_and_data = {
-        "TAC": xr.Dataset({"fp_x_flux": fp}),
-        ".flux": {"a": 1, "b": 2},
-        ".split_by_sectors": False,
-    }
-
-    fp_and_data = fp_sensitivity(fp_and_data, basis_func)
-    h = fp_and_data["TAC"].H
-    np.testing.assert_allclose(2 * h.isel(time=0), h.isel(time=1))
-
-
-def test_fp_sensitivity_two_flux_sectors_two_basis_funcs():
-    """Check that we can apply separate basis functions to separate sources."""
-    nlat, nlon = 10, 12
-    nbasis1 = 3
-    nbasis2 = 4
-    basis_func1 = basis_function(nlat, nlon, nbasis1)
-    basis_func2 = basis_function(nlat, nlon, nbasis2)
-    basis_func = {"a": basis_func1, "b": basis_func2}
-
-    fp1 = footprint(nlat, nlon, "2019-01-01", "2019-01-02", 2)
-    fp2 = footprint(nlat, nlon, "2019-01-01", "2019-01-02", 2)
-    fp = xr.concat([fp1.expand_dims({"source": ["a"]}), fp2.expand_dims({"source": ["b"]})], dim="source")
-    fp_and_data = {"TAC": xr.Dataset({"fp_x_flux_sectoral": fp}), ".flux": {"a": 1, "b": 2}}
-
-    fp_and_data = fp_sensitivity(fp_and_data, basis_func)
-
-    for source in ["a", "b"]:
-        h = fp_and_data["TAC"].H.sel(source=source).dropna("region")
-
-        # the footprint values at time 0 are 1, and at time 1 are 2
-        np.testing.assert_allclose(2 * h.isel(time=0), h.isel(time=1))
-
-
 def test_basisfunctions_sensitivity_synthetic_matches_explicit_sum():
     """Sensitivity on a tiny synthetic example matches explicit region-wise summation.
 
@@ -2034,180 +1949,6 @@ def test_synthetic_no_all_zero_state_rows_when_fp_positive_everywhere():
 
 
 # @pytest.mark.slow
-def test_basisfunctions_sensitivity_matches_apply_fp_basis_functions_real_data(
-    default_bc_basis_directory, openghg_test_store
-):
-    """New sensitivity matches legacy `apply_fp_basis_functions` for real test-suite data.
-
-    This is a higher-level integration test:
-        - It uses `basis_functions_wrapper` to construct the legacy basis and compute H.
-        - It then reconstructs a `BasisFunctions` instance using the same basis and a representative
-          flux field, and verifies `BasisFunctions.sensitivity(ds.fp_x_flux)` matches the legacy H.
-
-    This guards against coordinate alignment, dimension ordering, and subtle differences in the
-    region-labelling conventions on real-world data.
-    """
-    data_args = {
-        "species": "ch4",
-        "sites": ["MHD", "TAC"],
-        "start_date": "2019-01-01",
-        "end_date": "2019-01-02",
-        "bc_store": "inversions_tests",
-        "obs_store": "inversions_tests",
-        "footprint_store": "inversions_tests",
-        "emissions_store": "inversions_tests",
-        "inlet": ["10m", "185m"],
-        "instrument": ["gcmd", "picarro"],
-        "domain": "EUROPE",
-        "fp_height": ["10m", "185m"],
-        "fp_model": "NAME",
-        "emissions_name": ["total-ukghg-edgar7"],
-        "averaging_period": ["1h", "1h"],
-    }
-
-    fp_all, *_ = data_processing_surface_notracer(**data_args)
-
-    basis_args = {
-        "species": "ch4",
-        "domain": "EUROPE",
-        "start_date": "2019-01-01",
-        "emissions_name": ["total-ukghg-edgar7"],
-        "nbasis": 100,
-        "use_bc": True,
-        "basis_algorithm": "weighted",
-        "bc_basis_case": "NESW",
-        "bc_basis_directory": default_bc_basis_directory,
-    }
-
-    fp_all_with_basis = basis_functions_wrapper(fp_all, **basis_args)
-
-    site = "MHD"
-    ds = fp_all_with_basis[site]
-
-    # old sensitivity (already computed by wrapper) is ds["H"]; but we want to call the legacy fn directly too
-    H_old = apply_fp_basis_functions(ds.fp_x_flux, fp_all_with_basis[".basis"])
-
-    # new sensitivity
-    # Need a flux field; the wrapper has fp_all_with_basis[".flux"][source].data.flux
-    flux_source = next(iter(fp_all_with_basis[".flux"].keys()))
-    flux = fp_all_with_basis[".flux"][flux_source].data.flux
-
-    # bf = BasisFunctions(basis_flat=fp_all_with_basis[".basis"], flux=flux)
-    bf = BasisFunctions.from_flat_basis(
-        basis_flat=fp_all_with_basis[".basis"], flux=flux, operator_kwargs={"state_dim": "region"}
-    )
-    H_new = bf.sensitivity(ds.fp_x_flux)
-
-    # Ensure same dim order for comparison
-    if H_new.dims != H_old.dims:
-        H_new = H_new.transpose(*H_old.dims)
-
-    xr.testing.assert_allclose(H_new, H_old)
-
-    # now test vs. result of basis_functions_wrapper
-    H_old = ds.H
-
-    if H_new.dims != H_old.dims:
-        H_new = H_new.transpose(*H_old.dims)
-
-    xr.testing.assert_allclose(H_new, H_old)
-
-
-# @pytest.mark.slow
-def test_multisector_ragged_new_matches_old_after_conversion(openghg_test_store):
-    """Ragged multi-source: new gathered H matches legacy padded H after conversion.
-
-    Historically, multi-sector sensitivities were represented as a padded array:
-        H_old(region=max_regions, time, source)
-    where missing regions for a given source were represented by all-zero rows.
-
-    The new MultiSourceBucketBasisOperator produces a gathered representation with a MultiIndex:
-        H_new(region=(source, region_in_source), time)
-
-    This test:
-        1) Computes the old padded H via `fp_sensitivity` with two different bases (ragged region counts).
-        2) Converts H_old -> gathered MultiIndex using `convert_old_multisector_H_to_gathered`.
-        3) Computes H_new with `BasisFunctions.from_multi_source_flat_basis(...).sensitivity(...)`.
-        4) Asserts equality.
-
-    This is the key equivalence test justifying the new MultiIndex-based operator.
-    """
-    # --- Load test-suite data (same as notebook) ---
-    data_args = {
-        "species": "ch4",
-        "sites": ["MHD", "TAC"],
-        "start_date": "2019-01-01",
-        "end_date": "2019-01-02",
-        "bc_store": "inversions_tests",
-        "obs_store": "inversions_tests",
-        "footprint_store": "inversions_tests",
-        "emissions_store": "inversions_tests",
-        "inlet": ["10m", "185m"],
-        "instrument": ["gcmd", "picarro"],
-        "domain": "EUROPE",
-        "fp_height": ["10m", "185m"],
-        "fp_model": "NAME",
-        "emissions_name": ["total-ukghg-edgar7"],
-        "averaging_period": ["1h", "1h"],
-    }
-    fp_all, *_ = data_processing_surface_notracer(**data_args)
-
-    # --- Make a "sectoral" fp_x_flux like your notebook did ---
-    fp_all_sectoral = fp_all.copy()
-    fp_all_sectoral[".flux"] = fp_all[".flux"].copy()
-    fp_all_sectoral[".flux"]["sector2"] = fp_all_sectoral[".flux"]["total-ukghg-edgar7"]
-
-    for k, v in fp_all_sectoral.items():
-        if str(k).startswith("."):
-            continue
-        ds = v["fp_x_flux"]
-        to_concat = [
-            ds.expand_dims({"source": ["total-ukghg-edgar7"]}),
-            ds.expand_dims({"source": ["sector2"]}),
-        ]
-        v["fp_x_flux_sectoral"] = xr.concat(to_concat, dim="source")
-
-    fp_all_sectoral[".split_by_sectors"] = True
-
-    # --- Build two different basis partitions (ragged region counts) ---
-    weighted_basis_args_1 = {
-        "domain": "EUROPE",
-        "start_date": "2019-01-01",
-        "emissions_name": ["total-ukghg-edgar7"],
-        "nbasis": 100,
-    }
-    weighted_basis_args_2 = {
-        "domain": "EUROPE",
-        "start_date": "2019-01-01",
-        "emissions_name": ["sector2"],
-        "nbasis": 200,
-    }
-
-    basis1 = basis_functions["weighted"].algorithm(fp_all_sectoral, **weighted_basis_args_1)
-    basis2 = basis_functions["weighted"].algorithm(fp_all_sectoral, **weighted_basis_args_2)
-
-    basis_dict = {"total-ukghg-edgar7": basis1, "sector2": basis2}
-
-    # --- Old behaviour: fp_sensitivity pads to max(region) and introduces zero rows for missing regions ---
-    fp_old = fp_sensitivity(fp_all_sectoral.copy(), basis_func=basis_dict)
-    site = "MHD"
-    H_old = fp_old[site]["H"]  # (region=max, time, source)
-
-    # Convert old padded to gathered multiindex region and drop all-zero rows
-    H_old_gathered = convert_old_multisector_H_to_gathered(H_old)
-
-    # --- New behaviour
-    flux_dict = {k: v.data.flux for k, v in fp_all_sectoral[".flux"].items()}
-
-    multisector_bf = BasisFunctions.from_multi_source_flat_basis(
-        basis_flat=basis_dict, flux=flux_dict, operator_kwargs={"state_dim": "region"}
-    )
-
-    H_new_gathered = multisector_bf.sensitivity(fp_all_sectoral[site].fp_x_flux_sectoral)
-    # Source-wise projection changes the float32 summation order over the grid.
-    xr.testing.assert_allclose(H_new_gathered, H_old_gathered, atol=2e-5)
-
-
 def _make_simple_state_trace(
     *,
     region_dim: str = "region",
@@ -2481,43 +2222,6 @@ def test_basisfunctions_interpolate_trace_with_chain_dim():
 
 # --------------------------------------------------------------------------------------
 # Multi-source equivalence: gathered MultiIndex vs legacy padded H conversion
-# --------------------------------------------------------------------------------------
-@pytest.mark.parametrize("use_multiindex", [True, False], ids=["multiindex", "auxiliary-coordinates"])
-def test_legacy_multisource_adapter_only_zero_fills_structural_padding(use_multiindex: bool) -> None:
-    """Legacy rectangularization must preserve NaNs in represented state cells."""
-    state_index = pd.MultiIndex.from_tuples(
-        [("ff", 0), ("ff", 1), ("ocean", 0)],
-        names=["source", "region_in_source"],
-    )
-    state_coords: dict = (
-        dict(xr.Coordinates.from_pandas_multiindex(state_index, "state"))
-        if use_multiindex
-        else {
-            "state": [0, 1, 2],
-            "source": ("state", ["ff", "ff", "ocean"]),
-            "region_in_source": ("state", [0, 1, 0]),
-        }
-    )
-    sensitivity = xr.DataArray(
-        [[1.0, 2.0], [np.nan, 4.0], [5.0, 6.0]],
-        dims=("state", "time"),
-        coords={
-            **state_coords,
-            "time": [0, 1],
-        },
-    )
-
-    result = _legacy_multisource_h_if_needed(
-        sensitivity,
-        state_dim="state",
-        flux_sources=["ff", "ocean"],
-    )
-
-    assert np.isnan(result.sel(source="ff", region=1, time=0))
-    assert result.sel(source="ocean", region=1, time=0).item() == 0.0
-    assert result.coords["source_region_count"].to_dict()["data"] == [2, 1]
-
-
 def test_multisource_sensitivity_matches_legacy_padded_conversion_smoke():
     """Smoke test: gathered multi-source sensitivity matches legacy padded->gathered conversion.
 
@@ -2825,6 +2529,21 @@ def test_basis_functions_from_fp_all_selects_runtime_basis_sources():
     assert bf.flux.source.values.tolist() == ["B", "A"]
 
 
+def test_basis_functions_from_fp_all_uses_legacy_multisource_fallback():
+    """If .split_by_sectors is missing, fallback inference uses number of flux entries."""
+    basis_flat = make_basis_flat_from_blocks([[1, 1], [2, 2]])
+    fp_all = {
+        ".flux": {
+            "a": xr.ones_like(basis_flat, dtype=float).rename("flux"),
+            "b": (2.0 * xr.ones_like(basis_flat, dtype=float)).rename("flux"),
+        },
+    }
+    bf = basis_functions_from_fp_all_flat_basis(fp_all=fp_all, basis_flat=basis_flat)
+
+    assert "source" in bf.flux.dims
+    assert list(bf.flux.source.values) == ["a", "b"]
+
+
 def test_flux_from_fp_all_stacks_sources_with_equal_time_coordinates():
     """Sector fluxes sharing an exact time index stack without temporal expansion."""
     time = pd.date_range("2019-01-01", periods=2, freq="h")
@@ -2939,67 +2658,6 @@ def test_flux_from_fp_all_rejects_source_only_extra_dimension():
         )
 
 
-def test_basis_functions_from_fp_all_uses_legacy_multisource_fallback():
-    """If .split_by_sectors is missing, fallback inference uses number of flux entries."""
-    basis_flat = make_basis_flat_from_blocks([[1, 1], [2, 2]])
-    fp_all = {
-        ".flux": {
-            "a": xr.ones_like(basis_flat, dtype=float).rename("flux"),
-            "b": (2.0 * xr.ones_like(basis_flat, dtype=float)).rename("flux"),
-        },
-    }
-    bf = basis_functions_from_fp_all_flat_basis(fp_all=fp_all, basis_flat=basis_flat)
-
-    assert "source" in bf.flux.dims
-    assert list(bf.flux.source.values) == ["a", "b"]
-
-
-def test_basis_functions_wrapper_return_basis_objects(tac_ch4_data_args):
-    """Wrapper can optionally return BasisFunctions payload without changing default path."""
-    fp_all, *_ = data_processing_surface_notracer(**tac_ch4_data_args)
-
-    basis_args = {
-        "species": "ch4",
-        "domain": "EUROPE",
-        "start_date": "2019-01-01",
-        "emissions_name": ["total-ukghg-edgar7"],
-        "nbasis": 100,
-        "use_bc": False,
-        "basis_algorithm": "weighted",
-        "return_basis_objects": True,
-    }
-
-    fp_data, basis_objects = basis_functions_wrapper(fp_all, **basis_args)
-
-    site_keys = [k for k in fp_data if not str(k).startswith(".")]
-    assert len(site_keys) >= 1
-    assert "emissions" in basis_objects
-    assert isinstance(basis_objects["emissions"], BasisFunctions)
-
-
-def test_basis_functions_wrapper_invalid_basis_output_format(tac_ch4_data_args, tmp_path):
-    """Invalid basis_output_format should raise a clear ValueError."""
-    fp_all, *_ = data_processing_surface_notracer(**tac_ch4_data_args)
-
-    basis_args = {
-        "species": "ch4",
-        "domain": "EUROPE",
-        "start_date": "2019-01-01",
-        "emissions_name": ["total-ukghg-edgar7"],
-        "nbasis": 100,
-        "use_bc": False,
-        "basis_algorithm": "weighted",
-        "output_path": str(tmp_path),
-        "basis_output_format": "invalid",
-    }
-
-    with pytest.raises(
-        ValueError,
-        match="Unknown basis_output_format 'invalid'. Expected one of: 'legacy', 'datatree'.",
-    ):
-        basis_functions_wrapper(fp_all, **basis_args)
-
-
 def test_save_basis_datatree_roundtrip(tmp_path):
     """Saving DataTree basis output is readable via BasisFunctions.from_datatree."""
     basis_flat = make_basis_flat_from_blocks([[1, 1], [2, 2]]).expand_dims(time=[np.datetime64("2019-01-01")])
@@ -3097,107 +2755,6 @@ def test_load_basis_functions_prefers_datatree_schema(tmp_path):
     xr.testing.assert_identical(loaded.operator.basis_matrix, bf.operator.basis_matrix)
     xr.testing.assert_allclose(loaded.flux, current_flux)
     assert _flux_nonfinite_metadata(loaded.flux).policy == NONFINITE_POLICY_ZERO_FILL
-
-
-def test_datatree_basis_artifact_can_use_basisfunctions_state_labels(tmp_path):
-    """Wrapper H construction uses BasisFunctions labels instead of legacy flat-basis labels."""
-    basis_flat = make_basis_flat_from_blocks([[1, 1], [2, 2]]).expand_dims(time=[np.datetime64("2019-01-01")])
-    basis_for_operator = basis_flat.isel(time=0, drop=True)
-    flux = xr.ones_like(basis_for_operator, dtype=float).rename("flux")
-    bf = BasisFunctions.from_flat_basis(
-        basis_flat=basis_flat,
-        flux=flux,
-        region_labels="range1",
-        operator_kwargs={"state_dim": "region"},
-    )
-    fp_x_flux = make_fp_x_flux(nlat=2, nlon=2, ntime=2)
-    fp_x_flux = fp_x_flux.assign_coords(lat=basis_for_operator.lat, lon=basis_for_operator.lon)
-    fp_all = {
-        "TAC": xr.Dataset({"fp_x_flux": fp_x_flux}),
-        ".flux": {"emissions": flux},
-        ".split_by_sectors": False,
-    }
-
-    _save_basis_datatree(
-        basis_functions=bf,
-        basis=basis_flat,
-        basis_algorithm="weighted",
-        output_dir=str(tmp_path),
-        domain="EUROPE",
-        species="ch4",
-        output_name="range1",
-    )
-
-    fp_data, basis_objects = basis_functions_wrapper(
-        fp_all,
-        species="ch4",
-        domain="EUROPE",
-        start_date="2019-01-01",
-        emissions_name=["emissions"],
-        nbasis=2,
-        use_bc=False,
-        fp_basis_case="weighted_ch4-range1",
-        basis_directory=tmp_path,
-        return_basis_objects=True,
-    )
-
-    xr.testing.assert_identical(fp_data["TAC"].H.region, bf.operator.basis_matrix.region)
-    xr.testing.assert_allclose(fp_data["TAC"].H, bf.sensitivity(fp_x_flux))
-    assert basis_objects["emissions"].basis_artifact_source == "datatree"
-
-
-def test_multisource_datatree_basis_artifact_keeps_legacy_h_shape(tmp_path):
-    """Multi-source DataTree artifacts use BasisFunctions.sensitivity but keep legacy H shape."""
-    sources = ["A", "B"]
-    basis_a = make_basis_flat_from_blocks([[1, 1], [2, 2]])
-    basis_b = make_basis_flat_from_blocks([[1, 2], [1, 2]])
-    basis_by_source = {"extra": basis_a, "B": basis_b, "A": basis_a}
-    expected_basis_by_source = {"A": basis_a, "B": basis_b}
-    flux_by_source = {
-        source: xr.ones_like(basis, dtype=float).rename("flux")
-        for source, basis in expected_basis_by_source.items()
-    }
-    artifact_flux_by_source = {
-        source: xr.ones_like(basis, dtype=float).rename("flux") for source, basis in basis_by_source.items()
-    }
-    fp_x_flux_sectoral = make_fp_x_flux_sectoral(sources=sources, nlat=2, nlon=2, ntime=3)
-    fp_all = {
-        "TAC": xr.Dataset({"fp_x_flux_sectoral": fp_x_flux_sectoral}),
-        ".flux": flux_by_source,
-        ".split_by_sectors": True,
-    }
-    bf = BasisFunctions.from_multi_source_flat_basis(
-        basis_flat=basis_by_source,
-        flux=artifact_flux_by_source,
-        operator_kwargs={"state_dim": "region"},
-    )
-
-    basis_dir = tmp_path / "EUROPE"
-    basis_dir.mkdir()
-    bf.save(basis_dir / "weighted_ch4-loader_EUROPE_2019-01_basis_datatree.nc")
-
-    fp_data, basis_objects = basis_functions_wrapper(
-        fp_all,
-        species="ch4",
-        domain="EUROPE",
-        start_date="2019-01-01",
-        emissions_name=sources,
-        nbasis=2,
-        use_bc=False,
-        fp_basis_case="weighted_ch4-loader",
-        basis_directory=tmp_path,
-        return_basis_objects=True,
-    )
-    legacy_fp = fp_sensitivity(fp_all.copy(), basis_func=expected_basis_by_source)
-
-    assert fp_data["TAC"].H.dims == ("region", "time", "source")
-    assert list(fp_data["TAC"].H.source.values) == sources
-    assert list(fp_data[".basis"].source.values) == sources
-    assert list(basis_objects["emissions"].flat_basis()) == sources
-    xr.testing.assert_allclose(fp_data["TAC"].H, legacy_fp["TAC"].H)
-    xr.testing.assert_identical(fp_data[".basis"].sel(source="A", drop=True), basis_a.rename("basis"))
-    xr.testing.assert_identical(fp_data[".basis"].sel(source="B", drop=True), basis_b.rename("basis"))
-    assert basis_objects["emissions"].basis_artifact_source == "datatree"
 
 
 def test_load_basis_functions_reports_multiple_datatree_matches(tmp_path):

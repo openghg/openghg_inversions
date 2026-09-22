@@ -2,9 +2,7 @@
 
 ``prepare_rhime_inputs`` returns backend-neutral observations, sensitivities,
 basis metadata, and site metadata; component-specific model arrays are
-intentionally absent. The temporary legacy fixed-basis orchestration is owned
-by :mod:`openghg_inversions.hbmcmc.preparation` and composes the lower-level
-retrieval, filtering, basis, and array helpers retained here.
+intentionally absent.
 
 ``RhimePreparedInputs`` validates the relationships between these labeled
 arrays when it is constructed. When the retained basis-functions object
@@ -1504,19 +1502,3 @@ def prepare_rhime_inputs(
             averaging_period=filtered_merged.averaging_period,
         ),
     )
-
-
-def __getattr__(name: str) -> Any:
-    """Provide warning-emitting aliases for the former fixed-basis location."""
-    if name not in {"FixedBasisPreparedData", "prepare_fixedbasis_inversion_data"}:
-        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-
-    warnings.warn(
-        f"{__name__}.{name} has moved to openghg_inversions.hbmcmc.preparation; "
-        "the old import path is deprecated.",
-        FutureWarning,
-        stacklevel=2,
-    )
-    from openghg_inversions.hbmcmc import preparation as fixedbasis_preparation
-
-    return getattr(fixedbasis_preparation, name)

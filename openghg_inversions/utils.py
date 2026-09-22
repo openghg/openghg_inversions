@@ -1,5 +1,4 @@
-"""Script containing common Python functions that can be called for running
-HBMCMC and other inversion models.
+"""Common Python functions used by RHIME and supporting inversion workflows.
 
 The main functions are related to applying basis functions to the flux and boundary
 conditions, and their sensitivities.

@@ -9,7 +9,6 @@ import tempfile
 import time
 from importlib.metadata import version
 from typing import Callable, Iterator
-from types import MappingProxyType
 from unittest.mock import patch
 
 import arviz as az
@@ -612,27 +611,3 @@ def mhd_and_tac_ch4_data_args(openghg_test_store):
         "averaging_period": ["1h", "1h"],
     }
     return data_args
-
-
-@pytest.fixture(scope="module")
-def mhd_and_tac_fp_data(mhd_and_tac_ch4_data_args, default_bc_basis_directory):
-    from openghg_inversions.basis import basis_functions_wrapper
-    from openghg_inversions.inversion_data.get_data import data_processing_surface_notracer
-
-    fp_all, *_ = data_processing_surface_notracer(**mhd_and_tac_ch4_data_args)
-
-    basis_args = {
-        "species": "ch4",
-        "domain": "EUROPE",
-        "start_date": "2019-01-01",
-        "emissions_name": ["total-ukghg-edgar7"],
-        "nbasis": 100,
-        "use_bc": True,
-        "basis_algorithm": "weighted",
-        "bc_basis_case": "NESW",
-        "bc_basis_directory": default_bc_basis_directory,
-    }
-
-    fp_data = basis_functions_wrapper(fp_all, **basis_args)
-
-    return MappingProxyType(fp_data)  # read-only
