@@ -56,8 +56,9 @@ def test_standard_reader_path_avoids_detailed_co2_material() -> None:
     assert "rhime_multisector_tutorial" in chooser
     assert "rhime_standard_tutorial" in standard
     assert "rhime_multisector_tutorial" in standard
-    assert _toctree_entries("usage.rst")[:3] == [
+    assert _toctree_entries("usage.rst")[:4] == [
         "installation",
+        "getting_started",
         "conceptual_inversion",
         "model_recipes",
     ]
