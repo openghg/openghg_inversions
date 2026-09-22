@@ -126,6 +126,35 @@ def test_advanced_co2_reader_path_exposes_current_boundaries() -> None:
     assert "validate_complete_observation_covariance" not in recipes
 
 
+def test_nested_reader_path_exposes_transport_grid_boundary() -> None:
+    """A nested reader reaches one canonical guide with accurate support."""
+    chooser = _source("model_recipes.rst")
+    family = _source("nested_domain_model_family.rst")
+    guide = _source("nested_domains.rst")
+    readme = (DOCS.parents[1] / "README.md").read_text(encoding="utf-8")
+    usage = _toctree_entries("usage.rst")
+
+    assert "Nested-domain" in chooser
+    assert usage[3:6] == [
+        "standard_model_family",
+        "nested_domain_model_family",
+        "co2_model_family",
+    ]
+    assert _toctree_entries("nested_domain_model_family.rst") == ["nested_domains"]
+    assert "run_rhime_nested" in family
+    assert "run_rhime_nested_from_prepared_inputs" in family
+    assert "generic staged commands do" in family
+    assert 'output_format="none"' in family
+    assert 'output_format="paris"' in family
+    assert "grouped basis regions" in guide
+    assert "mu_outer" in guide
+    assert "inner_x_prior" in guide
+    assert "inner_fp_basis_case" in guide
+    assert "inner_basis_directory" in guide
+    assert "inner_basis_output_path" in guide
+    assert "sampling-only" not in readme
+
+
 def test_moved_recipe_sections_preserve_legacy_fragment_targets() -> None:
     """Moved CO₂ sections retain their deployed fragment identifiers."""
     concrete = _source("concrete_rhime_model.rst")
