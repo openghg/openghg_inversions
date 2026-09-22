@@ -213,8 +213,9 @@ Solutions to this are:
 
 ### Getting Started
 
-For an overview of OpenGHG inversions, see this
-[primer](docs/usage/getting_started.rst).
+For current workflows, start with the
+[RHIME model recipe guide](docs/usage/model_recipes.rst). The older
+[primer](docs/getting_started.md) documents legacy interfaces and output fields.
 
 ### Modern RHIME entry points
 
