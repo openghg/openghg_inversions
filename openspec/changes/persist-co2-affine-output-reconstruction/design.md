@@ -1,6 +1,6 @@
 # Design
 
-> Status: Draft. Finalisation requires explicit approval from the specification owner. After finalisation, this document must not be modified without that owner's explicit consent.
+> Status: Final. Approved by the specification owner on 2026-09-22. This document must not be modified without that owner's explicit consent.
 
 ## Context
 
@@ -55,7 +55,7 @@ With signed reference flux \(F\), the corresponding native-grid flux is
 
 ### 1. Add one affine flux value analogous to `FluxWeightedBasis`
 
-Add a small frozen public value, provisionally `AffineFluxMap`. The name is provisional while these artifacts remain Draft; it is shorter than `AffineFluxReconstruction` while retaining the important fact that the operation is affine.
+Add a small frozen public value, `AffineFluxMap`. It is shorter than `AffineFluxReconstruction` while retaining the important fact that the operation is affine.
 
 The value owns:
 
@@ -155,7 +155,7 @@ where \(B_\perp=B-U^*C_\alpha U^{*T}\). These blocks cannot be manufactured late
 
 ### 7. Keep the plan owner-controlled
 
-All four artifacts remain `Draft` during review. Explicit owner approval triggers one planning-only edit to record the date and mark all four `Final`, with no substantive change. Later conflicts require owner consent before these artifacts are edited.
+All four artifacts are `Final` following owner approval on 2026-09-22. Later conflicts require owner consent before these artifacts are edited.
 
 ## Deferred Research and Follow-up Ownership
 
@@ -253,7 +253,6 @@ OPE-40 owns generic persistence of coherent-reduction and covariance products. O
 ## Risks / Trade-offs
 
 - **A supplied \(U^*\) may be intrinsically dense and expensive.** Preserve bucket form where exact; chunk the explicit form by native dimensions; record serialized size and peak load/apply/aggregate memory; add no hidden densification.
-- **The provisional object name may change during Draft review.** Keep the mathematical fields and operations stable; settle the public spelling before Final status.
 - **A reconstruction artifact can be paired with stale prepared inputs.** Bind by content identity and validate labelled state coordinates, units, convention, and projection provenance before application.
 - **Consumers may accidentally reconstruct native values before aggregation.** Provide an explicit native-contraction boundary and test that representative country aggregation forms country-by-state data before chain/draw dimensions.
 - **Deferring generic quantity maps could lead to duplicate adapters.** Preserve the research above and propose a focused OPE-24 child rather than adding speculative genericity to OPE-169.

@@ -1,6 +1,6 @@
 # Proposal
 
-> Status: Draft. Finalisation requires explicit approval from the specification owner. After finalisation, these planning artifacts must not be modified without that owner's explicit consent.
+> Status: Final. Approved by the specification owner on 2026-09-22. This document must not be modified without that owner's explicit consent.
 
 ## Why
 
@@ -8,7 +8,7 @@ Staged coherent-CO2 inversions need the same durable native-grid reconstruction 
 
 ## What Changes
 
-- Add one public affine native-flux value, provisionally `AffineFluxMap`, representing the strategy-neutral ingredients
+- Add one public affine native-flux value, `AffineFluxMap`, representing the strategy-neutral ingredients
 
   \[
   \bar x(\alpha)=m+U^*(\alpha-\alpha_{ref}),\qquad
