@@ -6,6 +6,7 @@ Using OpenGHG Inversions
    :caption: Contents:
 
    installation
+   getting_started
    conceptual_inversion
    model_recipes
    standard_model_family

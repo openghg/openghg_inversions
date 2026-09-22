@@ -8,9 +8,9 @@ Current regional inversion work uses RHIME: the standard and multisector
 recipes provide complete acquisition-to-output runners, while the advanced
 CO₂ family provides prepared-input model-building and replay interfaces.
 [Choose a RHIME model recipe](docs/usage/model_recipes.rst) from the supported
-workflows. The fixedbasis and hierarchical Bayesian Markov chain Monte Carlo
-(HBMCMC) interfaces remain compatibility paths for existing scripts,
-configuration files, and historical outputs.
+workflows. Existing fixedbasis-style configuration files can use a transitional
+wrapper that translates them to RHIME; the direct HBMCMC implementation has
+been removed.
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.10650595.svg)](https://doi.org/10.5281/zenodo.10650595)
 
@@ -214,8 +214,8 @@ Solutions to this are:
 ### Getting Started
 
 For current workflows, start with the
-[RHIME model recipe guide](docs/usage/model_recipes.rst). The older
-[primer](docs/getting_started.md) documents legacy interfaces and output fields.
+[RHIME model recipe guide](docs/usage/model_recipes.rst). For a broader
+overview, see the [getting-started guide](docs/usage/getting_started.rst).
 
 ### Modern RHIME entry points
 
@@ -261,162 +261,34 @@ RHIME terminology:
 - `tracer`: additional species used to constrain the primary species through linked forward models.
 - `emissions_name`: legacy compatibility spelling only; use `flux_sources` in new RHIME configs.
 
-### Legacy HBMCMC Compatibility
+### Migrating old HBMCMC workflows
 
-New runs should use `openghg-inversions run-rhime` or the Python
-`run_rhime(...)` API above. The historical `run_hbmcmc.py` script remains as a
-compatibility wrapper for old fixedbasis-style INI files: it translates
-supported legacy names and options to modern RHIME arguments and then calls
-`run_rhime(...)`.
-This branch is no longer preserving the exact historical fixedbasisMCMC /
-inferpymc passthrough behaviour. Use release `0.6` or earlier if you need the
-old fixedbasis implementation.
+The direct `fixedbasisMCMC` and `inferpymc` implementation has been removed in
+0.8. The 0.7.x release line is the last line containing it and the
+`--legacy-fixedbasis` option.
 
-Direct `fixedbasisMCMC(...)` calls are a temporary legacy Python path, not a
-wrapper around `run_rhime(...)`. New work should not target that API.
+Existing supported fixedbasis-style INI files can temporarily use:
 
-Modern RHIME preparation, `InversionOutput`, and postprocessing use retained
-`BasisFunctions` / `BasisOperator` objects as the primary basis representation.
-Derived flux, country, PARIS, and legacy-format products record the
-operator-backed reconstruction path and retained basis artifact source/path when
-known. Legacy flat basis NetCDF artifacts remain readable as an explicit
-compatibility fallback, but new workflows should save and load DataTree
-`BasisFunctions` artifacts.
-
-The old output names `hbmcmc` and `hbmcmc_postprocessing` are deprecated
-aliases for the modern `legacy` output format. The compatibility wrapper keeps
-the old HBMCMC filename convention for these outputs; direct `run_rhime` calls
-use RHIME filenames unless configured otherwise.
-
-The compatibility entry point still accepts the old INI layout and command-line
-overrides.
-
-#### Ways of passing arguments to the inversion
-
-##### Passing options in an `ini` file
-
-Extra options can be added to an `ini` file in almost any location.
-The [template ini file](openghg_inversions/hbmcmc/config/openghg_hbmcmc_input_template_example.ini) puts
-these option under the heading `MCMC.OPTIONS`:
-
-``` ini
-[MCMC.OPTIONS]
-averaging_error = True
-fix_basis_outer_regions = True
-use_bc = True
-nuts_sampler = "numpyro"
-save_trace = False
-min_error = "percentile"
-pollution_events_from_obs = True
-reparameterise_log_normal = False
-sampler_kwargs = {"target_accept": 0.99}
+```bash
+python -m openghg_inversions.hbmcmc.run_hbmcmc \
+  2019-01-01 2019-02-01 -c example.ini
 ```
 
-These options are read from the old file layout and translated where a modern
-RHIME equivalent exists. Fixedbasis-only options that are enabled and no longer
-have a RHIME equivalent raise a targeted error.
+This wrapper translates old parameter names, copies the effective config for
+provenance, and always calls `run_rhime`. The modern
+`output_format="legacy"` adapter remains available for HBMCMC-compatible
+NetCDF output; it does not execute the removed sampler.
 
-##### Passing options at the command line
+See the [HBMCMC-to-RHIME migration guide](docs/usage/legacy_and_migration.rst)
+for parameter mappings, return-type changes, batch-script updates, and removed
+interfaces.
 
-When running inversions using the script `run_hbmcmc.py`, you must specify the start and end date of
-the inversion period, and you pass an `ini` file using the flag `-c`.
+### Results
 
-In addition, you can pass the output path using the flag `--output-path`; this is useful if your SLURM script
-uses different output locations for different array jobs.
-
-You can also pass supported RHIME-compatible keyword arguments to `run_hbmcmc.py` using the `--kwargs` flag.
-For instance:
-
-``` bash
-python run_hbmcmc.py "2019-01-01" "2019-02-01" -c "example.ini" --kwargs '{"averaging_error": true, "min_error": 20.0, "nuts_sampler": "numpyro"}'
-```
-It is crucial that you enclose the dictionary in single quotes, otherwise the command line will split the dictionary on white space.
-
-Again, this can be used to change supported inversion arguments on the fly (say, in a SLURM script).
-Unsupported fixedbasis-only options now raise targeted errors instead of being
-passed through to `inferpymc`.
-
-The format of the dictionary inside single quotes must be JSON, because the value of `kwargs` is parsed using `json.loads`.
-Python translates JSON according to [this table](https://docs.python.org/3/library/json.html#encoders-and-decoders).
-In particular, `"true"` in JSON translate to `True` in Python (but `"True"` will be translated as a string).
-
-The parsing in our `ini` files is more flexible; in particular, values that are Python statements will be translated to Python, so you don't need to worry about translation.
-
-#### What parameters can you set?
-
-The following sections detail some parameters that enable/specify optional behaviour in the inversion.
-
-##### Parameters for `fixedbasisMCMC`
-
-These are compatibility-era notes for old fixedbasis-style workflows, not the
-recommended interface for new runs. New configs should use the RHIME vocabulary
-above. See the docstring for `fixedbasisMCMC` in the [hbmcmc module](openghg_inversions/hbmcmc/hbmcmc.py)
-for the current compatibility arguments.
-
-
-Arguments affecting the data using in the inversion:
-- `sites`: a list of the sites to use in the inversion. Other information applied on a site-to-site basis that is presented in lists must be in the same order as used in the `sites` list.
-- `inlet`: a list of inlets for each site. If only one inlet is available for a given site and species, then `None` may be used as the value for that site. If there are a range of inlet heights at a single site, and these should correspond to a single footprint release height, then you may use, for instance, `slice(140, 160)` to combine inlet heights between 140 and 160 meters into a single timeseries of observations.
--`instrument`, `fp_height`, `obs_data_level`, and `met_model` must either be lists of the same length as `sites`, or a single value may be supplied and will be converted to a list of the correct length.
-
-
-Arguments affecting the inverse model:
-- `averaging_error`: if `True`, the error from resampling to the given `averaging_period` will be added to the observation's error.
-- `use_bc`: defaults to `True`. If `False`, no boundary conditions will be used in the inversion. This implicitly assumes that contributions from the boundary have been subtracted from the observations.
-- `fix_basis_outer_regions`:
-  - Default value is `False`
-  - If `True`, the "outer regions" of the (`EUROPE`) domain use basis regions specified by a file provided by the Met Office (from their "InTem" model), and the "inner region", which includes the UK, is fit using our basis algorithms.
-  - This option is only available for the `EUROPE` domain currently.
-- `min_error`: set a numeric lower bound directly, or calculate one by passing
-  `"residual"` or `"percentile"`. The legacy `calculate_min_error` spelling is
-  deprecated and is translated only by the `run_hbmcmc` compatibility shim.
-- `min_error_options`: options for calculated minimum error. The only supported key is the boolean `by_site`.
-  - With `min_error = "residual"`, `min_error_options = {"by_site": True}` calculates a separate residual error for each retained site. The default is `False`.
-  - Unsupported keys and non-boolean `by_site` values raise a configuration error rather than being ignored.
-- `filters`: filters to apply to data (after it is resampled and aligned)
-  - `filters = None` will skip filtering
-  - if `filters` is a list of filters (or a string containing a single filter name), those filters will be applied to all sites.
-  - if `filters` is a dictionary with site codes as keys and lists of filters as values, then each site will have filters applied individually according to this dictionary. All sites must supplied; to skip a site, pass `None` instead of a list (or omit that site from the dictionary). For instance: `filters = {"MHD": ["pblh_inlet_diff", "pblh_min"], "JFJ": None}`.
-  - the list of available filters can be found in the `filtering` function in the [utils module](openghg_inversions/utils.py).
-  - Further parameters affecting the model are in the next subsection: they are passed to `inferpymc`.
-  - `xprior` and `bcprior`: these should be a dictionary containing `"pdf": <distribution>` and the arguments that should be passed to the PyMC distribution with that name. `<distribution>`
-
-Arguments affecting the output of the inversion:
-- `save_trace`:
-  - The default value is `False`.
-  - If `True`, the arviz `InferenceData` output from sampling will be saved to the output path of the inversion, with a file name of the form `f"{outputname}{start_data}_trace.nc`. To load this trace into arviz, you need to use `InferenceData.from_netcdf`.
-  - Alternatively, you can pass a path (including filename), and that path will be used.
-
-
-##### Parameters for `inferpymc`
-
-In release `0.6` and earlier, unrecognised `fixedbasisMCMC` keyword arguments
-were passed through to `inferpymc`. Current compatibility paths validate
-RHIME-compatible options instead. The argument routing design is being cleaned
-up as part of the fixedbasis retirement work.
-
-Historical inferpymc-era parameters included:
-- `min_error`: a non-negative float value specifying a lower bound for the model-measurement mismatch error (i.e. the error on (y - y_mod)).
-- `nuts_sampler`: a string, which defaults to `"pymc"`. The other option is `"numpyro"`, which will the [JAX](https://jax.readthedocs.io/en/latest/index.html) accelerated sampler from [Numpyro](https://num.pyro.ai/en/stable/index.html); this tends to be significantly faster than the NUTS sampler built into PyMC.
-- `pollution_events_from_obs`: Determines whether the model error is calculated as a fraction of:
-  - the measured enhancement above the modelled baseline (if `True`)
-  - the prior modelled enhancement (if `False`)
-- `no_model_error`: if `True`, only use obs error in likelihood (omitting min. model error and model error from scaling pollution events).
-- `reparameterise_log_normal`: deprecated compatibility flag. Set
-  `reparameterise=True` in the relevant lognormal prior mapping instead.
-
-
-### The output from inversions
-
-The results of an inversions are returned as an xarray `Dataset`.
-
-The dimension `nmeasure` consists of the time for each observation stacked into a single 1D array.
-
-TODO: complete this part
-
-- `Yerror`: obs. error used in the inversion; if `add_averaging` is True, this will contain the combined "repeatability" and "variability"; otherwise, it will just contain "repeatability", if it is available, or "variability"
-- `Yerror_repeatablity`: obs. repeatability. If repeatability isn't available for some sites, then this is filled with zeros.
-- `Yerror_variability`: obs. variability.
+`run_rhime` returns a `RhimeResult`. Its `idata` attribute contains the ArviZ
+posterior and predictive groups, `inv_inputs` contains labelled model inputs,
+and `outputs` contains requested derived products. See the
+[RHIME guide](docs/usage/rhime.rst) for output formats and persistence.
 
 
 
@@ -532,10 +404,10 @@ Use `tox -l` to list all options.
 To pass arguments to pytest, Ruff, mypy, etc, you can use, e.g.
 
 ```bash
-tox -- "openghg_inversions/hbmcmc"
+tox -- "tests/test_run_hbmcmc_shim.py"
 ```
 
-which will pass the positional argument "openghg_inversions/hbmcmc" to the commands invoked by tox.
+which will pass the test path as a positional argument to the commands invoked by tox.
 
 ### Using branches
 

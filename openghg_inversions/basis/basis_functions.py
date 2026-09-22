@@ -310,7 +310,7 @@ class FluxWeightedBasis:
         return type(self)(operator=self.operator, flux=flux, metadata=dict(self.metadata))
 
     def flat_basis(self) -> xr.DataArray | dict[str, xr.DataArray]:
-        """Return the legacy flattened basis view used by ``fp_sensitivity``."""
+        """Return the flattened basis view used by legacy basis artifacts."""
         basis_flat = getattr(self.operator, "basis_flat", None)
         if isinstance(basis_flat, xr.DataArray):
             return basis_flat.rename("basis")
@@ -575,9 +575,8 @@ def basis_functions_from_fp_all_flat_basis(
 def flux_from_fp_all(fp_all: dict) -> xr.DataArray:
     """Legacy adapter that builds representative flux from ``fp_all``.
 
-    This is a temporary compatibility helper for the current ``fp_sensitivity``
-    path. Remove it when issue #429 makes ``BasisFunctions.sensitivity`` the
-    source of prepared sensitivities.
+    This compatibility helper attaches current-run flux when loading a legacy
+    flat basis artifact as retained ``BasisFunctions``.
 
     Args:
         fp_all: Legacy merged-data dictionary containing ``fp_all[".flux"]`` and

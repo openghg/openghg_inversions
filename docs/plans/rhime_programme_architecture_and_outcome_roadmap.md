@@ -448,7 +448,8 @@ release.
 - Every public result route is classified as modern or compatibility-only,
   including `InferenceOutput`/`InversionOutput`, in-memory and serialized
   round trips, basic/PARIS/country/flux/concentration products,
-  `output_format="legacy"`, and `--legacy-fixedbasis`.
+  `output_format="legacy"`, and the old-INI wrapper. The retired
+  `--legacy-fixedbasis` route is outside the current result surface.
 - Deliberately discrepant two-chain fixtures affect every supported modern
   concentration, flux, country, basic, and PARIS product.
 - Ordinary modern paths contain no implicit first-chain selection.

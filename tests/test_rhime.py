@@ -19,8 +19,6 @@ import xarray as xr
 from dask.callbacks import Callback
 
 from examples.rhime_customisation import likelihoods as example_likelihoods
-import openghg_inversions.hbmcmc.inversion_pymc as legacy_mcmc
-import openghg_inversions.hbmcmc.preparation as fixedbasis_preparation
 import openghg_inversions.inversion_data.preparation as prep_module
 import openghg_inversions.models as models
 import openghg_inversions.postprocessing.inversion_output as inversion_output_module
@@ -61,6 +59,8 @@ from openghg_inversions.postprocessing._basis_products import (
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.postprocessing.make_outputs import (
     make_concentration_outputs,
+    make_country_outputs,
+    make_flux_outputs,
     observation_inputs_for_outputs,
 )
 from openghg_inversions.postprocessing.make_paris_outputs import PARIS_LATEST_COUNTRIES
@@ -92,14 +92,21 @@ from openghg_inversions.sigma import SigmaAlignment
 
 
 @pytest.fixture(scope="module")
-def rhime_inv_inputs(mhd_and_tac_fp_data) -> xr.Dataset:
-    return make_inv_inputs(
-        mhd_and_tac_fp_data,
-        sites=["MHD", "TAC"],
+def rhime_inv_inputs(
+    mhd_and_tac_ch4_data_args: dict[str, Any],
+    default_bc_basis_directory: Path,
+) -> xr.Dataset:
+    data_args = dict(mhd_and_tac_ch4_data_args)
+    flux_sources = data_args.pop("emissions_name")
+    prepared = prepare_rhime_inputs(
+        **data_args,
+        output_name="test-rhime-inputs",
+        flux_sources=flux_sources,
         bc_freq="3h",
         min_error=0.0,
-        start_date="2019-01-01",
+        bc_basis_directory=default_bc_basis_directory,
     )
+    return prepared.inv_inputs
 
 
 def _flux_nonfinite_metadata(data: xr.DataArray | xr.Dataset) -> FluxNonFiniteMetadata:
@@ -698,6 +705,49 @@ def _modern_postprocessing_inv_out(
         },
         model_metadata={"species": "ch4", "domain": "EUROPE"},
     )
+
+
+def test_modern_derived_outputs_use_every_posterior_chain(europe_country_file: Path) -> None:
+    """Concentration, flux, and country means include every posterior chain."""
+    inv_out = _modern_postprocessing_inv_out(europe_country_file)
+    chain_zero_concentration = make_concentration_outputs(inv_out, stats=["mean"])
+    chain_zero_flux = make_flux_outputs(inv_out, stats=["mean"])
+    chain_zero_country = make_country_outputs(inv_out, country_file=europe_country_file, stats=["mean"])
+
+    groups: dict[str, xr.Dataset] = {}
+    for group_name in inv_out.trace.groups():
+        group = inv_out.trace[group_name]
+        if "chain" not in group.dims:
+            groups[group_name] = group
+            continue
+        chain_zero = group.isel(chain=0, drop=True)
+        chain_one = chain_zero.copy(deep=True)
+        if group_name in {"posterior", "posterior_predictive"}:
+            for name in chain_one.data_vars:
+                chain_one[name] = 3 * chain_one[name]
+        groups[group_name] = xr.concat(
+            [chain_zero, chain_one],
+            dim=xr.IndexVariable("chain", [0, 1]),
+        )
+    all_chains = replace(inv_out, trace=az.InferenceData(**groups))
+
+    concentration = make_concentration_outputs(all_chains, stats=["mean"])
+    flux = make_flux_outputs(all_chains, stats=["mean"])
+    country = make_country_outputs(all_chains, country_file=europe_country_file, stats=["mean"])
+
+    xr.testing.assert_allclose(
+        concentration["y_posterior_predictive_mean"],
+        2 * chain_zero_concentration["y_posterior_predictive_mean"],
+    )
+    xr.testing.assert_allclose(
+        flux["scaling_posterior_mean"],
+        2 * chain_zero_flux["scaling_posterior_mean"],
+    )
+    xr.testing.assert_allclose(
+        country["country_posterior_mean"],
+        2 * chain_zero_country["country_posterior_mean"],
+    )
+    assert all_chains.trace.posterior["x"].dims[:2] == ("chain", "draw")
 
 
 def _with_column_prior_factors(inv_out: InversionOutput) -> InversionOutput:
@@ -5657,126 +5707,6 @@ def test_multisector_site_preparation_keeps_gathered_source_state() -> None:
     ]
 
 
-def test_fixedbasis_preparation_adds_anchored_legacy_sigma_index(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Legacy preparation retains its anchored component compatibility index."""
-    times = pd.to_datetime(["2019-01-08", "2019-01-09", "2019-01-15"])
-    inv_inputs = xr.Dataset(
-        {
-            "H": (("region", "nmeasure"), np.ones((1, 3))),
-            "site_indicator": ("nmeasure", np.zeros(3, dtype=int)),
-        },
-        coords={"region": [0], "nmeasure": np.arange(3), "time": ("nmeasure", times)},
-    )
-    fp_data = {"TAC": _site_dataset([2.0, 3.0, 4.0])}
-    merged = prep_module.RhimeMergedData(
-        fp_all=fp_data,
-        site_options=_site_options(["TAC"], averaging_period=["1H"]),
-    )
-    basis_functions = _fake_basis_functions()
-
-    monkeypatch.setattr(fixedbasis_preparation, "_prepare_merged_data", lambda **kwargs: merged)
-    monkeypatch.setattr(
-        fixedbasis_preparation,
-        "basis_functions_wrapper",
-        lambda **kwargs: (fp_data, {"emissions": basis_functions}),
-    )
-    monkeypatch.setattr(
-        fixedbasis_preparation,
-        "_apply_filters_and_drop_empty_sites",
-        lambda **kwargs: (fp_data, _site_options(["TAC"], averaging_period=["1H"])),
-    )
-    monkeypatch.setattr(fixedbasis_preparation, "_set_domain_attrs", lambda *args, **kwargs: None)
-    monkeypatch.setattr(
-        fixedbasis_preparation,
-        "_make_inv_inputs",
-        lambda **kwargs: inv_inputs.copy(),
-    )
-
-    prepared = fixedbasis_preparation.prepare_fixedbasis_inversion_data(
-        species="ch4",
-        sites=["TAC"],
-        domain="EUROPE",
-        averaging_period=["1H"],
-        start_date="2019-01-01",
-        end_date="2019-02-01",
-        output_name="fixedbasis_sigma",
-        flux_sources=["total-ukghg-edgar7"],
-        sigma_freq="8D",
-        use_bc=False,
-    )
-
-    assert prepared.inv_inputs is not None
-    np.testing.assert_array_equal(prepared.inv_inputs["sigma_freq_index"], [0, 1, 1])
-
-
-def test_fixedbasis_preparation_uses_platform_for_sites_retained_after_filtering(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Satellite BC scaling receives preserved level provenance after filtering."""
-    fp_data = {"OCO2-EASTASIA": _site_dataset([2.0]).assign_attrs(footprint_max_level=17)}
-    merged = prep_module.RhimeMergedData(
-        fp_all={"TAC": _site_dataset([]), **fp_data},
-        site_options=_site_options(
-            ["TAC", "OCO2-EASTASIA"],
-            averaging_period=["1H", "1H"],
-            platform=["surface", "satellite"],
-            max_level=[None, 3],
-        ),
-    )
-    retained_options = merged.site_options.select_indices([1])
-    captured: dict[str, object] = {}
-
-    monkeypatch.setattr(fixedbasis_preparation, "_prepare_merged_data", lambda **kwargs: merged)
-    monkeypatch.setattr(
-        fixedbasis_preparation,
-        "basis_functions_wrapper",
-        lambda **kwargs: (fp_data, {"emissions": _fake_basis_functions()}),
-    )
-    monkeypatch.setattr(
-        fixedbasis_preparation,
-        "_apply_filters_and_drop_empty_sites",
-        lambda **kwargs: (fp_data, retained_options),
-    )
-    monkeypatch.setattr(fixedbasis_preparation, "_set_domain_attrs", lambda *args, **kwargs: None)
-    monkeypatch.setattr(
-        fixedbasis_preparation,
-        "_make_inv_inputs",
-        lambda **kwargs: _minimal_prepared_inv_inputs(sites=("OCO2-EASTASIA",)),
-    )
-
-    def capture_scaling(inv_inputs: xr.Dataset, **kwargs: object) -> xr.Dataset:
-        captured.update(kwargs)
-        return inv_inputs
-
-    monkeypatch.setattr(
-        fixedbasis_preparation,
-        "_scale_satellite_bc_sensitivity_to_column_signal",
-        capture_scaling,
-    )
-
-    fixedbasis_preparation.prepare_fixedbasis_inversion_data(
-        species="co2",
-        sites=["TAC", "OCO2-EASTASIA"],
-        domain="EASTASIA",
-        averaging_period=["1H", "1H"],
-        platform=["surface", "satellite"],
-        start_date="2019-01-01",
-        end_date="2019-02-01",
-        output_name="filtered_satellite",
-        flux_sources=["test-source"],
-        use_bc=False,
-    )
-
-    assert captured == {
-        "sites": ["OCO2-EASTASIA"],
-        "platform": ("satellite",),
-        "observation_max_level": (3,),
-        "footprint_max_level": (17,),
-    }
-
-
 def test_rhime_preparation_uses_platform_for_sites_retained_after_filtering(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -5881,9 +5811,6 @@ def test_prepare_rhime_inputs_uses_basis_sensitivity_without_legacy_side_channel
         xr.testing.assert_identical(fp_data["TAC"]["H"], expected_sensitivity)
         return _minimal_prepared_inv_inputs()
 
-    def forbidden_basis_functions_wrapper(*args: object, **kwargs: object) -> None:
-        raise AssertionError("RHIME preparation should use make_basis_functions and direct sensitivity.")
-
     monkeypatch.setattr(
         prep_module,
         "data_processing_surface_notracer",
@@ -5891,13 +5818,6 @@ def test_prepare_rhime_inputs_uses_basis_sensitivity_without_legacy_side_channel
     )
     monkeypatch.setattr(prep_module, "make_basis_functions", fake_make_basis_functions)
     monkeypatch.setattr(prep_module, "make_inv_inputs", fake_make_inv_inputs)
-    monkeypatch.setattr(
-        prep_module,
-        "basis_functions_wrapper",
-        forbidden_basis_functions_wrapper,
-        raising=False,
-    )
-
     prepared = prepare_rhime_inputs(
         species="ch4",
         sites=["TAC"],
@@ -8478,15 +8398,11 @@ def test_standard_basic_output_uses_modern_postprocessing_without_legacy_adapter
     )
     captured: dict[str, Any] = {}
 
-    def fail_inferpymc_postprocessouts(**kwargs: Any) -> None:
-        raise AssertionError("run_rhime output helpers must not call inferpymc_postprocessouts")
-
     def fake_basic_output(inv_out: InversionOutput, country_file: str | None = None) -> xr.Dataset:
         captured["inv_out"] = inv_out
         captured["country_file"] = country_file
         return xr.Dataset({"ok": ((), 1)})
 
-    monkeypatch.setattr(legacy_mcmc, "inferpymc_postprocessouts", fail_inferpymc_postprocessouts)
     monkeypatch.setattr("openghg_inversions.postprocessing.make_outputs.basic_output", fake_basic_output)
 
     bundle = _result_for_outputs(
@@ -8554,9 +8470,6 @@ def test_standard_paris_output_uses_modern_postprocessing_without_legacy_adapter
     )
     captured: dict[str, Any] = {}
 
-    def fail_inferpymc_postprocessouts(**kwargs: Any) -> None:
-        raise AssertionError("run_rhime output helpers must not call inferpymc_postprocessouts")
-
     def fake_make_paris_outputs(
         inv_out: InversionOutput,
         country_file: str | None = None,
@@ -8570,7 +8483,6 @@ def test_standard_paris_output_uses_modern_postprocessing_without_legacy_adapter
         captured["obs_avg_period"] = obs_avg_period
         return xr.Dataset({"flux": ((), 1)}), xr.Dataset({"conc": ((), 1)})
 
-    monkeypatch.setattr(legacy_mcmc, "inferpymc_postprocessouts", fail_inferpymc_postprocessouts)
     monkeypatch.setattr(
         "openghg_inversions.postprocessing.make_paris_outputs.make_paris_outputs",
         fake_make_paris_outputs,

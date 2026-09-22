@@ -1,22 +1,16 @@
-openghg\_inversions.hbmcmc
-==========================
+HBMCMC compatibility namespace
+==============================
 
-.. automodule:: openghg_inversions.hbmcmc
-   :members:
-   :show-inheritance:
-   :undoc-members:
+``openghg_inversions.hbmcmc`` is no longer an inversion API. In 0.8, the
+direct ``fixedbasisMCMC`` and ``inferpymc`` implementation and its preparation,
+postprocessing, and plotting helpers were removed. The 0.7.x release line is
+the final line containing the direct implementation.
 
+Only ``openghg_inversions.hbmcmc.run_hbmcmc`` remains as a transitional
+command-line wrapper for supported fixedbasis-style INI files. It translates
+the old vocabulary and always calls :func:`openghg_inversions.rhime.run_rhime`.
+It does not accept ``--legacy-fixedbasis`` or generate legacy templates.
 
-
-.. toctree::
-   :maxdepth: 4
-
-   openghg_inversions.hbmcmc.components
-   openghg_inversions.hbmcmc.hbmcmc
-   openghg_inversions.hbmcmc.hbmcmc_output
-   openghg_inversions.hbmcmc.hbmcmc_post_process
-   openghg_inversions.hbmcmc.inversion_pymc
-   openghg_inversions.hbmcmc.inversionsetup
-   openghg_inversions.hbmcmc.post_process_inputs
-   openghg_inversions.hbmcmc.preparation
-   openghg_inversions.hbmcmc.run_hbmcmc
+Use :doc:`../usage/legacy_and_migration` to migrate an INI file, Python call,
+batch script, or historical output workflow. New code should use the public
+:mod:`openghg_inversions.rhime` API.
