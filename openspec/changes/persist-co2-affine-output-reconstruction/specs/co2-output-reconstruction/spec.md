@@ -2,119 +2,112 @@
 
 ## Purpose
 
-Defines the labelled affine quantity operation and durable coherent-CO2 payload required to replay retained-state output reconstruction after staged inference.
+Defines the identity-bound affine native-scaling and flux value required to replay coherent-CO2 grid reconstruction after staged inference without reopening native preparation inputs.
 
 ## ADDED Requirements
 
-### Requirement: Labelled centred affine quantity operation
-The system SHALL expose a public mathematical value for a reconstructed quantity of interest \(q\),
+### Requirement: Affine native-scaling and flux map
+The system SHALL expose one public affine native-flux value, provisionally `AffineFluxMap`, containing labelled native mean \(m\), signed reference flux \(F\), and covariance-natural prolongation \(U^*\). Given retained state \(\alpha\) and authoritative reference state \(\alpha_{ref}\), its public `state_to_native` and `state_to_flux` operations SHALL evaluate
 
 \[
-q(\alpha)=q_{ref}+S_q(\alpha-\alpha_{ref}),
+\bar x(\alpha)=m+U^*(\alpha-\alpha_{ref}),\qquad
+\bar f(\alpha)=F\bar x(\alpha).
 \]
 
-with public terms `reference_output` for \(q_{ref}\), `sensitivity` for the exact linear action \(S_q\), and `reference_state` for \(\alpha_{ref}\). Public APIs and documentation SHALL use **sensitivity** or **sensitivity operation**, not **design** or **design matrix**. A sensitivity MAY be represented explicitly or by declared exact factors; it SHALL NOT be required to materialize as one dense output-by-state matrix. The operation SHALL preserve labelled state and output coordinates, compatible units, arbitrary reference-state values, and all non-state sample dimensions.
+The operations SHALL preserve exact labelled state/native alignment, compatible units, arbitrary reference-state values, and all non-state sample dimensions. Public APIs and documentation SHALL use **prolongation**, `state_to_native`, and `state_to_flux`; they SHALL NOT call \(U^*\), \(FU^*\), or a derived output action a **sensitivity** or **design matrix**.
 
-#### Scenario: Apply the operation to posterior samples
-- **WHEN** a labelled state array has chain, draw, or other non-state dimensions
-- **THEN** applying the operation preserves those dimensions and returns values on the declared output coordinates equal to the centred affine equation
-
-#### Scenario: Apply equivalent sensitivity representations
-- **WHEN** explicit and factorized sensitivities represent the same labelled linear action
-- **THEN** they produce the same output without requiring the factorized form to be flattened into a dense matrix
-
-#### Scenario: Compose an output functional before samples
-- **WHEN** a labelled linear output functional \(L\) is left-composed with an affine quantity
-- **THEN** the result has reference output \(Lq_{ref}\) and sensitivity \(L\circ S_q\), and it can be applied to retained-state samples without constructing the original output-by-sample intermediate
+#### Scenario: Reconstruct posterior grid values
+- **WHEN** a labelled retained state has chain, draw, or other non-state dimensions
+- **THEN** `state_to_native` and `state_to_flux` preserve those dimensions and equal the centred affine equations on the declared native coordinates
 
 #### Scenario: Use a non-unit reference state
-- **WHEN** the reference state contains values other than one
-- **THEN** the operation uses those values exactly and does not substitute a mean-one scaling convention
+- **WHEN** the authoritative reference state contains values other than one
+- **THEN** both operations use those values exactly and do not substitute a mean-one scaling convention
 
 #### Scenario: Reject incompatible labelled data
-- **WHEN** state labels are missing, duplicated, reordered incompatibly, or have incompatible units
-- **THEN** validation fails before positional multiplication
+- **WHEN** state or native labels are missing, duplicated, reordered incompatibly, or have incompatible units
+- **THEN** validation fails before positional multiplication or broadcasting
+
+### Requirement: Separate strategy-neutral ingredients
+The durable affine flux value SHALL preserve \(m\), \(F\), and \(U^*\) as separate ingredients. It SHALL NOT require or persist a precomposed \(FU^*\) array. Bucket-preserving preparation SHALL represent exact \(U^*=U_{bucket}\) through the retained bucket operator. A supplied-restriction producer SHALL provide exact labelled \(U^*\) explicitly and independently of \(F\). Both representations SHALL satisfy the same `state_to_native` and `state_to_flux` behavior.
+
+#### Scenario: Produce a bucket-preserving value
+- **WHEN** coherent preparation uses bucket-preserving prolongation
+- **THEN** reconstruction reuses the retained bucket operator and flux without flattening their product
+
+#### Scenario: Import a supplied-restriction value
+- **WHEN** a producer provides exact labelled \(m\), \(F\), and explicit \(U^*\) with compatible identity metadata
+- **THEN** the system imports, round-trips, and applies them without assuming \(U^*=U_{bucket}\) or requiring precomputed \(FU^*\)
+
+#### Scenario: Compare equivalent strategies
+- **WHEN** bucket and explicit prolongation representations contain the same mathematical operation
+- **THEN** their native-scaling and flux reconstructions are label-wise equal
 
 ### Requirement: Separate reconstruction and model-input boundaries
-The system SHALL keep output-only reconstruction data outside `Co2PreparedInputs`, its `inv_inputs` dataset, and `CoherentGaussianReduction`. A reconstruction companion SHALL bind to one exact prepared-input artifact and SHALL obtain the authoritative coherent-CO2 reference state from that artifact. The companion SHALL persist the exact `reference_output` and sensitivity representation required for replay.
+The system SHALL keep affine flux reconstruction data outside `Co2PreparedInputs.inv_inputs` and `CoherentGaussianReduction`. The affine flux value SHALL bind to one exact prepared-input artifact and SHALL obtain the authoritative coherent-CO2 reference state from that artifact.
 
 #### Scenario: Bind a matching pair
-- **WHEN** the prepared inputs and reconstruction companion have matching content identity, retained-state coordinates, units, affine convention, and projection provenance
-- **THEN** the system constructs the declared affine operations using the prepared `alpha_prior_mean` as `reference_state`
+- **WHEN** prepared inputs and affine flux data have matching content identity, retained/native coordinates, units, affine convention, and projection provenance
+- **THEN** the system constructs the bound value using prepared `alpha_prior_mean` as `reference_state`
 
 #### Scenario: Reject a mismatched pair
-- **WHEN** any required identity, state coordinate, unit, or affine convention differs
+- **WHEN** any required identity, coordinate, unit, affine convention, or projection provenance differs
 - **THEN** loading or binding fails before reconstruction
 
-#### Scenario: Accept an externally produced reference state
+#### Scenario: Accept an externally supplied reference state
 - **WHEN** an external producer includes a reference state in its incoming bundle
 - **THEN** import requires exact labelled agreement with the authoritative prepared value and does not retain a second source of truth
 
-### Requirement: Versioned named reconstruction payload
-The companion SHALL use a versioned schema containing named affine quantity operations, their explicit arrays or declared exact factors, output labels, units, uncertainty scope, projection/reconstruction provenance, and source and sector metadata needed to interpret them. It SHALL round-trip through the supported staged-artifact formats without reopening native preparation inputs or private sidecars. It SHALL NOT contain raw footprint-times-flux arrays, native covariance, or a dense native-by-native covariance matrix.
+### Requirement: Versioned reconstruction payload
+The affine flux value SHALL round-trip through a versioned staged-artifact schema preserving native mean, signed reference flux, tagged prolongation representation, dimensions, MultiIndexes, units, retained-state-conditional scope, intrinsic source labels, identities, and JSON-safe projection/reconstruction provenance. The payload SHALL NOT contain raw footprint-times-flux arrays, \(\Pi\), native covariance, dense native-by-native covariance, precomposed \(FU^*\), named derived-quantity maps, quantity-specific residual covariance blocks, or reporting-sector mappings.
 
-#### Scenario: Round-trip the companion
-- **WHEN** a companion is saved and reloaded through NetCDF or Zarr
-- **THEN** names, representation kinds, arrays or factors, dimensions, MultiIndexes, units, scopes, identities, and JSON-safe provenance are preserved
+#### Scenario: Round-trip the payload
+- **WHEN** an affine flux value is saved and reloaded through NetCDF or Zarr
+- **THEN** its ingredient values, representation kind, labels, units, scope, identities, and provenance are preserved exactly enough to reproduce both public operations
 
 #### Scenario: Reject an incomplete or prohibited payload
-- **WHEN** a required operation element is absent or a prohibited native array is present
+- **WHEN** a required ingredient is absent or a prohibited native, precomposed, derived-quantity, residual, or reporting-policy element is present
 - **THEN** schema validation identifies the offending element and rejects the payload
 
-### Requirement: Projection-strategy-neutral retained grid operation
-The companion SHALL store an exact executable affine retained-state-to-grid operation rather than relying on a projection-strategy name. It SHALL preserve a bucket-preserving operation in a declared signed-reference-flux-times-basis form rather than require dense materialization of those factors. Exact supplied-restriction producers SHALL supply an explicit chunked sensitivity through the same application and composition contract. Construction and validation of a supplied restriction remain outside this capability.
+### Requirement: Aggregate before posterior samples
+The affine flux value SHALL expose its labelled native ingredients through a bounded contraction boundary so downstream consumers can combine an aggregate functional with \(F\) and \(U^*\) before applying retained-state samples. It SHALL NOT require consumers to construct native-grid-by-sample flux solely to calculate country or other aggregate outputs. OPE-169 SHALL NOT persist the resulting aggregate-specific affine map.
 
-#### Scenario: Produce a bucket-preserving operation
-- **WHEN** coherent preparation uses bucket-preserving prolongation
-- **THEN** the persisted factorized affine operation equals the direct operation derived from the retained basis and signed reference flux without flattening their product into a dense matrix
+#### Scenario: Derive a compact country operation
+- **WHEN** a country consumer supplies labelled membership, area, physical conversion, and selection data
+- **THEN** it can form country reference values and a country-by-state action before chain or draw dimensions are introduced
 
-#### Scenario: Import a supplied-restriction operation
-- **WHEN** a producer provides an exact explicit map with compatible identity metadata
-- **THEN** the system imports, round-trips, applies, and left-composes its declared representation without assuming that its covariance-natural prolongation equals the bucket basis
-
-#### Scenario: Derive a compact aggregate operation
-- **WHEN** a consumer left-composes a country or other aggregate functional with the retained grid operation
-- **THEN** the system forms the aggregate reference output and aggregate-by-state sensitivity before posterior sample dimensions are introduced
+#### Scenario: Produce a requested grid output
+- **WHEN** a consumer explicitly requests native-grid scaling or flux samples
+- **THEN** the corresponding public operation introduces native-grid and sample dimensions at that named product boundary
 
 ### Requirement: Explicit reconstruction scope
-A grid reconstructed from the affine operation SHALL carry machine-readable `retained_state_conditional` scope. It represents the conditional mean given retained-state values and SHALL NOT be described as complete observation-conditioned native-grid inference.
+Native grids produced by the affine flux value SHALL carry machine-readable `retained_state_conditional` scope. They represent conditional means given retained state and SHALL NOT be described as complete observation-conditioned native-grid inference.
 
-#### Scenario: Apply the retained grid operation
-- **WHEN** retained-state samples are passed to the grid affine operation
+#### Scenario: Apply retained-state reconstruction
+- **WHEN** retained-state samples are passed to `state_to_native` or `state_to_flux`
 - **THEN** every reconstructed value retains `retained_state_conditional` scope
 
-#### Scenario: Avoid manufacturing native uncertainty
-- **WHEN** the payload has no complete native residual action or samples
-- **THEN** the system does not add native residual variance, generate native residual draws, or claim complete native-grid uncertainty
+#### Scenario: Avoid manufacturing unresolved uncertainty
+- **WHEN** only the affine flux value is available
+- **THEN** the system does not add unresolved variance, generate unresolved residual draws, or claim complete native-grid or aggregate uncertainty
 
-### Requirement: Functional residual extension data
-For a named quantity of interest, the companion MAY carry labelled unresolved quantity covariance \(C_{qq}\), unresolved quantity-observation cross-covariance \(C_{qy}\), or an explicit `retained_exact` declaration. These data SHALL have distinct typed quantity and observation axes, units, identities, and likelihood-representation provenance. They SHALL NOT be inferred from the affine grid operation after native covariance data have been released. This capability SHALL only validate and preserve producer-supplied data; it SHALL NOT condition on observations, calculate complete posterior moments, or format scientific outputs from them.
+### Requirement: Preserve intrinsic source meaning
+The affine flux value SHALL preserve native source labels, order, and provenance carried intrinsically by \(m\), \(F\), and \(U^*\). It SHALL NOT treat source as an independent public retained-state axis when the retained state is gathered, and SHALL NOT own or apply reporting-sector mappings.
 
-#### Scenario: Preserve residual blocks
-- **WHEN** a compatible producer supplies \(C_{qq}\) and \(C_{qy}\) for a declared quantity
-- **THEN** save, load, and binding preserve their values, axes, units, and observation/likelihood identities exactly enough for a later consumer
-
-#### Scenario: Reject ambiguous residual data
-- **WHEN** residual blocks lack required axes, units, observation identity, or likelihood-representation provenance
-- **THEN** validation rejects the declared quantity without affecting affine-only quantities
-
-### Requirement: Preserve source and sector meaning
-The companion SHALL preserve OpenGHG source provenance separately from scientific sector labels or mappings. This capability SHALL NOT treat source as an independent public state-vector dimension or perform source-to-sector aggregation.
-
-#### Scenario: Round-trip source and sector metadata
-- **WHEN** several inferred sources contribute to one reported sector
-- **THEN** their separate provenance and the labelled reporting relationship survive serialization without being applied
+#### Scenario: Round-trip source-aware ingredients
+- **WHEN** reconstruction spans several native sources and a gathered retained state
+- **THEN** exact source/native alignment survives serialization and reconstruction without introducing a padded public source-state dimension
 
 ### Requirement: Independent affine evaluation
-The implementation SHALL be evaluated with direct dense affine calculations on small cases, explicit-versus-factorized parity, composition-before-samples checks, and a public Verification Games-compatible fixture. Acceptance SHALL test the retained-state affine lift, not complete functional conditioning or output-format parity.
+The implementation SHALL be evaluated with direct dense calculations on small cases, bucket-versus-explicit parity, aggregate-before-samples checks, and a public Verification Games-compatible supplied-restriction fixture. Acceptance SHALL test retained-state conditional native scaling and flux, not complete functional conditioning or output-format parity.
 
 #### Scenario: Compare with a dense oracle
-- **WHEN** a small labelled case uses an arbitrary non-unit reference state
-- **THEN** the public operation and persisted replay match an independently calculated centred affine result
+- **WHEN** a small labelled case uses arbitrary \(m\), \(F\), \(U^*\), and non-unit reference state
+- **THEN** both public operations and persisted replay match independently calculated centred results
 
 #### Scenario: Compare producer strategies
 - **WHEN** bucket-preserving and supplied-restriction fixtures are loaded through the public schema
-- **THEN** each reproduces its independently supplied retained-state conditional grid map without strategy-specific consumer logic
+- **THEN** each reproduces its independently supplied retained-state conditional native scaling and flux without strategy-specific consumer logic
 
 ### Requirement: Owner-controlled specification
 All artifacts for this change SHALL remain `Draft` until the specification owner explicitly approves finalisation. Finalisation SHALL record the approval date and change all planning-artifact statuses together without substantive edits. After finalisation, these artifacts SHALL NOT be changed without the owner's explicit consent.
