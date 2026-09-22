@@ -2,7 +2,9 @@
 
 - **Status:** Complete — merged in PR #590 as `21785585` on 2026-08-15
 - **Scope:** Current public RHIME behaviour only. Production code and future
-  customization choices are outside this baseline.
+  customization choices are outside this baseline. Rows for the retired
+  direct `fixedbasisMCMC` implementation were removed when that implementation
+  ceased to be supported; this is a maintained contract map, not an archive.
 
 ## Authoritative command
 
@@ -41,9 +43,7 @@ name the base node; every parameter case is selected by the marker.
 | Real multi-sector latest-PARIS total/sector flux variables and sector-diagnostic mean variables, with NetCDF reloads | `tests/test_rhime.py::test_make_multisector_output_bundle_builds_latest_paris_flux` |
 | Default concrete-model inversion-output identity, selected provenance, burn metadata, inputs, flux, and basis-matrix round-trip | `tests/test_rhime.py::test_default_model_inversion_output_save_load_roundtrip` |
 | Standalone trace write, metadata, and serialized measurement coordinates | `tests/test_rhime.py::test_save_inferencedata_preserves_burn_attrs_and_resets_multiindex_coords` |
-| Selected `run_hbmcmc.py` translation fields, exact config-copy contents, legacy mode, and historical filename convention | `tests/test_run_hbmcmc_shim.py::test_run_hbmcmc_main_routes_to_run_rhime` |
-| Direct current `fixedbasisMCMC(...)` exact legacy variable/coordinate inventories and dimensions, selected deterministic observation/trace/sensitivity/reconstruction values, interval/country constraints, global attrs, historical filename, and NetCDF identity | `tests/test_postprocessing.py::test_hbmcmc_postprocessing_preserves_expected_vars_attrs_and_coords` |
-| Direct current `fixedbasisMCMC(...)` trace and modern inversion-output paths, dimensions, values, and serialization | `tests/test_postprocessing.py::test_inv_out_and_trace_outputs_preserve_downstream_dims_and_custom_paths` |
+| Selected `run_hbmcmc.py` translation fields, exact config-copy contents, modern legacy-output mode, and historical filename convention | `tests/test_run_hbmcmc_shim.py::test_run_hbmcmc_main_routes_to_run_rhime` |
 
 ## Current Dask boundary
 
