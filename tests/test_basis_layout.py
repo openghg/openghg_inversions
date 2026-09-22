@@ -321,7 +321,8 @@ def test_bucket_operator_datatree_roundtrip_preserves_state_metadata():
     xr.testing.assert_identical(decoded.state_metadata, operator.state_metadata)
 
 
-def test_basis_functions_save_load_preserves_state_metadata(tmp_path):
+@pytest.mark.parametrize("suffix", [".nc", ".zarr"])
+def test_basis_functions_save_load_preserves_state_metadata(tmp_path, suffix):
     """BasisFunctions artifacts retain state metadata coordinates on load."""
     basis = _basis_grid([[10, 20], [10, 20]])
     flux = xr.ones_like(basis, dtype=float).rename("flux")
@@ -335,7 +336,7 @@ def test_basis_functions_save_load_preserves_state_metadata(tmp_path):
         },
     )
 
-    output_file = tmp_path / "basis.nc"
+    output_file = tmp_path / f"basis{suffix}"
     basis_functions.save(output_file)
     restored = BasisFunctions.load(output_file)
     restored_operator = restored.operator

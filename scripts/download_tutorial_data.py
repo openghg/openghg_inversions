@@ -7,13 +7,9 @@ import argparse
 import hashlib
 from pathlib import Path
 import shutil
+import tomllib
 from typing import Sequence
 from urllib.request import urlopen
-
-try:
-    import tomllib
-except ModuleNotFoundError:  # Python 3.10; OpenGHG depends on toml.
-    import toml as tomllib  # type: ignore[no-redef]
 
 
 DATA_TAG = "v1.0.0"
