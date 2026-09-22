@@ -11,7 +11,7 @@
 Every contract below is selected by one command:
 
 ```bash
-tox -e py310-openghgCur -- -m rhime_contract
+tox -e py312-openghgCur -- -m rhime_contract
 ```
 
 There is no second, prose-only contract suite. Parameterized node IDs below

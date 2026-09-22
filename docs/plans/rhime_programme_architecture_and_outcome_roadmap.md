@@ -387,7 +387,7 @@ and numerical utilities may be shared whenever their small contract is stable.
 - Keep structural refactoring separate from scientific-default or equation
   changes where practical.
 - Keep each pull request runnable and use focused pytest/Ruff checks while
-  iterating. Preserve Python 3.10 support and run broader compatibility,
+  iterating. Preserve supported Python versions and run broader compatibility,
   type-check, and full-suite environments through the repository's reviewed
   Slurm tox path.
 - Keep executable examples sourced from tested code.
@@ -945,7 +945,7 @@ Before every releasable cut:
 
 - advertised recipes have passed the trustworthy-core and applicable
   production-recipe gates;
-- focused, full/slow, supported Python (including 3.10), supported OpenGHG
+- focused, full/slow, supported Python (3.12-3.13), supported OpenGHG
   compatibility, type, and lint checks pass at an immutable revision;
 - relevant reviewed/registered real inversion cases pass with documented
   scientific tolerances;

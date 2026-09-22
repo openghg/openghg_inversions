@@ -23,7 +23,13 @@
   "contributors": [
     {
       "name": "Western, Luke",
-      "affiliation": "University of Bristol"
+      "affiliation": "University of Bristol",
+      "type": "Other"
+    },
+    {
+      "name": "Mantri, Supriya",
+      "affiliation": "University of Bristol",
+      "type": "Other"
     },
     {
       "name": "Danjou, Alexandre",

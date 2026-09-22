@@ -57,8 +57,7 @@ git diff --check
 ```
 
 Use focused test paths while iterating and run the relevant broader pytest
-coverage before handing off a change. We still support Python 3.10, so avoid
-syntax, typing, and dependency features that require newer Python versions.
+coverage before handing off a change. We support Python 3.12 and 3.13.
 
 Do not run tox locally in a Codex-managed worktree. Submit compatibility,
 full-suite, and type-check environments to Slurm with
