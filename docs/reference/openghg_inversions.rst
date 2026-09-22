@@ -4,7 +4,6 @@ openghg\_inversions
 .. automodule:: openghg_inversions
    :members:
    :show-inheritance:
-   :undoc-members:
 
 
 .. toctree::
@@ -12,10 +11,12 @@ openghg\_inversions
 
    openghg_inversions.basis
    openghg_inversions.config
+   openghg_inversions.experimental
    openghg_inversions.hbmcmc
    openghg_inversions.inversion_data
    openghg_inversions.models
    openghg_inversions.postprocessing
+   openghg_inversions.rhime
 
 
 
@@ -24,14 +25,17 @@ openghg\_inversions
 
    openghg_inversions.array_ops
    openghg_inversions.borrowed
+   openghg_inversions.boundary_sensitivity
+   openghg_inversions.cli
    openghg_inversions.coherent_reduction
-   openghg_inversions.correlated_state
    openghg_inversions.convert
+   openghg_inversions.correlated_state
    openghg_inversions.filters
+   openghg_inversions.flux_sanitization
+   openghg_inversions.inversion_inputs
    openghg_inversions.model_error
    openghg_inversions.native_covariance
    openghg_inversions.observation_error
-   openghg_inversions.rhime
    openghg_inversions.serialization
    openghg_inversions.sigma
    openghg_inversions.source_covariance

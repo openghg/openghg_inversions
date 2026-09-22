@@ -34,4 +34,4 @@ Releases are tagged with a `DOI <https://doi.org/10.5281/zenodo.10650595>`_.
    usage/usage
    development/index
    experimental/index
-   reference/modules
+   reference/index

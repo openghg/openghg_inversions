@@ -1,0 +1,6 @@
+openghg\_inversions.rhime.materialization
+=========================================
+
+.. automodule:: openghg_inversions.rhime.materialization
+   :members:
+   :show-inheritance:

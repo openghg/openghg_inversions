@@ -526,9 +526,59 @@ RegionLabels = Literal["range0", "range1", "basis_values"]
 
 @register_basis_operator("bucket")
 class BucketBasisOperator(BasisOperator):
-    """Single flat bucket basis: basis_flat(lat, lon) with integer region labels.
+    """Map one integer-labelled grid basis onto a retained state.
 
-    Stores basis_flat and constructs basis_matrix via get_xr_dummies.
+    Use this operator for a single source, or when several sources share the
+    same spatial basis. Each distinct non-negative value in ``basis_flat`` is a
+    bucket. The operator converts those buckets into a sparse one-hot
+    :attr:`basis_matrix` with dimensions
+    ``(*meta.grid_dims, meta.state_dim)``. Grid coordinates are retained, and a
+    singleton ``time`` dimension is removed.
+
+    ``region_labels`` controls the coordinate on the retained state dimension:
+    ``"range0"`` produces ``0..N-1``, ``"range1"`` produces ``1..N``, and
+    ``"basis_values"`` preserves the sorted labels from ``basis_flat``.
+    Optional state metadata follows the states through this relabelling.
+
+    The inherited :meth:`BasisOperator.sensitivity` method reduces a gridded
+    footprint-times-flux array to the retained state, while
+    :meth:`BasisOperator.interpolate` reconstructs a gridded field.
+    :meth:`BasisOperator.native_prolongation` exposes the labelled bucket
+    prolongation for covariance calculations. Use
+    :class:`~openghg_inversions.basis.basis_functions.FluxWeightedBasis` when
+    the basis geometry must be paired with a flux field.
+
+    Args:
+        basis_flat: Integer-labelled basis array on the configured grid,
+            typically with dimensions ``("lat", "lon")``. A singleton
+            ``time`` dimension is allowed and removed.
+        meta: Grid dimensions and retained-state dimension name. Defaults to
+            :class:`BasisMeta`.
+        state_dim: Optional override for ``meta.state_dim``.
+        region_labels: Policy for the retained-state coordinate labels.
+        state_metadata: Optional state-axis metadata indexed either by raw
+            ``basis_label`` values or by the final state dimension.
+        chunks: Optional chunk sizes for the generated basis matrix.
+
+    Example:
+        Build a two-region operator whose retained coordinate uses the labels
+        from the flat basis::
+
+            basis = xr.DataArray(
+                [[1, 1], [2, 2]],
+                dims=("lat", "lon"),
+                coords={"lat": [50.0, 51.0], "lon": [-2.0, -1.0]},
+            )
+            operator = BucketBasisOperator(
+                basis, state_dim="region", region_labels="basis_values"
+            )
+            assert operator.basis_matrix.dims == ("lat", "lon", "region")
+
+    See Also:
+        * :class:`MultiSourceBucketBasisOperator`: Source-specific, potentially
+            ragged basis geometries.
+        * :class:`~openghg_inversions.basis.basis_functions.FluxWeightedBasis`:
+            A basis operator paired with its flux field.
     """
 
     def __init__(
@@ -541,21 +591,6 @@ class BucketBasisOperator(BasisOperator):
         state_metadata: xr.Dataset | BasisStateMetadata | None = None,
         chunks: dict[str, int] | None = None,
     ) -> None:
-        """Creates a single-source bucket basis operator.
-
-        Args:
-            basis_flat: Integer-labelled basis array on the grid (typically `(lat, lon)`).
-                If a singleton `time` dimension is present, it is dropped.
-            meta: Metadata describing grid and state dimension names.
-            state_dim: Optional override of `meta.state_dim`.
-            region_labels: Policy for the output state coordinate labels:
-                - `"range0"`: `0..N-1` (legacy-friendly)
-                - `"range1"`: `1..N`
-                - `"basis_values"`: use the ordered non-negative labels found in `basis_flat`.
-            state_metadata: Optional metadata for the state axis. Metadata may be
-                indexed by raw ``basis_label`` values or by the final state dimension.
-            chunks: Optional chunking to apply to the basis matrix.
-        """
         meta = meta or BasisMeta()
         if state_dim is not None:
             meta = BasisMeta(grid_dims=meta.grid_dims, state_dim=state_dim)
@@ -749,10 +784,63 @@ class BucketBasisOperator(BasisOperator):
 
 @register_basis_operator("multisource_bucket")
 class MultiSourceBucketBasisOperator(BasisOperator):
-    """Multiple flat bases keyed by source, with potentially ragged region counts.
+    """Combine source-specific flat bases into one ragged retained state.
 
-    The canonical state dimension is a ragged MultiIndex over
-    ``(source, region_in_source)``.
+    Use this operator when sources have different spatial bases or different
+    numbers of regions. If all sources share one basis, use
+    :class:`BucketBasisOperator` and carry source on the flux instead.
+
+    ``basis_flat`` preserves mapping insertion order as the canonical source
+    order. Every source array must describe the same labelled grid; equivalent
+    coordinate orders are aligned to the first source. A singleton ``time``
+    dimension is removed. The resulting :attr:`basis_matrix` has dimensions
+    ``(*meta.grid_dims, meta.state_dim)``. Its state coordinate is a ragged
+    :class:`pandas.MultiIndex` with levels named by ``source_dim`` and
+    ``region_in_source_dim``, so each source can contribute a different number
+    of regions without padding.
+
+    :meth:`sensitivity` aligns a source dimension in the input to the state
+    MultiIndex. :meth:`interpolate` likewise accepts optional source-specific
+    weights. :meth:`native_prolongation` expands the gathered spatial template
+    onto an explicit native source dimension, and :meth:`operator_for_source`
+    returns a single-source operator. DataTree serialization preserves source
+    order through the stored source coordinate.
+
+    Args:
+        basis_flat: Non-empty mapping from source name to an integer-labelled
+            basis array on the configured grid, typically with dimensions
+            ``("lat", "lon")``.
+        meta: Grid dimensions and retained-state dimension name. Defaults to
+            :class:`BasisMeta`.
+        source_dim: Name of the source MultiIndex level.
+        region_in_source_dim: Name of the per-source region MultiIndex level.
+        state_dim: Optional override for ``meta.state_dim``.
+        chunks: Optional chunk sizes for the gathered basis matrix.
+
+    Raises:
+        ValueError: If ``basis_flat`` is empty, a source label is not a string,
+            or source arrays have incompatible dimensions, non-unique grid
+            labels, or different grid labels.
+
+    Example:
+        Gather source bases with two and one regions, respectively::
+
+            anthropogenic = xr.DataArray(
+                [[1, 2]], dims=("lat", "lon"), coords={"lat": [50.0], "lon": [-2.0, -1.0]}
+            )
+            biospheric = xr.DataArray(
+                [[1, 1]], dims=("lat", "lon"), coords={"lat": [50.0], "lon": [-2.0, -1.0]}
+            )
+            operator = MultiSourceBucketBasisOperator(
+                {"anthropogenic": anthropogenic, "biospheric": biospheric},
+                state_dim="region",
+            )
+            assert operator.source_labels == ("anthropogenic", "biospheric")
+
+    See Also:
+        * :class:`BucketBasisOperator`: One basis geometry shared by all sources.
+        * :class:`~openghg_inversions.basis.basis_functions.FluxWeightedBasis`:
+            A basis operator paired with source-aware flux.
     """
 
     def __init__(
@@ -765,25 +853,6 @@ class MultiSourceBucketBasisOperator(BasisOperator):
         state_dim: str | None = None,
         chunks: dict[str, int] | None = None,
     ) -> None:
-        """Creates a multisource bucket basis operator with ragged per-source regions.
-
-        The canonical state dimension is a ragged MultiIndex over
-        `(source, region_in_source)`, stored on the single dimension `meta.state_dim`.
-
-        Args:
-            basis_flat: Mapping from source name to a 2D integer-labelled basis array
-                (typically `(lat, lon)`).
-            meta: Metadata describing grid and state dimension names.
-            source_dim: Name of the source dimension/level.
-            region_in_source_dim: Name for the per-source region index level.
-            state_dim: Optional override of `meta.state_dim`.
-            chunks: Optional chunking to apply to the gathered basis matrix.
-
-        Raises:
-            ValueError: If `basis_flat` is empty or a source label is not a
-                string, or if source bases have incompatible dimensions,
-                non-unique grid labels, or different grid labels.
-        """
         meta = meta or BasisMeta()
         if state_dim is not None:
             meta = BasisMeta(grid_dims=meta.grid_dims, state_dim=state_dim)

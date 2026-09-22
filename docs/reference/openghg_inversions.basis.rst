@@ -4,13 +4,20 @@ openghg\_inversions.basis
 .. automodule:: openghg_inversions.basis
    :members:
    :show-inheritance:
-   :undoc-members:
 
 
 .. toctree::
    :maxdepth: 4
 
    openghg_inversions.basis.algorithms
+
+
+
+.. toctree::
+   :maxdepth: 4
+
    openghg_inversions.basis.basis_functions
    openghg_inversions.basis.covariance_products
+   openghg_inversions.basis.layout
    openghg_inversions.basis.operators
+   openghg_inversions.basis.prior_uncertainty

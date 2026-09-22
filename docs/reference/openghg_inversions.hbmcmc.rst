@@ -4,7 +4,6 @@ openghg\_inversions.hbmcmc
 .. automodule:: openghg_inversions.hbmcmc
    :members:
    :show-inheritance:
-   :undoc-members:
 
 
 

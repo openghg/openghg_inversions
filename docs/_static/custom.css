@@ -12,3 +12,20 @@
 .bd-main .bd-content .bd-article-container {
   max-width: none;
 }
+
+/* Fully qualified module headings contain no natural wrapping points. */
+.bd-article h1 {
+  overflow-wrap: anywhere;
+}
+
+/* Give generated class entries a stronger boundary than their nested members. */
+.bd-article section > dl.py.class > dt.sig {
+  background: var(--pst-color-surface);
+  border-top: 2px solid var(--pst-color-primary);
+  padding: 0.5rem 0.75rem;
+}
+
+.bd-article section > dl.py.class > dd > dl.py {
+  border-left: 2px solid var(--pst-color-border);
+  padding-left: 1rem;
+}

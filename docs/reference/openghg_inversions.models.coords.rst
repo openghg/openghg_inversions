@@ -1,0 +1,6 @@
+openghg\_inversions.models.coords
+=================================
+
+.. automodule:: openghg_inversions.models.coords
+   :members:
+   :show-inheritance:

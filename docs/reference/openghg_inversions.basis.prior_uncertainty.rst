@@ -1,0 +1,6 @@
+openghg\_inversions.basis.prior\_uncertainty
+============================================
+
+.. automodule:: openghg_inversions.basis.prior_uncertainty
+   :members:
+   :show-inheritance:
