@@ -24,7 +24,7 @@ _OUTPUT_BASIS_ARTIFACT_SOURCE_LABELS = {
     "legacy_flat": BASIS_ARTIFACT_SOURCE_LOADED_LEGACY_FLAT,
 }
 
-_TRACE_STATE_DIMS = ("region", "nx")
+_TRACE_STATE_DIMS = ("region", "inner_region", "nx")
 
 
 def basis_artifact_output_label(basis_functions: BasisFunctions) -> str:
