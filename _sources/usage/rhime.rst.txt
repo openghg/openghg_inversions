@@ -239,8 +239,8 @@ transformed prior and forward operator as one coherent preparation product.
 
 The minimum-error setting remains a floor on total marginal standard
 deviation, including aggregation error, while off-diagonal covariance is left
-unchanged. Legacy HBMCMC model and replay paths are not extended. Until the
-derived-error reconstruction follow-up lands, aggregation-error runs support
+unchanged. Until the derived-error reconstruction follow-up lands,
+aggregation-error runs support
 ``output_format="inv_out"`` and ``"none"``; ``"basic"``, ``"paris"``, and
 ``"legacy"`` are rejected rather than producing lossy error fields.
 
@@ -512,7 +512,8 @@ deterministic observation-aligned ``fixed_baseline`` is deliberately rejected
 until a reusable semantic Baseline component defines common likelihood and
 output behavior; this follow-up is tracked in `issue #550
 <https://github.com/openghg/openghg_inversions/issues/550>`_. New prepared-input
-features do not extend legacy HBMCMC model or output paths.
+features do not change the transitional old-INI wrapper's compatibility
+contract.
 
 Config Files
 ------------
@@ -722,12 +723,10 @@ fixed ``bc`` vector and no boundary-condition random variable. This is distinct
 from supplying a standalone baseline time series, which belongs to a separate
 baseline component.
 
-The legacy single-sector ``inferpymc`` / ``fixedbasisMCMC`` compatibility path
-does not gain multisector behavior. It now removes exact-zero ``H`` columns in
-the same way as the standard model: observation-space predictions are unchanged,
-but formerly unidentified entries in the full posterior ``x`` are reconstructed
-at their fixed values instead of being prior draws. Derived flux products that
-use those entries may therefore differ from earlier releases.
+The transitional ``run_hbmcmc.py`` wrapper supports only the standard
+single-sector RHIME recipe; it does not add multisector behaviour to an old INI
+file. Migrate source-resolved workflows to ``run_rhime_multisector`` and its
+canonical configuration vocabulary.
 
 Correlated Positive Reduced States
 ----------------------------------
@@ -907,17 +906,11 @@ explicit compatibility fallback, and flat basis maps may still be emitted by
 compatibility output formats, but new workflows should save and load DataTree
 ``BasisFunctions`` artifacts instead of relying on flat-basis reconstruction.
 
-``run_hbmcmc.py`` is now a compatibility wrapper for old fixedbasis-style INI
-files. It translates legacy option names to the modern ``run_rhime`` API and
-uses the legacy filename convention. New scripts and new configs should use
-``openghg-inversions run-rhime`` or ``run_rhime(...)`` directly.
-For temporary reproduction of historical products, pass
-``--legacy-fixedbasis`` to ``run_hbmcmc.py``. This explicit opt-in sends the
-untranslated INI parameters to ``fixedbasisMCMC``; a missing output format or
-the old ``hbmcmc`` / ``hbmcmc_postprocessing`` names select the historical
-``inferpymc_postprocessouts`` product and filename. An explicit
-``output_format="legacy"`` still selects the modern legacy-format adapter.
-The command prints a prominent warning, raises on unsupported options, and
-does not fall back to RHIME if the legacy run fails.
-Direct ``fixedbasisMCMC(...)`` calls are a temporary legacy Python path, not a
-wrapper around ``run_rhime(...)``.
+``run_hbmcmc.py`` is a transitional compatibility wrapper for supported old
+fixedbasis-style INI files. It translates legacy option names to the modern
+``run_rhime`` API and uses the legacy filename convention. It always executes
+RHIME: the direct ``fixedbasisMCMC`` / ``inferpymc`` implementation and the
+``--legacy-fixedbasis`` option have been removed. New scripts and new configs
+should use ``openghg-inversions run-rhime`` or ``run_rhime(...)`` directly.
+See :doc:`legacy_and_migration` for the parameter map, return-type changes,
+and interfaces without a current equivalent.

@@ -47,13 +47,12 @@
     <script src="../_static/thebelab-helper.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
-    <script defer="defer" src="https://cdn.jsdelivr.net/npm/mathjax@4/tex-mml-chtml.js"></script>
     <script>DOCUMENTATION_OPTIONS.pagename = 'usage/getting_started';</script>
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="Developing OpenGHG Inversions" href="../development/index.html" />
-    <link rel="prev" title="Legacy interfaces and migration" href="legacy_and_migration.html" />
+    <link rel="next" title="How an Atmospheric Inversion Works" href="conceptual_inversion.html" />
+    <link rel="prev" title="Install and set up OpenGHG Inversions" href="installation.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="" />
@@ -317,6 +316,7 @@
   <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">Contents:</span></p>
 <ul class="current nav bd-sidenav">
 <li class="toctree-l1"><a class="reference internal" href="installation.html">Install and set up OpenGHG Inversions</a></li>
+<li class="toctree-l1 current active"><a class="current reference internal" href="#">Getting started with OpenGHG Inversions</a></li>
 <li class="toctree-l1"><a class="reference internal" href="conceptual_inversion.html">How an Atmospheric Inversion Works</a></li>
 <li class="toctree-l1"><a class="reference internal" href="model_recipes.html">Choose a RHIME model recipe</a></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="standard_model_family.html">Standard RHIME model family</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
@@ -342,10 +342,7 @@
 <li class="toctree-l2"><a class="reference internal" href="coherent_reduction.html">Coherent Gaussian Reduction</a></li>
 </ul>
 </details></li>
-<li class="toctree-l1 current active has-children"><a class="reference internal" href="legacy_and_migration.html">Legacy interfaces and migration</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
-<li class="toctree-l2 current active"><a class="current reference internal" href="#">Getting started with OpenGHG Inversions</a></li>
-</ul>
-</details></li>
+<li class="toctree-l1"><a class="reference internal" href="legacy_and_migration.html">Migrate from HBMCMC to RHIME</a></li>
 </ul>
 </div>
 </nav></div>
@@ -389,9 +386,6 @@
     
     <li class="breadcrumb-item"><a href="usage.html" class="nav-link">Using OpenGHG Inversions</a></li>
     
-    
-    <li class="breadcrumb-item"><a href="legacy_and_migration.html" class="nav-link">Legacy interfaces and migration</a></li>
-    
     <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Getting started with OpenGHG Inversions</span></li>
   </ul>
 </nav>
@@ -411,214 +405,75 @@
                   
   <section id="getting-started-with-openghg-inversions">
 <h1>Getting started with OpenGHG Inversions<a class="headerlink" href="#getting-started-with-openghg-inversions" title="Link to this heading">#</a></h1>
-<p>This page describes the data and legacy interfaces used by existing inversion
-workflows. If atmospheric inversions are new to you, first read
-<a class="reference internal" href="conceptual_inversion.html"><span class="doc">How an Atmospheric Inversion Works</span></a> for the scientific concepts and current RHIME
-terminology.</p>
-<section id="what-do-you-need-to-run-an-inversion">
-<h2>What do you need to run an inversion?<a class="headerlink" href="#what-do-you-need-to-run-an-inversion" title="Link to this heading">#</a></h2>
-<p>For an inversion, you need to decide the:</p>
+<p>This page introduces the data and supported RHIME entry points used by a
+regional inversion. If atmospheric inversions are new to you, first read
+<a class="reference internal" href="conceptual_inversion.html"><span class="doc">How an Atmospheric Inversion Works</span></a> and then use the
+<a class="reference internal" href="model_recipes.html"><span class="doc">model recipe chooser</span></a> to select a workflow.</p>
+<section id="required-data">
+<h2>Required data<a class="headerlink" href="#required-data" title="Link to this heading">#</a></h2>
+<p>Before running an inversion, choose the gas species, measurement sites, time
+period, and domain. A standard inversion retrieves the following products from
+OpenGHG:</p>
 <ul class="simple">
-<li><p>gas species (currently you can only choose one)</p></li>
-<li><p>sites (how many, which sites)</p></li>
-<li><p>time period (specified using <code class="docutils literal notranslate"><span class="pre">start_date</span></code>, <code class="docutils literal notranslate"><span class="pre">end_date</span></code>)</p></li>
-<li><p>domain for inversion (for sites in the UK, this is usually
-<code class="docutils literal notranslate"><span class="pre">'EUROPE'</span></code>)</p></li>
+<li><p>observations for each site;</p></li>
+<li><p>flux data;</p></li>
+<li><p>boundary-condition data; and</p></li>
+<li><p>footprints for each site.</p></li>
 </ul>
-<p>Once you know the rough outline of your inversion, you need to make sure
-the right data is stored in OpenGHG, and you will need a few extra files
-not stored in OpenGHG.</p>
-<section id="data-stored-in-openghg">
-<h3>Data stored in OpenGHG<a class="headerlink" href="#data-stored-in-openghg" title="Link to this heading">#</a></h3>
+<p>Use OpenGHG’s <code class="docutils literal notranslate"><span class="pre">search_surface</span></code>, <code class="docutils literal notranslate"><span class="pre">search_flux</span></code>, <code class="docutils literal notranslate"><span class="pre">search_bc</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">search_footprints</span></code> functions to confirm that the products are available.
+Flux and boundary-condition products are normally domain-specific rather than
+site-specific, so a multisite inversion will commonly reuse the same products.</p>
+<p>An inversion may also need files outside the OpenGHG object store:</p>
 <ul class="simple">
-<li><p>Observation data: stored using <code class="docutils literal notranslate"><span class="pre">standardise_surface</span></code>; look for it
-using <code class="docutils literal notranslate"><span class="pre">search_surface</span></code>. You need observation data for each site.</p></li>
-<li><p>Flux data: stored using <code class="docutils literal notranslate"><span class="pre">standardise_flux</span></code>; look for it using
-<code class="docutils literal notranslate"><span class="pre">search_flux</span></code>.</p></li>
-<li><p>Boundary conditions data: stored using <code class="docutils literal notranslate"><span class="pre">standardise_bc</span></code>; look for it
-using <code class="docutils literal notranslate"><span class="pre">search_bc</span></code>.</p></li>
-<li><p>Footprints: stored using <code class="docutils literal notranslate"><span class="pre">standardise_footprint</span></code>; look for it using
-<code class="docutils literal notranslate"><span class="pre">search_footprints</span></code> (NOTE: footprint(s) is plural for search,
-singular for standardise). You need separate footprints for each site.</p></li>
+<li><p>a country file, such as <code class="docutils literal notranslate"><span class="pre">country_EUROPE.nc</span></code>; and</p></li>
+<li><p>predefined flux or boundary-condition basis functions, when the selected
+basis is not constructed during preparation.</p></li>
 </ul>
-<p>NOTE: flux and boundary conditions data usually has a specific <em>domain</em>,
-but it is not specific to any one measurement site, so for multiple
-sites, you will usually use the same flux and boundary conditions.</p>
+<p>Flux basis functions can be created with supported algorithms such as
+<code class="docutils literal notranslate"><span class="pre">quadtree</span></code> and <code class="docutils literal notranslate"><span class="pre">weighted</span></code> or loaded from a saved basis artifact. The Python
+basis API also supports region-constrained generation when the caller supplies
+an already loaded <code class="docutils literal notranslate"><span class="pre">region_classes</span></code> <code class="docutils literal notranslate"><span class="pre">DataArray</span></code>. See
+<a class="reference internal" href="shared_scientific_concepts.html"><span class="doc">Shared scientific concepts</span></a> and the basis API reference for the current
+options and limits.</p>
 </section>
-<section id="data-not-stored-in-openghg">
-<h3>Data not stored in OpenGHG<a class="headerlink" href="#data-not-stored-in-openghg" title="Link to this heading">#</a></h3>
-<ul class="simple">
-<li><p>countries file</p>
-<ul>
-<li><p>e.g. <code class="docutils literal notranslate"><span class="pre">country_EUROPE.nc</span></code></p></li>
-<li><p>default location is <code class="docutils literal notranslate"><span class="pre">openghg_inversions/countries</span></code></p></li>
-</ul>
-</li>
-<li><p>basis functions</p>
-<ul>
-<li><p>“basis function” usually means a netCDF file with latitude and
-longitude coordinates, with integer values. So all of the
-coordinates with value 1 are in region 1, and so on.</p></li>
-<li><p>basis functions for fluxes can be created on the fly with the
-<code class="docutils literal notranslate"><span class="pre">quadtree</span></code> or <code class="docutils literal notranslate"><span class="pre">weighted</span></code> algorithms. You can also read in
-pre-defined basis functions. Default location:
-<code class="docutils literal notranslate"><span class="pre">openghg_inversions/basis_functions</span></code></p></li>
-<li><p>region-constrained basis generation is available through the Python
-basis API when the caller supplies an already loaded <code class="docutils literal notranslate"><span class="pre">region_classes</span></code>
-<code class="docutils literal notranslate"><span class="pre">DataArray</span></code>. This is intended for land/sea, country, or other
-region-class masks, and keeps labels from crossing those classes. The
-current <code class="docutils literal notranslate"><span class="pre">.ini</span></code>/<code class="docutils literal notranslate"><span class="pre">run_hbmcmc.py</span></code> route does not yet load
-<code class="docutils literal notranslate"><span class="pre">region_classes</span></code> from a file, so use a saved basis file or the Python
-wrapper for this case.</p></li>
-<li><p>region-constrained splitting can optionally use
-<code class="docutils literal notranslate"><span class="pre">split_acceptance=&quot;contrast_score&quot;</span></code> with a design contribution array.
-This uses a fixed design covariance <code class="docutils literal notranslate"><span class="pre">S</span></code> and a prior split-contrast
-standard deviation <code class="docutils literal notranslate"><span class="pre">tau</span></code>; the default <code class="docutils literal notranslate"><span class="pre">tau=1</span></code>, <code class="docutils literal notranslate"><span class="pre">S=I</span></code> is only an
-uncalibrated ranking/debugging score, not calibrated expected information
-gain. Do not build this score from observed mole fractions or residuals.</p></li>
-<li><p>lower-level region-constrained algorithms also support split-stopping
-policies. <code class="docutils literal notranslate"><span class="pre">MinChildWeightShare</span></code> is a parent-relative balance guard,
-while <code class="docutils literal notranslate"><span class="pre">MinChildTargetWeightShare</span></code> rejects children below a share of the
-class-local equal-target region weight, <code class="docutils literal notranslate"><span class="pre">weights.sum()</span> <span class="pre">/</span> <span class="pre">target_regions</span></code>.
-Their thresholds are not interchangeable; with stopping enabled,
-<code class="docutils literal notranslate"><span class="pre">nbasis</span></code> is an upper target. These child-share policies are not yet
-routed through <code class="docutils literal notranslate"><span class="pre">.ini</span></code>, <code class="docutils literal notranslate"><span class="pre">run_hbmcmc.py</span></code>, or RHIME config options.</p></li>
-<li><p>basis functions for the boundary conditions have a similar format.
-Default location <code class="docutils literal notranslate"><span class="pre">openghg_inversions/bc_basis_functions</span></code></p></li>
-</ul>
-</li>
-</ul>
-<p>Summary</p>
-<ul class="simple">
-<li><p>basis functions (for flux) are created on the fly, or you can provide
-them; you need to provide a country file and <code class="docutils literal notranslate"><span class="pre">bc_basis_functions</span></code>
-files.</p></li>
-<li><p>all of these files can be found in <code class="docutils literal notranslate"><span class="pre">/group/chemistry/acrg/LPDM</span></code>.</p></li>
-</ul>
+<section id="run-a-standard-inversion">
+<h2>Run a standard inversion<a class="headerlink" href="#run-a-standard-inversion" title="Link to this heading">#</a></h2>
+<p>Python scripts and notebooks should call <code class="docutils literal notranslate"><span class="pre">run_rhime</span></code>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">openghg_inversions.rhime</span><span class="w"> </span><span class="kn">import</span> <span class="n">run_rhime</span>
+
+<span class="n">result</span> <span class="o">=</span> <span class="n">run_rhime</span><span class="p">(</span>
+    <span class="n">species</span><span class="o">=</span><span class="s2">"ch4"</span><span class="p">,</span>
+    <span class="n">sites</span><span class="o">=</span><span class="p">[</span><span class="s2">"TAC"</span><span class="p">],</span>
+    <span class="n">averaging_period</span><span class="o">=</span><span class="p">[</span><span class="s2">"1h"</span><span class="p">],</span>
+    <span class="n">domain</span><span class="o">=</span><span class="s2">"EUROPE"</span><span class="p">,</span>
+    <span class="n">start_date</span><span class="o">=</span><span class="s2">"2019-01-01"</span><span class="p">,</span>
+    <span class="n">end_date</span><span class="o">=</span><span class="s2">"2019-02-01"</span><span class="p">,</span>
+    <span class="n">flux_sources</span><span class="o">=</span><span class="p">[</span><span class="s2">"total-ukghg-edgar7"</span><span class="p">],</span>
+    <span class="n">output_path</span><span class="o">=</span><span class="s2">"outputs"</span><span class="p">,</span>
+    <span class="n">output_name</span><span class="o">=</span><span class="s2">"ch4_TAC"</span><span class="p">,</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p>For an INI configuration, copy
+<code class="docutils literal notranslate"><span class="pre">openghg_inversions/config/templates/rhime_template.ini</span></code> and use the
+installed command:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">openghg</span><span class="o">-</span><span class="n">inversions</span> <span class="n">run</span><span class="o">-</span><span class="n">rhime</span> \
+    <span class="mi">2019</span><span class="o">-</span><span class="mi">01</span><span class="o">-</span><span class="mi">01</span> <span class="mi">2019</span><span class="o">-</span><span class="mi">02</span><span class="o">-</span><span class="mi">01</span> <span class="o">-</span><span class="n">c</span> <span class="n">rhime</span><span class="o">.</span><span class="n">ini</span> <span class="o">--</span><span class="n">output</span><span class="o">-</span><span class="n">path</span> <span class="n">outputs</span>
+</pre></div>
+</div>
+<p>The <a class="reference internal" href="rhime.html"><span class="doc">RHIME guide</span></a> describes the full configuration vocabulary,
+likelihoods, outputs, and Python result object. For source-resolved inversions,
+use <a class="reference internal" href="standard_model_family.html"><span class="doc">Standard RHIME model family</span></a>; for CO2-only and linked CO2/O2 models, use
+<a class="reference internal" href="co2_model_family.html"><span class="doc">CO₂ model family</span></a>.</p>
 </section>
-</section>
-<section id="how-do-you-run-an-inversion">
-<h2>How do you run an inversion?<a class="headerlink" href="#how-do-you-run-an-inversion" title="Link to this heading">#</a></h2>
-<section id="method-1-python-script-or-notebook">
-<h3>Method 1: python script or notebook<a class="headerlink" href="#method-1-python-script-or-notebook" title="Link to this heading">#</a></h3>
-<p>New scripts should call <code class="docutils literal notranslate"><span class="pre">run_rhime</span></code> from <code class="docutils literal notranslate"><span class="pre">openghg_inversions.rhime</span></code>.
-<code class="docutils literal notranslate"><span class="pre">fixedbasisMCMC</span></code> remains only as a temporary direct legacy Python path, not
-as the RHIME-backed compatibility route.
-It no longer preserves the exact historical <code class="docutils literal notranslate"><span class="pre">fixedbasisMCMC</span></code> / <code class="docutils literal notranslate"><span class="pre">inferpymc</span></code>
-passthrough behaviour; use release <code class="docutils literal notranslate"><span class="pre">0.6</span></code> or earlier if you need the old
-fixedbasis implementation.</p>
-</section>
-<section id="method-2-ini-file">
-<h3>Method 2: ini file<a class="headerlink" href="#method-2-ini-file" title="Link to this heading">#</a></h3>
-<ul class="simple">
-<li><p>Create a <code class="docutils literal notranslate"><span class="pre">my_inversion.ini</span></code> file based on the template in
-<code class="docutils literal notranslate"><span class="pre">openghg_inversions/hbmcmc/config/</span></code>.</p></li>
-<li><p>Activate a Pixi, conda, or venv environment with inversions installed, and
-call
-<code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">&lt;path</span> <span class="pre">to</span> <span class="pre">openghg_inversions&gt;/openghg_inversions/hbmcmc/run_hbmcmc.py</span> <span class="pre">-c</span> <span class="pre">my_inversion.ini</span></code>
-for old fixedbasis-style INI files. The script now translates those configs
-and runs the modern <code class="docutils literal notranslate"><span class="pre">run_rhime</span></code> pathway. New INI files should use
-<code class="docutils literal notranslate"><span class="pre">openghg-inversions</span> <span class="pre">run-rhime</span></code> and the RHIME config vocabulary.
-Unsupported fixedbasis-only options now raise targeted errors instead of
-being passed through to <code class="docutils literal notranslate"><span class="pre">inferpymc</span></code>.</p></li>
-<li><p>Existing INI workflows that temporarily require the historical
-<code class="docutils literal notranslate"><span class="pre">fixedbasisMCMC</span></code> / <code class="docutils literal notranslate"><span class="pre">inferpymc_postprocessouts</span></code> product can add
-<code class="docutils literal notranslate"><span class="pre">--legacy-fixedbasis</span></code>. This explicit opt-in keeps legacy parameter names;
-it does not translate them or fall back to RHIME. A missing output format or
-<code class="docutils literal notranslate"><span class="pre">hbmcmc</span></code> / <code class="docutils literal notranslate"><span class="pre">hbmcmc_postprocessing</span></code> selects the historical product, while
-<code class="docutils literal notranslate"><span class="pre">output_format=&quot;legacy&quot;</span></code> continues to select the modern adapter.</p></li>
-<li><p>A sample <code class="docutils literal notranslate"><span class="pre">.ini</span></code> script is at the bottom of this document.</p></li>
-</ul>
-</section>
-<section id="method-3-as-a-job-on-blue-pebble">
-<h3>Method 3: as a job on Blue Pebble<a class="headerlink" href="#method-3-as-a-job-on-blue-pebble" title="Link to this heading">#</a></h3>
-<ul class="simple">
-<li><p>Create a <code class="docutils literal notranslate"><span class="pre">.sh</span></code> file to run a <a class="reference external" href="https://www.acrc.bris.ac.uk/protected/hpc-docs/job_types/serial.html">batch job using
-SLURM</a>
-using <code class="docutils literal notranslate"><span class="pre">sbatch</span></code>.</p></li>
-<li><p>This file will specify:</p>
-<ul>
-<li><p>the same <code class="docutils literal notranslate"><span class="pre">run_hbmcmc.py</span></code> command as above; add
-<code class="docutils literal notranslate"><span class="pre">--legacy-fixedbasis</span></code> after the script path only when the submitted job
-must reproduce the historical fixedbasis product;</p></li>
-<li><p>the name of the job</p></li>
-<li><p>resources required (number of nodes, number of tasks per node,
-number of cpus per task, memory required, compute time required).
-Typically, you need 1 node, 1 task, and as many cpus per task as
-chains in your inversion (each chain is an indepedent MCMC process;
-using 4 is best for checking convergence)</p></li>
-<li><p>where terminal output and errors should be written</p></li>
-<li><p>shell commands to run on the compute node:</p>
-<ul>
-<li><p>commands to activate your virtual environment</p></li>
-<li><p>commands to run an inversion (usually method 2, but you could use
-method 1 in a python script)</p></li>
-</ul>
-</li>
-</ul>
-</li>
-<li><p>On the blue pebble login node, run <code class="docutils literal notranslate"><span class="pre">sbatch</span> <span class="pre">my_inversion_script.sh</span></code>
-(replace <code class="docutils literal notranslate"><span class="pre">'my_inversion_script'</span></code> with whatever your script is
-called).</p></li>
-<li><p>Use the command <code class="docutils literal notranslate"><span class="pre">sacct</span></code> to see what batch jobs you have running.</p></li>
-</ul>
-<p>Note: if you are running multiple inversions with a similar ini file (for instance,
-several years of yearly inversions), then you should use a SLURM array job.</p>
-</section>
-</section>
-<section id="getting-set-up-on-blue-pebble">
-<h2>Getting set up on Blue Pebble<a class="headerlink" href="#getting-set-up-on-blue-pebble" title="Link to this heading">#</a></h2>
-<p>This is assuming you can ssh into blue pebble, and are able to modify
-files and run commands there (either on the terminal or through VS code
-or similar).</p>
-<p>(This section is specific to the ACRG group at Bristol, but the parts
-about running jobs on SLURM could apply elsewhere.)</p>
-<section id="virtual-environment">
-<h3>Virtual environment<a class="headerlink" href="#virtual-environment" title="Link to this heading">#</a></h3>
-<p>TODO: update conda instructions</p>
-<ul class="simple">
-<li><p>Blue pebble has pre-installed software called “modules”.</p>
-<ul>
-<li><p><code class="docutils literal notranslate"><span class="pre">module</span> <span class="pre">avail</span></code> shows available modules</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">module</span> <span class="pre">load</span> <span class="pre">...</span></code> will load a module</p></li>
-</ul>
-</li>
-<li><p>Typically you will use the latest anaconda module:
-<code class="docutils literal notranslate"><span class="pre">module</span> <span class="pre">load</span> <span class="pre">lang/python/anaconda</span></code>.</p></li>
-<li><p>To make your own environment for <code class="docutils literal notranslate"><span class="pre">openghg_inversions</span></code>, you should:</p>
-<ol class="arabic simple">
-<li><p>Prefer the repository Pixi environment for new development installs:
-<code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">clone</span> <span class="pre">https://github.com/openghg/openghg_inversions.git</span></code>,
-<code class="docutils literal notranslate"><span class="pre">cd</span> <span class="pre">openghg_inversions</span></code>, then <code class="docutils literal notranslate"><span class="pre">pixi</span> <span class="pre">install</span> <span class="pre">-e</span> <span class="pre">dev</span></code>. This keeps
-<code class="docutils literal notranslate"><span class="pre">h5py</span></code>, <code class="docutils literal notranslate"><span class="pre">h5netcdf</span></code>, <code class="docutils literal notranslate"><span class="pre">netcdf4</span></code>, and HDF5 on a single conda-forge
-binary stack.
-On systems with access to the ACRG country files, run
-<code class="docutils literal notranslate"><span class="pre">OPENGHG_COUNTRY_FILE_SMOKE_DIR=/group/chem/acrg/LPDM/countries</span> <span class="pre">pixi</span> <span class="pre">run</span> <span class="pre">-e</span> <span class="pre">dev</span> <span class="pre">country-file-smoke</span></code>
-to check the real country-file HDF5 backends.</p></li>
-<li><p>If Pixi is not available, make a conda env
-<code class="docutils literal notranslate"><span class="pre">conda</span> <span class="pre">create</span> <span class="pre">--name</span> <span class="pre">inv_env</span> <span class="pre">numpy</span></code> (note:
-installing <code class="docutils literal notranslate"><span class="pre">numpy</span></code> from <code class="docutils literal notranslate"><span class="pre">conda</span></code> will install <code class="docutils literal notranslate"><span class="pre">openblas</span></code>,
-which is a fast linear algebra library; these libraries are in
-non-standard locations on Blue Pebble, and <code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">numpy</span></code>
-will not find them.)</p></li>
-<li><p>clone openghg_inversions:
-<code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">clone</span> <span class="pre">https://github.com/openghg/openghg_inversions.git</span></code></p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">openghg_inversions</span></code> (in the same directory where you
-just cloned <code class="docutils literal notranslate"><span class="pre">openghg_inversions</span></code>)</p></li>
-</ol>
-</li>
-</ul>
-</section>
-<section id="example-batch-job-script">
-<h3>Example batch job script<a class="headerlink" href="#example-batch-job-script" title="Link to this heading">#</a></h3>
-<p>This script assumes that you have already created a conda env called
-<code class="docutils literal notranslate"><span class="pre">pymc_env</span></code> and you have an <code class="docutils literal notranslate"><span class="pre">.ini</span></code> file in a folder called
-<code class="docutils literal notranslate"><span class="pre">my_inversions</span></code>.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="ch">#!/bin/sh</span>
-<span class="c1"># ****************************************************************************</span>
-<span class="c1"># Wrapper script for submitting jobs on ACRC HPC</span>
-<span class="c1"># docs: https://www.acrc.bris.ac.uk/protected/hpc-docs/index.html</span>
-<span class="c1"># ****************************************************************************</span>
+<section id="run-on-a-slurm-cluster">
+<h2>Run on a SLURM cluster<a class="headerlink" href="#run-on-a-slurm-cluster" title="Link to this heading">#</a></h2>
+<p>An inversion can be submitted as a serial SLURM job. Request one task and set
+<code class="docutils literal notranslate"><span class="pre">--cpus-per-task</span></code> to the number of chains when chains are run in parallel.
+The exact account, module, memory, and time values are cluster-specific. A
+minimal batch script is:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="ch">#!/bin/sh</span>
 <span class="c1">#SBATCH --job-name=my_inv</span>
 <span class="c1">#SBATCH --output=openghg_inversions.out</span>
 <span class="c1">#SBATCH --error=openghg_inversions.err</span>
@@ -629,320 +484,32 @@ just cloned <code class="docutils literal notranslate"><span class="pre">openghg
 <span class="c1">#SBATCH --mem=30gb</span>
 <span class="c1">#SBATCH --account=dept123456</span>
 
+<span class="n">module</span> <span class="o">--</span><span class="n">force</span> <span class="n">purge</span>
+<span class="c1"># Load the Python environment modules used by your cluster.</span>
+<span class="n">source</span> <span class="o">/</span><span class="n">path</span><span class="o">/</span><span class="n">to</span><span class="o">/</span><span class="n">venv</span><span class="o">/</span><span class="nb">bin</span><span class="o">/</span><span class="n">activate</span>
 
-<span class="c1"># Set up Python environment</span>
-module<span class="w"> </span>--force<span class="w"> </span>purge
-module<span class="w"> </span>load<span class="w"> </span>git/2.45.1
-<span class="nb">eval</span><span class="w"> </span><span class="s2">"</span><span class="k">$(</span>conda<span class="w"> </span>shell.bash<span class="w"> </span>hook<span class="k">)</span><span class="s2">"</span>
-conda<span class="w"> </span>activate<span class="w"> </span>pymc_env
-
-<span class="c1">#conda info</span>
-
-<span class="c1"># run inversion script</span>
-<span class="nv">INI_FILE</span><span class="o">=</span>/user/home/bm13805/my_inversions/my_hbmcmc_inputs.ini
-python<span class="w"> </span>/user/home/bm13805/openghg_inversions/openghg_inversions/hbmcmc/run_hbmcmc.py<span class="w"> </span>-c<span class="w"> </span><span class="nv">$INI_FILE</span>
-
-<span class="c1"># check numpy config</span>
-<span class="c1"># python -c "import numpy as np; np.show_config()"</span>
-<span class="c1"># python -c "import pymc"</span>
+<span class="n">openghg</span><span class="o">-</span><span class="n">inversions</span> <span class="n">run</span><span class="o">-</span><span class="n">rhime</span> \
+    <span class="mi">2019</span><span class="o">-</span><span class="mi">01</span><span class="o">-</span><span class="mi">01</span> <span class="mi">2019</span><span class="o">-</span><span class="mi">02</span><span class="o">-</span><span class="mi">01</span> \
+    <span class="o">-</span><span class="n">c</span> <span class="o">/</span><span class="n">path</span><span class="o">/</span><span class="n">to</span><span class="o">/</span><span class="n">rhime</span><span class="o">.</span><span class="n">ini</span> \
+    <span class="o">--</span><span class="n">output</span><span class="o">-</span><span class="n">path</span> <span class="o">/</span><span class="n">path</span><span class="o">/</span><span class="n">to</span><span class="o">/</span><span class="n">outputs</span>
 </pre></div>
 </div>
-<p>If this script is saved as <code class="docutils literal notranslate"><span class="pre">my_inversions_script.sh</span></code>, you would run it
-with <code class="docutils literal notranslate"><span class="pre">sbatch</span> <span class="pre">my_inversion_script.sh</span></code>.</p>
-<p>If you comment out the lines under <code class="docutils literal notranslate"><span class="pre">#</span> <span class="pre">run</span> <span class="pre">inversion</span> <span class="pre">script</span></code> and
-uncomment the lines under <code class="docutils literal notranslate"><span class="pre">#</span> <span class="pre">check</span> <span class="pre">numpy</span> <span class="pre">config</span></code>, you can check if
-numpy is using a fast linear algebra library. If you are <strong>not</strong> using a
-fast linear algebra library, then in the <code class="docutils literal notranslate"><span class="pre">.err</span></code> output file you will
-see the warning:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">WARNING</span> <span class="p">(</span><span class="n">pytensor</span><span class="p">):</span> <span class="n">Using</span> <span class="n">NumPy</span> <span class="n">C</span><span class="o">-</span><span class="n">API</span> <span class="n">based</span> <span class="n">implementation</span> <span class="k">for</span> <span class="n">BLAS</span> <span class="n">functions</span><span class="o">.</span>
-</pre></div>
-</div>
-<p>Your inversion will run much slower if this is the case; try using conda
-to install numpy before installing <code class="docutils literal notranslate"><span class="pre">openghg_inversions</span></code>, as mentioned
-above.</p>
+<p>Submit it with <code class="docutils literal notranslate"><span class="pre">sbatch</span> <span class="pre">my_inversion_script.sh</span></code> and inspect jobs with the
+cluster’s normal <code class="docutils literal notranslate"><span class="pre">sacct</span></code> or <code class="docutils literal notranslate"><span class="pre">squeue</span></code> workflow. For repeated periods, use a
+SLURM array and override dates or output paths per array element.</p>
+<p>On systems with networked home and work storage, put environments, prepared
+data, traces, and outputs in the larger work filesystem. Sampling and NetCDF
+outputs can be substantially larger than source code or configuration files.</p>
 </section>
-<section id="work-vs-home-directory">
-<h3>Work vs. Home directory<a class="headerlink" href="#work-vs-home-directory" title="Link to this heading">#</a></h3>
-<ul class="simple">
-<li><p>Your home directory <code class="docutils literal notranslate"><span class="pre">/user/home/ab12345</span></code> (replace ab12345 with your
-using name) has a storage quota of 25GB.</p></li>
-<li><p>Check you usage with command <code class="docutils literal notranslate"><span class="pre">user-quota</span></code>.</p></li>
-<li><p>Your work directory <code class="docutils literal notranslate"><span class="pre">/user/work/ab12345</span></code> has a storage quota of
-1000GB.</p></li>
-<li><p>Conda environments and the inversion output files can be quite large,
-so if you are doing many inversions, you should put the output
-directory in your work directory. (And if you are making multiple
-conda environments, you should put them in your work directory as
-well.)</p></li>
-</ul>
-</section>
-</section>
-<section id="sample-ini-file">
-<h2>Sample .ini file<a class="headerlink" href="#sample-ini-file" title="Link to this heading">#</a></h2>
-<p>The following file, <code class="docutils literal notranslate"><span class="pre">my_hbmcmc_inputs.ini</span></code> can be used to run an</p>
-<div class="highlight-ini notranslate"><div class="highlight"><pre><span></span><span class="c1">; Configuration file for HBMCMC code</span>
-<span class="c1">; Required inputs are marked as such.</span>
-<span class="c1">; All other inputs are optional (defaults will be used)</span>
-
-<span class="k">[INPUT.MEASUREMENTS]</span>
-<span class="c1">; Input values for extracting observations</span>
-<span class="c1">; species (str) - species name,  e.g. "ch4", "co2", "n2o", etc.</span>
-<span class="c1">; sites (list) - site codes as a list, e.g. ["TAC", "MHD"]</span>
-<span class="c1">; averaging_period (list) - Time periods for to average the measurements to (can be None and must match length of sites)</span>
-<span class="c1">; start_date (str) - Start of observations to extract (format YYYY-MM-DD)</span>
-<span class="c1">; end_date (str) - End of observations to extract (format YYYY-MM-DD) (non-inclusive)</span>
-<span class="c1">; inlet (list/None) - Specific inlet height for the site (list - must match number of sites)</span>
-<span class="c1">; instrument (list/None) - Specific instrument for the site (list - must match number of sites)</span>
-
-<span class="na">species</span><span class="w">     </span><span class="o">=</span><span class="w"> </span><span class="s">'ch4'</span><span class="w">   </span><span class="c1">; (required)</span>
-<span class="na">sites</span><span class="w">       </span><span class="o">=</span><span class="w"> </span><span class="s">['TAC']</span><span class="w"> </span><span class="c1">; (required)</span>
-<span class="na">averaging_period</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">['1H']</span><span class="w">  </span><span class="c1">; (required)</span>
-<span class="na">start_date</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="s">'2019-01-01'</span><span class="w">      </span><span class="c1">; (required)</span>
-<span class="na">end_date</span><span class="w">    </span><span class="o">=</span><span class="w"> </span><span class="s">'2019-02-01'</span><span class="w">      </span><span class="c1">; (required)</span>
-<span class="na">inlet</span><span class="w">         </span><span class="o">=</span><span class="w"> </span><span class="s">["185m"]</span>
-<span class="na">instrument</span><span class="w">    </span><span class="o">=</span><span class="w"> </span><span class="s">["picarro"]</span>
-
-
-<span class="k">[INPUT.PRIORS]</span>
-<span class="c1">; Legacy fixedbasis input values for extracting footprints, fluxes and boundary conditions files (also uses values from INPUT.MEASUREMENTS)</span>
-<span class="c1">; New RHIME configs use flux_sources for OpenGHG flux source values.</span>
-<span class="c1">; domain (str) - Name of inversion spatial domain</span>
-<span class="c1">; fp_height (list) - Release height for footprints (must match number of sites).</span>
-<span class="c1">; emissions_name (list/None) - Legacy key for a specific flux source.</span>
-
-<span class="na">domain</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">'EUROPE'</span><span class="w">  </span><span class="c1">; (required)</span>
-<span class="na">fp_height</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">["185m"]</span><span class="w">  </span><span class="c1">; typically the same as inlet, but may differ slightly (e.g. if instrument moved to 180m, for instance)</span>
-<span class="na">fp_model</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"NAME"</span><span class="w">  </span><span class="c1">; LPDM model, usually NAME</span>
-<span class="na">emissions_name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">["total-ukghg-edgar7"]</span><span class="w">  </span><span class="c1">; legacy fixedbasis key; new RHIME configs use flux_sources</span>
-<span class="na">met_model</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">'UKV'</span><span class="w">  </span><span class="c1">; or None if not specified, check the metadata for your footprint</span>
-
-<span class="k">[INPUT.BASIS_CASE]</span>
-<span class="c1">; Input values to extract the basis cases to use within the inversion for boundary conditions and emissions</span>
-<span class="c1">; basis_algorithm (str): Choice of basis function algorithm to use. One of "quadtree" or "weighted".</span>
-<span class="c1">; The Python basis API also supports "region_constrained" when the caller supplies a region_classes DataArray;</span>
-<span class="c1">; this .ini route does not currently load region_classes from file or route child-share split-stopping policies.</span>
-<span class="c1">; bc_basis_case (str): Boundary conditions basis, defaults to "NESW" (looks for file format {bc_basis_case}_{domain}_*.nc)</span>
-<span class="c1">; bc_basis_directory (str/None): Directory for bc_basis functions. If None provided, creates new folder in openghg_inversions expecting to find bc_basis_function files there.</span>
-<span class="c1">; fp_basis_case (str/None): Emissions bases:</span>
-<span class="c1">; - if specified, looks for file format {fp_basis_case}_{domain}_*.nc</span>
-<span class="c1">; - if None, creates basis function using algorithm specified and associated parameters</span>
-<span class="c1">; nbasis: Number of basis functions to use for algorithm-specified basis function (rounded to %4) in domain</span>
-<span class="c1">; basis_directory (str/None): Directory containing the basis functions (with domain name as subdirectories)</span>
-<span class="c1">; country_file (str/None): Directory with filename  containing the indices of country boundaries in domain</span>
-
-<span class="na">basis_algorithm</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"quadtree"</span>
-<span class="na">bc_basis_case</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"NESW"</span>
-<span class="na">fp_basis_case</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">None</span>
-<span class="na">nbasis</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">50</span>
-<span class="na">basis_directory</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"/group/chemistry/acrg/LPDM/basis_functions/"</span>
-<span class="na">bc_basis_directory</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">None</span>
-<span class="na">country_file</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">None</span>
-
-<span class="k">[MCMC.TYPE]</span>
-<span class="c1">; Which MCMC setup to use. This defines the function which will be called and the expected inputs.</span>
-<span class="c1">; Options include: "fixed_basis"</span>
-
-<span class="na">mcmc_type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"fixed_basis"</span>
-
-
-<span class="k">[MCMC.PDF]</span>
-<span class="c1">; Definitions of PDF shape and parameters for inputs</span>
-<span class="c1">; - xprior (dict) - emissions</span>
-<span class="c1">; - bcprior (dict) - boundary conditions</span>
-<span class="c1">; - sigprior (dict) - historical fractional model error</span>
-<span class="c1">; - additive_sigma_prior (dict) - additive model error in observation units</span>
-
-<span class="c1">; Each of these inputs should be dictionary with the name of probability distribution and shape parameters.</span>
-<span class="c1">; See https://docs.pymc.io/api/distributions/continuous.html</span>
-<span class="c1">; Check openghg_inversions.hbmcmc.inversion_pymc for options.</span>
-
-<span class="na">xprior   = {"pdf"</span><span class="o">:</span><span class="s">"lognormal"</span><span class="na">, "stdev"</span><span class="o">:</span><span class="s">1}</span><span class="w">  </span><span class="c1">; lognormal with mean = 1, stdev = 1</span>
-<span class="na">bcprior  = {"pdf"</span><span class="o">:</span><span class="s">"truncatednormal"</span><span class="na">, "mu"</span><span class="o">:</span><span class="s">1.0, "sigma":0.02}</span><span class="w">  </span><span class="c1">; truncated normal with mean = 1, stdev 0.02</span>
-<span class="na">sigprior = {"pdf"</span><span class="o">:</span><span class="s">"uniform"</span><span class="na">, "lower"</span><span class="o">:</span><span class="s">0.0, "upper":0.2}</span>
-<span class="na">additive_sigma_prior = {"pdf"</span><span class="o">:</span><span class="s">"halfnormal"</span><span class="na">, "sigma"</span><span class="o">:</span><span class="s">5.0}</span><span class="w">  </span><span class="c1">; observation units</span>
-<span class="c1">;add_offset = False</span>
-<span class="c1">;offsetprior = {"pdf": "normal"}</span>
-<span class="c1">;offset_args = {"drop_first": False}  ;; set to True if you want first site to have offset 0.0</span>
-
-<span class="k">[MCMC.BC_SPLIT]</span>
-<span class="c1">; Boundary conditions setup</span>
-<span class="c1">; - bc_freq - The period over which the baseline is estimated. e.g.</span>
-<span class="c1">;  - None - one scaling for the whole inversion</span>
-<span class="c1">;  - "monthly" - per calendar monthly</span>
-<span class="c1">;  - "*D" (e.g. "30D") - per number of days (e.g. 30 days)</span>
-
-<span class="na">bc_freq</span><span class="w">    </span><span class="o">=</span><span class="w"> </span><span class="s">"monthly"</span>
-<span class="na">sigma_freq</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">None</span>
-<span class="na">sigma_per_site</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">True</span>
-
-
-<span class="k">[MCMC.ITERATIONS]</span>
-<span class="c1">; Iteration parameters</span>
-<span class="c1">; nit (int) - Number of iterations for MCMC</span>
-<span class="c1">; burn (int) - Number of iterations to burn in MCMC</span>
-<span class="c1">; tune (int) - Number of iterations to use to tune step size</span>
-
-<span class="na">nit</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="s">5000</span>
-<span class="na">burn</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">1000</span>
-<span class="na">tune</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">2000</span>
-
-
-<span class="k">[MCMC.NCHAIN]</span>
-<span class="c1">; Number of chains to run simultaneously. Must be at least 2 to allow convergence to be checked.</span>
-
-<span class="na">nchain</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">4</span>
-
-<span class="k">[MCMC.OPTIONS]</span>
-<span class="c1">; Select response-independent absolute model error. Omit this option to use</span>
-<span class="c1">; the historical pollution-event likelihood.</span>
-<span class="na">likelihood</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"additive_sigma"</span>
-<span class="c1">; averaging_error (bool): Add variability in averaging period to the measurement error (Note: currently this</span>
-<span class="c1">;                         doesn't work correctly)</span>
-<span class="c1">; min_error: numeric lower bound for model-measurement mismatch, or "residual"/"percentile"</span>
-<span class="c1">;            to calculate the bound from the prepared observations.</span>
-<span class="c1">; fix_basis_outer_regions (bool): If True, the "outer regions" of the domain use basis regions specified by a</span>
-<span class="c1">;                                 file provided by the Met Office (from their "InTem" model), and the "inner</span>
-<span class="c1">;                                 region", which includes the UK, is fit using our basis algorithms.</span>
-<span class="c1">; use_bc (bool): defaults to True. If False, no boundary conditions will be used in the inversion. This</span>
-<span class="c1">;                implicitly assumes that contributions from the boundary have been subtracted from the</span>
-<span class="c1">;                observations.</span>
-<span class="c1">; nuts_sampler (str): defaults to "pymc". The other option is "numpyro", which will the JAX accelerated sampler</span>
-<span class="c1">;                     from Numpyro; this tends to be significantly faster than the NUTS sampler built into PyMC.</span>
-<span class="c1">; save_trace (bool): If True, the arviz InferenceData output from sampling will be saved to the output path of</span>
-<span class="c1">;                    the inversion, with a file name of the form f"{outputname}{start_data}_trace.nc.</span>
-<span class="c1">;                    Alternatively, you can pass a path (including filename), and that path will be used.</span>
-<span class="c1">; calculate_min_error: deprecated legacy spelling. The run_hbmcmc compatibility shim translates</span>
-<span class="c1">;                      "residual" or "percentile" to `min_error`; prefer `min_error` directly.</span>
-<span class="c1">; pollution_events_from_obs (bool): Determines whether the model error is calculated as a fraction of:</span>
-<span class="c1">;                                   - the measured enhancement above the modelled baseline (if True)</span>
-<span class="c1">;                                   - the prior modelled enhancement (if False)</span>
-<span class="c1">; reparameterise_log_normal (bool): Deprecated compatibility flag. Set reparameterise=True in</span>
-<span class="c1">;                                   the relevant lognormal prior mapping instead.</span>
-<span class="c1">; sampler_kwargs (dict): Kwargs to pass to the sampler (e.g. sampler_kwargs = {'target_accept': 0.99})</span>
-
-<span class="na">averaging_error</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">True</span>
-<span class="na">min_error</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">0.0</span>
-<span class="na">fix_basis_outer_regions</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">False</span>
-<span class="na">use_bc</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">True</span>
-<span class="na">nuts_sampler</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"numpyro"</span>
-<span class="na">save_trace</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">True</span>
-<span class="c1">;min_error_options = {"by_site": True}  ; mapping; only supported key is boolean by_site (residual only)</span>
-<span class="na">pollution_events_from_obs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">True</span>
-<span class="na">no_model_error</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">False</span>
-<span class="na">reparameterise_log_normal</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">False</span>
-
-<span class="k">[MCMC.OUTPUT]</span>
-<span class="c1">; Format of output</span>
-<span class="c1">; "legacy" writes the old HBMCMC-compatible output through modern RHIME.</span>
-<span class="c1">; Deprecated aliases "hbmcmc" and "hbmcmc_postprocessing" are accepted.</span>
-<span class="na">output_format</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"legacy"</span>
-
-<span class="c1">; Details of where to write the output</span>
-<span class="c1">; outputpath (str) - directory to write output</span>
-<span class="c1">; outputname (str) - unique identifier for output/run name.</span>
-
-<span class="na">outputpath</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">'/user/work/ab12345/my_inversions'</span><span class="w">  </span><span class="c1">; (required)</span>
-<span class="na">outputname</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">'ch4_TAC_test'</span><span class="w">  </span><span class="c1">; (required)</span>
-</pre></div>
-</div>
-</section>
-<section id="additive-sigma-likelihood">
-<h2>Additive-sigma likelihood<a class="headerlink" href="#additive-sigma-likelihood" title="Link to this heading">#</a></h2>
-<p>The <code class="docutils literal notranslate"><span class="pre">run_hbmcmc.py</span></code> INI route can select a response-independent additive
-Gaussian model-error term with:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">[</span><span class="n">MCMC</span><span class="o">.</span><span class="n">PDF</span><span class="p">]</span>
-<span class="n">additive_sigma_prior</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"pdf"</span><span class="p">:</span> <span class="s2">"halfnormal"</span><span class="p">,</span> <span class="s2">"sigma"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"MHD"</span><span class="p">:</span> <span class="mf">5.0</span><span class="p">,</span> <span class="s2">"TAC"</span><span class="p">:</span> <span class="mf">2.0</span><span class="p">}}</span>
-
-<span class="p">[</span><span class="n">MCMC</span><span class="o">.</span><span class="n">BC_SPLIT</span><span class="p">]</span>
-<span class="n">sigma_freq</span> <span class="o">=</span> <span class="s2">"monthly"</span>
-<span class="n">sigma_per_site</span> <span class="o">=</span> <span class="kc">True</span>
-
-<span class="p">[</span><span class="n">MCMC</span><span class="o">.</span><span class="n">OPTIONS</span><span class="p">]</span>
-<span class="n">likelihood</span> <span class="o">=</span> <span class="s2">"additive_sigma"</span>
-<span class="n">min_error</span> <span class="o">=</span> <span class="mf">0.0</span>
-</pre></div>
-</div>
-<p>This gives the independent likelihood variance
-<span class="math notranslate nohighlight">\(s_y^2 + \sigma_{site,period}^2\)</span>. It does not use the pollution
-enhancement and does not add aggregation error. <code class="docutils literal notranslate"><span class="pre">min_error</span></code> works as before
-as an optional floor on the total standard deviation; it defaults to <code class="docutils literal notranslate"><span class="pre">0.0</span></code>.
-We recommend first trying the half-normal model with <code class="docutils literal notranslate"><span class="pre">min_error</span> <span class="pre">=</span> <span class="pre">0.0</span></code>.
-<code class="docutils literal notranslate"><span class="pre">aggregation_error_mode</span></code> is unavailable for this <code class="docutils literal notranslate"><span class="pre">run_hbmcmc.py</span></code> option.
-<code class="docutils literal notranslate"><span class="pre">additive_sigma_prior</span></code> takes precedence for this likelihood; when it is
-omitted, the compatibility entry point falls back to <code class="docutils literal notranslate"><span class="pre">sigprior</span></code>. A mapping
-from site name to scale gives each retained site its own half-normal prior
-scale. Every retained site must be present; entries for sites removed during
-preparation are ignored. Site mappings require <code class="docutils literal notranslate"><span class="pre">sigma_per_site</span> <span class="pre">=</span> <span class="pre">True</span></code>.</p>
-<p>A half-normal prior is the recommended starting family. Its <code class="docutils literal notranslate"><span class="pre">sigma</span></code> input is
-the half-normal <em>scale</em>, and</p>
-<div class="math notranslate nohighlight">
-\[E[\sigma_{site,period}] = \sigma_{prior}\sqrt{2/\pi},
-\qquad
-\sigma_{prior} = E[\sigma_{site,period}]\sqrt{\pi/2}.\]</div>
-<p>Thus the scale which exactly matches a desired prior mean is about 1.25 times
-that mean. If the empirical “average model error” is only a rough upper
-starting point, choosing a somewhat smaller scale gives a correspondingly
-smaller prior mean. This scale is in the same physical units and on the same
-numerical scale as the observations (for example, ppt). It is not the
-dimensionless fractional <code class="docutils literal notranslate"><span class="pre">sigma</span></code> used by the pollution-event scaling
-options. <code class="docutils literal notranslate"><span class="pre">additive_sigma_prior</span></code> avoids overloading the historical,
-dimensionless <code class="docutils literal notranslate"><span class="pre">sigprior</span></code>; the latter remains available as a compatibility
-fallback for additive-sigma configurations.</p>
-</section>
-<section id="description-of-hbmcmc-output-file">
-<h2>Description of HBMCMC output file<a class="headerlink" href="#description-of-hbmcmc-output-file" title="Link to this heading">#</a></h2>
-<p>The legacy compatibility output from <code class="docutils literal notranslate"><span class="pre">run_hbmcmc</span></code> (and
-<code class="docutils literal notranslate"><span class="pre">fixedbasisMCMC(output_format=&quot;legacy&quot;)</span></code>) is an xarray Dataset with the
-following variables and attributes:</p>
-<p>HMCMC output data variables:</p>
-<ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">Y</span></code>: Measurements used in inversion</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">Yerror</span></code>: Measurement error</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">Ytime</span></code>: Measurement times</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">Yapriori</span></code>: Modelled measurements using a priori emissions</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">Ymod</span></code>: Posterior modelled mean measurements</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">Ymod95</span></code>: Posterior modelled 95% measurement uncertainty (2.5% and
-97.5%)</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">Ymod68</span></code>: Posterior modelled 68% measurement uncertainty (16% and
-84%)</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">YmodBC</span></code>: Posterior modelled mean boundary conditions</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">YaprioriBC</span></code>: Modelled BCs using a priori BCs</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">xtrace</span></code>: MCMC chain for basis functions</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">bctrace</span></code>: MCMC chain for boundary conditions</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">sigtrace</span></code>: MCMC chain for model error (currently iid)</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">siteindicator</span></code>: numerical value corresponding to each site, same
-size as Y.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">sitename</span></code>: name of site (in order or siteindicators)</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">site_lon</span></code>: Measurement site longitude</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">site_lat</span></code>: Measurement site latitude</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">aprioriflux</span></code>: Mean a priori flux for whole domain at NAME
-resolution. E.g.., if emissions file is monthly, and you are running
-for April and May it will take the mean emissions weighted by number
-of days in each month.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">meanflux</span></code>: Mean posterior flux for whole domain at NAME resolution</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">meanscaling</span></code>: Mean posterior scaling for whole domain at NAME
-resolution</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">basis_functions</span></code>: Basis functions used at NAME resolution</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">countrytotals</span></code>: Mean posterior total emissions for every country in
-domain country file</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">country68</span></code>: 68% uncertainty for country totals (16% and 84%)</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">country95</span></code>: 95% uncertainty for country totals (2.5% and 97.5%)</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">countrysd</span></code>: standard deviation for country totals</p></li>
-</ul>
-<p>Attributes:</p>
-<ul class="simple">
-<li><p>Units for all variables that need them</p></li>
-<li><p>Start date of inversion period</p></li>
-<li><p>End date of inversion period</p></li>
-<li><p>Type(s) of MCMC sampler used</p></li>
-<li><p>Prior PDF for emissions scaling</p></li>
-<li><p>Prior PDF for BC scaling</p></li>
-<li><p>Prior PDF for model error</p></li>
-<li><p>Creator</p></li>
-<li><p>Date created</p></li>
-<li><p>Convergence: Passed/Failed based on multiple chains (min 2) having
-Gelman-Rubin diagnostic &lt; 1.05</p></li>
-</ul>
+<section id="migrate-an-old-fixedbasis-workflow">
+<h2>Migrate an old fixedbasis workflow<a class="headerlink" href="#migrate-an-old-fixedbasis-workflow" title="Link to this heading">#</a></h2>
+<p>The direct <code class="docutils literal notranslate"><span class="pre">fixedbasisMCMC</span></code> and <code class="docutils literal notranslate"><span class="pre">inferpymc</span></code> implementation has been
+removed. Existing supported fixedbasis-style INI files can temporarily use
+<code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">-m</span> <span class="pre">openghg_inversions.hbmcmc.run_hbmcmc</span></code>; the wrapper translates
+them and always runs RHIME. It does not support <code class="docutils literal notranslate"><span class="pre">--legacy-fixedbasis</span></code> or
+generate new legacy templates.</p>
+<p>See <a class="reference internal" href="legacy_and_migration.html"><span class="doc">Migrate from HBMCMC to RHIME</span></a> for parameter mappings, batch-script changes,
+return types, legacy-format output, and interfaces with no current equivalent.</p>
 </section>
 </section>
 
@@ -957,20 +524,20 @@ Gelman-Rubin diagnostic &lt; 1.05</p></li>
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="legacy_and_migration.html"
+       href="installation.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">Legacy interfaces and migration</p>
+        <p class="prev-next-title">Install and set up OpenGHG Inversions</p>
       </div>
     </a>
     <a class="right-next"
-       href="../development/index.html"
+       href="conceptual_inversion.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">Developing OpenGHG Inversions</p>
+        <p class="prev-next-title">How an Atmospheric Inversion Works</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -993,26 +560,10 @@ Gelman-Rubin diagnostic &lt; 1.05</p></li>
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#what-do-you-need-to-run-an-inversion">What do you need to run an inversion?</a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#data-stored-in-openghg">Data stored in OpenGHG</a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#data-not-stored-in-openghg">Data not stored in OpenGHG</a></li>
-</ul>
-</li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#how-do-you-run-an-inversion">How do you run an inversion?</a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#method-1-python-script-or-notebook">Method 1: python script or notebook</a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#method-2-ini-file">Method 2: ini file</a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#method-3-as-a-job-on-blue-pebble">Method 3: as a job on Blue Pebble</a></li>
-</ul>
-</li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#getting-set-up-on-blue-pebble">Getting set up on Blue Pebble</a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#virtual-environment">Virtual environment</a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#example-batch-job-script">Example batch job script</a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#work-vs-home-directory">Work vs. Home directory</a></li>
-</ul>
-</li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#sample-ini-file">Sample .ini file</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#additive-sigma-likelihood">Additive-sigma likelihood</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#description-of-hbmcmc-output-file">Description of HBMCMC output file</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#required-data">Required data</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#run-a-standard-inversion">Run a standard inversion</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#run-on-a-slurm-cluster">Run on a SLURM cluster</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#migrate-an-old-fixedbasis-workflow">Migrate an old fixedbasis workflow</a></li>
 </ul>
   </nav></div>
 

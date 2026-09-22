@@ -332,10 +332,10 @@
   <section id="openghg-inversions-documentation">
 <h1>OpenGHG Inversions Documentation<a class="headerlink" href="#openghg-inversions-documentation" title="Link to this heading">#</a></h1>
 <p>OpenGHG Inversions is a Python package that is being developed as part of the [OpenGHG project](<a class="reference external" href="https://openghg.org">https://openghg.org</a>) with the aim of merging the data-processing and simulation modelling capabilities of OpenGHG with the atmospheric Bayesian inverse models developed by the Atmospheric Chemistry Research Group (ACRG) at the University of Bristol, UK.</p>
-<p>OpenGHG Inversions now uses RHIME as the modern runner for regional inversion
-workflows. The older fixedbasis and hierarchical Bayesian Markov chain Monte
-Carlo (HBMCMC) entry points remain only as compatibility context while existing
-scripts are migrated.</p>
+<p>OpenGHG Inversions uses RHIME for regional inversion workflows. Existing
+fixedbasis-style INI files may use a transitional wrapper which translates
+them to RHIME; the direct hierarchical Bayesian Markov chain Monte Carlo
+(HBMCMC) implementation has been removed.</p>
 <p>RHIME provides standard single-flux and multisector recipes with complete
 acquisition-to-output runners. Its advanced CO₂ model family provides CO₂-only
 and linked CO₂/O₂ recipes at prepared-input boundaries. Start with
@@ -347,13 +347,14 @@ model topology and workflow requirements rather than by gas name alone.</p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="usage/usage.html">Using OpenGHG Inversions</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="usage/installation.html">Install and set up OpenGHG Inversions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="usage/getting_started.html">Getting started with OpenGHG Inversions</a></li>
 <li class="toctree-l2"><a class="reference internal" href="usage/conceptual_inversion.html">How an Atmospheric Inversion Works</a></li>
 <li class="toctree-l2"><a class="reference internal" href="usage/model_recipes.html">Choose a RHIME model recipe</a></li>
 <li class="toctree-l2"><a class="reference internal" href="usage/standard_model_family.html">Standard RHIME model family</a></li>
 <li class="toctree-l2"><a class="reference internal" href="usage/co2_model_family.html">CO₂ model family</a></li>
 <li class="toctree-l2"><a class="reference internal" href="usage/running_and_validating.html">Running and validating inversions</a></li>
 <li class="toctree-l2"><a class="reference internal" href="usage/shared_scientific_concepts.html">Shared scientific concepts</a></li>
-<li class="toctree-l2"><a class="reference internal" href="usage/legacy_and_migration.html">Legacy interfaces and migration</a></li>
+<li class="toctree-l2"><a class="reference internal" href="usage/legacy_and_migration.html">Migrate from HBMCMC to RHIME</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="development/index.html">Developing OpenGHG Inversions</a><ul>

@@ -51,7 +51,7 @@
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="openghg_inversions.hbmcmc.components" href="openghg_inversions.hbmcmc.components.html" />
+    <link rel="next" title="openghg_inversions.inversion_data" href="openghg_inversions.inversion_data.html" />
     <link rel="prev" title="openghg_inversions.experimental.ramsden2022.model" href="openghg_inversions.experimental.ramsden2022.model.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
@@ -337,18 +337,7 @@
 </details></li>
 </ul>
 </details></li>
-<li class="toctree-l2 current active has-children"><a class="current reference internal" href="#">openghg_inversions.hbmcmc</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.components.html">openghg_inversions.hbmcmc.components</a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.hbmcmc.html">openghg_inversions.hbmcmc.hbmcmc</a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.hbmcmc_output.html">openghg_inversions.hbmcmc.hbmcmc_output</a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.hbmcmc_post_process.html">openghg_inversions.hbmcmc.hbmcmc_post_process</a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.inversion_pymc.html">openghg_inversions.hbmcmc.inversion_pymc</a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.inversionsetup.html">openghg_inversions.hbmcmc.inversionsetup</a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.post_process_inputs.html">openghg_inversions.hbmcmc.post_process_inputs</a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.preparation.html">openghg_inversions.hbmcmc.preparation</a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.run_hbmcmc.html">openghg_inversions.hbmcmc.run_hbmcmc</a></li>
-</ul>
-</details></li>
+<li class="toctree-l2 current active"><a class="current reference internal" href="#">openghg_inversions.hbmcmc</a></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.inversion_data.html">openghg_inversions.inversion_data</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.get_data.html">openghg_inversions.inversion_data.get_data</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.getters.html">openghg_inversions.inversion_data.getters</a></li>
@@ -494,92 +483,11 @@
 <div id="searchbox"></div>
                 <article class="bd-article">
                   
-  <section id="module-openghg_inversions.hbmcmc">
-<span id="openghg-inversions-hbmcmc"></span><h1>openghg_inversions.hbmcmc<a class="headerlink" href="#module-openghg_inversions.hbmcmc" title="Link to this heading">#</a></h1>
-<div class="toctree-wrapper compound">
-<ul>
-<li class="toctree-l1"><a class="reference internal" href="openghg_inversions.hbmcmc.components.html">openghg_inversions.hbmcmc.components</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.components.html#openghg_inversions.hbmcmc.components.make_offset"><code class="docutils literal notranslate"><span class="pre">make_offset()</span></code></a></li>
-</ul>
-</li>
-<li class="toctree-l1"><a class="reference internal" href="openghg_inversions.hbmcmc.hbmcmc.html">openghg_inversions.hbmcmc.hbmcmc</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.hbmcmc.html#openghg_inversions.hbmcmc.hbmcmc.fixedbasisMCMC"><code class="docutils literal notranslate"><span class="pre">fixedbasisMCMC()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.hbmcmc.html#openghg_inversions.hbmcmc.hbmcmc.rerun_output"><code class="docutils literal notranslate"><span class="pre">rerun_output()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.hbmcmc.html#openghg_inversions.hbmcmc.hbmcmc.update_log_normal_prior"><code class="docutils literal notranslate"><span class="pre">update_log_normal_prior()</span></code></a></li>
-</ul>
-</li>
-<li class="toctree-l1"><a class="reference internal" href="openghg_inversions.hbmcmc.hbmcmc_output.html">openghg_inversions.hbmcmc.hbmcmc_output</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.hbmcmc_output.html#openghg_inversions.hbmcmc.hbmcmc_output.check_and_create_folder"><code class="docutils literal notranslate"><span class="pre">check_and_create_folder()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.hbmcmc_output.html#openghg_inversions.hbmcmc.hbmcmc_output.copy_config_file"><code class="docutils literal notranslate"><span class="pre">copy_config_file()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.hbmcmc_output.html#openghg_inversions.hbmcmc.hbmcmc_output.define_output_filename"><code class="docutils literal notranslate"><span class="pre">define_output_filename()</span></code></a></li>
-</ul>
-</li>
-<li class="toctree-l1"><a class="reference internal" href="openghg_inversions.hbmcmc.hbmcmc_post_process.html">openghg_inversions.hbmcmc.hbmcmc_post_process</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.hbmcmc_post_process.html#functions">Functions</a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.hbmcmc_post_process.html#openghg_inversions.hbmcmc.hbmcmc_post_process.calculate_DIC"><code class="docutils literal notranslate"><span class="pre">calculate_DIC()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.hbmcmc_post_process.html#openghg_inversions.hbmcmc.hbmcmc_post_process.check_missing_dates"><code class="docutils literal notranslate"><span class="pre">check_missing_dates()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.hbmcmc_post_process.html#openghg_inversions.hbmcmc.hbmcmc_post_process.check_platform"><code class="docutils literal notranslate"><span class="pre">check_platform()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.hbmcmc_post_process.html#openghg_inversions.hbmcmc.hbmcmc_post_process.country_emissions"><code class="docutils literal notranslate"><span class="pre">country_emissions()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.hbmcmc_post_process.html#openghg_inversions.hbmcmc.hbmcmc_post_process.country_emissions_mult"><code class="docutils literal notranslate"><span class="pre">country_emissions_mult()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.hbmcmc_post_process.html#openghg_inversions.hbmcmc.hbmcmc_post_process.define_stations"><code class="docutils literal notranslate"><span class="pre">define_stations()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.hbmcmc_post_process.html#openghg_inversions.hbmcmc.hbmcmc_post_process.extract_hbmcmc_files"><code class="docutils literal notranslate"><span class="pre">extract_hbmcmc_files()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.hbmcmc_post_process.html#openghg_inversions.hbmcmc.hbmcmc_post_process.open_ds"><code class="docutils literal notranslate"><span class="pre">open_ds()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.hbmcmc_post_process.html#openghg_inversions.hbmcmc.hbmcmc_post_process.plot_abs_map"><code class="docutils literal notranslate"><span class="pre">plot_abs_map()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.hbmcmc_post_process.html#openghg_inversions.hbmcmc.hbmcmc_post_process.plot_country_timeseries"><code class="docutils literal notranslate"><span class="pre">plot_country_timeseries()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.hbmcmc_post_process.html#openghg_inversions.hbmcmc.hbmcmc_post_process.plot_diff_map"><code class="docutils literal notranslate"><span class="pre">plot_diff_map()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.hbmcmc_post_process.html#openghg_inversions.hbmcmc.hbmcmc_post_process.plot_map"><code class="docutils literal notranslate"><span class="pre">plot_map()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.hbmcmc_post_process.html#openghg_inversions.hbmcmc.hbmcmc_post_process.plot_map_mult"><code class="docutils literal notranslate"><span class="pre">plot_map_mult()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.hbmcmc_post_process.html#openghg_inversions.hbmcmc.hbmcmc_post_process.plot_multi_country_timeseries"><code class="docutils literal notranslate"><span class="pre">plot_multi_country_timeseries()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.hbmcmc_post_process.html#openghg_inversions.hbmcmc.hbmcmc_post_process.plot_scale_map"><code class="docutils literal notranslate"><span class="pre">plot_scale_map()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.hbmcmc_post_process.html#openghg_inversions.hbmcmc.hbmcmc_post_process.plot_timeseries"><code class="docutils literal notranslate"><span class="pre">plot_timeseries()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.hbmcmc_post_process.html#openghg_inversions.hbmcmc.hbmcmc_post_process.set_clevels"><code class="docutils literal notranslate"><span class="pre">set_clevels()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.hbmcmc_post_process.html#openghg_inversions.hbmcmc.hbmcmc_post_process.subplot_fmt"><code class="docutils literal notranslate"><span class="pre">subplot_fmt()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.hbmcmc_post_process.html#openghg_inversions.hbmcmc.hbmcmc_post_process.unbiasedDivergingCmap"><code class="docutils literal notranslate"><span class="pre">unbiasedDivergingCmap()</span></code></a></li>
-</ul>
-</li>
-<li class="toctree-l1"><a class="reference internal" href="openghg_inversions.hbmcmc.inversion_pymc.html">openghg_inversions.hbmcmc.inversion_pymc</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.inversion_pymc.html#openghg_inversions.hbmcmc.inversion_pymc.build_inferpymc_model"><code class="docutils literal notranslate"><span class="pre">build_inferpymc_model()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.inversion_pymc.html#openghg_inversions.hbmcmc.inversion_pymc.extend_inferencedata_predictive"><code class="docutils literal notranslate"><span class="pre">extend_inferencedata_predictive()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.inversion_pymc.html#openghg_inversions.hbmcmc.inversion_pymc.inferpymc"><code class="docutils literal notranslate"><span class="pre">inferpymc()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.inversion_pymc.html#openghg_inversions.hbmcmc.inversion_pymc.inferpymc_postprocessouts"><code class="docutils literal notranslate"><span class="pre">inferpymc_postprocessouts()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.inversion_pymc.html#openghg_inversions.hbmcmc.inversion_pymc.sample"><code class="docutils literal notranslate"><span class="pre">sample()</span></code></a></li>
-</ul>
-</li>
-<li class="toctree-l1"><a class="reference internal" href="openghg_inversions.hbmcmc.inversionsetup.html">openghg_inversions.hbmcmc.inversionsetup</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.inversionsetup.html#openghg_inversions.hbmcmc.inversionsetup.create_bc_sensitivity"><code class="docutils literal notranslate"><span class="pre">create_bc_sensitivity()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.inversionsetup.html#openghg_inversions.hbmcmc.inversionsetup.monthly_bcs"><code class="docutils literal notranslate"><span class="pre">monthly_bcs()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.inversionsetup.html#openghg_inversions.hbmcmc.inversionsetup.sigma_freq_indicies"><code class="docutils literal notranslate"><span class="pre">sigma_freq_indicies()</span></code></a></li>
-</ul>
-</li>
-<li class="toctree-l1"><a class="reference internal" href="openghg_inversions.hbmcmc.post_process_inputs.html">openghg_inversions.hbmcmc.post_process_inputs</a></li>
-<li class="toctree-l1"><a class="reference internal" href="openghg_inversions.hbmcmc.preparation.html">openghg_inversions.hbmcmc.preparation</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.preparation.html#openghg_inversions.hbmcmc.preparation.FixedBasisPreparedData"><code class="docutils literal notranslate"><span class="pre">FixedBasisPreparedData</span></code></a><ul>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.preparation.html#openghg_inversions.hbmcmc.preparation.FixedBasisPreparedData.averaging_period"><code class="docutils literal notranslate"><span class="pre">FixedBasisPreparedData.averaging_period</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.preparation.html#openghg_inversions.hbmcmc.preparation.FixedBasisPreparedData.basis_artifact_path"><code class="docutils literal notranslate"><span class="pre">FixedBasisPreparedData.basis_artifact_path</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.preparation.html#openghg_inversions.hbmcmc.preparation.FixedBasisPreparedData.basis_artifact_source"><code class="docutils literal notranslate"><span class="pre">FixedBasisPreparedData.basis_artifact_source</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.preparation.html#openghg_inversions.hbmcmc.preparation.FixedBasisPreparedData.basis_objects"><code class="docutils literal notranslate"><span class="pre">FixedBasisPreparedData.basis_objects</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.preparation.html#openghg_inversions.hbmcmc.preparation.FixedBasisPreparedData.fp_all"><code class="docutils literal notranslate"><span class="pre">FixedBasisPreparedData.fp_all</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.preparation.html#openghg_inversions.hbmcmc.preparation.FixedBasisPreparedData.fp_data"><code class="docutils literal notranslate"><span class="pre">FixedBasisPreparedData.fp_data</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.preparation.html#openghg_inversions.hbmcmc.preparation.FixedBasisPreparedData.inv_inputs"><code class="docutils literal notranslate"><span class="pre">FixedBasisPreparedData.inv_inputs</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.preparation.html#openghg_inversions.hbmcmc.preparation.FixedBasisPreparedData.is_column"><code class="docutils literal notranslate"><span class="pre">FixedBasisPreparedData.is_column</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.preparation.html#openghg_inversions.hbmcmc.preparation.FixedBasisPreparedData.sites"><code class="docutils literal notranslate"><span class="pre">FixedBasisPreparedData.sites</span></code></a></li>
-</ul>
-</li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.preparation.html#openghg_inversions.hbmcmc.preparation.prepare_fixedbasis_inversion_data"><code class="docutils literal notranslate"><span class="pre">prepare_fixedbasis_inversion_data()</span></code></a></li>
-</ul>
-</li>
-<li class="toctree-l1"><a class="reference internal" href="openghg_inversions.hbmcmc.run_hbmcmc.html">openghg_inversions.hbmcmc.run_hbmcmc</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.run_hbmcmc.html#openghg_inversions.hbmcmc.run_hbmcmc.build_parser"><code class="docutils literal notranslate"><span class="pre">build_parser()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.run_hbmcmc.html#openghg_inversions.hbmcmc.run_hbmcmc.extract_mcmc_type"><code class="docutils literal notranslate"><span class="pre">extract_mcmc_type()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.run_hbmcmc.html#openghg_inversions.hbmcmc.run_hbmcmc.fixed_basis_expected_param"><code class="docutils literal notranslate"><span class="pre">fixed_basis_expected_param()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.run_hbmcmc.html#openghg_inversions.hbmcmc.run_hbmcmc.fixedbasis_params_to_rhime"><code class="docutils literal notranslate"><span class="pre">fixedbasis_params_to_rhime()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.run_hbmcmc.html#openghg_inversions.hbmcmc.run_hbmcmc.hbmcmc_extract_param"><code class="docutils literal notranslate"><span class="pre">hbmcmc_extract_param()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.run_hbmcmc.html#openghg_inversions.hbmcmc.run_hbmcmc.main"><code class="docutils literal notranslate"><span class="pre">main()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.run_hbmcmc.html#openghg_inversions.hbmcmc.run_hbmcmc.validate_rhime_params"><code class="docutils literal notranslate"><span class="pre">validate_rhime_params()</span></code></a></li>
-</ul>
-</li>
-</ul>
-</div>
+  <section id="openghg-inversions-hbmcmc">
+<h1>openghg_inversions.hbmcmc<a class="headerlink" href="#openghg-inversions-hbmcmc" title="Link to this heading">#</a></h1>
+<p>The direct <code class="docutils literal notranslate"><span class="pre">fixedbasisMCMC</span></code> and <code class="docutils literal notranslate"><span class="pre">inferpymc</span></code> implementation was removed in
+0.8. Only <code class="docutils literal notranslate"><span class="pre">openghg_inversions.hbmcmc.run_hbmcmc</span></code> remains as a transitional
+old-INI-to-RHIME wrapper. See <a class="reference internal" href="../usage/legacy_and_migration.html"><span class="doc">Migrate from HBMCMC to RHIME</span></a>.</p>
 </section>
 
 
@@ -602,11 +510,11 @@
       </div>
     </a>
     <a class="right-next"
-       href="openghg_inversions.hbmcmc.components.html"
+       href="openghg_inversions.inversion_data.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">openghg_inversions.hbmcmc.components</p>
+        <p class="prev-next-title">openghg_inversions.inversion_data</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>

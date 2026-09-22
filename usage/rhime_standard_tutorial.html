@@ -316,6 +316,7 @@
   <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">Contents:</span></p>
 <ul class="current nav bd-sidenav">
 <li class="toctree-l1"><a class="reference internal" href="installation.html">Install and set up OpenGHG Inversions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="getting_started.html">Getting started with OpenGHG Inversions</a></li>
 <li class="toctree-l1"><a class="reference internal" href="conceptual_inversion.html">How an Atmospheric Inversion Works</a></li>
 <li class="toctree-l1"><a class="reference internal" href="model_recipes.html">Choose a RHIME model recipe</a></li>
 <li class="toctree-l1 current active has-children"><a class="reference internal" href="standard_model_family.html">Standard RHIME model family</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
@@ -341,10 +342,7 @@
 <li class="toctree-l2"><a class="reference internal" href="coherent_reduction.html">Coherent Gaussian Reduction</a></li>
 </ul>
 </details></li>
-<li class="toctree-l1 has-children"><a class="reference internal" href="legacy_and_migration.html">Legacy interfaces and migration</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l2"><a class="reference internal" href="getting_started.html">Getting started with OpenGHG Inversions</a></li>
-</ul>
-</details></li>
+<li class="toctree-l1"><a class="reference internal" href="legacy_and_migration.html">Migrate from HBMCMC to RHIME</a></li>
 </ul>
 </div>
 </nav></div>
@@ -712,7 +710,7 @@ resolved sampling options. It does not snapshot the OpenGHG object store or
 guarantee that the original acquisition query can be replayed unchanged.
 Supported <code class="docutils literal notranslate"><span class="pre">basic</span></code> and PARIS postprocessing uses every retained chain in this
 artifact, preserving <code class="docutils literal notranslate"><span class="pre">chain</span></code> and <code class="docutils literal notranslate"><span class="pre">draw</span></code> identity until a statistic or
-covariance is calculated. The <a class="reference internal" href="legacy_and_migration.html"><span class="doc">Legacy interfaces and migration</span></a> page describes the
+covariance is calculated. The <a class="reference internal" href="legacy_and_migration.html"><span class="doc">Migrate from HBMCMC to RHIME</span></a> page describes the
 chain-0 default of the older <code class="docutils literal notranslate"><span class="pre">run_hbmcmc.py</span></code> compatibility command.
 The companion-data tag is likewise not added to this output automatically:
 record <code class="docutils literal notranslate"><span class="pre">v1.0.0</span></code> with the run so the file-level manifest can be matched to the

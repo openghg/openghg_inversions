@@ -337,18 +337,7 @@
 </details></li>
 </ul>
 </details></li>
-<li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.hbmcmc.html">openghg_inversions.hbmcmc</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.components.html">openghg_inversions.hbmcmc.components</a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.hbmcmc.html">openghg_inversions.hbmcmc.hbmcmc</a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.hbmcmc_output.html">openghg_inversions.hbmcmc.hbmcmc_output</a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.hbmcmc_post_process.html">openghg_inversions.hbmcmc.hbmcmc_post_process</a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.inversion_pymc.html">openghg_inversions.hbmcmc.inversion_pymc</a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.inversionsetup.html">openghg_inversions.hbmcmc.inversionsetup</a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.post_process_inputs.html">openghg_inversions.hbmcmc.post_process_inputs</a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.preparation.html">openghg_inversions.hbmcmc.preparation</a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.run_hbmcmc.html">openghg_inversions.hbmcmc.run_hbmcmc</a></li>
-</ul>
-</details></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.html">openghg_inversions.hbmcmc</a></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.inversion_data.html">openghg_inversions.inversion_data</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.get_data.html">openghg_inversions.inversion_data.get_data</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.getters.html">openghg_inversions.inversion_data.getters</a></li>
@@ -563,7 +552,7 @@ the same basis is applied to each source when broadcasting occurs in downstream 
 <dl class="py method">
 <dt class="sig sig-object py" id="openghg_inversions.basis.basis_functions.FluxWeightedBasis.flat_basis">
 <span class="sig-name descname"><span class="pre">flat_basis</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#openghg_inversions.basis.basis_functions.FluxWeightedBasis.flat_basis" title="Link to this definition">#</a></dt>
-<dd><p>Return the legacy flattened basis view used by <code class="docutils literal notranslate"><span class="pre">fp_sensitivity</span></code>.</p>
+<dd><p>Return the flattened basis view used by legacy basis artifacts.</p>
 </dd></dl>
 
 <dl class="py attribute">
@@ -909,9 +898,8 @@ algorithm or legacy loading path.</p></li>
 <dt class="sig sig-object py" id="openghg_inversions.basis.basis_functions.flux_from_fp_all">
 <span class="sig-prename descclassname"><span class="pre">openghg_inversions.basis.basis_functions.</span></span><span class="sig-name descname"><span class="pre">flux_from_fp_all</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fp_all</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></span><a class="headerlink" href="#openghg_inversions.basis.basis_functions.flux_from_fp_all" title="Link to this definition">#</a></dt>
 <dd><p>Legacy adapter that builds representative flux from <code class="docutils literal notranslate"><span class="pre">fp_all</span></code>.</p>
-<p>This is a temporary compatibility helper for the current <code class="docutils literal notranslate"><span class="pre">fp_sensitivity</span></code>
-path. Remove it when issue #429 makes <code class="docutils literal notranslate"><span class="pre">BasisFunctions.sensitivity</span></code> the
-source of prepared sensitivities.</p>
+<p>This compatibility helper attaches current-run flux when loading a legacy
+flat basis artifact as retained <code class="docutils literal notranslate"><span class="pre">BasisFunctions</span></code>.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><p><strong>fp_all</strong> – Legacy merged-data dictionary containing <code class="docutils literal notranslate"><span class="pre">fp_all[&quot;.flux&quot;]</span></code> and

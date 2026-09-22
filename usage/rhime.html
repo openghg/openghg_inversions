@@ -317,6 +317,7 @@
   <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">Contents:</span></p>
 <ul class="current nav bd-sidenav">
 <li class="toctree-l1"><a class="reference internal" href="installation.html">Install and set up OpenGHG Inversions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="getting_started.html">Getting started with OpenGHG Inversions</a></li>
 <li class="toctree-l1"><a class="reference internal" href="conceptual_inversion.html">How an Atmospheric Inversion Works</a></li>
 <li class="toctree-l1"><a class="reference internal" href="model_recipes.html">Choose a RHIME model recipe</a></li>
 <li class="toctree-l1 current active has-children"><a class="reference internal" href="standard_model_family.html">Standard RHIME model family</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
@@ -342,10 +343,7 @@
 <li class="toctree-l2"><a class="reference internal" href="coherent_reduction.html">Coherent Gaussian Reduction</a></li>
 </ul>
 </details></li>
-<li class="toctree-l1 has-children"><a class="reference internal" href="legacy_and_migration.html">Legacy interfaces and migration</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l2"><a class="reference internal" href="getting_started.html">Getting started with OpenGHG Inversions</a></li>
-</ul>
-</details></li>
+<li class="toctree-l1"><a class="reference internal" href="legacy_and_migration.html">Migrate from HBMCMC to RHIME</a></li>
 </ul>
 </div>
 </nav></div>
@@ -627,8 +625,8 @@ native-to-reduced transformation, the caller must also supply the matching
 transformed prior and forward operator as one coherent preparation product.</p>
 <p>The minimum-error setting remains a floor on total marginal standard
 deviation, including aggregation error, while off-diagonal covariance is left
-unchanged. Legacy HBMCMC model and replay paths are not extended. Until the
-derived-error reconstruction follow-up lands, aggregation-error runs support
+unchanged. Until the derived-error reconstruction follow-up lands,
+aggregation-error runs support
 <code class="docutils literal notranslate"><span class="pre">output_format=&quot;inv_out&quot;</span></code> and <code class="docutils literal notranslate"><span class="pre">&quot;none&quot;</span></code>; <code class="docutils literal notranslate"><span class="pre">&quot;basic&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;paris&quot;</span></code>, and
 <code class="docutils literal notranslate"><span class="pre">&quot;legacy&quot;</span></code> are rejected rather than producing lossy error fields.</p>
 </section>
@@ -890,7 +888,8 @@ adapter.</p>
 deterministic observation-aligned <code class="docutils literal notranslate"><span class="pre">fixed_baseline</span></code> is deliberately rejected
 until a reusable semantic Baseline component defines common likelihood and
 output behavior; this follow-up is tracked in <a class="reference external" href="https://github.com/openghg/openghg_inversions/issues/550">issue #550</a>. New prepared-input
-features do not extend legacy HBMCMC model or output paths.</p>
+features do not change the transitional old-INI wrapper’s compatibility
+contract.</p>
 </section>
 <section id="config-files">
 <h2>Config Files<a class="headerlink" href="#config-files" title="Link to this heading">#</a></h2>
@@ -1079,12 +1078,10 @@ equivalent low-level builder argument) to retain <code class="docutils literal n
 fixed <code class="docutils literal notranslate"><span class="pre">bc</span></code> vector and no boundary-condition random variable. This is distinct
 from supplying a standalone baseline time series, which belongs to a separate
 baseline component.</p>
-<p>The legacy single-sector <code class="docutils literal notranslate"><span class="pre">inferpymc</span></code> / <code class="docutils literal notranslate"><span class="pre">fixedbasisMCMC</span></code> compatibility path
-does not gain multisector behavior. It now removes exact-zero <code class="docutils literal notranslate"><span class="pre">H</span></code> columns in
-the same way as the standard model: observation-space predictions are unchanged,
-but formerly unidentified entries in the full posterior <code class="docutils literal notranslate"><span class="pre">x</span></code> are reconstructed
-at their fixed values instead of being prior draws. Derived flux products that
-use those entries may therefore differ from earlier releases.</p>
+<p>The transitional <code class="docutils literal notranslate"><span class="pre">run_hbmcmc.py</span></code> wrapper supports only the standard
+single-sector RHIME recipe; it does not add multisector behaviour to an old INI
+file. Migrate source-resolved workflows to <code class="docutils literal notranslate"><span class="pre">run_rhime_multisector</span></code> and its
+canonical configuration vocabulary.</p>
 </section>
 <section id="correlated-positive-reduced-states">
 <h2>Correlated Positive Reduced States<a class="headerlink" href="#correlated-positive-reduced-states" title="Link to this heading">#</a></h2>
@@ -1240,20 +1237,14 @@ source/path when known. Legacy flat basis NetCDF files remain readable as an
 explicit compatibility fallback, and flat basis maps may still be emitted by
 compatibility output formats, but new workflows should save and load DataTree
 <code class="docutils literal notranslate"><span class="pre">BasisFunctions</span></code> artifacts instead of relying on flat-basis reconstruction.</p>
-<p><code class="docutils literal notranslate"><span class="pre">run_hbmcmc.py</span></code> is now a compatibility wrapper for old fixedbasis-style INI
-files. It translates legacy option names to the modern <code class="docutils literal notranslate"><span class="pre">run_rhime</span></code> API and
-uses the legacy filename convention. New scripts and new configs should use
-<code class="docutils literal notranslate"><span class="pre">openghg-inversions</span> <span class="pre">run-rhime</span></code> or <code class="docutils literal notranslate"><span class="pre">run_rhime(...)</span></code> directly.
-For temporary reproduction of historical products, pass
-<code class="docutils literal notranslate"><span class="pre">--legacy-fixedbasis</span></code> to <code class="docutils literal notranslate"><span class="pre">run_hbmcmc.py</span></code>. This explicit opt-in sends the
-untranslated INI parameters to <code class="docutils literal notranslate"><span class="pre">fixedbasisMCMC</span></code>; a missing output format or
-the old <code class="docutils literal notranslate"><span class="pre">hbmcmc</span></code> / <code class="docutils literal notranslate"><span class="pre">hbmcmc_postprocessing</span></code> names select the historical
-<code class="docutils literal notranslate"><span class="pre">inferpymc_postprocessouts</span></code> product and filename. An explicit
-<code class="docutils literal notranslate"><span class="pre">output_format=&quot;legacy&quot;</span></code> still selects the modern legacy-format adapter.
-The command prints a prominent warning, raises on unsupported options, and
-does not fall back to RHIME if the legacy run fails.
-Direct <code class="docutils literal notranslate"><span class="pre">fixedbasisMCMC(...)</span></code> calls are a temporary legacy Python path, not a
-wrapper around <code class="docutils literal notranslate"><span class="pre">run_rhime(...)</span></code>.</p>
+<p><code class="docutils literal notranslate"><span class="pre">run_hbmcmc.py</span></code> is a transitional compatibility wrapper for supported old
+fixedbasis-style INI files. It translates legacy option names to the modern
+<code class="docutils literal notranslate"><span class="pre">run_rhime</span></code> API and uses the legacy filename convention. It always executes
+RHIME: the direct <code class="docutils literal notranslate"><span class="pre">fixedbasisMCMC</span></code> / <code class="docutils literal notranslate"><span class="pre">inferpymc</span></code> implementation and the
+<code class="docutils literal notranslate"><span class="pre">--legacy-fixedbasis</span></code> option have been removed. New scripts and new configs
+should use <code class="docutils literal notranslate"><span class="pre">openghg-inversions</span> <span class="pre">run-rhime</span></code> or <code class="docutils literal notranslate"><span class="pre">run_rhime(...)</span></code> directly.
+See <a class="reference internal" href="legacy_and_migration.html"><span class="doc">Migrate from HBMCMC to RHIME</span></a> for the parameter map, return-type changes,
+and interfaces without a current equivalent.</p>
 </section>
 </section>
 
