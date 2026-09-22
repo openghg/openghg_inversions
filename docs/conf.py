@@ -53,6 +53,9 @@ napoleon_use_rtype = True
 # Mock heavy or optional imports to prevent autodoc import failures
 autodoc_mock_imports = ["cartopy"]
 autodoc_member_order = "bysource"
+autodoc_typehints = "description"
+autodoc_typehints_description_target = "documented_params"
+add_module_names = False
 python_maximum_signature_line_length = 88
 
 # Optionally, ignore missing references for certain types

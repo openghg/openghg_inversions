@@ -32,7 +32,26 @@ from openghg_inversions.utils import ncdf_encoding, write_netcdf_preserving_boun
 
 @dataclass
 class RhimeResult:
-    """Complete result of a standard or multisector RHIME recipe."""
+    """Complete result of a standard or multisector RHIME recipe.
+
+    Args:
+        run_spec: Top-level dates, sites, model, and output settings for the run.
+        model_spec: Scientific options used to construct the model.
+        output_spec: Output products, paths, and naming settings.
+        inv_inputs: Prepared inversion inputs supplied to the model.
+        idata: Posterior samples and diagnostics returned by the sampler.
+        output_metadata: Output paths, timing, and provenance accumulated during
+            the run. A new empty dictionary is used by default.
+        outputs: In-memory postprocessing products keyed by product name. A new
+            empty dictionary is used by default.
+        basis_functions: Basis operator and flux retained for postprocessing.
+        model: Concrete sampled PyMC model, when retained.
+        inv_out: Modern inversion output, when postprocessing created one.
+        sampler: Sampling configuration used for the run. A new
+            :class:`RhimeSampler` is used by default.
+        model_build_result: Model, variable-role manifest, and builder metadata,
+            when available.
+    """
 
     run_spec: RhimeRunSpec
     model_spec: RhimeModelSpec

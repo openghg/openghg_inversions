@@ -19,6 +19,15 @@ The autosummary entries must use fully qualified import paths. Sphinx reads
 the current signatures and summaries from the implementation, so do not copy
 those details into the landing page. Update the relevant docstring instead.
 
+Generated signatures keep annotations beside documented parameter
+descriptions, rather than crowding them into the signature itself. They also
+omit module prefixes from displayed object names; the fully qualified import
+path remains available in the page URL, module heading, and cross-reference
+target. These are site-wide presentation choices controlled by
+``autodoc_typehints``, ``autodoc_typehints_description_target``, and
+``add_module_names`` in ``docs/conf.py``. Change those settings only when the
+whole API reference should adopt a different style.
+
 Regenerate module pages
 -----------------------
 

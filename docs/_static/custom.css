@@ -19,6 +19,10 @@
 }
 
 /* Give generated class entries a stronger boundary than their nested members. */
+.bd-article section > dl.py.class {
+  margin-top: 2rem;
+}
+
 .bd-article section > dl.py.class > dt.sig {
   background: var(--pst-color-surface);
   border-top: 2px solid var(--pst-color-primary);
