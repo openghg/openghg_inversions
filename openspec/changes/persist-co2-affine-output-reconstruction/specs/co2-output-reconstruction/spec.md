@@ -7,7 +7,7 @@ Defines the identity-bound affine native-scaling and flux value required to repl
 ## ADDED Requirements
 
 ### Requirement: Affine native-scaling and flux map
-The system SHALL expose one public affine native-flux value, provisionally `AffineFluxMap`, containing labelled native mean \(m\), signed reference flux \(F\), and covariance-natural prolongation \(U^*\). Given retained state \(\alpha\) and authoritative reference state \(\alpha_{ref}\), its public `state_to_native` and `state_to_flux` operations SHALL evaluate
+The system SHALL expose one public affine native-flux value, `AffineFluxMap`, containing labelled native mean \(m\), signed reference flux \(F\), and covariance-natural prolongation \(U^*\). Given retained state \(\alpha\) and authoritative reference state \(\alpha_{ref}\), its public `state_to_native` and `state_to_flux` operations SHALL evaluate
 
 \[
 \bar x(\alpha)=m+U^*(\alpha-\alpha_{ref}),\qquad
@@ -110,7 +110,7 @@ The implementation SHALL be evaluated with direct dense calculations on small ca
 - **THEN** each reproduces its independently supplied retained-state conditional native scaling and flux without strategy-specific consumer logic
 
 ### Requirement: Owner-controlled specification
-All artifacts for this change SHALL remain `Draft` until the specification owner explicitly approves finalisation. Finalisation SHALL record the approval date and change all planning-artifact statuses together without substantive edits. After finalisation, these artifacts SHALL NOT be changed without the owner's explicit consent.
+All artifacts for this change are `Final` following specification-owner approval on 2026-09-22. They SHALL NOT be changed without the owner's explicit consent.
 
 #### Scenario: Discover a conflict after finalisation
 - **WHEN** implementation reveals a conflict with a finalised requirement or task

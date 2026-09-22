@@ -1,10 +1,10 @@
 # Tasks
 
-> Status: Draft. Finalisation requires explicit approval from the specification owner. After finalisation, this task list must not be modified without that owner's explicit consent.
+> Status: Final. Approved by the specification owner on 2026-09-22. This task list must not be modified without that owner's explicit consent.
 
 ## 1. Finalisation Gate
 
-- [ ] 1.1 Obtain explicit approval from the specification owner, settle the provisional public object name, record the approval date, change every planning-artifact status to `Final` without substantive edits, and verify all four artifacts have matching status before implementation starts
+- [x] 1.1 Obtained explicit approval from the specification owner, settled the public object name as `AffineFluxMap`, recorded the 2026-09-22 approval date, and changed every planning-artifact status to `Final` without substantive edits
 
 ## 2. PR 1 — Affine Native-Flux Value
 
