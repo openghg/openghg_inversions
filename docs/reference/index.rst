@@ -146,7 +146,6 @@ component boundary and when to copy a complete recipe instead.
    openghg_inversions.models.add_offset_component
    openghg_inversions.models.add_sigma_component
    openghg_inversions.models.add_site_sigma_gaussian_likelihood
-   openghg_inversions.models.add_inferpymc_likelihood_component
 
 Outputs and serialisation
 -------------------------
@@ -171,19 +170,12 @@ prepared inputs and inference data.
 Legacy compatibility APIs
 -------------------------
 
-The fixed-basis and hierarchical Bayesian Markov chain Monte Carlo (HBMCMC)
-interfaces remain for existing scripts and historical outputs. They are not
-the starting point for new workflows. See
-:doc:`legacy interfaces and migration </usage/legacy_and_migration>` before
-using these compatibility APIs.
-
-.. autosummary::
-   :nosignatures:
-
-   openghg_inversions.hbmcmc.hbmcmc.fixedbasisMCMC
-   openghg_inversions.hbmcmc.preparation.FixedBasisPreparedData
-   openghg_inversions.hbmcmc.preparation.prepare_fixedbasis_inversion_data
-   openghg_inversions.hbmcmc.inversion_pymc.inferpymc
+The direct fixed-basis and hierarchical Bayesian Markov chain Monte Carlo
+(HBMCMC) Python APIs were removed in 0.8. Existing fixedbasis-style INI files
+can use the transitional :doc:`HBMCMC compatibility wrapper
+<openghg_inversions.hbmcmc.run_hbmcmc>`, which translates supported options
+and calls RHIME. See :doc:`legacy interfaces and migration
+</usage/legacy_and_migration>` for replacements and unsupported interfaces.
 
 Detailed module reference
 -------------------------

@@ -18,11 +18,13 @@ implementation. OpenGHG Inversions no longer has a meaningful "non-fixed
 basis MCMC" alternative, so `fixedbasisMCMC` remains compatibility vocabulary
 only. New architecture and documentation continue to centre `run_rhime`.
 
-This work supersedes the assumption that the legacy path can be removed as
-soon as old configs execute through the current layered `run_rhime`
-implementation. The legacy implementation may be retired only after the
-canonical `run_rhime` path is demonstrably intelligible and modifiable by its
-target scientific users.
+This work superseded the assumption that the legacy path could be removed as
+soon as old configs executed through the then-layered `run_rhime`
+implementation. The canonical workflow is now visible and modifiable, and the
+remaining known active user of `--legacy-fixedbasis` has agreed to migrate.
+The retirement gate is therefore satisfied: the direct implementation is
+removed in 0.8, while old-INI translation remains. The 0.7.x release line is
+the final line containing exact direct execution.
 
 Delivery now proves reuse at two levels. First, a complete user-owned runner
 must be expressible by copying only the short orchestration spine and reusing
@@ -53,16 +55,16 @@ assemble several framework objects. This is the wrong boundary for the most
 important maintenance task: find the model, understand the complete run, make
 a scientific change, and rerun it.
 
-There are also three user-visible routes with overlapping vocabulary but
-different implementations:
+Before legacy retirement there were three user-visible routes with overlapping
+vocabulary but different implementations:
 
 1. `run_rhime(...)` and the modern CLI use the modern RHIME path.
 2. `run_hbmcmc.py` translates old INI files into modern RHIME parameters.
 3. Direct `fixedbasisMCMC(...)` calls use a distinct compatibility pipeline.
 
-That split is especially painful for users who require the historical HBMCMC
-output contract. A short-term compatibility escape hatch is required while
-the main workflow is made usable.
+That split was especially painful for users who required the historical HBMCMC
+output contract. W0 provided a short-term escape hatch while the main workflow
+was made usable; it is now retired with the direct implementation.
 
 ## Decision
 
@@ -162,9 +164,9 @@ preserving outer Dask laziness for sparse Dask inputs.
 
 ### 5. Compatibility is explicit
 
-`fixedbasisMCMC` is a time-limited compatibility implementation, not the name
-or conceptual basis of new design. Exact legacy execution must be selected
-explicitly and must never silently replace the default `run_rhime` route.
+Old fixedbasis-style INI translation is a time-limited compatibility boundary,
+not the name or conceptual basis of new design. The wrapper always selects
+`run_rhime`; exact direct legacy execution is no longer supported.
 
 ## Target code shape
 
@@ -265,6 +267,10 @@ layout, and usage instructions live in `docs/usage/customising_rhime.rst`.
 W0 merged in PR
 [#589](https://github.com/openghg/openghg_inversions/pull/589).
 
+This section records temporary 0.7.x behaviour. The remaining
+known active user agreed to migrate, so `--legacy-fixedbasis` and the direct
+executor were removed in 0.8. It is not a current compatibility promise.
+
 Add an explicit `--legacy-fixedbasis` option to `run_hbmcmc.py`.
 
 When selected, the script must:
@@ -304,10 +310,11 @@ W1 merged in PR
 tox -e py312-openghgCur -- -m rhime_contract
 ```
 
-It freezes the Python/config/CLI paths, prepared layouts, Dask boundaries,
-PyMC inventories, outputs, serialization, direct current legacy behavior, and
-an ordinary acquisition-to-output prior variation. W1 changed no production
-code.
+It froze the Python/config/CLI paths, prepared layouts, Dask boundaries, PyMC
+inventories, outputs, serialization, the then-current direct legacy behaviour,
+and an ordinary acquisition-to-output prior variation. The direct-legacy rows
+were removed from the maintained contract map when that implementation was
+retired. W1 changed no production code.
 
 ### W3a — expose the visible orchestration spine — complete
 
@@ -488,12 +495,13 @@ a caller-authored manifest, stage registry, or generic scientific schema. See
   stage.
 - Add one default-model walkthrough beside the advanced copied runner, the
   preferred likelihood-callable example, and the downstream package recipe.
-- Ask representative release-0.6-era users to review the workflow against the
-  usability checklist.
+- Record that the remaining known active user of the direct route agreed to
+  migrate; broader usability review remains useful but no longer blocks
+  deletion of an unowned second executor.
 - Update issues #416 and #432 to reflect this plan.
-- Retire the old direct implementation only after the acceptance gates below
-  pass. The W0 escape hatch remains until users no longer require it or an
-  explicitly supported older release is the agreed replacement.
+- Retire the old direct implementation and W0 escape hatch in 0.8. Keep
+  old-INI translation and the modern `legacy` output adapter as the supported
+  transition boundary.
 
 ## Dependencies and sequence
 
@@ -530,9 +538,9 @@ Before the umbrella issue is closed:
 
 - all current `run_rhime` and `run_rhime_multisector` tests pass;
 - all supported output-format tests pass;
-- W0 calls `inferpymc_postprocessouts(...)` exactly once for legacy HBMCMC
-  output requests and is equivalent to that direct formatter path for
-  representative supported cases;
+- the transitional `run_hbmcmc.py` wrapper is covered as a parser and
+  wrapper-to-RHIME route, including rejected removed flags, translated values,
+  configuration provenance, and historical filename convention;
 - stage-order tests cover retrieval, filtering, basis, input assembly,
   materialization, build, sampling, and output;
 - model-only tests cover variables, dimensions, priors, optional BC/offset,
@@ -588,9 +596,10 @@ Before the umbrella issue is closed:
    readability before it becomes a maintenance risk?
 4. Which RHIME-specific preparation helpers should move physically under the
    `rhime` package after the initial control-flow work?
-5. What exact scientific-user review group signs off the retirement gate?
-6. How long should `--legacy-fixedbasis` remain available after the main
-   workflow is accepted?
+
+Resolved retirement decisions: the remaining known active user supplied the
+required sign-off, the 0.7.x line is the final release line with
+`--legacy-fixedbasis`, and 0.8 removes the direct executor.
 
 ## Completion criteria
 
@@ -608,8 +617,9 @@ This priority is complete when:
    location.
 6. Lazy/eager and filesystem boundaries are explicit and tested.
 7. Modern output behaviour and prepared-input replay remain stable.
-8. Users needing exact current legacy output can select the W0 route while it
-   remains supported.
+8. Users with old INI files can use the transitional wrapper and modern
+   `legacy` formatter; exact direct legacy execution requires a pinned 0.7.x
+   environment.
 9. Representative scientific users judge the code usable for modification.
 
 ## Tracking
