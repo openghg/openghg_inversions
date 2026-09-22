@@ -514,7 +514,9 @@ $ python run_hbmcmc.py 2012-01-01 2013-01-01 -c hbmcmc_ch4_run.ini</p>
 end - End of date range to use for MCMC inversion (YYYY-MM-DD) (must be after start)
 -c / –config - configuration file. See config/ folder for templates and examples of this input file.
 –legacy-fixedbasis - explicitly run the deprecated fixedbasisMCMC/inferpymc
-compatibility path with untranslated legacy parameters. The default is run_rhime.</p>
+compatibility path with untranslated legacy parameters. The default is run_rhime.
+–all-chains - opt into using every sampled chain in derived outputs. By default,
+this compatibility entry point warns and continues to use chain 0.</p>
 <p>If start and end are specified these will supersede the values within the configuration file, if present.
 If -c option is not specified, this script will look for configuration file within the
 acrg_hbmcmc/ directory called <cite>hbmcmc_input.ini</cite>.</p>

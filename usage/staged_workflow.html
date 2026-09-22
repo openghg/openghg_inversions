@@ -527,10 +527,11 @@ preparation and sample manifests.  The latter binds the posterior to its
 prepared-input digest and scientific configuration.  The sampler settings
 restored into result metadata come from that sample manifest; sampler values
 in the postprocessing configuration cannot relabel an existing posterior.
-Current all-chain limitations of derived basic and
-PARIS products remain tracked separately; this stage does not change their
-scientific calculation.  <code class="docutils literal notranslate"><span class="pre">postprocess-manifest.json</span></code> is always written;
-the otherwise in-memory <code class="docutils literal notranslate"><span class="pre">basic</span></code> product is written as <code class="docutils literal notranslate"><span class="pre">basic.nc</span></code>.</p>
+Modern derived <code class="docutils literal notranslate"><span class="pre">basic</span></code> and PARIS products use every retained posterior
+chain. Derived trace quantities preserve their <code class="docutils literal notranslate"><span class="pre">chain</span></code> and <code class="docutils literal notranslate"><span class="pre">draw</span></code>
+identity until an explicitly requested statistic or covariance combines the
+samples. <code class="docutils literal notranslate"><span class="pre">postprocess-manifest.json</span></code> is always written; the otherwise
+in-memory <code class="docutils literal notranslate"><span class="pre">basic</span></code> product is written as <code class="docutils literal notranslate"><span class="pre">basic.nc</span></code>.</p>
 </dd>
 </dl>
 </section>

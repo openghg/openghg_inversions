@@ -620,6 +620,12 @@ RHIME outputs without exposing fixedbasis <code class="docutils literal notransl
 <dd><p>Save modern InversionOutput to NetCDF or Zarr.</p>
 </dd></dl>
 
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.postprocessing.inversion_output.InversionOutput.select_chain">
+<span class="sig-name descname"><span class="pre">select_chain</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">index</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Self" title="(in Python v3.14)"><span class="pre">Self</span></a></span></span><a class="headerlink" href="#openghg_inversions.postprocessing.inversion_output.InversionOutput.select_chain" title="Link to this definition">#</a></dt>
+<dd><p>Return a derived-output view containing one zero-based chain index.</p>
+</dd></dl>
+
 <dl class="py property">
 <dt class="sig sig-object py" id="openghg_inversions.postprocessing.inversion_output.InversionOutput.site_names">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">site_names</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span><a class="headerlink" href="#openghg_inversions.postprocessing.inversion_output.InversionOutput.site_names" title="Link to this definition">#</a></dt>
@@ -694,7 +700,7 @@ name of the group they came from.</p></li>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>xr.Dataset containing all data variables in the selected groups of the
-InferenceData</p>
+InferenceData. Native chain and draw dimensions are retained.</p>
 </dd>
 </dl>
 </dd></dl>
@@ -790,6 +796,7 @@ added by default, but can be changed by specifying sep.</p>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.postprocessing.inversion_output.InversionOutput.provenance"><code class="docutils literal notranslate"><span class="pre">InversionOutput.provenance</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.postprocessing.inversion_output.InversionOutput.run_metadata"><code class="docutils literal notranslate"><span class="pre">InversionOutput.run_metadata</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.postprocessing.inversion_output.InversionOutput.save"><code class="docutils literal notranslate"><span class="pre">InversionOutput.save()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.postprocessing.inversion_output.InversionOutput.select_chain"><code class="docutils literal notranslate"><span class="pre">InversionOutput.select_chain()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.postprocessing.inversion_output.InversionOutput.site_names"><code class="docutils literal notranslate"><span class="pre">InversionOutput.site_names</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.postprocessing.inversion_output.InversionOutput.species"><code class="docutils literal notranslate"><span class="pre">InversionOutput.species</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.postprocessing.inversion_output.InversionOutput.start_date"><code class="docutils literal notranslate"><span class="pre">InversionOutput.start_date</span></code></a></li>
