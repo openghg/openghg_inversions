@@ -5,7 +5,8 @@ RHIME is the only inversion implementation in current OpenGHG Inversions.
 The direct ``fixedbasisMCMC`` and ``inferpymc`` implementation was removed in
 0.8 after its remaining known active user agreed to migrate. The 0.7.x release
 line is the last line containing that implementation and the
-``--legacy-fixedbasis`` option.
+``--legacy-fixedbasis`` option. The ``openghg_inversions.hbmcmc`` namespace
+remains to host the transitional ``run_hbmcmc`` compatibility wrapper.
 
 This page is for users with fixedbasis-style Python calls, INI files, batch
 scripts, or HBMCMC outputs. For a new inversion, start with the
@@ -17,9 +18,11 @@ Chain handling in ``run_hbmcmc.py``
 The compatibility wrapper uses chain 0 for derived products by default,
 matching its historical output behaviour, and emits a warning when it does so.
 Pass ``--all-chains`` to use every retained chain in modern ``basic`` and PARIS
-products and in legacy-format summary fields. The modern inversion-output
-artifact retains the full-chain trace in either case. Pooling all chains for a
-summary does not by itself establish that the chains converged.
+products and in legacy-format summary fields. The wrapper does not save the
+modern inversion-output artifact by default. When requested with
+``save_inversion_output``, that artifact retains the full-chain trace in either
+case. Pooling all chains for a summary does not by itself establish that the
+chains converged.
 
 Choose a migration route
 ------------------------
@@ -146,11 +149,13 @@ RHIME. It creates the HBMCMC-compatible NetCDF product from the modern
 The deprecated output names ``hbmcmc`` and ``hbmcmc_postprocessing`` remain
 aliases for ``legacy``.
 
-The compatibility product retains familiar variables such as ``Y``,
-``Yerror``, ``Ymod``, ``xtrace``, ``bctrace``, ``sigtrace``, ``meanflux``,
-``meanscaling``, and country totals. It is a formatting compatibility promise,
-not a promise to reproduce the removed executor's exact trace or all its
-historical attributes.
+The compatibility product uses variables such as ``Yobs``, ``Yerror``,
+``Ymodmean``, ``Ymodmedian``, ``Ymodmode``, ``xtrace``, ``sigtrace``,
+``fluxmode``, ``scalingmean``, ``scalingmode``, and country totals. When
+boundary conditions are enabled, it also includes ``bctrace`` and the
+``YmodmeanBC``, ``YmodmedianBC``, and ``YmodmodeBC`` summaries. This is a
+formatting compatibility promise, not a promise to reproduce the removed
+executor's exact trace or all its historical attributes.
 
 Removed Python helper APIs
 --------------------------
