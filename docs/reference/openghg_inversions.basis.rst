@@ -10,6 +10,7 @@ openghg\_inversions.basis
 .. toctree::
    :maxdepth: 4
 
+   openghg_inversions.basis.affine_flux_map
    openghg_inversions.basis.algorithms
    openghg_inversions.basis.basis_functions
    openghg_inversions.basis.covariance_products
