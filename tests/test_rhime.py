@@ -59,6 +59,8 @@ from openghg_inversions.postprocessing._basis_products import (
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.postprocessing.make_outputs import (
     make_concentration_outputs,
+    make_country_outputs,
+    make_flux_outputs,
     observation_inputs_for_outputs,
 )
 from openghg_inversions.postprocessing.make_paris_outputs import PARIS_LATEST_COUNTRIES
@@ -703,6 +705,49 @@ def _modern_postprocessing_inv_out(
         },
         model_metadata={"species": "ch4", "domain": "EUROPE"},
     )
+
+
+def test_modern_derived_outputs_use_every_posterior_chain(europe_country_file: Path) -> None:
+    """Concentration, flux, and country means include every posterior chain."""
+    inv_out = _modern_postprocessing_inv_out(europe_country_file)
+    chain_zero_concentration = make_concentration_outputs(inv_out, stats=["mean"])
+    chain_zero_flux = make_flux_outputs(inv_out, stats=["mean"])
+    chain_zero_country = make_country_outputs(inv_out, country_file=europe_country_file, stats=["mean"])
+
+    groups: dict[str, xr.Dataset] = {}
+    for group_name in inv_out.trace.groups():
+        group = inv_out.trace[group_name]
+        if "chain" not in group.dims:
+            groups[group_name] = group
+            continue
+        chain_zero = group.isel(chain=0, drop=True)
+        chain_one = chain_zero.copy(deep=True)
+        if group_name in {"posterior", "posterior_predictive"}:
+            for name in chain_one.data_vars:
+                chain_one[name] = 3 * chain_one[name]
+        groups[group_name] = xr.concat(
+            [chain_zero, chain_one],
+            dim=xr.IndexVariable("chain", [0, 1]),
+        )
+    all_chains = replace(inv_out, trace=az.InferenceData(**groups))
+
+    concentration = make_concentration_outputs(all_chains, stats=["mean"])
+    flux = make_flux_outputs(all_chains, stats=["mean"])
+    country = make_country_outputs(all_chains, country_file=europe_country_file, stats=["mean"])
+
+    xr.testing.assert_allclose(
+        concentration["y_posterior_predictive_mean"],
+        2 * chain_zero_concentration["y_posterior_predictive_mean"],
+    )
+    xr.testing.assert_allclose(
+        flux["scaling_posterior_mean"],
+        2 * chain_zero_flux["scaling_posterior_mean"],
+    )
+    xr.testing.assert_allclose(
+        country["country_posterior_mean"],
+        2 * chain_zero_country["country_posterior_mean"],
+    )
+    assert all_chains.trace.posterior["x"].dims[:2] == ("chain", "draw")
 
 
 def _with_column_prior_factors(inv_out: InversionOutput) -> InversionOutput:
@@ -8374,6 +8419,45 @@ def test_standard_basic_output_uses_modern_postprocessing_without_legacy_adapter
     assert bundle.output_metadata["inversion_output_contract"] == "modern"
     assert bundle.output_metadata["postprocessing_input_contract"] == "modern_inversion_output"
     assert "basic" in bundle.outputs
+
+
+def test_run_hbmcmc_chain_selection_does_not_truncate_archived_trace(monkeypatch) -> None:
+    """Compatibility selection affects derived products, not the modern artifact."""
+    model_spec, _, run_spec = _minimal_output_specs(output_format="basic")
+    prepared = RhimePreparedInputs(
+        inv_inputs=_minimal_output_inv_inputs(),
+        basis_functions=_fake_basis_functions(),
+        site_metadata=_prepared_site_metadata(),
+    )
+    idata = _minimal_output_idata()
+    groups = {}
+    for group_name in idata.groups():
+        group = idata[group_name]
+        if "chain" in group.dims:
+            groups[group_name] = xr.concat(
+                [group.isel(chain=0, drop=True), group.isel(chain=0, drop=True)],
+                dim=xr.IndexVariable("chain", [0, 1]),
+            )
+        else:
+            groups[group_name] = group
+    bundle = _result_for_outputs(run_spec, az.InferenceData(**groups), model_spec=model_spec)
+    captured: dict[str, InversionOutput] = {}
+
+    def fake_basic_output(inv_out: InversionOutput, country_file: str | None = None) -> xr.Dataset:
+        captured["inv_out"] = inv_out
+        return xr.Dataset({"ok": ((), 1)})
+
+    monkeypatch.setattr("openghg_inversions.postprocessing.make_outputs.basic_output", fake_basic_output)
+
+    rhime_outputs.make_standard_rhime_outputs(
+        result=bundle,
+        prepared=prepared,
+        compatibility_output_chain=0,
+    )
+
+    assert bundle.inv_out is not None
+    assert bundle.inv_out.trace.posterior.sizes["chain"] == 2
+    assert captured["inv_out"].trace.posterior.sizes["chain"] == 1
 
 
 def test_standard_paris_output_uses_modern_postprocessing_without_legacy_adapter(monkeypatch) -> None:

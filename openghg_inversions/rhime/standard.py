@@ -459,6 +459,7 @@ def run_rhime(
     _compatibility_likelihood_provenance: Mapping[str, Any] | None = None,
     _compatibility_unused_sigma_settings: PollutionEventSettings | None = None,
     _compatibility_minimum_error_floor: bool = False,
+    compatibility_output_chain: int | None = None,
     **kwargs: Any,
 ) -> RhimeResult:
     """Run a standard single-sector RHIME inversion.
@@ -490,6 +491,8 @@ def run_rhime(
             for its historical disconnected sigma variable.
         _compatibility_minimum_error_floor: Private ``run_hbmcmc`` switch for
             the historical additive callback's minimum-error floor.
+        compatibility_output_chain: Private ``run_hbmcmc`` compatibility
+            selector for derived outputs. ``None`` uses every chain.
         **kwargs: RHIME run parameters using snake-case names, such as
             ``output_path``, ``output_name``, ``flux_sources``, and
             ``x_prior``. ``species`` names the primary gas or tracer used for
@@ -596,7 +599,14 @@ def run_rhime(
         _compatibility_likelihood_provenance=_compatibility_likelihood_provenance,
     )
     output_start = timer_start()
-    make_standard_rhime_outputs(result=result, prepared=prepared)
+    if compatibility_output_chain is None:
+        make_standard_rhime_outputs(result=result, prepared=prepared)
+    else:
+        make_standard_rhime_outputs(
+            result=result,
+            prepared=prepared,
+            compatibility_output_chain=compatibility_output_chain,
+        )
     log_timing(
         "rhime.output_total",
         timer_seconds(output_start),

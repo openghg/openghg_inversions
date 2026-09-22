@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
 from typing import Any
 
@@ -324,18 +325,19 @@ def test_run_hbmcmc_main_routes_to_run_rhime(monkeypatch: pytest.MonkeyPatch, tm
 
     monkeypatch.setattr(run_hbmcmc, "run_rhime", fake_run_rhime)
 
-    run_hbmcmc.main(
-        [
-            "2020-01-01",
-            "2020-02-01",
-            "-c",
-            str(config_file),
-            "--output-path",
-            str(output_path),
-            "--kwargs",
-            '{"nchain": 2}',
-        ]
-    )
+    with pytest.warns(UserWarning, match="--all-chains"):
+        run_hbmcmc.main(
+            [
+                "2020-01-01",
+                "2020-02-01",
+                "-c",
+                str(config_file),
+                "--output-path",
+                str(output_path),
+                "--kwargs",
+                '{"nchain": 2}',
+            ]
+        )
 
     copied_config = output_path / "CH4_EUROPE_legacy_run_2020-01-01.ini"
     expected_config = (
@@ -354,6 +356,26 @@ def test_run_hbmcmc_main_routes_to_run_rhime(monkeypatch: pytest.MonkeyPatch, tm
     assert seen["run_rhime_kwargs"]["output_filename_convention"] == "legacy"
     assert seen["run_rhime_kwargs"]["mismatch_model"] == "pollution_event"
     assert seen["run_rhime_kwargs"]["preserve_legacy_likelihood"] is True
+    assert seen["run_rhime_kwargs"]["compatibility_output_chain"] == 0
+
+
+def test_run_hbmcmc_all_chains_is_explicit_opt_in(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The compatibility CLI can use all chains without restoring the old executor."""
+    config_file = tmp_path / "hbmcmc.ini"
+    _fixedbasis_config(config_file)
+    seen: dict[str, Any] = {}
+
+    monkeypatch.setattr(run_hbmcmc, "_copy_config_file", lambda *args, **kwargs: None)
+    monkeypatch.setattr(run_hbmcmc, "run_rhime", lambda **kwargs: seen.update(kwargs))
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        run_hbmcmc.main(["-c", str(config_file), "--all-chains"])
+
+    assert not [warning for warning in caught if "chain-0-only" in str(warning.message)]
+    assert seen["compatibility_output_chain"] is None
 
 
 @pytest.mark.rhime_contract
@@ -493,6 +515,8 @@ def test_run_hbmcmc_parser_rejects_removed_legacy_fixedbasis_flag(tmp_path: Path
     parser = run_hbmcmc.build_parser()
 
     assert "--legacy-fixedbasis" not in parser.format_help()
+    assert parser.parse_args(["-c", str(tmp_path / "hbmcmc.ini")]).all_chains is False
+    assert parser.parse_args(["-c", str(tmp_path / "hbmcmc.ini"), "--all-chains"]).all_chains is True
     with pytest.raises(SystemExit):
         parser.parse_args(["-c", str(tmp_path / "hbmcmc.ini"), "--legacy-fixedbasis"])
 

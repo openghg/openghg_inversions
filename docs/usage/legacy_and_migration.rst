@@ -11,6 +11,16 @@ This page is for users with fixedbasis-style Python calls, INI files, batch
 scripts, or HBMCMC outputs. For a new inversion, start with the
 :doc:`model recipe chooser <model_recipes>` and :doc:`RHIME guide <rhime>`.
 
+Chain handling in ``run_hbmcmc.py``
+-----------------------------------
+
+The compatibility wrapper uses chain 0 for derived products by default,
+matching its historical output behaviour, and emits a warning when it does so.
+Pass ``--all-chains`` to use every retained chain in modern ``basic`` and PARIS
+products and in legacy-format summary fields. The modern inversion-output
+artifact retains the full-chain trace in either case. Pooling all chains for a
+summary does not by itself establish that the chains converged.
+
 Choose a migration route
 ------------------------
 
@@ -31,9 +41,9 @@ ones from ``openghg_inversions/config/templates/rhime_template.ini`` and run
 them with ``openghg-inversions run-rhime``.
 
 Batch scripts need only replace a direct source-tree path with the module form
-above. Start and end dates, ``-c``, ``--output-path``, and ``--kwargs`` remain
-available. The JSON supplied to ``--kwargs`` must be quoted as one shell
-argument, for example::
+above. Start and end dates, ``-c``, ``--output-path``, ``--kwargs``, and
+``--all-chains`` remain available. The JSON supplied to ``--kwargs`` must be
+quoted as one shell argument, for example::
 
    python -m openghg_inversions.hbmcmc.run_hbmcmc \
        2019-01-01 2019-02-01 -c my_inversion.ini \
