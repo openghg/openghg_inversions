@@ -1,0 +1,7 @@
+openghg\_inversions.basis.affine\_flux\_map
+=============================================
+
+.. automodule:: openghg_inversions.basis.affine_flux_map
+   :members:
+   :show-inheritance:
+   :undoc-members:

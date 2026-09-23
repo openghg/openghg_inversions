@@ -68,6 +68,7 @@ def test_standard_reader_path_avoids_detailed_co2_material() -> None:
     assert _toctree_entries("shared_scientific_concepts.rst") == [
         "grouped_basis_layout",
         "native_covariance",
+        "affine_flux_map",
         "coherent_reduction",
     ]
     assert "CO2 coherent-reduction model" not in concrete
