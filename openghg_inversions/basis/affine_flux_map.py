@@ -50,20 +50,18 @@ def _in_dimensionless_units(array: xr.DataArray, *, name: str) -> xr.DataArray:
 class AffineFluxMap:
     """Reconstruct retained-state-conditional native scaling and flux means.
 
-    The value borrows its xarray objects. Construction and ordinary access do
-    not copy, compute, persist, densify, or rechunk their payloads. A bucket
-    prolongation remains a :class:`BasisOperator`; supplied restrictions use
-    an explicit labelled native-by-state :class:`xarray.DataArray`.
-
     ``state_to_native`` evaluates ``m + U* (alpha - alpha_ref)`` and
     ``state_to_flux`` additionally multiplies the result by signed reference
     flux ``F``. The caller supplies the authoritative ``alpha_ref`` explicitly.
+
+    The value borrows its inputs and does not materialize their payloads on
+    construction. A bucket prolongation remains a :class:`BasisOperator`;
+    supplied restrictions use a labelled native-by-state :class:`xarray.DataArray`.
 
     Args:
         native_mean: Dimensionless native scaling mean ``m``.
         flux: Signed reference flux ``F`` containing every native dimension.
         prolongation: Bucket operator or explicit dimensionless ``U*``.
-        native_dims: Ordered dimensions of the native scaling state.
         state_dim: Retained-state dimension.
         uncertainty_scope: Fixed machine-readable scope of reconstructed data.
     """
@@ -71,9 +69,13 @@ class AffineFluxMap:
     native_mean: xr.DataArray
     flux: xr.DataArray
     prolongation: BucketBasisOperator | MultiSourceBucketBasisOperator | xr.DataArray
-    native_dims: tuple[str, ...]
     state_dim: str
     uncertainty_scope: Literal["retained_state_conditional"] = RETAINED_STATE_CONDITIONAL
+
+    @property
+    def native_dims(self) -> tuple[str, ...]:
+        """Return the ordered native dimensions labelled by ``native_mean``."""
+        return self.native_mean.dims
 
     def __post_init__(self) -> None:
         if not self.native_dims or len(set(self.native_dims)) != len(self.native_dims):
@@ -85,11 +87,6 @@ class AffineFluxMap:
         if self.uncertainty_scope != RETAINED_STATE_CONDITIONAL:
             raise ValueError(
                 f"AffineFluxMap uncertainty_scope must be {RETAINED_STATE_CONDITIONAL!r}."
-            )
-        if self.native_mean.dims != self.native_dims:
-            raise ValueError(
-                f"native_mean must have dimensions {self.native_dims!r}; "
-                f"got {self.native_mean.dims!r}."
             )
         for dim in self.native_dims:
             native_index = require_unique_index(self.native_mean, dim, name="native_mean")
@@ -210,7 +207,24 @@ class AffineFluxMap:
         *,
         reference_state: xr.DataArray,
     ) -> xr.DataArray:
-        """Return ``m + U* (alpha - alpha_ref)`` with sample dimensions preserved."""
+        """Reconstruct the retained-state-conditional native scaling mean.
+
+        Args:
+            state: Dimensionless retained state ``alpha`` with the map's exact
+                state labels. Non-state dimensions are sample dimensions.
+            reference_state: Dimensionless authoritative ``alpha_ref`` with
+                only the retained-state dimension and the same state labels.
+
+        Returns:
+            Native scaling ``m + U* (alpha - alpha_ref)`` in dimensionless
+            units, preserving all sample dimensions and carrying
+            ``retained_state_conditional`` scope. A sample dimension whose
+            name collides with a native or flux dimension is renamed.
+
+        Raises:
+            ValueError: If state labels or units are incompatible, or the
+                reference state has incompatible dimensions or labels.
+        """
         centred, prolongation = self._centred_state(state, reference_state)
         reconstructed = _in_dimensionless_units(self.native_mean, name="native_mean") + xr.dot(
             prolongation,
@@ -228,7 +242,24 @@ class AffineFluxMap:
         *,
         reference_state: xr.DataArray,
     ) -> xr.DataArray:
-        """Return ``F [m + U* (alpha - alpha_ref)]`` at the grid product boundary."""
+        """Reconstruct the retained-state-conditional signed flux mean.
+
+        Args:
+            state: Dimensionless retained state ``alpha`` with the map's exact
+                state labels. Non-state dimensions are sample dimensions.
+            reference_state: Dimensionless authoritative ``alpha_ref`` with
+                only the retained-state dimension and the same state labels.
+
+        Returns:
+            Signed flux ``F [m + U* (alpha - alpha_ref)]`` in the reference
+            flux units, preserving all sample dimensions and carrying
+            ``retained_state_conditional`` scope. A sample dimension whose
+            name collides with a native or flux dimension is renamed.
+
+        Raises:
+            ValueError: If state labels or units are incompatible, or the
+                reference state has incompatible dimensions or labels.
+        """
         native = self.state_to_native(state, reference_state=reference_state)
         native, flux = xr.align(native, self.flux, join="exact", copy=False)
         return (flux * native).rename("flux").assign_attrs(
