@@ -75,7 +75,7 @@ jobs:
         run: |
           uv pip install --system --upgrade setuptools wheel
           # Keep the matrix-selected OpenGHG target in the same uv resolution as the package install.
-          uv pip install --system "${{ matrix.openghg-version }}" -r requirements.txt -e . pytest pytest-xdist
+          uv pip install --system "${{ matrix.openghg-version }}" -e . pytest pytest-xdist
       - name: Prime ArviZ cache
         run: python -c "import arviz"
       - name: Run tests
