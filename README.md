@@ -214,8 +214,8 @@ Solutions to this are:
 ### Getting Started
 
 For current workflows, start with the
-[RHIME model recipe guide](docs/usage/model_recipes.rst). The older
-[primer](docs/getting_started.md) documents legacy interfaces and output fields.
+[RHIME model recipe guide](docs/usage/model_recipes.rst). For a broader
+overview, see the [getting-started guide](docs/usage/getting_started.rst).
 
 ### Modern RHIME entry points
 
