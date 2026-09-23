@@ -12,6 +12,7 @@ import xarray as xr
 
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.flux_sanitization import FluxNonFiniteMetadata, NONFINITE_POLICY_ZERO_FILL
+from openghg_inversions.postprocessing._basis_products import reconstruct_flux_stats
 from openghg_inversions.postprocessing import make_outputs
 from openghg_inversions.postprocessing.countries import Countries
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
@@ -27,6 +28,39 @@ def _flux_nonfinite_metadata(data: xr.DataArray | xr.Dataset) -> FluxNonFiniteMe
     metadata = FluxNonFiniteMetadata.from_attrs(data.attrs)
     assert metadata is not None
     return metadata
+
+
+def test_flux_reconstruction_does_not_guess_recipe_specific_state_dimension() -> None:
+    """Generic reconstruction requires recipes to normalize their state dimensions."""
+    basis = xr.DataArray(
+        [[1, 2]],
+        dims=("lat", "lon"),
+        coords={"lat": [50.0], "lon": [-2.0, -1.0]},
+    )
+    flux = xr.ones_like(basis, dtype=float).rename("flux")
+    basis_functions = BasisFunctions.from_flat_basis(
+        basis,
+        flux,
+        operator_kwargs={"state_dim": "region"},
+    )
+    stats = xr.Dataset(
+        {
+            "x_posterior_mean": ("inner_region", [2.0, 3.0]),
+            "x_posterior_quantile": (
+                ("inner_region", "quantile"),
+                [[1.5, 2.5], [2.5, 3.5]],
+            ),
+        },
+        coords={"inner_region": [0, 1], "quantile": [0.16, 0.84]},
+    )
+
+    with pytest.raises(ValueError, match="Could not find a basis state dimension"):
+        reconstruct_flux_stats(
+            basis_functions,
+            flux,
+            stats,
+            report_flux_on_inversion_grid=False,
+        )
 
 
 def test_multisector_flux_outputs_reconstruct_sector_and_total_flux(

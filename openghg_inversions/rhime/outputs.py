@@ -260,19 +260,38 @@ def _make_inversion_output(
     *,
     result: RhimeResult,
     prepared: RhimePreparedInputs,
+    variable_roles: Mapping[str, str] | None = None,
+    state_dimension_mapping: Mapping[str, str] | None = None,
 ) -> InversionOutput:
     """Create a modern InversionOutput without fixedbasis legacy adapters.
 
     Args:
         result: Sampled recipe result and model-owned output contract.
         prepared: Retained canonical inputs and basis functions.
+        variable_roles: Optional override for the semantic role-to-variable
+            mapping. Defaults to ``result.model_build_result.variable_roles``.
+            Nested RHIME passes a per-domain override here: its builder
+            declares tagged roles (``"flux_scale:outer"``, ``"flux_scale:inner"``,
+            etc.) so one shared trace can be viewed as two ordinary,
+            single-grid ``InversionOutput`` contracts.
+        state_dimension_mapping: Optional explicit mapping from the selected
+            trace state dimension to the retained basis operator state
+            dimension. Nested views use this to normalize selected trace
+            variables without modifying the shared sampled trace.
 
     Returns:
         Complete modern inversion-output artifact.
     """
     model_build_result = cast(RhimeModelBuildResult, result.model_build_result)
     model_metadata = cast(dict[str, Any], _structured_metadata(asdict(result.model_spec)))
-    model_metadata["variable_roles"] = dict(model_build_result.variable_roles)
+    model_metadata["variable_roles"] = (
+        dict(model_build_result.variable_roles) if variable_roles is None else dict(variable_roles)
+    )
+    if state_dimension_mapping is not None:
+        mapping = {str(key): str(value) for key, value in state_dimension_mapping.items()}
+        if set(mapping) != {"trace", "basis"}:
+            raise ValueError("State-dimension mappings require exactly the keys 'trace' and 'basis'.")
+        model_metadata["state_dimension_mapping"] = mapping
     builder_metadata = dict(model_build_result.metadata)
     for key in ("model_builder", "likelihood_builder", "likelihood_kwargs"):
         if key in result.output_metadata:

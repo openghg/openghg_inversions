@@ -1,0 +1,303 @@
+"""PARIS output construction for nested (dual-grid) RHIME runs.
+
+Nested RHIME preparation (:mod:`openghg_inversions.rhime.nested`) keeps the
+outer and inner domains as independently retained basis operators and flux
+grids -- see that module's docstring for why they are never merged onto one
+grid. The nested RHIME recipe adapts its sampled result into two ordinary,
+single-grid :class:`~openghg_inversions.postprocessing.inversion_output.InversionOutput`
+views. This module receives those domain views and reuses the existing
+single-grid PARIS/flux/country postprocessing against each one.
+
+The outer view already has its prior flux and footprint response masked to
+zero over the inner domain's extent
+(:func:`openghg_inversions.rhime.nested.mask_outer_merged_for_inner_domain`),
+so its flux and country totals never double-count inner-domain emissions.
+The inner view reports genuine native-resolution (e.g. 6 km) flux and
+country totals on its own grid; it is a separate product and is never
+regridded onto the outer grid for arithmetic.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import os
+from collections.abc import Iterable
+from pathlib import Path
+from typing import Any, Literal
+from uuid import uuid4
+
+import numpy as np
+import xarray as xr
+
+from openghg_inversions._country_file import load_country_dataset
+from openghg_inversions.postprocessing.countries import regrid_country_dataset
+from openghg_inversions.postprocessing.inversion_output import InversionOutput
+from openghg_inversions.postprocessing.make_paris_outputs import (
+    DEFAULT_PARIS_TEMPLATE_VERSION,
+    PARIS_LATEST_COUNTRIES,
+    ParisTemplateVersion,
+    infer_flux_frequency,
+    paris_concentration_outputs,
+    paris_flux_output,
+)
+from openghg_inversions.utils import get_country_file_path
+
+__all__ = [
+    "make_nested_paris_products",
+    "make_nested_paris_outputs",
+]
+
+_CACHE_SOURCE_SHA256_ATTR = "nested_country_source_sha256"
+_CACHE_GRID_SHA256_ATTR = "nested_country_target_grid_sha256"
+
+
+def _file_sha256(path: Path) -> str:
+    """Return a content digest for one country-definition source file."""
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _coordinate_sha256(*, lat: xr.DataArray, lon: xr.DataArray) -> str:
+    """Return an exact identity digest for the target spatial coordinates."""
+    digest = hashlib.sha256()
+    for name, coordinate in (("lat", lat), ("lon", lon)):
+        values = np.asarray(coordinate.values)
+        digest.update(name.encode())
+        digest.update(str(values.dtype).encode())
+        digest.update(str(values.shape).encode())
+        digest.update(np.ascontiguousarray(values).tobytes())
+    return digest.hexdigest()
+
+
+def _default_country_cache_dir() -> Path:
+    """Return the standard writable per-user cache for derived country grids."""
+    configured_root = os.environ.get("XDG_CACHE_HOME")
+    cache_root = Path(configured_root).expanduser() if configured_root else Path.home() / ".cache"
+    return cache_root / "openghg_inversions" / "country_grids"
+
+
+def _cached_country_grid_matches(
+    path: Path,
+    *,
+    source_sha256: str,
+    grid_sha256: str,
+    lat: xr.DataArray,
+    lon: xr.DataArray,
+) -> bool:
+    """Return whether a cached country grid matches its declared inputs."""
+    try:
+        with xr.open_dataset(path) as cached:
+            return (
+                cached.attrs.get(_CACHE_SOURCE_SHA256_ATTR) == source_sha256
+                and cached.attrs.get(_CACHE_GRID_SHA256_ATTR) == grid_sha256
+                and "lat" in cached.coords
+                and "lon" in cached.coords
+                and np.array_equal(cached["lat"].values, lat.values)
+                and np.array_equal(cached["lon"].values, lon.values)
+            )
+    except (OSError, ValueError):
+        return False
+
+
+def _regridded_inner_country_file(
+    *,
+    country_file: str | Path | None,
+    domain: str | None,
+    lat: xr.DataArray,
+    lon: xr.DataArray,
+    inner_domain_label: str,
+    cache_dir: str | Path | None,
+) -> Path:
+    """Return a country file resampled onto the inner grid, caching it on disk.
+
+    Fine (inner) nested domains rarely have a matching country-definition
+    file at their native resolution. Country/region membership does not
+    change between repeated runs for the same physical inner domain (e.g.
+    monthly array-job tasks), so the regridded file is cached by inner-domain
+    label plus source-file and target-coordinate identity. The default is a
+    per-user cache rather than the source file's directory. Concurrent writers
+    race safely because each writes to a unique temporary path and moves it
+    into place with an atomic rename.
+    """
+    source_path = Path(get_country_file_path(country_file=country_file, domain=domain))
+    target_dir = Path(cache_dir) if cache_dir is not None else _default_country_cache_dir()
+    source_sha256 = _file_sha256(source_path)
+    grid_sha256 = _coordinate_sha256(lat=lat, lon=lon)
+    identity = hashlib.sha256(f"{source_sha256}:{grid_sha256}".encode()).hexdigest()[:16]
+    safe_label = str(inner_domain_label).replace("/", "_")
+    target_path = target_dir / f"country_{safe_label}_{identity}_regridded.nc"
+    if target_path.exists() and _cached_country_grid_matches(
+        target_path,
+        source_sha256=source_sha256,
+        grid_sha256=grid_sha256,
+        lat=lat,
+        lon=lon,
+    ):
+        return target_path
+
+    countries_ds = load_country_dataset(source_path)
+    regridded = regrid_country_dataset(countries_ds, lat=lat, lon=lon)
+    regridded.attrs = dict(regridded.attrs)
+    regridded.attrs.update(
+        {
+            _CACHE_SOURCE_SHA256_ATTR: source_sha256,
+            _CACHE_GRID_SHA256_ATTR: grid_sha256,
+            "nested_country_source_path": str(source_path.resolve()),
+        }
+    )
+    target_dir.mkdir(parents=True, exist_ok=True)
+    tmp_path = target_dir / f".{target_path.name}.{os.getpid()}.{uuid4().hex}.tmp.nc"
+    try:
+        regridded.to_netcdf(tmp_path)
+        os.replace(tmp_path, target_path)
+    finally:
+        tmp_path.unlink(missing_ok=True)
+    return target_path
+
+
+def make_nested_paris_products(
+    outer_inv_out: InversionOutput,
+    inner_inv_out: InversionOutput,
+    *,
+    inner_domain_label: str,
+    country_file: str | Path | None = None,
+    inner_country_file: str | Path | None = None,
+    time_point: Literal["start", "midpoint"] = "midpoint",
+    report_mode: bool = False,
+    inversion_grid: bool = True,
+    flux_frequency: str | None = None,
+    obs_avg_period: str = "4h",
+    template_version: ParisTemplateVersion = DEFAULT_PARIS_TEMPLATE_VERSION,
+    country_selections: Iterable[str] | None = PARIS_LATEST_COUNTRIES,
+    country_file_cache_dir: str | Path | None = None,
+) -> tuple[xr.Dataset, xr.Dataset, xr.Dataset]:
+    """Build nested PARIS products from recipe-owned per-domain views.
+
+    Args:
+        outer_inv_out: Outer-domain view prepared by the nested RHIME recipe.
+        inner_inv_out: Inner-domain view prepared by the nested RHIME recipe.
+        inner_domain_label: Actual inner-domain identity stored on its product.
+        country_file: Country-definition file for the outer domain (as for
+            ordinary single-grid PARIS output).
+        inner_country_file: Optional country-definition file already at the
+            inner domain's native resolution. If not given, ``country_file``
+            (or the outer domain's default) is resampled onto the inner grid
+            and cached; see ``country_file_cache_dir``.
+        time_point, report_mode, inversion_grid, template_version,
+            country_selections: Forwarded to ``paris_flux_output`` /
+            ``paris_concentration_outputs`` for both domains.
+        flux_frequency: Flux interval frequency. If ``None``, it is inferred
+            independently for each domain's flux.
+        obs_avg_period: Averaging period recorded in concentration metadata.
+        country_file_cache_dir: Directory for the cached regridded inner
+            country file. Defaults to the standard per-user cache directory.
+
+    Returns:
+        ``(flux_outer, flux_inner, conc_outs)``. ``flux_outer`` matches the
+        single-grid PARIS flux schema exactly, with zero emissions inside the
+        inner extent, so it is never a source of double-counting against
+        ``flux_inner``. ``flux_inner`` reports genuine native-resolution flux
+        and country totals on the inner domain's own grid.
+    """
+    conc_outs = paris_concentration_outputs(
+        outer_inv_out,
+        report_mode=report_mode,
+        obs_avg_period=obs_avg_period,
+        template_version=template_version,
+    )
+
+    outer_flux_frequency = flux_frequency or infer_flux_frequency(outer_inv_out.flux)
+    flux_outer = paris_flux_output(
+        outer_inv_out,
+        country_file=country_file,
+        time_point=time_point,
+        report_mode=report_mode,
+        inversion_grid=inversion_grid,
+        flux_frequency=outer_flux_frequency,
+        template_version=template_version,
+        country_selections=country_selections,
+    )
+
+    resolved_inner_country_file = inner_country_file
+    if resolved_inner_country_file is None:
+        resolved_inner_country_file = _regridded_inner_country_file(
+            country_file=country_file,
+            domain=outer_inv_out.domain,
+            lat=inner_inv_out.flux["lat"],
+            lon=inner_inv_out.flux["lon"],
+            inner_domain_label=inner_domain_label,
+            cache_dir=country_file_cache_dir,
+        )
+
+    inner_flux_frequency = flux_frequency or infer_flux_frequency(inner_inv_out.flux)
+    flux_inner = paris_flux_output(
+        inner_inv_out,
+        country_file=resolved_inner_country_file,
+        time_point=time_point,
+        report_mode=report_mode,
+        inversion_grid=inversion_grid,
+        flux_frequency=inner_flux_frequency,
+        template_version=template_version,
+        country_selections=country_selections,
+    )
+    flux_inner = flux_inner.copy()
+    flux_inner.attrs = dict(flux_inner.attrs)
+    flux_inner.attrs["domain"] = inner_domain_label
+    flux_inner.attrs["inner_domain"] = inner_domain_label
+    flux_inner.attrs["spatial_resolution"] = inner_domain_label
+    flux_inner.attrs["nested_output_note"] = (
+        "Native-resolution inner-domain flux and country totals; never regridded "
+        "onto the outer/standard grid for arithmetic."
+    )
+
+    return flux_outer, flux_inner, conc_outs
+
+
+def make_nested_paris_outputs(
+    nested_result: Any,
+    *,
+    country_file: str | Path | None = None,
+    inner_country_file: str | Path | None = None,
+    time_point: Literal["start", "midpoint"] = "midpoint",
+    report_mode: bool = False,
+    inversion_grid: bool = True,
+    flux_frequency: str | None = None,
+    obs_avg_period: str = "4h",
+    template_version: ParisTemplateVersion = DEFAULT_PARIS_TEMPLATE_VERSION,
+    country_selections: Iterable[str] | None = PARIS_LATEST_COUNTRIES,
+    country_file_cache_dir: str | Path | None = None,
+) -> tuple[xr.Dataset, xr.Dataset, xr.Dataset]:
+    """Compatibility wrapper adapting a sampled nested result to PARIS products.
+
+    New recipe code should construct its domain ``InversionOutput`` views and
+    call :func:`make_nested_paris_products` directly. This wrapper preserves
+    the original public entry point for callers holding a ``NestedRhimeResult``.
+    """
+    from openghg_inversions.rhime.nested import make_nested_inversion_outputs
+
+    outer_inv_out, inner_inv_out = make_nested_inversion_outputs(nested_result)
+    prepared = nested_result.prepared_inputs
+    inner_domain_label = prepared.inner_domain_label or f"{outer_inv_out.domain}-inner"
+    resolved_cache_dir = country_file_cache_dir
+    if resolved_cache_dir is None:
+        output_path = nested_result.rhime_result.output_spec.output_path
+        if output_path is not None:
+            resolved_cache_dir = Path(output_path) / ".country_cache"
+    return make_nested_paris_products(
+        outer_inv_out,
+        inner_inv_out,
+        inner_domain_label=inner_domain_label,
+        country_file=country_file,
+        inner_country_file=inner_country_file,
+        time_point=time_point,
+        report_mode=report_mode,
+        inversion_grid=inversion_grid,
+        flux_frequency=flux_frequency,
+        obs_avg_period=obs_avg_period,
+        template_version=template_version,
+        country_selections=country_selections,
+        country_file_cache_dir=resolved_cache_dir,
+    )
