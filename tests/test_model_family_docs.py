@@ -138,7 +138,8 @@ def test_nested_reader_path_exposes_transport_grid_boundary() -> None:
     usage = _toctree_entries("usage.rst")
 
     assert "Nested-domain" in chooser
-    assert usage[3:6] == [
+    family_start = usage.index("standard_model_family")
+    assert usage[family_start : family_start + 3] == [
         "standard_model_family",
         "nested_domain_model_family",
         "co2_model_family",
