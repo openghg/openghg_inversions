@@ -36,7 +36,7 @@ representation precomputes :math:`FU_*`.
 
 Inputs are borrowed and may remain sparse or Dask-backed.  Constructing or
 inspecting the value does not copy, compute, persist, densify, or rechunk their
-payloads.  Native-grid arrays are introduced only by an explicit
+payloads.  Reconstructed native-grid outputs are created only by an explicit
 ``state_to_native`` or ``state_to_flux`` request.
 Application may add a lazy Dask rechunk layer for the contraction; it does
 not execute or persist that graph.

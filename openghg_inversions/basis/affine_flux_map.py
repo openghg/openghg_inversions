@@ -56,7 +56,8 @@ class AffineFluxMap:
 
     The value borrows its inputs and does not materialize their payloads on
     construction. A bucket prolongation remains a :class:`BasisOperator`;
-    supplied restrictions use a labelled native-by-state :class:`xarray.DataArray`.
+    for a supplied restriction, the resulting exact ``U*`` is a labelled
+    native-by-state :class:`xarray.DataArray`.
 
     Args:
         native_mean: Dimensionless native scaling mean ``m``.
@@ -217,14 +218,14 @@ class AffineFluxMap:
 
         Args:
             state: Dimensionless retained state ``alpha`` with the map's exact
-                state labels. Non-state dimensions are sample dimensions.
+                state labels. Other dimensions are state-input axes.
             reference_state: Dimensionless authoritative ``alpha_ref`` with
                 only the retained-state dimension and the same state labels.
 
         Returns:
             Native scaling ``m + U* (alpha - alpha_ref)`` in dimensionless
-            units, preserving all sample dimensions and carrying
-            ``retained_state_conditional`` scope. A sample dimension whose
+            units, preserving all non-state axes and carrying
+            ``retained_state_conditional`` scope. A state-input axis whose
             name collides with a native or flux dimension is renamed to
             ``state_<axis>`` or a numbered variant if that name is taken.
 
@@ -253,14 +254,14 @@ class AffineFluxMap:
 
         Args:
             state: Dimensionless retained state ``alpha`` with the map's exact
-                state labels. Non-state dimensions are sample dimensions.
+                state labels. Other dimensions are state-input axes.
             reference_state: Dimensionless authoritative ``alpha_ref`` with
                 only the retained-state dimension and the same state labels.
 
         Returns:
             Signed flux ``F [m + U* (alpha - alpha_ref)]`` in the reference
-            flux units, preserving all sample dimensions and carrying
-            ``retained_state_conditional`` scope. A sample dimension whose
+            flux units, preserving all non-state axes and carrying
+            ``retained_state_conditional`` scope. A state-input axis whose
             name collides with a native or flux dimension is renamed to
             ``state_<axis>`` or a numbered variant if that name is taken.
 
