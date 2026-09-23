@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, is_dataclass, replace
+import hashlib
 from numbers import Integral
 from pathlib import Path
 from typing import Any
@@ -33,6 +34,7 @@ from openghg_inversions.observation_error import (
     AggregationError,
     resolve_aggregation_error,
 )
+from openghg_inversions.postprocessing.inversion_output import InversionOutput
 
 from ._model_building import ForwardModelTerms, add_rhime_likelihood
 from .builders import (
@@ -42,7 +44,7 @@ from .builders import (
     validate_model_build_result,
 )
 from .materialization import materialize_pymc_inputs
-from .outputs import RhimeResult
+from .outputs import RhimeResult, _make_inversion_output
 from .params import RhimeRunnerSetup, params_from_config, resolve_rhime_options
 from .preparation import (
     assemble_rhime_inputs,
@@ -70,12 +72,19 @@ __all__ = [
     "build_nested_rhime_model_result",
     "align_inner_merged_to_outer_observations",
     "combine_nested_rhime_inputs",
+    "make_nested_inversion_outputs",
     "mask_outer_merged_for_inner_domain",
     "nested_model_input_names",
     "prepare_nested_rhime_inputs",
     "run_rhime_nested",
     "run_rhime_nested_from_prepared_inputs",
 ]
+
+
+_PREPARED_OVERLAP_MASK_POLICY = "caller_supplied_pre_masked_outer_sensitivity"
+_RETRIEVAL_OVERLAP_MASK_POLICY = (
+    "outer_footprint_and_flux_zeroed_within_union_of_inner_site_rectangular_extents_before_basis_projection"
+)
 
 
 @dataclass(frozen=True)
@@ -86,7 +95,8 @@ class NestedRhimePreparedInputs:
     ``combined`` retains the outer basis for the ordinary RHIME validation
     contract and adds the aligned inner sensitivity as ``H_inner``.  The inner
     basis remains available explicitly on ``inner`` and is never coerced onto
-    the outer grid.
+    the outer grid. ``outer_overlap_mask_policy`` records how that support was
+    removed so saved per-domain artifacts remain scientifically interpretable.
     """
 
     outer: RhimePreparedInputs
@@ -96,6 +106,7 @@ class NestedRhimePreparedInputs:
     inner_state_dim: str = "inner_region"
     inner_domain_label: str | None = None
     outer_overlap_masked: bool = False
+    outer_overlap_mask_policy: str = _PREPARED_OVERLAP_MASK_POLICY
 
     def validated(self) -> NestedRhimePreparedInputs:
         """Revalidate both native preparations and rebuild their combination."""
@@ -106,6 +117,7 @@ class NestedRhimePreparedInputs:
             inner_state_dim=self.inner_state_dim,
             inner_domain_label=self.inner_domain_label,
             outer_overlap_masked=self.outer_overlap_masked,
+            outer_overlap_mask_policy=self.outer_overlap_mask_policy,
         )
 
 
@@ -170,6 +182,113 @@ class NestedRhimeResult:
     def output_metadata(self) -> dict[str, Any]:
         """Return RHIME timing and nested-domain output metadata."""
         return self.rhime_result.output_metadata
+
+
+def _domain_variable_roles(all_roles: Mapping[str, str], *, tag: str) -> dict[str, str]:
+    """Return one nested domain's role mapping without its tag suffix."""
+    roles: dict[str, str] = {}
+    for role, name in all_roles.items():
+        if ":" in role:
+            base_role, role_tag = role.split(":", 1)
+            if role_tag == tag:
+                roles[base_role] = name
+        else:
+            roles[role] = name
+    return roles
+
+
+def _grid_identity(prepared: RhimePreparedInputs) -> dict[str, Any]:
+    """Return durable coordinate identity and extent metadata for one grid."""
+    flux = prepared.basis_functions.flux
+    missing = [name for name in ("lat", "lon") if name not in flux.coords]
+    if missing:
+        raise ValueError(f"Nested basis flux is missing spatial coordinate(s): {missing!r}.")
+
+    digest = hashlib.sha256()
+    identity: dict[str, Any] = {}
+    for name in ("lat", "lon"):
+        values = np.asarray(flux[name].values)
+        digest.update(name.encode())
+        digest.update(str(values.dtype).encode())
+        digest.update(str(values.shape).encode())
+        digest.update(np.ascontiguousarray(values).tobytes())
+        identity[name] = {
+            "size": int(values.size),
+            "minimum": float(np.min(values)),
+            "maximum": float(np.max(values)),
+        }
+    identity["coordinate_sha256"] = digest.hexdigest()
+    return identity
+
+
+def _nested_domain_artifact_metadata(
+    nested_result: NestedRhimeResult,
+    *,
+    view: str,
+) -> dict[str, Any]:
+    """Describe nested identities, grids, and masking in one durable view."""
+    prepared = nested_result.prepared_inputs
+    outer_domain = nested_result.model_spec.domain
+    inner_domain = prepared.inner_domain_label or f"{outer_domain}-inner"
+    inner_grid = _grid_identity(prepared.inner)
+    return {
+        "view": view,
+        "view_domain": outer_domain if view == "outer" else inner_domain,
+        "outer_domain": outer_domain,
+        "inner_domain": inner_domain,
+        "outer_grid": _grid_identity(prepared.outer),
+        "inner_grid": inner_grid,
+        "outer_support": {
+            "overlap_masked": prepared.outer_overlap_masked,
+            "mask_policy": prepared.outer_overlap_mask_policy,
+            "mask_extent_source": "inner_grid",
+            "inner_extent": {
+                "latitude": [inner_grid["lat"]["minimum"], inner_grid["lat"]["maximum"]],
+                "longitude": [inner_grid["lon"]["minimum"], inner_grid["lon"]["maximum"]],
+            },
+        },
+    }
+
+
+def make_nested_inversion_outputs(
+    nested_result: NestedRhimeResult,
+) -> tuple[InversionOutput, InversionOutput]:
+    """Adapt a nested RHIME result into durable outer and inner output views."""
+    rhime_result = nested_result.rhime_result
+    build_result = rhime_result.model_build_result
+    if build_result is None:
+        raise ValueError("Nested RHIME result is missing its model build result.")
+
+    prepared = nested_result.prepared_inputs
+    outer_trace_dim = str(build_result.metadata["outer_state_dimension"])
+    inner_trace_dim = str(build_result.metadata["inner_state_dimension"])
+    outer_inv_out = _make_inversion_output(
+        result=rhime_result,
+        prepared=prepared.outer,
+        variable_roles=_domain_variable_roles(build_result.variable_roles, tag="outer"),
+        state_dimension_mapping={
+            "trace": outer_trace_dim,
+            "basis": prepared.outer.basis_functions.operator.meta.state_dim,
+        },
+    )
+    inner_inv_out = _make_inversion_output(
+        result=rhime_result,
+        prepared=prepared.inner,
+        variable_roles=_domain_variable_roles(build_result.variable_roles, tag="inner"),
+        state_dimension_mapping={
+            "trace": inner_trace_dim,
+            "basis": prepared.inner.basis_functions.operator.meta.state_dim,
+        },
+    )
+    outer_inv_out.output_metadata["nested_domain"] = _nested_domain_artifact_metadata(
+        nested_result,
+        view="outer",
+    )
+    inner_inv_out.output_metadata["nested_domain"] = _nested_domain_artifact_metadata(
+        nested_result,
+        view="inner",
+    )
+    return outer_inv_out, inner_inv_out
 
 
 def _state_dimension(sensitivity: xr.DataArray, *, label: str) -> str:
@@ -289,6 +408,7 @@ def combine_nested_rhime_inputs(
     inner_state_dim: str = "inner_region",
     inner_domain_label: str | None = None,
     outer_overlap_masked: bool = False,
+    outer_overlap_mask_policy: str = _PREPARED_OVERLAP_MASK_POLICY,
 ) -> NestedRhimePreparedInputs:
     """Combine independently prepared native grids at the sensitivity boundary.
 
@@ -302,13 +422,17 @@ def combine_nested_rhime_inputs(
     from the outer merged data before preparing ``outer`` and explicitly set
     ``outer_overlap_masked=True``. The retrieval-backed nested runner performs
     that masking itself. Requiring the acknowledgement here prevents ordinary,
-    overlapping prepared inputs from being combined silently.
+    overlapping prepared inputs from being combined silently. Prepared-input
+    callers may also provide a more specific ``outer_overlap_mask_policy``;
+    otherwise the durable metadata records that the mask was caller supplied.
     """
     if outer_overlap_masked is not True:
         raise ValueError(
             "Nested prepared inputs require an outer sensitivity with the inner-domain overlap "
             "already removed; pass outer_overlap_masked=True only after masking the outer merged data."
         )
+    if not isinstance(outer_overlap_mask_policy, str) or not outer_overlap_mask_policy.strip():
+        raise ValueError("`outer_overlap_mask_policy` must describe how outer support was removed.")
     outer = outer.validated()
     inner = inner.validated()
     if outer.sites != inner.sites:
@@ -382,6 +506,7 @@ def combine_nested_rhime_inputs(
         inner_state_dim=inner_state_dim,
         inner_domain_label=inner_domain_label,
         outer_overlap_masked=True,
+        outer_overlap_mask_policy=outer_overlap_mask_policy,
     )
 
 
@@ -761,6 +886,7 @@ def prepare_nested_rhime_inputs(
         time_tolerance=time_tolerance,
         inner_domain_label=inner_domain_name,
         outer_overlap_masked=True,
+        outer_overlap_mask_policy=_RETRIEVAL_OVERLAP_MASK_POLICY,
     )
     log_timing(
         "rhime.prepare_nested_inputs",
@@ -1011,18 +1137,13 @@ def build_nested_rhime_model_result(
 def _write_nested_paris_outputs(nested_result: NestedRhimeResult) -> None:
     """Create and persist PARIS outputs (outer flux, inner flux, concentration).
 
-    Nested RHIME never builds a single combined ``InversionOutput``: the
-    outer and inner domains keep distinct grids, so
-    :func:`openghg_inversions.postprocessing.nested_paris_outputs.make_nested_paris_outputs`
-    builds two single-grid views of the shared trace instead. This mirrors
-    :func:`openghg_inversions.rhime.outputs.make_standard_rhime_outputs`, but
-    writes an additional ``*_flux_inner`` product for the native-resolution
-    inner domain alongside the ordinary flux and concentration products.
+    Nested RHIME never builds a single combined ``InversionOutput``: this
+    recipe owns two single-grid views of the shared trace because the domains
+    retain distinct grids. It passes those views down to product-neutral
+    postprocessing and writes an additional ``*_flux_inner`` product for the
+    native-resolution inner domain.
     """
-    from openghg_inversions.postprocessing.nested_paris_outputs import (
-        make_nested_inversion_outputs,
-        make_nested_paris_outputs,
-    )
+    from openghg_inversions.postprocessing.nested_paris_outputs import make_nested_paris_products
     from openghg_inversions.utils import write_netcdf_preserving_bounds_attrs
 
     from .outputs import _define_derived_output_filename, _resolve_output_path, _save_requested_trace
@@ -1036,8 +1157,13 @@ def _write_nested_paris_outputs(nested_result: NestedRhimeResult) -> None:
 
     obs_avg_period = prepared.outer.averaging_period[0] or "0h"
     paris_kwargs = dict(output_spec.paris_postprocessing_kwargs or {})
-    flux_outer, flux_inner, conc_outs = make_nested_paris_outputs(
-        nested_result,
+    if "country_file_cache_dir" not in paris_kwargs and output_spec.output_path is not None:
+        paris_kwargs["country_file_cache_dir"] = Path(output_spec.output_path) / ".country_cache"
+    outer_inv_out, inner_inv_out = make_nested_inversion_outputs(nested_result)
+    flux_outer, flux_inner, conc_outs = make_nested_paris_products(
+        outer_inv_out,
+        inner_inv_out,
+        inner_domain_label=inner_domain_label,
         country_file=output_spec.country_file,
         obs_avg_period=obs_avg_period,
         **paris_kwargs,
@@ -1080,7 +1206,6 @@ def _write_nested_paris_outputs(nested_result: NestedRhimeResult) -> None:
         result.output_metadata["paris_flux_path"] = str(flux_file)
         result.output_metadata["paris_flux_inner_path"] = str(flux_inner_file)
 
-    outer_inv_out, inner_inv_out = make_nested_inversion_outputs(nested_result)
     result.inv_out = outer_inv_out
     inv_out_path = _resolve_output_path(
         output_spec.save_inversion_output,
@@ -1121,8 +1246,7 @@ def run_rhime_nested_from_prepared_inputs(
             "retains both native bases and labelled posterior blocks; other single-grid "
             "InversionOutput writers must not be used because they would discard or mis-grid the "
             "inner posterior. PARIS output is supported via two single-grid `InversionOutput` "
-            "views built by `openghg_inversions.postprocessing.nested_paris_outputs` -- see "
-            "`make_nested_paris_outputs`."
+            "views built beside the nested recipe and passed to nested PARIS postprocessing."
         )
     if run_spec.split_by_sectors or len(run_spec.model.sectors) != 1:
         raise ValueError("Nested RHIME currently requires a standard one-sector run specification.")
@@ -1155,12 +1279,15 @@ def run_rhime_nested_from_prepared_inputs(
         likelihood_builder=likelihood_builder,
         likelihood_kwargs=likelihood_kwargs,
     )
+    nested_result = NestedRhimeResult(rhime_result=result, prepared_inputs=prepared_inputs)
     result.output_metadata["nested_domains"] = {
         "outer_state_dimension": build_result.metadata["outer_state_dimension"],
         "inner_state_dimension": build_result.metadata["inner_state_dimension"],
         "inner_domain_label": prepared_inputs.inner_domain_label,
+        "outer_overlap_mask_policy": prepared_inputs.outer_overlap_mask_policy,
+        "outer_grid": _grid_identity(prepared_inputs.outer),
+        "inner_grid": _grid_identity(prepared_inputs.inner),
     }
-    nested_result = NestedRhimeResult(rhime_result=result, prepared_inputs=prepared_inputs)
     if run_spec.output.output_format == "paris":
         _write_nested_paris_outputs(nested_result)
     return nested_result

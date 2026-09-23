@@ -19,15 +19,17 @@ from openghg_inversions.cli import main
 from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInputs
 from openghg_inversions.inversion_data.preparation import _SiteOptions
 from openghg_inversions.postprocessing.nested_paris_outputs import (
-    _domain_variable_roles,
     _regridded_inner_country_file,
-    make_nested_inversion_outputs,
 )
+from openghg_inversions.postprocessing.inversion_output import InversionOutput
+from openghg_inversions.postprocessing.make_outputs import make_flux_outputs
 from openghg_inversions.rhime.nested import (
     NestedRhimeResult,
+    _domain_variable_roles,
     align_inner_merged_to_outer_observations,
     build_nested_rhime_model_result,
     combine_nested_rhime_inputs,
+    make_nested_inversion_outputs,
     mask_outer_merged_for_inner_domain,
 )
 from openghg_inversions.rhime.materialization import materialize_pymc_inputs
@@ -464,7 +466,7 @@ def test_nested_preparation_uses_native_inner_domain_and_safe_basis_default(monk
     monkeypatch.setattr(nested_module, "mask_outer_merged_for_inner_domain", lambda outer, inner: outer)
     monkeypatch.setattr(nested_module, "_prepare_one_domain", fake_prepare)
 
-    nested_module.prepare_nested_rhime_inputs(
+    nested = nested_module.prepare_nested_rhime_inputs(
         setup,
         inner_domain="6km",
         inner_footprint_store="inner-fp",
@@ -486,6 +488,7 @@ def test_nested_preparation_uses_native_inner_domain_and_safe_basis_default(monk
     assert inner_args["basis_output_path"] is None
     assert preparation_args[0]["basis_algorithm"] == "weighted"
     assert preparation_args[1]["basis_algorithm"] == "quadtree"
+    assert nested.outer_overlap_mask_policy.startswith("outer_footprint_and_flux_zeroed")
 
 
 def test_nested_automatic_basis_budget_uses_bounded_sensitivity_share() -> None:
@@ -706,7 +709,7 @@ def test_make_nested_inversion_outputs_builds_per_domain_views() -> None:
     against each nested domain -- see `nested_paris_outputs`.
     """
     outer_basis = _basis([50.0], [-2.0, -1.0], np.array([[1, 2]]))
-    inner_basis = _basis([51.0, 51.5], [-1.5], np.array([[1], [2]]))
+    inner_basis = _basis([51.0, 51.5], [-1.5], np.array([[0], [1]]))
     outer = _prepared(
         times=["2019-01-01T00:00", "2019-01-01T01:00"],
         sensitivity=np.array([[1.0, 2.0], [3.0, 4.0]]),
@@ -736,7 +739,14 @@ def test_make_nested_inversion_outputs_builds_per_domain_views() -> None:
         model_spec=run_spec.model,
         output_spec=run_spec.output,
         inv_inputs=prepared.combined.inv_inputs,
-        idata=az.InferenceData(),
+        idata=az.from_dict(
+            posterior={
+                "x_outer": np.ones((1, 2, 2)),
+                "x_inner": np.ones((1, 2, 2)),
+            },
+            coords={"region": [0, 1], "inner_region": [0, 1]},
+            dims={"x_outer": ["region"], "x_inner": ["inner_region"]},
+        ),
         basis_functions=prepared.combined.basis_functions,
         model=build_result.model,
         model_build_result=build_result,
@@ -759,3 +769,26 @@ def test_make_nested_inversion_outputs_builds_per_domain_views() -> None:
     # the inner grid's own resolution is carried separately.
     assert outer_inv_out.domain == inner_inv_out.domain == "EUROPE"
     assert nested_result.prepared_inputs.inner_domain_label == "europe-6km"
+
+    assert outer_inv_out.state_dimension_mapping == {"trace": "region", "basis": "region"}
+    assert inner_inv_out.state_dimension_mapping == {"trace": "inner_region", "basis": "region"}
+    assert inner_inv_out.trace_dataset(var_roles="flux_scale").sizes["region"] == 2
+    assert "inner_region" not in inner_inv_out.trace_dataset(var_roles="flux_scale").dims
+    assert "inner_region" in nested_result.idata.posterior["x_inner"].dims
+    inner_flux = make_flux_outputs(inner_inv_out, stats=["mean"])
+    assert inner_flux["flux_posterior_mean"].dims == ("lat", "lon", "flux_time")
+
+    outer_nested = outer_inv_out.output_metadata["nested_domain"]
+    inner_nested = inner_inv_out.output_metadata["nested_domain"]
+    assert outer_nested["view_domain"] == "EUROPE"
+    assert inner_nested["view_domain"] == "europe-6km"
+    assert outer_nested["outer_support"]["mask_policy"] == "caller_supplied_pre_masked_outer_sensitivity"
+    assert outer_nested["outer_support"]["inner_extent"] == {
+        "latitude": [51.0, 51.5],
+        "longitude": [-1.5, -1.5],
+    }
+    assert len(inner_nested["inner_grid"]["coordinate_sha256"]) == 64
+
+    reloaded_inner = InversionOutput.from_datatree(inner_inv_out.to_datatree())
+    assert reloaded_inner.output_metadata["nested_domain"] == inner_nested
+    assert reloaded_inner.state_dimension_mapping == {"trace": "inner_region", "basis": "region"}

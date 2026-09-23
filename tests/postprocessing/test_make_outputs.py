@@ -30,8 +30,8 @@ def _flux_nonfinite_metadata(data: xr.DataArray | xr.Dataset) -> FluxNonFiniteMe
     return metadata
 
 
-def test_flux_reconstruction_accepts_nested_inner_region_dimension() -> None:
-    """Nested inner-domain statistics retain their explicit state dimension."""
+def test_flux_reconstruction_does_not_guess_recipe_specific_state_dimension() -> None:
+    """Generic reconstruction requires recipes to normalize their state dimensions."""
     basis = xr.DataArray(
         [[1, 2]],
         dims=("lat", "lon"),
@@ -54,16 +54,13 @@ def test_flux_reconstruction_accepts_nested_inner_region_dimension() -> None:
         coords={"inner_region": [0, 1], "quantile": [0.16, 0.84]},
     )
 
-    result = reconstruct_flux_stats(
-        basis_functions,
-        flux,
-        stats,
-        report_flux_on_inversion_grid=False,
-    )
-
-    assert result["x_posterior_mean"].dims == ("lat", "lon")
-    assert result["x_posterior_quantile"].dims == ("lat", "lon", "quantile")
-    np.testing.assert_allclose(result["x_posterior_mean"], [[2.0, 3.0]])
+    with pytest.raises(ValueError, match="Could not find a basis state dimension"):
+        reconstruct_flux_stats(
+            basis_functions,
+            flux,
+            stats,
+            report_flux_on_inversion_grid=False,
+        )
 
 
 def test_multisector_flux_outputs_reconstruct_sector_and_total_flux(

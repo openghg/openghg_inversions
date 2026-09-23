@@ -295,13 +295,14 @@ The existing single-grid ``InversionOutput``, basic, and legacy writers each
 assume one output grid, so those formats are still rejected: using them would
 either discard the inner posterior or mis-grid it onto the outer domain.
 
-PARIS output does not merge the two grids either. Instead,
-``openghg_inversions.postprocessing.nested_paris_outputs.make_nested_paris_outputs``
-builds two ordinary, single-grid ``InversionOutput`` *views* of the shared
-trace -- one per domain, each with its variable roles pointed at that
+PARIS output does not merge the two grids either. Instead, the nested RHIME
+recipe builds two ordinary, single-grid ``InversionOutput`` *views* of the
+shared trace -- one per domain, each with its variable roles pointed at that
 domain's tagged posterior (``x_outer``/``hx_outer`` or ``x_inner``/``hx_inner``)
--- and runs the existing single-grid PARIS/flux/country postprocessing against
-each view unmodified. This produces three products:
+-- and passes them to the existing single-grid PARIS/flux/country
+postprocessing. The selected inner trace is renamed to the retained inner
+basis operator's state dimension at this view boundary; the shared sampled
+trace is unchanged. This produces three products:
 
 - an outer PARIS flux file, matching the ordinary single-grid schema exactly,
   with zero emissions inside the inner extent (the outer prior flux and
@@ -320,3 +321,9 @@ each view unmodified. This produces three products:
 
 ``run_rhime_nested`` writes all three when ``output_path`` is set, using the
 inner domain's label (e.g. ``EUROPE-6km``) in the inner flux file's name.
+When inversion-output artifacts are requested, each domain view also retains
+its actual outer/inner identity, coordinate-grid fingerprints and extents,
+the explicit trace-to-basis state-dimension mapping, and the outer overlap
+mask policy. These fields survive an ``InversionOutput`` save/load round trip.
+The public ``make_nested_paris_outputs`` helper remains available as a
+compatibility wrapper for callers that already hold a ``NestedRhimeResult``.

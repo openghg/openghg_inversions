@@ -261,6 +261,7 @@ def _make_inversion_output(
     result: RhimeResult,
     prepared: RhimePreparedInputs,
     variable_roles: Mapping[str, str] | None = None,
+    state_dimension_mapping: Mapping[str, str] | None = None,
 ) -> InversionOutput:
     """Create a modern InversionOutput without fixedbasis legacy adapters.
 
@@ -272,8 +273,11 @@ def _make_inversion_output(
             Nested RHIME passes a per-domain override here: its builder
             declares tagged roles (``"flux_scale:outer"``, ``"flux_scale:inner"``,
             etc.) so one shared trace can be viewed as two ordinary,
-            single-grid ``InversionOutput`` contracts -- see
-            ``openghg_inversions.postprocessing.nested_paris_outputs``.
+            single-grid ``InversionOutput`` contracts.
+        state_dimension_mapping: Optional explicit mapping from the selected
+            trace state dimension to the retained basis operator state
+            dimension. Nested views use this to normalize selected trace
+            variables without modifying the shared sampled trace.
 
     Returns:
         Complete modern inversion-output artifact.
@@ -283,6 +287,11 @@ def _make_inversion_output(
     model_metadata["variable_roles"] = (
         dict(model_build_result.variable_roles) if variable_roles is None else dict(variable_roles)
     )
+    if state_dimension_mapping is not None:
+        mapping = {str(key): str(value) for key, value in state_dimension_mapping.items()}
+        if set(mapping) != {"trace", "basis"}:
+            raise ValueError("State-dimension mappings require exactly the keys 'trace' and 'basis'.")
+        model_metadata["state_dimension_mapping"] = mapping
     builder_metadata = dict(model_build_result.metadata)
     for key in ("model_builder", "likelihood_builder", "likelihood_kwargs"):
         if key in result.output_metadata:
