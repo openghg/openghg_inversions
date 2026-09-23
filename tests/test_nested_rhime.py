@@ -11,8 +11,6 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-import arviz as az
-
 import openghg_inversions.rhime.nested as nested_module
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.cli import main
@@ -44,6 +42,7 @@ from openghg_inversions.rhime.specs import (
     RhimeRunSpec,
     SectorSpec,
 )
+from tests.helpers import make_trace
 
 
 def _basis(lat: list[float], lon: list[float], labels: np.ndarray) -> BasisFunctions:
@@ -739,13 +738,19 @@ def test_make_nested_inversion_outputs_builds_per_domain_views() -> None:
         model_spec=run_spec.model,
         output_spec=run_spec.output,
         inv_inputs=prepared.combined.inv_inputs,
-        idata=az.from_dict(
-            posterior={
-                "x_outer": np.ones((1, 2, 2)),
-                "x_inner": np.ones((1, 2, 2)),
-            },
-            coords={"region": [0, 1], "inner_region": [0, 1]},
-            dims={"x_outer": ["region"], "x_inner": ["inner_region"]},
+        idata=make_trace(
+            posterior=xr.Dataset(
+                {
+                    "x_outer": (("chain", "draw", "region"), np.ones((1, 2, 2))),
+                    "x_inner": (("chain", "draw", "inner_region"), np.ones((1, 2, 2))),
+                },
+                coords={
+                    "chain": [0],
+                    "draw": [0, 1],
+                    "region": [0, 1],
+                    "inner_region": [0, 1],
+                },
+            )
         ),
         basis_functions=prepared.combined.basis_functions,
         model=build_result.model,

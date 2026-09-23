@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable, cast
 
-import arviz as az
 import numpy as np
 import pytest
 import xarray as xr
@@ -28,6 +27,7 @@ from openghg_inversions.postprocessing.make_paris_outputs import (
     paris_concentration_outputs,
     paris_flux_output,
 )
+from tests.helpers import make_trace
 
 
 _LATEST_FLUX_DIMENSION_ORDER = {
@@ -94,31 +94,31 @@ def _single_sector_paris_inv_out(country_file: Path) -> InversionOutput:
             "time": ("nmeasure", np.array(["2019-01-01T00:00:00"], dtype="datetime64[ns]")),
         },
     ).set_index(nmeasure=["site", "time"])
-    trace = az.from_dict(
-        posterior={
-            "x": np.array([[[1.0], [1.1]]]),
-            "y": np.array([[[10.0], [11.0]]]),
-            "epsilon": np.ones((1, 2, 1)),
-        },
-        prior={
-            "x": np.ones((1, 2, 1)),
-            "y": np.array([[[9.0], [10.0]]]),
-            "epsilon": np.ones((1, 2, 1)),
-        },
-        coords={"region": [0], "nmeasure": [0]},
-        dims={"x": ["region"], "y": ["nmeasure"], "epsilon": ["nmeasure"]},
-    )
     nmeasure_index = inv_inputs.indexes["nmeasure"]
-    groups: dict[str, xr.Dataset] = {}
-    for group_name in trace.groups():
-        group = trace[group_name]
-        if "nmeasure" in group.dims:
-            group = group.assign_coords(
-                site=("nmeasure", nmeasure_index.get_level_values("site")),
-                time=("nmeasure", nmeasure_index.get_level_values("time")),
-            ).set_index(nmeasure=["site", "time"])
-        groups[group_name] = group
-    trace = az.InferenceData(**groups)
+    trace_coords = {
+        "chain": [0],
+        "draw": [0, 1],
+        "region": [0],
+        **xr.Coordinates.from_pandas_multiindex(nmeasure_index, "nmeasure"),
+    }
+    trace = make_trace(
+        posterior=xr.Dataset(
+            {
+                "x": (("chain", "draw", "region"), np.array([[[1.0], [1.1]]])),
+                "y": (("chain", "draw", "nmeasure"), np.array([[[10.0], [11.0]]])),
+                "epsilon": (("chain", "draw", "nmeasure"), np.ones((1, 2, 1))),
+            },
+            coords=trace_coords,
+        ),
+        prior=xr.Dataset(
+            {
+                "x": (("chain", "draw", "region"), np.ones((1, 2, 1))),
+                "y": (("chain", "draw", "nmeasure"), np.array([[[9.0], [10.0]]])),
+                "epsilon": (("chain", "draw", "nmeasure"), np.ones((1, 2, 1))),
+            },
+            coords=trace_coords,
+        ),
+    )
     return InversionOutput(
         trace=trace,
         inv_inputs=inv_inputs,
