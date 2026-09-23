@@ -66,7 +66,6 @@ def test_explicit_reconstruction_matches_independent_dense_oracle() -> None:
         native_mean=native_mean,
         flux=flux,
         prolongation=prolongation,
-        native_dims=("lat", "lon"),
         state_dim="state",
     )
 
@@ -117,14 +116,12 @@ def test_bucket_and_equivalent_explicit_prolongations_match() -> None:
         native_mean,
         flux,
         operator,
-        native_dims=("lat", "lon"),
         state_dim="state",
     )
     explicit_map = AffineFluxMap(
         native_mean,
         flux,
         explicit,
-        native_dims=("lat", "lon"),
         state_dim="state",
     )
 
@@ -171,7 +168,6 @@ def test_multisource_bucket_preserves_native_source_order_and_gathered_state() -
         native_mean,
         flux,
         operator,
-        native_dims=("native_source", "lat", "lon"),
         state_dim="state",
     )
     explicit = operator.native_prolongation(
@@ -182,7 +178,6 @@ def test_multisource_bucket_preserves_native_source_order_and_gathered_state() -
         native_mean,
         flux,
         explicit,
-        native_dims=("native_source", "lat", "lon"),
         state_dim="state",
     )
 
@@ -205,7 +200,6 @@ def test_multisource_bucket_preserves_native_source_order_and_gathered_state() -
             native_mean,
             flux.isel(native_source=[1, 0]),
             operator,
-            native_dims=("native_source", "lat", "lon"),
             state_dim="state",
         )
 
@@ -241,9 +235,8 @@ def test_multisource_reconstruction_matches_independent_source_oracle() -> None:
         coords={"draw": [0, 1], "state": operator.basis_matrix.state},
         attrs={"units": "1"},
     )
-    affine_map = AffineFluxMap(
-        mean, flux, operator, native_dims=mean.dims, state_dim="state"
-    )
+    affine_map = AffineFluxMap(mean, flux, operator, state_dim="state")
+    assert affine_map.native_dims == mean.dims
     assert reference.indexes["state"].tolist() == [
         ("fossil", 0), ("fossil", 1), ("bio", 0), ("bio", 1)
     ]
@@ -285,7 +278,7 @@ def test_bucket_construction_does_not_expand_multisource_prolongation(monkeypatc
         raise AssertionError("native prolongation expanded during construction")
 
     monkeypatch.setattr(operator, "native_prolongation", unexpected_expansion)
-    AffineFluxMap(mean, flux, operator, native_dims=mean.dims, state_dim="state")
+    AffineFluxMap(mean, flux, operator, state_dim="state")
 
 
 @pytest.mark.parametrize(
@@ -305,7 +298,7 @@ def test_sample_axis_name_collision_keeps_independent_axes(sample_dim: str, samp
         coords={sample_dim: sample_coord, "state": reference.state},
         attrs={"units": "1"},
     )
-    affine_map = AffineFluxMap(mean, flux, prolongation, native_dims=mean.dims, state_dim="state")
+    affine_map = AffineFluxMap(mean, flux, prolongation, state_dim="state")
     native = affine_map.state_to_native(sample, reference_state=reference)
     result = affine_map.state_to_flux(sample, reference_state=reference)
 
@@ -325,12 +318,11 @@ def test_sample_axis_name_collision_keeps_independent_axes(sample_dim: str, samp
 def test_compatible_scaled_units_are_converted_without_changing_inputs() -> None:
     """Percent and dimensionless input conventions produce the same physical grids."""
     mean, flux, prolongation, reference, state = _arrays()
-    expected = AffineFluxMap(mean, flux, prolongation, mean.dims, "state")
+    expected = AffineFluxMap(mean, flux, prolongation, "state")
     scaled_map = AffineFluxMap(
         mean.assign_attrs(units="percent").copy(data=mean.data * 100),
         flux,
         prolongation.assign_attrs(units="percent").copy(data=prolongation.data * 100),
-        mean.dims,
         "state",
     )
     percent_state = state.assign_attrs(units="percent").copy(data=state.data * 100)
@@ -351,7 +343,7 @@ def test_compatible_scaled_units_are_converted_without_changing_inputs() -> None
 def test_invalid_flux_unit_is_rejected() -> None:
     mean, flux, prolongation, _, _ = _arrays()
     with pytest.raises(ValueError, match="flux units.*invalid"):
-        AffineFluxMap(mean, flux.assign_attrs(units="not_a_real_unit"), prolongation, mean.dims, "state")
+        AffineFluxMap(mean, flux.assign_attrs(units="not_a_real_unit"), prolongation, "state")
 
 
 @pytest.mark.parametrize(
@@ -397,7 +389,6 @@ def test_construction_rejects_incompatible_native_inputs(field, replacement, mat
     with pytest.raises(ValueError, match=match):
         AffineFluxMap(
             **values,
-            native_dims=("lat", "lon"),
             state_dim="state",
         )
 
@@ -426,7 +417,6 @@ def test_application_rejects_incompatible_state_inputs(which, replacement, match
         native_mean,
         flux,
         prolongation,
-        native_dims=("lat", "lon"),
         state_dim="state",
     )
     if which == "state":
@@ -462,7 +452,6 @@ def test_construction_and_application_preserve_borrowed_dask_ownership() -> None
         lazy_mean,
         lazy_flux,
         lazy_prolongation,
-        native_dims=("lat", "lon"),
         state_dim="state",
     )
     native = affine_map.state_to_native(lazy_state, reference_state=reference)
@@ -494,7 +483,6 @@ def test_bucket_prolongation_stays_sparse_until_reconstruction() -> None:
         native_mean,
         flux,
         operator,
-        native_dims=("lat", "lon"),
         state_dim="state",
     )
 
@@ -515,6 +503,5 @@ def test_invalid_prolongation_type_is_rejected() -> None:
             native_mean,
             flux,
             object(),  # type: ignore[arg-type]
-            native_dims=("lat", "lon"),
             state_dim="state",
         )
