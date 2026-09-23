@@ -19,10 +19,13 @@ for signed flux.  Both operations preserve chain, draw, and other non-state
 dimensions.  The reference state is always explicit; it is not assumed to be
 one.
 
-When a sample axis has the same name as a native or flux axis, it is renamed
-``sample_<axis>`` in the result so the two independent dimensions remain
-distinct.  For example, sampled ``time`` and flux ``time`` become
-``sample_time`` and ``time``.  Compatible dimensionless units, including
+When a state-input axis has the same name as a native or flux axis, it is
+renamed ``state_<axis>`` in the result so the two independent dimensions remain
+distinct.  For example, state-input ``time`` and flux ``time`` become
+``state_time`` and ``time``.  If ``state_time`` is already a dimension or
+coordinate name, the state-input axis becomes ``state_time_2`` (then ``_3``).
+An already prefixed axis such as ``state_time`` uses the numeric suffix rather
+than another ``state_`` prefix.  Compatible dimensionless units, including
 percent, are converted numerically to ``1`` during application.
 
 The value keeps :math:`m`, :math:`F`, and :math:`U_*` separate.  A

@@ -305,7 +305,7 @@ def test_sample_axis_name_collision_keeps_independent_axes(sample_dim: str, samp
     expected = mean.values[:, :, None] + (
         prolongation.values.reshape(4, 2) @ (sample.values - reference.values).T
     ).reshape(2, 2, 2)
-    sample_axis = f"sample_{sample_dim}"
+    sample_axis = f"state_{sample_dim}"
     assert native.sizes[sample_axis] == 2
     assert result.sizes[sample_axis] == 2
     np.testing.assert_allclose(native.transpose("lat", "lon", sample_axis), expected)
@@ -313,6 +313,64 @@ def test_sample_axis_name_collision_keeps_independent_axes(sample_dim: str, samp
         result.transpose("time", "lat", "lon", sample_axis),
         flux.values[:, :, :, None] * expected[None, :, :, :],
     )
+
+
+@pytest.mark.parametrize(
+    ("auxiliary_names", "renamed_axis"),
+    [
+        (("state_time",), "state_time_2"),
+        (("state_time", "state_time_2"), "state_time_3"),
+    ],
+)
+def test_colliding_state_axis_avoids_auxiliary_coordinate_names(
+    auxiliary_names: tuple[str, ...], renamed_axis: str
+) -> None:
+    """An auxiliary coordinate cannot shadow the renamed independent axis."""
+    mean, flux, prolongation, reference, _ = _arrays()
+    sample = xr.DataArray(
+        [[0.8, 1.1], [1.5, 2.2]],
+        dims=("time", "state"),
+        coords={"time": ["2020-01", "2020-02"], "state": reference.state},
+        attrs={"units": "1"},
+    ).assign_coords({name: ("time", [10, 20]) for name in auxiliary_names})
+    affine_map = AffineFluxMap(mean, flux, prolongation, state_dim="state")
+
+    native = affine_map.state_to_native(sample, reference_state=reference)
+    reconstructed_flux = affine_map.state_to_flux(sample, reference_state=reference)
+
+    expected = mean.values[:, :, None] + (
+        prolongation.values.reshape(4, 2) @ (sample.values - reference.values).T
+    ).reshape(2, 2, 2)
+    assert renamed_axis in native.dims
+    assert renamed_axis in reconstructed_flux.dims
+    assert all(name in native.coords for name in auxiliary_names)
+    np.testing.assert_allclose(native.transpose("lat", "lon", renamed_axis), expected)
+    np.testing.assert_allclose(
+        reconstructed_flux.transpose("time", "lat", "lon", renamed_axis),
+        flux.values[:, :, :, None] * expected[None, :, :, :],
+    )
+
+
+def test_already_prefixed_colliding_state_axis_uses_numeric_suffix() -> None:
+    """A state axis already named ``state_*`` is not prefixed twice."""
+    mean, flux, prolongation, reference, _ = _arrays()
+    flux = flux.rename(time="state_time")
+    sample = xr.DataArray(
+        [[0.8, 1.1], [1.5, 2.2]],
+        dims=("state_time", "state"),
+        coords={"state_time": ["2020-01", "2020-02"], "state": reference.state},
+        attrs={"units": "1"},
+    )
+    affine_map = AffineFluxMap(mean, flux, prolongation, state_dim="state")
+
+    native = affine_map.state_to_native(sample, reference_state=reference)
+    reconstructed_flux = affine_map.state_to_flux(sample, reference_state=reference)
+
+    assert "state_time_2" in native.dims
+    assert "state_time_2" in reconstructed_flux.dims
+    assert "state_state_time" not in reconstructed_flux.dims
+    assert reconstructed_flux.sizes["state_time"] == 2
+    assert reconstructed_flux.sizes["state_time_2"] == 2
 
 
 def test_compatible_scaled_units_are_converted_without_changing_inputs() -> None:
