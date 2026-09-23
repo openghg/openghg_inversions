@@ -3,41 +3,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal, TypeAlias
+from typing import Literal
 
 import pandas as pd
 import xarray as xr
 from openghg.util import cf_ureg  # pyright: ignore[reportPrivateImportUsage]
 
+from openghg_inversions.array_ops import require_unique_index, same_index
+
 from .operators import BucketBasisOperator, MultiSourceBucketBasisOperator
 
 
 RETAINED_STATE_CONDITIONAL = "retained_state_conditional"
-BucketProlongation: TypeAlias = BucketBasisOperator | MultiSourceBucketBasisOperator
-Prolongation: TypeAlias = BucketProlongation | xr.DataArray
-
-
-def _require_axis(array: xr.DataArray, dim: str, *, name: str) -> pd.Index:
-    """Return a unique indexed dimension owned by an independent input."""
-    if dim not in array.dims or dim not in array.indexes:
-        raise ValueError(f"{name} requires a labelled {dim!r} dimension.")
-    index = array.indexes[dim]
-    if not index.is_unique:
-        raise ValueError(f"{name} {dim!r} labels must be unique.")
-    return index
-
-
-def _same_index(left: pd.Index, right: pd.Index) -> bool:
-    """Compare labels and MultiIndex level names without positional fallback."""
-    if not left.equals(right):
-        return False
-    if isinstance(left, pd.MultiIndex) or isinstance(right, pd.MultiIndex):
-        return (
-            isinstance(left, pd.MultiIndex)
-            and isinstance(right, pd.MultiIndex)
-            and left.names == right.names
-        )
-    return True
 
 
 def _require_same_axis(
@@ -48,24 +25,25 @@ def _require_same_axis(
     name: str,
 ) -> None:
     """Require the exact ordered labels of a canonical axis."""
-    if not _same_index(_require_axis(array, dim, name=name), expected):
+    if not same_index(require_unique_index(array, dim, name=name), expected):
         raise ValueError(f"{name} {dim!r} labels must exactly match the prolongation.")
 
 
-def _require_unit_scale(array: xr.DataArray, expected: str, *, name: str) -> None:
-    """Require units compatible with ``expected`` at the same numeric scale."""
+def _dimensionless_scale(array: xr.DataArray, *, name: str) -> float:
+    """Return the Pint conversion factor from input units to dimensionless."""
     actual = array.attrs.get("units")
     if not isinstance(actual, str) or not actual.strip():
         raise ValueError(f"{name} requires non-empty units.")
     try:
-        actual_quantity = cf_ureg.Quantity(cf_ureg.parse_expression(actual))
-        expected_quantity = cf_ureg.Quantity(cf_ureg.parse_expression(expected))
-        scale = float(actual_quantity.to(expected_quantity.units).magnitude)
-        expected_scale = float(expected_quantity.magnitude)
+        return float(cf_ureg.Quantity(cf_ureg.parse_expression(actual)).to("dimensionless").magnitude)
     except Exception as exc:
-        raise ValueError(f"{name} units {actual!r} are incompatible with {expected!r}.") from exc
-    if scale != expected_scale:
-        raise ValueError(f"{name} units {actual!r} do not have the same numeric scale as {expected!r}.")
+        raise ValueError(f"{name} units {actual!r} are incompatible with dimensionless scaling.") from exc
+
+
+def _in_dimensionless_units(array: xr.DataArray, *, name: str) -> xr.DataArray:
+    """Convert compatible scaling values lazily while borrowing unit-one arrays."""
+    scale = _dimensionless_scale(array, name=name)
+    return array if scale == 1.0 else array * scale
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -92,7 +70,7 @@ class AffineFluxMap:
 
     native_mean: xr.DataArray
     flux: xr.DataArray
-    prolongation: Prolongation
+    prolongation: BucketBasisOperator | MultiSourceBucketBasisOperator | xr.DataArray
     native_dims: tuple[str, ...]
     state_dim: str
     uncertainty_scope: Literal["retained_state_conditional"] = RETAINED_STATE_CONDITIONAL
@@ -102,6 +80,8 @@ class AffineFluxMap:
             raise ValueError("native_dims must contain unique dimension names.")
         if self.state_dim in self.native_dims:
             raise ValueError("state_dim must be distinct from native_dims.")
+        if self.state_dim in self.flux.dims:
+            raise ValueError("flux must not use the retained-state dimension.")
         if self.uncertainty_scope != RETAINED_STATE_CONDITIONAL:
             raise ValueError(
                 f"AffineFluxMap uncertainty_scope must be {RETAINED_STATE_CONDITIONAL!r}."
@@ -112,28 +92,52 @@ class AffineFluxMap:
                 f"got {self.native_mean.dims!r}."
             )
         for dim in self.native_dims:
-            native_index = _require_axis(self.native_mean, dim, name="native_mean")
+            native_index = require_unique_index(self.native_mean, dim, name="native_mean")
             _require_same_axis(self.flux, dim, native_index, name="flux")
-        _require_unit_scale(self.native_mean, "1", name="native_mean")
+        _dimensionless_scale(self.native_mean, name="native_mean")
         flux_units = self.flux.attrs.get("units")
         if not isinstance(flux_units, str) or not flux_units.strip():
             raise ValueError("flux requires non-empty units.")
+        try:
+            cf_ureg.parse_expression(flux_units)
+        except Exception as exc:
+            raise ValueError(f"flux units {flux_units!r} are invalid.") from exc
 
-        prolongation = self._prolongation_array()
-        if prolongation.dims != (*self.native_dims, self.state_dim):
-            raise ValueError(
-                "prolongation must have ordered dimensions "
-                f"{(*self.native_dims, self.state_dim)!r}; got {prolongation.dims!r}."
+        if isinstance(self.prolongation, xr.DataArray):
+            prolongation = self.prolongation
+            if prolongation.dims != (*self.native_dims, self.state_dim):
+                raise ValueError(
+                    "prolongation must have ordered dimensions "
+                    f"{(*self.native_dims, self.state_dim)!r}; got {prolongation.dims!r}."
+                )
+            _dimensionless_scale(prolongation, name="prolongation")
+        elif isinstance(self.prolongation, (BucketBasisOperator, MultiSourceBucketBasisOperator)):
+            operator = self.prolongation
+            if operator.meta.state_dim != self.state_dim:
+                raise ValueError("Bucket prolongation state dimension must match AffineFluxMap.state_dim.")
+            if isinstance(operator, MultiSourceBucketBasisOperator):
+                if self.native_dims[1:] != operator.meta.grid_dims or self.native_dims[0] == operator.source_dim:
+                    raise ValueError("Multisource bucket prolongation requires distinct native source and grid axes.")
+                native_source = self.native_dims[0]
+                if native_source in operator.basis_matrix.coords:
+                    raise ValueError("Native source dimension collides with a retained-state coordinate.")
+                if list(self.native_mean.indexes[native_source]) != list(operator.source_labels):
+                    raise ValueError("Native source order must exactly match bucket prolongation sources.")
+            elif self.native_dims != operator.meta.grid_dims:
+                raise ValueError("Bucket prolongation native_dims must match its grid dimensions.")
+            prolongation = operator.basis_matrix
+            if "units" in prolongation.attrs:
+                _dimensionless_scale(prolongation, name="prolongation")
+        else:
+            raise TypeError(
+                "prolongation must be a BucketBasisOperator, "
+                "MultiSourceBucketBasisOperator, or labelled DataArray."
             )
+        for dim in prolongation.dims:
+            require_unique_index(prolongation, dim, name="prolongation")
         for dim in self.native_dims:
-            _require_same_axis(
-                prolongation,
-                dim,
-                self.native_mean.indexes[dim],
-                name="prolongation",
-            )
-        _require_axis(prolongation, self.state_dim, name="prolongation")
-        _require_unit_scale(prolongation, "1", name="prolongation")
+            if dim in prolongation.dims:
+                _require_same_axis(prolongation, dim, self.native_mean.indexes[dim], name="prolongation")
 
     @property
     def representation(self) -> Literal["bucket", "explicit"]:
@@ -148,10 +152,6 @@ class AffineFluxMap:
             self.prolongation,
             (BucketBasisOperator, MultiSourceBucketBasisOperator),
         ):
-            if self.prolongation.meta.state_dim != self.state_dim:
-                raise ValueError(
-                    "Bucket prolongation state dimension must match AffineFluxMap.state_dim."
-                )
             result = self.prolongation.native_prolongation(
                 self.native_mean,
                 native_dims=self.native_dims,
@@ -159,10 +159,7 @@ class AffineFluxMap:
             attrs = dict(result.attrs)
             attrs.setdefault("units", "1")
             return result.assign_attrs(attrs)
-        raise TypeError(
-            "prolongation must be a BucketBasisOperator, "
-            "MultiSourceBucketBasisOperator, or labelled DataArray."
-        )
+        raise AssertionError("Constructor validates the closed prolongation representations.")
 
     def _centred_state(
         self,
@@ -170,8 +167,12 @@ class AffineFluxMap:
         reference_state: xr.DataArray,
     ) -> tuple[xr.DataArray, xr.DataArray]:
         """Validate independent state inputs and return centred state with ``U*``."""
-        prolongation = self._prolongation_array()
-        state_index = prolongation.indexes[self.state_dim]
+        retained = (
+            self.prolongation
+            if isinstance(self.prolongation, xr.DataArray)
+            else self.prolongation.basis_matrix
+        )
+        state_index = retained.indexes[self.state_dim]
         _require_same_axis(state, self.state_dim, state_index, name="state")
         if reference_state.dims != (self.state_dim,):
             raise ValueError(
@@ -184,9 +185,24 @@ class AffineFluxMap:
             state_index,
             name="reference_state",
         )
-        _require_unit_scale(state, "1", name="state")
-        _require_unit_scale(reference_state, "1", name="reference_state")
-        return state - reference_state, prolongation
+        state_scale = _dimensionless_scale(state, name="state")
+        reference_scale = _dimensionless_scale(reference_state, name="reference_state")
+        occupied = set(self.native_dims) | set(self.flux.dims) | set(retained.dims) | set(state.dims)
+        renames: dict[str, str] = {}
+        for dim in state.dims:
+            if dim == self.state_dim or (dim not in self.native_dims and dim not in self.flux.dims):
+                continue
+            candidate = f"sample_{dim}"
+            while candidate in occupied:
+                candidate = f"sample_{candidate}"
+            renames[dim] = candidate
+            occupied.add(candidate)
+        centred_state = state.rename(renames)
+        if state_scale != 1.0:
+            centred_state = centred_state * state_scale
+        centred_reference = reference_state if reference_scale == 1.0 else reference_state * reference_scale
+        prolongation = self._prolongation_array()
+        return centred_state - centred_reference, _in_dimensionless_units(prolongation, name="prolongation")
 
     def state_to_native(
         self,
@@ -196,7 +212,7 @@ class AffineFluxMap:
     ) -> xr.DataArray:
         """Return ``m + U* (alpha - alpha_ref)`` with sample dimensions preserved."""
         centred, prolongation = self._centred_state(state, reference_state)
-        reconstructed = self.native_mean + xr.dot(
+        reconstructed = _in_dimensionless_units(self.native_mean, name="native_mean") + xr.dot(
             prolongation,
             centred,
             dim=self.state_dim,
@@ -223,7 +239,5 @@ class AffineFluxMap:
 
 __all__ = [
     "AffineFluxMap",
-    "BucketProlongation",
-    "Prolongation",
     "RETAINED_STATE_CONDITIONAL",
 ]

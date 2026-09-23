@@ -1,9 +1,11 @@
 """Tests for labelled affine native-scaling and flux reconstruction."""
 
 import dask.array as da
+from dask import delayed
 import numpy as np
 import pytest
 import xarray as xr
+from sparse import COO
 
 from openghg_inversions.basis import AffineFluxMap
 from openghg_inversions.basis.operators import BucketBasisOperator, MultiSourceBucketBasisOperator
@@ -208,6 +210,150 @@ def test_multisource_bucket_preserves_native_source_order_and_gathered_state() -
         )
 
 
+def test_multisource_reconstruction_matches_independent_source_oracle() -> None:
+    """Source order, gathered regions, centring, and signed flux have independent values."""
+    native_mean, _, _, _, _ = _arrays()
+    grid = {"lat": native_mean.lat, "lon": native_mean.lon}
+    bio_basis = xr.DataArray([[1, 2], [1, 2]], dims=("lat", "lon"), coords=grid)
+    fossil_basis = xr.DataArray([[1, 1], [2, 2]], dims=("lat", "lon"), coords=grid)
+    operator = MultiSourceBucketBasisOperator({"fossil": fossil_basis, "bio": bio_basis})
+    mean = xr.DataArray(
+        [[[0.4, 0.7], [1.3, 1.6]], [[0.9, 1.1], [0.8, 1.4]]],
+        dims=("native_source", "lat", "lon"),
+        coords={"native_source": ["fossil", "bio"], **grid},
+        attrs={"units": "1"},
+    )
+    flux = xr.DataArray(
+        [[[-2.0, -3.0], [4.0, 5.0]], [[7.0, -8.0], [9.0, -10.0]]],
+        dims=mean.dims,
+        coords=mean.coords,
+        attrs={"units": "kg m-2 s-1"},
+    )
+    reference = xr.DataArray(
+        [0.2, 1.4, 0.5, 1.8],
+        dims="state",
+        coords={"state": operator.basis_matrix.state},
+        attrs={"units": "1"},
+    )
+    state = xr.DataArray(
+        [[0.6, 1.1, 1.7, 0.9], [1.2, 0.3, 0.4, 2.3]],
+        dims=("draw", "state"),
+        coords={"draw": [0, 1], "state": operator.basis_matrix.state},
+        attrs={"units": "1"},
+    )
+    affine_map = AffineFluxMap(
+        mean, flux, operator, native_dims=mean.dims, state_dim="state"
+    )
+    assert reference.indexes["state"].tolist() == [
+        ("fossil", 0), ("fossil", 1), ("bio", 0), ("bio", 1)
+    ]
+
+    delta = state.values - reference.values
+    expected = np.empty((2, 2, 2, 2))
+    for source_position, region_indices in enumerate(([[0, 0], [1, 1]], [[2, 3], [2, 3]])):
+        for latitude in range(2):
+            for longitude in range(2):
+                expected[source_position, latitude, longitude] = (
+                    mean.values[source_position, latitude, longitude]
+                    + delta[:, region_indices[latitude][longitude]]
+                )
+    native = affine_map.state_to_native(state, reference_state=reference)
+    reconstructed_flux = affine_map.state_to_flux(state, reference_state=reference)
+    np.testing.assert_allclose(native.transpose("native_source", "lat", "lon", "draw"), expected)
+    np.testing.assert_allclose(
+        reconstructed_flux.transpose("native_source", "lat", "lon", "draw"),
+        expected * flux.values[:, :, :, None],
+    )
+
+
+def test_bucket_construction_does_not_expand_multisource_prolongation(monkeypatch) -> None:
+    """Construction checks labels using the retained matrix without building native U*."""
+    native_mean, _, _, _, _ = _arrays()
+    basis = xr.DataArray(
+        [[1, 1], [2, 2]],
+        dims=("lat", "lon"),
+        coords={"lat": native_mean.lat, "lon": native_mean.lon},
+    )
+    operator = MultiSourceBucketBasisOperator({"bio": basis, "fossil": basis})
+    mean = xr.concat(
+        [native_mean, native_mean],
+        dim=xr.IndexVariable("native_source", ["bio", "fossil"]),
+    ).assign_attrs(units="1")
+    flux = xr.ones_like(mean).assign_attrs(units="kg m-2 s-1")
+
+    def unexpected_expansion(*args, **kwargs):
+        raise AssertionError("native prolongation expanded during construction")
+
+    monkeypatch.setattr(operator, "native_prolongation", unexpected_expansion)
+    AffineFluxMap(mean, flux, operator, native_dims=mean.dims, state_dim="state")
+
+
+@pytest.mark.parametrize(
+    ("sample_dim", "sample_coord"),
+    [
+        ("lat", [50.0, 51.0]),
+        ("time", ["2020-01", "2020-02"]),
+        ("time", ["sample-a", "sample-b"]),
+    ],
+)
+def test_sample_axis_name_collision_keeps_independent_axes(sample_dim: str, sample_coord: list) -> None:
+    """Native and flux coordinates never pair with same-named sample coordinates."""
+    mean, flux, prolongation, reference, _ = _arrays()
+    sample = xr.DataArray(
+        [[0.8, 1.1], [1.5, 2.2]],
+        dims=(sample_dim, "state"),
+        coords={sample_dim: sample_coord, "state": reference.state},
+        attrs={"units": "1"},
+    )
+    affine_map = AffineFluxMap(mean, flux, prolongation, native_dims=mean.dims, state_dim="state")
+    native = affine_map.state_to_native(sample, reference_state=reference)
+    result = affine_map.state_to_flux(sample, reference_state=reference)
+
+    expected = mean.values[:, :, None] + (
+        prolongation.values.reshape(4, 2) @ (sample.values - reference.values).T
+    ).reshape(2, 2, 2)
+    sample_axis = f"sample_{sample_dim}"
+    assert native.sizes[sample_axis] == 2
+    assert result.sizes[sample_axis] == 2
+    np.testing.assert_allclose(native.transpose("lat", "lon", sample_axis), expected)
+    np.testing.assert_allclose(
+        result.transpose("time", "lat", "lon", sample_axis),
+        flux.values[:, :, :, None] * expected[None, :, :, :],
+    )
+
+
+def test_compatible_scaled_units_are_converted_without_changing_inputs() -> None:
+    """Percent and dimensionless input conventions produce the same physical grids."""
+    mean, flux, prolongation, reference, state = _arrays()
+    expected = AffineFluxMap(mean, flux, prolongation, mean.dims, "state")
+    scaled_map = AffineFluxMap(
+        mean.assign_attrs(units="percent").copy(data=mean.data * 100),
+        flux,
+        prolongation.assign_attrs(units="percent").copy(data=prolongation.data * 100),
+        mean.dims,
+        "state",
+    )
+    percent_state = state.assign_attrs(units="percent").copy(data=state.data * 100)
+    percent_reference = reference.assign_attrs(units="percent").copy(data=reference.data * 100)
+
+    xr.testing.assert_allclose(
+        scaled_map.state_to_native(percent_state, reference_state=percent_reference),
+        expected.state_to_native(state, reference_state=reference),
+    )
+    xr.testing.assert_allclose(
+        scaled_map.state_to_flux(percent_state, reference_state=percent_reference),
+        expected.state_to_flux(state, reference_state=reference),
+    )
+    assert scaled_map.native_mean.attrs["units"] == "percent"
+    assert percent_state.attrs["units"] == "percent"
+
+
+def test_invalid_flux_unit_is_rejected() -> None:
+    mean, flux, prolongation, _, _ = _arrays()
+    with pytest.raises(ValueError, match="flux units.*invalid"):
+        AffineFluxMap(mean, flux.assign_attrs(units="not_a_real_unit"), prolongation, mean.dims, "state")
+
+
 @pytest.mark.parametrize(
     ("field", "replacement", "match"),
     [
@@ -293,14 +439,24 @@ def test_application_rejects_incompatible_state_inputs(which, replacement, match
 
 
 def test_construction_and_application_preserve_borrowed_dask_ownership() -> None:
-    """The value neither executes nor replaces borrowed lazy payloads."""
+    """Constructor and application retain payloads without executing their graph."""
     native_mean, flux, prolongation, reference, state = _arrays()
-    lazy_mean = native_mean.copy(data=da.from_array(native_mean.data, chunks=(1, 2)))
-    lazy_flux = flux.copy(data=da.from_array(flux.data, chunks=(1, 1, 2)))
-    lazy_prolongation = prolongation.copy(
-        data=da.from_array(prolongation.data, chunks=(1, 2, 2))
-    )
-    lazy_state = state.copy(data=da.from_array(state.data, chunks=(1, 2, 2)))
+    executions: list[str] = []
+
+    def read_payload(name: str, values: np.ndarray) -> np.ndarray:
+        executions.append(name)
+        return values
+
+    def lazy(array: xr.DataArray, name: str) -> xr.DataArray:
+        payload = da.from_delayed(
+            delayed(read_payload)(name, array.data), shape=array.shape, dtype=array.dtype
+        )
+        return array.copy(data=payload)
+
+    lazy_mean = lazy(native_mean, "mean")
+    lazy_flux = lazy(flux, "flux")
+    lazy_prolongation = lazy(prolongation, "prolongation")
+    lazy_state = lazy(state, "state")
 
     affine_map = AffineFluxMap(
         lazy_mean,
@@ -317,6 +473,7 @@ def test_construction_and_application_preserve_borrowed_dask_ownership() -> None
     assert affine_map.prolongation.data is lazy_prolongation.data
     assert isinstance(native.data, da.Array)
     assert isinstance(reconstructed_flux.data, da.Array)
+    assert executions == []
 
 
 def test_bucket_prolongation_stays_sparse_until_reconstruction() -> None:
@@ -344,10 +501,9 @@ def test_bucket_prolongation_stays_sparse_until_reconstruction() -> None:
     assert affine_map.prolongation is operator
     assert isinstance(operator.basis_matrix.data, da.Array)
     assert operator.basis_matrix.data._meta.__class__.__module__.startswith("sparse")
-    assert isinstance(
-        affine_map.state_to_native(state, reference_state=reference).data,
-        da.Array,
-    )
+    native = affine_map.state_to_native(state, reference_state=reference)
+    assert isinstance(native.data, da.Array)
+    assert isinstance(operator.basis_matrix.data._meta, COO)
 
 
 def test_invalid_prolongation_type_is_rejected() -> None:
