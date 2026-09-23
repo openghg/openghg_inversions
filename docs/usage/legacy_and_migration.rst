@@ -188,6 +188,17 @@ the retained RHIME abstractions:
 See :doc:`rhime` for preparation and recipe APIs and
 :doc:`customising_rhime` for the custom-likelihood boundary.
 
+Legacy merged-data metadata
+---------------------------
+
+The merged-data mapping returned by ``data_processing_surface_notracer`` and
+``load_merged_data`` no longer includes the unused ``.species``, ``.units``,
+or ``.scales`` entries.  The species remains an explicit run option,
+observation units remain on each site's ``mf.attrs["units"]``, and each
+site's calibration scale remains on its dataset ``attrs["scale"]``.  Existing
+merged-data artifacts containing the old entries remain loadable; the loader
+discards those redundant copies.
+
 Removed interfaces
 ------------------
 

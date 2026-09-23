@@ -1,5 +1,6 @@
 import copy
 import logging
+import pickle
 from types import SimpleNamespace
 from typing import Any
 from unittest import mock
@@ -80,13 +81,10 @@ def test_data_processing_surface_notracer(tac_ch4_data_args, merged_data_file_na
 
     # check keys of "fp_all"
     assert list(result[0].keys()) == [
-        ".species",
         ".flux",
         ".split_by_sectors",
         ".bc",
         "TAC",
-        ".scales",
-        ".units",
     ]
 
     # variables to check (to avoid surprises from new variables added to data)
@@ -105,7 +103,33 @@ def test_data_processing_surface_notracer(tac_ch4_data_args, merged_data_file_na
 
 def test_load_merged_data(merged_data_dir, merged_data_file_name):
     """This should pass by finding the merged data with .zarr suffix."""
-    load_merged_data(merged_data_dir, merged_data_name=merged_data_file_name + "no_zip")
+    fp_all = load_merged_data(merged_data_dir, merged_data_name=merged_data_file_name + "no_zip")
+
+    assert {".scales", ".species", ".units"}.isdisjoint(fp_all)
+
+
+def test_load_merged_data_drops_obsolete_pickle_metadata(tmp_path):
+    """Obsolete metadata in older pickle artifacts is not restored."""
+    old_fp_all = {
+        "TAC": xr.Dataset({"mf": ("time", [1.0])}),
+        ".scales": {"TAC": "WMO-X2004A"},
+        ".species": "CH4",
+        ".units": 1e-9,
+    }
+    with (tmp_path / "legacy.pickle").open("wb") as file:
+        pickle.dump(old_fp_all, file)
+
+    fp_all = load_merged_data(tmp_path, merged_data_name="legacy.pickle")
+
+    assert set(fp_all) == {"TAC"}
+
+
+def test_fp_all_from_dataset_rejects_non_mole_fraction_units() -> None:
+    """Combined legacy data must retain its mol/mol-compatible unit boundary."""
+    combined = xr.Dataset({"mf": ("time", [1.0], {"units": "kg"})})
+
+    with pytest.raises(ValueError, match="serialized merged observations.*to mol/mol"):
+        fp_all_from_dataset(combined)
 
 
 def test_load_merged_data_missing_data_error(merged_data_dir, merged_data_file_name):
@@ -271,8 +295,7 @@ def test_mixed_platforms_keep_surface_calibration_scale_per_site(
         ("GOSAT-BRAZIL", "satellite", 17),
     ]
     assert scenario_platforms == ["surface", "satellite"]
-    assert result[0][".scales"] == {"TAC": "surface-scale"}
-    assert result[0][".units"] == pytest.approx(1e-9)
+    assert result[0]["TAC"].attrs["scale"] == "surface-scale"
     assert len(result) == 6
 
 
@@ -452,7 +475,6 @@ def test_data_processing_reuses_first_successful_observation_units(
 
     assert requested_output_units == [None, "ppb"]
     assert retained_sites == ["TAC", "GOSAT-BRAZIL"]
-    assert fp_all[".units"] == pytest.approx(1e-9)
     np.testing.assert_allclose(fp_all["TAC"]["mf"], [1000.0])
     np.testing.assert_allclose(fp_all["GOSAT-BRAZIL"]["mf"], [1000.0])
     np.testing.assert_allclose(fp_all["GOSAT-BRAZIL"]["mf_mod"], [900.0])
@@ -461,6 +483,32 @@ def test_data_processing_reuses_first_successful_observation_units(
     np.testing.assert_allclose(fp_all["GOSAT-BRAZIL"]["mf_error"], [np.sqrt(13.0)])
     np.testing.assert_array_equal(fp_all["GOSAT-BRAZIL"]["mf_number_of_observations"], [20])
     assert fp_all["TAC"]["mf"].attrs["units"] == fp_all["GOSAT-BRAZIL"]["mf"].attrs["units"]
+
+
+def test_data_processing_rejects_non_mole_fraction_units(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The first retained scenario must use units convertible to mol/mol."""
+    scenario = xr.Dataset(
+        {"mf": ("time", [1.0], {"units": "kg"})},
+        attrs={"scale": "test-scale"},
+    )
+    monkeypatch.setattr(get_data_module, "get_flux_data", lambda **kwargs: {})
+    monkeypatch.setattr(get_data_module, "get_obs_data", lambda **kwargs: object())
+    monkeypatch.setattr(get_data_module, "get_footprint_data", lambda **kwargs: object())
+    monkeypatch.setattr(get_data_module, "merged_scenario_data", lambda *args, **kwargs: scenario)
+
+    with pytest.raises(ValueError, match="site 'TAC'.*to mol/mol"):
+        data_processing_surface_notracer(
+            species="ch4",
+            sites=["TAC"],
+            domain="EUROPE",
+            averaging_period="1h",
+            start_date="2019-01-01",
+            end_date="2019-01-02",
+            emissions_name=["inventory"],
+            use_bc=False,
+        )
 
 
 @pytest.mark.parametrize("error_type", [TypeError, ValueError])

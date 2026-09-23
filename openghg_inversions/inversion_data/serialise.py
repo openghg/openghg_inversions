@@ -4,10 +4,6 @@
   to disk (either as a pickle file, netCDF, or zarr)
 - `load_merged_data` restores the `fp_all` dict from these saved formats
 - `make_combined_scenario` converts the `fp_all` dict into a xr.Dataset
-
-DataTree and pickle loads restore stored ``.units`` metadata unchanged.
-``fp_all_from_dataset`` derives the numeric scale from the combined dataset's
-common ``mf`` units.
 """
 
 import json
@@ -25,10 +21,11 @@ from openghg.dataobjects import BoundaryConditionsData, FluxData
 from openghg.dataobjects._basedata import _BaseData
 from openghg.util import timestamp_now
 
-from openghg_inversions.utils import _flux_period_is_missing, datatree_ncdf_encoding
 from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
+from openghg_inversions.utils import _flux_period_is_missing, datatree_ncdf_encoding
 
 OutputFormat = Literal["pickle", "netcdf", "zarr", "zarr.zip"]  # for internal type hints
+_OBSOLETE_FP_ALL_METADATA = frozenset({".scales", ".species", ".units"})
 
 
 def _make_merged_data_name(species: str, start_date: str, output_name: str) -> str:
@@ -101,7 +98,10 @@ def _save_merged_data(
     # write to specified output
     if output_format == "pickle":
         with open(merged_data_dir / (merged_data_name + ".pickle"), "wb") as f:
-            pickle.dump(fp_all, f)
+            pickle.dump(
+                {key: value for key, value in fp_all.items() if key not in _OBSOLETE_FP_ALL_METADATA},
+                f,
+            )
     elif output_format in {"netcdf", "zarr", "zarr.zip"}:
         dt = fp_all_to_datatree(fp_all, netcdf_safe_attrs=(output_format == "netcdf"))
         dt = clear_datatree_encoding(dt)
@@ -163,7 +163,8 @@ def load_merged_data(
         output_format: format of data to load (if not specified, this will be inferred).
 
     Returns:
-        `fp_all` dictionary
+        `fp_all` dictionary. Obsolete ``.species``, ``.units``, and
+        ``.scales`` entries stored by older versions are omitted.
     """
     merged_data_dir = Path(merged_data_dir)
 
@@ -205,7 +206,11 @@ def load_merged_data(
     # load merged data
     if merged_data_file.suffix == ".pickle":
         with open(merged_data_file, "rb") as f:
-            return pickle.load(f)
+            return {
+                key: value
+                for key, value in pickle.load(f).items()
+                if key not in _OBSOLETE_FP_ALL_METADATA
+            }
     elif merged_data_file.suffixes == [".zarr", ".zip"]:
         with zarr.ZipStore(merged_data_file, mode="r") as store:
             with xr.open_datatree(store, engine="zarr") as dt:  # type: ignore[arg-type, unused-ignore]
@@ -385,10 +390,11 @@ def fp_all_from_dataset(ds: xr.Dataset) -> dict:
         ValueError: If serialized ``mf`` units are invalid or are not a molar
             mixing ratio. Missing units default to ``mol/mol``.
     """
+    mole_fraction_unit_scale(
+        ds.mf.attrs.get("units", "mol/mol"),
+        context="serialized merged observations",
+    )
     fp_all = {}
-
-    # we'll get scales as we get scenarios
-    fp_all[".scales"] = {}
 
     # get scenarios
     bc_vars = ["vmr_n", "vmr_e", "vmr_s", "vmr_w"]
@@ -407,10 +413,7 @@ def fp_all_from_dataset(ds: xr.Dataset) -> dict:
             except (ValueError, IndexError):
                 val = "None"
 
-            if k == "scale":
-                fp_all[".scales"][site] = val
-            else:
-                scenario.attrs[k] = val
+            scenario.attrs[k] = val
 
         fp_all[site] = scenario.dropna("time", subset=["mf"])
 
@@ -463,16 +466,6 @@ def fp_all_from_dataset(ds: xr.Dataset) -> dict:
             bc_ds = bc_ds.expand_dims({"time": [ds.time.min().values]})
 
         fp_all[".bc"] = BoundaryConditionsData(data=bc_ds, metadata={})
-
-    species = ds.attrs.get("species", None)
-    if species is not None:
-        species = species.upper()
-    fp_all[".species"] = species
-
-    fp_all[".units"] = mole_fraction_unit_scale(
-        ds.mf.attrs.get("units", "mol/mol"),
-        context="serialized merged observations",
-    )
 
     if bool(ds.attrs.get("split_by_sectors", False)):
         warnings.warn(
@@ -553,7 +546,7 @@ def fp_all_to_datatree(fp_all: dict, netcdf_safe_attrs: bool = False) -> xr.Data
         dt_dict["fluxes"] = flux_dict_to_datatree(fp_all[".flux"], netcdf_safe_attrs)
 
     for k, v in fp_all.items():
-        if k == ".flux":
+        if k == ".flux" or k in _OBSOLETE_FP_ALL_METADATA:
             continue
         if isinstance(v, BoundaryConditionsData):
             dt_dict[k.removeprefix(".")] = openghg_data_to_dataset(v, netcdf_safe_attrs)
@@ -585,7 +578,13 @@ def datatree_to_fp_all(dt: xr.DataTree) -> dict:
     for k, v in dt.scenarios.items():
         fp_all[str(k)] = v.to_dataset()
 
-    fp_all.update({str(k): v for k, v in dt.attrs.items()})
+    fp_all.update(
+        {
+            str(k): v
+            for k, v in dt.attrs.items()
+            if str(k) not in _OBSOLETE_FP_ALL_METADATA
+        }
+    )
 
     return fp_all
 
