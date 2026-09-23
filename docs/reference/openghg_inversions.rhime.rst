@@ -20,6 +20,7 @@ openghg\_inversions.rhime
    openghg_inversions.rhime.cached_sigma
    openghg_inversions.rhime.materialization
    openghg_inversions.rhime.multisector
+   openghg_inversions.rhime.nested
    openghg_inversions.rhime.outputs
    openghg_inversions.rhime.params
    openghg_inversions.rhime.preparation

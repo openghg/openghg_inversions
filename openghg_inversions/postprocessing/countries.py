@@ -41,6 +41,42 @@ def get_area_grid(lat: xr.DataArray, lon: xr.DataArray) -> xr.DataArray:
     return xr.DataArray(ag_vals, coords=[lat, lon], dims=["lat", "lon"], name="area_grid")
 
 
+def regrid_country_dataset(countries_ds: xr.Dataset, lat: xr.DataArray, lon: xr.DataArray) -> xr.Dataset:
+    """Nearest-neighbour regrid a country/region definition onto another grid.
+
+    Nested-domain inversions retain an independent basis and prior flux on a
+    fine (e.g. 6 km) inner grid that rarely has a matching country definition
+    file. Country membership is categorical, so nearest-neighbour resampling
+    (rather than interpolation) is used to move the coarse country map onto
+    the fine grid; this mirrors how country totals were reconstructed for the
+    legacy inner-domain implementation.
+
+    Args:
+        countries_ds: Loaded country dataset (see ``load_country_dataset``),
+            with a ``country`` variable on ``(lat, lon)`` and a ``name``
+            variable.
+        lat: Target grid latitude coordinate.
+        lon: Target grid longitude coordinate.
+
+    Returns:
+        Country dataset with ``country`` resampled onto ``(lat, lon)``; any
+        ``name``/``country_code`` variables are carried over unchanged.
+    """
+    if "country" not in countries_ds:
+        raise ValueError("Country dataset must contain a `country` variable to regrid.")
+
+    regridded_country = (
+        countries_ds["country"]
+        .interp(lat=lat, lon=lon, method="nearest", kwargs={"fill_value": 0})
+        .astype(countries_ds["country"].dtype)
+    )
+    result = xr.Dataset({"country": regridded_country})
+    for name in ("name", "country_code"):
+        if name in countries_ds:
+            result[name] = countries_ds[name]
+    return result
+
+
 paris_regions_dict = {
     "europe": {
         "BELUX": ["BEL", "LUX"],

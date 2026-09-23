@@ -586,6 +586,7 @@ def paris_concentration_outputs(
             obs_avg_period=obs_avg_period,
         )
 
+    species, domain = _require_paris_metadata(inv_out)
     stats = ["kde_mode", "quantiles"] if report_mode else ["mean", "quantiles"]
 
     stats_args = {"quantiles__quantiles": [0.159, 0.841]}
@@ -667,7 +668,7 @@ def paris_concentration_outputs(
 
     result.sitenames.attrs["long_name"] = "identifier of site"
 
-    result.attrs = make_global_attrs("conc")
+    result.attrs = make_global_attrs("conc", species=species, domain=domain)
     result.attrs["paris_concentration_template_version"] = template_files.concentration_version
 
     return _cast_float_data_vars_to_float32(result)
@@ -1494,7 +1495,7 @@ def paris_flux_output(
 
     result = result.transpose("time", "percentile", "country", "latitude", "longitude")
 
-    result.attrs = make_global_attrs("flux")
+    result.attrs = make_global_attrs("flux", species=species, domain=domain)
     result.attrs["paris_flux_template_version"] = template_files.flux_version
     result = copy_flux_nonfinite_attrs(result, flux_outs)
 

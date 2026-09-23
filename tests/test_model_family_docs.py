@@ -4,6 +4,9 @@ import importlib
 import re
 from pathlib import Path
 
+from openghg_inversions.rhime.params import resolve_rhime_options
+from openghg_inversions.rhime.specs import PollutionEventSettings
+
 
 DOCS = Path(__file__).parents[1] / "docs" / "usage"
 
@@ -68,6 +71,7 @@ def test_standard_reader_path_avoids_detailed_co2_material() -> None:
     assert _toctree_entries("shared_scientific_concepts.rst") == [
         "grouped_basis_layout",
         "native_covariance",
+        "affine_flux_map",
         "coherent_reduction",
     ]
     assert "CO2 coherent-reduction model" not in concrete
@@ -125,6 +129,78 @@ def test_advanced_co2_reader_path_exposes_current_boundaries() -> None:
     assert "Not exposed by the linked prepared-input runner" in family
     assert "= \\mathtt{co2\\_flux\\_contribution}" in recipes
     assert "validate_complete_observation_covariance" not in recipes
+
+
+def test_nested_reader_path_exposes_transport_grid_boundary() -> None:
+    """A nested reader reaches one canonical guide with accurate support."""
+    chooser = _source("model_recipes.rst")
+    family = _source("nested_domain_model_family.rst")
+    guide = _source("nested_domains.rst")
+    readme = (DOCS.parents[1] / "README.md").read_text(encoding="utf-8")
+    usage = _toctree_entries("usage.rst")
+
+    assert "Nested-domain" in chooser
+    family_start = usage.index("standard_model_family")
+    assert usage[family_start : family_start + 3] == [
+        "standard_model_family",
+        "nested_domain_model_family",
+        "co2_model_family",
+    ]
+    assert _toctree_entries("nested_domain_model_family.rst") == ["nested_domains"]
+    assert "run_rhime_nested" in family
+    assert "run_rhime_nested_from_prepared_inputs" in family
+    assert "generic staged commands do" in family
+    assert 'output_format="none"' in family
+    assert 'output_format="paris"' in family
+    assert "grouped basis regions" in guide
+    assert "mu_outer" in guide
+    assert "inner_x_prior" in guide
+    assert "inner_fp_basis_case" in guide
+    assert "inner_basis_directory" in guide
+    assert "inner_basis_output_path" in guide
+    assert guide.count('mismatch_model="pollution_event"') == 2
+    assert "outer_overlap_masked=True" in guide
+    assert "rather than appending a duplicate section" in guide
+    assert "source country file and exact\n  target coordinates" in guide
+    assert "sampling-only" not in readme
+
+
+def test_nested_documented_examples_resolve_supported_likelihoods() -> None:
+    """Both documented runner shapes include a resolvable likelihood."""
+    examples = (
+        {
+            "species": "ch4",
+            "sites": ["TAC", "MHD"],
+            "averaging_period": ["1h", "1h"],
+            "domain": "EUROPE",
+            "start_date": "2019-01-01",
+            "end_date": "2019-02-01",
+            "flux_sources": ["total-ukghg-edgar7"],
+            "mismatch_model": "pollution_event",
+            "output_name": "europe_nested_6km",
+            "output_format": "none",
+        },
+        {
+            "species": "ch4",
+            "sites": ["GOSAT-BRAZIL"],
+            "averaging_period": ["1D"],
+            "platform": ["satellite"],
+            "inlet": ["column"],
+            "fp_height": ["column"],
+            "max_level": [3],
+            "domain": "BRAZIL",
+            "start_date": "2019-01-01",
+            "end_date": "2019-02-01",
+            "flux_sources": ["total-inventory"],
+            "mismatch_model": "pollution_event",
+            "output_name": "gosat_brazil_nested",
+            "output_format": "none",
+        },
+    )
+
+    for params in examples:
+        setup = resolve_rhime_options(params=params, multisector=False)
+        assert isinstance(setup.run_spec.model.likelihood, PollutionEventSettings)
 
 
 def test_moved_recipe_sections_preserve_legacy_fragment_targets() -> None:

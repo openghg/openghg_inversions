@@ -335,6 +335,43 @@ class InversionOutput:
             roles.update({str(role): str(name) for role, name in overrides.items()})
         return roles
 
+    @property
+    def state_dimension_mapping(self) -> dict[str, str] | None:
+        """Explicit selected-trace to retained-basis state-dimension mapping."""
+        raw_mapping = self.model_metadata.get("state_dimension_mapping")
+        if raw_mapping is None:
+            return None
+        if not isinstance(raw_mapping, Mapping):
+            raise ValueError("InversionOutput model metadata `state_dimension_mapping` must be a mapping.")
+        mapping = {str(key): str(value) for key, value in raw_mapping.items()}
+        if set(mapping) != {"trace", "basis"}:
+            raise ValueError(
+                "InversionOutput state-dimension mapping requires exactly the keys 'trace' and 'basis'."
+            )
+        operator_state_dim = self.basis_functions.operator.meta.state_dim
+        if mapping["basis"] != operator_state_dim:
+            raise ValueError(
+                "InversionOutput state-dimension mapping does not match the retained basis operator: "
+                f"metadata={mapping['basis']!r}, operator={operator_state_dim!r}."
+            )
+        return mapping
+
+    def _normalise_selected_trace_state_dimension(self, trace: xr.Dataset) -> xr.Dataset:
+        """Rename one selected recipe state dimension to its basis dimension."""
+        mapping = self.state_dimension_mapping
+        if mapping is None or mapping["trace"] == mapping["basis"]:
+            return trace
+        trace_state_dim = mapping["trace"]
+        basis_state_dim = mapping["basis"]
+        if trace_state_dim not in trace.dims:
+            return trace
+        if basis_state_dim in trace.dims:
+            raise ValueError(
+                "Selected trace contains both mapped state dimensions "
+                f"{trace_state_dim!r} and {basis_state_dim!r}; select one domain before reconstruction."
+            )
+        return trace.rename({trace_state_dim: basis_state_dim})
+
     def variable_name(self, role: str) -> str:
         """Return the concrete variable name for a semantic role."""
         try:
@@ -388,6 +425,7 @@ class InversionOutput:
 
         if var_roles is not None:
             result = _filter_trace_data_vars_by_name(result, self._variable_names_for_roles(var_roles))
+            result = self._normalise_selected_trace_state_dimension(result)
 
         return result
 

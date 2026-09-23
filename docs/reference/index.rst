@@ -11,11 +11,13 @@ documentation.
 Run an inversion
 ----------------
 
-The standard and multisector runners cover complete acquisition-to-output
-workflows. Prepared-input and CO₂-family runners are advanced entry points for
-workflows that already satisfy their input contracts. See the
+The standard, multisector, and nested-domain runners cover complete
+acquisition-to-output workflows. Prepared-input and CO₂-family runners are
+advanced entry points for workflows that already satisfy their input
+contracts. See the
 :doc:`standard tutorial </usage/rhime_standard_tutorial>`,
 :doc:`multisector tutorial </usage/rhime_multisector_tutorial>`, and
+:doc:`nested-domain tutorial </usage/nested_domains>`, or the
 :doc:`CO₂ model family guide </usage/co2_model_family>` before selecting a
 runner.
 
@@ -24,7 +26,9 @@ runner.
 
    openghg_inversions.rhime.run_rhime
    openghg_inversions.rhime.run_rhime_multisector
+   openghg_inversions.rhime.run_rhime_nested
    openghg_inversions.rhime.run_rhime_from_prepared_inputs
+   openghg_inversions.rhime.run_rhime_nested_from_prepared_inputs
    openghg_inversions.rhime.run_rhime_co2
    openghg_inversions.rhime.co2.run_rhime_co2_cached_sigma
    openghg_inversions.rhime.co2.run_rhime_co2_o2_from_prepared_inputs
@@ -43,6 +47,7 @@ the RHIME runners.
    openghg_inversions.rhime.RhimeOutputSpec
    openghg_inversions.rhime.RhimeSampler
    openghg_inversions.rhime.RhimeResult
+   openghg_inversions.rhime.NestedRhimeResult
    openghg_inversions.rhime.SectorSpec
    openghg_inversions.rhime.AdditiveSigmaSettings
    openghg_inversions.rhime.FixedErrorSettings
@@ -64,6 +69,8 @@ documents the expected variables, dimensions, and coordinates.
    openghg_inversions.inversion_data.prepare_rhime_inputs
    openghg_inversions.inversion_data.prepare_rhime_inputs_from_xarray
    openghg_inversions.inversion_data.load_merged_data
+   openghg_inversions.rhime.NestedRhimePreparedInputs
+   openghg_inversions.rhime.combine_nested_rhime_inputs
    openghg_inversions.rhime.co2.Co2PreparedInputs
    openghg_inversions.rhime.co2.Co2O2PreparedInputs
    openghg_inversions.rhime.co2.prepare_co2_inputs
@@ -73,15 +80,18 @@ Basis construction and state geometry
 -------------------------------------
 
 The high-level basis interfaces generate, load, and apply basis functions.
-The operator and layout classes expose the lower-level labelled state geometry
-used by custom preparation workflows. See
+``AffineFluxMap`` reconstructs retained-state-conditional native scaling and
+flux fields. The operator and layout classes expose the lower-level labelled
+state geometry used by custom preparation workflows. See
 :doc:`grouped basis and state metadata </usage/grouped_basis_layout>` for an
-executed layout example.
+executed layout example and :doc:`affine native-flux reconstruction
+</usage/affine_flux_map>` for the reconstruction contract.
 
 .. autosummary::
    :nosignatures:
 
    openghg_inversions.basis.BasisFunctions
+   openghg_inversions.basis.AffineFluxMap
    openghg_inversions.basis.make_basis_functions
    openghg_inversions.basis.load_basis_functions
    openghg_inversions.basis.basis_functions_from_fp_all_flat_basis
