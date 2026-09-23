@@ -317,6 +317,7 @@
 <li class="toctree-l1 current active has-children"><a class="reference internal" href="openghg_inversions.html">openghg_inversions</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
 <li class="toctree-l2 current active has-children"><a class="current reference internal" href="#">openghg_inversions.basis</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.algorithms.html">openghg_inversions.basis.algorithms</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.affine_flux_map.html">openghg_inversions.basis.affine_flux_map</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.basis_functions.html">openghg_inversions.basis.basis_functions</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.covariance_products.html">openghg_inversions.basis.covariance_products</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.layout.html">openghg_inversions.basis.layout</a></li>
@@ -502,6 +503,122 @@ here choose a compatible restriction/prolongation pair and prepare labelled
 product blocks. They are low-level inputs to
 <a class="reference internal" href="openghg_inversions.coherent_reduction.html#module-openghg_inversions.coherent_reduction" title="openghg_inversions.coherent_reduction"><code class="xref py py-mod docutils literal notranslate"><span class="pre">openghg_inversions.coherent_reduction</span></code></a> and do not themselves construct
 the centred reduced likelihood or unresolved covariance.</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="openghg_inversions.basis.AffineFluxMap">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">openghg_inversions.basis.</span></span><span class="sig-name descname"><span class="pre">AffineFluxMap</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">native_mean</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">flux</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">prolongation</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.basis.operators.html#openghg_inversions.basis.operators.BucketBasisOperator" title="openghg_inversions.basis.operators.BucketBasisOperator"><span class="pre">BucketBasisOperator</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference internal" href="openghg_inversions.basis.operators.html#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator" title="openghg_inversions.basis.operators.MultiSourceBucketBasisOperator"><span class="pre">MultiSourceBucketBasisOperator</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">state_dim</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">uncertainty_scope</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><span class="pre">Literal</span></a><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'retained_state_conditional'</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'retained_state_conditional'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.basis.AffineFluxMap" title="Link to this definition">#</a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/builtins/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>Reconstruct retained-state-conditional native scaling and flux means.</p>
+<p><code class="docutils literal notranslate"><span class="pre">state_to_native</span></code> evaluates <code class="docutils literal notranslate"><span class="pre">m</span> <span class="pre">+</span> <span class="pre">U*</span> <span class="pre">(alpha</span> <span class="pre">-</span> <span class="pre">alpha_ref)</span></code> and
+<code class="docutils literal notranslate"><span class="pre">state_to_flux</span></code> additionally multiplies the result by signed reference
+flux <code class="docutils literal notranslate"><span class="pre">F</span></code>. The caller supplies the authoritative <code class="docutils literal notranslate"><span class="pre">alpha_ref</span></code> explicitly.</p>
+<p>The value borrows its inputs and does not materialize their payloads on
+construction. A bucket prolongation remains a <code class="xref py py-class docutils literal notranslate"><span class="pre">BasisOperator</span></code>;
+for a supplied restriction, the resulting exact <code class="docutils literal notranslate"><span class="pre">U*</span></code> is a labelled
+native-by-state <a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><code class="xref py py-class docutils literal notranslate"><span class="pre">xarray.DataArray</span></code></a>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>native_mean</strong> – Dimensionless native scaling mean <code class="docutils literal notranslate"><span class="pre">m</span></code>.</p></li>
+<li><p><strong>flux</strong> – Signed reference flux <code class="docutils literal notranslate"><span class="pre">F</span></code> containing every native dimension.</p></li>
+<li><p><strong>prolongation</strong> – Bucket operator or explicit dimensionless <code class="docutils literal notranslate"><span class="pre">U*</span></code>.</p></li>
+<li><p><strong>state_dim</strong> – Retained-state dimension.</p></li>
+<li><p><strong>uncertainty_scope</strong> – Fixed machine-readable scope of reconstructed data.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="openghg_inversions.basis.AffineFluxMap.flux">
+<span class="sig-name descname"><span class="pre">flux</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span><a class="headerlink" href="#openghg_inversions.basis.AffineFluxMap.flux" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="openghg_inversions.basis.AffineFluxMap.native_dims">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">native_dims</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.basis.AffineFluxMap.native_dims" title="Link to this definition">#</a></dt>
+<dd><p>Return the ordered native dimensions labelled by <code class="docutils literal notranslate"><span class="pre">native_mean</span></code>.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="openghg_inversions.basis.AffineFluxMap.native_mean">
+<span class="sig-name descname"><span class="pre">native_mean</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span><a class="headerlink" href="#openghg_inversions.basis.AffineFluxMap.native_mean" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="openghg_inversions.basis.AffineFluxMap.prolongation">
+<span class="sig-name descname"><span class="pre">prolongation</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="openghg_inversions.basis.operators.html#openghg_inversions.basis.operators.BucketBasisOperator" title="openghg_inversions.basis.operators.BucketBasisOperator"><span class="pre">BucketBasisOperator</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference internal" href="openghg_inversions.basis.operators.html#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator" title="openghg_inversions.basis.operators.MultiSourceBucketBasisOperator"><span class="pre">MultiSourceBucketBasisOperator</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span><a class="headerlink" href="#openghg_inversions.basis.AffineFluxMap.prolongation" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="openghg_inversions.basis.AffineFluxMap.representation">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">representation</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><span class="pre">Literal</span></a><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'bucket'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'explicit'</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.basis.AffineFluxMap.representation" title="Link to this definition">#</a></dt>
+<dd><p>Return the closed prolongation representation kind.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="openghg_inversions.basis.AffineFluxMap.state_dim">
+<span class="sig-name descname"><span class="pre">state_dim</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><a class="headerlink" href="#openghg_inversions.basis.AffineFluxMap.state_dim" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.basis.AffineFluxMap.state_to_flux">
+<span class="sig-name descname"><span class="pre">state_to_flux</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">reference_state</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></span><a class="headerlink" href="#openghg_inversions.basis.AffineFluxMap.state_to_flux" title="Link to this definition">#</a></dt>
+<dd><p>Reconstruct the retained-state-conditional signed flux mean.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>state</strong> – Dimensionless retained state <code class="docutils literal notranslate"><span class="pre">alpha</span></code> with the map’s exact
+state labels. Other dimensions are state-input axes.</p></li>
+<li><p><strong>reference_state</strong> – Dimensionless authoritative <code class="docutils literal notranslate"><span class="pre">alpha_ref</span></code> with
+only the retained-state dimension and the same state labels.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Signed flux <code class="docutils literal notranslate"><span class="pre">F</span> <span class="pre">[m</span> <span class="pre">+</span> <span class="pre">U*</span> <span class="pre">(alpha</span> <span class="pre">-</span> <span class="pre">alpha_ref)]</span></code> in the reference
+flux units, preserving all non-state axes and carrying
+<code class="docutils literal notranslate"><span class="pre">retained_state_conditional</span></code> scope. A state-input axis whose
+name collides with a native or flux dimension is renamed to
+<code class="docutils literal notranslate"><span class="pre">state_&lt;axis&gt;</span></code> or a numbered variant if that name is taken.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If state labels or units are incompatible, or the
+    reference state has incompatible dimensions or labels.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.basis.AffineFluxMap.state_to_native">
+<span class="sig-name descname"><span class="pre">state_to_native</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">reference_state</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><span class="pre">DataArray</span></a></span></span><a class="headerlink" href="#openghg_inversions.basis.AffineFluxMap.state_to_native" title="Link to this definition">#</a></dt>
+<dd><p>Reconstruct the retained-state-conditional native scaling mean.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>state</strong> – Dimensionless retained state <code class="docutils literal notranslate"><span class="pre">alpha</span></code> with the map’s exact
+state labels. Other dimensions are state-input axes.</p></li>
+<li><p><strong>reference_state</strong> – Dimensionless authoritative <code class="docutils literal notranslate"><span class="pre">alpha_ref</span></code> with
+only the retained-state dimension and the same state labels.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Native scaling <code class="docutils literal notranslate"><span class="pre">m</span> <span class="pre">+</span> <span class="pre">U*</span> <span class="pre">(alpha</span> <span class="pre">-</span> <span class="pre">alpha_ref)</span></code> in dimensionless
+units, preserving all non-state axes and carrying
+<code class="docutils literal notranslate"><span class="pre">retained_state_conditional</span></code> scope. A state-input axis whose
+name collides with a native or flux dimension is renamed to
+<code class="docutils literal notranslate"><span class="pre">state_&lt;axis&gt;</span></code> or a numbered variant if that name is taken.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If state labels or units are incompatible, or the
+    reference state has incompatible dimensions or labels.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="openghg_inversions.basis.AffineFluxMap.uncertainty_scope">
+<span class="sig-name descname"><span class="pre">uncertainty_scope</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><span class="pre">Literal</span></a><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'retained_state_conditional'</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#openghg_inversions.basis.AffineFluxMap.uncertainty_scope" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
 <dl class="py attribute">
 <dt class="sig sig-object py" id="openghg_inversions.basis.BasisFunctions">
 <span class="sig-prename descclassname"><span class="pre">openghg_inversions.basis.</span></span><span class="sig-name descname"><span class="pre">BasisFunctions</span></span><a class="headerlink" href="#openghg_inversions.basis.BasisFunctions" title="Link to this definition">#</a></dt>
@@ -1542,6 +1659,21 @@ allocated across the inner classes. Null outer cells remain label
 </div>
 <div class="toctree-wrapper compound">
 <ul>
+<li class="toctree-l1"><a class="reference internal" href="openghg_inversions.basis.affine_flux_map.html">openghg_inversions.basis.affine_flux_map</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.basis.affine_flux_map.html#openghg_inversions.basis.affine_flux_map.AffineFluxMap"><code class="docutils literal notranslate"><span class="pre">AffineFluxMap</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.affine_flux_map.html#openghg_inversions.basis.affine_flux_map.AffineFluxMap.flux"><code class="docutils literal notranslate"><span class="pre">AffineFluxMap.flux</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.affine_flux_map.html#openghg_inversions.basis.affine_flux_map.AffineFluxMap.native_dims"><code class="docutils literal notranslate"><span class="pre">AffineFluxMap.native_dims</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.affine_flux_map.html#openghg_inversions.basis.affine_flux_map.AffineFluxMap.native_mean"><code class="docutils literal notranslate"><span class="pre">AffineFluxMap.native_mean</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.affine_flux_map.html#openghg_inversions.basis.affine_flux_map.AffineFluxMap.prolongation"><code class="docutils literal notranslate"><span class="pre">AffineFluxMap.prolongation</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.affine_flux_map.html#openghg_inversions.basis.affine_flux_map.AffineFluxMap.representation"><code class="docutils literal notranslate"><span class="pre">AffineFluxMap.representation</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.affine_flux_map.html#openghg_inversions.basis.affine_flux_map.AffineFluxMap.state_dim"><code class="docutils literal notranslate"><span class="pre">AffineFluxMap.state_dim</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.affine_flux_map.html#openghg_inversions.basis.affine_flux_map.AffineFluxMap.state_to_flux"><code class="docutils literal notranslate"><span class="pre">AffineFluxMap.state_to_flux()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.affine_flux_map.html#openghg_inversions.basis.affine_flux_map.AffineFluxMap.state_to_native"><code class="docutils literal notranslate"><span class="pre">AffineFluxMap.state_to_native()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.affine_flux_map.html#openghg_inversions.basis.affine_flux_map.AffineFluxMap.uncertainty_scope"><code class="docutils literal notranslate"><span class="pre">AffineFluxMap.uncertainty_scope</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
 <li class="toctree-l1"><a class="reference internal" href="openghg_inversions.basis.basis_functions.html">openghg_inversions.basis.basis_functions</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.basis.basis_functions.html#openghg_inversions.basis.basis_functions.BasisFunctions"><code class="docutils literal notranslate"><span class="pre">BasisFunctions</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.basis.basis_functions.html#openghg_inversions.basis.basis_functions.FluxWeightedBasis"><code class="docutils literal notranslate"><span class="pre">FluxWeightedBasis</span></code></a><ul>
@@ -1734,6 +1866,18 @@ allocated across the inner classes. Null outer cells remain label
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.AffineFluxMap"><code class="docutils literal notranslate"><span class="pre">AffineFluxMap</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.AffineFluxMap.flux"><code class="docutils literal notranslate"><span class="pre">AffineFluxMap.flux</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.AffineFluxMap.native_dims"><code class="docutils literal notranslate"><span class="pre">AffineFluxMap.native_dims</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.AffineFluxMap.native_mean"><code class="docutils literal notranslate"><span class="pre">AffineFluxMap.native_mean</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.AffineFluxMap.prolongation"><code class="docutils literal notranslate"><span class="pre">AffineFluxMap.prolongation</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.AffineFluxMap.representation"><code class="docutils literal notranslate"><span class="pre">AffineFluxMap.representation</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.AffineFluxMap.state_dim"><code class="docutils literal notranslate"><span class="pre">AffineFluxMap.state_dim</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.AffineFluxMap.state_to_flux"><code class="docutils literal notranslate"><span class="pre">AffineFluxMap.state_to_flux()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.AffineFluxMap.state_to_native"><code class="docutils literal notranslate"><span class="pre">AffineFluxMap.state_to_native()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.AffineFluxMap.uncertainty_scope"><code class="docutils literal notranslate"><span class="pre">AffineFluxMap.uncertainty_scope</span></code></a></li>
+</ul>
+</li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.BasisFunctions"><code class="docutils literal notranslate"><span class="pre">BasisFunctions</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.NativeCovarianceProducts"><code class="docutils literal notranslate"><span class="pre">NativeCovarianceProducts</span></code></a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.NativeCovarianceProducts.effective_observation_operator"><code class="docutils literal notranslate"><span class="pre">NativeCovarianceProducts.effective_observation_operator</span></code></a></li>

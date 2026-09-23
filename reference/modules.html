@@ -317,6 +317,7 @@
 <li class="toctree-l1 has-children"><a class="reference internal" href="openghg_inversions.html">openghg_inversions</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.basis.html">openghg_inversions.basis</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.algorithms.html">openghg_inversions.basis.algorithms</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.affine_flux_map.html">openghg_inversions.basis.affine_flux_map</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.basis_functions.html">openghg_inversions.basis.basis_functions</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.covariance_products.html">openghg_inversions.basis.covariance_products</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.layout.html">openghg_inversions.basis.layout</a></li>
@@ -483,6 +484,18 @@
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="openghg_inversions.html">openghg_inversions</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.basis.html">openghg_inversions.basis</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.AffineFluxMap"><code class="docutils literal notranslate"><span class="pre">AffineFluxMap</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.AffineFluxMap.flux"><code class="docutils literal notranslate"><span class="pre">AffineFluxMap.flux</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.AffineFluxMap.native_dims"><code class="docutils literal notranslate"><span class="pre">AffineFluxMap.native_dims</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.AffineFluxMap.native_mean"><code class="docutils literal notranslate"><span class="pre">AffineFluxMap.native_mean</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.AffineFluxMap.prolongation"><code class="docutils literal notranslate"><span class="pre">AffineFluxMap.prolongation</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.AffineFluxMap.representation"><code class="docutils literal notranslate"><span class="pre">AffineFluxMap.representation</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.AffineFluxMap.state_dim"><code class="docutils literal notranslate"><span class="pre">AffineFluxMap.state_dim</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.AffineFluxMap.state_to_flux"><code class="docutils literal notranslate"><span class="pre">AffineFluxMap.state_to_flux()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.AffineFluxMap.state_to_native"><code class="docutils literal notranslate"><span class="pre">AffineFluxMap.state_to_native()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.AffineFluxMap.uncertainty_scope"><code class="docutils literal notranslate"><span class="pre">AffineFluxMap.uncertainty_scope</span></code></a></li>
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.BasisFunctions"><code class="docutils literal notranslate"><span class="pre">BasisFunctions</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.NativeCovarianceProducts"><code class="docutils literal notranslate"><span class="pre">NativeCovarianceProducts</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.basis.html#openghg_inversions.basis.NativeCovarianceProducts.effective_observation_operator"><code class="docutils literal notranslate"><span class="pre">NativeCovarianceProducts.effective_observation_operator</span></code></a></li>
@@ -562,6 +575,10 @@
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.region_constrained_basis"><code class="docutils literal notranslate"><span class="pre">region_constrained_basis()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.split_contrast_score"><code class="docutils literal notranslate"><span class="pre">split_contrast_score()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.weighted_algorithm"><code class="docutils literal notranslate"><span class="pre">weighted_algorithm()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.affine_flux_map.html">openghg_inversions.basis.affine_flux_map</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.basis.affine_flux_map.html#openghg_inversions.basis.affine_flux_map.AffineFluxMap"><code class="docutils literal notranslate"><span class="pre">AffineFluxMap</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.basis_functions.html">openghg_inversions.basis.basis_functions</a><ul>
@@ -1325,6 +1342,8 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.array_ops.html#openghg_inversions.array_ops.force_align"><code class="docutils literal notranslate"><span class="pre">force_align()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.array_ops.html#openghg_inversions.array_ops.get_xr_dummies"><code class="docutils literal notranslate"><span class="pre">get_xr_dummies()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.array_ops.html#openghg_inversions.array_ops.iter_multi_index_level_slices"><code class="docutils literal notranslate"><span class="pre">iter_multi_index_level_slices()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.array_ops.html#openghg_inversions.array_ops.require_unique_index"><code class="docutils literal notranslate"><span class="pre">require_unique_index()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.array_ops.html#openghg_inversions.array_ops.same_index"><code class="docutils literal notranslate"><span class="pre">same_index()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.array_ops.html#openghg_inversions.array_ops.select_gathered_data_array"><code class="docutils literal notranslate"><span class="pre">select_gathered_data_array()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.array_ops.html#openghg_inversions.array_ops.sparse_xr_dot"><code class="docutils literal notranslate"><span class="pre">sparse_xr_dot()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.array_ops.html#openghg_inversions.array_ops.to_dense"><code class="docutils literal notranslate"><span class="pre">to_dense()</span></code></a></li>

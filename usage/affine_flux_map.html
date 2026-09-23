@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>Using OpenGHG Inversions &#8212; openghg_inversions  documentation</title>
+    <title>Affine native-flux reconstruction &#8212; openghg_inversions  documentation</title>
   
   
   
@@ -47,12 +47,13 @@
     <script src="../_static/thebelab-helper.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
-    <script>DOCUMENTATION_OPTIONS.pagename = 'usage/usage';</script>
+    <script defer="defer" src="https://cdn.jsdelivr.net/npm/mathjax@4/tex-mml-chtml.js"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'usage/affine_flux_map';</script>
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="Install and set up OpenGHG Inversions" href="installation.html" />
-    <link rel="prev" title="OpenGHG Inversions Documentation" href="../index.html" />
+    <link rel="next" title="Coherent Gaussian Reduction" href="coherent_reduction.html" />
+    <link rel="prev" title="Native Covariance Projection" href="native_covariance.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="" />
@@ -138,7 +139,7 @@
   <ul class="bd-navbar-elements navbar-nav">
     
 <li class="nav-item current active">
-  <a class="nav-link nav-internal" href="#">
+  <a class="nav-link nav-internal" href="usage.html">
     Using OpenGHG Inversions
   </a>
 </li>
@@ -245,7 +246,7 @@
   <ul class="bd-navbar-elements navbar-nav">
     
 <li class="nav-item current active">
-  <a class="nav-link nav-internal" href="#">
+  <a class="nav-link nav-internal" href="usage.html">
     Using OpenGHG Inversions
   </a>
 </li>
@@ -314,7 +315,7 @@
      aria-label="Section Navigation">
   <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
   <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">Contents:</span></p>
-<ul class="nav bd-sidenav">
+<ul class="current nav bd-sidenav">
 <li class="toctree-l1"><a class="reference internal" href="installation.html">Install and set up OpenGHG Inversions</a></li>
 <li class="toctree-l1"><a class="reference internal" href="getting_started.html">Getting started with OpenGHG Inversions</a></li>
 <li class="toctree-l1"><a class="reference internal" href="conceptual_inversion.html">How an Atmospheric Inversion Works</a></li>
@@ -336,10 +337,10 @@
 <li class="toctree-l2"><a class="reference internal" href="staged_workflow.html">Staged RHIME workflows</a></li>
 </ul>
 </details></li>
-<li class="toctree-l1 has-children"><a class="reference internal" href="shared_scientific_concepts.html">Shared scientific concepts</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l1 current active has-children"><a class="reference internal" href="shared_scientific_concepts.html">Shared scientific concepts</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
 <li class="toctree-l2"><a class="reference internal" href="grouped_basis_layout.html">Grouped basis and state metadata</a></li>
 <li class="toctree-l2"><a class="reference internal" href="native_covariance.html">Native Covariance Projection</a></li>
-<li class="toctree-l2"><a class="reference internal" href="affine_flux_map.html">Affine native-flux reconstruction</a></li>
+<li class="toctree-l2 current active"><a class="current reference internal" href="#">Affine native-flux reconstruction</a></li>
 <li class="toctree-l2"><a class="reference internal" href="coherent_reduction.html">Coherent Gaussian Reduction</a></li>
 </ul>
 </details></li>
@@ -384,7 +385,13 @@
         <i class="fa-solid fa-home"></i>
       </a>
     </li>
-    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Using OpenGHG Inversions</span></li>
+    
+    <li class="breadcrumb-item"><a href="usage.html" class="nav-link">Using OpenGHG Inversions</a></li>
+    
+    
+    <li class="breadcrumb-item"><a href="shared_scientific_concepts.html" class="nav-link">Shared scientific concepts</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Affine native-flux reconstruction</span></li>
   </ul>
 </nav>
 </div>
@@ -401,22 +408,47 @@
 <div id="searchbox"></div>
                 <article class="bd-article">
                   
-  <section id="using-openghg-inversions">
-<h1>Using OpenGHG Inversions<a class="headerlink" href="#using-openghg-inversions" title="Link to this heading">#</a></h1>
-<div class="toctree-wrapper compound">
-<p aria-level="2" class="caption" role="heading"><span class="caption-text">Contents:</span></p>
-<ul>
-<li class="toctree-l1"><a class="reference internal" href="installation.html">Install and set up OpenGHG Inversions</a></li>
-<li class="toctree-l1"><a class="reference internal" href="getting_started.html">Getting started with OpenGHG Inversions</a></li>
-<li class="toctree-l1"><a class="reference internal" href="conceptual_inversion.html">How an Atmospheric Inversion Works</a></li>
-<li class="toctree-l1"><a class="reference internal" href="model_recipes.html">Choose a RHIME model recipe</a></li>
-<li class="toctree-l1"><a class="reference internal" href="standard_model_family.html">Standard RHIME model family</a></li>
-<li class="toctree-l1"><a class="reference internal" href="co2_model_family.html">CO₂ model family</a></li>
-<li class="toctree-l1"><a class="reference internal" href="running_and_validating.html">Running and validating inversions</a></li>
-<li class="toctree-l1"><a class="reference internal" href="shared_scientific_concepts.html">Shared scientific concepts</a></li>
-<li class="toctree-l1"><a class="reference internal" href="legacy_and_migration.html">Migrate from HBMCMC to RHIME</a></li>
-</ul>
-</div>
+  <section id="affine-native-flux-reconstruction">
+<h1>Affine native-flux reconstruction<a class="headerlink" href="#affine-native-flux-reconstruction" title="Link to this heading">#</a></h1>
+<p><code class="docutils literal notranslate"><span class="pre">AffineFluxMap</span></code> reconstructs the retained-state-conditional mean of a
+native scaling field and its signed flux field.  For native mean <span class="math notranslate nohighlight">\(m\)</span>,
+covariance-natural prolongation <span class="math notranslate nohighlight">\(U_*\)</span>, retained state <span class="math notranslate nohighlight">\(\alpha\)</span>,
+and authoritative retained reference state <span class="math notranslate nohighlight">\(\alpha_{ref}\)</span>, it evaluates</p>
+<div class="math notranslate nohighlight">
+\[ \begin{align}\begin{aligned}\bar{x}(\alpha) = m + U_*(\alpha - \alpha_{ref}),\\\bar{f}(\alpha) = F\bar{x}(\alpha).\end{aligned}\end{align} \]</div>
+<p>Use <a class="reference internal" href="../reference/openghg_inversions.basis.affine_flux_map.html#openghg_inversions.basis.affine_flux_map.AffineFluxMap.state_to_native" title="openghg_inversions.basis.affine_flux_map.AffineFluxMap.state_to_native"><code class="xref py py-meth docutils literal notranslate"><span class="pre">state_to_native()</span></code></a>
+for native scaling and
+<a class="reference internal" href="../reference/openghg_inversions.basis.affine_flux_map.html#openghg_inversions.basis.affine_flux_map.AffineFluxMap.state_to_flux" title="openghg_inversions.basis.affine_flux_map.AffineFluxMap.state_to_flux"><code class="xref py py-meth docutils literal notranslate"><span class="pre">state_to_flux()</span></code></a>
+for signed flux.  Both operations preserve chain, draw, and other non-state
+dimensions.  The reference state is always explicit; it is not assumed to be
+one.</p>
+<p>When a state-input axis has the same name as a native or flux axis, it is
+renamed <code class="docutils literal notranslate"><span class="pre">state_&lt;axis&gt;</span></code> in the result so the two independent dimensions remain
+distinct.  For example, state-input <code class="docutils literal notranslate"><span class="pre">time</span></code> and flux <code class="docutils literal notranslate"><span class="pre">time</span></code> become
+<code class="docutils literal notranslate"><span class="pre">state_time</span></code> and <code class="docutils literal notranslate"><span class="pre">time</span></code>.  If <code class="docutils literal notranslate"><span class="pre">state_time</span></code> is already a dimension or
+coordinate name, the state-input axis becomes <code class="docutils literal notranslate"><span class="pre">state_time_2</span></code> (then <code class="docutils literal notranslate"><span class="pre">_3</span></code>).
+An already prefixed axis such as <code class="docutils literal notranslate"><span class="pre">state_time</span></code> uses the numeric suffix rather
+than another <code class="docutils literal notranslate"><span class="pre">state_</span></code> prefix.  Compatible dimensionless units, including
+percent, are converted numerically to <code class="docutils literal notranslate"><span class="pre">1</span></code> during application.</p>
+<p>The value keeps <span class="math notranslate nohighlight">\(m\)</span>, <span class="math notranslate nohighlight">\(F\)</span>, and <span class="math notranslate nohighlight">\(U_*\)</span> separate.  A
+bucket-preserving prolongation remains a <code class="docutils literal notranslate"><span class="pre">BucketBasisOperator</span></code> or
+<code class="docutils literal notranslate"><span class="pre">MultiSourceBucketBasisOperator</span></code>.  A supplied-restriction workflow instead
+passes its exact labelled, native-by-state <a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.7.0)"><code class="xref py py-class docutils literal notranslate"><span class="pre">xarray.DataArray</span></code></a>.  Neither
+representation precomputes <span class="math notranslate nohighlight">\(FU_*\)</span>.</p>
+<p>Inputs are borrowed and may remain sparse or Dask-backed.  Constructing or
+inspecting the value does not copy, compute, persist, densify, or rechunk their
+payloads.  Reconstructed native-grid outputs are created only by an explicit
+<code class="docutils literal notranslate"><span class="pre">state_to_native</span></code> or <code class="docutils literal notranslate"><span class="pre">state_to_flux</span></code> request.
+Application may add a lazy Dask rechunk layer for the contraction; it does
+not execute or persist that graph.</p>
+<p>Every reconstructed array carries the machine-readable uncertainty scope
+<code class="docutils literal notranslate"><span class="pre">retained_state_conditional</span></code>.  It is the conditional mean given the retained
+state, not complete observation-conditioned native-grid inference.  In
+particular, this value does not add unresolved variance or residual draws.</p>
+<p>Persistence and binding to coherent-CO2 prepared inputs are separate staged
+artifact concerns.  Country and other aggregate consumers should contract
+their functional with <span class="math notranslate nohighlight">\(F\)</span> and <span class="math notranslate nohighlight">\(U_*\)</span> before applying posterior
+samples rather than first constructing native-grid values for every draw.</p>
 </section>
 
 
@@ -430,20 +462,20 @@
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="../index.html"
+       href="native_covariance.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">OpenGHG Inversions Documentation</p>
+        <p class="prev-next-title">Native Covariance Projection</p>
       </div>
     </a>
     <a class="right-next"
-       href="installation.html"
+       href="coherent_reduction.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">Install and set up OpenGHG Inversions</p>
+        <p class="prev-next-title">Coherent Gaussian Reduction</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -461,7 +493,7 @@
   <div class="sidebar-secondary-item">
 
   <div class="tocsection sourcelink">
-    <a href="../_sources/usage/usage.rst.txt">
+    <a href="../_sources/usage/affine_flux_map.rst.txt">
       <i class="fa-solid fa-file-lines"></i> Show Source
     </a>
   </div>

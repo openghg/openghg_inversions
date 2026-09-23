@@ -10,4 +10,5 @@ the current CO₂ recipes are their most advanced users.
 
    grouped_basis_layout
    native_covariance
+   affine_flux_map
    coherent_reduction
