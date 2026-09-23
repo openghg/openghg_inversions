@@ -184,14 +184,20 @@ class AffineFluxMap:
         )
         state_scale = _dimensionless_scale(state, name="state")
         reference_scale = _dimensionless_scale(reference_state, name="reference_state")
-        occupied = set(self.native_dims) | set(self.flux.dims) | set(retained.dims) | set(state.dims)
+        occupied: set[str] = set()
+        for array in (self.native_mean, self.flux, retained, state, reference_state):
+            occupied.update(array.dims)
+            occupied.update(array.coords)
         renames: dict[str, str] = {}
         for dim in state.dims:
             if dim == self.state_dim or (dim not in self.native_dims and dim not in self.flux.dims):
                 continue
-            candidate = f"sample_{dim}"
+            base = dim if dim.startswith("state_") else f"state_{dim}"
+            candidate = base
+            suffix = 2
             while candidate in occupied:
-                candidate = f"sample_{candidate}"
+                candidate = f"{base}_{suffix}"
+                suffix += 1
             renames[dim] = candidate
             occupied.add(candidate)
         centred_state = state.rename(renames)
@@ -219,7 +225,8 @@ class AffineFluxMap:
             Native scaling ``m + U* (alpha - alpha_ref)`` in dimensionless
             units, preserving all sample dimensions and carrying
             ``retained_state_conditional`` scope. A sample dimension whose
-            name collides with a native or flux dimension is renamed.
+            name collides with a native or flux dimension is renamed to
+            ``state_<axis>`` or a numbered variant if that name is taken.
 
         Raises:
             ValueError: If state labels or units are incompatible, or the
@@ -254,7 +261,8 @@ class AffineFluxMap:
             Signed flux ``F [m + U* (alpha - alpha_ref)]`` in the reference
             flux units, preserving all sample dimensions and carrying
             ``retained_state_conditional`` scope. A sample dimension whose
-            name collides with a native or flux dimension is renamed.
+            name collides with a native or flux dimension is renamed to
+            ``state_<axis>`` or a numbered variant if that name is taken.
 
         Raises:
             ValueError: If state labels or units are incompatible, or the
