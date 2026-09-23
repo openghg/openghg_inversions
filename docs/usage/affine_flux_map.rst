@@ -19,6 +19,12 @@ for signed flux.  Both operations preserve chain, draw, and other non-state
 dimensions.  The reference state is always explicit; it is not assumed to be
 one.
 
+When a sample axis has the same name as a native or flux axis, it is renamed
+``sample_<axis>`` in the result so the two independent dimensions remain
+distinct.  For example, sampled ``time`` and flux ``time`` become
+``sample_time`` and ``time``.  Compatible dimensionless units, including
+percent, are converted numerically to ``1`` during application.
+
 The value keeps :math:`m`, :math:`F`, and :math:`U_*` separate.  A
 bucket-preserving prolongation remains a ``BucketBasisOperator`` or
 ``MultiSourceBucketBasisOperator``.  A supplied-restriction workflow instead
@@ -29,6 +35,8 @@ Inputs are borrowed and may remain sparse or Dask-backed.  Constructing or
 inspecting the value does not copy, compute, persist, densify, or rechunk their
 payloads.  Native-grid arrays are introduced only by an explicit
 ``state_to_native`` or ``state_to_flux`` request.
+Application may add a lazy Dask rechunk layer for the contraction; it does
+not execute or persist that graph.
 
 Every reconstructed array carries the machine-readable uncertainty scope
 ``retained_state_conditional``.  It is the conditional mean given the retained
