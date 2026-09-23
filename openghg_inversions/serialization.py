@@ -391,8 +391,18 @@ def load_trace(file_path: str | Path) -> xr.DataTree:
 
     Returns:
         Fully loaded trace with valid semantic indexes reconstructed.
+
+    Raises:
+        ValueError: If the artifact is a complete ``InversionOutput`` rather
+            than a standalone trace.
     """
-    return trace_from_datatree(open_datatree_loaded(file_path))
+    dt = open_datatree_loaded(file_path)
+    if dt.attrs.get("schema") == "openghg_inversions.inversion_output":
+        raise ValueError(
+            "Expected a standalone trace artifact, but received a complete "
+            "InversionOutput artifact; use InversionOutput.load() instead."
+        )
+    return trace_from_datatree(dt)
 
 
 def save_inferencedata(

@@ -467,6 +467,38 @@ def test_diagnostics_emit_issue_667_convergence_signals(
     assert engines == [None]
 
 
+def test_diagnostics_preserve_threshold_edge_values(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Unrounded diagnostics just beyond convergence thresholds must fail."""
+    from openghg_inversions.rhime import stages
+
+    idata = make_trace(
+        posterior=xr.Dataset({"x": (("chain", "draw"), np.ones((2, 4)))}),
+        sample_stats=xr.Dataset({"diverging": (("chain", "draw"), np.zeros((2, 4), dtype=bool))}),
+    )
+    posterior_path = tmp_path / "posterior.nc"
+    save_trace(idata, posterior_path)
+
+    def fake_summary(*args: object, **kwargs: object) -> xr.Dataset:
+        """Return diagnostic values that default ArviZ rounding can hide."""
+        assert kwargs["round_to"] == "none"
+        return xr.Dataset(
+            {"x": ("metric", [1.0101, 399.99, 399.99])},
+            coords={"metric": ["r_hat", "ess_bulk", "ess_tail"]},
+        )
+
+    monkeypatch.setattr(stages.az, "summary", fake_summary)
+
+    result = diagnose_rhime_stage(posterior=posterior_path, output_dir=tmp_path / "diagnose")
+
+    assert result["status"] == "fail"
+    assert result["measured_values"]["max_rhat"] == 1.0101
+    assert result["measured_values"]["min_bulk_ess"] == 399.99
+    assert result["measured_values"]["min_tail_ess"] == 399.99
+
+
 @pytest.mark.parametrize(("finite_rhat", "expected_status"), [(1.0, "unknown"), (1.2, "fail")])
 def test_diagnostics_preserve_finite_failures_when_one_metric_is_nonfinite(
     monkeypatch: pytest.MonkeyPatch,

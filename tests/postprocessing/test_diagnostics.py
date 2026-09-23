@@ -37,6 +37,29 @@ def test_summary(inv_out):
     assert list(summ.metric) == ["mcse_mean", "mcse_sd", "ess_bulk", "ess_tail", "r_hat"]
 
 
+def test_summary_preserves_unrounded_diagnostics(
+    monkeypatch: pytest.MonkeyPatch,
+    inv_out: InversionOutput,
+) -> None:
+    """Diagnostic summaries retain values on convergence-threshold edges."""
+    seen: dict[str, object] = {}
+
+    def fake_summary(*args: object, **kwargs: object) -> xr.Dataset:
+        """Record ArviZ options and return a minimal diagnostics summary."""
+        seen.update(kwargs)
+        return xr.Dataset(
+            {"x": ("summary", [1.0101, 399.99, 399.99, 0.1, 0.1])},
+            coords={"summary": ["r_hat", "ess_bulk", "ess_tail", "mcse_mean", "mcse_sd"]},
+        )
+
+    monkeypatch.setattr("openghg_inversions.postprocessing.diagnostics.az.summary", fake_summary)
+
+    result = summary(inv_out)
+
+    assert seen["round_to"] == "none"
+    assert result.sel(metric="r_hat")["x_trace"].item() == 1.0101
+
+
 def test_bayesian_r2_preserves_removed_arviz_score_semantics() -> None:
     """Local Bayesian R² retains the former ArviZ mean and standard deviation."""
     observed = xr.DataArray([1.0, 2.0, 3.0], dims="time")

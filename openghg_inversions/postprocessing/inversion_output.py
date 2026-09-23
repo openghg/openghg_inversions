@@ -191,17 +191,19 @@ def convert_idata_to_dataset(
     group_filters: Iterable[str] = TRACE_SAMPLE_GROUPS,
     add_suffix: bool = True,
 ) -> xr.Dataset:
-    """Forward the former conversion helper to exact DataTree group merging.
+    """Merge DataTree groups matching the legacy substring filters.
 
     Args:
         trace: Native xarray trace tree.
-        group_filters: Exact direct-child group names to merge.
+        group_filters: Substrings used to select direct-child group names.
         add_suffix: If true, suffix each data variable with its group name.
 
     Returns:
         Dataset containing variables from the selected groups.
     """
-    return merge_trace_groups(trace, group_filters, add_suffix=add_suffix)
+    filters = tuple(group_filters)
+    groups = (group for group in trace.children if any(filt in group for filt in filters))
+    return merge_trace_groups(trace, groups, add_suffix=add_suffix)
 
 
 def _add_attributes_to_trace_dataset(trace_ds: xr.Dataset, obs_units: str, obs_longname: str) -> None:
@@ -541,6 +543,11 @@ class InversionOutput:
         schema = dt.attrs.get("schema")
         if schema is not None and schema != MODERN_INVERSION_OUTPUT_SCHEMA:
             raise ValueError(f"Unexpected InversionOutput schema: {schema!r}")
+        if "trace" not in dt.children:
+            raise ValueError(
+                "Expected a complete InversionOutput artifact with a 'trace' group; standalone "
+                "trace artifacts must be loaded with load_trace() instead."
+            )
 
         trace = _trace_from_datatree(cast(xr.DataTree, dt["trace"]))
         inv_inputs = _restore_serialisation_multiindexes(cast(xr.DataTree, dt["inv_inputs"]).to_dataset())

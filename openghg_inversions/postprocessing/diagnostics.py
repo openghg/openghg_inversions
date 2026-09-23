@@ -51,7 +51,12 @@ def summary(inv_out: InversionOutput) -> xr.Dataset:
     Returns:
         xr.Dataset: Dataset with diagnostic summary.
     """
-    result = az.summary(inv_out.trace_group("posterior"), kind="diagnostics", fmt="xarray")
+    result = az.summary(
+        inv_out.trace_group("posterior"),
+        kind="diagnostics",
+        fmt="xarray",
+        round_to="none",
+    )
     if "summary" in result.dims:
         result = result.rename(summary="metric")
     metrics = ["mcse_mean", "mcse_sd", "ess_bulk", "ess_tail", "r_hat"]

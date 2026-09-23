@@ -23,6 +23,7 @@ from openghg_inversions.basis.basis_functions import (
 from openghg_inversions.basis.operators import MultiSourceBucketBasisOperator
 from openghg_inversions.correlated_state import CorrelatedLognormalPrior
 from openghg_inversions.inversion_data import RhimePreparedInputs, prepare_rhime_inputs
+from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.rhime import (
     PollutionEventSettings,
     RhimeModelSpec,
@@ -666,6 +667,29 @@ def test_trace_datatree_roundtrip_preserves_attrs() -> None:
 
     assert restored.attrs == trace.attrs
     xr.testing.assert_identical(restored["posterior"].to_dataset(), trace["posterior"].to_dataset())
+
+
+def test_load_trace_rejects_complete_inversion_output(tmp_path: Path) -> None:
+    """The standalone trace loader rejects complete inversion artifacts."""
+    trace = make_trace(posterior=xr.Dataset({"x": (("chain", "draw"), [[1.0]])}))
+    inv_out = InversionOutput(
+        trace=trace,
+        inv_inputs=xr.Dataset(),
+        basis_functions=_basis_functions(),
+    )
+    path = tmp_path / "inversion-output.nc"
+    inv_out.save(path)
+
+    with pytest.raises(ValueError, match="complete InversionOutput artifact"):
+        load_trace(path)
+
+
+def test_inversion_output_rejects_standalone_trace() -> None:
+    """The complete artifact loader rejects standalone trace trees."""
+    trace = make_trace(posterior=xr.Dataset({"x": (("chain", "draw"), [[1.0]])}))
+
+    with pytest.raises(ValueError, match="standalone trace artifact"):
+        InversionOutput.from_datatree(trace)
 
 
 def test_trace_netcdf_roundtrip_uses_xarray_default_engine(

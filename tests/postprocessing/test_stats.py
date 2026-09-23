@@ -7,7 +7,10 @@ import pytest
 import sparse
 import xarray as xr
 
-from openghg_inversions.postprocessing.inversion_output import merge_trace_groups
+from openghg_inversions.postprocessing.inversion_output import (
+    convert_idata_to_dataset,
+    merge_trace_groups,
+)
 from openghg_inversions.postprocessing.stats import (
     calculate_stats,
     combine_chain_draw,
@@ -155,6 +158,18 @@ def test_merge_trace_groups_uses_exact_direct_names_and_retains_chains() -> None
 
     assert set(result.data_vars) == {"x_prior"}
     assert result["x_prior"].dims == ("chain", "draw")
+
+
+def test_convert_idata_to_dataset_preserves_substring_group_filters() -> None:
+    """The legacy conversion wrapper selects groups containing each filter."""
+    trace = make_trace(
+        constant_data=xr.Dataset({"x": ("region", [1.0])}),
+        posterior=xr.Dataset({"y": ("draw", [2.0])}),
+    )
+
+    result = convert_idata_to_dataset(trace, group_filters=("data",))
+
+    assert set(result.data_vars) == {"x_constant_data"}
 
 
 def test_prior_and_posterior_samples_are_reduced_independently() -> None:

@@ -646,6 +646,7 @@ def diagnose_rhime_stage(
         idata["posterior"].to_dataset(),
         kind="diagnostics",
         fmt="xarray",
+        round_to="none",
     )
     if "summary" in summary.dims:
         summary = summary.rename(summary="metric")
