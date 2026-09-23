@@ -169,12 +169,13 @@ def test_shared_quadratic_uses_active_pytensor_dtype(dtype: str) -> None:
     )
 
 
-def test_set_rng_reseeds_the_delegated_nuts_and_repeats_one_transition() -> None:
+def test_setup_chain_reseeds_the_delegated_nuts_and_repeats_one_transition() -> None:
+    """PyMC chain setup gives the wrapper and delegated NUTS independent RNGs."""
     *_, point1, step1 = _step_context(constructor_seed=102)
     *_, point2, step2 = _step_context(constructor_seed=999)
 
-    step1.set_rng(np.random.default_rng(20260913))
-    step2.set_rng(np.random.default_rng(20260913))
+    step1.setup_chain(np.random.default_rng(20260913), tune=10, draws=20)
+    step2.setup_chain(np.random.default_rng(20260913), tune=10, draws=20)
     updated1, stats1 = step1.step(point1)
     updated2, stats2 = step2.step(point2)
 
