@@ -328,6 +328,10 @@
 <li class="toctree-l2"><a class="reference internal" href="customising_rhime.html">Customising RHIME</a></li>
 </ul>
 </details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="nested_domain_model_family.html">Nested-domain model family</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="nested_domains.html">Run a nested-domain RHIME inversion</a></li>
+</ul>
+</details></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="co2_model_family.html">CO₂ model family</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l2"><a class="reference internal" href="co2_models.html">CO₂ model recipes</a></li>
 </ul>
@@ -413,10 +417,11 @@
 RHIME from a terminal or a batch scheduler. It is installed with
 <code class="docutils literal notranslate"><span class="pre">openghg_inversions</span></code>, so a run does not need to know where the package source
 code is located.</p>
-<section id="standard-and-multisector-runs">
-<h2>Standard and multisector runs<a class="headerlink" href="#standard-and-multisector-runs" title="Link to this heading">#</a></h2>
+<section id="standard-multisector-and-nested-runs">
+<h2>Standard, multisector, and nested runs<a class="headerlink" href="#standard-multisector-and-nested-runs" title="Link to this heading">#</a></h2>
 <p>Use <code class="docutils literal notranslate"><span class="pre">run-rhime</span></code> for a standard inversion and
-<code class="docutils literal notranslate"><span class="pre">run-rhime-multisector</span></code> for a shared-basis multisector inversion:</p>
+<code class="docutils literal notranslate"><span class="pre">run-rhime-multisector</span></code> for a shared-basis multisector inversion.
+<code class="docutils literal notranslate"><span class="pre">run-rhime-nested</span></code> combines independent outer and inner spatial grids:</p>
 <div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>openghg-inversions<span class="w"> </span>run-rhime<span class="w"> </span><span class="m">2019</span>-01-01<span class="w"> </span><span class="m">2019</span>-02-01<span class="w"> </span><span class="se">\</span>
 <span class="w">    </span>--config<span class="w"> </span>/path/to/rhime.ini<span class="w"> </span><span class="se">\</span>
 <span class="w">    </span>--output-path<span class="w"> </span>/path/to/outputs
@@ -424,6 +429,9 @@ code is located.</p>
 <span class="gp">$ </span>openghg-inversions<span class="w"> </span>run-rhime-multisector<span class="w"> </span><span class="m">2019</span>-01-01<span class="w"> </span><span class="m">2019</span>-02-01<span class="w"> </span><span class="se">\</span>
 <span class="w">    </span>--config<span class="w"> </span>/path/to/rhime_multisector.ini<span class="w"> </span><span class="se">\</span>
 <span class="w">    </span>--output-path<span class="w"> </span>/path/to/outputs
+
+<span class="gp">$ </span>openghg-inversions<span class="w"> </span>run-rhime-nested<span class="w"> </span><span class="m">2019</span>-01-01<span class="w"> </span><span class="m">2019</span>-02-01<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--config<span class="w"> </span>/path/to/rhime_nested.ini
 </pre></div>
 </div>
 <p><code class="docutils literal notranslate"><span class="pre">--config</span></code> (or <code class="docutils literal notranslate"><span class="pre">-c</span></code>) is required. The start and end dates are optional
@@ -437,8 +445,9 @@ with a JSON object passed to <code class="docutils literal notranslate"><span cl
 </div>
 <p>Keep the JSON in single quotes so the shell passes it as one argument. Run
 <code class="docutils literal notranslate"><span class="pre">openghg-inversions</span> <span class="pre">run-rhime</span> <span class="pre">--help</span></code> or
-<code class="docutils literal notranslate"><span class="pre">openghg-inversions</span> <span class="pre">run-rhime-multisector</span> <span class="pre">--help</span></code> for the complete command
-syntax. New configuration files should use the RHIME vocabulary documented in
+<code class="docutils literal notranslate"><span class="pre">openghg-inversions</span> <span class="pre">run-rhime-multisector</span> <span class="pre">--help</span></code> for the complete ordinary
+command syntax. See the <a class="reference internal" href="nested_domain_model_family.html"><span class="doc">nested-domain model family</span></a> for its support boundary and configuration
+guide. New configuration files should use the RHIME vocabulary documented in
 <a class="reference internal" href="rhime.html"><span class="doc">RHIME configuration and prepared-input reference</span></a>; the packaged starting point is
 <code class="docutils literal notranslate"><span class="pre">openghg_inversions/config/templates/rhime_template.ini</span></code>. Complete,
 validated production-shape examples are used by
@@ -602,7 +611,7 @@ for legacy and latest products because their variable contracts differ.</p>
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#standard-and-multisector-runs">Standard and multisector runs</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#standard-multisector-and-nested-runs">Standard, multisector, and nested runs</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#translating-the-older-batch-example">Translating the older batch example</a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#alternative-environment-blocks">Alternative environment blocks</a></li>
 </ul>

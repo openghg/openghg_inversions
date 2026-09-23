@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>openghg_inversions.postprocessing.utils &#8212; openghg_inversions  documentation</title>
+    <title>openghg_inversions.postprocessing.nested_paris_outputs &#8212; openghg_inversions  documentation</title>
   
   
   
@@ -47,12 +47,12 @@
     <script src="../_static/thebelab-helper.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
-    <script>DOCUMENTATION_OPTIONS.pagename = 'reference/openghg_inversions.postprocessing.utils';</script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'reference/openghg_inversions.postprocessing.nested_paris_outputs';</script>
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="openghg_inversions.rhime" href="openghg_inversions.rhime.html" />
-    <link rel="prev" title="openghg_inversions.postprocessing.stats" href="openghg_inversions.postprocessing.stats.html" />
+    <link rel="next" title="openghg_inversions.postprocessing.sigma" href="openghg_inversions.postprocessing.sigma.html" />
+    <link rel="prev" title="openghg_inversions.postprocessing.merge_paris_outputs" href="openghg_inversions.postprocessing.merge_paris_outputs.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="" />
@@ -370,10 +370,10 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.make_outputs.html">openghg_inversions.postprocessing.make_outputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.make_paris_outputs.html">openghg_inversions.postprocessing.make_paris_outputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.merge_paris_outputs.html">openghg_inversions.postprocessing.merge_paris_outputs</a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.nested_paris_outputs.html">openghg_inversions.postprocessing.nested_paris_outputs</a></li>
+<li class="toctree-l3 current active"><a class="current reference internal" href="#">openghg_inversions.postprocessing.nested_paris_outputs</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.sigma.html">openghg_inversions.postprocessing.sigma</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.stats.html">openghg_inversions.postprocessing.stats</a></li>
-<li class="toctree-l3 current active"><a class="current reference internal" href="#">openghg_inversions.postprocessing.utils</a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.postprocessing.utils.html">openghg_inversions.postprocessing.utils</a></li>
 </ul>
 </details></li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.rhime.html">openghg_inversions.rhime</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
@@ -472,7 +472,7 @@
     
     <li class="breadcrumb-item"><a href="openghg_inversions.postprocessing.html" class="nav-link">openghg_inversions.postprocessing</a></li>
     
-    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">openghg_inversions.postprocessing.utils</span></li>
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">openghg_inversions.postprocessing.nested_paris_outputs</span></li>
   </ul>
 </nav>
 </div>
@@ -489,108 +489,79 @@
 <div id="searchbox"></div>
                 <article class="bd-article">
                   
-  <section id="module-openghg_inversions.postprocessing.utils">
-<span id="openghg-inversions-postprocessing-utils"></span><h1>openghg_inversions.postprocessing.utils<a class="headerlink" href="#module-openghg_inversions.postprocessing.utils" title="Link to this heading">#</a></h1>
+  <section id="module-openghg_inversions.postprocessing.nested_paris_outputs">
+<span id="openghg-inversions-postprocessing-nested-paris-outputs"></span><h1>openghg_inversions.postprocessing.nested_paris_outputs<a class="headerlink" href="#module-openghg_inversions.postprocessing.nested_paris_outputs" title="Link to this heading">#</a></h1>
+<p>PARIS output construction for nested (dual-grid) RHIME runs.</p>
+<p>Nested RHIME preparation (<a class="reference internal" href="openghg_inversions.rhime.nested.html#module-openghg_inversions.rhime.nested" title="openghg_inversions.rhime.nested"><code class="xref py py-mod docutils literal notranslate"><span class="pre">openghg_inversions.rhime.nested</span></code></a>) keeps the
+outer and inner domains as independently retained basis operators and flux
+grids – see that module’s docstring for why they are never merged onto one
+grid. The nested RHIME recipe adapts its sampled result into two ordinary,
+single-grid <a class="reference internal" href="openghg_inversions.postprocessing.inversion_output.html#openghg_inversions.postprocessing.inversion_output.InversionOutput" title="openghg_inversions.postprocessing.inversion_output.InversionOutput"><code class="xref py py-class docutils literal notranslate"><span class="pre">InversionOutput</span></code></a>
+views. This module receives those domain views and reuses the existing
+single-grid PARIS/flux/country postprocessing against each one.</p>
+<p>The outer view already has its prior flux and footprint response masked to
+zero over the inner domain’s extent
+(<a class="reference internal" href="openghg_inversions.rhime.nested.html#openghg_inversions.rhime.nested.mask_outer_merged_for_inner_domain" title="openghg_inversions.rhime.nested.mask_outer_merged_for_inner_domain"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.nested.mask_outer_merged_for_inner_domain()</span></code></a>),
+so its flux and country totals never double-count inner-domain emissions.
+The inner view reports genuine native-resolution (e.g. 6 km) flux and
+country totals on its own grid; it is a separate product and is never
+regridded onto the outer grid for arithmetic.</p>
 <dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.postprocessing.utils.add_suffix">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.postprocessing.utils.</span></span><span class="sig-name descname"><span class="pre">add_suffix</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">suffix</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.postprocessing.utils.add_suffix" title="Link to this definition">#</a></dt>
-<dd><p>Decorator to add suffix to variable names of dataset returned by decorated function.</p>
-<p>For example:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="nd">@add_suffix</span><span class="p">(</span><span class="s2">"abc"</span><span class="p">)</span>
-<span class="k">def</span><span class="w"> </span><span class="nf">some_func</span><span class="p">():</span>
-   <span class="o">...</span>
-</pre></div>
-</div>
-<p>will add “_abc” to the end of all the data variables in the dataset returned by
-some_func. (So this only works if the output of some_func is an xr.Dataset or xr.DataArray.)</p>
-<p>Note: technically, add_suffix creates a new decorator
-each time it is called. This is the decorate function
-that is returned. Then the actual “decoration” is done by
-the decorate function.</p>
-<p>So:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="nd">@add_suffix</span><span class="p">(</span><span class="s2">"mean"</span><span class="p">)</span>
-<span class="k">def</span><span class="w"> </span><span class="nf">calc_mean</span><span class="p">():</span>
-    <span class="k">pass</span>
-</pre></div>
-</div>
-<p>is the same as:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">temp</span> <span class="o">=</span> <span class="n">add_suffix</span><span class="p">(</span><span class="s2">"mean"</span><span class="p">)</span>  <span class="c1"># get `decorate`</span>
-
-<span class="nd">@temp</span>
-<span class="k">def</span><span class="w"> </span><span class="nf">calc_mean</span><span class="p">():</span>
-    <span class="k">pass</span>
-</pre></div>
-</div>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>suffix</strong> – Suffix to add to variable names.</p>
-</dd>
-</dl>
+<dt class="sig sig-object py" id="openghg_inversions.postprocessing.nested_paris_outputs.make_nested_paris_outputs">
+<span class="sig-prename descclassname"><span class="pre">openghg_inversions.postprocessing.nested_paris_outputs.</span></span><span class="sig-name descname"><span class="pre">make_nested_paris_outputs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">nested_result</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><span class="pre">Any</span></a></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">country_file</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><span class="pre">Path</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inner_country_file</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><span class="pre">Path</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">time_point</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><span class="pre">Literal</span></a><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'start'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'midpoint'</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'midpoint'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">report_mode</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inversion_grid</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">flux_frequency</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">obs_avg_period</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'4h'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">template_version</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><span class="pre">Literal</span></a><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'legacy'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'latest'</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'legacy'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">country_selections</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Iterable" title="(in Python v3.14)"><span class="pre">Iterable</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">('AUT',</span> <span class="pre">'BEL',</span> <span class="pre">'CHE',</span> <span class="pre">'CZE',</span> <span class="pre">'DEU',</span> <span class="pre">'DNK',</span> <span class="pre">'ESP',</span> <span class="pre">'FIN',</span> <span class="pre">'FRA',</span> <span class="pre">'GBR',</span> <span class="pre">'HRV',</span> <span class="pre">'HUN',</span> <span class="pre">'IRL',</span> <span class="pre">'ITA',</span> <span class="pre">'LUX',</span> <span class="pre">'NLD',</span> <span class="pre">'NOR',</span> <span class="pre">'POL',</span> <span class="pre">'PRT',</span> <span class="pre">'SVK',</span> <span class="pre">'SVN',</span> <span class="pre">'SWE')</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">country_file_cache_dir</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><span class="pre">Path</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#openghg_inversions.postprocessing.nested_paris_outputs.make_nested_paris_outputs" title="Link to this definition">#</a></dt>
+<dd><p>Compatibility wrapper adapting a sampled nested result to PARIS products.</p>
+<p>New recipe code should construct its domain <code class="docutils literal notranslate"><span class="pre">InversionOutput</span></code> views and
+call <a class="reference internal" href="#openghg_inversions.postprocessing.nested_paris_outputs.make_nested_paris_products" title="openghg_inversions.postprocessing.nested_paris_outputs.make_nested_paris_products"><code class="xref py py-func docutils literal notranslate"><span class="pre">make_nested_paris_products()</span></code></a> directly. This wrapper preserves
+the original public entry point for callers holding a <code class="docutils literal notranslate"><span class="pre">NestedRhimeResult</span></code>.</p>
 </dd></dl>
 
 <dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.postprocessing.utils.get_parameters">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.postprocessing.utils.</span></span><span class="sig-name descname"><span class="pre">get_parameters</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">func</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Callable" title="(in Python v3.14)"><span class="pre">Callable</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.14)"><span class="pre">list</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#openghg_inversions.postprocessing.utils.get_parameters" title="Link to this definition">#</a></dt>
-<dd><p>Return list of parameters for a function.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>func</strong> – function to inspect</p>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>list of parameters for the given function</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.postprocessing.utils.make_replace_names_dict">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.postprocessing.utils.</span></span><span class="sig-name descname"><span class="pre">make_replace_names_dict</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">names</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.14)"><span class="pre">list</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">old</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">new</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#openghg_inversions.postprocessing.utils.make_replace_names_dict" title="Link to this definition">#</a></dt>
-<dd><p>Make dictionary for renaming data variables by replacing “old” with “new”.</p>
+<dt class="sig sig-object py" id="openghg_inversions.postprocessing.nested_paris_outputs.make_nested_paris_products">
+<span class="sig-prename descclassname"><span class="pre">openghg_inversions.postprocessing.nested_paris_outputs.</span></span><span class="sig-name descname"><span class="pre">make_nested_paris_products</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">outer_inv_out</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.postprocessing.inversion_output.html#openghg_inversions.postprocessing.inversion_output.InversionOutput" title="openghg_inversions.postprocessing.inversion_output.InversionOutput"><span class="pre">InversionOutput</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">inner_inv_out</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.postprocessing.inversion_output.html#openghg_inversions.postprocessing.inversion_output.InversionOutput" title="openghg_inversions.postprocessing.inversion_output.InversionOutput"><span class="pre">InversionOutput</span></a></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">inner_domain_label</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">country_file</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><span class="pre">Path</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inner_country_file</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><span class="pre">Path</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">time_point</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><span class="pre">Literal</span></a><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'start'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'midpoint'</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'midpoint'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">report_mode</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inversion_grid</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">flux_frequency</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">obs_avg_period</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'4h'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">template_version</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><span class="pre">Literal</span></a><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'legacy'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'latest'</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'legacy'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">country_selections</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Iterable" title="(in Python v3.14)"><span class="pre">Iterable</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">('AUT',</span> <span class="pre">'BEL',</span> <span class="pre">'CHE',</span> <span class="pre">'CZE',</span> <span class="pre">'DEU',</span> <span class="pre">'DNK',</span> <span class="pre">'ESP',</span> <span class="pre">'FIN',</span> <span class="pre">'FRA',</span> <span class="pre">'GBR',</span> <span class="pre">'HRV',</span> <span class="pre">'HUN',</span> <span class="pre">'IRL',</span> <span class="pre">'ITA',</span> <span class="pre">'LUX',</span> <span class="pre">'NLD',</span> <span class="pre">'NOR',</span> <span class="pre">'POL',</span> <span class="pre">'PRT',</span> <span class="pre">'SVK',</span> <span class="pre">'SVN',</span> <span class="pre">'SWE')</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">country_file_cache_dir</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><span class="pre">Path</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#openghg_inversions.postprocessing.nested_paris_outputs.make_nested_paris_products" title="Link to this definition">#</a></dt>
+<dd><p>Build nested PARIS products from recipe-owned per-domain views.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>names</strong> – list of data variable names to update</p></li>
-<li><p><strong>old</strong> – old string to replace</p></li>
-<li><p><strong>new</strong> – replacement string for old</p></li>
+<li><p><strong>outer_inv_out</strong> – Outer-domain view prepared by the nested RHIME recipe.</p></li>
+<li><p><strong>inner_inv_out</strong> – Inner-domain view prepared by the nested RHIME recipe.</p></li>
+<li><p><strong>inner_domain_label</strong> – Actual inner-domain identity stored on its product.</p></li>
+<li><p><strong>country_file</strong> – Country-definition file for the outer domain (as for
+ordinary single-grid PARIS output).</p></li>
+<li><p><strong>inner_country_file</strong> – Optional country-definition file already at the
+inner domain’s native resolution. If not given, <code class="docutils literal notranslate"><span class="pre">country_file</span></code>
+(or the outer domain’s default) is resampled onto the inner grid
+and cached; see <code class="docutils literal notranslate"><span class="pre">country_file_cache_dir</span></code>.</p></li>
+<li><p><strong>time_point</strong> – country_selections: Forwarded to <code class="docutils literal notranslate"><span class="pre">paris_flux_output</span></code> /
+<code class="docutils literal notranslate"><span class="pre">paris_concentration_outputs</span></code> for both domains.</p></li>
+<li><p><strong>report_mode</strong> – country_selections: Forwarded to <code class="docutils literal notranslate"><span class="pre">paris_flux_output</span></code> /
+<code class="docutils literal notranslate"><span class="pre">paris_concentration_outputs</span></code> for both domains.</p></li>
+<li><p><strong>inversion_grid</strong> – country_selections: Forwarded to <code class="docutils literal notranslate"><span class="pre">paris_flux_output</span></code> /
+<code class="docutils literal notranslate"><span class="pre">paris_concentration_outputs</span></code> for both domains.</p></li>
+<li><p><strong>template_version</strong> – country_selections: Forwarded to <code class="docutils literal notranslate"><span class="pre">paris_flux_output</span></code> /
+<code class="docutils literal notranslate"><span class="pre">paris_concentration_outputs</span></code> for both domains.</p></li>
 </ul>
 </dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>dictionary mapping old names to new names</p>
+</dl>
+<dl>
+<dt>:param<span class="classifier">country_selections: Forwarded to <code class="docutils literal notranslate"><span class="pre">paris_flux_output</span></code> /</span></dt><dd><p><code class="docutils literal notranslate"><span class="pre">paris_concentration_outputs</span></code> for both domains.</p>
 </dd>
 </dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.postprocessing.utils.rename_by_replacement">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.postprocessing.utils.</span></span><span class="sig-name descname"><span class="pre">rename_by_replacement</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ds</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">old</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">new</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html#xarray.Dataset" title="(in xarray v2026.7.0)"><span class="pre">Dataset</span></a></span></span><a class="headerlink" href="#openghg_inversions.postprocessing.utils.rename_by_replacement" title="Link to this definition">#</a></dt>
-<dd><p>Rename data variables by replacing “old” with “new”.</p>
-<p>If the string <cite>old</cite> is contained in a data variable’s name, it is replaced
-with <cite>new</cite>.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>ds</strong> – dataset whose data variables will be renamed</p></li>
-<li><p><strong>old</strong> – string to replace</p></li>
-<li><p><strong>new</strong> – replacement string</p></li>
+<li><p><strong>flux_frequency</strong> – Flux interval frequency. If <code class="docutils literal notranslate"><span class="pre">None</span></code>, it is inferred
+independently for each domain’s flux.</p></li>
+<li><p><strong>obs_avg_period</strong> – Averaging period recorded in concentration metadata.</p></li>
+<li><p><strong>country_file_cache_dir</strong> – Directory for the cached regridded inner
+country file. Defaults to the standard per-user cache directory.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>dataset with renamed data variables</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.postprocessing.utils.update_attrs">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.postprocessing.utils.</span></span><span class="sig-name descname"><span class="pre">update_attrs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">prefix</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.postprocessing.utils.update_attrs" title="Link to this definition">#</a></dt>
-<dd><p>Decorator to update all attributes of output dataset with prefix.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>prefix</strong> – prefix to append to attributes; an underscore will be
-inserted after this prefix.</p>
-</dd>
-<dt class="field-even">Raises<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – if the decorated function does not return xr.Dataset</p>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">(flux_outer,</span> <span class="pre">flux_inner,</span> <span class="pre">conc_outs)</span></code>. <code class="docutils literal notranslate"><span class="pre">flux_outer</span></code> matches the
+single-grid PARIS flux schema exactly, with zero emissions inside the
+inner extent, so it is never a source of double-counting against
+<code class="docutils literal notranslate"><span class="pre">flux_inner</span></code>. <code class="docutils literal notranslate"><span class="pre">flux_inner</span></code> reports genuine native-resolution flux
+and country totals on the inner domain’s own grid.</p>
 </dd>
 </dl>
 </dd></dl>
@@ -608,20 +579,20 @@ inserted after this prefix.</p>
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="openghg_inversions.postprocessing.stats.html"
+       href="openghg_inversions.postprocessing.merge_paris_outputs.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">openghg_inversions.postprocessing.stats</p>
+        <p class="prev-next-title">openghg_inversions.postprocessing.merge_paris_outputs</p>
       </div>
     </a>
     <a class="right-next"
-       href="openghg_inversions.rhime.html"
+       href="openghg_inversions.postprocessing.sigma.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">openghg_inversions.rhime</p>
+        <p class="prev-next-title">openghg_inversions.postprocessing.sigma</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -644,18 +615,15 @@ inserted after this prefix.</p>
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.postprocessing.utils.add_suffix"><code class="docutils literal notranslate"><span class="pre">add_suffix()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.postprocessing.utils.get_parameters"><code class="docutils literal notranslate"><span class="pre">get_parameters()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.postprocessing.utils.make_replace_names_dict"><code class="docutils literal notranslate"><span class="pre">make_replace_names_dict()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.postprocessing.utils.rename_by_replacement"><code class="docutils literal notranslate"><span class="pre">rename_by_replacement()</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.postprocessing.utils.update_attrs"><code class="docutils literal notranslate"><span class="pre">update_attrs()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.postprocessing.nested_paris_outputs.make_nested_paris_outputs"><code class="docutils literal notranslate"><span class="pre">make_nested_paris_outputs()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.postprocessing.nested_paris_outputs.make_nested_paris_products"><code class="docutils literal notranslate"><span class="pre">make_nested_paris_products()</span></code></a></li>
 </ul>
   </nav></div>
 
   <div class="sidebar-secondary-item">
 
   <div class="tocsection sourcelink">
-    <a href="../_sources/reference/openghg_inversions.postprocessing.utils.rst.txt">
+    <a href="../_sources/reference/openghg_inversions.postprocessing.nested_paris_outputs.rst.txt">
       <i class="fa-solid fa-file-lines"></i> Show Source
     </a>
   </div>

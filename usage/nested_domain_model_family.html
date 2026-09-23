@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>Standard RHIME model family &#8212; openghg_inversions  documentation</title>
+    <title>Nested-domain model family &#8212; openghg_inversions  documentation</title>
   
   
   
@@ -47,12 +47,12 @@
     <script src="../_static/thebelab-helper.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
-    <script>DOCUMENTATION_OPTIONS.pagename = 'usage/standard_model_family';</script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'usage/nested_domain_model_family';</script>
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="Standard RHIME tutorial" href="rhime_standard_tutorial.html" />
-    <link rel="prev" title="Choose a RHIME model recipe" href="model_recipes.html" />
+    <link rel="next" title="Run a nested-domain RHIME inversion" href="nested_domains.html" />
+    <link rel="prev" title="Customising RHIME" href="customising_rhime.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="" />
@@ -319,7 +319,7 @@
 <li class="toctree-l1"><a class="reference internal" href="getting_started.html">Getting started with OpenGHG Inversions</a></li>
 <li class="toctree-l1"><a class="reference internal" href="conceptual_inversion.html">How an Atmospheric Inversion Works</a></li>
 <li class="toctree-l1"><a class="reference internal" href="model_recipes.html">Choose a RHIME model recipe</a></li>
-<li class="toctree-l1 current active has-children"><a class="current reference internal" href="#">Standard RHIME model family</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="standard_model_family.html">Standard RHIME model family</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l2"><a class="reference internal" href="rhime_standard_tutorial.html">Standard RHIME tutorial</a></li>
 <li class="toctree-l2"><a class="reference internal" href="rhime_multisector_tutorial.html">Multisector RHIME tutorial</a></li>
 <li class="toctree-l2"><a class="reference internal" href="concrete_rhime_model.html">Standard and multisector RHIME models</a></li>
@@ -328,7 +328,7 @@
 <li class="toctree-l2"><a class="reference internal" href="customising_rhime.html">Customising RHIME</a></li>
 </ul>
 </details></li>
-<li class="toctree-l1 has-children"><a class="reference internal" href="nested_domain_model_family.html">Nested-domain model family</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l1 current active has-children"><a class="current reference internal" href="#">Nested-domain model family</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l2"><a class="reference internal" href="nested_domains.html">Run a nested-domain RHIME inversion</a></li>
 </ul>
 </details></li>
@@ -391,7 +391,7 @@
     
     <li class="breadcrumb-item"><a href="usage.html" class="nav-link">Using OpenGHG Inversions</a></li>
     
-    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Standard RHIME model family</span></li>
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Nested-domain model family</span></li>
   </ul>
 </nav>
 </div>
@@ -408,26 +408,66 @@
 <div id="searchbox"></div>
                 <article class="bd-article">
                   
-  <section id="standard-rhime-model-family">
-<h1>Standard RHIME model family<a class="headerlink" href="#standard-rhime-model-family" title="Link to this heading">#</a></h1>
-<p>The standard RHIME family contains the complete one-component and multisector
-recipes. Both acquire OpenGHG data, prepare labelled inversion inputs, build and
-sample a PyMC model, and construct supported outputs. They can also run through
-the <a class="reference internal" href="staged_workflow.html"><span class="doc">staged command-line workflow</span></a>.</p>
-<p>Start with the standard tutorial when one flux component and one scaling state
-fit the scientific question. Use the multisector tutorial when named sources
-must retain separate states and diagnostics. Species selection does not choose
-between these recipes.</p>
+  <section id="nested-domain-model-family">
+<h1>Nested-domain model family<a class="headerlink" href="#nested-domain-model-family" title="Link to this heading">#</a></h1>
+<p>The nested-domain family runs one emissions source across two atmospheric
+transport grids: a surrounding outer domain and a higher-resolution inner
+domain. RHIME masks their spatial overlap, constructs an independent basis and
+state vector on each native grid, and fits both contributions to one set of
+observations.</p>
+<p>The outer and inner names describe transport domains, not groups within one
+basis. Use <a class="reference internal" href="grouped_basis_layout.html"><span class="doc">Grouped basis and state metadata</span></a> when one transport grid instead needs
+basis regions of different sizes or roles.</p>
+<section id="current-support">
+<h2>Current support<a class="headerlink" href="#current-support" title="Link to this heading">#</a></h2>
+<div class="pst-scrollable-table-container"><table class="table">
+<colgroup>
+<col style="width: 28.0%" />
+<col style="width: 72.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Capability</p></th>
+<th class="head"><p>Nested-domain RHIME</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Intended use</p></td>
+<td><p>One emissions source represented by overlapping outer and inner
+footprint grids at different spatial resolutions.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Public entry points</p></td>
+<td><p><a class="reference internal" href="../reference/openghg_inversions.rhime.html#openghg_inversions.rhime.run_rhime_nested" title="openghg_inversions.rhime.run_rhime_nested"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.run_rhime_nested()</span></code></a> for a complete run,
+and <a class="reference internal" href="../reference/openghg_inversions.rhime.html#openghg_inversions.rhime.run_rhime_nested_from_prepared_inputs" title="openghg_inversions.rhime.run_rhime_nested_from_prepared_inputs"><code class="xref py py-func docutils literal notranslate"><span class="pre">openghg_inversions.rhime.run_rhime_nested_from_prepared_inputs()</span></code></a>
+for explicit prepared outer and inner inputs.</p></td>
+</tr>
+<tr class="row-even"><td><p>Configuration and command line</p></td>
+<td><p>Supports the RHIME INI schema and
+<code class="docutils literal notranslate"><span class="pre">openghg-inversions</span> <span class="pre">run-rhime-nested</span></code>. The generic staged commands do
+not currently accept this family.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Outputs</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">output_format=&quot;none&quot;</span></code> returns the sampled result without formatted
+products. <code class="docutils literal notranslate"><span class="pre">output_format=&quot;paris&quot;</span></code> can additionally write separate
+outer- and inner-grid flux products plus one shared concentration
+product. Other output formats are rejected because they assume one
+spatial grid.</p></td>
+</tr>
+<tr class="row-even"><td><p>Current model boundary</p></td>
+<td><p>One standard flux sector. When boundary conditions are enabled, their
+contribution comes from the outer domain; multisector nested runs and a
+second inner boundary condition are not supported.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>Continue with the nested-domain guide for configuration, basis construction,
+time alignment, prepared inputs, and output details.</p>
 <div class="toctree-wrapper compound">
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="rhime_standard_tutorial.html">Standard RHIME tutorial</a></li>
-<li class="toctree-l1"><a class="reference internal" href="rhime_multisector_tutorial.html">Multisector RHIME tutorial</a></li>
-<li class="toctree-l1"><a class="reference internal" href="concrete_rhime_model.html">Standard and multisector RHIME models</a></li>
-<li class="toctree-l1"><a class="reference internal" href="rhime.html">RHIME configuration and prepared-input reference</a></li>
-<li class="toctree-l1"><a class="reference internal" href="cli.html">Running RHIME from the command line</a></li>
-<li class="toctree-l1"><a class="reference internal" href="customising_rhime.html">Customising RHIME</a></li>
+<li class="toctree-l1"><a class="reference internal" href="nested_domains.html">Run a nested-domain RHIME inversion</a></li>
 </ul>
 </div>
+</section>
 </section>
 
 
@@ -441,20 +481,20 @@ between these recipes.</p>
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="model_recipes.html"
+       href="customising_rhime.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">Choose a RHIME model recipe</p>
+        <p class="prev-next-title">Customising RHIME</p>
       </div>
     </a>
     <a class="right-next"
-       href="rhime_standard_tutorial.html"
+       href="nested_domains.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">Standard RHIME tutorial</p>
+        <p class="prev-next-title">Run a nested-domain RHIME inversion</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -470,9 +510,21 @@ between these recipes.</p>
 
 
   <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#current-support">Current support</a></li>
+</ul>
+  </nav></div>
+
+  <div class="sidebar-secondary-item">
 
   <div class="tocsection sourcelink">
-    <a href="../_sources/usage/standard_model_family.rst.txt">
+    <a href="../_sources/usage/nested_domain_model_family.rst.txt">
       <i class="fa-solid fa-file-lines"></i> Show Source
     </a>
   </div>

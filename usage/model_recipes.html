@@ -328,6 +328,10 @@
 <li class="toctree-l2"><a class="reference internal" href="customising_rhime.html">Customising RHIME</a></li>
 </ul>
 </details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="nested_domain_model_family.html">Nested-domain model family</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="nested_domains.html">Run a nested-domain RHIME inversion</a></li>
+</ul>
+</details></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="co2_model_family.html">CO₂ model family</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l2"><a class="reference internal" href="co2_models.html">CO₂ model recipes</a></li>
 </ul>
@@ -436,14 +440,21 @@ observation likelihood.</p></td>
 <td><p>Complete acquisition-to-output runner and staged workflow.</p></td>
 <td><p><a class="reference internal" href="rhime_multisector_tutorial.html"><span class="doc">multisector tutorial</span></a></p></td>
 </tr>
-<tr class="row-even"><td><p>CO₂-only</p></td>
+<tr class="row-even"><td><p>Nested-domain</p></td>
+<td><p>One emissions source is represented on overlapping outer and
+higher-resolution inner transport grids.</p></td>
+<td><p>Complete acquisition-to-output runner and dedicated command-line entry
+point; the generic staged workflow is not available.</p></td>
+<td><p><a class="reference internal" href="nested_domain_model_family.html"><span class="doc">nested-domain model family</span></a></p></td>
+</tr>
+<tr class="row-odd"><td><p>CO₂-only</p></td>
 <td><p>A correlated positive state and coherent-reduction covariance are
 supplied for one CO₂ observation channel.</p></td>
 <td><p>Advanced prepared-input replay; acquisition and complete configuration
 are not part of this entry point.</p></td>
 <td><p><a class="reference internal" href="co2_model_family.html"><span class="doc">CO₂ model family</span></a></p></td>
 </tr>
-<tr class="row-odd"><td><p>Linked CO₂/O₂</p></td>
+<tr class="row-even"><td><p>Linked CO₂/O₂</p></td>
 <td><p>CO₂ and O₂ channels constrain shared and tracer-specific retained
 states through one joint covariance.</p></td>
 <td><p>Advanced prepared-input replay; there is no complete
@@ -454,9 +465,11 @@ states through one joint covariance.</p></td>
 </table>
 </div>
 <p>The <a class="reference internal" href="standard_model_family.html"><span class="doc">standard model family</span></a> is the main route for
-new users. “Advanced” on the CO₂ family describes the preparation knowledge and
-workflow complexity it requires; it does not by itself state API stability,
-configuration availability, operational adoption, or scientific validation.</p>
+new users. Choose the nested family for multiple transport grids, not for basis
+groups on one grid. “Advanced” on the CO₂ family describes the preparation
+knowledge and workflow complexity it requires; it does not by itself state API
+stability, configuration availability, operational adoption, or scientific
+validation.</p>
 </section>
 
 
