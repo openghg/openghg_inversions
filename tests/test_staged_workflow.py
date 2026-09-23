@@ -8,7 +8,6 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-import arviz as az
 import numpy as np
 import pandas as pd
 import pytest
@@ -29,7 +28,8 @@ from openghg_inversions.rhime.stages import (
     resolve_stage_setup,
     sample_rhime_stage,
 )
-from openghg_inversions.serialization import save_inferencedata
+from openghg_inversions.serialization import save_trace
+from tests.helpers import make_trace
 
 
 def _params(**overrides: Any) -> dict[str, Any]:
@@ -348,7 +348,7 @@ def test_prior_predictive_does_not_hide_serialisation_failures(
     from openghg_inversions.rhime import stages
 
     setup = resolve_stage_setup(_params(), model="standard")
-    prior = az.InferenceData(prior=xr.Dataset({"x": (("chain", "draw"), [[1.0]])}))
+    prior = make_trace(prior=xr.Dataset({"x": (("chain", "draw"), [[1.0]])}))
     monkeypatch.setattr(stages, "_load_prepared", lambda *args, **kwargs: (_prepared(), setup))
     monkeypatch.setattr(
         stages,
@@ -358,7 +358,7 @@ def test_prior_predictive_does_not_hide_serialisation_failures(
     monkeypatch.setattr(stages.pm, "sample_prior_predictive", lambda *args, **kwargs: prior)
     monkeypatch.setattr(
         stages,
-        "save_inferencedata",
+        "save_trace",
         lambda *args, **kwargs: (_ for _ in ()).throw(OSError("disk full")),
     )
 
@@ -434,7 +434,7 @@ def test_diagnostics_emit_issue_667_convergence_signals(
     )
     diverging = np.zeros((4, 500), dtype=bool)
     diverging[2, 10] = True
-    idata = az.InferenceData(
+    idata = make_trace(
         posterior=posterior,
         sample_stats=xr.Dataset(
             {"diverging": (("chain", "draw"), diverging)},
@@ -442,7 +442,7 @@ def test_diagnostics_emit_issue_667_convergence_signals(
         ),
     )
     posterior_path = tmp_path / "posterior.nc"
-    save_inferencedata(idata, posterior_path)
+    save_trace(idata, posterior_path)
     engines: list[str | None] = []
     to_netcdf = xr.Dataset.to_netcdf
 
@@ -476,7 +476,7 @@ def test_diagnostics_preserve_finite_failures_when_one_metric_is_nonfinite(
 ) -> None:
     from openghg_inversions.rhime import stages
 
-    idata = az.InferenceData(
+    idata = make_trace(
         posterior=xr.Dataset(
             {"x": (("chain", "draw", "region"), np.ones((2, 4, 2)))},
             coords={"chain": range(2), "draw": range(4), "region": ["known", "undefined"]},
@@ -487,7 +487,7 @@ def test_diagnostics_preserve_finite_failures_when_one_metric_is_nonfinite(
         ),
     )
     posterior_path = tmp_path / "posterior.nc"
-    save_inferencedata(idata, posterior_path)
+    save_trace(idata, posterior_path)
     summary = xr.Dataset(
         {
             "x": (
@@ -513,12 +513,12 @@ def test_diagnostics_handle_unassessable_scalar_metric(
 ) -> None:
     from openghg_inversions.rhime import stages
 
-    idata = az.InferenceData(
+    idata = make_trace(
         posterior=xr.Dataset({"x": (("chain", "draw"), np.ones((2, 4)))}),
         sample_stats=xr.Dataset({"diverging": (("chain", "draw"), np.zeros((2, 4), dtype=bool))}),
     )
     posterior_path = tmp_path / "posterior.nc"
-    save_inferencedata(idata, posterior_path)
+    save_trace(idata, posterior_path)
     monkeypatch.setattr(
         stages.az,
         "summary",
@@ -569,15 +569,15 @@ def test_diagnostics_reject_empty_check_stage_before_loading(tmp_path: Path) -> 
 def test_diagnostics_authenticate_posterior_with_sample_manifest(tmp_path: Path) -> None:
     from openghg_inversions.rhime import stages
 
-    posterior = az.InferenceData(
+    posterior = make_trace(
         posterior=xr.Dataset({"x": (("chain", "draw"), np.ones((2, 4)))})
     )
     recorded_path = tmp_path / "recorded.nc"
     supplied_path = tmp_path / "supplied.nc"
-    save_inferencedata(posterior, recorded_path)
+    save_trace(posterior, recorded_path)
     changed = posterior.copy()
     changed.posterior["x"].data[0, 0] = 2.0
-    save_inferencedata(changed, supplied_path)
+    save_trace(changed, supplied_path)
     manifest_path = tmp_path / "sample-manifest.json"
     stages._write_json(
         manifest_path,

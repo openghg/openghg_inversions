@@ -294,9 +294,10 @@ interfaces.
 
 ### Results
 
-`run_rhime` returns a `RhimeResult`. Its `idata` attribute contains the ArviZ
-posterior and predictive groups, `inv_inputs` contains labelled model inputs,
-and `outputs` contains requested derived products. See the
+`run_rhime` returns a `RhimeResult`. Its `idata` attribute is an xarray
+`DataTree` containing ArviZ-compatible posterior and predictive groups,
+`inv_inputs` contains labelled model inputs, and `outputs` contains requested
+derived products. See the
 [RHIME guide](docs/usage/rhime.rst) for output formats and persistence.
 
 

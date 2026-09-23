@@ -12,6 +12,11 @@ Tracker state may post-date the reviewed code snapshot; in particular, PR #660
 merged after `da008974` and is recorded here as tracker evidence, not as code
 inspected at that revision.
 
+Compatibility update (2026-09-22): PR #714 removed the direct HBMCMC
+implementation. Only the inbound `run_hbmcmc.py` old-INI wrapper and the modern
+legacy-format output adapter remain. The compatibility outcome and Gate G
+below now govern that residual surface, not a second inversion implementation.
+
 ## Purpose and authority
 
 This document explains what RHIME is becoming, how the pieces fit together,
@@ -22,7 +27,9 @@ The detailed engineering rules remain normative in:
 
 - [`Developing RHIME models`](../development/rhime_model_development.rst);
 - [`Validation and labelled-array patterns`](../development/validation_and_xarray.rst);
-- [`Numerical data ownership and execution boundaries`](numerical_data_ownership_and_execution_boundaries.md).
+- [`Numerical data ownership and execution boundaries`](numerical_data_ownership_and_execution_boundaries.md);
+- the proposed [Issue #443 DataTree migration plan](issue_443_datatree_migration.md)
+  for the PyMC 6 / ArviZ 1 trace transition.
 
 The approved [`run_rhime` readability and modifiability
 plan](run_rhime_readability_and_modifiability.md) and the [model-family
@@ -72,9 +79,10 @@ The programme must deliver six outcomes:
    universal model framework.
 5. **Reproducible scientific adoption.** Verification Games, WUR25, GEMMA, and
    tutorials exercise supported package paths and retain queryable evidence.
-6. **An evidence-based compatibility transition.** Legacy execution is
-   retired only after safety, product parity, observed migration, and a release
-   window have been demonstrated.
+6. **A bounded residual compatibility surface.** Direct legacy execution is
+   retired. The old-INI wrapper and modern legacy-format product remain
+   explicit, tested adapters until observed migration and a communicated
+   release window justify changing either contract.
 
 The first outcome is a release gate. The next four can make progress in
 parallel, subject to their explicit dependencies. The sixth is an outcome of
@@ -407,7 +415,7 @@ parallel; production claims are controlled by the outcome gates below.
 | Shared scientific mechanics | Reusable labelled covariance, coherent reduction, mismatch models, roles, state/source selection | Shared-foundations project; only work with a named production consumer should gate a recipe |
 | Model families | Complete CO2, CO2/O2, radiocarbon, and nested-domain products while retaining the experimental multigas fixture and a multisector nested seam | CO2 project; OPE-91 cutover; a new dated radiocarbon track; #666 and #407 -> #408 -> #409 plus a nested-multisector fixture |
 | Scientific operations | Queryable Verification Games runs and artifacts; controlled WUR25/GEMMA evidence | Verification Games renewal, WUR25, GEMMA |
-| Compatibility and release | Migration evidence, release-quality automation, version/DOI agreement, bounded retirement | #587 retirement gate, GitHub #351, later residual-removal issue |
+| Compatibility and release | Old-INI wrapper migration evidence, explicit modern legacy-product policy, release-quality automation, version/DOI agreement | PR #714 removal record, #587 residual compatibility gate, GitHub #351 |
 
 Shared foundations are a capability stream, not a serial programme phase. A
 foundation item should block only the recipe or campaign which consumes it.
@@ -672,22 +680,25 @@ shared operational claim across them.
 - Headline and paper-ready analysis is linked to immutable run, diagnostic,
   product, code, and data identities.
 
-### Gate G — compatibility transition and retirement
+### Gate G — residual compatibility and wrapper retirement
 
-Legacy removal is not required for the first safe modern release.
+PR #714 retired direct legacy execution. This gate now governs the remaining
+old-INI wrapper and modern legacy-format product; it must not be used to
+reintroduce or emulate the deleted sampler.
 
 **Exit evidence**
 
-- Real INI/SLURM users and required legacy products are named.
+- Real INI/SLURM wrapper users and required modern legacy-format products are
+  named.
 - Migration exercises record the revision, configuration, products,
   differences, user feedback, and decision.
-- Modern routes never silently select legacy execution or legacy first-chain
-  output semantics.
-- A communicated deprecation window and release notes exist.
-- A new bounded residual-removal issue names exactly which APIs, paths,
-  products, tests, and documentation are removed; closed #416 is not revived.
-- Removal ships in a later release after at least one safe modern release has
-  provided an observed migration window.
+- The wrapper remains an inbound translation route to `run_rhime`; no modern
+  route silently selects another executor or legacy first-chain semantics.
+- Wrapper retirement, if proposed, has its own communicated deprecation
+  window, release notes, and bounded issue naming affected inputs, tests, and
+  documentation.
+- The modern `output_format="legacy"` product is evaluated separately from the
+  wrapper. Retiring one does not imply retiring the other.
 
 ## Dependency and release sequence
 
@@ -700,7 +711,7 @@ trust         adoption      durable capabilities      named recipes     campaign
     +------------+----------------+----------------------+----------------+
                          consumer-specific shipping gate
 
-Gate C + required D evidence + observed migration -> Gate G later removal
+Observed old-INI migration -> Gate G optional wrapper retirement
 ```
 
 Gates B-F may start and progress in parallel. A modern production-result claim
@@ -717,8 +728,9 @@ The intended release cuts are readiness-based:
 
 1. **Stabilisation release.** Gates B and C for standard and multisector,
    applicable D-core evidence, executable tutorials, and the release-quality
-   envelope. Retain the explicit legacy route. Do not advertise incomplete
-   CO2 or nested recipes as production.
+   envelope. Retain the old-INI wrapper and modern legacy-format product as
+   explicit adapters. Do not advertise incomplete CO2 or nested recipes as
+   production.
 2. **Model-family releases.** CO2, CO2/O2, CO2/14CO2, and nested domain may ship
    in separate minor releases as their own Gate E and consumer-specific Gate F
    evidence become ready; none is forced to wait for another family. CO2
@@ -726,9 +738,10 @@ The intended release cuts are readiness-based:
 3. **Radiocarbon deadline.** A supported CO2/14CO2 recipe must ship no later
    than 28 February 2027. It may join the CO2 release or use its own minor cut,
    but cannot be blocked on optional O2 or nested-domain delivery.
-4. **Retirement release.** Gate G passes after an observed deprecation window.
-   A major-version boundary is a natural option, but numbering is a maintainer
-   release decision.
+4. **Optional wrapper-retirement release.** Gate G passes after observed
+   old-INI migration and a communicated deprecation window. A major-version
+   boundary is a natural option, but numbering is a maintainer release
+   decision. The modern legacy-format product has a separate support decision.
 
 Except for the radiocarbon commitment, these are outcome cuts rather than
 calendar estimates. Other target dates should be added when an owner accepts
@@ -850,13 +863,13 @@ The repository's GitHub milestones should not serve as a second schedule:
 | #10: high-resolution RHIME | Five open items; current nested-domain chain is valid | Retain as the public nested-domain outcome, but do not count parent #666 and its child issues as independent delivery progress |
 | #11: linked CO2/O2 | Three open items while a core linked recipe has landed through different work | Re-scope to the genuinely remaining ratio/config/output contract or close in favour of the Linear CO2 production milestones |
 | #12: reconstruction/run bundles | Two open items and still current | Map explicitly to Gate D and Linear OPE-55/OPE-21 |
-| #13: legacy cleanup | Marked complete because #416 closed, while the live retirement gate is unmet | Keep as historical; track the future bounded removal under Gate G rather than reopening it |
+| #13: legacy cleanup | Direct execution removal is complete through PR #714 | Keep as historical; track any future old-INI wrapper retirement under Gate G without reopening #416 |
 
 The old GitHub M1-M5 numbering no longer describes delivery order: CO2 work
-landed before high-resolution RHIME, and “legacy cleanup complete” does not mean
-legacy retirement is accepted. GitHub milestones may remain useful public
-implementation groupings, but Linear and this outcome roadmap own schedule and
-dependencies.
+landed before high-resolution RHIME. Direct legacy execution is removed, while
+the wrapper and modern legacy-format product remain explicit compatibility
+contracts. GitHub milestones may remain useful public implementation
+groupings, but Linear and this outcome roadmap own schedule and dependencies.
 
 GitHub #205 records broad tracer/isotope ambition, while #624 and #634 record
 concrete coordinate and performance pressure from composable/multigas models.
@@ -990,8 +1003,9 @@ The programme is complete when:
     dependencies, and acceptance evidence.
 11. Every release passes the release-quality envelope and has consistent
     version, migration, package, and DOI records.
-12. Legacy removal occurs only after observed user migration and a communicated
-    deprecation window.
+12. Any retirement of the old-INI wrapper or modern legacy-format product is a
+    separate, evidence-based decision with observed user migration and a
+    communicated deprecation window.
 13. Shared-component changes keep the experimental Ramsden fixture working,
     and a two-sector nested fixture proves that channel, sector, state, and
     domain remain orthogonal without a generic model representation.

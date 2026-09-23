@@ -9,7 +9,6 @@ import json
 from pathlib import Path
 from typing import Any, cast
 
-import arviz as az
 import numpy as np
 import pymc as pm
 import xarray as xr
@@ -26,7 +25,7 @@ from openghg_inversions.rhime.specs import (
     RhimeOutputSpec,
     RhimeRunSpec,
 )
-from openghg_inversions.serialization import reset_serialisation_multiindexes
+from openghg_inversions.serialization import save_trace
 from openghg_inversions.utils import ncdf_encoding, write_netcdf_preserving_bounds_attrs
 
 
@@ -38,7 +37,7 @@ class RhimeResult:
     model_spec: RhimeModelSpec
     output_spec: RhimeOutputSpec
     inv_inputs: xr.Dataset
-    idata: az.InferenceData
+    idata: xr.DataTree
     output_metadata: dict[str, Any] = field(default_factory=dict)
     outputs: dict[str, Any] = field(default_factory=dict)
     basis_functions: BasisFunctions | None = None
@@ -49,7 +48,7 @@ class RhimeResult:
 
 
 def annotate_likelihood_trace(
-    idata: az.InferenceData,
+    idata: xr.DataTree,
     *,
     builder_identity: dict[str, str],
     likelihood_kwargs: Mapping[str, Any] | None,
@@ -60,15 +59,14 @@ def annotate_likelihood_trace(
     arrays cross an explicit eager serialization boundary.
 
     Args:
-        idata: Inference data to annotate in place.
+        idata: Sampled trace to annotate in place.
         builder_identity: Importable module and qualified-name provenance for
             the likelihood builder.
         likelihood_kwargs: Resolved builder options to preserve as structured
             JSON metadata.
 
     Returns:
-        None. The input inference data and matching variable attributes are
-        annotated in place.
+        None. The input trace is annotated in place.
     """
     idata.attrs["rhime_likelihood_builder"] = json.dumps(builder_identity, sort_keys=True)
     idata.attrs["rhime_likelihood_kwargs"] = json.dumps(
@@ -202,45 +200,6 @@ def _define_derived_output_filename(
     )
 
 
-def _save_inferencedata(idata: az.InferenceData, path: str | Path) -> None:
-    """Save inference data while preserving metadata and serializable coords.
-
-    Root and group attributes are preserved while group MultiIndexes are reset
-    on a serialization copy. The h5netcdf, ArviZ-default, and netcdf4 backends
-    are attempted in that order.
-
-    Args:
-        idata: Inference data to serialize.
-        path: Destination NetCDF path.
-
-    Raises:
-        RuntimeError: If every supported NetCDF backend fails.
-    """
-    if isinstance(idata, az.InferenceData):
-        idata = cast(Any, az.InferenceData)(
-            attrs=dict(idata.attrs),
-            **{group: reset_serialisation_multiindexes(idata[group]) for group in idata.groups()},
-        )
-
-    failures = []
-    for engine in ("h5netcdf", None, "netcdf4"):
-        try:
-            if engine is None:
-                idata.to_netcdf(str(path), compress=True)
-            else:
-                idata.to_netcdf(str(path), engine=engine, compress=True)
-        except Exception as exc:
-            engine_name = "arviz-default" if engine is None else engine
-            failures.append(f"{engine_name}: {exc}")
-        else:
-            return
-
-    joined_failures = "\n".join(failures)
-    raise RuntimeError(
-        f"Could not save RHIME trace to {path}. Tried h5netcdf, ArviZ default, and netcdf4:\n{joined_failures}"
-    )
-
-
 def _save_requested_trace(result: RhimeResult) -> None:
     """Save the sampled trace when requested by the resolved output spec."""
     trace_path = _resolve_output_path(
@@ -252,7 +211,7 @@ def _save_requested_trace(result: RhimeResult) -> None:
         return
     trace_path.parent.mkdir(parents=True, exist_ok=True)
     with timed("rhime.output.trace_save", path=trace_path):
-        _save_inferencedata(result.idata, trace_path)
+        save_trace(result.idata, trace_path)
     result.output_metadata["trace_path"] = str(trace_path)
 
 

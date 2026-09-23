@@ -1,10 +1,8 @@
 """Modern inversion output container and serialization helpers.
 
-``InversionOutput`` is the durable artifact produced by modern RHIME and by
-fixedbasis compatibility paths that have been routed through the modern
-postprocessing flow. It stores the sampled trace, canonical inversion inputs,
-retained ``BasisFunctions``, and run/model/output metadata needed to reproduce
-postprocessing products.
+``InversionOutput`` is the durable artifact produced by modern RHIME. It stores
+the sampled trace, canonical inversion inputs, retained ``BasisFunctions``, and
+run/model/output metadata needed to reproduce postprocessing products.
 
 The class deliberately stays product-neutral. Product modules such as
 ``make_outputs``, ``make_paris_outputs``, and ``legacy_outputs`` decide which
@@ -27,7 +25,6 @@ from dataclasses import dataclass, field, replace
 from typing import Any, Hashable, Literal, cast
 import json
 
-import arviz as az
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -35,17 +32,19 @@ import xarray as xr
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.serialization import (
     MULTIINDEX_DIMS_ATTR as _MULTIINDEX_DIMS_ATTR,
-    inferencedata_from_datatree as _inferencedata_from_datatree,
-    inferencedata_to_datatree as _inferencedata_to_datatree,
     open_datatree_loaded as _open_datatree_loaded,
     reset_serialisation_multiindexes as _reset_serialisation_multiindexes,
     restore_serialisation_multiindexes as _restore_serialisation_multiindexes,
     save_datatree as _save_datatree,
+    trace_from_datatree as _trace_from_datatree,
+    trace_to_datatree as _trace_to_datatree,
 )
 
 
 MODERN_INVERSION_OUTPUT_SCHEMA = "openghg_inversions.inversion_output"
 MULTIINDEX_DIMS_ATTR = _MULTIINDEX_DIMS_ATTR
+TRACE_SAMPLE_GROUPS = ("prior", "prior_predictive", "posterior", "posterior_predictive")
+TRACE_MODEL_DATA_GROUPS = ("constant_data",)
 
 
 def _json_default(value: object) -> str:
@@ -139,42 +138,77 @@ def _filter_trace_data_vars_by_name(ds: xr.Dataset, var_names: str | list[str]) 
     return ds[selected]
 
 
-def convert_idata_to_dataset(
-    idata: az.InferenceData, group_filters=["prior", "posterior"], add_suffix=True
-) -> xr.Dataset:
-    """Merge all groups in an arviz InferenceData object into a single xr.Dataset.
+def trace_group(trace: xr.DataTree, name: str) -> xr.Dataset:
+    """Return one exact, direct trace group as a Dataset.
 
     Args:
-        idata: arviz InferenceData containing traces (and other data)
-        group_filters: Filters for the groups of the InferenceData. A group will
-          be selected if a filter is a substring of the group name. So the groups
-          "prior" and "prior_predictive" will both match the filter "prior". The
-          default filters select the "prior", "prior_predictive", "posterior", and
-          "posterior_predictive" groups.
-        add_suffix: if True, rename the data variables so that they end in the
-          name of the group they came from.
+        trace: Native xarray trace tree.
+        name: Exact direct-child group name.
 
     Returns:
-        xr.Dataset containing all data variables in the selected groups of the
-        InferenceData. Native chain and draw dimensions are retained.
+        The group's Dataset.
 
+    Raises:
+        KeyError: If ``name`` is not a direct child of ``trace``.
     """
-    traces = []
-    for group in idata.groups():
-        if any(filt in group for filt in group_filters):
-            trace = idata[group]
-            if add_suffix:
-                rename_dict = {dv: f"{dv}_{group}" for dv in trace.data_vars}
-                trace = trace.rename_vars(rename_dict)
-            traces.append(trace)
-    return xr.merge(traces, join="outer")
+    try:
+        return trace.children[name].to_dataset()
+    except KeyError as exc:
+        raise KeyError(f"Trace has no direct group {name!r}.") from exc
+
+
+def merge_trace_groups(
+    trace: xr.DataTree,
+    groups: Iterable[str] = TRACE_SAMPLE_GROUPS,
+    *,
+    add_suffix: bool = True,
+) -> xr.Dataset:
+    """Merge selected direct trace groups into a Dataset.
+
+    Args:
+        trace: Native xarray trace tree.
+        groups: Exact direct-child group names to merge. Missing groups are
+            ignored so posterior-only and prior-only traces remain valid.
+        add_suffix: If true, suffix each data variable with its group name.
+
+    Returns:
+        Dataset containing all variables in the selected groups. Native chain
+        and draw dimensions are retained.
+    """
+    datasets = []
+    for group in groups:
+        if group not in trace.children:
+            continue
+        dataset = trace_group(trace, group)
+        if add_suffix:
+            dataset = dataset.rename_vars({name: f"{name}_{group}" for name in dataset.data_vars})
+        datasets.append(dataset)
+    return xr.merge(datasets, join="outer")
+
+
+def convert_idata_to_dataset(
+    trace: xr.DataTree,
+    group_filters: Iterable[str] = TRACE_SAMPLE_GROUPS,
+    add_suffix: bool = True,
+) -> xr.Dataset:
+    """Forward the former conversion helper to exact DataTree group merging.
+
+    Args:
+        trace: Native xarray trace tree.
+        group_filters: Exact direct-child group names to merge.
+        add_suffix: If true, suffix each data variable with its group name.
+
+    Returns:
+        Dataset containing variables from the selected groups.
+    """
+    return merge_trace_groups(trace, group_filters, add_suffix=add_suffix)
 
 
 def _add_attributes_to_trace_dataset(trace_ds: xr.Dataset, obs_units: str, obs_longname: str) -> None:
     """Add attributes to trace dataset.
 
     Args:
-        trace_ds: trace dataset (probably created by `convert_idata_to_dataset`)
+        trace_ds: Trace dataset, probably created by ``merge_trace_groups``.
         obs_units: units for observation data used in inversion
         obs_longname: long name for observation data used in inversion
 
@@ -241,11 +275,19 @@ class InversionOutput:
     """Modern RHIME inversion output contract.
 
     This object carries the runtime artifacts needed to reproduce and extend
-    RHIME outputs without exposing fixedbasis ``fp_data`` or legacy
-    ``inferpymc_postprocessouts`` dictionaries.
+    RHIME outputs without exposing model-runner implementation details.
+
+    Args:
+        trace: Native xarray trace tree with ArviZ-compatible direct groups.
+        inv_inputs: Canonical labelled inversion inputs.
+        basis_functions: Retained basis functions used by the inversion.
+        run_metadata: Run configuration and temporal metadata.
+        model_metadata: Model identity, variable roles, and scientific metadata.
+        output_metadata: Product and persistence metadata.
+        provenance: Source and processing provenance.
     """
 
-    trace: az.InferenceData
+    trace: xr.DataTree
     inv_inputs: xr.Dataset
     basis_functions: BasisFunctions
     run_metadata: dict[str, Any] = field(default_factory=dict)
@@ -254,8 +296,29 @@ class InversionOutput:
     provenance: dict[str, Any] = field(default_factory=dict)
 
     def select_chain(self, index: int) -> Self:
-        """Return a derived-output view containing one zero-based chain index."""
+        """Return a derived-output view containing one chain.
+
+        Args:
+            index: Zero-based chain position to retain.
+
+        Returns:
+            A shallowly replaced output whose trace retains only that chain.
+        """
         return replace(self, trace=self.trace.isel(chain=[index]))
+
+    def trace_group(self, name: str) -> xr.Dataset:
+        """Return one exact, direct trace group as a Dataset.
+
+        Args:
+            name: Exact direct-child group name.
+
+        Returns:
+            The group's Dataset.
+
+        Raises:
+            KeyError: If ``name`` is not a direct trace group.
+        """
+        return trace_group(self.trace, name)
 
     @property
     def start_date(self) -> str | None:
@@ -412,7 +475,7 @@ class InversionOutput:
 
     def trace_dataset(self, var_roles: Iterable[str] | str | None = None) -> xr.Dataset:
         """Return prior and posterior trace samples selected by semantic role."""
-        result = convert_idata_to_dataset(self.trace)
+        result = merge_trace_groups(self.trace)
         obs_name = self.variable_name("observation")
         if obs_name in self.inv_inputs:
             obs = self.inv_inputs[obs_name]
@@ -430,8 +493,8 @@ class InversionOutput:
         return result
 
     def model_data(self, var_roles: Iterable[str] | str | None = None) -> xr.Dataset:
-        """Return model input data from the ``InferenceData`` constant groups."""
-        result = convert_idata_to_dataset(self.trace, group_filters=["data"], add_suffix=False)
+        """Return model input data from exact constant-data trace groups."""
+        result = merge_trace_groups(self.trace, TRACE_MODEL_DATA_GROUPS, add_suffix=False)
         if var_roles is not None:
             result = filter_data_vars_by_prefix(result, self._variable_names_for_roles(var_roles), sep="")
         return result
@@ -453,7 +516,7 @@ class InversionOutput:
         """Convert the modern output to a serialisable DataTree."""
         dt = xr.DataTree.from_dict(
             {
-                "trace": _inferencedata_to_datatree(self.trace),
+                "trace": _trace_to_datatree(self.trace),
                 "inv_inputs": xr.DataTree(_reset_serialisation_multiindexes(self.inv_inputs)),
                 "basis_functions": self.basis_functions.to_datatree(),
             }
@@ -479,7 +542,7 @@ class InversionOutput:
         if schema is not None and schema != MODERN_INVERSION_OUTPUT_SCHEMA:
             raise ValueError(f"Unexpected InversionOutput schema: {schema!r}")
 
-        trace = _inferencedata_from_datatree(cast(xr.DataTree, dt["trace"]))
+        trace = _trace_from_datatree(cast(xr.DataTree, dt["trace"]))
         inv_inputs = _restore_serialisation_multiindexes(cast(xr.DataTree, dt["inv_inputs"]).to_dataset())
         basis_functions = BasisFunctions.from_datatree(cast(xr.DataTree, dt["basis_functions"]))
         return cls(

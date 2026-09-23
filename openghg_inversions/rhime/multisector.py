@@ -7,7 +7,6 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any, cast
 
-import arviz as az
 import pymc as pm
 import pytensor.tensor as pt
 import xarray as xr
@@ -571,7 +570,7 @@ def make_multisector_rhime_result(
     run_spec: RhimeRunSpec,
     sampler: RhimeSampler,
     model_build_result: RhimeModelBuildResult,
-    idata: az.InferenceData,
+    idata: xr.DataTree,
     build_and_sample_seconds: float,
     model_builder: RhimeModelBuilder | None = None,
     likelihood_builder: RhimeLikelihoodBuilder | None = None,
@@ -661,7 +660,7 @@ def run_rhime_multisector(
             absent.
 
     Returns:
-        Modern RHIME result containing canonical inputs, InferenceData, specs,
+        Modern RHIME result containing canonical inputs, a sampled DataTree, specs,
         output metadata, and sector diagnostics.
 
     Raises:

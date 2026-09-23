@@ -3,7 +3,6 @@ from collections.abc import Callable
 
 import arviz as az
 import numpy as np
-import pandas as pd
 import xarray as xr
 
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
@@ -52,20 +51,24 @@ def summary(inv_out: InversionOutput) -> xr.Dataset:
     Returns:
         xr.Dataset: Dataset with diagnostic summary.
     """
-    return az.summary(inv_out.trace, kind="diagnostics", fmt="xarray")  # type: ignore
+    result = az.summary(inv_out.trace_group("posterior"), kind="diagnostics", fmt="xarray")
+    if "summary" in result.dims:
+        result = result.rename(summary="metric")
+    metrics = ["mcse_mean", "mcse_sd", "ess_bulk", "ess_tail", "r_hat"]
+    return result.sel(metric=metrics)
 
 
 def _r2_by_site(ds: xr.Dataset, report_prior: bool = False) -> xr.Dataset:
     """Helper function for computing Bayesian R2 scores."""
 
-    def az_r2_func(arr1: np.ndarray, arr2: np.ndarray) -> pd.Series:
-        """Compute r2 values.
-
-        `az.r2_score` will fail if there is no data, so we return NaNs in this case.
-        """
+    def bayesian_r2(arr1: np.ndarray, arr2: np.ndarray) -> np.ndarray:
+        """Compute the former ArviZ ``r2_score`` mean and standard deviation."""
         if len(arr1) == 0:
-            return pd.Series([np.nan, np.nan])
-        return az.r2_score(arr1, arr2)
+            return np.array([np.nan, np.nan])
+        variance_estimate = np.var(arr2, axis=1)
+        variance_residual = np.var(arr1 - arr2, axis=1)
+        samples = variance_estimate / (variance_estimate + variance_residual)
+        return np.array([np.mean(samples), np.std(samples)])
 
     def func(ds: xr.Dataset) -> xr.Dataset:
         """Calculate r2 for one site."""
@@ -76,7 +79,7 @@ def _r2_by_site(ds: xr.Dataset, report_prior: bool = False) -> xr.Dataset:
         y_post_pred = ds.y_posterior_predictive.dropna("draw", how="all").transpose("draw", "time")
 
         post_result = xr.apply_ufunc(
-            az_r2_func,
+            bayesian_r2,
             y_true,
             y_post_pred,
             input_core_dims=[["time"], ["draw", "time"]],
@@ -87,7 +90,7 @@ def _r2_by_site(ds: xr.Dataset, report_prior: bool = False) -> xr.Dataset:
             y_prior_pred = ds.y_prior_predictive.dropna("draw", how="all").transpose("draw", "time")
 
             prior_result = xr.apply_ufunc(
-                az_r2_func,
+                bayesian_r2,
                 y_true,
                 y_prior_pred,
                 input_core_dims=[["time"], ["draw", "time"]],

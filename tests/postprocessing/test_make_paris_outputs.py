@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Callable, cast
+from typing import Callable, cast
 
 import arviz as az
 import numpy as np
@@ -421,9 +421,10 @@ def test_latest_paris_concentration_has_cf_metadata(
     inv_out = multisector_postprocessing_inv_out()
     inv_out.run_metadata["split_by_sectors"] = False
     for group_name, values in (("prior", [9.0, 11.0]), ("posterior", [10.0, 12.0])):
-        group = getattr(inv_out.trace, group_name)
+        group = inv_out.trace_group(group_name)
         group["y"] = (("chain", "draw", "nmeasure"), np.asarray(values)[None, :, None])
         group["epsilon"] = (("chain", "draw", "nmeasure"), np.ones((1, 2, 1)))
+        inv_out.trace[group_name] = group
     inv_out.inv_inputs["altitude"] = ("nmeasure", [100.0])
     inv_out.inv_inputs["altitude_model"] = ("nmeasure", [125.0])
 
@@ -661,15 +662,14 @@ def test_latest_paris_flux_output_renames_overlapping_sector_suffixes_exactly(
     inv_out = multisector_postprocessing_inv_out(basis_functions)
 
     for group_name in ("prior", "posterior"):
-        trace_group = getattr(inv_out.trace, group_name).rename(
+        trace_group = inv_out.trace_group(group_name).rename(
             {"x_ff": "x_energy", "x_ocean": "x_energy_waste"}
         )
         trace_group["x_total_ff"] = trace_group["x_energy"]
-        setattr(inv_out.trace, group_name, trace_group)
-    inference_data = cast(Any, inv_out.trace)
-    prior = inference_data.prior
+        inv_out.trace[group_name] = trace_group
+    prior = inv_out.trace_group("prior")
     extra_prior_draw = prior.isel(draw=[0]).assign_coords(draw=[prior.sizes["draw"]])
-    inference_data.prior = xr.concat([prior, extra_prior_draw], dim="draw")
+    inv_out.trace["prior"] = xr.concat([prior, extra_prior_draw], dim="draw")
     inv_out.model_metadata["sectors"] = [
         {"name": "Energy", "flux_source": "ff-inventory", "variable_suffix": "energy"},
         {

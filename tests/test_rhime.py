@@ -8,7 +8,6 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Callable, cast
 
-import arviz as az
 import dask.array as da
 from dask import delayed
 import numpy as np
@@ -32,6 +31,7 @@ import openghg_inversions.rhime.sampling as rhime_sampling
 import openghg_inversions.rhime.specs as rhime_specs
 import openghg_inversions.rhime.standard as rhime_standard
 import openghg_inversions.rhime.multisector as rhime_multisector
+from tests.helpers import make_trace
 from openghg_inversions.basis.basis_functions import (
     BASIS_ARTIFACT_PATH_ATTR,
     BASIS_ARTIFACT_SOURCE_ATTR,
@@ -554,18 +554,19 @@ def _minimal_output_specs(
     return model_spec, output_spec, run_spec
 
 
-def _minimal_output_idata() -> az.InferenceData:
+def _minimal_output_idata() -> xr.DataTree:
     """Build a minimal posterior trace with one region."""
-    return az.from_dict(
-        posterior={"x": np.ones((1, 1, 1))},
-        coords={"region": [0]},
-        dims={"x": ["region"]},
+    return make_trace(
+        posterior=xr.Dataset(
+            {"x": (("chain", "draw", "region"), np.ones((1, 1, 1)))},
+            coords={"chain": [0], "draw": [0], "region": [0]},
+        )
     )
 
 
 def _result_for_outputs(
     run_spec: RhimeRunSpec,
-    idata: az.InferenceData,
+    idata: xr.DataTree,
     *,
     model_spec: RhimeModelSpec | None = None,
     country_file: str | None = None,
@@ -590,7 +591,7 @@ def _result_for_outputs(
     )
 
 
-def _posterior_only_idata(model: pm.Model, variable_names: tuple[str, ...]) -> az.InferenceData:
+def _posterior_only_idata(model: pm.Model, variable_names: tuple[str, ...]) -> xr.DataTree:
     """Build deterministic posterior variables using a PyMC model's coordinates.
 
     Args:
@@ -613,10 +614,10 @@ def _posterior_only_idata(model: pm.Model, variable_names: tuple[str, ...]) -> a
         shape = tuple(len(coords[dim]) for dim in dims)
         posterior_vars[variable_name] = (dims, np.ones(shape))
 
-    return az.InferenceData(posterior=xr.Dataset(posterior_vars, coords=coords))
+    return make_trace(posterior=xr.Dataset(posterior_vars, coords=coords))
 
 
-def _postprocessing_output_idata(nregion: int = 1) -> az.InferenceData:
+def _postprocessing_output_idata(nregion: int = 1) -> xr.DataTree:
     """Build a small complete trace for modern postprocessing smoke tests."""
     region = np.arange(nregion)
     nmeasure = pd.MultiIndex.from_arrays(
@@ -631,50 +632,56 @@ def _postprocessing_output_idata(nregion: int = 1) -> az.InferenceData:
         [np.linspace(0.8 + draw, 1.8 + draw, nregion) for draw in range(3)],
         axis=0,
     )
-    idata = az.from_dict(
-        posterior={
-            "x": x_posterior[np.newaxis, :, :],
-            "epsilon": np.full((1, 3, 1), 2.0),
-            "mu_bc": np.full((1, 3, 1), 0.1),
-        },
-        prior={
-            "x": x_prior[np.newaxis, :, :],
-            "mu_bc": np.full((1, 3, 1), 0.05),
-        },
-        posterior_predictive={"y": np.full((1, 3, 1), 10.0)},
-        prior_predictive={"y": np.full((1, 3, 1), 9.0)},
-        constant_data={
-            "hx": np.ones(1),
-            "hbc": np.full(1, 0.1),
-            "min_error": np.zeros(1),
-        },
-        coords={"region": region, "nmeasure": np.arange(len(nmeasure))},
-        dims={
-            "x": ["region"],
-            "epsilon": ["nmeasure"],
-            "mu_bc": ["nmeasure"],
-            "y": ["nmeasure"],
-            "hx": ["nmeasure"],
-            "hbc": ["nmeasure"],
-            "min_error": ["nmeasure"],
-        },
+    sample_coords = {"chain": [0], "draw": np.arange(3), "region": region, "nmeasure": [0]}
+    idata = make_trace(
+        posterior=xr.Dataset(
+            {
+                "x": (("chain", "draw", "region"), x_posterior[np.newaxis, :, :]),
+                "epsilon": (("chain", "draw", "nmeasure"), np.full((1, 3, 1), 2.0)),
+                "mu_bc": (("chain", "draw", "nmeasure"), np.full((1, 3, 1), 0.1)),
+            },
+            coords=sample_coords,
+        ),
+        prior=xr.Dataset(
+            {
+                "x": (("chain", "draw", "region"), x_prior[np.newaxis, :, :]),
+                "mu_bc": (("chain", "draw", "nmeasure"), np.full((1, 3, 1), 0.05)),
+            },
+            coords=sample_coords,
+        ),
+        posterior_predictive=xr.Dataset(
+            {"y": (("chain", "draw", "nmeasure"), np.full((1, 3, 1), 10.0))},
+            coords={"chain": [0], "draw": np.arange(3), "nmeasure": [0]},
+        ),
+        prior_predictive=xr.Dataset(
+            {"y": (("chain", "draw", "nmeasure"), np.full((1, 3, 1), 9.0))},
+            coords={"chain": [0], "draw": np.arange(3), "nmeasure": [0]},
+        ),
+        constant_data=xr.Dataset(
+            {
+                "hx": ("nmeasure", np.ones(1)),
+                "hbc": ("nmeasure", np.full(1, 0.1)),
+                "min_error": ("nmeasure", np.zeros(1)),
+            },
+            coords={"nmeasure": [0]},
+        ),
     )
     nmeasure_coords = xr.Coordinates.from_pandas_multiindex(nmeasure, "nmeasure")
-    for group in idata.groups():
-        ds = idata[group]
+    for group, node in idata.children.items():
+        ds = node.to_dataset()
         if "nmeasure" in ds.dims:
-            setattr(idata, group, ds.assign_coords(nmeasure_coords))
+            idata[group] = ds.assign_coords(nmeasure_coords)
     return idata
 
 
-def _rename_idata_data_vars(idata: az.InferenceData, rename: dict[str, str]) -> az.InferenceData:
-    """Rename data variables across all InferenceData groups."""
+def _rename_idata_data_vars(idata: xr.DataTree, rename: dict[str, str]) -> xr.DataTree:
+    """Rename data variables across all trace groups."""
     groups: dict[str, xr.Dataset] = {}
-    for group in idata.groups():
-        ds = idata[group]
+    for group, node in idata.children.items():
+        ds = node.to_dataset()
         group_rename = {old: new for old, new in rename.items() if old in ds.data_vars}
         groups[group] = ds.rename_vars(group_rename) if group_rename else ds.copy()
-    return cast(Any, az.InferenceData)(**groups)
+    return make_trace(**groups)
 
 
 def _modern_postprocessing_inv_out(
@@ -715,8 +722,8 @@ def test_modern_derived_outputs_use_every_posterior_chain(europe_country_file: P
     chain_zero_country = make_country_outputs(inv_out, country_file=europe_country_file, stats=["mean"])
 
     groups: dict[str, xr.Dataset] = {}
-    for group_name in inv_out.trace.groups():
-        group = inv_out.trace[group_name]
+    for group_name, node in inv_out.trace.children.items():
+        group = node.to_dataset()
         if "chain" not in group.dims:
             groups[group_name] = group
             continue
@@ -729,7 +736,7 @@ def test_modern_derived_outputs_use_every_posterior_chain(europe_country_file: P
             [chain_zero, chain_one],
             dim=xr.IndexVariable("chain", [0, 1]),
         )
-    all_chains = replace(inv_out, trace=az.InferenceData(**groups))
+    all_chains = replace(inv_out, trace=make_trace(**groups))
 
     concentration = make_concentration_outputs(all_chains, stats=["mean"])
     flux = make_flux_outputs(all_chains, stats=["mean"])
@@ -2168,7 +2175,7 @@ def test_multisector_model_accepts_gathered_ragged_states(
             var_names=var_names,
             random_seed=535,
         )
-    prior = models.restore_inferencedata_coords(cast(az.InferenceData, prior), registry)
+    prior = models.restore_inferencedata_coords(cast(xr.DataTree, prior), registry)
     dataset = prior.prior
     assert list(dataset["state_ff"].values) == ff_labels
     assert list(dataset["state_ocean"].values) == ocean_labels
@@ -2790,7 +2797,7 @@ def test_run_rhime_from_prepared_inputs_routes_without_preparation(
         stage_calls.append("build")
         return build_result
 
-    def sample(*args: Any, **kwargs: Any) -> az.InferenceData:
+    def sample(*args: Any, **kwargs: Any) -> xr.DataTree:
         """Record replay's public sampling stage."""
         assert args == (build_result, sampler)
         stage_calls.append("sample")
@@ -2986,7 +2993,7 @@ def test_public_rhime_runners_follow_named_stage_order(
         calls.append("build")
         return build_result
 
-    def sample(*args: Any, **kwargs: Any) -> az.InferenceData:
+    def sample(*args: Any, **kwargs: Any) -> xr.DataTree:
         """Record public sampling."""
         assert args == (build_result, sampler)
         assert kwargs == {}
@@ -3435,7 +3442,7 @@ def test_run_rhime_from_prepared_inputs_accepts_complete_model_builder(
         model: pm.Model,
         *,
         variable_roles: dict[str, str],
-    ) -> az.InferenceData:
+    ) -> xr.DataTree:
         assert model["custom_y"] is not None
         assert variable_roles["concentration"] == "custom_y"
         return _minimal_output_idata()
@@ -3787,7 +3794,7 @@ def test_likelihood_builder_provenance_is_saved_with_result_metadata(
         model: pm.Model,
         *,
         variable_roles: dict[str, str],
-    ) -> az.InferenceData:
+    ) -> xr.DataTree:
         assert model["offset_latent"].ndim == 0
         assert variable_roles["concentration"] == "y"
         return _minimal_output_idata()
@@ -4083,7 +4090,7 @@ def test_run_rhime_from_prepared_inputs_defaults_sampler_and_skips_none_output_w
         model: pm.Model,
         *,
         variable_roles: dict[str, str],
-    ) -> az.InferenceData:
+    ) -> xr.DataTree:
         sampled_with.append(self)
         assert "y" in model.named_vars
         assert variable_roles["concentration"] == "y"
@@ -4651,53 +4658,47 @@ def test_rhime_sampler_runs_pymc_sampling_and_predictive_steps(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """RhimeSampler owns PyMC sampling, burn slicing, and predictive groups."""
-
-    class FakePosterior:
-        sizes = {"draw": 6}
-
-    class FakeInferenceData:
-        posterior = FakePosterior()
-        sample_stats = xr.Dataset(
+    raw_trace = make_trace(
+        posterior=xr.Dataset(
+            {"x": (("chain", "draw"), np.ones((2, 6)))},
+            coords={"chain": [0, 1], "draw": np.arange(6)},
+        ),
+        sample_stats=xr.Dataset(
             {
                 "n_steps": (("chain", "draw"), np.array([[1, 2, 3], [4, 5, 6]])),
                 "tree_depth": (("chain", "draw"), np.array([[2, 2, 3], [3, 4, 4]])),
                 "step_size": (("chain", "draw"), np.array([[0.1, 0.1, 0.2], [0.2, 0.2, 0.2]])),
                 "acceptance_rate": (("chain", "draw"), np.array([[0.8, 0.9, 1.0], [0.7, 0.8, 0.9]])),
                 "diverging": (("chain", "draw"), np.array([[False, True, False], [False, False, True]])),
-            }
-        )
-
-        def __init__(self) -> None:
-            self.isel_kwargs: dict[str, Any] | None = None
-            self.extensions: list[Any] = []
-            self.attrs: dict[str, Any] = {}
-
-        def isel(self, **kwargs: Any) -> "FakeInferenceData":
-            self.isel_kwargs = kwargs
-            return self
-
-        def groups(self) -> list[str]:
-            """Return the fake InferenceData group names."""
-            return ["sample_stats"]
-
-        def extend(self, other: Any) -> None:
-            self.extensions.append(other)
-
-    fake_idata = FakeInferenceData()
+            },
+            coords={"chain": [0, 1], "draw": np.arange(3)},
+        ),
+    )
     seen: dict[str, Any] = {}
     timings: list[tuple[str, dict[str, Any]]] = []
 
     def fake_sample(**kwargs: Any) -> Any:
         seen["sample_kwargs"] = kwargs
-        return fake_idata
+        return raw_trace
 
-    def fake_prior_predictive(draws: int, model: pm.Model) -> str:
+    def fake_prior_predictive(draws: int, model: pm.Model) -> xr.DataTree:
         seen["prior_predictive"] = {"draws": draws, "model": model}
-        return "prior"
+        return make_trace(
+            prior=xr.Dataset(
+                {"x": (("chain", "draw"), np.ones((1, draws)))},
+                coords={"chain": [0], "draw": np.arange(draws)},
+            )
+        )
 
-    def fake_posterior_predictive(trace: Any, **kwargs: Any) -> str:
+    def fake_posterior_predictive(trace: xr.DataTree, **kwargs: Any) -> xr.DataTree:
         seen["posterior_predictive"] = {"trace": trace, **kwargs}
-        return "posterior"
+        draws = trace["posterior"].sizes["draw"]
+        return make_trace(
+            posterior_predictive=xr.Dataset(
+                {"y": (("chain", "draw"), np.ones((2, draws)))},
+                coords={"chain": [0, 1], "draw": np.arange(draws)},
+            )
+        )
 
     def fake_log_timing(label: str, seconds: float, **fields: Any) -> None:
         timings.append((label, fields))
@@ -4724,9 +4725,8 @@ def test_rhime_sampler_runs_pymc_sampling_and_predictive_steps(
         posterior_predictive_kwargs={"random_seed": 42},
     )
 
-    idata = sampler.sample(model)
+    trace = sampler.sample(model)
 
-    assert idata is fake_idata
     assert seen["sample_kwargs"]["draws"] == 7
     assert seen["sample_kwargs"]["tune"] == 2
     assert seen["sample_kwargs"]["chains"] == 3
@@ -4736,15 +4736,16 @@ def test_rhime_sampler_runs_pymc_sampling_and_predictive_steps(
     assert seen["sample_kwargs"]["target_accept"] == 0.9
     assert seen["sample_kwargs"]["return_inferencedata"] is True
     assert seen["sample_kwargs"]["idata_kwargs"] == {"log_likelihood": True}
-    assert fake_idata.isel_kwargs == {"draw": slice(1, None)}
-    assert seen["prior_predictive"] == {"draws": 6, "model": model}
+    assert seen["prior_predictive"] == {"draws": 5, "model": model}
     assert seen["posterior_predictive"] == {
-        "trace": fake_idata,
+        "trace": trace,
         "model": model,
         "var_names": ["y"],
         "random_seed": 42,
     }
-    assert fake_idata.extensions == ["prior", "posterior"]
+    assert set(trace.children) == {"posterior", "sample_stats", "prior", "posterior_predictive"}
+    np.testing.assert_array_equal(trace["posterior"].draw, np.arange(5))
+    assert trace.attrs["burn"] == 1
     sample_stats_fields = dict(timings)["rhime.sampler.sample_stats"]
     assert sample_stats_fields["n_steps_mean"] == 3.5
     assert sample_stats_fields["n_steps_max"] == 6.0
@@ -4760,14 +4761,14 @@ def test_rhime_sampler_preserves_disabled_log_likelihood(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The public sampling seam preserves an explicit log-likelihood policy."""
-    trace = az.InferenceData(
+    trace = make_trace(
         posterior=xr.Dataset(
             {"state": (("chain", "draw"), np.ones((1, 2)))},
         ),
     )
     seen: dict[str, Any] = {}
 
-    def fake_sample(**kwargs: Any) -> az.InferenceData:
+    def fake_sample(**kwargs: Any) -> xr.DataTree:
         seen.update(kwargs)
         return trace
 
@@ -4796,7 +4797,7 @@ def test_rhime_sampler_resets_retained_draws_before_extending_predictive_groups(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Equal-length predictive groups do not outer-align against burned draw labels."""
-    raw_trace = az.InferenceData(
+    raw_trace = make_trace(
         posterior=xr.Dataset(
             {"x": (("chain", "draw"), np.arange(2000, dtype=float)[None, :])},
             coords={"chain": [0], "draw": np.arange(2000)},
@@ -4812,14 +4813,14 @@ def test_rhime_sampler_resets_retained_draws_before_extending_predictive_groups(
     )
     predictive_draws: dict[str, np.ndarray] = {}
 
-    def fake_sample(**kwargs: Any) -> az.InferenceData:
+    def fake_sample(**kwargs: Any) -> xr.DataTree:
         """Return the unsliced sampling trace."""
         return raw_trace
 
-    def fake_prior_predictive(draws: int, model: pm.Model) -> az.InferenceData:
+    def fake_prior_predictive(draws: int, model: pm.Model) -> xr.DataTree:
         """Build prior groups with zero-based draw labels."""
         predictive_draws["prior"] = np.arange(draws)
-        return az.InferenceData(
+        return make_trace(
             prior=xr.Dataset(
                 {"x": (("chain", "draw"), np.ones((1, draws)))},
                 coords={"chain": [0], "draw": predictive_draws["prior"]},
@@ -4830,12 +4831,12 @@ def test_rhime_sampler_resets_retained_draws_before_extending_predictive_groups(
             ),
         )
 
-    def fake_posterior_predictive(trace: az.InferenceData, **kwargs: Any) -> az.InferenceData:
+    def fake_posterior_predictive(trace: xr.DataTree, **kwargs: Any) -> xr.DataTree:
         """Record and mirror the retained posterior draw labels."""
         inference_data = cast(Any, trace)
         predictive_draws["posterior_seen"] = inference_data.posterior.draw.values.copy()
         draws = inference_data.posterior.sizes["draw"]
-        return az.InferenceData(
+        return make_trace(
             posterior_predictive=xr.Dataset(
                 {"y": (("chain", "draw"), np.ones((1, draws)))},
                 coords={"chain": [0], "draw": np.arange(draws)},
@@ -4880,13 +4881,11 @@ def test_rhime_sampler_resolves_predictive_name_from_custom_model_roles(
     """The historical default ``y`` follows the explicit custom concentration role."""
     seen: dict[str, Any] = {}
 
-    class FakeTrace:
-        def extend(self, other: Any) -> None:
-            seen["extension"] = other
+    trace = make_trace(posterior=xr.Dataset())
 
-    def fake_posterior_predictive(trace: Any, **kwargs: Any) -> str:
+    def fake_posterior_predictive(trace: Any, **kwargs: Any) -> xr.DataTree:
         seen.update(kwargs)
-        return "posterior"
+        return make_trace(posterior_predictive=xr.Dataset({"custom_y": ("draw", [1.0])}))
 
     monkeypatch.setattr(
         "openghg_inversions.rhime.sampling.pm.sample_posterior_predictive",
@@ -4897,14 +4896,14 @@ def test_rhime_sampler_resolves_predictive_name_from_custom_model_roles(
 
     sampler = RhimeSampler(sample_prior_predictive=False)
     sampler._extend_predictive(
-        cast(Any, FakeTrace()),
+        trace,
         model=model,
         variable_roles={"concentration": "custom_y"},
     )
 
     assert seen["var_names"] == ["custom_y"]
     assert seen["model"] is model
-    assert seen["extension"] == "posterior"
+    assert "posterior_predictive" in trace.children
 
 
 def test_rhime_sampler_restores_registered_coords_after_predictive_steps(
@@ -4912,40 +4911,25 @@ def test_rhime_sampler_restores_registered_coords_after_predictive_steps(
 ) -> None:
     """RhimeSampler restores model-managed coordinates after predictive groups are attached."""
 
-    class FakePosterior:
-        sizes = {"draw": 2}
+    sampled = make_trace(
+        posterior=xr.Dataset(
+            {"x": (("chain", "draw"), np.ones((1, 2)))},
+            coords={"chain": [0], "draw": [0, 1]},
+        )
+    )
+    calls: list[tuple[xr.DataTree, models.CoordRegistry, list[str]]] = []
 
-    class FakeInferenceData:
-        posterior = FakePosterior()
+    def fake_sample(**kwargs: Any) -> xr.DataTree:
+        return sampled
 
-        def __init__(self) -> None:
-            self.extensions: list[str] = []
-            self.attrs: dict[str, Any] = {}
+    def fake_prior_predictive(draws: int, model: pm.Model) -> xr.DataTree:
+        return make_trace(prior=xr.Dataset({"x": ("draw", np.ones(draws))}))
 
-        def isel(self, **kwargs: Any) -> "FakeInferenceData":
-            return self
+    def fake_posterior_predictive(trace: Any, **kwargs: Any) -> xr.DataTree:
+        return make_trace(posterior_predictive=xr.Dataset({"y": ("draw", np.ones(2))}))
 
-        def groups(self) -> list[str]:
-            """Return the fake InferenceData group names."""
-            return []
-
-        def extend(self, other: str) -> None:
-            self.extensions.append(other)
-
-    fake_idata = FakeInferenceData()
-    calls: list[tuple[FakeInferenceData, models.CoordRegistry, list[str]]] = []
-
-    def fake_sample(**kwargs: Any) -> FakeInferenceData:
-        return fake_idata
-
-    def fake_prior_predictive(draws: int, model: pm.Model) -> str:
-        return "prior"
-
-    def fake_posterior_predictive(trace: Any, **kwargs: Any) -> str:
-        return "posterior"
-
-    def fake_restore(trace: FakeInferenceData, registry: models.CoordRegistry) -> FakeInferenceData:
-        calls.append((trace, registry, list(trace.extensions)))
+    def fake_restore(trace: xr.DataTree, registry: models.CoordRegistry) -> xr.DataTree:
+        calls.append((trace, registry, list(trace.children)))
         return trace
 
     monkeypatch.setattr("openghg_inversions.rhime.sampling.pm.sample", fake_sample)
@@ -4967,8 +4951,8 @@ def test_rhime_sampler_restores_registered_coords_after_predictive_steps(
 
     result = RhimeSampler(draws=2, chains=1, tune=0).sample(model)
 
-    assert result is fake_idata
-    assert calls == [(fake_idata, registry, ["prior", "posterior"])]
+    assert result is calls[0][0]
+    assert calls == [(result, registry, ["posterior", "prior", "posterior_predictive"])]
 
 
 def test_params_from_config_maps_legacy_emissions_name(tmp_path: Path) -> None:
@@ -7443,13 +7427,14 @@ def test_make_multisector_outputs_attach_modern_inv_out(tmp_path: Path) -> None:
         basis_functions=_fake_basis_functions(),
         site_metadata=_prepared_site_metadata(),
     )
-    idata = az.from_dict(
-        posterior={
-            "x_ff": np.ones((1, 1, 1)),
-            "x_ocean": np.ones((1, 1, 1)),
-        },
-        coords={"region": [0]},
-        dims={"x_ff": ["region"], "x_ocean": ["region"]},
+    idata = make_trace(
+        posterior=xr.Dataset(
+            {
+                "x_ff": (("chain", "draw", "region"), np.ones((1, 1, 1))),
+                "x_ocean": (("chain", "draw", "region"), np.ones((1, 1, 1))),
+            },
+            coords={"chain": [0], "draw": [0], "region": [0]},
+        )
     )
 
     bundle = _result_for_outputs(run_spec, idata, model_spec=model_spec)
@@ -7581,9 +7566,13 @@ def test_make_multisector_outputs_build_latest_paris_flux(
         site_metadata=_prepared_site_metadata(),
     )
     idata = cast(Any, multisector_postprocessing_inv_out().trace)
-    for group in (idata.prior, idata.posterior):
+    for group_name in ("prior", "posterior"):
+        group = idata[group_name].to_dataset()
         group["y"] = (("chain", "draw", "nmeasure"), np.ones((1, 2, 1)))
-    idata.posterior["epsilon"] = (("chain", "draw", "nmeasure"), np.ones((1, 2, 1)))
+        idata[group_name] = group
+    posterior = idata["posterior"].to_dataset()
+    posterior["epsilon"] = (("chain", "draw", "nmeasure"), np.ones((1, 2, 1)))
+    idata["posterior"] = posterior
 
     bundle = _result_for_outputs(
         run_spec,
@@ -7794,7 +7783,7 @@ def test_modern_inversion_output_roundtrips_trace_multiindex() -> None:
     )
     bundle = _result_for_outputs(
         run_spec,
-        az.InferenceData(posterior=posterior, posterior_predictive=posterior_predictive),
+        make_trace(posterior=posterior, posterior_predictive=posterior_predictive),
         model_spec=model_spec,
     )
     rhime_outputs.make_standard_rhime_outputs(result=bundle, prepared=prepared)
@@ -7854,11 +7843,15 @@ def test_modern_inversion_output_supports_flux_outputs() -> None:
     )
     bundle = _result_for_outputs(
         run_spec,
-        az.from_dict(
-            posterior={"x": np.ones((1, 2, 1))},
-            prior={"x": np.ones((1, 2, 1))},
-            coords={"region": [0]},
-            dims={"x": ["region"]},
+        make_trace(
+            posterior=xr.Dataset(
+                {"x": (("chain", "draw", "region"), np.ones((1, 2, 1)))},
+                coords={"chain": [0], "draw": [0, 1], "region": [0]},
+            ),
+            prior=xr.Dataset(
+                {"x": (("chain", "draw", "region"), np.ones((1, 2, 1)))},
+                coords={"chain": [0], "draw": [0, 1], "region": [0]},
+            ),
         ),
         model_spec=model_spec,
     )
@@ -8121,13 +8114,13 @@ def test_paris_baseline_convention_reports_offset_only_as_baseline(
     """An offset-only model reports the bias separately and as its full baseline."""
     base = _modern_postprocessing_inv_out(europe_country_file)
     groups: dict[str, xr.Dataset] = {}
-    for group_name in base.trace.groups():
-        source_group = getattr(base.trace, group_name)
+    for group_name, node in base.trace.children.items():
+        source_group = node.to_dataset()
         group = source_group.drop_vars("mu_bc", errors="ignore")
         if group_name in {"posterior", "prior"}:
             group["offset"] = xr.full_like(source_group["mu_bc"], 0.2)
         groups[group_name] = group
-    trace = cast(Any, az.InferenceData)(**groups)
+    trace = make_trace(**groups)
     inv_out = replace(
         base,
         trace=trace,
@@ -8394,10 +8387,10 @@ def test_latest_paris_concentration_fills_missing_bc_with_nan(europe_country_fil
 
     base = _modern_postprocessing_inv_out(europe_country_file)
     groups = {}
-    for group in base.trace.groups():
-        ds = base.trace[group]
+    for group, node in base.trace.children.items():
+        ds = node.to_dataset()
         groups[group] = ds.drop_vars([name for name in ("mu_bc", "hbc") if name in ds], errors="ignore")
-    trace = cast(Any, az.InferenceData)(**groups)
+    trace = make_trace(**groups)
     inv_out = InversionOutput(
         trace=trace,
         inv_inputs=base.inv_inputs,
@@ -8464,8 +8457,8 @@ def test_run_hbmcmc_chain_selection_does_not_truncate_archived_trace(monkeypatch
     )
     idata = _minimal_output_idata()
     groups = {}
-    for group_name in idata.groups():
-        group = idata[group_name]
+    for group_name, node in idata.children.items():
+        group = node.to_dataset()
         if "chain" in group.dims:
             groups[group_name] = xr.concat(
                 [group.isel(chain=0, drop=True), group.isel(chain=0, drop=True)],
@@ -8473,7 +8466,7 @@ def test_run_hbmcmc_chain_selection_does_not_truncate_archived_trace(monkeypatch
             )
         else:
             groups[group_name] = group
-    bundle = _result_for_outputs(run_spec, az.InferenceData(**groups), model_spec=model_spec)
+    bundle = _result_for_outputs(run_spec, make_trace(**groups), model_spec=model_spec)
     captured: dict[str, InversionOutput] = {}
 
     def fake_basic_output(inv_out: InversionOutput, country_file: str | None = None) -> xr.Dataset:
@@ -8571,12 +8564,12 @@ def test_standard_legacy_output_uses_modern_inversion_output(
         basis_functions=modern_output.basis_functions,
         site_metadata=_prepared_site_metadata(),
     )
-    idata = cast(Any, az.InferenceData)(
+    idata = make_trace(
         **{
-            group: modern_output.trace[group].drop_vars("hx")
+            group: node.to_dataset().drop_vars("hx")
             if group == "constant_data"
-            else modern_output.trace[group]
-            for group in modern_output.trace.groups()
+            else node.to_dataset()
+            for group, node in modern_output.trace.children.items()
         }
     )
 
@@ -8601,75 +8594,6 @@ def test_standard_legacy_output_uses_modern_inversion_output(
         assert reloaded.sizes["nmeasure"] == legacy_output.sizes["nmeasure"]
         assert "fluxmode" in reloaded
         assert "countrymean" in reloaded
-
-
-def test_save_inferencedata_prefers_h5netcdf(tmp_path: Path) -> None:
-    class FakeInferenceData:
-        def __init__(self) -> None:
-            self.calls = []
-
-        def to_netcdf(self, path, **kwargs):
-            self.calls.append((path, kwargs))
-
-    idata = FakeInferenceData()
-    path = tmp_path / "trace.nc"
-
-    rhime_outputs._save_inferencedata(idata, path)  # type: ignore[reportArgumentType]
-
-    assert idata.calls == [(str(path), {"engine": "h5netcdf", "compress": True})]
-
-
-def test_save_inferencedata_falls_back_after_h5netcdf_failure(tmp_path: Path) -> None:
-    class FakeInferenceData:
-        def __init__(self) -> None:
-            self.calls = []
-
-        def to_netcdf(self, path, **kwargs):
-            self.calls.append((path, kwargs))
-            if kwargs.get("engine") == "h5netcdf":
-                raise ValueError("h5netcdf unavailable")
-
-    idata = FakeInferenceData()
-    path = tmp_path / "trace.nc"
-
-    rhime_outputs._save_inferencedata(idata, path)  # type: ignore[reportArgumentType]
-
-    assert idata.calls == [
-        (str(path), {"engine": "h5netcdf", "compress": True}),
-        (str(path), {"compress": True}),
-    ]
-
-
-@pytest.mark.rhime_contract
-def test_save_inferencedata_preserves_burn_attrs_and_resets_multiindex_coords(tmp_path: Path) -> None:
-    """Standalone trace saving preserves burn metadata and serializable coordinates."""
-    nmeasure_index = pd.MultiIndex.from_arrays(
-        [["TAC"], pd.to_datetime(["2019-01-01"])],
-        names=["site", "time"],
-    )
-    posterior_predictive = xr.Dataset(
-        {"y": (("chain", "draw", "nmeasure"), np.ones((1, 1, 1)))},
-        coords={
-            "chain": [0],
-            "draw": [0],
-            **xr.Coordinates.from_pandas_multiindex(nmeasure_index, "nmeasure"),
-        },
-    )
-    path = tmp_path / "trace.nc"
-
-    idata = az.InferenceData(posterior_predictive=posterior_predictive)
-    idata.attrs["burn"] = 1000
-    cast(Any, idata).posterior_predictive.attrs["burn"] = 1000
-
-    rhime_outputs._save_inferencedata(idata, path)
-    reloaded = az.from_netcdf(path)
-
-    reloaded_posterior_predictive = cast(Any, reloaded).posterior_predictive
-    assert reloaded.attrs["burn"] == 1000
-    assert reloaded_posterior_predictive.attrs["burn"] == 1000
-    assert "site" in reloaded_posterior_predictive.coords
-    assert "time" in reloaded_posterior_predictive.coords
-    assert not isinstance(reloaded_posterior_predictive.indexes.get("nmeasure"), pd.MultiIndex)
 
 
 def test_supported_parameter_validation_accepts_sigma_per_site(tmp_path: Path) -> None:
@@ -8763,7 +8687,7 @@ def test_run_rhime_api_smoke(
         model: pm.Model,
         *,
         variable_roles: dict[str, str] | None = None,
-    ) -> az.InferenceData:
+    ) -> xr.DataTree:
         """Return deterministic posteriors after checking predictive role selection."""
         assert self.draws == 1
         assert variable_roles is not None
@@ -8911,7 +8835,7 @@ def test_run_rhime_multisector_api_smoke(
         model: pm.Model,
         *,
         variable_roles: dict[str, str] | None = None,
-    ) -> az.InferenceData:
+    ) -> xr.DataTree:
         """Return deterministic scale factors after checking declared roles."""
         assert self.draws == 1
         assert variable_roles is not None

@@ -125,6 +125,7 @@ def merged_scenario_data(
     # ``footprints_data_merge`` prefers observation attributes. Keep the
     # footprint extent separately so later compatibility transforms do not
     # mistake the observation level for footprint provenance.
-    scenario_combined.attrs["footprint_max_level"] = footprint_max_level
+    if footprint_max_level is not None:
+        scenario_combined.attrs["footprint_max_level"] = footprint_max_level
 
     return scenario_combined

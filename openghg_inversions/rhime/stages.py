@@ -23,9 +23,9 @@ import xarray as xr
 
 from openghg_inversions.inversion_data import RhimePreparedInputs, _save_merged_data
 from openghg_inversions.serialization import (
-    load_inferencedata,
+    load_trace,
     reset_serialisation_multiindexes,
-    save_inferencedata,
+    save_trace,
 )
 
 from .multisector import (
@@ -544,7 +544,11 @@ def prior_predictive_stage(
         built = _build_prepared_model(prepared, resolved, model=model)
         with built.model:
             prior = pm.sample_prior_predictive(draws, built.model)
-        values = [np.asarray(prior[group][name].values) for group in prior.groups() for name in prior[group]]
+        values = [
+            np.asarray(group[name].values)
+            for group in prior.children.values()
+            for name in group.data_vars
+        ]
         non_finite = sum(int(np.size(value) - np.isfinite(value).sum()) for value in values)
         status = "pass" if values and non_finite == 0 else "fail"
         message = (
@@ -558,7 +562,7 @@ def prior_predictive_stage(
         message = f"Prior-predictive readiness failed: {type(exc).__name__}: {exc}"
         artifacts = []
     else:
-        save_inferencedata(prior, prior_path)
+        save_trace(prior, prior_path)
         artifacts = [_artifact_path(prior_path)]
     result = _check_result(
         name=PREPARATION_CHECK_NAME,
@@ -592,7 +596,7 @@ def sample_rhime_stage(
     built = _build_prepared_model(prepared, resolved, model=model)
     idata = sample_rhime_model(built, resolved.sampler)
     trace_path = _output_path(destination, None, "posterior.nc")
-    save_inferencedata(idata, trace_path)
+    save_trace(idata, trace_path)
     manifest = {
         "schema_version": 1,
         "producer": "openghg_inversions",
@@ -637,8 +641,14 @@ def diagnose_rhime_stage(
     posterior_path = Path(posterior).resolve()
     if sample_manifest is not None:
         _verify_sample_manifest(sample_manifest, posterior=posterior_path)
-    idata = load_inferencedata(posterior_path)
-    summary = az.summary(idata, kind="diagnostics", fmt="xarray")
+    idata = load_trace(posterior_path)
+    summary = az.summary(
+        idata["posterior"].to_dataset(),
+        kind="diagnostics",
+        fmt="xarray",
+    )
+    if "summary" in summary.dims:
+        summary = summary.rename(summary="metric")
     summary_path = _output_path(destination, None, "posterior-diagnostics.nc")
     reset_serialisation_multiindexes(summary).to_netcdf(summary_path)
 
@@ -648,8 +658,10 @@ def diagnose_rhime_stage(
             candidates.append((name, summary[name]))
         else:
             for variable, values in summary.data_vars.items():
-                if "metric" in values.dims and name in values.coords["metric"]:
-                    candidates.append((str(variable), values.sel(metric=name, drop=True)))
+                for dim in values.dims:
+                    if dim in values.coords and name in values.coords[dim].values:
+                        candidates.append((str(variable), values.sel({dim: name}, drop=True)))
+                        break
         best: tuple[float, str] | None = None
         unassessable: list[str] = []
         for variable, values in candidates:
@@ -683,8 +695,12 @@ def diagnose_rhime_stage(
     rhat, rhat_variable, unassessable_rhat = finite_extreme("r_hat", "max")
     bulk_ess, bulk_ess_variable, unassessable_bulk_ess = finite_extreme("ess_bulk", "min")
     tail_ess, tail_ess_variable, unassessable_tail_ess = finite_extreme("ess_tail", "min")
-    posterior_group = getattr(idata, "posterior", None)
-    sample_stats = getattr(idata, "sample_stats", None)
+    posterior_group = (
+        idata["posterior"].to_dataset() if "posterior" in idata.children else None
+    )
+    sample_stats = (
+        idata["sample_stats"].to_dataset() if "sample_stats" in idata.children else None
+    )
     divergences_by_chain = (
         np.asarray(sample_stats["diverging"].sum("draw").values, dtype=int).tolist()
         if sample_stats is not None and "diverging" in sample_stats
@@ -788,7 +804,7 @@ def postprocess_rhime_stage(
     run_spec = replace(resolved.run_spec, output=output_spec)
     resolved = RhimeRunnerSetup(run_spec=run_spec, sampler=sampled_sampler, data_args=resolved.data_args)
     built = _build_prepared_model(prepared, resolved, model=model)
-    idata = load_inferencedata(posterior_path)
+    idata = load_trace(posterior_path)
     if model == "multisector":
         result = make_multisector_rhime_result(
             prepared=prepared,

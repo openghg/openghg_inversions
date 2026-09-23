@@ -8,7 +8,6 @@ import json
 from pathlib import Path
 from typing import Any, cast
 
-import arviz as az
 import numpy as np
 import pytest
 import xarray as xr
@@ -33,6 +32,7 @@ from openghg_inversions.rhime.co2.co2_o2_runner import (
 from openghg_inversions.rhime.co2.co2_runner import run_rhime_co2
 from openghg_inversions.rhime.outputs import annotate_likelihood_trace
 from openghg_inversions.rhime.sampling import RhimeSampler
+from tests.helpers import make_trace
 
 
 def _ordinary() -> dict[str, object]:
@@ -176,7 +176,7 @@ def test_resolved_nested_options_are_json_serializable_for_provenance() -> None:
         "site_amplitude_prior": {"pdf": "halfnormal", "sigma": 1.0},
     }
     setup = cast(Co2RunSetup, resolve_co2_family_config(config))
-    trace = az.InferenceData()
+    trace = make_trace()
 
     annotate_likelihood_trace(
         trace,
