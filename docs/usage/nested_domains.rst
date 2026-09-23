@@ -89,6 +89,7 @@ RHIME arguments plus the inner-domain options:
        inner_basis_algorithm="quadtree",
        inner_nbasis=80,
        use_bc=True,
+       mismatch_model="pollution_event",
        output_name="europe_nested_6km",
        output_format="none",
        save_inversion_output=False,
@@ -170,7 +171,11 @@ INI configuration
 -----------------
 
 Nested options can be added to a copy of ``rhime_template.ini`` and run with
-the installed CLI. The remaining sections use the normal RHIME schema.
+the installed CLI. Add only the new ``[INPUT.NESTED_DOMAIN]`` section below;
+then edit the options under the template's existing ``[RHIME.OUTPUT]`` section
+rather than appending a duplicate section. The current INI loader flattens
+section names, so section placement is organizational rather than a namespace
+and option names must not be repeated between sections.
 
 .. code-block:: ini
 
@@ -183,7 +188,7 @@ the installed CLI. The remaining sections use the normal RHIME schema.
    inner_nbasis = 80
    inner_time_tolerance = None
 
-   [RHIME.OUTPUT]
+   ; Edit these values in the existing [RHIME.OUTPUT] section:
    output_name = "europe_nested_6km"
    output_format = "none"
    save_inversion_output = False
@@ -238,6 +243,7 @@ as lists, even for one synthetic site, so they retain the modern schema shape:
        emissions_store="outer-emissions-store",
        inner_footprint_store="inner-satellite-store",
        inner_emissions_store="inner-emissions-store",
+       mismatch_model="pollution_event",
        output_name="gosat_brazil_nested",
        output_format="none",
        save_inversion_output=False,
@@ -250,8 +256,11 @@ fine-grid emissions response.
 Prepared-input workflow
 -----------------------
 
-For cached or externally prepared data, combine two ordinary
-``RhimePreparedInputs`` objects and run from that explicit boundary:
+For cached or externally prepared data, the outer preparation must be built
+from merged data whose inner-domain footprint response and flux were already
+masked before basis projection. That spatial contribution cannot be removed
+from an already projected ``H``. Combine the two preparations with the
+explicit acknowledgement shown below and run from that boundary:
 
 .. code-block:: python
 
@@ -264,12 +273,19 @@ For cached or externally prepared data, combine two ordinary
        outer_prepared,
        inner_prepared,
        time_tolerance="30min",
+       outer_overlap_masked=True,
    )
+
    result = run_rhime_nested_from_prepared_inputs(
        prepared_inputs=nested,
        run_spec=run_spec_with_output_format_none,
        sampler=sampler,
    )
+
+Omitting ``outer_overlap_masked=True`` raises rather than silently combining
+two ordinary overlapping sensitivity matrices. The retrieval-backed
+``run_rhime_nested`` path performs the mask before preparation and supplies
+this acknowledgement internally.
 
 Current output boundary
 -----------------------
@@ -294,8 +310,10 @@ each view unmodified. This produces three products:
   the inner file;
 - an inner PARIS flux file at the inner domain's own native resolution,
   including its own country totals (a coarse country-definition file is
-  nearest-neighbour resampled onto the inner grid and cached, since a fine
-  domain rarely has a matching country file at its native resolution);
+  nearest-neighbour resampled onto the inner grid and cached below the run's
+  output path, since a fine domain rarely has a matching country file at its
+  native resolution; the cache key includes the source country file and exact
+  target coordinates, preventing reuse against a changed grid);
 - one shared PARIS concentration file, since the combined forward model
   (``mu = mu_outer + mu_inner + baseline``) already reports one concentration
   per observation -- there is no separate "inner concentration" product.

@@ -1385,11 +1385,22 @@ def fixed_outer_regions_basis(
 
     basis = intem_regions.rename("basis")
 
+    fixed_outer_values = intem_regions.where(~mask).to_numpy()
+    finite_outer_values = fixed_outer_values[np.isfinite(fixed_outer_values)]
+    if finite_outer_values.size == 0:
+        raise ValueError("Fixed outer-region map must retain at least one label outside the inner region.")
+    max_fixed_outer_label = int(finite_outer_values.max())
+
     loc_dict = {
         "lat": slice(inner_region.lat.min(), inner_region.lat.max() + 0.1),
         "lon": slice(inner_region.lon.min(), inner_region.lon.max() + 0.1),
     }
-    basis.loc[loc_dict] = (inner_region + inner_index - 1).squeeze().values
+    # Generated algorithms use positive labels starting at one. Place those
+    # labels above every retained fixed-outer label before converting the
+    # complete field from zero-based to one-based labels below. Offsetting
+    # from ``inner_index`` is only safe for legacy maps whose inner label is
+    # already the maximum; EUHROB deliberately marks a non-maximum label.
+    basis.loc[loc_dict] = (inner_region + max_fixed_outer_label).squeeze().values
 
     basis += 1  # intem_region_definitions.nc regions start at 0, not 1
 

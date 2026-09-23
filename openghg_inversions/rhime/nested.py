@@ -95,6 +95,7 @@ class NestedRhimePreparedInputs:
     time_tolerance: str | pd.Timedelta | None = None
     inner_state_dim: str = "inner_region"
     inner_domain_label: str | None = None
+    outer_overlap_masked: bool = False
 
     def validated(self) -> NestedRhimePreparedInputs:
         """Revalidate both native preparations and rebuild their combination."""
@@ -104,6 +105,7 @@ class NestedRhimePreparedInputs:
             time_tolerance=self.time_tolerance,
             inner_state_dim=self.inner_state_dim,
             inner_domain_label=self.inner_domain_label,
+            outer_overlap_masked=self.outer_overlap_masked,
         )
 
 
@@ -250,14 +252,27 @@ def combine_nested_rhime_inputs(
     time_tolerance: str | pd.Timedelta | None = None,
     inner_state_dim: str = "inner_region",
     inner_domain_label: str | None = None,
+    outer_overlap_masked: bool = False,
 ) -> NestedRhimePreparedInputs:
     """Combine independently prepared native grids at the sensitivity boundary.
 
-    Exact site/time alignment is required by default.  Set ``time_tolerance``
+    Exact site/time alignment is required by default. Set ``time_tolerance``
     to opt into nearest-time alignment for footprints whose timestamps differ
-    slightly from the observations.  Unmatched observations are rejected;
+    slightly from the observations. Unmatched observations are rejected;
     they are never silently duplicated or converted to zero sensitivity.
+
+    Prepared sensitivity matrices cannot be spatially masked after basis
+    projection. Callers must therefore remove the inner-domain contribution
+    from the outer merged data before preparing ``outer`` and explicitly set
+    ``outer_overlap_masked=True``. The retrieval-backed nested runner performs
+    that masking itself. Requiring the acknowledgement here prevents ordinary,
+    overlapping prepared inputs from being combined silently.
     """
+    if outer_overlap_masked is not True:
+        raise ValueError(
+            "Nested prepared inputs require an outer sensitivity with the inner-domain overlap "
+            "already removed; pass outer_overlap_masked=True only after masking the outer merged data."
+        )
     outer = outer.validated()
     inner = inner.validated()
     if outer.sites != inner.sites:
@@ -330,6 +345,7 @@ def combine_nested_rhime_inputs(
         time_tolerance=time_tolerance,
         inner_state_dim=inner_state_dim,
         inner_domain_label=inner_domain_label,
+        outer_overlap_masked=True,
     )
 
 
@@ -702,6 +718,7 @@ def prepare_nested_rhime_inputs(
         inner_prepared,
         time_tolerance=time_tolerance,
         inner_domain_label=inner_domain_name,
+        outer_overlap_masked=True,
     )
     log_timing(
         "rhime.prepare_nested_inputs",

@@ -1276,7 +1276,12 @@ def test_fixed_outer_regions_uses_explicit_non_maximum_inner_label(monkeypatch, 
         del fp_all, domain, emissions_name, nbasis, country_directory, abs_flux
         assert mask is not None
         seen["mask"] = mask
-        inner = xr.ones_like(mask.where(mask, drop=True), dtype=int)
+        inner_mask = mask.where(mask, drop=True)
+        inner = xr.DataArray(
+            [[1, 1], [2, 2]],
+            dims=inner_mask.dims,
+            coords=inner_mask.coords,
+        )
         return inner.expand_dims(time=[pd.Timestamp(start_date)], axis=-1)
 
     monkeypatch.setitem(
@@ -1285,7 +1290,7 @@ def test_fixed_outer_regions_uses_explicit_non_maximum_inner_label(monkeypatch, 
         basis_functions["quadtree"]._replace(algorithm=fake_quadtree_basis),
     )
 
-    fixed_outer_regions_basis(
+    result = fixed_outer_regions_basis(
         fp_all=fp_all,
         start_date="2020-01-01",
         basis_algorithm="quadtree",
@@ -1295,6 +1300,12 @@ def test_fixed_outer_regions_uses_explicit_non_maximum_inner_label(monkeypatch, 
     )
 
     xr.testing.assert_equal(seen["mask"], outer_regions["region"] == 1)
+    labels = result.squeeze("time", drop=True)
+    inner_labels = set(np.unique(labels.values[outer_values == 1]))
+    fixed_outer_labels = set(np.unique(labels.values[outer_values != 1]))
+    assert inner_labels == {4, 5}
+    assert fixed_outer_labels == {1, 3}
+    assert inner_labels.isdisjoint(fixed_outer_labels)
 
 
 def test_packaged_euhrob_map_marks_the_6km_inner_rectangle():

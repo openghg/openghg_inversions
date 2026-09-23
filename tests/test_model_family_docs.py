@@ -4,6 +4,9 @@ import importlib
 import re
 from pathlib import Path
 
+from openghg_inversions.rhime.params import resolve_rhime_options
+from openghg_inversions.rhime.specs import PollutionEventSettings
+
 
 DOCS = Path(__file__).parents[1] / "docs" / "usage"
 
@@ -152,7 +155,49 @@ def test_nested_reader_path_exposes_transport_grid_boundary() -> None:
     assert "inner_fp_basis_case" in guide
     assert "inner_basis_directory" in guide
     assert "inner_basis_output_path" in guide
+    assert guide.count('mismatch_model="pollution_event"') == 2
+    assert "outer_overlap_masked=True" in guide
+    assert "rather than appending a duplicate section" in guide
+    assert "source country file and exact\n  target coordinates" in guide
     assert "sampling-only" not in readme
+
+
+def test_nested_documented_examples_resolve_supported_likelihoods() -> None:
+    """Both documented runner shapes include a resolvable likelihood."""
+    examples = (
+        {
+            "species": "ch4",
+            "sites": ["TAC", "MHD"],
+            "averaging_period": ["1h", "1h"],
+            "domain": "EUROPE",
+            "start_date": "2019-01-01",
+            "end_date": "2019-02-01",
+            "flux_sources": ["total-ukghg-edgar7"],
+            "mismatch_model": "pollution_event",
+            "output_name": "europe_nested_6km",
+            "output_format": "none",
+        },
+        {
+            "species": "ch4",
+            "sites": ["GOSAT-BRAZIL"],
+            "averaging_period": ["1D"],
+            "platform": ["satellite"],
+            "inlet": ["column"],
+            "fp_height": ["column"],
+            "max_level": [3],
+            "domain": "BRAZIL",
+            "start_date": "2019-01-01",
+            "end_date": "2019-02-01",
+            "flux_sources": ["total-inventory"],
+            "mismatch_model": "pollution_event",
+            "output_name": "gosat_brazil_nested",
+            "output_format": "none",
+        },
+    )
+
+    for params in examples:
+        setup = resolve_rhime_options(params=params, multisector=False)
+        assert isinstance(setup.run_spec.model.likelihood, PollutionEventSettings)
 
 
 def test_moved_recipe_sections_preserve_legacy_fragment_targets() -> None:

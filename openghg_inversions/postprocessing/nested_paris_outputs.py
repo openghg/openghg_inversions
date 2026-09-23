@@ -21,11 +21,14 @@ regridded onto the outer grid for arithmetic.
 
 from __future__ import annotations
 
+import hashlib
 import os
 from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, cast
+from uuid import uuid4
 
+import numpy as np
 import xarray as xr
 
 from openghg_inversions._country_file import load_country_dataset
@@ -50,6 +53,60 @@ __all__ = [
     "make_nested_inversion_outputs",
     "make_nested_paris_outputs",
 ]
+
+_CACHE_SOURCE_SHA256_ATTR = "nested_country_source_sha256"
+_CACHE_GRID_SHA256_ATTR = "nested_country_target_grid_sha256"
+
+
+def _file_sha256(path: Path) -> str:
+    """Return a content digest for one country-definition source file."""
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _coordinate_sha256(*, lat: xr.DataArray, lon: xr.DataArray) -> str:
+    """Return an exact identity digest for the target spatial coordinates."""
+    digest = hashlib.sha256()
+    for name, coordinate in (("lat", lat), ("lon", lon)):
+        values = np.asarray(coordinate.values)
+        digest.update(name.encode())
+        digest.update(str(values.dtype).encode())
+        digest.update(str(values.shape).encode())
+        digest.update(np.ascontiguousarray(values).tobytes())
+    return digest.hexdigest()
+
+
+def _default_country_cache_dir() -> Path:
+    """Return the standard writable per-user cache for derived country grids."""
+    configured_root = os.environ.get("XDG_CACHE_HOME")
+    cache_root = Path(configured_root).expanduser() if configured_root else Path.home() / ".cache"
+    return cache_root / "openghg_inversions" / "country_grids"
+
+
+def _cached_country_grid_matches(
+    path: Path,
+    *,
+    source_sha256: str,
+    grid_sha256: str,
+    lat: xr.DataArray,
+    lon: xr.DataArray,
+) -> bool:
+    """Return whether a cached country grid matches its declared inputs."""
+    try:
+        with xr.open_dataset(path) as cached:
+            return (
+                cached.attrs.get(_CACHE_SOURCE_SHA256_ATTR) == source_sha256
+                and cached.attrs.get(_CACHE_GRID_SHA256_ATTR) == grid_sha256
+                and "lat" in cached.coords
+                and "lon" in cached.coords
+                and np.array_equal(cached["lat"].values, lat.values)
+                and np.array_equal(cached["lon"].values, lon.values)
+            )
+    except (OSError, ValueError):
+        return False
 
 
 def _domain_variable_roles(all_roles: Mapping[str, str], *, tag: str) -> dict[str, str]:
@@ -131,21 +188,39 @@ def _regridded_inner_country_file(
     file at their native resolution. Country/region membership does not
     change between repeated runs for the same physical inner domain (e.g.
     monthly array-job tasks), so the regridded file is cached by inner-domain
-    label and reused rather than recomputed; concurrent writers race safely
-    because the file is written to a process-unique temporary path and moved
+    label plus source-file and target-coordinate identity. The default is a
+    per-user cache rather than the source file's directory. Concurrent writers
+    race safely because each writes to a unique temporary path and moves it
     into place with an atomic rename.
     """
-    source_path = get_country_file_path(country_file=country_file, domain=domain)
-    target_dir = Path(cache_dir) if cache_dir is not None else source_path.parent
+    source_path = Path(get_country_file_path(country_file=country_file, domain=domain))
+    target_dir = Path(cache_dir) if cache_dir is not None else _default_country_cache_dir()
+    source_sha256 = _file_sha256(source_path)
+    grid_sha256 = _coordinate_sha256(lat=lat, lon=lon)
+    identity = hashlib.sha256(f"{source_sha256}:{grid_sha256}".encode()).hexdigest()[:16]
     safe_label = str(inner_domain_label).replace("/", "_")
-    target_path = target_dir / f"country_{safe_label}_regridded.nc"
-    if target_path.exists():
+    target_path = target_dir / f"country_{safe_label}_{identity}_regridded.nc"
+    if target_path.exists() and _cached_country_grid_matches(
+        target_path,
+        source_sha256=source_sha256,
+        grid_sha256=grid_sha256,
+        lat=lat,
+        lon=lon,
+    ):
         return target_path
 
     countries_ds = load_country_dataset(source_path)
     regridded = regrid_country_dataset(countries_ds, lat=lat, lon=lon)
+    regridded.attrs = dict(regridded.attrs)
+    regridded.attrs.update(
+        {
+            _CACHE_SOURCE_SHA256_ATTR: source_sha256,
+            _CACHE_GRID_SHA256_ATTR: grid_sha256,
+            "nested_country_source_path": str(source_path.resolve()),
+        }
+    )
     target_dir.mkdir(parents=True, exist_ok=True)
-    tmp_path = target_dir / f".country_{safe_label}_regridded.{os.getpid()}.tmp.nc"
+    tmp_path = target_dir / f".{target_path.name}.{os.getpid()}.{uuid4().hex}.tmp.nc"
     try:
         regridded.to_netcdf(tmp_path)
         os.replace(tmp_path, target_path)
@@ -185,7 +260,8 @@ def make_nested_paris_outputs(
             independently for each domain's flux.
         obs_avg_period: Averaging period recorded in concentration metadata.
         country_file_cache_dir: Directory for the cached regridded inner
-            country file. Defaults to the outer country file's directory.
+            country file. Defaults to a cache below ``output_path`` when set,
+            otherwise to the standard per-user cache directory.
 
     Returns:
         ``(flux_outer, flux_inner, conc_outs)``. ``flux_outer`` matches the
@@ -221,13 +297,18 @@ def make_nested_paris_outputs(
 
     resolved_inner_country_file = inner_country_file
     if resolved_inner_country_file is None:
+        resolved_cache_dir = country_file_cache_dir
+        if resolved_cache_dir is None:
+            output_path = nested_result.rhime_result.output_spec.output_path
+            if output_path is not None:
+                resolved_cache_dir = Path(output_path) / ".country_cache"
         resolved_inner_country_file = _regridded_inner_country_file(
             country_file=country_file,
             domain=outer_inv_out.domain,
             lat=inner_inv_out.flux["lat"],
             lon=inner_inv_out.flux["lon"],
             inner_domain_label=inner_domain_label,
-            cache_dir=country_file_cache_dir,
+            cache_dir=resolved_cache_dir,
         )
 
     inner_flux_frequency = flux_frequency or infer_flux_frequency(inner_inv_out.flux)

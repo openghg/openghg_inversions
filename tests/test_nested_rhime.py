@@ -20,6 +20,7 @@ from openghg_inversions.inversion_data import RhimeMergedData, RhimePreparedInpu
 from openghg_inversions.inversion_data.preparation import _SiteOptions
 from openghg_inversions.postprocessing.nested_paris_outputs import (
     _domain_variable_roles,
+    _regridded_inner_country_file,
     make_nested_inversion_outputs,
 )
 from openghg_inversions.rhime.nested import (
@@ -136,7 +137,12 @@ def test_combine_nested_inputs_retains_native_bases_and_aligns_nearest_time() ->
         basis=inner_basis,
     )
 
-    nested = combine_nested_rhime_inputs(outer, inner, time_tolerance="15min")
+    nested = combine_nested_rhime_inputs(
+        outer,
+        inner,
+        time_tolerance="15min",
+        outer_overlap_masked=True,
+    )
 
     assert nested.outer.basis_functions is not nested.inner.basis_functions
     assert nested.combined.basis_functions.operator is nested.outer.basis_functions.operator
@@ -145,6 +151,24 @@ def test_combine_nested_inputs_retains_native_bases_and_aligns_nearest_time() ->
     assert nested.combined.inv_inputs["H"].dims == ("region", "nmeasure")
     # Revalidation must preserve the explicitly selected nearest-time policy.
     nested.validated()
+
+
+def test_combine_nested_inputs_requires_explicitly_masked_outer_preparation() -> None:
+    """The public prepared-input boundary must not silently double-count overlap."""
+    basis = _basis([50.0], [-2.0], np.array([[1]]))
+    outer = _prepared(
+        times=["2019-01-01T00:00"],
+        sensitivity=np.array([[1.0]]),
+        basis=basis,
+    )
+    inner = _prepared(
+        times=["2019-01-01T00:00"],
+        sensitivity=np.array([[2.0]]),
+        basis=basis,
+    )
+
+    with pytest.raises(ValueError, match="outer_overlap_masked=True"):
+        combine_nested_rhime_inputs(outer, inner)
 
 
 def test_combine_nested_inputs_rejects_unmatched_time_instead_of_zero_filling() -> None:
@@ -161,7 +185,12 @@ def test_combine_nested_inputs_rejects_unmatched_time_instead_of_zero_filling() 
     )
 
     try:
-        combine_nested_rhime_inputs(outer, inner, time_tolerance="15min")
+        combine_nested_rhime_inputs(
+            outer,
+            inner,
+            time_tolerance="15min",
+            outer_overlap_masked=True,
+        )
     except ValueError as exc:
         assert "cannot be aligned" in str(exc)
     else:  # pragma: no cover - assertion helper without pytest dependency
@@ -268,7 +297,7 @@ def test_nested_model_uses_two_labelled_state_blocks_and_shared_likelihood() -> 
         sensitivity=np.array([[5.0, 6.0], [7.0, 8.0]]),
         basis=inner_basis,
     )
-    prepared = combine_nested_rhime_inputs(outer, inner)
+    prepared = combine_nested_rhime_inputs(outer, inner, outer_overlap_masked=True)
     run_spec = _run_spec()
 
     result = build_nested_rhime_model_result(
@@ -299,7 +328,7 @@ def test_nested_materialization_computes_both_sensitivities_at_named_boundary() 
         sensitivity=np.array([[2.0]]),
         basis=basis,
     )
-    prepared = combine_nested_rhime_inputs(outer, inner)
+    prepared = combine_nested_rhime_inputs(outer, inner, outer_overlap_masked=True)
     lazy_outer = da.from_array(prepared.combined.inv_inputs["H"].values, chunks=(1, 1))
     lazy_inner = da.from_array(prepared.combined.inv_inputs["H_inner"].values, chunks=(1, 1))
     lazy_dataset = prepared.combined.inv_inputs.copy(deep=False)
@@ -553,6 +582,73 @@ def test_domain_variable_roles_strips_tag_and_keeps_shared_roles() -> None:
     }
 
 
+def test_regridded_inner_country_cache_uses_writable_identity_key(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The default cache separates changed source files and target grids."""
+    source_path = tmp_path / "country_source.nc"
+
+    def write_source(values: np.ndarray) -> None:
+        xr.Dataset(
+            {
+                "country": (("lat", "lon"), values),
+                "name": ("ncountries", ["OCEAN", "TEST"]),
+                "country_code": ("ncountries", ["OCEAN", "TST"]),
+            },
+            coords={"lat": [0.0, 1.0], "lon": [10.0, 11.0], "ncountries": [0, 1]},
+        ).to_netcdf(source_path)
+
+    write_source(np.array([[0, 1], [0, 1]]))
+    cache_root = tmp_path / "user-cache"
+    monkeypatch.setenv("XDG_CACHE_HOME", str(cache_root))
+    lat = xr.DataArray([0.0, 0.5, 1.0], dims="lat")
+    lon = xr.DataArray([10.0, 11.0], dims="lon")
+
+    first = _regridded_inner_country_file(
+        country_file=source_path,
+        domain="TEST",
+        lat=lat,
+        lon=lon,
+        inner_domain_label="TEST-6km",
+        cache_dir=None,
+    )
+    repeated = _regridded_inner_country_file(
+        country_file=source_path,
+        domain="TEST",
+        lat=lat,
+        lon=lon,
+        inner_domain_label="TEST-6km",
+        cache_dir=None,
+    )
+    changed_grid = _regridded_inner_country_file(
+        country_file=source_path,
+        domain="TEST",
+        lat=lat,
+        lon=xr.DataArray([10.0, 10.5, 11.0], dims="lon"),
+        inner_domain_label="TEST-6km",
+        cache_dir=None,
+    )
+    write_source(np.array([[0, 0], [1, 1]]))
+    changed_source = _regridded_inner_country_file(
+        country_file=source_path,
+        domain="TEST",
+        lat=lat,
+        lon=lon,
+        inner_domain_label="TEST-6km",
+        cache_dir=None,
+    )
+
+    assert first == repeated
+    assert first.parent == cache_root / "openghg_inversions" / "country_grids"
+    assert changed_grid != first
+    assert changed_source != first
+    with xr.open_dataset(first) as cached:
+        assert cached.sizes["lat"] == 3
+        assert "nested_country_source_sha256" in cached.attrs
+        assert "nested_country_target_grid_sha256" in cached.attrs
+
+
 def test_make_nested_inversion_outputs_builds_per_domain_views() -> None:
     """Outer/inner InversionOutput views must read distinct bases and trace variables.
 
@@ -572,7 +668,12 @@ def test_make_nested_inversion_outputs_builds_per_domain_views() -> None:
         sensitivity=np.array([[5.0, 6.0], [7.0, 8.0]]),
         basis=inner_basis,
     )
-    prepared = combine_nested_rhime_inputs(outer, inner, inner_domain_label="europe-6km")
+    prepared = combine_nested_rhime_inputs(
+        outer,
+        inner,
+        inner_domain_label="europe-6km",
+        outer_overlap_masked=True,
+    )
     run_spec = _run_spec()
 
     build_result = build_nested_rhime_model_result(
