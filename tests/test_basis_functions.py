@@ -1142,6 +1142,39 @@ def test_fixed_outer_regions_accepts_direct_outer_map_path(tmp_path):
     assert bool((retained.flat_basis() > 0).all())
 
 
+@pytest.mark.parametrize("latitude", [np.arange(4.0) + 0.25, np.arange(4.0)[::-1]])
+def test_fixed_outer_regions_rejects_misaligned_custom_map_grid(tmp_path, latitude):
+    """A same-size custom map cannot silently replace its grid with flux coordinates."""
+    fp_all, region_classes = _tiny_region_constrained_fp_all()
+    outer_path = tmp_path / "misaligned-fixed-outer-map.nc"
+    xr.DataArray(
+        np.array(
+            [
+                [0, 0, 1, 1],
+                [0, 2, 2, 1],
+                [0, 2, 2, 1],
+                [0, 0, 1, 1],
+            ],
+            dtype=int,
+        ),
+        dims=("lat", "lon"),
+        coords={"lat": latitude, "lon": region_classes.lon},
+        name="region",
+    ).to_dataset().to_netcdf(outer_path)
+
+    with pytest.raises(xr.AlignmentError, match="not physically compatible"):
+        fixed_outer_regions_basis(
+            fp_all=fp_all,
+            start_date="2020-01-01",
+            basis_algorithm="region_constrained",
+            domain="TEST",
+            emissions_name=["total"],
+            nbasis=3,
+            outer_regions_path=outer_path,
+            region_classes=region_classes,
+        )
+
+
 def _zeroed_inner_response_fp_all(fp_all: dict, region_classes: xr.DataArray, inner_mask: np.ndarray) -> dict:
     """Return a copy of ``fp_all`` with its fp/flux response zeroed under ``inner_mask``.
 

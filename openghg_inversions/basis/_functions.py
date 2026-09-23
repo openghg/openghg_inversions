@@ -1323,9 +1323,18 @@ def fixed_outer_regions_basis(
             Path(country_directory) / f"outer_region_definition_{domain}.nc",
         )
 
-    # force intem_regions to use flux coordinates
+    # Validate the physical grid before adopting the authoritative flux coordinates.
     flux, _ = _flux_fp_from_fp_all(fp_all, emissions_name)
-    _, intem_regions = xr.align(flux, intem_regions, join="override")
+    flux_grid = flux.isel(
+        {dimension: 0 for dimension in flux.dims if dimension not in intem_regions.dims},
+        drop=True,
+    )
+    intem_regions = normalize_spatial_grid(
+        flux_grid,
+        intem_regions,
+        reference_name="flux",
+        candidate_name="fixed outer-region map",
+    )
 
     inner_index = _fixed_outer_inner_region_label(intem_regions)
 

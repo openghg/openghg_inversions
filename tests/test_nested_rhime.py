@@ -197,6 +197,29 @@ def test_combine_nested_inputs_rejects_unmatched_time_instead_of_zero_filling() 
         raise AssertionError("Expected an unmatched nested observation to be rejected.")
 
 
+def test_combine_nested_inputs_rejects_reused_nearest_inner_footprint() -> None:
+    """Each prepared outer observation must select a distinct inner footprint."""
+    basis = _basis([50.0], [-2.0], np.array([[1]]))
+    outer = _prepared(
+        times=["2019-01-01T00:00", "2019-01-01T00:05"],
+        sensitivity=np.array([[1.0, 2.0]]),
+        basis=basis,
+    )
+    inner = _prepared(
+        times=["2019-01-01T00:02", "2019-01-01T00:09"],
+        sensitivity=np.array([[3.0, 4.0]]),
+        basis=basis,
+    )
+
+    with pytest.raises(ValueError, match=r"one-to-one.*reuse an inner footprint"):
+        combine_nested_rhime_inputs(
+            outer,
+            inner,
+            time_tolerance="5min",
+            outer_overlap_masked=True,
+        )
+
+
 @dataclass(frozen=True)
 class _FluxData:
     data: xr.Dataset
@@ -282,6 +305,32 @@ def test_inner_merged_alignment_mirrors_filtered_outer_times_with_tolerance() ->
     np.testing.assert_array_equal(aligned.fp_all["TAC"]["time"], outer_times)
     np.testing.assert_allclose(aligned.fp_all["TAC"]["fp"].values[:, 0, 0], [0.0, 2.0])
     np.testing.assert_array_equal(inner.fp_all["TAC"]["time"], inner_times)
+
+
+def test_inner_merged_alignment_rejects_reused_nearest_inner_footprint() -> None:
+    """Satellite-like nearby observations cannot reuse one inner footprint."""
+    outer_times = pd.to_datetime(["2019-01-01T00:00", "2019-01-01T00:05"])
+    inner_times = pd.to_datetime(["2019-01-01T00:02", "2019-01-01T00:09"])
+    outer = RhimeMergedData(
+        fp_all={"TAC": xr.Dataset({"mf": ("time", [1.0, 2.0])}, coords={"time": outer_times})},
+        site_options=_site_options(),
+    )
+    inner = RhimeMergedData(
+        fp_all={
+            "TAC": xr.Dataset(
+                {"fp": (("time", "lat", "lon"), np.arange(2.0).reshape(2, 1, 1))},
+                coords={"time": inner_times, "lat": [1.0], "lon": [1.0]},
+            )
+        },
+        site_options=_site_options(),
+    )
+
+    with pytest.raises(ValueError, match=r"one-to-one.*reuse an inner footprint"):
+        align_inner_merged_to_outer_observations(
+            outer,
+            inner,
+            time_tolerance="5min",
+        )
 
 
 def test_nested_model_uses_two_labelled_state_blocks_and_shared_likelihood() -> None:

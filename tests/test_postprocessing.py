@@ -1158,6 +1158,18 @@ def test_make_paris_outputs(inv_out, europe_country_file, tmpdir, offset):
     conc_outs.to_netcdf(tmpdir / "conc.nc")
 
 
+def test_legacy_paris_global_attrs_use_inversion_species_and_domain(inv_out, europe_country_file):
+    """Legacy products report the inversion metadata instead of global defaults."""
+    inv_out.model_metadata.update(species="ch4", domain="EUROPE-6km")
+
+    concentration = paris_concentration_outputs(inv_out)
+    flux = paris_flux_output(inv_out, country_file=europe_country_file, inversion_grid=False)
+
+    for output in (concentration, flux):
+        assert output.attrs["species"] == "ch4"
+        assert output.attrs["domain"] == "EUROPE-6km"
+
+
 def test_paris_template_registry_requires_explicit_latest():
     """PARIS output keeps the legacy templates by default for the next release."""
     legacy = paris_template_files(DEFAULT_PARIS_TEMPLATE_VERSION)

@@ -190,6 +190,32 @@ def _measurement_index(prepared: RhimePreparedInputs, *, label: str) -> pd.Multi
     return index
 
 
+def _validate_one_to_one_inner_time_matches(
+    outer_times: pd.DatetimeIndex,
+    inner_times: pd.DatetimeIndex,
+    inner_indexer: np.ndarray,
+    *,
+    label: str,
+) -> None:
+    """Reject time alignment that would reuse one inner footprint."""
+    matched_positions = inner_indexer[inner_indexer >= 0]
+    positions, counts = np.unique(matched_positions, return_counts=True)
+    reused_positions = positions[counts > 1]
+    if reused_positions.size == 0:
+        return
+
+    examples = []
+    for position in reused_positions[:5]:
+        matched_outer_times = outer_times[inner_indexer == position]
+        outer_preview = ", ".join(str(time) for time in matched_outer_times)
+        examples.append(f"{inner_times[int(position)]} for outer observations {outer_preview}")
+    suffix = "" if reused_positions.size <= 5 else f", ... ({reused_positions.size} reused times total)"
+    raise ValueError(
+        f"{label} cannot align one-to-one because nearest-time matching would reuse "
+        f"an inner footprint: {'; '.join(examples)}{suffix}."
+    )
+
+
 def _inner_measurement_positions(
     outer_index: pd.MultiIndex,
     inner_index: pd.MultiIndex,
@@ -200,6 +226,7 @@ def _inner_measurement_positions(
     tolerance = None if time_tolerance is None else pd.Timedelta(time_tolerance)
     positions = [-1] * len(outer_index)
     missing: list[tuple[str, object]] = []
+    site_matches: list[tuple[str, pd.DatetimeIndex, pd.DatetimeIndex, np.ndarray]] = []
 
     outer_sites = outer_index.get_level_values("site")
     inner_sites = inner_index.get_level_values("site")
@@ -225,6 +252,7 @@ def _inner_measurement_positions(
                 method="nearest",
                 tolerance=tolerance,
             )
+        site_matches.append((site, outer_times, sorted_times, site_indexer))
 
         for outer_position, mapped_position in zip(outer_site_positions, site_indexer, strict=True):
             inner_position = int(mapped_position)
@@ -240,6 +268,14 @@ def _inner_measurement_positions(
         raise ValueError(
             "Inner nested inputs cannot be aligned to every outer observation using "
             f"{alignment}: {preview}{suffix}."
+        )
+
+    for site, outer_times, inner_times, inner_indexer in site_matches:
+        _validate_one_to_one_inner_time_matches(
+            outer_times,
+            inner_times,
+            inner_indexer,
+            label=f"Inner nested inputs for site {site!r}",
         )
 
     return positions
@@ -462,6 +498,12 @@ def align_inner_merged_to_outer_observations(
             raise ValueError(
                 f"Inner nested scenario for site {site!r} cannot align using {alignment}: {preview}{suffix}."
             )
+        _validate_one_to_one_inner_time_matches(
+            outer_times,
+            sorted_times,
+            indexer,
+            label=f"Inner nested scenario for site {site!r}",
+        )
         native_positions = order[indexer]
         aligned = inner_dataset.isel(time=native_positions).assign_coords(time=outer_dataset["time"].variable)
         fp_all[site] = aligned
