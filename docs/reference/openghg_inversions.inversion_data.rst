@@ -4,7 +4,6 @@ openghg\_inversions.inversion\_data
 .. automodule:: openghg_inversions.inversion_data
    :members:
    :show-inheritance:
-   :undoc-members:
 
 
 

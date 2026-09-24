@@ -97,6 +97,21 @@ class NestedRhimePreparedInputs:
     basis remains available explicitly on ``inner`` and is never coerced onto
     the outer grid. ``outer_overlap_mask_policy`` records how that support was
     removed so saved per-domain artifacts remain scientifically interpretable.
+
+    Args:
+        outer: Prepared outer-domain inputs with the inner-domain spatial
+            response removed before basis projection.
+        inner: Prepared inner-domain inputs on their native grid.
+        combined: Observation-aligned inputs containing outer ``H`` and inner
+            ``H_inner`` sensitivities.
+        time_tolerance: Maximum time difference allowed when aligning inner
+            observations to the outer observation index.
+        inner_state_dim: State dimension assigned to the inner sensitivity.
+        inner_domain_label: Optional label retained for the inner domain.
+        outer_overlap_masked: Whether the caller confirms that the outer
+            response was masked before basis projection.
+        outer_overlap_mask_policy: Machine-readable description of how the
+            overlapping outer response was removed.
     """
 
     outer: RhimePreparedInputs
@@ -123,7 +138,12 @@ class NestedRhimePreparedInputs:
 
 @dataclass
 class NestedRhimeResult:
-    """A modern RHIME result with both native-domain preparation artifacts."""
+    """A modern RHIME result with both native-domain preparation artifacts.
+
+    Args:
+        rhime_result: Sampled RHIME result for the combined nested model.
+        prepared_inputs: Retained outer, inner, and combined prepared inputs.
+    """
 
     rhime_result: RhimeResult
     prepared_inputs: NestedRhimePreparedInputs

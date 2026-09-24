@@ -1,0 +1,6 @@
+openghg\_inversions.rhime.outputs
+=================================
+
+.. automodule:: openghg_inversions.rhime.outputs
+   :members:
+   :show-inheritance:

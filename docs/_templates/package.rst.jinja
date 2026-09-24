@@ -1,7 +1,9 @@
 {%- macro automodule(modname, options) -%}
 .. automodule:: {{ modname }}
 {%- for option in options %}
+{%- if option != "undoc-members" %}
    :{{ option }}:
+{%- endif %}
 {%- endfor %}
 {%- endmacro %}
 

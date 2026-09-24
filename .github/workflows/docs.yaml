@@ -6,6 +6,7 @@ on:
       - devel
     paths:
       - 'docs/**'
+      - 'openghg_inversions/**/*.py'
       - 'tox.ini'
       - 'pyproject.toml'
       - 'setup.cfg'
@@ -39,11 +40,11 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v5
         with:
-          version: "latest"
+          version: "0.12.5"
           enable-cache: true
 
       - name: Build docs using tox
-        run: uvx --with tox-uv tox -e docs-full
+        run: uvx --with tox-uv==1.36.0 tox==4.60.0 -e docs-full
         
       - name: Show built docs (debug)
         run: |

@@ -1,0 +1,6 @@
+openghg\_inversions.postprocessing.sigma
+========================================
+
+.. automodule:: openghg_inversions.postprocessing.sigma
+   :members:
+   :show-inheritance:
