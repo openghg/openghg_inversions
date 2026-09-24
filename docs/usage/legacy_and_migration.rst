@@ -196,8 +196,10 @@ The merged-data mapping returned by ``data_processing_surface_notracer`` and
 or ``.scales`` entries.  The species remains an explicit run option,
 observation units remain on each site's ``mf.attrs["units"]``, and each
 site's calibration scale remains on its dataset ``attrs["scale"]``.  Existing
-merged-data artifacts containing the old entries remain loadable; the loader
-discards those redundant copies.
+netCDF and Zarr artifacts containing the old entries remain loadable; the loader
+discards those redundant copies. Pickle merged-data files can no longer be
+saved or loaded. To migrate one, use an older environment to reload it and
+save it as netCDF or Zarr before upgrading.
 
 Removed interfaces
 ------------------

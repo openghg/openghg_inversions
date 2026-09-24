@@ -1,6 +1,5 @@
 import copy
 import logging
-import pickle
 from types import SimpleNamespace
 from typing import Any
 from unittest import mock
@@ -29,6 +28,8 @@ from openghg_inversions.inversion_data.get_data import (
 )
 from openghg_inversions.inversion_data.getters import get_flux_data
 from openghg_inversions.inversion_data.serialise import (
+    _save_merged_data,
+    datatree_to_fp_all,
     fp_all_from_dataset,
     load_merged_data,
     make_combined_scenario,
@@ -108,20 +109,44 @@ def test_load_merged_data(merged_data_dir, merged_data_file_name):
     assert {".scales", ".species", ".units"}.isdisjoint(fp_all)
 
 
-def test_load_merged_data_drops_obsolete_pickle_metadata(tmp_path):
-    """Obsolete metadata in older pickle artifacts is not restored."""
-    old_fp_all = {
-        "TAC": xr.Dataset({"mf": ("time", [1.0])}),
+def test_datatree_to_fp_all_drops_obsolete_metadata() -> None:
+    """Older structured artifacts can retain redundant root metadata."""
+    tree = xr.DataTree.from_dict(
+        {"scenarios": xr.DataTree.from_dict({"TAC": xr.Dataset({"mf": ("time", [1.0])})})}
+    )
+    tree.attrs = {
         ".scales": {"TAC": "WMO-X2004A"},
         ".species": "CH4",
         ".units": 1e-9,
+        ".split_by_sectors": False,
     }
-    with (tmp_path / "legacy.pickle").open("wb") as file:
-        pickle.dump(old_fp_all, file)
 
-    fp_all = load_merged_data(tmp_path, merged_data_name="legacy.pickle")
+    fp_all = datatree_to_fp_all(tree)
 
-    assert set(fp_all) == {"TAC"}
+    assert set(fp_all) == {"TAC", ".split_by_sectors"}
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"merged_data_name": "legacy.pickle"},
+        {"merged_data_name": "legacy", "output_format": "pickle"},
+    ],
+)
+def test_merged_data_rejects_pickle_format(tmp_path, kwargs: dict[str, str]) -> None:
+    """Neither explicit pickle suffixes nor format options are accepted."""
+    with pytest.raises(ValueError, match="Pickle|Unsupported merged-data format"):
+        _save_merged_data({}, tmp_path, **kwargs)
+    with pytest.raises(ValueError, match="Pickle|Unsupported merged-data format"):
+        load_merged_data(tmp_path, **kwargs)
+
+
+def test_load_merged_data_does_not_autodetect_pickle(tmp_path) -> None:
+    """A legacy pickle artifact must not be opened during format discovery."""
+    (tmp_path / "legacy.pickle").write_bytes(b"not a pickle")
+
+    with pytest.raises(ValueError, match="Pickle merged-data files are no longer supported"):
+        load_merged_data(tmp_path, merged_data_name="legacy")
 
 
 def test_fp_all_from_dataset_rejects_non_mole_fraction_units() -> None:

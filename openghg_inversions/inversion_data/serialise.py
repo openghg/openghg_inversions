@@ -1,13 +1,12 @@
 """Functions for saving and loading data used for inversions.
 
 - `_save_merged_data` saves the `fp_all` dict created by `get_data.data_processing_surface_notracer`
-  to disk (either as a pickle file, netCDF, or zarr)
+  to disk as netCDF or zarr
 - `load_merged_data` restores the `fp_all` dict from these saved formats
 - `make_combined_scenario` converts the `fp_all` dict into a xr.Dataset
 """
 
 import json
-import pickle
 import warnings
 from collections import defaultdict
 from pathlib import Path
@@ -24,7 +23,7 @@ from openghg.util import timestamp_now
 from openghg_inversions.inversion_data._units import mole_fraction_unit_scale
 from openghg_inversions.utils import _flux_period_is_missing, datatree_ncdf_encoding
 
-OutputFormat = Literal["pickle", "netcdf", "zarr", "zarr.zip"]  # for internal type hints
+OutputFormat = Literal["netcdf", "zarr", "zarr.zip"]  # for internal type hints
 _OBSOLETE_FP_ALL_METADATA = frozenset({".scales", ".species", ".units"})
 
 
@@ -33,7 +32,9 @@ def _make_merged_data_name(species: str, start_date: str, output_name: str) -> s
 
 
 def _split_suffix(merged_data_name: str) -> tuple[str, OutputFormat | None]:
-    for suffix in ("pickle", "nc", "zarr", "zarr.zip"):
+    if merged_data_name.endswith(".pickle"):
+        raise ValueError("Pickle merged-data files are no longer supported; use netCDF or Zarr.")
+    for suffix in ("nc", "zarr", "zarr.zip"):
         if merged_data_name.endswith("." + suffix):
             if suffix == "nc":
                 return merged_data_name.removesuffix("." + suffix), "netcdf"
@@ -48,22 +49,17 @@ def _save_merged_data(
     start_date: str | None = None,
     output_name: str | None = None,
     merged_data_name: str | None = None,
-    output_format: Literal["pickle", "netcdf", "zarr", "zarr.zip"] = "zarr.zip",
+    output_format: OutputFormat = "zarr.zip",
 ) -> None:
     """Save `fp_all` dictionary to `merged_data_dir`.
 
-    The name of the pickle file can be specified using `merged_data_name`, or
-    a standard name will be created given `species`, `start_date`, and `output_name`.
+    The file name can be specified using `merged_data_name`, or a standard name
+    will be created given `species`, `start_date`, and `output_name`.
 
     If `merged_data_name` is not given, then `species`, `start_date`, and `output_name` must be provided.
 
-    If `merged_data_name` ends with one of "pickle", "nc", "zarr", or "zarr.zip", the output format
-    will be set accordingly. Otherwise, the output format defaults to zipped zarr store. If zarr is
-    not installed, then netCDF is used.
-
-    The output can be saved to a pickle file, but this isn't
-    recommended because data can only be unpickled reliably with the exact same environment that created
-    the pickle.
+    If `merged_data_name` ends with "nc", "zarr", or "zarr.zip", the output
+    format is inferred from the suffix. Otherwise, it defaults to zipped zarr.
 
     Args:
         fp_all: dictionary of merged data to save
@@ -72,7 +68,7 @@ def _save_merged_data(
         start_date: start date of inversion period
         output_name: output name parameter used for inversion run
         merged_data_name: name to use for saved data.
-        output_format: format to save merged data to (default: "zarr").
+        output_format: format to save merged data to (default: "zarr.zip").
 
     Returns:
         None
@@ -89,6 +85,8 @@ def _save_merged_data(
     # format accordingly
     merged_data_name, suffix = _split_suffix(merged_data_name)
     output_format = suffix or output_format
+    if output_format not in {"netcdf", "zarr", "zarr.zip"}:
+        raise ValueError(f"Unsupported merged-data format {output_format!r}; use netCDF or Zarr.")
 
     merged_data_dir = Path(merged_data_dir)
 
@@ -96,41 +94,30 @@ def _save_merged_data(
         merged_data_dir.mkdir(parents=True)
 
     # write to specified output
-    if output_format == "pickle":
-        with open(merged_data_dir / (merged_data_name + ".pickle"), "wb") as f:
-            pickle.dump(
-                {key: value for key, value in fp_all.items() if key not in _OBSOLETE_FP_ALL_METADATA},
-                f,
-            )
-    elif output_format in {"netcdf", "zarr", "zarr.zip"}:
-        dt = fp_all_to_datatree(fp_all, netcdf_safe_attrs=(output_format == "netcdf"))
-        dt = clear_datatree_encoding(dt)
-        dt = clear_datatree_time_attrs(dt)
+    dt = fp_all_to_datatree(fp_all, netcdf_safe_attrs=(output_format == "netcdf"))
+    dt = clear_datatree_encoding(dt)
+    dt = clear_datatree_time_attrs(dt)
 
-        if "zarr" in output_format:
-            # make sure chunks are reasonable and uniform
-            dt = dt.chunk({"time": 600})
-            dt = dt.map_over_datasets(
-                lambda x: xr.unify_chunks(x)[0]
-            )  # unify_chunks returns a tuple, select first item
+    if "zarr" in output_format:
+        # make sure chunks are reasonable and uniform
+        dt = dt.chunk({"time": 600})
+        dt = dt.map_over_datasets(
+            lambda x: xr.unify_chunks(x)[0]
+        )  # unify_chunks returns a tuple, select first item
 
-            assert isinstance(dt, xr.DataTree)  # narrow type since the previous operation could return tuple
+        assert isinstance(dt, xr.DataTree)  # narrow type since the previous operation could return tuple
 
-            # update encoding
-            comp = Blosc(cname="zstd", clevel=5, shuffle=Blosc.SHUFFLE)
-            encoding = datatree_compression_encoding(dt, comp)
+        # update encoding
+        comp = Blosc(cname="zstd", clevel=5, shuffle=Blosc.SHUFFLE)
+        encoding = datatree_compression_encoding(dt, comp)
 
-            if output_format == "zarr":
-                dt.to_zarr(merged_data_dir / (merged_data_name + ".zarr"), mode="w-", encoding=encoding)
-            else:
-                with zarr.ZipStore(merged_data_dir / (merged_data_name + ".zarr.zip"), mode="w") as store:
-                    dt.to_zarr(store, mode="w-", encoding=encoding)
+        if output_format == "zarr":
+            dt.to_zarr(merged_data_dir / (merged_data_name + ".zarr"), mode="w-", encoding=encoding)
         else:
-            dt.to_netcdf(merged_data_dir / (merged_data_name + ".nc"), encoding=datatree_ncdf_encoding(dt))
+            with zarr.ZipStore(merged_data_dir / (merged_data_name + ".zarr.zip"), mode="w") as store:
+                dt.to_zarr(store, mode="w-", encoding=encoding)
     else:
-        raise ValueError(
-            f"Output format should be 'pickle', 'netcdf', 'zarr', or 'zarr.zip'. Given '{output_format}'."
-        )
+        dt.to_netcdf(merged_data_dir / (merged_data_name + ".nc"), encoding=datatree_ncdf_encoding(dt))
 
 
 def load_merged_data(
@@ -139,17 +126,20 @@ def load_merged_data(
     start_date: str | None = None,
     output_name: str | None = None,
     merged_data_name: str | None = None,
-    output_format: Literal["pickle", "netcdf", "zarr", "zarr.zip"] | None = None,
+    output_format: OutputFormat | None = None,
 ) -> dict:
     """Load `fp_all` dictionary from a file in `merged_data_dir`.
 
-    The name of the pickle file can be specified using `merged_data_name`, or
-    a standard name will be created given `species`, `start_date`, and `output_name`.
+    The file name can be specified using `merged_data_name`, or a standard name
+    will be created given `species`, `start_date`, and `output_name`.
 
     If `merged_data_name` is not given, then `species`, `start_date`, and `output_name` must be provided.
 
     This function tries to automatically find a compatible format of merged data, if a format is not specified.
-    First, it checks for data in "zarr" (or zipped zarr) format, then in netCDF, and finally in pickle.
+    It checks for zipped zarr, zarr, then netCDF data. Pickle files are not supported.
+
+    Obsolete ``.species``, ``.units``, and ``.scales`` entries stored in older
+    netCDF or Zarr artifacts are omitted from the returned mapping.
 
     Note: if data is stored in a zarr ZipStore, then the data is eagerly loaded, since the data needs to
     loaded before the zip file is closed.
@@ -163,8 +153,7 @@ def load_merged_data(
         output_format: format of data to load (if not specified, this will be inferred).
 
     Returns:
-        `fp_all` dictionary. Obsolete ``.species``, ``.units``, and
-        ``.scales`` entries stored by older versions are omitted.
+        `fp_all` dictionary.
     """
     merged_data_dir = Path(merged_data_dir)
 
@@ -188,6 +177,8 @@ def load_merged_data(
     # format accordingly
     merged_data_name, suffix = _split_suffix(merged_data_name)
     output_format = suffix or output_format
+    if output_format is not None and output_format not in {"netcdf", "zarr", "zarr.zip"}:
+        raise ValueError(f"Unsupported merged-data format {output_format!r}; use netCDF or Zarr.")
 
     if output_format is not None:
         ext = "nc" if output_format == "netcdf" else output_format
@@ -195,23 +186,18 @@ def load_merged_data(
         if not merged_data_file.exists():
             raise ValueError(f"No merged data found at {merged_data_file}.")
     else:
-        for ext in ["zarr.zip", "zarr", "nc", "pickle"]:
+        for ext in ["zarr.zip", "zarr", "nc"]:
             merged_data_file = merged_data_dir / (merged_data_name + "." + ext)
             if merged_data_file.exists():
                 break
         else:
             # no `break` occurred, so no file found
+            if (merged_data_dir / (merged_data_name + ".pickle")).exists():
+                raise ValueError("Pickle merged-data files are no longer supported; use netCDF or Zarr.")
             raise ValueError(err_msg)
 
     # load merged data
-    if merged_data_file.suffix == ".pickle":
-        with open(merged_data_file, "rb") as f:
-            return {
-                key: value
-                for key, value in pickle.load(f).items()
-                if key not in _OBSOLETE_FP_ALL_METADATA
-            }
-    elif merged_data_file.suffixes == [".zarr", ".zip"]:
+    if merged_data_file.suffixes == [".zarr", ".zip"]:
         with zarr.ZipStore(merged_data_file, mode="r") as store:
             with xr.open_datatree(store, engine="zarr") as dt:  # type: ignore[arg-type, unused-ignore]
                 if dt.is_leaf:
