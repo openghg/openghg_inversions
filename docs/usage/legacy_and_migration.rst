@@ -199,7 +199,7 @@ site's calibration scale remains on its dataset ``attrs["scale"]``.  Existing
 netCDF and Zarr artifacts containing the old entries remain loadable; the loader
 discards those redundant copies. Pickle merged-data files can no longer be
 saved or loaded. To migrate one, use an older environment to reload it and
-save it as netCDF or Zarr before upgrading.
+save it as Zarr before upgrading.
 
 Removed interfaces
 ------------------

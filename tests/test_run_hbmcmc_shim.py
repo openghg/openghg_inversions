@@ -258,6 +258,16 @@ def test_hbmcmc_extract_param_rejects_removed_mcmc_route(tmp_path: Path) -> None
         run_hbmcmc.hbmcmc_extract_param(config_file, print_param=False)
 
 
+def test_fixedbasis_params_to_rhime_rejects_removed_mcmc_route(tmp_path: Path) -> None:
+    config_file = tmp_path / "hbmcmc.ini"
+    _fixedbasis_config(config_file)
+    params = run_hbmcmc.hbmcmc_extract_param(config_file, print_param=False)
+    params["mcmc_type"] = "tdmcmc"
+
+    with pytest.raises(ValueError, match="fixed_basis"):
+        run_hbmcmc.fixedbasis_params_to_rhime(params)
+
+
 def test_fixedbasis_params_to_rhime_preserves_paris_compatibility_flag(tmp_path: Path) -> None:
     config_file = tmp_path / "hbmcmc.ini"
     _fixedbasis_config(config_file)

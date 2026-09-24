@@ -157,12 +157,15 @@ def fixedbasis_params_to_rhime(params: dict[str, Any]) -> dict[str, Any]:
 
     The compatibility shim deliberately stays at the entrypoint boundary:
     legacy config spellings are normalised here, then the modern ``run_rhime``
-    API performs its existing validation and spec construction.
+    API performs its existing validation and spec construction. If supplied,
+    ``mcmc_type`` must be ``fixed_basis``.
     """
     translated = dict(params)
     translated.pop("likelihood", None)
     translated.pop(_ADDITIVE_SIGMA_PRIOR, None)
-    translated.pop("mcmc_type", None)
+    mcmc_type = translated.pop("mcmc_type", "fixed_basis")
+    if mcmc_type != "fixed_basis":
+        raise ValueError(f"Unsupported run_hbmcmc mcmc_type {mcmc_type!r}; expected 'fixed_basis'.")
 
     _translate_legacy_aliases(translated)
     _normalise_legacy_output_format(translated)
