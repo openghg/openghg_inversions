@@ -50,61 +50,16 @@ _ADDITIVE_SIGMA_OPTION_NAMES = (
     "sigma_freq_anchor",
     "no_model_error",
 )
-_LEGACY_ADDITIVE_LIKELIHOOD_METADATA = {
-    "module": "openghg_inversions.rhime.likelihoods",
-    "qualname": "additive_sigma_likelihood_builder",
-}
-
-
-def fixed_basis_expected_param() -> list[str]:
-    """Define required parameters for a fixedbasis-style configuration.
-
-    Expected parameters currently include:
-      species, sites, averaging_period, domain, start_date, end_date,
-      outputpath, outputname
-
-    Returns:
-      expected_param: required parameter names
-    """
-    expected_param = [
-        "species",
-        "sites",
-        "averaging_period",
-        "domain",
-        "start_date",
-        "end_date",
-        "outputpath",
-        "outputname",
-    ]
-
-    return expected_param
-
-
-def extract_mcmc_type(config_file: str | Path, default: str = "fixed_basis") -> str:
-    """Find value which describes the MCMC function to use.
-
-    Checks the input configuration file the "mcmc_type" keyword within
-    the "MCMC.TYPE" section. If not present, the default is used.
-
-    Args:
-      config_file:
-        Configuration file name. Should be an .ini file.
-      default:
-        Default keyword for MCMC function to use.
-
-    Returns:
-      Keyword for MCMC function to use
-    """
-    mcmc_type_section = "MCMC.TYPE"
-    mcmc_type_keyword = "mcmc_type"
-    param_mcmc_type = config.extract_params(config_file, section=mcmc_type_section)
-
-    if param_mcmc_type is not None and mcmc_type_keyword in param_mcmc_type:
-        mcmc_type = param_mcmc_type[mcmc_type_keyword]
-    else:
-        mcmc_type = default
-
-    return mcmc_type
+_REQUIRED_FIXEDBASIS_PARAMS = (
+    "species",
+    "sites",
+    "averaging_period",
+    "domain",
+    "start_date",
+    "end_date",
+    "outputpath",
+    "outputname",
+)
 
 
 def _legacy_option_enabled(value: Any) -> bool:
@@ -202,7 +157,8 @@ def fixedbasis_params_to_rhime(params: dict[str, Any]) -> dict[str, Any]:
 
     The compatibility shim deliberately stays at the entrypoint boundary:
     legacy config spellings are normalised here, then the modern ``run_rhime``
-    API performs its existing validation and spec construction.
+    API performs its existing validation and spec construction. If supplied,
+    ``mcmc_type`` must be ``fixed_basis``.
     """
     translated = dict(params)
     translated.pop("likelihood", None)
@@ -271,20 +227,6 @@ def _select_additive_sigma_model_options(
     return options
 
 
-def validate_rhime_params(params: dict[str, Any]) -> None:
-    """Validate translated single-sector RHIME params before script side effects.
-
-    Args:
-        params: Translated fixed-basis options to validate as a single-sector
-            RHIME run.
-
-    Raises:
-        ValueError: If required, structured, or single-sector options are
-            invalid.
-    """
-    resolve_rhime_options(params=params, multisector=False)
-
-
 def _validate_country_file(params: dict[str, Any]) -> None:
     """Reject a configured country file that does not exist."""
     country_file = params.get("country_file")
@@ -296,20 +238,14 @@ def _validate_country_file(params: dict[str, Any]) -> None:
 
 def hbmcmc_extract_param(
     config_file: str | Path,
-    mcmc_type: str | None = "fixed_basis",
     print_param: bool | None = True,
     **command_line,
 ):
     """Extract fixedbasis-style parameters from an input configuration file.
 
-    Checks the mcmc_type to extract the required parameters.
-
     Args:
       config_file:
         Configuration file name. Should be an .ini file.
-      mcmc_type:
-        Keyword for MCMC function to use.
-        Default = "fixed_basis" (only option at present)
       print_param:
         When set to True, print out extracted parameter names.
         Default = True
@@ -323,18 +259,10 @@ def hbmcmc_extract_param(
         configuration file plus command-line overrides.
 
     Raises:
-        ValueError if expected parameter is missing or has `None` value.
+        ValueError: If the configuration selects a removed MCMC route or a
+            required parameter is missing or falsey.
     """
-    expected_param = fixed_basis_expected_param() if mcmc_type == "fixed_basis" else []
-
-    # If an expected parameter has been passed from the command line,
-    # this does not need to be within the config file
-    for key, value in command_line.items():
-        if key in expected_param and value is not None:
-            expected_param.remove(key)
-
-    param = config.extract_params(config_file, expected_param=expected_param)
-    param.pop("mcmc_type", None)
+    param = config.extract_params(config_file)
 
     # Command line values added to param (or supersede inputs from the config
     # file)
@@ -342,9 +270,13 @@ def hbmcmc_extract_param(
         if value is not None:
             param[key] = value
 
+    mcmc_type = param.pop("mcmc_type", "fixed_basis")
+    if mcmc_type != "fixed_basis":
+        raise ValueError(f"Unsupported run_hbmcmc mcmc_type {mcmc_type!r}; expected 'fixed_basis'.")
+
     # If configuration file does not include values for the
     # required parameters - produce an error
-    for ep in expected_param:
+    for ep in _REQUIRED_FIXEDBASIS_PARAMS:
         if ep not in param or not param[ep]:
             raise ValueError(f"Required parameter '{ep}' has not been defined")
 
@@ -439,13 +371,10 @@ def main(argv: list[str] | None = None) -> None:
         )
 
     timing_start = timer_start()
-    mcmc_type = extract_mcmc_type(config_file)
-    if mcmc_type != "fixed_basis":
-        raise ValueError(f"Unsupported run_hbmcmc mcmc_type {mcmc_type!r}; expected 'fixed_basis'.")
-    param = hbmcmc_extract_param(config_file, mcmc_type, **command_line_args)
+    param = hbmcmc_extract_param(config_file, **command_line_args)
     log_timing("run_hbmcmc.config_extract", timer_seconds(timing_start))
 
-    print(f"Using MCMC type: {mcmc_type} - routing fixedbasis-style config to run_rhime(...)")
+    print("Routing fixedbasis-style config to run_rhime(...)")
 
     with timed("run_hbmcmc.fixedbasis_to_rhime_translation"):
         rhime_params = fixedbasis_params_to_rhime(param)
@@ -480,7 +409,7 @@ def main(argv: list[str] | None = None) -> None:
             rhime_params["mismatch_model"] = "pollution_event"
 
     with timed("run_hbmcmc.validation"):
-        validate_rhime_params(rhime_params)
+        resolve_rhime_options(params=rhime_params, multisector=False)
 
     _validate_country_file(rhime_params)
 
@@ -497,19 +426,8 @@ def main(argv: list[str] | None = None) -> None:
     with timed("run_hbmcmc.config_copy"):
         _copy_config_file(config_file, param=param, **command_line_args)
 
-    compatibility_provenance = None
-    if additive_sigma_options is not None:
-        compatibility_provenance = {
-            "likelihood_builder": dict(_LEGACY_ADDITIVE_LIKELIHOOD_METADATA),
-            "likelihood_kwargs": {
-                name: additive_sigma_options[name]
-                for name in _ADDITIVE_SIGMA_OPTION_NAMES
-                if name in additive_sigma_options
-            },
-        }
     run_rhime(
         preserve_legacy_likelihood=additive_sigma_options is None,
-        _compatibility_likelihood_provenance=compatibility_provenance,
         _compatibility_unused_sigma_settings=legacy_unused_sigma_settings,
         _compatibility_minimum_error_floor=legacy_minimum_error_floor,
         compatibility_output_chain=None if args.all_chains else 0,
