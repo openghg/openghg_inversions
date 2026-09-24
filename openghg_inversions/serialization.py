@@ -393,15 +393,17 @@ def load_trace(file_path: str | Path) -> xr.DataTree:
         Fully loaded trace with valid semantic indexes reconstructed.
 
     Raises:
-        ValueError: If the artifact is a complete ``InversionOutput`` rather
-            than a standalone trace.
+        ValueError: If the artifact declares an incompatible schema.
     """
     dt = open_datatree_loaded(file_path)
-    if dt.attrs.get("schema") == "openghg_inversions.inversion_output":
+    schema = dt.attrs.get("schema")
+    if schema == "openghg_inversions.inversion_output":
         raise ValueError(
             "Expected a standalone trace artifact, but received a complete "
             "InversionOutput artifact; use InversionOutput.load() instead."
         )
+    if schema is not None:
+        raise ValueError(f"Expected a standalone trace artifact, got incompatible schema {schema!r}.")
     return trace_from_datatree(dt)
 
 

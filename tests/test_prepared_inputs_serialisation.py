@@ -684,6 +684,15 @@ def test_load_trace_rejects_complete_inversion_output(tmp_path: Path) -> None:
         load_trace(path)
 
 
+def test_load_trace_rejects_prepared_inputs(tmp_path: Path) -> None:
+    """The standalone trace loader rejects a prepared-input artifact."""
+    path = tmp_path / "prepared-inputs.nc"
+    _prepared_inputs().save(path)
+
+    with pytest.raises(ValueError, match="incompatible schema 'openghg_inversions.rhime_prepared_inputs'"):
+        load_trace(path)
+
+
 def test_inversion_output_rejects_standalone_trace() -> None:
     """The complete artifact loader rejects standalone trace trees."""
     trace = make_trace(posterior=xr.Dataset({"x": (("chain", "draw"), [[1.0]])}))
